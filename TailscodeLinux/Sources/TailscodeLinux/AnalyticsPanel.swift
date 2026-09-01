@@ -18,13 +18,19 @@ enum AnalyticsPanel {
     private static let hourChartHeight = 34
     private static let hourBarWidth = 16
 
+    /// The open panel's own widgets, so a span picked inside it can reload it. The window owns
+    /// them for as long as it is up; every load takes its own reference for the trip through the
+    /// task and drops it on the way out.
+    private nonisolated(unsafe) static var openColumn: UInt = 0
+    private nonisolated(unsafe) static var openShareSlot: UInt = 0
+    private nonisolated(unsafe) static var openWindow: UInt = 0
+
     static func present(parent: UnsafeMutablePointer<GtkWidget>?) {
         let (window, content) = Dialogs.window(
-            title: Localized.text("The month in numbers"), parent: parent, width: 560)
+            title: UsageWindow.current.surfaceTitle, parent: parent, width: 560)
         gtk_window_set_default_size(ptr(window), 560, 720)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 12)
-        gtk_box_append(ptr(column), notice(Localized.text("Reading the ledger…")))
 
         let scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
@@ -55,14 +61,36 @@ enum AnalyticsPanel {
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(dismiss)
 
+        openColumn = UInt(bitPattern: column)
+        openShareSlot = UInt(bitPattern: shareSlot)
+        openWindow = UInt(bitPattern: window)
+        load()
+    }
+
+    /// Reads the ledger for whatever span is chosen and redraws into the open panel. Called once
+    /// when the panel opens and again whenever somebody picks a different span.
+    private static func load() {
+        guard let columnRaw = UnsafeMutableRawPointer(bitPattern: openColumn),
+            let shareRaw = UnsafeMutableRawPointer(bitPattern: openShareSlot),
+            let windowRaw = UnsafeMutableRawPointer(bitPattern: openWindow),
+            gtk_widget_get_root(ptr(columnRaw)) != nil
+        else { return }
+        let column: UnsafeMutablePointer<GtkWidget> = ptr(columnRaw)
+        let shareSlot: UnsafeMutablePointer<GtkWidget> = ptr(shareRaw)
+        let window: UnsafeMutablePointer<GtkWidget> = ptr(windowRaw)
+        Gtk.removeChildren(of: column)
+        Gtk.removeChildren(of: shareSlot)
+        gtk_box_append(ptr(column), notice(Localized.text("Reading the ledger…")))
+
         g_object_ref(UnsafeMutableRawPointer(column))
         g_object_ref(UnsafeMutableRawPointer(shareSlot))
         g_object_ref(UnsafeMutableRawPointer(window))
         let columnBits = UInt(bitPattern: column)
         let shareBits = UInt(bitPattern: shareSlot)
         let heldWindowBits = UInt(bitPattern: window)
+        let span = UsageWindow.current
         Task.detached {
-            let analytics = await gather()
+            let analytics = await gather(window: span)
             Gtk.onMain {
                 defer {
                     if let raw = UnsafeMutableRawPointer(bitPattern: columnBits) {
@@ -124,7 +152,7 @@ enum AnalyticsPanel {
     /// belongs in the month whichever agent served it. A server that answers nil is too old for
     /// the route and is named rather than silently dropped; one that cannot be reached at all is
     /// left to the surfaces that already report reachability.
-    private static func gather() async -> UsageAnalytics? {
+    private static func gather(window: UsageWindow) async -> UsageAnalytics? {
         let profiles = await ServerDirectory.shared.profiles()
         var reports: [(name: String, report: UsageAnalyticsReport)] = []
         var missing: [String] = []
@@ -135,9 +163,7 @@ enum AnalyticsPanel {
             guard let backend = await ServerDirectory.shared.backend(for: profile) else { continue }
             let name = ServerLabel.display(profile)
             do {
-                if let report = try await backend.usageAnalytics(
-                    days: UsageAnalytics.defaultWindowDays)
-                {
+                if let report = try await backend.usageAnalytics(days: window.days) {
                     reports.append((name, report))
                 } else {
                     missing.append(name)
@@ -146,7 +172,7 @@ enum AnalyticsPanel {
                 continue
             }
         }
-        return UsageAnalytics(servers: reports, missingServers: missing)
+        return UsageAnalytics(servers: reports, missingServers: missing, window: window)
     }
 
     /// A state that is the whole window sits in the middle of it, not in a corner.
@@ -208,9 +234,34 @@ enum AnalyticsPanel {
         gtk_box_append(ptr(column), footer(analytics))
     }
 
+    /// The span is picked where the number it qualifies is: a total with no window on it is not a
+    /// fact, and the two belong in the same glance. Rebuilt with the card, so the pressed one is
+    /// always the one being read.
+    private static func windowPicker() -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(row, "linked")
+        gtk_widget_set_halign(row, GTK_ALIGN_START)
+        for span in UsageWindow.allCases {
+            let chosen = span == UsageWindow.current
+            let button = Gtk.button(span.title, css: chosen ? ["suggested-action"] : []) {
+                guard span != UsageWindow.current else { return }
+                UsageWindow.current = span
+                SettingsFile.capture()
+                if let raw = UnsafeMutableRawPointer(bitPattern: openWindow) {
+                    gtk_window_set_title(ptr(raw), span.surfaceTitle)
+                }
+                load()
+            }
+            gtk_widget_set_sensitive(button, chosen ? 0 : 1)
+            gtk_box_append(ptr(row), button)
+        }
+        return row
+    }
+
     private static func hero(_ analytics: UsageAnalytics) -> UnsafeMutablePointer<GtkWidget> {
         let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
         Gtk.addClass(card, "usage-card")
+        gtk_box_append(ptr(card), windowPicker())
         gtk_box_append(
             ptr(card), Gtk.label(analytics.windowLabel, css: "usage-plan", selectable: false))
         let money = Gtk.label(analytics.headline, css: "analytics-total", selectable: false)
@@ -237,19 +288,22 @@ enum AnalyticsPanel {
         let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
         Gtk.addClass(card, "usage-card")
         gtk_box_append(
-            ptr(card), heading(Localized.text("Day by day"), trailing: analytics.windowLabel))
+            ptr(card), heading(analytics.window.chartTitle, trailing: analytics.windowLabel))
 
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
         gtk_widget_set_valign(row, GTK_ALIGN_END)
         gtk_widget_set_size_request(row, -1, Int32(dayChartHeight))
+        // Thirteen months and thirty days are the same chart at different grains, and a column
+        // sized for the denser one leaves the coarser one a row of pins across a wide card.
+        let barWidth = analytics.days.count <= 16 ? 34 : dayBarWidth
         for day in analytics.days {
             let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             gtk_widget_set_valign(holder, GTK_ALIGN_END)
             let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             Gtk.addClass(bar, day.isToday ? "analytics-bar-today" : "analytics-bar")
             let height = max(2, Int(Double(dayChartHeight) * min(max(day.share, 0), 1)))
-            gtk_widget_set_size_request(bar, Int32(dayBarWidth), Int32(height))
-            var tip = "\(day.weekdayLabel) \(day.label) · \(day.value)"
+            gtk_widget_set_size_request(bar, Int32(barWidth), Int32(height))
+            var tip = "\(day.title) · \(day.value)"
             if day.turns > 0 { tip += " · " + Localized.text("%@ turns", "\(day.turns)") }
             gtk_widget_set_tooltip_text(bar, tip)
             gtk_box_append(ptr(holder), bar)
@@ -260,7 +314,7 @@ enum AnalyticsPanel {
         let captions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         if let peak = analytics.peakDay, peak.share > 0 {
             let left = Gtk.label(
-                Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.value),
+                Localized.text("Peak %@ · %@", peak.title, peak.value),
                 css: "spend-caption", selectable: false)
             gtk_label_set_ellipsize(op(left), PANGO_ELLIPSIZE_NONE)
             gtk_widget_set_hexpand(left, 1)

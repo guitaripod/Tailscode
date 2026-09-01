@@ -1617,6 +1617,14 @@ public enum ModelChooserCheck {
     }
 
     private static func runLocked() -> [String] {
+        // The star writes to the machine's own store, and half this check reads rankings a star
+        // reorders. So the check runs against an empty shelf and puts back exactly what it found
+        // — and because it clears at the start rather than only tidying at the end, a run killed
+        // part-way (a piped test run losing its reader is enough) is healed by the next one
+        // instead of failing every run after it for a reason nobody could see.
+        let starredBefore = ModelFavoritesStore.all()
+        ModelFavoritesStore.replace([])
+        defer { ModelFavoritesStore.replace(starredBefore) }
         var failures: [String] = []
         func expect(_ condition: Bool, _ label: String) {
             if !condition { failures.append(label) }
@@ -1828,15 +1836,11 @@ public enum ModelChooserCheck {
         expect(
             pinned.rows.first { $0.sectionID == "·yours" }?.isPinned == true,
             "and the row says it is pinned")
-        // The star is the one thing here that writes to the machine's own store, so the check
-        // puts back exactly what it found: a run stopped between the two toggles would otherwise
-        // leave a starred model behind and fail every run after it for a reason nobody could see.
-        let starredBefore = ModelFavoritesStore.all()
-        pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
-        expect(pinned.isFavorite(ModelSelection(providerID: "anthropic", modelID: "opus")), "the star is on")
-        pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
-        expect(!pinned.isFavorite(ModelSelection(providerID: "anthropic", modelID: "opus")), "and toggles off")
-        ModelFavoritesStore.replace(starredBefore)
+        let probe = ModelSelection(providerID: "anthropic", modelID: "opus")
+        pinned.togglePin(probe)
+        expect(pinned.isFavorite(probe), "the star is on")
+        pinned.togglePin(probe)
+        expect(!pinned.isFavorite(probe), "and toggles off")
 
         let quick = ModelChooser.shortlist(
             sources: [studio, homelab], selected: nil, limit: 4,

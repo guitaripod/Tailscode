@@ -9,7 +9,10 @@ import TailscodeCore
 /// hole in the numbers.
 @MainActor
 final class AnalyticsWindowController: NSWindowController {
-    private let fetch: () async -> UsageAnalytics?
+    private let fetch: (UsageWindow) async -> UsageAnalytics?
+    private let windowPicker = NSSegmentedControl(
+        labels: UsageWindow.allCases.map(\.title), trackingMode: .selectOne, target: nil,
+        action: nil)
     private let column = FillingStack()
     private let scroll = NSScrollView()
     private var analytics: UsageAnalytics?
@@ -26,12 +29,12 @@ final class AnalyticsWindowController: NSWindowController {
     private static let weekdayBarWidth: CGFloat = 30
     private static let hourHeight: CGFloat = 32
 
-    init(fetch: @escaping () async -> UsageAnalytics?) {
+    init(fetch: @escaping (UsageWindow) async -> UsageAnalytics?) {
         self.fetch = fetch
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 760),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = Localized.text("The month in numbers")
+        window.title = UsageWindow.current.surfaceTitle
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 560, height: 320)
         MacTheme.Chrome.adopt(window)
@@ -41,6 +44,11 @@ final class AnalyticsWindowController: NSWindowController {
         window.contentViewController = host
         paintedDark = window.effectiveAppearance.isDark
         window.center()
+        windowPicker.selectedSegment =
+            UsageWindow.allCases.firstIndex(of: UsageWindow.current) ?? 0
+        windowPicker.target = self
+        windowPicker.action = #selector(windowChanged)
+        windowPicker.setContentHuggingPriority(.defaultLow, for: .horizontal)
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         NotificationCenter.default.addObserver(
@@ -106,13 +114,26 @@ final class AnalyticsWindowController: NSWindowController {
         return container
     }
 
+    /// The span is picked where the number it qualifies is: a total with no window on it is not
+    /// a fact, and the two belong in the same glance.
+    @objc private func windowChanged() {
+        let chosen = UsageWindow.allCases[
+            min(max(0, windowPicker.selectedSegment), UsageWindow.allCases.count - 1)]
+        guard chosen != UsageWindow.current else { return }
+        UsageWindow.current = chosen
+        window?.title = chosen.surfaceTitle
+        analytics = nil
+        reload()
+    }
+
     private func reload() {
         guard !loading else { return }
         loading = true
         if analytics == nil { render() }
+        let span = UsageWindow.current
         Task { [weak self] in
             guard let self else { return }
-            self.analytics = await self.fetch()
+            self.analytics = await self.fetch(span)
             MacGameCenter.shared.note(self.analytics)
             self.loading = false
             self.render()
@@ -204,7 +225,7 @@ final class AnalyticsWindowController: NSWindowController {
         let activity = RowKit.label(
             analytics.activityLine, font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.secondaryLabel)
-        var views: [NSView] = [windowLabel, money, perDay, activity]
+        var views: [NSView] = [windowPicker, windowLabel, money, perDay, activity]
         if let delta = analytics.deltaLine {
             views.append(
                 RowKit.label(
@@ -228,16 +249,19 @@ final class AnalyticsWindowController: NSWindowController {
         bars.distribution = .fill
         bars.spacing = 2
         bars.translatesAutoresizingMaskIntoConstraints = false
+        // Thirteen months and thirty days are the same chart at different grains, and a column
+        // sized for the denser one leaves the coarser one a row of pins against a wide card.
+        let barWidth: CGFloat = analytics.days.count <= 16 ? 26 : 10
         for day in analytics.days {
-            let zero = day.costUSD <= 0
+            let zero = day.share <= 0
             let fill =
                 day.isToday
                 ? MacTheme.Color.accent : zero ? MacTheme.Color.separator : MacTheme.Color.info
             let bar = AnalyticsBar(fill: fill)
-            bar.toolTip = "\(day.weekdayLabel) \(day.label) · \(day.value)"
+            bar.toolTip = "\(day.title) · \(day.value)"
             bar.speak(bar.toolTip)
             NSLayoutConstraint.activate([
-                bar.widthAnchor.constraint(equalToConstant: 10),
+                bar.widthAnchor.constraint(equalToConstant: barWidth),
                 bar.heightAnchor.constraint(
                     equalToConstant: zero ? 2 : max(2, Self.chartHeight * day.share)),
             ])
@@ -250,7 +274,7 @@ final class AnalyticsWindowController: NSWindowController {
         if let peak = analytics.peakDay, peak.share > 0 {
             annotations.append(
                 RowKit.label(
-                    Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.value),
+                    Localized.text("Peak %@ · %@", peak.title, peak.value),
                     font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         annotations.append(RowKit.spacer())
@@ -264,7 +288,7 @@ final class AnalyticsWindowController: NSWindowController {
         annotation.orientation = .horizontal
         annotation.spacing = MacTheme.Spacing.s
 
-        return card(views: [heading(Localized.text("Day by day")), bars, annotation])
+        return card(views: [heading(analytics.window.chartTitle), bars, annotation])
     }
 
     /// Two charts, not one heap. The week and the clock answer different questions — which day the

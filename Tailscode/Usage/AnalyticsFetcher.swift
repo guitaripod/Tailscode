@@ -24,8 +24,9 @@ enum AnalyticsFetcher {
 
     @MainActor
     static func fetch(
-        days: Int = UsageAnalytics.defaultWindowDays, deadline: TimeInterval = 30
+        window: UsageWindow = .current, deadline: TimeInterval = 30
     ) async -> Haul {
+        let days = window.days
         let controller = ConnectionController.shared
         var seen = Set<URL>()
         let servers = controller.profiles

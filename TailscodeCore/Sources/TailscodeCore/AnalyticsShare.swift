@@ -169,7 +169,7 @@ public struct AnalyticsShare: Sendable, Equatable {
             }
             if analytics.days.contains(where: { $0.share > 0 }) {
                 out.append(.spacer(28))
-                out.append(.section(Localized.text("Day by day")))
+                out.append(.section(analytics.window.chartTitle))
                 out.append(.spacer(14))
                 out.append(
                     .daily(
@@ -181,7 +181,7 @@ public struct AnalyticsShare: Sendable, Equatable {
                     out.append(
                         .dim(
                             Localized.text(
-                                "Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.value)))
+                                "Peak %@ · %@", peak.title, peak.value)))
                 }
             }
             if analytics.weekdays.contains(where: { $0.share > 0 }) {
@@ -338,7 +338,7 @@ public struct AnalyticsShare: Sendable, Equatable {
         if let delta = analytics.deltaLine { lines.append(delta) }
         if let peak = analytics.peakDay, peak.costUSD > 0 {
             lines.append(
-                Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.money))
+                Localized.text("Peak %@ · %@", peak.title, peak.value))
         }
         if let clock = analytics.clockLine { lines.append(clock) }
         appendMeterLines(
@@ -396,7 +396,7 @@ public struct AnalyticsShare: Sendable, Equatable {
         if let peak = analytics.peakDay, peak.costUSD > 0 {
             lines.append("")
             lines.append(
-                Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.money))
+                Localized.text("Peak %@ · %@", peak.title, peak.value))
         }
         appendMarkdownMeters(
             &lines, title: Localized.text("Providers"), meters: analytics.providers)

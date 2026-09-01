@@ -1168,8 +1168,8 @@ final class MainWindowController: NSWindowController {
     /// from a local is dead on arrival — released while shown, its buttons do nothing.
     func presentAnalytics() {
         if analyticsWindow == nil {
-            analyticsWindow = AnalyticsWindowController {
-                await Self.collectAnalytics()
+            analyticsWindow = AnalyticsWindowController { window in
+                await Self.collectAnalytics(window: window)
             }
         }
         analyticsWindow?.present()
@@ -1178,7 +1178,7 @@ final class MainWindowController: NSWindowController {
     /// The whole account: every Claude server's ledger over the default window, merged by Core.
     /// One machine answering once is enough — a second profile on the same host must not double
     /// the money — and a server that cannot answer is named so its absence is a stated fact.
-    private static func collectAnalytics() async -> UsageAnalytics? {
+    private static func collectAnalytics(window: UsageWindow) async -> UsageAnalytics? {
         var reports: [(name: String, report: UsageAnalyticsReport)] = []
         var missing: [String] = []
         var seenHosts = Set<String>()
@@ -1191,8 +1191,7 @@ final class MainWindowController: NSWindowController {
                 continue
             }
             do {
-                if let report = try await backend.usageAnalytics(
-                    days: UsageAnalytics.defaultWindowDays)
+                if let report = try await backend.usageAnalytics(days: window.days)
                 {
                     reports.append((name, report))
                 } else {
@@ -1202,7 +1201,7 @@ final class MainWindowController: NSWindowController {
                 continue
             }
         }
-        return UsageAnalytics(servers: reports, missingServers: missing)
+        return UsageAnalytics(servers: reports, missingServers: missing, window: window)
     }
 
     private func handleOpen(_ entry: SessionEntry, backend: any CodingAgentBackend) {

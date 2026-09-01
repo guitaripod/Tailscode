@@ -18,6 +18,8 @@ final class AnalyticsViewController: UIViewController {
     private var loadTask: Task<Void, Never>?
     private var hasAnimatedBars = false
     private var pendingBars: [(bar: UIView, height: CGFloat)] = []
+    private let windowPicker = UISegmentedControl(
+        items: UsageWindow.allCases.map(\.title))
 
     private static let chartHeight: CGFloat = 96
     private static let dayBarWidth: CGFloat = 4
@@ -36,7 +38,8 @@ final class AnalyticsViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Theme.Color.groupedBackground
-        title = String(localized: "The month in numbers")
+        title = UsageWindow.current.surfaceTitle
+        setupWindowPicker()
         setupScroll()
         setupStateViews()
         refreshShareButton()
@@ -49,6 +52,29 @@ final class AnalyticsViewController: UIViewController {
             showLoading()
             startLoad()
         }
+    }
+
+    /// The span is picked where the number it qualifies is, rather than in a menu somewhere: a
+    /// total with no window on it is not a fact, and the two belong in the same glance.
+    private func setupWindowPicker() {
+        windowPicker.selectedSegmentIndex =
+            UsageWindow.allCases.firstIndex(of: UsageWindow.current) ?? 0
+        windowPicker.addTarget(self, action: #selector(windowChanged), for: .valueChanged)
+        windowPicker.accessibilityLabel = String(localized: "How much time to show")
+    }
+
+    @objc private func windowChanged() {
+        let chosen = UsageWindow.allCases[
+            min(max(0, windowPicker.selectedSegmentIndex), UsageWindow.allCases.count - 1)]
+        guard chosen != UsageWindow.current else { return }
+        UsageWindow.current = chosen
+        title = chosen.surfaceTitle
+        Theme.Haptics.selection()
+        analytics = nil
+        column.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        hasAnimatedBars = false
+        showLoading()
+        startLoad()
     }
 
     private func refreshShareButton() {
@@ -152,9 +178,11 @@ final class AnalyticsViewController: UIViewController {
     private func startLoad() {
         loadTask?.cancel()
         loadTask = Task {
-            let haul = await AnalyticsFetcher.fetch()
+            let window = UsageWindow.current
+            let haul = await AnalyticsFetcher.fetch(window: window)
             guard !Task.isCancelled else { return }
-            analytics = UsageAnalytics(servers: haul.servers, missingServers: haul.missing)
+            analytics = UsageAnalytics(
+                servers: haul.servers, missingServers: haul.missing, window: window)
             GameCenterCoordinator.shared.note(analytics)
             render()
             refreshShareButton()
@@ -232,7 +260,7 @@ final class AnalyticsViewController: UIViewController {
         let activity = label(
             analytics.activityLine, role: .metricDetail, color: Theme.Color.secondaryLabel)
 
-        var views: [UIView] = [money, window, perDay, activity]
+        var views: [UIView] = [windowPicker, money, window, perDay, activity]
         if let deltaLine = analytics.deltaLine {
             views.append(label(deltaLine, role: .metricDetail, color: deltaColor(analytics.trend)))
         }
@@ -249,14 +277,14 @@ final class AnalyticsViewController: UIViewController {
 
     private func daily(_ analytics: UsageAnalytics) -> UIView {
         var views: [UIView] = [
-            heading(String(localized: "Day by day"), trailing: nil),
+            heading(analytics.window.chartTitle, trailing: nil),
             dailyChart(analytics),
         ]
         var annotations: [UIView] = []
         if let peak = analytics.peakDay, peak.share > 0 {
             annotations.append(
                 label(
-                    String(localized: "Peak \(peak.weekdayLabel) \(peak.label) · \(peak.value)"),
+                    String(localized: "Peak \(peak.title) · \(peak.value)"),
                     role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         annotations.append(UIView())
@@ -280,6 +308,9 @@ final class AnalyticsViewController: UIViewController {
         bars.axis = .horizontal
         bars.alignment = .bottom
         bars.distribution = .equalSpacing
+        // Thirteen months and thirty days are the same chart at different grains, and a column
+        // sized for the denser one leaves the coarser one a row of pins across a wide card.
+        let barWidth: CGFloat = analytics.days.count <= 16 ? 14 : Self.dayBarWidth
         for day in analytics.days {
             let bar = UIView()
             let height = max(2, Self.chartHeight * day.share)
@@ -292,10 +323,10 @@ final class AnalyticsViewController: UIViewController {
             }
             bar.layer.cornerRadius = 2
             bar.isAccessibilityElement = true
-            bar.accessibilityLabel = "\(day.weekdayLabel) \(day.label), \(day.value)"
+            bar.accessibilityLabel = "\(day.title), \(day.value)"
             bar.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                bar.widthAnchor.constraint(equalToConstant: Self.dayBarWidth),
+                bar.widthAnchor.constraint(equalToConstant: barWidth),
                 bar.heightAnchor.constraint(equalToConstant: height),
             ])
             bars.addArrangedSubview(bar)

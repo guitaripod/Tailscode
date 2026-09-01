@@ -151,7 +151,7 @@ struct UsageAnalyticsTests {
             UsageAnalytics(
                 servers: [("studio", report(daily: even))], now: now, calendar: calendar))
         #expect(flat.trend == .flat)
-        #expect(flat.deltaLine == Localized.text("Steady week over week"))
+        #expect(flat.deltaLine == Localized.text("Steady over the last %d days", 7))
     }
 
     @Test("The streak is counted over the merged account, not either server's word for it")

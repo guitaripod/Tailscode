@@ -19,12 +19,15 @@ public struct UsageAnalytics: Sendable, Equatable {
         case flat
     }
 
-    /// One bar in the daily chart. Days with no work are present and zero — a gap in a month is
-    /// information, not a missing bar.
+    /// One bar in the chart over time. Empty stretches are present and zero — a gap in a month is
+    /// information, not a missing bar — and a bar is a day, a week or a month depending on how
+    /// much time the reader asked to see (``UsageWindow/grain``).
     public struct DayBar: Sendable, Equatable {
         public let key: String
-        public let label: String
-        public let weekdayLabel: String
+        /// What this bar is, in words: a day as `Sun 9`, a week as `Sep 8–14`, a month as
+        /// `September`. Every reading of a bar — the tooltip, the peak annotation, the line a
+        /// screen reader is given — says this rather than assembling one of its own.
+        public let title: String
         public let costUSD: Double
         public let money: String
         /// What the day is worth in the unit the account actually has — the money, or the tokens
@@ -123,13 +126,16 @@ public struct UsageAnalytics: Sendable, Equatable {
     public let coverageNote: String?
     /// The facts every contributing server measured. A section outside it is not rendered at all.
     public let coverage: UsageAnalyticsReport.Coverage
+    /// How much time this reading covers, so a surface can show which window is being read
+    /// without keeping its own copy of the answer.
+    public let window: UsageWindow
     /// The same fold, scored as a game: the trophy catalog with its progress, and the scores
     /// the leaderboards take. Read from this merge so the case can never disagree with the
     /// charts it sits beside.
     public let trophies: [Trophy]
     public let scores: [TrophyScore]
 
-    public static let defaultWindowDays = 30
+    public static let defaultWindowDays = UsageWindow.fallback.days
     private static let projectLimit = 8
     private static let toolLimit = 10
     /// An account that reaches for one model has three; one that reaches for whatever is cheapest
@@ -139,12 +145,13 @@ public struct UsageAnalytics: Sendable, Equatable {
     public init?(
         servers: [(name: String, report: UsageAnalyticsReport)],
         missingServers: [String] = [],
+        window: UsageWindow = .fallback,
         now: Date = Date(),
         calendar: Calendar = .current
     ) {
         let reports = servers.filter { !$0.report.isEmpty }
         guard !reports.isEmpty || !missingServers.isEmpty else { return nil }
-        let window = reports.map(\.report.days).max() ?? Self.defaultWindowDays
+        self.window = window
 
         var dayCost: [String: Double] = [:]
         var dayTokens: [String: Int] = [:]
@@ -225,28 +232,29 @@ public struct UsageAnalytics: Sendable, Equatable {
         // machine the person owns has no money to scale by, and a chart of zeroes would say the
         // month never happened, so it is measured in the work itself instead.
         let priced = totals.costUSD > 0
-        let dayKeys = Self.windowKeys(window: window, now: now, calendar: calendar)
-        let weight = { (key: String) -> Double in
-            priced ? (dayCost[key] ?? 0) : Double(dayTokens[key] ?? 0)
+        let dayKeys = Self.windowKeys(window: window.days, now: now, calendar: calendar)
+        let groups = Self.group(days: dayKeys, grain: window.grain, now: now, calendar: calendar)
+        let weight = { (keys: [String]) -> Double in
+            keys.reduce(0) {
+                $0 + (priced ? (dayCost[$1] ?? 0) : Double(dayTokens[$1] ?? 0))
+            }
         }
-        let peakDay = dayKeys.map(weight).max() ?? 0
-        let todayKey = Self.dayFormatter(calendar).string(from: now)
+        let peakDay = groups.map { weight($0.days) }.max() ?? 0
         var bars: [DayBar] = []
-        for key in dayKeys {
-            let cost = dayCost[key] ?? 0
-            let tokenCount = dayTokens[key] ?? 0
-            let date = Self.dayFormatter(calendar).date(from: key)
+        for group in groups {
+            let cost = group.days.reduce(0) { $0 + (dayCost[$1] ?? 0) }
+            let tokenCount = group.days.reduce(0) { $0 + (dayTokens[$1] ?? 0) }
             bars.append(
                 DayBar(
-                    key: key,
-                    label: date.map { String(calendar.component(.day, from: $0)) } ?? key,
-                    weekdayLabel: date.map { Self.weekdayName($0, calendar: calendar) } ?? "",
+                    key: group.key, title: group.title,
                     costUSD: cost, money: prefix + SessionSpend.money(cost),
                     value: priced
                         ? prefix + SessionSpend.money(cost) : StatusFacts.tokens(tokenCount),
-                    tokens: tokenCount, turns: dayTurns[key] ?? 0,
-                    toolCalls: dayTools[key] ?? 0,
-                    share: peakDay > 0 ? weight(key) / peakDay : 0, isToday: key == todayKey))
+                    tokens: tokenCount,
+                    turns: group.days.reduce(0) { $0 + (dayTurns[$1] ?? 0) },
+                    toolCalls: group.days.reduce(0) { $0 + (dayTools[$1] ?? 0) },
+                    share: peakDay > 0 ? weight(group.days) / peakDay : 0,
+                    isToday: group.holdsToday))
         }
         self.days = bars
 
@@ -255,7 +263,7 @@ public struct UsageAnalytics: Sendable, Equatable {
             priced
             ? prefix + SessionSpend.money(totals.costUSD)
             : Localized.text("%@ tokens", StatusFacts.tokens(tokens.total))
-        self.windowLabel = Localized.text("Last %d days", window)
+        self.windowLabel = window.label
         let active = Double(max(1, totals.activeDays))
         var perDay = Localized.text(
             "%@ a day, over %d active days",
@@ -280,10 +288,12 @@ public struct UsageAnalytics: Sendable, Equatable {
         }
         clauses.append(Localized.text("%@ tokens", StatusFacts.tokens(totals.tokens.total)))
         self.activityLine = clauses.joined(separator: " · ")
-        (self.deltaLine, self.trend) = Self.delta(bars: bars, prefix: prefix)
+        (self.deltaLine, self.trend) = Self.delta(
+            days: dayKeys, dayCost: dayCost, dayTokens: dayTokens, priced: priced, window: window)
 
         self.weekdays = Self.weekdayMeters(
-            bars: bars, priced: priced, prefix: prefix, calendar: calendar)
+            dayCost: dayCost, dayTokens: dayTokens, priced: priced, prefix: prefix,
+            calendar: calendar)
         let peakHour = hourTurns.max() ?? 0
         // No server that could tell the hour means no clock — twenty-four empty columns is a
         // chart that has to be read to learn nothing.
@@ -696,6 +706,82 @@ public struct UsageAnalytics: Sendable, Equatable {
         return formatter
     }
 
+    /// One bar's worth of days, with the words that name it. A day names itself by weekday, a
+    /// week by the dates it spans, a month by its own name — a reader should never have to work
+    /// out what a column is from how many there are.
+    private struct Group {
+        let key: String
+        let title: String
+        let days: [String]
+        let holdsToday: Bool
+    }
+
+    private static func group(
+        days: [String], grain: UsageWindow.Grain, now: Date, calendar: Calendar
+    ) -> [Group] {
+        let formatter = dayFormatter(calendar)
+        let todayKey = formatter.string(from: now)
+        guard grain != .day else {
+            return days.map { key in
+                let date = formatter.date(from: key)
+                let title =
+                    date.map { "\(weekdayName($0, calendar: calendar)) \(calendar.component(.day, from: $0))" }
+                    ?? key
+                return Group(key: key, title: title, days: [key], holdsToday: key == todayKey)
+            }
+        }
+        let component: Calendar.Component = grain == .week ? .weekOfYear : .month
+        var order: [String] = []
+        var members: [String: [String]] = [:]
+        var starts: [String: Date] = [:]
+        for key in days {
+            guard let date = formatter.date(from: key),
+                let interval = calendar.dateInterval(of: component, for: date)
+            else { continue }
+            let bucket = formatter.string(from: interval.start)
+            if members[bucket] == nil {
+                order.append(bucket)
+                starts[bucket] = interval.start
+            }
+            members[bucket, default: []].append(key)
+        }
+        return order.map { bucket in
+            let held = members[bucket] ?? []
+            return Group(
+                key: bucket,
+                title: title(
+                    grain: grain, start: starts[bucket], days: held, calendar: calendar),
+                days: held, holdsToday: held.contains(todayKey))
+        }
+    }
+
+    private static func title(
+        grain: UsageWindow.Grain, start: Date?, days: [String], calendar: Calendar
+    ) -> String {
+        let formatter = dayFormatter(calendar)
+        let display = DateFormatter()
+        display.calendar = calendar
+        display.timeZone = calendar.timeZone
+        guard grain == .week else {
+            display.dateFormat = "LLLL"
+            return start.map(display.string(from:)) ?? days.first ?? ""
+        }
+        display.dateFormat = "MMM d"
+        // A week that the window only partly holds is named by the days it actually covers, not by
+        // the calendar week it belongs to: a bar cannot claim a Monday nobody counted.
+        guard let first = days.first.flatMap(formatter.date(from:)),
+            let last = days.last.flatMap(formatter.date(from:))
+        else { return start.map(display.string(from:)) ?? "" }
+        guard first != last else { return display.string(from: first) }
+        let tail = DateFormatter()
+        tail.calendar = calendar
+        tail.timeZone = calendar.timeZone
+        tail.dateFormat =
+            calendar.component(.month, from: first) == calendar.component(.month, from: last)
+            ? "d" : "MMM d"
+        return "\(display.string(from: first))–\(tail.string(from: last))"
+    }
+
     private static func windowKeys(window: Int, now: Date, calendar: Calendar) -> [String] {
         let formatter = dayFormatter(calendar)
         let today = calendar.startOfDay(for: now)
@@ -714,18 +800,22 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// Monday first regardless of locale: the chart reads as a work week, and the weekend
     /// belongs together at its end.
     private static func weekdayMeters(
-        bars: [DayBar], priced: Bool, prefix: String, calendar: Calendar
+        dayCost: [String: Double], dayTokens: [String: Int], priced: Bool, prefix: String,
+        calendar: Calendar
     ) -> [Meter] {
         let formatter = dayFormatter(calendar)
         var weight = [Double](repeating: 0, count: 7)
         var cost = [Double](repeating: 0, count: 7)
         var tokens = [Int](repeating: 0, count: 7)
-        for bar in bars {
-            guard let date = formatter.date(from: bar.key) else { continue }
+        // Always from the days themselves, never from the bars: a quarter drawn as thirteen weekly
+        // columns still has a Tuesday in it, and folding a week's bar into one weekday would put
+        // the whole quarter on whichever day each bar happened to start.
+        for key in Set(dayCost.keys).union(dayTokens.keys) {
+            guard let date = formatter.date(from: key) else { continue }
             let index = (calendar.component(.weekday, from: date) + 5) % 7
-            cost[index] += bar.costUSD
-            tokens[index] += bar.tokens
-            weight[index] += priced ? bar.costUSD : Double(bar.tokens)
+            cost[index] += dayCost[key] ?? 0
+            tokens[index] += dayTokens[key] ?? 0
+            weight[index] += priced ? (dayCost[key] ?? 0) : Double(dayTokens[key] ?? 0)
         }
         let peak = weight.max() ?? 0
         let symbols = calendar.shortWeekdaySymbols
@@ -741,25 +831,34 @@ public struct UsageAnalytics: Sendable, Equatable {
         }
     }
 
-    /// The last seven days against the seven before, with a deadband so ordinary noise reads as
-    /// steady. Windows too short to hold two weeks compare their halves instead.
-    private static func delta(bars: [DayBar], prefix: String) -> (String?, Trend) {
-        let span = bars.count >= 14 ? 7 : bars.count / 2
+    /// The most recent quarter of the window against the quarter before it, with a deadband so
+    /// ordinary noise reads as steady. It is measured on the days rather than the bars, so the
+    /// comparison is the same length of time whatever grain the chart happens to be drawn at, and
+    /// it is named in days so a quarter's trend never claims to be a week's.
+    private static func delta(
+        days: [String], dayCost: [String: Double], dayTokens: [String: Int], priced: Bool,
+        window: UsageWindow
+    ) -> (String?, Trend) {
+        let span = min(window.trendSpan, days.count / 2)
         guard span >= 2 else { return (nil, .flat) }
-        let recent = bars.suffix(span).reduce(0) { $0 + $1.costUSD }
-        let before = bars.dropLast(span).suffix(span).reduce(0) { $0 + $1.costUSD }
+        let weigh = { (keys: ArraySlice<String>) -> Double in
+            keys.reduce(0) { $0 + (priced ? (dayCost[$1] ?? 0) : Double(dayTokens[$1] ?? 0)) }
+        }
+        let recent = weigh(days.suffix(span))
+        let before = weigh(days.dropLast(span).suffix(span))
         guard before > 0 else {
-            return recent > 0 ? (Localized.text("All of it in the last week"), .up) : (nil, .flat)
+            return recent > 0
+                ? (Localized.text("All of it in the last %d days", span), .up) : (nil, .flat)
         }
         let change = (recent - before) / before
         let percent = Int((abs(change) * 100).rounded())
         if abs(change) < 0.05 {
-            return (Localized.text("Steady week over week"), .flat)
+            return (Localized.text("Steady over the last %d days", span), .flat)
         }
         if change > 0 {
-            return (Localized.text("Up %d%% on the week before", percent), .up)
+            return (Localized.text("Up %d%% on the %d days before", percent, span), .up)
         }
-        return (Localized.text("Down %d%% on the week before", percent), .down)
+        return (Localized.text("Down %d%% on the %d days before", percent, span), .down)
     }
 
     private static func weekendTurns(dayTurns: [String: Int], calendar: Calendar) -> Int {
