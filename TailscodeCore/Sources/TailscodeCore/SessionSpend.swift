@@ -166,10 +166,10 @@ public struct SessionSpend: Sendable, Equatable {
     /// account-wide analytics, which splits a month the same way a panel splits a conversation.
     public static func tierSplit(tokens: SessionSpendReport.Tokens, costUSD: Double) -> [Tier] {
         let weights: [(String, String, Int, Double)] = [
-            ("output", Localized.text("Answer"), tokens.output, 1.0),
-            ("cacheWrite", Localized.text("Cache written"), tokens.cacheWrite, 0.25),
-            ("cacheRead", Localized.text("Cache read"), tokens.cacheRead, 0.02),
-            ("input", Localized.text("Fresh input"), tokens.input, 0.2),
+            ("output", Localized.text("Answer"), tokens.output, outputWeight),
+            ("cacheWrite", Localized.text("Cache written"), tokens.cacheWrite, cacheWriteWeight),
+            ("cacheRead", Localized.text("Cache read"), tokens.cacheRead, cacheReadWeight),
+            ("input", Localized.text("Fresh input"), tokens.input, inputWeight),
         ]
         let weighted = weights.map { Double($0.2) * $0.3 }
         let sum = weighted.reduce(0, +)
@@ -182,6 +182,28 @@ public struct SessionSpend: Sendable, Equatable {
                     costUSD: costUSD * fraction, share: fraction))
         }
         return result.sorted { $0.costUSD > $1.costUSD }
+    }
+
+    /// What each tier costs relative to the others, which is the whole reason two conversations
+    /// of the same length cost ten times apart: an answer is the dear one, a cache read is
+    /// pocket change, and a cache write is paid once to make every later read cheap.
+    static let outputWeight = 1.0
+    static let cacheWriteWeight = 0.25
+    static let cacheReadWeight = 0.02
+    static let inputWeight = 0.2
+
+    /// What the window's cache reads kept in the person's pocket, for a server that reports the
+    /// money and the tokens but does no pricing of its own. It is the same split ``tierSplit``
+    /// draws: the total buys an implied price per weighted token, and the saving is what those
+    /// same reads would have cost had they arrived as fresh input. Zero when there is no money to
+    /// divide, because a rate cannot be implied from nothing.
+    public static func cacheSaving(tokens: SessionSpendReport.Tokens, costUSD: Double) -> Double {
+        guard costUSD > 0, tokens.cacheRead > 0 else { return 0 }
+        let weighted =
+            Double(tokens.output) * outputWeight + Double(tokens.cacheWrite) * cacheWriteWeight
+            + Double(tokens.cacheRead) * cacheReadWeight + Double(tokens.input) * inputWeight
+        guard weighted > 0 else { return 0 }
+        return Double(tokens.cacheRead) * (inputWeight - cacheReadWeight) * (costUSD / weighted)
     }
 
     /// Money at the precision it is worth reading: dollars for real spend, cents below a dollar,

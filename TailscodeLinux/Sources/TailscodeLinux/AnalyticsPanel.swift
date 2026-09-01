@@ -120,25 +120,27 @@ enum AnalyticsPanel {
         gtk_box_append(ptr(slot), save)
     }
 
-    /// Every Claude server the app knows, asked for its whole ledger. A server that answers nil
-    /// is too old for the route and is named rather than silently dropped; one that cannot be
-    /// reached at all is left to the surfaces that already report reachability.
+    /// Every server the app knows, asked for its whole ledger — every model the person runs
+    /// belongs in the month whichever agent served it. A server that answers nil is too old for
+    /// the route and is named rather than silently dropped; one that cannot be reached at all is
+    /// left to the surfaces that already report reachability.
     private static func gather() async -> UsageAnalytics? {
         let profiles = await ServerDirectory.shared.profiles()
         var reports: [(name: String, report: UsageAnalyticsReport)] = []
         var missing: [String] = []
         var seenHosts = Set<String>()
-        for profile in profiles where profile.backend == .claudeCode {
+        for profile in profiles {
             let host = "\(profile.baseURL.host ?? profile.id):\(profile.baseURL.port ?? 0)"
             guard seenHosts.insert(host).inserted else { continue }
             guard let backend = await ServerDirectory.shared.backend(for: profile) else { continue }
+            let name = ServerLabel.display(profile)
             do {
                 if let report = try await backend.usageAnalytics(
                     days: UsageAnalytics.defaultWindowDays)
                 {
-                    reports.append((profile.name, report))
+                    reports.append((name, report))
                 } else {
-                    missing.append(profile.name)
+                    missing.append(name)
                 }
             } catch {
                 continue
@@ -166,13 +168,21 @@ enum AnalyticsPanel {
         }
         gtk_box_append(ptr(column), hero(analytics))
         if !analytics.days.isEmpty { gtk_box_append(ptr(column), daily(analytics)) }
-        if !analytics.weekdays.isEmpty || !analytics.hours.isEmpty {
+        if analytics.weekdays.contains(where: { $0.share > 0 }) || !analytics.hours.isEmpty {
             gtk_box_append(ptr(column), rhythm(analytics))
+        }
+        if !analytics.providers.isEmpty {
+            gtk_box_append(
+                ptr(column),
+                meterCard(
+                    title: Localized.text("Providers"), meters: analytics.providers, caption: nil))
         }
         if !analytics.models.isEmpty {
             gtk_box_append(
                 ptr(column),
-                meterCard(title: Localized.text("Models"), meters: analytics.models, caption: nil))
+                meterCard(
+                    title: Localized.text("Models"), meters: analytics.models,
+                    caption: analytics.modelsLine))
         }
         if !analytics.projects.isEmpty {
             gtk_box_append(
@@ -203,7 +213,7 @@ enum AnalyticsPanel {
         Gtk.addClass(card, "usage-card")
         gtk_box_append(
             ptr(card), Gtk.label(analytics.windowLabel, css: "usage-plan", selectable: false))
-        let money = Gtk.label(analytics.totalMoney, css: "analytics-total", selectable: false)
+        let money = Gtk.label(analytics.headline, css: "analytics-total", selectable: false)
         gtk_label_set_ellipsize(op(money), PANGO_ELLIPSIZE_NONE)
         gtk_box_append(ptr(card), money)
         gtk_box_append(
@@ -239,19 +249,18 @@ enum AnalyticsPanel {
             Gtk.addClass(bar, day.isToday ? "analytics-bar-today" : "analytics-bar")
             let height = max(2, Int(Double(dayChartHeight) * min(max(day.share, 0), 1)))
             gtk_widget_set_size_request(bar, Int32(dayBarWidth), Int32(height))
-            gtk_widget_set_tooltip_text(
-                bar,
-                "\(day.weekdayLabel) \(day.label) · \(day.money) · "
-                    + Localized.text("%@ turns", "\(day.turns)"))
+            var tip = "\(day.weekdayLabel) \(day.label) · \(day.value)"
+            if day.turns > 0 { tip += " · " + Localized.text("%@ turns", "\(day.turns)") }
+            gtk_widget_set_tooltip_text(bar, tip)
             gtk_box_append(ptr(holder), bar)
             gtk_box_append(ptr(row), holder)
         }
         gtk_box_append(ptr(card), row)
 
         let captions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        if let peak = analytics.peakDay, peak.costUSD > 0 {
+        if let peak = analytics.peakDay, peak.share > 0 {
             let left = Gtk.label(
-                Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.money),
+                Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.value),
                 css: "spend-caption", selectable: false)
             gtk_label_set_ellipsize(op(left), PANGO_ELLIPSIZE_NONE)
             gtk_widget_set_hexpand(left, 1)
@@ -259,7 +268,7 @@ enum AnalyticsPanel {
         }
         if let today = analytics.days.last(where: \.isToday) {
             let right = Gtk.label(
-                Localized.text("Today · %@", today.money), css: "spend-caption", selectable: false)
+                Localized.text("Today · %@", today.value), css: "spend-caption", selectable: false)
             gtk_label_set_ellipsize(op(right), PANGO_ELLIPSIZE_NONE)
             gtk_box_append(ptr(captions), right)
         }
@@ -272,42 +281,47 @@ enum AnalyticsPanel {
         Gtk.addClass(card, "usage-card")
         gtk_box_append(ptr(card), heading(Localized.text("Rhythm"), trailing: nil))
 
-        let week = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_widget_set_valign(week, GTK_ALIGN_END)
-        for weekday in analytics.weekdays {
-            let columnBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
-            gtk_widget_set_valign(columnBox, GTK_ALIGN_END)
-            let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-            Gtk.addClass(bar, "analytics-bar")
-            let height = max(2, Int(Double(weekdayChartHeight) * min(max(weekday.share, 0), 1)))
-            gtk_widget_set_size_request(bar, Int32(weekdayBarWidth), Int32(height))
-            if let money = weekday.money { gtk_widget_set_tooltip_text(bar, money) }
-            gtk_box_append(ptr(columnBox), bar)
-            let label = Gtk.label(weekday.label, css: "spend-caption", selectable: false)
-            gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
-            gtk_label_set_xalign(op(label), 0.5)
-            gtk_box_append(ptr(columnBox), label)
-            gtk_box_append(ptr(week), columnBox)
+        if analytics.weekdays.contains(where: { $0.share > 0 }) {
+            let week = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+            gtk_widget_set_valign(week, GTK_ALIGN_END)
+            for weekday in analytics.weekdays {
+                let columnBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
+                gtk_widget_set_valign(columnBox, GTK_ALIGN_END)
+                let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+                Gtk.addClass(bar, "analytics-bar")
+                let height = max(
+                    2, Int(Double(weekdayChartHeight) * min(max(weekday.share, 0), 1)))
+                gtk_widget_set_size_request(bar, Int32(weekdayBarWidth), Int32(height))
+                if let money = weekday.money { gtk_widget_set_tooltip_text(bar, money) }
+                gtk_box_append(ptr(columnBox), bar)
+                let label = Gtk.label(weekday.label, css: "spend-caption", selectable: false)
+                gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
+                gtk_label_set_xalign(op(label), 0.5)
+                gtk_box_append(ptr(columnBox), label)
+                gtk_box_append(ptr(week), columnBox)
+            }
+            gtk_box_append(ptr(card), week)
         }
-        gtk_box_append(ptr(card), week)
 
-        let clock = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
-        gtk_widget_set_valign(clock, GTK_ALIGN_END)
-        gtk_widget_set_size_request(clock, -1, Int32(hourChartHeight))
-        Gtk.margins(clock, top: 4)
-        for hour in analytics.hours {
-            let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-            gtk_widget_set_valign(holder, GTK_ALIGN_END)
-            let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-            Gtk.addClass(bar, "analytics-hour")
-            let height = max(2, Int(Double(hourChartHeight) * min(max(hour.share, 0), 1)))
-            gtk_widget_set_size_request(bar, Int32(hourBarWidth), Int32(height))
-            gtk_widget_set_tooltip_text(
-                bar, "\(hour.label):00 · " + Localized.text("%@ turns", "\(hour.turns)"))
-            gtk_box_append(ptr(holder), bar)
-            gtk_box_append(ptr(clock), holder)
+        if !analytics.hours.isEmpty {
+            let clock = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
+            gtk_widget_set_valign(clock, GTK_ALIGN_END)
+            gtk_widget_set_size_request(clock, -1, Int32(hourChartHeight))
+            Gtk.margins(clock, top: 4)
+            for hour in analytics.hours {
+                let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+                gtk_widget_set_valign(holder, GTK_ALIGN_END)
+                let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+                Gtk.addClass(bar, "analytics-hour")
+                let height = max(2, Int(Double(hourChartHeight) * min(max(hour.share, 0), 1)))
+                gtk_widget_set_size_request(bar, Int32(hourBarWidth), Int32(height))
+                gtk_widget_set_tooltip_text(
+                    bar, "\(hour.label):00 · " + Localized.text("%@ turns", "\(hour.turns)"))
+                gtk_box_append(ptr(holder), bar)
+                gtk_box_append(ptr(clock), holder)
+            }
+            gtk_box_append(ptr(card), clock)
         }
-        gtk_box_append(ptr(card), clock)
 
         if let clockLine = analytics.clockLine {
             gtk_box_append(
@@ -327,10 +341,12 @@ enum AnalyticsPanel {
                 ptr(card),
                 meter(
                     label: row.label, value: row.money, detail: row.detail, fraction: row.share,
-                    hot: false))
+                    hot: false, free: row.isFree))
         }
         if let caption {
-            gtk_box_append(ptr(card), Gtk.label(caption, css: "spend-caption", selectable: false))
+            gtk_box_append(
+                ptr(card),
+                Gtk.label(caption, css: "spend-caption", wrap: true, selectable: false))
         }
         return card
     }
@@ -404,6 +420,11 @@ enum AnalyticsPanel {
                 ptr(block),
                 Gtk.label("· " + insight, css: "usage-detail-key", wrap: true, selectable: false))
         }
+        if let coverageNote = analytics.coverageNote {
+            gtk_box_append(
+                ptr(block),
+                Gtk.label(coverageNote, css: "usage-source", wrap: true, selectable: false))
+        }
         gtk_box_append(
             ptr(block), Gtk.label(analytics.source, css: "usage-source", selectable: false))
         if !analytics.missingServers.isEmpty {
@@ -435,7 +456,8 @@ enum AnalyticsPanel {
     }
 
     private static func meter(
-        label: String, value: String?, detail: String, fraction: Double, hot: Bool
+        label: String, value: String?, detail: String, fraction: Double, hot: Bool,
+        free: Bool = false
     ) -> UnsafeMutablePointer<GtkWidget> {
         let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
@@ -449,7 +471,8 @@ enum AnalyticsPanel {
             gtk_box_append(ptr(row), count)
         }
         if let value {
-            let money = Gtk.label(value, css: "usage-detail-value", selectable: false)
+            let money = Gtk.label(
+                value, css: free ? "analytics-free" : "usage-detail-value", selectable: false)
             gtk_label_set_ellipsize(op(money), PANGO_ELLIPSIZE_NONE)
             gtk_box_append(ptr(row), money)
         }

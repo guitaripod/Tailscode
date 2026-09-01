@@ -13,8 +13,9 @@ public struct AnalyticsShare: Sendable, Equatable {
 
     public init(_ analytics: UsageAnalytics, now: Date = Date(), calendar: Calendar = .current) {
         let window = analytics.windowLabel
-        self.subject = Localized.text("The month in numbers · %@", analytics.totalMoney)
-        self.filename = Self.filename(window: window, money: analytics.totalMoney, now: now, calendar: calendar)
+        self.subject = Localized.text("The month in numbers · %@", analytics.headline)
+        self.filename = Self.filename(
+            window: window, money: analytics.headline, now: now, calendar: calendar)
         self.plainText = Self.plainText(analytics)
         self.markdown = Self.markdown(analytics)
         self.card = Card(analytics: analytics)
@@ -145,7 +146,7 @@ public struct AnalyticsShare: Sendable, Equatable {
                 .spacer(6),
                 .kicker(Localized.text("The month in numbers")),
                 .spacer(18),
-                .hero(analytics.totalMoney),
+                .hero(analytics.headline),
                 .spacer(10),
                 .dim(analytics.windowLabel),
                 .spacer(6),
@@ -166,21 +167,21 @@ public struct AnalyticsShare: Sendable, Equatable {
                             }
                         }()))
             }
-            if analytics.days.contains(where: { $0.costUSD > 0 }) {
+            if analytics.days.contains(where: { $0.share > 0 }) {
                 out.append(.spacer(28))
                 out.append(.section(Localized.text("Day by day")))
                 out.append(.spacer(14))
                 out.append(
                     .daily(
                         analytics.days.map {
-                            DayBar(share: $0.share, isToday: $0.isToday, isEmpty: $0.costUSD <= 0)
+                            DayBar(share: $0.share, isToday: $0.isToday, isEmpty: $0.share <= 0)
                         }))
-                if let peak = analytics.peakDay, peak.costUSD > 0 {
+                if let peak = analytics.peakDay, peak.share > 0 {
                     out.append(.spacer(10))
                     out.append(
                         .dim(
                             Localized.text(
-                                "Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.money)))
+                                "Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.value)))
                 }
             }
             if analytics.weekdays.contains(where: { $0.share > 0 }) {
@@ -192,6 +193,11 @@ public struct AnalyticsShare: Sendable, Equatable {
                         analytics.weekdays.map {
                             DayBar(share: $0.share, isToday: false, isEmpty: $0.share <= 0)
                         }))
+            }
+            if !analytics.providers.isEmpty {
+                out.append(
+                    contentsOf: meterSection(
+                        Localized.text("Providers"), analytics.providers.prefix(4)))
             }
             if !analytics.models.isEmpty {
                 out.append(contentsOf: meterSection(
@@ -228,6 +234,14 @@ public struct AnalyticsShare: Sendable, Equatable {
             out.append(.spacer(28))
             out.append(.rule)
             out.append(.spacer(16))
+            if let modelsLine = analytics.modelsLine {
+                out.append(.spacer(10))
+                out.append(.foot(modelsLine))
+            }
+            if let coverageNote = analytics.coverageNote {
+                out.append(.spacer(10))
+                out.append(.foot(coverageNote))
+            }
             out.append(.foot(analytics.source))
             out.append(.spacer(6))
             out.append(.foot(Localized.text("API-equivalent estimate · not a bill")))
@@ -316,7 +330,7 @@ public struct AnalyticsShare: Sendable, Equatable {
     private static func plainText(_ analytics: UsageAnalytics) -> String {
         var lines: [String] = [
             Localized.text("The month in numbers"),
-            analytics.totalMoney,
+            analytics.headline,
             analytics.windowLabel,
             analytics.perDayLine,
             analytics.activityLine,
@@ -327,6 +341,8 @@ public struct AnalyticsShare: Sendable, Equatable {
                 Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.money))
         }
         if let clock = analytics.clockLine { lines.append(clock) }
+        appendMeterLines(
+            &lines, title: Localized.text("Providers"), meters: analytics.providers, limit: 5)
         appendMeterLines(&lines, title: Localized.text("Models"), meters: analytics.models, limit: 5)
         appendMeterLines(
             &lines, title: Localized.text("Projects"), meters: analytics.projects, limit: 5)
@@ -346,6 +362,11 @@ public struct AnalyticsShare: Sendable, Equatable {
             for insight in analytics.insights { lines.append("• \(insight)") }
         }
         lines.append("")
+        if let modelsLine = analytics.modelsLine { lines.append(""); lines.append(modelsLine) }
+        if let coverageNote = analytics.coverageNote {
+            lines.append("")
+            lines.append(coverageNote)
+        }
         lines.append(analytics.source)
         lines.append(Localized.text("API-equivalent estimate · not a bill"))
         if !analytics.missingServers.isEmpty {
@@ -362,7 +383,7 @@ public struct AnalyticsShare: Sendable, Equatable {
         var lines: [String] = [
             "# \(Localized.text("The month in numbers"))",
             "",
-            "**\(analytics.totalMoney)** · \(analytics.windowLabel)",
+            "**\(analytics.headline)** · \(analytics.windowLabel)",
             "",
             analytics.perDayLine,
             "",
@@ -377,6 +398,8 @@ public struct AnalyticsShare: Sendable, Equatable {
             lines.append(
                 Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.money))
         }
+        appendMarkdownMeters(
+            &lines, title: Localized.text("Providers"), meters: analytics.providers)
         appendMarkdownMeters(&lines, title: Localized.text("Models"), meters: analytics.models)
         appendMarkdownMeters(&lines, title: Localized.text("Projects"), meters: analytics.projects)
         appendMarkdownMeters(&lines, title: Localized.text("Tools"), meters: analytics.tools)
@@ -395,6 +418,11 @@ public struct AnalyticsShare: Sendable, Equatable {
             for insight in analytics.insights { lines.append("- \(insight)") }
         }
         lines.append("")
+        if let modelsLine = analytics.modelsLine { lines.append(""); lines.append(modelsLine) }
+        if let coverageNote = analytics.coverageNote {
+            lines.append("")
+            lines.append("_\(coverageNote)_")
+        }
         lines.append("_\(analytics.source)_")
         lines.append("")
         lines.append("_\(Localized.text("API-equivalent estimate · not a bill"))_")

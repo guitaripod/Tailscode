@@ -1182,20 +1182,21 @@ final class MainWindowController: NSWindowController {
         var reports: [(name: String, report: UsageAnalyticsReport)] = []
         var missing: [String] = []
         var seenHosts = Set<String>()
-        for profile in ServerDirectory.shared.profiles where profile.backend == .claudeCode {
+        for profile in ServerDirectory.shared.profiles {
             let host = "\(profile.baseURL.host ?? profile.id):\(profile.baseURL.port ?? 0)"
             guard seenHosts.insert(host).inserted else { continue }
+            let name = ServerLabel.display(profile)
             guard let backend = ServerDirectory.shared.backend(for: profile) else {
-                missing.append(profile.name)
+                missing.append(name)
                 continue
             }
             do {
                 if let report = try await backend.usageAnalytics(
                     days: UsageAnalytics.defaultWindowDays)
                 {
-                    reports.append((profile.name, report))
+                    reports.append((name, report))
                 } else {
-                    missing.append(profile.name)
+                    missing.append(name)
                 }
             } catch {
                 continue

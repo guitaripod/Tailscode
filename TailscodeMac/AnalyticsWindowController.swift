@@ -159,12 +159,18 @@ final class AnalyticsWindowController: NSWindowController {
         }
         column.addArrangedSubview(heroSection(analytics))
         if !analytics.days.isEmpty { column.addArrangedSubview(dailySection(analytics)) }
-        if !analytics.weekdays.isEmpty || !analytics.hours.isEmpty {
+        if analytics.weekdays.contains(where: { $0.share > 0 }) || !analytics.hours.isEmpty {
             column.addArrangedSubview(rhythmSection(analytics))
+        }
+        if !analytics.providers.isEmpty {
+            column.addArrangedSubview(
+                meterSection(title: Localized.text("Providers"), meters: analytics.providers))
         }
         if !analytics.models.isEmpty {
             column.addArrangedSubview(
-                meterSection(title: Localized.text("Models"), meters: analytics.models))
+                meterSection(
+                    title: Localized.text("Models"), meters: analytics.models,
+                    footnote: analytics.modelsLine))
         }
         if !analytics.projects.isEmpty {
             column.addArrangedSubview(
@@ -192,7 +198,7 @@ final class AnalyticsWindowController: NSWindowController {
             analytics.windowLabel, font: MacTheme.Ramp.font(.metricLabel),
             color: MacTheme.Color.tertiaryLabel)
         let money = RowKit.label(
-            analytics.totalMoney, font: Self.heroFont(), color: MacTheme.Color.label)
+            analytics.headline, font: Self.heroFont(), color: MacTheme.Color.label)
         let perDay = RowKit.label(
             analytics.perDayLine, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.secondaryLabel)
         let activity = RowKit.label(
@@ -228,7 +234,7 @@ final class AnalyticsWindowController: NSWindowController {
                 day.isToday
                 ? MacTheme.Color.accent : zero ? MacTheme.Color.separator : MacTheme.Color.info
             let bar = AnalyticsBar(fill: fill)
-            bar.toolTip = "\(day.weekdayLabel) \(day.label) · \(day.money)"
+            bar.toolTip = "\(day.weekdayLabel) \(day.label) · \(day.value)"
             bar.speak(bar.toolTip)
             NSLayoutConstraint.activate([
                 bar.widthAnchor.constraint(equalToConstant: 10),
@@ -241,17 +247,17 @@ final class AnalyticsWindowController: NSWindowController {
         bars.heightAnchor.constraint(equalToConstant: Self.chartHeight).isActive = true
 
         var annotations: [NSView] = []
-        if let peak = analytics.peakDay, peak.costUSD > 0 {
+        if let peak = analytics.peakDay, peak.share > 0 {
             annotations.append(
                 RowKit.label(
-                    Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.money),
+                    Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.value),
                     font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         annotations.append(RowKit.spacer())
         if let today = analytics.days.last(where: { $0.isToday }) {
             annotations.append(
                 RowKit.label(
-                    Localized.text("Today %@", today.money), font: MacTheme.Ramp.font(.panelFootnote),
+                    Localized.text("Today %@", today.value), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
         let annotation = NSStackView(views: annotations)
@@ -360,12 +366,13 @@ final class AnalyticsWindowController: NSWindowController {
             views.append(
                 meterRow(
                     label: meter.label, detail: meter.detail, money: meter.money,
-                    share: meter.share, hot: false))
+                    share: meter.share, hot: false, free: meter.isFree))
         }
         if let footnote {
             views.append(
-                RowKit.label(
-                    footnote, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+                RowKit.wrapping(
+                    footnote, font: MacTheme.Ramp.font(.panelFootnote),
+                    color: MacTheme.Color.tertiaryLabel))
         }
         return card(views: views)
     }
@@ -524,6 +531,12 @@ final class AnalyticsWindowController: NSWindowController {
             row.spacing = MacTheme.Spacing.s
             views.append(row)
         }
+        if let coverageNote = analytics.coverageNote {
+            views.append(
+                RowKit.wrapping(
+                    coverageNote, font: MacTheme.Ramp.font(.panelFootnote),
+                    color: MacTheme.Color.tertiaryLabel))
+        }
         views.append(
             RowKit.wrapping(
                 analytics.source, font: MacTheme.Ramp.font(.panelFootnote),
@@ -539,7 +552,7 @@ final class AnalyticsWindowController: NSWindowController {
     }
 
     private func meterRow(
-        label: String, detail: String, money: String?, share: Double, hot: Bool
+        label: String, detail: String, money: String?, share: Double, hot: Bool, free: Bool = false
     ) -> NSView {
         let name = RowKit.label(label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
         name.setContentCompressionResistancePriority(.init(200), for: .horizontal)
@@ -549,7 +562,8 @@ final class AnalyticsWindowController: NSWindowController {
         var topViews: [NSView] = [name, RowKit.spacer(), count]
         if let money {
             let amount = RowKit.label(
-                money, font: MacTheme.Ramp.font(.metricValue), color: MacTheme.Color.label)
+                money, font: MacTheme.Ramp.font(.metricValue),
+                color: free ? MacTheme.Color.info : MacTheme.Color.label)
             amount.setContentHuggingPriority(.required, for: .horizontal)
             topViews.append(amount)
         }

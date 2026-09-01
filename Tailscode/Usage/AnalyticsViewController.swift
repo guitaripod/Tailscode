@@ -188,7 +188,10 @@ final class AnalyticsViewController: UIViewController {
 
         column.addArrangedSubview(hero(analytics))
         column.addArrangedSubview(daily(analytics))
-        column.addArrangedSubview(rhythm(analytics))
+        if analytics.weekdays.contains(where: { $0.share > 0 }) || !analytics.hours.isEmpty {
+            column.addArrangedSubview(rhythm(analytics))
+        }
+        if !analytics.providers.isEmpty { column.addArrangedSubview(providers(analytics)) }
         if !analytics.models.isEmpty { column.addArrangedSubview(models(analytics)) }
         if !analytics.projects.isEmpty { column.addArrangedSubview(projects(analytics)) }
         if !analytics.tools.isEmpty { column.addArrangedSubview(tools(analytics)) }
@@ -198,6 +201,10 @@ final class AnalyticsViewController: UIViewController {
         if !analytics.machines.isEmpty { column.addArrangedSubview(machines(analytics)) }
         if !analytics.insights.isEmpty { column.addArrangedSubview(insights(analytics)) }
 
+        if let coverageNote = analytics.coverageNote {
+            column.addArrangedSubview(
+                label(coverageNote, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
+        }
         let source = label(analytics.source, role: .panelFootnote, color: Theme.Color.tertiaryLabel)
         column.addArrangedSubview(source)
         if !analytics.missingServers.isEmpty {
@@ -212,7 +219,7 @@ final class AnalyticsViewController: UIViewController {
 
     private func hero(_ analytics: UsageAnalytics) -> UIView {
         let money = UILabel()
-        money.text = analytics.totalMoney
+        money.text = analytics.headline
         money.font = Self.roundedFont(size: 44, weight: .bold)
         money.textColor = Theme.Color.label
         money.adjustsFontSizeToFitWidth = true
@@ -246,17 +253,17 @@ final class AnalyticsViewController: UIViewController {
             dailyChart(analytics),
         ]
         var annotations: [UIView] = []
-        if let peak = analytics.peakDay, peak.costUSD > 0 {
+        if let peak = analytics.peakDay, peak.share > 0 {
             annotations.append(
                 label(
-                    String(localized: "Peak \(peak.weekdayLabel) \(peak.label) · \(peak.money)"),
+                    String(localized: "Peak \(peak.weekdayLabel) \(peak.label) · \(peak.value)"),
                     role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         annotations.append(UIView())
         if let today = analytics.days.last(where: \.isToday) {
             annotations.append(
                 label(
-                    String(localized: "Today \(today.money)"), role: .panelFootnote,
+                    String(localized: "Today \(today.value)"), role: .panelFootnote,
                     color: Theme.Color.tertiaryLabel))
         }
         if annotations.count > 1 {
@@ -285,7 +292,7 @@ final class AnalyticsViewController: UIViewController {
             }
             bar.layer.cornerRadius = 2
             bar.isAccessibilityElement = true
-            bar.accessibilityLabel = "\(day.weekdayLabel) \(day.label), \(day.money)"
+            bar.accessibilityLabel = "\(day.weekdayLabel) \(day.label), \(day.value)"
             bar.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
                 bar.widthAnchor.constraint(equalToConstant: Self.dayBarWidth),
@@ -298,11 +305,15 @@ final class AnalyticsViewController: UIViewController {
     }
 
     private func rhythm(_ analytics: UsageAnalytics) -> UIView {
+        let hasClock = !analytics.hours.isEmpty
         var views: [UIView] = [
-            heading(String(localized: "The week and the clock"), trailing: nil),
+            heading(
+                hasClock
+                    ? String(localized: "The week and the clock") : String(localized: "The week"),
+                trailing: nil),
             weekdayColumns(analytics),
-            hourColumns(analytics),
         ]
+        if hasClock { views.append(hourColumns(analytics)) }
         if let clockLine = analytics.clockLine {
             views.append(label(clockLine, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
@@ -382,8 +393,15 @@ final class AnalyticsViewController: UIViewController {
         return row
     }
 
+    private func providers(_ analytics: UsageAnalytics) -> UIView {
+        meterSection(
+            String(localized: "Which provider"), meters: analytics.providers, caption: nil)
+    }
+
     private func models(_ analytics: UsageAnalytics) -> UIView {
-        meterSection(String(localized: "Which model"), meters: analytics.models, caption: nil)
+        meterSection(
+            String(localized: "Which model"), meters: analytics.models,
+            caption: analytics.modelsLine)
     }
 
     private func projects(_ analytics: UsageAnalytics) -> UIView {
@@ -411,7 +429,7 @@ final class AnalyticsViewController: UIViewController {
             views.append(
                 meter(
                     label: row.label, value: row.money ?? "", detail: row.detail,
-                    fraction: row.share, hot: index == 0))
+                    fraction: row.share, hot: index == 0, free: row.isFree))
         }
         return card(views)
     }
@@ -612,7 +630,8 @@ final class AnalyticsViewController: UIViewController {
     }
 
     private func meter(
-        label name: String, value: String, detail: String, fraction: Double, hot: Bool
+        label name: String, value: String, detail: String, fraction: Double, hot: Bool,
+        free: Bool = false
     ) -> UIView {
         let title = label(name, role: .metricDetail, color: Theme.Color.label)
         let count = label(detail, role: .panelFootnote, color: Theme.Color.tertiaryLabel)
@@ -620,7 +639,7 @@ final class AnalyticsViewController: UIViewController {
         let money = UILabel()
         money.text = value
         money.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
-        money.textColor = Theme.Color.label
+        money.textColor = free ? Theme.Color.info : Theme.Color.label
         money.setContentHuggingPriority(.required, for: .horizontal)
         money.setContentCompressionResistancePriority(.required, for: .horizontal)
         let top = UIStackView(arrangedSubviews: [title, UIView(), count, money])

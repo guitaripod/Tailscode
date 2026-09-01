@@ -2,11 +2,11 @@ import CodingAgentKit
 import Foundation
 import TailscodeCore
 
-/// Pulls the account's whole ledger from every saved Claude Code bridge at once — each
-/// machine holds its own transcripts, so the month only adds up when all of them answer.
-/// Every bridge is queried concurrently and a fired deadline keeps the partial haul; a
-/// bridge too old for the route is named so its absence is a stated fact, while an
-/// unreachable one simply isn't part of this pass.
+/// Pulls the account's whole ledger from every saved server at once — each machine holds its own
+/// transcripts, so the month only adds up when all of them answer, and every model the person
+/// runs belongs in it whichever agent served it. Every server is queried concurrently and a fired
+/// deadline keeps the partial haul; one too old for the route is named so its absence is a stated
+/// fact, while an unreachable one simply isn't part of this pass.
 enum AnalyticsFetcher {
     struct Haul: Sendable {
         let servers: [(name: String, report: UsageAnalyticsReport)]
@@ -28,17 +28,17 @@ enum AnalyticsFetcher {
     ) async -> Haul {
         let controller = ConnectionController.shared
         var seen = Set<URL>()
-        let bridges = controller.profiles
-            .filter { $0.backend == .claudeCode && seen.insert($0.baseURL).inserted }
+        let servers = controller.profiles
+            .filter { seen.insert($0.baseURL).inserted }
             .enumerated()
             .compactMap { index, profile in
                 controller.makeBackend(for: profile, policy: policy).map {
-                    (index: index, name: profile.name, backend: $0)
+                    (index: index, name: ServerLabel.display(profile), backend: $0)
                 }
             }
-        guard !bridges.isEmpty else { return Haul(servers: [], missing: []) }
+        guard !servers.isEmpty else { return Haul(servers: [], missing: []) }
         let answers = await withTaskGroup(of: Answer?.self) { group in
-            for (index, name, backend) in bridges {
+            for (index, name, backend) in servers {
                 group.addTask {
                     do {
                         guard let report = try await backend.usageAnalytics(days: days) else {
@@ -55,19 +55,19 @@ enum AnalyticsFetcher {
                 return nil
             }
             var collected: [Answer] = []
-            while collected.count < bridges.count, let answer = await group.next() {
+            while collected.count < servers.count, let answer = await group.next() {
                 guard let answer else { break }
                 collected.append(answer)
             }
             group.cancelAll()
             return collected
         }
-        var servers: [(index: Int, name: String, report: UsageAnalyticsReport)] = []
+        var reported: [(index: Int, name: String, report: UsageAnalyticsReport)] = []
         var missing: [(index: Int, name: String)] = []
         for answer in answers {
             switch answer {
             case .report(let index, let name, let report):
-                servers.append((index, name, report))
+                reported.append((index, name, report))
             case .tooOld(let index, let name):
                 missing.append((index, name))
             case .unreachable:
@@ -75,9 +75,10 @@ enum AnalyticsFetcher {
             }
         }
         AppLogger.session.info(
-            "analytics: \(servers.count)/\(bridges.count) bridge(s) reported, \(missing.count) too old")
+            "analytics: \(reported.count)/\(servers.count) server(s) reported, "
+                + "\(missing.count) too old")
         return Haul(
-            servers: servers.sorted { $0.index < $1.index }.map { ($0.name, $0.report) },
+            servers: reported.sorted { $0.index < $1.index }.map { ($0.name, $0.report) },
             missing: missing.sorted { $0.index < $1.index }.map(\.name))
     }
 }

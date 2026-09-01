@@ -137,6 +137,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkFreeLedger()
+            report("analytics ledger: \(checks) claims hold — free models counted, gaps named")
+        } catch {
+            report("analytics ledger: \(error)")
+            failures += 1
+        }
+
+        do {
             try checkActivityMotion()
             report("activity: \(ActivityKind.everyState.count) states move as they mean")
         } catch {
@@ -2055,10 +2063,10 @@ public enum SelfTest {
                 servers: [("demo", DemoWorld.demoAnalytics())], missingServers: [])
         else { throw SelfTestFailure("demo analytics produced nothing to share") }
         let package = AnalyticsShare(analytics)
-        guard package.plainText.contains(analytics.totalMoney) else {
+        guard package.plainText.contains(analytics.headline) else {
             throw SelfTestFailure("plain text lost the total")
         }
-        guard package.markdown.contains(analytics.totalMoney) else {
+        guard package.markdown.contains(analytics.headline) else {
             throw SelfTestFailure("markdown lost the total")
         }
         guard package.filename.hasSuffix(".png"), package.filename.hasPrefix("tailscode-month-")
@@ -2074,6 +2082,62 @@ public enum SelfTest {
             throw SelfTestFailure("PNG signature missing")
         }
         return 5
+    }
+
+    /// A month spent entirely on models that bill nothing is still a month, and a server whose
+    /// ledger is one running total per conversation is not a server that measured zero. Both are
+    /// asserted here because both fail silently: a chart of zeroes and a "0 turns" read as an
+    /// account nobody used, which is exactly backwards.
+    private static func checkFreeLedger() throws -> Int {
+        let tokens = SessionSpendReport.Tokens(input: 400_000, output: 60000)
+        let report = UsageAnalyticsReport(
+            since: Date(timeIntervalSinceNow: -30 * 86400), generatedAt: Date(), days: 30,
+            totals: UsageAnalyticsReport.Totals(
+                costUSD: 0, tokens: tokens, sessions: 9, activeDays: 1),
+            daily: [
+                UsageAnalyticsReport.Day(
+                    day: Self.today(), costUSD: 0, tokens: tokens, sessions: 9)
+            ],
+            models: [
+                SessionSpendReport.ModelShare(
+                    model: "ollama/qwen3-coder:30b", turns: 0, tokens: tokens, costUSD: 0)
+            ],
+            coverage: .sessionTotals)
+        guard let analytics = UsageAnalytics(servers: [("desktop · opencode", report)]) else {
+            throw SelfTestFailure("a free month produced no analytics at all")
+        }
+        guard !analytics.headline.contains("$") else {
+            throw SelfTestFailure("a month that cost nothing leads with money: \(analytics.headline)")
+        }
+        guard analytics.days.contains(where: { $0.share > 0 }) else {
+            throw SelfTestFailure("every bar in a free month is flat")
+        }
+        guard analytics.models.first?.isFree == true, analytics.models.first?.share == 1 else {
+            throw SelfTestFailure("a free model is drawn as an unused one")
+        }
+        guard analytics.modelsLine?.isEmpty == false else {
+            throw SelfTestFailure("nothing says the work ran for nothing")
+        }
+        guard analytics.hours.isEmpty, analytics.tools.isEmpty else {
+            throw SelfTestFailure("a section nobody could measure is drawn empty")
+        }
+        guard analytics.activityLine.contains("turns") == false else {
+            throw SelfTestFailure("a turn count nobody took is stated as a fact")
+        }
+        guard analytics.coverageNote?.contains("desktop · opencode") == true else {
+            throw SelfTestFailure("the machine that could not count is not named")
+        }
+        guard let png = AnalyticsCardRenderer.png(AnalyticsShare(analytics), scale: 1),
+            png.count > 800
+        else { throw SelfTestFailure("a free month cannot be shared") }
+        return 8
+    }
+
+    private static func today() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
     }
 
     /// The moving half of the same contract: work has to move, an answer the agent is waiting for

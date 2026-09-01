@@ -30,6 +30,30 @@ public enum ProviderIdentity {
         }
     }
 
+    /// Which door a model's tokens went through, read from the model key itself. opencode names
+    /// a model `provider/id`, which is the answer outright; a bridge that serves one vendor names
+    /// the model alone, and the vendor is then read off the family — the point of the row is to
+    /// separate a runtime on the server's own machine from a hosted API, and a model nobody can
+    /// place is better left out of the split than filed under a guess.
+    public static func provider(ofModel raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let slash = trimmed.firstIndex(of: "/"), slash != trimmed.startIndex {
+            return String(trimmed[trimmed.startIndex..<slash])
+        }
+        let id = trimmed.lowercased()
+        let families: [(String, String)] = [
+            ("claude", "anthropic"), ("opus", "anthropic"), ("sonnet", "anthropic"),
+            ("haiku", "anthropic"), ("fable", "anthropic"), ("gpt", "openai"),
+            ("codex", "openai"), ("o3", "openai"), ("o4", "openai"), ("grok", "xai"),
+            ("gemini", "google"), ("llama", "meta"), ("qwen", "alibaba"),
+            ("deepseek", "deepseek"), ("kimi", "moonshot"), ("mistral", "mistral"),
+            ("devstral", "mistral"), ("codestral", "mistral"), ("glm", "zhipu"),
+        ]
+        for (needle, provider) in families where id.contains(needle) { return provider }
+        return nil
+    }
+
     /// True when the provider's models run in a process on the server machine
     /// itself (Ollama, or a local vLLM on Arch) rather than a hosted API.
     public static func isLocal(_ providerID: String) -> Bool {

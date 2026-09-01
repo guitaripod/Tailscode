@@ -134,6 +134,13 @@ public enum ModelFavoritesStore {
         all().contains { $0 == selection }
     }
 
+    /// Puts the whole list back as it was, for a caller that has to leave the store exactly as
+    /// it found it.
+    public static func replace(_ selections: [ModelSelection]) {
+        UserDefaults.standard.set(
+            Array(selections.map(\.rawValue).prefix(limit)), forKey: storageKey)
+    }
+
     public static func toggle(_ selection: ModelSelection) {
         var raw = UserDefaults.standard.stringArray(forKey: storageKey) ?? []
         if let index = raw.firstIndex(of: selection.rawValue) {

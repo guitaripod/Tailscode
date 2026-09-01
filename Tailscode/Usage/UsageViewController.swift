@@ -1289,7 +1289,7 @@ private final class MonthCard: UIControl {
     }
 
     func render(_ analytics: UsageAnalytics?) {
-        totalLabel.text = analytics?.totalMoney
+        totalLabel.text = analytics?.headline
         sparkline.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard let analytics else {
             sparkline.isHidden = true
@@ -1318,6 +1318,6 @@ private final class MonthCard: UIControl {
             ])
             sparkline.addArrangedSubview(holder)
         }
-        accessibilityValue = analytics.totalMoney
+        accessibilityValue = analytics.headline
     }
 }

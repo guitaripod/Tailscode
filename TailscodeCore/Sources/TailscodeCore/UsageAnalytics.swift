@@ -27,22 +27,41 @@ public struct UsageAnalytics: Sendable, Equatable {
         public let weekdayLabel: String
         public let costUSD: Double
         public let money: String
+        /// What the day is worth in the unit the account actually has — the money, or the tokens
+        /// where every model in the window ran for free. This is the string a bar is labelled
+        /// with; ``money`` stays the money for anything that specifically means money.
+        public let value: String
         public let tokens: Int
         public let turns: Int
         public let toolCalls: Int
-        /// `0...1` against the priciest day in the window.
+        /// `0...1` against the biggest day in the window, measured the same way ``value`` is.
         public let share: Double
         public let isToday: Bool
     }
 
-    /// One meter row: models, projects, tools, machines all draw as a label, a fill and the
-    /// numbers that justify it.
+    /// One meter row: models, providers, projects, tools, machines all draw as a label, a fill
+    /// and the numbers that justify it.
     public struct Meter: Sendable, Equatable {
         public let label: String
         public let detail: String
+        /// The trailing value: money for a row that spent some, the word for free where a model
+        /// ran on a machine the person already owns, a share for a row counted rather than priced.
         public let money: String?
         /// `0...1` against the largest row of its section.
         public let share: Double
+        /// True when this row did real work and none of it cost anything. A zero here is a price,
+        /// never an absence, and the row must not be drawn as an empty one.
+        public let isFree: Bool
+
+        public init(
+            label: String, detail: String, money: String?, share: Double, isFree: Bool = false
+        ) {
+            self.label = label
+            self.detail = detail
+            self.money = money
+            self.share = share
+            self.isFree = isFree
+        }
     }
 
     public struct HourBar: Sendable, Equatable {
@@ -63,6 +82,9 @@ public struct UsageAnalytics: Sendable, Equatable {
     }
 
     public let totalMoney: String
+    /// What the window comes to in the unit the account has: the money, or the work itself when
+    /// every model in it ran for free. This is the number the surface leads with.
+    public let headline: String
     public let windowLabel: String
     public let perDayLine: String
     public let activityLine: String
@@ -73,6 +95,15 @@ public struct UsageAnalytics: Sendable, Equatable {
     public let hours: [HourBar]
     public let clockLine: String?
     public let models: [Meter]
+    /// Which provider served the work — "which model am I using" answered one level above the
+    /// model name, and the only place a runtime on the server's own machine and a hosted API can
+    /// be compared directly. Empty when the whole window went through one door, where a split of
+    /// one says nothing.
+    public let providers: [Meter]
+    /// The caption under the models section: what the list left out when there were more models
+    /// than it will show, and what ran at no cost because it ran on a machine the person already
+    /// owns. Nil when neither is true.
+    public let modelsLine: String?
     public let projects: [Meter]
     public let tools: [Meter]
     public let toolsLine: String?
@@ -86,6 +117,12 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// Servers that answered but are too old for the route, named so their absence from the
     /// numbers is a stated fact rather than a silent hole.
     public let missingServers: [String]
+    /// What no contributing server could measure, said plainly. A section absent because nobody
+    /// counted it must never read as one absent because it was zero, and a turn count drawn from
+    /// two machines out of three has to say which.
+    public let coverageNote: String?
+    /// The facts every contributing server measured. A section outside it is not rendered at all.
+    public let coverage: UsageAnalyticsReport.Coverage
     /// The same fold, scored as a game: the trophy catalog with its progress, and the scores
     /// the leaderboards take. Read from this merge so the case can never disagree with the
     /// charts it sits beside.
@@ -95,6 +132,9 @@ public struct UsageAnalytics: Sendable, Equatable {
     public static let defaultWindowDays = 30
     private static let projectLimit = 8
     private static let toolLimit = 10
+    /// An account that reaches for one model has three; one that reaches for whatever is cheapest
+    /// has thirty, and a list that long is a wall rather than a chart. What is cut is stated.
+    private static let modelLimit = 12
 
     public init?(
         servers: [(name: String, report: UsageAnalyticsReport)],
@@ -110,6 +150,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         var dayTokens: [String: Int] = [:]
         var dayTurns: [String: Int] = [:]
         var dayTools: [String: Int] = [:]
+        var daySessions: [String: Int] = [:]
         var modelRows: [String: SessionSpendReport.ModelShare] = [:]
         var projectRows: [String: UsageAnalyticsReport.Project] = [:]
         var toolRows: [String: Int] = [:]
@@ -121,12 +162,18 @@ public struct UsageAnalytics: Sendable, Equatable {
         var subagents = UsageAnalyticsReport.Subagents()
         var records = UsageAnalyticsReport.Records()
 
-        for (_, report) in reports {
-            for day in report.daily where day.turns > 0 || day.costUSD > 0 {
+        var coverage = UsageAnalyticsReport.Coverage.all
+        var coarse: [String] = []
+        for (name, report) in reports {
+            coverage.formIntersection(report.covers)
+            if !report.covers.contains(.turns) { coarse.append(name) }
+            for day in report.daily
+            where day.turns > 0 || day.costUSD > 0 || day.tokens.total > 0 {
                 dayCost[day.day, default: 0] += day.costUSD
                 dayTokens[day.day, default: 0] += day.tokens.total
                 dayTurns[day.day, default: 0] += day.turns
                 dayTools[day.day, default: 0] += day.toolCalls
+                daySessions[day.day, default: 0] += day.sessions
             }
             for share in report.models {
                 var row = modelRows[share.model]
@@ -171,14 +218,23 @@ public struct UsageAnalytics: Sendable, Equatable {
         totals.activeDays = dayCost.count
         totals.tokens = tokens
 
+        self.coverage = coverage
         let estimated = reports.contains { $0.report.estimated }
         let prefix = estimated ? "~" : ""
+        // Money is the yardstick wherever any was spent. An account whose models all run on a
+        // machine the person owns has no money to scale by, and a chart of zeroes would say the
+        // month never happened, so it is measured in the work itself instead.
+        let priced = totals.costUSD > 0
         let dayKeys = Self.windowKeys(window: window, now: now, calendar: calendar)
-        let peakDay = dayCost.values.max() ?? 0
+        let weight = { (key: String) -> Double in
+            priced ? (dayCost[key] ?? 0) : Double(dayTokens[key] ?? 0)
+        }
+        let peakDay = dayKeys.map(weight).max() ?? 0
         let todayKey = Self.dayFormatter(calendar).string(from: now)
         var bars: [DayBar] = []
         for key in dayKeys {
             let cost = dayCost[key] ?? 0
+            let tokenCount = dayTokens[key] ?? 0
             let date = Self.dayFormatter(calendar).date(from: key)
             bars.append(
                 DayBar(
@@ -186,35 +242,58 @@ public struct UsageAnalytics: Sendable, Equatable {
                     label: date.map { String(calendar.component(.day, from: $0)) } ?? key,
                     weekdayLabel: date.map { Self.weekdayName($0, calendar: calendar) } ?? "",
                     costUSD: cost, money: prefix + SessionSpend.money(cost),
-                    tokens: dayTokens[key] ?? 0, turns: dayTurns[key] ?? 0,
+                    value: priced
+                        ? prefix + SessionSpend.money(cost) : StatusFacts.tokens(tokenCount),
+                    tokens: tokenCount, turns: dayTurns[key] ?? 0,
                     toolCalls: dayTools[key] ?? 0,
-                    share: peakDay > 0 ? cost / peakDay : 0, isToday: key == todayKey))
+                    share: peakDay > 0 ? weight(key) / peakDay : 0, isToday: key == todayKey))
         }
         self.days = bars
 
         self.totalMoney = prefix + SessionSpend.money(totals.costUSD)
+        self.headline =
+            priced
+            ? prefix + SessionSpend.money(totals.costUSD)
+            : Localized.text("%@ tokens", StatusFacts.tokens(tokens.total))
         self.windowLabel = Localized.text("Last %d days", window)
-        let perActive = totals.costUSD / Double(max(1, totals.activeDays))
+        let active = Double(max(1, totals.activeDays))
         var perDay = Localized.text(
-            "%@ a day, over %d active days", prefix + SessionSpend.money(perActive),
+            "%@ a day, over %d active days",
+            priced
+                ? prefix + SessionSpend.money(totals.costUSD / active)
+                : StatusFacts.tokens(Int(Double(tokens.total) / active)),
             totals.activeDays)
-        if let today = bars.last, today.isToday, today.costUSD > 0 {
-            perDay += Localized.text(" · today %@", today.money)
+        if let today = bars.last, today.isToday, priced ? today.costUSD > 0 : today.tokens > 0 {
+            perDay += Localized.text(" · today %@", today.value)
         }
         self.perDayLine = perDay
-        self.activityLine = Localized.text(
-            "%@ turns · %@ conversations · %@ tool calls · %@ tokens",
-            Self.count(totals.turns), Self.count(totals.sessions), Self.count(totals.toolCalls),
-            StatusFacts.tokens(totals.tokens.total))
+        // Only the counts somebody actually measured. A server that keeps a running total per
+        // conversation and no record of the turns inside reports zero turns, and a zero drawn as
+        // a fact is the one lie this surface can tell.
+        var clauses: [String] = []
+        if totals.turns > 0 {
+            clauses.append(Localized.text("%@ turns", Self.count(totals.turns)))
+        }
+        clauses.append(Localized.text("%@ conversations", Self.count(totals.sessions)))
+        if totals.toolCalls > 0 {
+            clauses.append(Localized.text("%@ tool calls", Self.count(totals.toolCalls)))
+        }
+        clauses.append(Localized.text("%@ tokens", StatusFacts.tokens(totals.tokens.total)))
+        self.activityLine = clauses.joined(separator: " · ")
         (self.deltaLine, self.trend) = Self.delta(bars: bars, prefix: prefix)
 
-        self.weekdays = Self.weekdayMeters(bars: bars, prefix: prefix, calendar: calendar)
+        self.weekdays = Self.weekdayMeters(
+            bars: bars, priced: priced, prefix: prefix, calendar: calendar)
         let peakHour = hourTurns.max() ?? 0
-        self.hours = (0..<24).map { hour in
-            HourBar(
-                label: String(format: "%02d", hour), turns: hourTurns[hour],
-                share: peakHour > 0 ? Double(hourTurns[hour]) / Double(peakHour) : 0)
-        }
+        // No server that could tell the hour means no clock — twenty-four empty columns is a
+        // chart that has to be read to learn nothing.
+        self.hours =
+            peakHour > 0
+            ? (0..<24).map { hour in
+                HourBar(
+                    label: String(format: "%02d", hour), turns: hourTurns[hour],
+                    share: Double(hourTurns[hour]) / Double(peakHour))
+            } : []
         if let busiest = hourTurns.indices.max(by: { hourTurns[$0] < hourTurns[$1] }),
             peakHour > 0
         {
@@ -224,32 +303,44 @@ public struct UsageAnalytics: Sendable, Equatable {
             self.clockLine = nil
         }
 
-        let modelPeak = modelRows.values.map(\.costUSD).max() ?? 0
-        self.models = modelRows.values.sorted { $0.costUSD > $1.costUSD }.map { row in
-            var detail = Localized.text(
-                "%@ turns · %@ tokens", Self.count(row.turns),
-                StatusFacts.tokens(row.tokens.total))
-            if row.turns > 0, row.costUSD > 0 {
-                detail += Localized.text(
-                    " · %@ a turn",
-                    prefix + SessionSpend.money(row.costUSD / Double(row.turns)))
-            }
-            return Meter(
-                label: ModelBadge.shortName(row.model),
-                detail: detail,
-                money: prefix + SessionSpend.money(row.costUSD),
-                share: modelPeak > 0 ? row.costUSD / modelPeak : 0)
+        // Which model did the work is a token count, not a bill: a model on the server's own GPU
+        // costs nothing and can still have done most of the month. The money stays on the row.
+        let rankedModels = modelRows.values.sorted(by: Self.byWork)
+        let modelPeak = rankedModels.map { Double($0.tokens.fresh) }.max() ?? 0
+        let modelLabels = Self.modelLabels(rankedModels)
+        self.models = rankedModels.prefix(Self.modelLimit).map { row in
+            Meter(
+                label: modelLabels[row.model] ?? ModelBadge.shortName(row.model),
+                detail: Self.workDetail(
+                    turns: row.turns, tokens: row.tokens, costUSD: row.costUSD, prefix: prefix),
+                money: Self.value(costUSD: row.costUSD, tokens: row.tokens, prefix: prefix),
+                share: modelPeak > 0 ? Double(row.tokens.fresh) / modelPeak : 0,
+                isFree: row.costUSD <= 0 && row.tokens.total > 0)
         }
+        self.providers = Self.providerMeters(models: modelRows, prefix: prefix)
+        self.modelsLine = Self.modelsLine(
+            ranked: rankedModels, models: modelRows, priced: priced, prefix: prefix)
 
-        let projectPeak = projectRows.values.map(\.costUSD).max() ?? 0
-        self.projects = projectRows.values.sorted { $0.costUSD > $1.costUSD }
+        let projectPeak = projectRows.values.map { Self.rank($0.costUSD, $0.tokens, priced) }
+            .max() ?? 0
+        let projectLabels = Self.projectLabels(Array(projectRows.values))
+        self.projects = projectRows.values
+            .sorted {
+                Self.rank($0.costUSD, $0.tokens, priced) > Self.rank($1.costUSD, $1.tokens, priced)
+            }
             .prefix(Self.projectLimit).map { row in
-                Meter(
-                    label: row.name,
-                    detail: Localized.text(
-                        "%@ chats · %@ turns", Self.count(row.sessions), Self.count(row.turns)),
-                    money: prefix + SessionSpend.money(row.costUSD),
-                    share: projectPeak > 0 ? row.costUSD / projectPeak : 0)
+                var detail = Localized.text("%@ chats", Self.count(row.sessions))
+                if row.turns > 0 {
+                    detail += Localized.text(" · %@ turns", Self.count(row.turns))
+                } else {
+                    detail += Localized.text(" · %@ tokens", StatusFacts.tokens(row.tokens.total))
+                }
+                return Meter(
+                    label: projectLabels[row.directory] ?? row.name, detail: detail,
+                    money: Self.value(costUSD: row.costUSD, tokens: row.tokens, prefix: prefix),
+                    share: projectPeak > 0
+                        ? Self.rank(row.costUSD, row.tokens, priced) / projectPeak : 0,
+                    isFree: row.costUSD <= 0 && row.tokens.total > 0)
             }
 
         let toolPeak = toolRows.values.max() ?? 0
@@ -271,6 +362,12 @@ public struct UsageAnalytics: Sendable, Equatable {
         }
 
         self.tiers = SessionSpend.tierSplit(tokens: tokens, costUSD: totals.costUSD)
+        // A server that reports the money and the tokens but prices nothing itself leaves this at
+        // zero; the saving is then implied from the same split the tier chart already trusts,
+        // rather than dropping a section that is true of every cached conversation.
+        if cacheSaved <= 0 {
+            cacheSaved = SessionSpend.cacheSaving(tokens: tokens, costUSD: totals.costUSD)
+        }
         let contextRead = tokens.cacheRead + tokens.input
         if cacheSaved >= 1, contextRead > 0 {
             let hitRate = Int(
@@ -286,14 +383,23 @@ public struct UsageAnalytics: Sendable, Equatable {
             self.cacheLine = nil
         }
 
-        if let top = dayCost.max(by: { $0.value < $1.value }), top.value > 0 {
+        let busiestKey =
+            priced
+            ? dayCost.max(by: { $0.value < $1.value }).map(\.key)
+            : dayTokens.max(by: { $0.value < $1.value }).map(\.key)
+        if let busiestKey, (dayTokens[busiestKey] ?? 0) > 0 || (dayCost[busiestKey] ?? 0) > 0 {
             records.busiestDay = UsageAnalyticsReport.Records.BusiestDay(
-                day: top.key, costUSD: top.value, turns: dayTurns[top.key] ?? 0)
+                day: busiestKey, costUSD: dayCost[busiestKey] ?? 0,
+                turns: dayTurns[busiestKey] ?? 0)
         }
-        let streak = Self.streak(days: Set(dayCost.keys), calendar: calendar)
+        let streak = Self.streak(
+            days: Set(dayTokens.keys).union(dayCost.keys), calendar: calendar)
         self.records = Self.recordRows(
             records: records, streak: streak, subagents: subagents, compactions: compactions,
-            totalCostUSD: totals.costUSD, prefix: prefix, calendar: calendar)
+            totalCostUSD: totals.costUSD, priced: priced,
+            busiestTokens: busiestKey.flatMap { dayTokens[$0] } ?? 0,
+            busiestSessions: busiestKey.flatMap { daySessions[$0] } ?? 0,
+            prefix: prefix, calendar: calendar)
 
         var facts = TrophyFacts()
         facts.turns = totals.turns
@@ -310,31 +416,40 @@ public struct UsageAnalytics: Sendable, Equatable {
         facts.nightTurns = hourTurns[0...4].reduce(0, +)
         facts.hoursCovered = hourTurns.filter { $0 > 0 }.count
         facts.longestTurnSeconds = records.longestTurn?.seconds ?? 0
-        facts.peakDayCostUSD = peakDay
+        facts.peakDayCostUSD = dayCost.values.max() ?? 0
         facts.weekendTurns = Self.weekendTurns(dayTurns: dayTurns, calendar: calendar)
         self.trophies = TrophyRoom.trophies(facts: facts)
         self.scores = TrophyRoom.scores(facts: facts)
 
         if reports.count > 1 {
-            let machinePeak = reports.map(\.report.totals.costUSD).max() ?? 0
-            self.machines = reports.sorted { $0.report.totals.costUSD > $1.report.totals.costUSD }
+            let machineRank = { (report: UsageAnalyticsReport) -> Double in
+                Self.rank(report.totals.costUSD, report.totals.tokens, priced)
+            }
+            let machinePeak = reports.map { machineRank($0.report) }.max() ?? 0
+            self.machines = reports.sorted { machineRank($0.report) > machineRank($1.report) }
                 .map { server in
-                    Meter(
-                        label: server.name,
-                        detail: Localized.text(
-                            "%@ chats · %@ turns", Self.count(server.report.totals.sessions),
-                            Self.count(server.report.totals.turns)),
-                        money: prefix + SessionSpend.money(server.report.totals.costUSD),
-                        share: machinePeak > 0
-                            ? server.report.totals.costUSD / machinePeak : 0)
+                    let totals = server.report.totals
+                    var detail = Localized.text("%@ chats", Self.count(totals.sessions))
+                    if totals.turns > 0 {
+                        detail += Localized.text(" · %@ turns", Self.count(totals.turns))
+                    } else {
+                        detail += Localized.text(
+                            " · %@ tokens", StatusFacts.tokens(totals.tokens.total))
+                    }
+                    return Meter(
+                        label: server.name, detail: detail,
+                        money: Self.value(
+                            costUSD: totals.costUSD, tokens: totals.tokens, prefix: prefix),
+                        share: machinePeak > 0 ? machineRank(server.report) / machinePeak : 0,
+                        isFree: totals.costUSD <= 0 && totals.tokens.total > 0)
                 }
         } else {
             self.machines = []
         }
 
         self.insights = Self.insightLines(
-            totals: totals, tools: toolRows, hourTurns: hourTurns, cacheSaved: cacheSaved,
-            streak: streak, subagents: subagents, prefix: prefix)
+            totals: totals, models: modelRows, tools: toolRows, hourTurns: hourTurns,
+            cacheSaved: cacheSaved, streak: streak, subagents: subagents, prefix: prefix)
 
         self.source = reports.count > 1
             ? Localized.text(
@@ -342,11 +457,208 @@ public struct UsageAnalytics: Sendable, Equatable {
                 reports.count)
             : Localized.text("Estimated from every transcript at API list prices")
         self.missingServers = missingServers
+        self.coverageNote = Self.coverageNote(
+            coarse: coarse, servers: reports.count, coverage: coverage)
     }
 
-    /// Money at day-bar precision: the daily chart annotates its peak and its today, nothing else.
+    /// The tallest bar in the daily chart, which the chart annotates along with today and
+    /// nothing else. It is the tallest by whatever the chart is measuring — money, or the work
+    /// itself in an account that spent none.
     public var peakDay: DayBar? {
-        days.max { $0.costUSD < $1.costUSD }
+        days.max { $0.share < $1.share }
+    }
+
+    /// Which model did the most work. Cache reads are left out of the measure: a cached prefix
+    /// is counted once as a write and re-read on every turn after it, so counting the reads ranks
+    /// a model by how long its conversations were rather than by how much it did. Ties break on
+    /// money and then on name, so a listing never reorders itself between two reads.
+    private static func byWork(
+        _ lhs: SessionSpendReport.ModelShare, _ rhs: SessionSpendReport.ModelShare
+    ) -> Bool {
+        if lhs.tokens.fresh != rhs.tokens.fresh { return lhs.tokens.fresh > rhs.tokens.fresh }
+        if lhs.costUSD != rhs.costUSD { return lhs.costUSD > rhs.costUSD }
+        return lhs.model < rhs.model
+    }
+
+    /// What a row is measured by: the money wherever the account spent any, the work itself in an
+    /// account that spent none.
+    private static func rank(
+        _ costUSD: Double, _ tokens: SessionSpendReport.Tokens, _ priced: Bool
+    ) -> Double {
+        priced ? costUSD : Double(tokens.fresh)
+    }
+
+    /// The trailing value on a meter: what it cost, or the word for free where it did real work
+    /// and cost nothing — a row reading "$0" beside two million tokens says the model went unused,
+    /// which is the opposite of what happened.
+    private static func value(
+        costUSD: Double, tokens: SessionSpendReport.Tokens, prefix: String
+    ) -> String {
+        if costUSD > 0 { return prefix + SessionSpend.money(costUSD) }
+        return tokens.total > 0 ? Localized.text("Free") : SessionSpend.money(0)
+    }
+
+    private static func workDetail(
+        turns: Int, tokens: SessionSpendReport.Tokens, costUSD: Double, prefix: String
+    ) -> String {
+        var detail = Localized.text("%@ tokens", StatusFacts.tokens(tokens.total))
+        if turns > 0 {
+            detail = Localized.text("%@ turns · ", Self.count(turns)) + detail
+            if costUSD > 0 {
+                detail += Localized.text(
+                    " · %@ a turn", prefix + SessionSpend.money(costUSD / Double(turns)))
+            }
+        }
+        return detail
+    }
+
+    /// Every model folded up by the door its tokens went through. A provider is only worth a row
+    /// when there is another to compare it against.
+    private static func providerMeters(
+        models: [String: SessionSpendReport.ModelShare], prefix: String
+    ) -> [Meter] {
+        var rows: [String: (share: SessionSpendReport.ModelShare, models: Int)] = [:]
+        for model in models.values {
+            guard let key = ProviderIdentity.provider(ofModel: model.model) else { continue }
+            var row =
+                rows[key]
+                ?? (
+                    SessionSpendReport.ModelShare(
+                        model: key, turns: 0, tokens: SessionSpendReport.Tokens(), costUSD: 0), 0
+                )
+            row.share.turns += model.turns
+            row.share.tokens = add(row.share.tokens, model.tokens)
+            row.share.costUSD += model.costUSD
+            row.models += 1
+            rows[key] = row
+        }
+        guard rows.count > 1 else { return [] }
+        let ranked = rows.values.sorted { byWork($0.share, $1.share) }
+        let peak = ranked.map { Double($0.share.tokens.fresh) }.max() ?? 0
+        return ranked.map { row in
+            var detail = Localized.text("%d models", row.models)
+            detail += Localized.text(" · %@ tokens", StatusFacts.tokens(row.share.tokens.total))
+            if ProviderIdentity.isLocal(row.share.model) {
+                detail += Localized.text(" · on your own machine")
+            }
+            return Meter(
+                label: ProviderIdentity.displayName(row.share.model), detail: detail,
+                money: value(costUSD: row.share.costUSD, tokens: row.share.tokens, prefix: prefix),
+                share: peak > 0 ? Double(row.share.tokens.fresh) / peak : 0,
+                isFree: row.share.costUSD <= 0 && row.share.tokens.total > 0)
+        }
+    }
+
+    /// Two models can wear the same name through two different doors — the same weights served
+    /// by a gateway and by its vendor — and two identical rows read as a bug rather than as a
+    /// choice. Only the names that actually collide are qualified; the rest stay short.
+    private static func modelLabels(_ ranked: [SessionSpendReport.ModelShare]) -> [String: String] {
+        var counts: [String: Int] = [:]
+        for row in ranked { counts[ModelBadge.shortName(row.model), default: 0] += 1 }
+        var labels: [String: String] = [:]
+        for row in ranked {
+            let short = ModelBadge.shortName(row.model)
+            guard counts[short, default: 0] > 1, let key = ProviderIdentity.provider(ofModel: row.model)
+            else {
+                labels[row.model] = short
+                continue
+            }
+            labels[row.model] = "\(short) · \(ProviderIdentity.displayName(key))"
+        }
+        return labels
+    }
+
+    /// Two checkouts of the same repository, or the same folder name under two parents, land as
+    /// two rows wearing one name. Only the names that collide take the parent folder with them.
+    private static func projectLabels(_ projects: [UsageAnalyticsReport.Project]) -> [String: String]
+    {
+        var counts: [String: Int] = [:]
+        for project in projects { counts[project.name, default: 0] += 1 }
+        var labels: [String: String] = [:]
+        for project in projects {
+            guard counts[project.name, default: 0] > 1 else {
+                labels[project.directory] = project.name
+                continue
+            }
+            let parent = URL(fileURLWithPath: project.directory).deletingLastPathComponent()
+                .lastPathComponent
+            labels[project.directory] =
+                parent.isEmpty ? project.directory : "\(parent)/\(project.name)"
+        }
+        return labels
+    }
+
+    /// The caption under the models: what the list could not fit, and what the models that cost
+    /// nothing actually did — the fact a column of "$0" hides.
+    private static func modelsLine(
+        ranked: [SessionSpendReport.ModelShare], models: [String: SessionSpendReport.ModelShare],
+        priced: Bool, prefix: String
+    ) -> String? {
+        var parts: [String] = []
+        let hidden = ranked.dropFirst(modelLimit)
+        if !hidden.isEmpty {
+            parts.append(
+                Localized.text(
+                    "%d more models not shown · %@ tokens · %@", hidden.count,
+                    StatusFacts.tokens(hidden.reduce(0) { $0 + $1.tokens.total }),
+                    value(
+                        costUSD: hidden.reduce(0) { $0 + $1.costUSD },
+                        tokens: SessionSpendReport.Tokens(
+                            output: hidden.reduce(0) { $0 + $1.tokens.total }),
+                        prefix: prefix)))
+        }
+        if let free = freeLine(models: models, priced: priced) { parts.append(free) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// What the models that cost nothing actually did, which is the fact a column of "$0" hides.
+    private static func freeLine(
+        models: [String: SessionSpendReport.ModelShare], priced: Bool
+    ) -> String? {
+        let free = models.values.filter { $0.costUSD <= 0 && $0.tokens.total > 0 }
+        guard !free.isEmpty else { return nil }
+        let freeTokens = free.reduce(0) { $0 + $1.tokens.fresh }
+        guard freeTokens > 0 else { return nil }
+        guard priced else {
+            return Localized.text(
+                "Every token this window ran on a machine you already own — %@ of them, at no cost",
+                StatusFacts.tokens(freeTokens))
+        }
+        let allTokens = models.values.reduce(0) { $0 + $1.tokens.fresh }
+        // A hundred percent is reserved for a window where nothing was paid for at all: rounding
+        // a sliver of paid work away would say the month was free when it was not.
+        var percent =
+            allTokens > 0 ? Int((Double(freeTokens) / Double(allTokens) * 100).rounded()) : 0
+        if freeTokens < allTokens { percent = min(99, percent) }
+        return Localized.text(
+            "%@ tokens across %d models cost nothing — %d%% of the window's work ran on a machine you already own",
+            StatusFacts.tokens(freeTokens), free.count, percent)
+    }
+
+    /// What nobody counted, named. A server whose ledger is one running total per conversation
+    /// knows the money and the model and nothing about the turns inside, and the difference
+    /// between a count of zero and a count nobody took has to be on the screen.
+    private static func coverageNote(
+        coarse: [String], servers: Int, coverage: UsageAnalyticsReport.Coverage
+    ) -> String? {
+        guard !coarse.isEmpty else { return nil }
+        let names = coarse.joined(separator: ", ")
+        if coarse.count == servers {
+            return coarse.count == 1
+                ? Localized.text(
+                    "Counted per conversation: %@ reports what each chat spent, not the turns inside it, the tools they called or the hour they ran.",
+                    names)
+                : Localized.text(
+                    "Counted per conversation: %@ report what each chat spent, not the turns inside it, the tools they called or the hour they ran.",
+                    names)
+        }
+        return coarse.count == 1
+            ? Localized.text(
+                "Turn, tool and clock counts cover %d of %d servers — %@ reports per-conversation totals only.",
+                servers - coarse.count, servers, names)
+            : Localized.text(
+                "Turn, tool and clock counts cover %d of %d servers — %@ report per-conversation totals only.",
+                servers - coarse.count, servers, names)
     }
 
     private static func add(
@@ -401,25 +713,31 @@ public struct UsageAnalytics: Sendable, Equatable {
 
     /// Monday first regardless of locale: the chart reads as a work week, and the weekend
     /// belongs together at its end.
-    private static func weekdayMeters(bars: [DayBar], prefix: String, calendar: Calendar)
-        -> [Meter]
-    {
+    private static func weekdayMeters(
+        bars: [DayBar], priced: Bool, prefix: String, calendar: Calendar
+    ) -> [Meter] {
         let formatter = dayFormatter(calendar)
+        var weight = [Double](repeating: 0, count: 7)
         var cost = [Double](repeating: 0, count: 7)
+        var tokens = [Int](repeating: 0, count: 7)
         for bar in bars {
             guard let date = formatter.date(from: bar.key) else { continue }
             let index = (calendar.component(.weekday, from: date) + 5) % 7
             cost[index] += bar.costUSD
+            tokens[index] += bar.tokens
+            weight[index] += priced ? bar.costUSD : Double(bar.tokens)
         }
-        let peak = cost.max() ?? 0
+        let peak = weight.max() ?? 0
         let symbols = calendar.shortWeekdaySymbols
         return (0..<7).map { index in
             let weekdayIndex = (index + 1) % 7
             let label = symbols.indices.contains(weekdayIndex) ? symbols[weekdayIndex] : ""
             return Meter(
                 label: label, detail: "",
-                money: prefix + SessionSpend.money(cost[index]),
-                share: peak > 0 ? cost[index] / peak : 0)
+                money: priced
+                    ? prefix + SessionSpend.money(cost[index])
+                    : StatusFacts.tokens(tokens[index]),
+                share: peak > 0 ? weight[index] / peak : 0)
         }
     }
 
@@ -470,8 +788,8 @@ public struct UsageAnalytics: Sendable, Equatable {
     private static func recordRows(
         records: UsageAnalyticsReport.Records, streak: Int,
         subagents: UsageAnalyticsReport.Subagents,
-        compactions: UsageAnalyticsReport.Compactions, totalCostUSD: Double, prefix: String,
-        calendar: Calendar
+        compactions: UsageAnalyticsReport.Compactions, totalCostUSD: Double, priced: Bool,
+        busiestTokens: Int, busiestSessions: Int, prefix: String, calendar: Calendar
     ) -> [Record] {
         var rows: [Record] = []
         if let busiest = records.busiestDay {
@@ -481,14 +799,24 @@ public struct UsageAnalytics: Sendable, Equatable {
             display.dateFormat = "MMM d"
             let label = formatter.date(from: busiest.day).map(display.string(from:))
                 ?? busiest.day
+            var detail: String
+            if busiest.turns > 0 {
+                detail = Localized.text("%@ turns", Self.count(busiest.turns))
+            } else if busiestSessions > 0 {
+                detail = Localized.text("%@ conversations", Self.count(busiestSessions))
+            } else {
+                detail = Localized.text("%@ tokens", StatusFacts.tokens(busiestTokens))
+            }
             rows.append(
                 Record(
                     id: "busiestDay", symbolName: "flame.fill", glyph: "▲",
                     title: Localized.text("Busiest day"),
-                    value: "\(label) · \(prefix)\(SessionSpend.money(busiest.costUSD))",
-                    detail: Localized.text("%@ turns", Self.count(busiest.turns))))
+                    value: priced
+                        ? "\(label) · \(prefix)\(SessionSpend.money(busiest.costUSD))"
+                        : "\(label) · \(StatusFacts.tokens(busiestTokens))",
+                    detail: detail))
         }
-        if let session = records.priciestSession {
+        if let session = records.priciestSession, session.costUSD > 0 {
             rows.append(
                 Record(
                     id: "priciestSession", symbolName: "crown.fill", glyph: "♛",
@@ -496,7 +824,7 @@ public struct UsageAnalytics: Sendable, Equatable {
                     value: prefix + SessionSpend.money(session.costUSD),
                     detail: session.title))
         }
-        if let turn = records.priciestTurn {
+        if let turn = records.priciestTurn, turn.costUSD > 0 {
             rows.append(
                 Record(
                     id: "priciestTurn", symbolName: "bolt.fill", glyph: "⚡",
@@ -523,7 +851,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         if subagents.runs > 0 {
             var detail = Localized.text(
                 "%@ tokens · %@", StatusFacts.tokens(subagents.tokens.total),
-                prefix + SessionSpend.money(subagents.costUSD))
+                value(costUSD: subagents.costUSD, tokens: subagents.tokens, prefix: prefix))
             if totalCostUSD > 0, subagents.costUSD > 0 {
                 let share = Int((subagents.costUSD / totalCostUSD * 100).rounded())
                 detail += Localized.text(" · %d%% of the window", share)
@@ -549,11 +877,21 @@ public struct UsageAnalytics: Sendable, Equatable {
     }
 
     private static func insightLines(
-        totals: UsageAnalyticsReport.Totals, tools: [String: Int], hourTurns: [Int],
-        cacheSaved: Double, streak: Int, subagents: UsageAnalyticsReport.Subagents,
-        prefix: String
+        totals: UsageAnalyticsReport.Totals, models: [String: SessionSpendReport.ModelShare],
+        tools: [String: Int], hourTurns: [Int], cacheSaved: Double, streak: Int,
+        subagents: UsageAnalyticsReport.Subagents, prefix: String
     ) -> [String] {
         var lines: [String] = []
+        let work = models.values.reduce(0) { $0 + $1.tokens.fresh }
+        if let top = models.values.max(by: { $0.tokens.fresh < $1.tokens.fresh }), work > 0 {
+            let percent = Int((Double(top.tokens.fresh) / Double(work) * 100).rounded())
+            if percent >= 60, models.count > 1 {
+                lines.append(
+                    Localized.text(
+                        "%@ did most of it: %d%% of the window's tokens",
+                        ModelBadge.shortName(top.model), percent))
+            }
+        }
         if cacheSaved > totals.costUSD, totals.costUSD > 0 {
             lines.append(
                 Localized.text(

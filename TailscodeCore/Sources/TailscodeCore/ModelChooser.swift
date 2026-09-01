@@ -1828,10 +1828,15 @@ public enum ModelChooserCheck {
         expect(
             pinned.rows.first { $0.sectionID == "·yours" }?.isPinned == true,
             "and the row says it is pinned")
+        // The star is the one thing here that writes to the machine's own store, so the check
+        // puts back exactly what it found: a run stopped between the two toggles would otherwise
+        // leave a starred model behind and fail every run after it for a reason nobody could see.
+        let starredBefore = ModelFavoritesStore.all()
         pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
         expect(pinned.isFavorite(ModelSelection(providerID: "anthropic", modelID: "opus")), "the star is on")
         pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
         expect(!pinned.isFavorite(ModelSelection(providerID: "anthropic", modelID: "opus")), "and toggles off")
+        ModelFavoritesStore.replace(starredBefore)
 
         let quick = ModelChooser.shortlist(
             sources: [studio, homelab], selected: nil, limit: 4,

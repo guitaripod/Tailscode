@@ -42,9 +42,12 @@ struct UsageAnalyticsTests {
             since: now.addingTimeInterval(-Double(days) * 86_400), generatedAt: now, days: days,
             totals: totals
                 ?? UsageAnalyticsReport.Totals(
-                    costUSD: cost, tokens: UsageAnalyticsReport.Tokens(output: 1000),
+                    costUSD: cost,
+                    tokens: daily.isEmpty
+                        ? UsageAnalyticsReport.Tokens()
+                        : UsageAnalyticsReport.Tokens(output: 1000),
                     turns: turns, toolCalls: tools.reduce(0) { $0 + $1.calls },
-                    sessions: max(1, daily.count), activeDays: daily.count),
+                    sessions: daily.count, activeDays: daily.count),
             daily: daily, models: models, tools: tools,
             hourTurns: [Int](repeating: 0, count: 24), hourCostUSD: [],
             cacheSavedUSD: cacheSavedUSD, subagents: subagents, records: records)
