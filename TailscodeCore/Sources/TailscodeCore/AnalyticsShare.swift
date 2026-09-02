@@ -22,6 +22,8 @@ public struct AnalyticsShare: Sendable, Equatable {
 
     public struct Palette: Sendable, Equatable {
         public let canvas: String
+        /// Where the canvas ends at the foot of the card; the same as `canvas` for a flat one.
+        public let canvasEnd: String
         public let raised: String
         public let rule: String
         public let text: String
@@ -33,10 +35,12 @@ public struct AnalyticsShare: Sendable, Equatable {
         public let onAccent: String
 
         public init(
-            canvas: String, raised: String, rule: String, text: String, textDim: String,
-            accent: String, info: String, warn: String, special: String, onAccent: String
+            canvas: String, canvasEnd: String? = nil, raised: String, rule: String, text: String,
+            textDim: String, accent: String, info: String, warn: String, special: String,
+            onAccent: String
         ) {
             self.canvas = canvas
+            self.canvasEnd = canvasEnd ?? canvas
             self.raised = raised
             self.rule = rule
             self.text = text
@@ -48,19 +52,40 @@ public struct AnalyticsShare: Sendable, Equatable {
             self.onAccent = onAccent
         }
 
+        /// A palette authored from its canvas and ink alone: the raised surface and the rule
+        /// are the ink let into the canvas, and ink on a fill is the canvas itself.
+        public init(
+            canvas: String, canvasEnd: String, text: String, textDim: String, accent: String,
+            info: String, warn: String, special: String
+        ) {
+            self.canvas = canvas
+            self.canvasEnd = canvasEnd
+            self.raised = Contrast.blend(canvas, text, 0.06) ?? canvas
+            self.rule = Contrast.blend(canvas, text, 0.13) ?? textDim
+            self.text = text
+            self.textDim = textDim
+            self.accent = accent
+            self.info = info
+            self.warn = warn
+            self.special = special
+            self.onAccent = canvas
+        }
+
         public static func current(dark: Bool) -> Palette {
             let source = ThemeSelection.usesSystemPalette
                 ? AppTheme.fallback.palette(dark: dark).corrected()
                 : ThemeSelection.palette(dark: dark)
             return Palette(
-                canvas: source.canvas, raised: source.canvasRaised, rule: source.rule,
+                canvas: source.canvas,
+                canvasEnd: Contrast.blend(source.canvas, source.canvasRaised, 0.7),
+                raised: source.canvasRaised, rule: source.rule,
                 text: source.text, textDim: source.textDim, accent: source.accent,
                 info: source.info, warn: source.warn, special: source.special,
                 onAccent: source.onAccent)
         }
 
         public static let shareDefault = Palette(
-            canvas: "#191724", raised: "#1f1d2e", rule: "#26233a",
+            canvas: "#191724", canvasEnd: "#1f1b31", raised: "#1f1d2e", rule: "#26233a",
             text: "#e0def4", textDim: "#908caa", accent: "#ebbcba",
             info: "#9ccfd8", warn: "#f6c177", special: "#c4a7e7", onAccent: "#191724")
     }

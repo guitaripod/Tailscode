@@ -2087,7 +2087,8 @@ public enum SelfTest {
 
     /// `TAILSCODE_SHARE_CARD_OUT=<path>` writes the card an agent can look at: the demo ledger
     /// merged with a second, per-conversation server whose models run for nothing, so every
-    /// section the card can draw — providers, the free line, the coverage note — is on it.
+    /// section the card can draw — providers, the free line, the coverage note — is on it. A
+    /// path ending in `/` is a directory and gets one card per style.
     private static func dumpShareCard() throws {
         guard let path = ProcessInfo.processInfo.environment["TAILSCODE_SHARE_CARD_OUT"],
             !path.isEmpty
@@ -2114,10 +2115,24 @@ public enum SelfTest {
         guard
             let analytics = UsageAnalytics(
                 servers: [("studio", DemoWorld.demoAnalytics()), ("desk · opencode", free)],
-                missingServers: ["laptop"]),
-            let png = AnalyticsCardRenderer.png(AnalyticsShare(analytics), scale: 2)
+                missingServers: ["laptop"])
         else { throw SelfTestFailure("the mixed ledger cannot be shared") }
-        try png.write(to: URL(fileURLWithPath: path))
+        let package = AnalyticsShare(analytics)
+        guard path.hasSuffix("/") else {
+            guard let png = AnalyticsCardRenderer.png(package, scale: 2) else {
+                throw SelfTestFailure("the mixed ledger cannot be painted")
+            }
+            try png.write(to: URL(fileURLWithPath: path))
+            return
+        }
+        let directory = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for style in CardStyle.all {
+            guard let png = AnalyticsCardRenderer.png(package, scale: 1, style: style) else {
+                throw SelfTestFailure("style \(style.id) cannot be painted")
+            }
+            try png.write(to: directory.appendingPathComponent("\(style.id).png"))
+        }
     }
 
     /// A month spent entirely on models that bill nothing is still a month, and a server whose

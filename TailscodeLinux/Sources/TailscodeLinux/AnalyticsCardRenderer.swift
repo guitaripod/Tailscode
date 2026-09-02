@@ -5,13 +5,10 @@ import TailscodeCore
 /// Paints `AnalyticsShare.Card` into a PNG through the shim's cairo/pango path. Geometry and
 /// every word are Core's; this only packs the blocks into the C call and frees the result.
 enum AnalyticsCardRenderer {
-    static func png(_ share: AnalyticsShare, scale: Double = 2) -> Data? {
-        let source = MatrixTheme.palette
-        let palette = AnalyticsShare.Palette(
-            canvas: source.canvas, raised: source.canvasRaised, rule: source.rule,
-            text: source.text, textDim: source.textDim, accent: source.accent,
-            info: source.info, warn: source.warn, special: source.special,
-            onAccent: source.onAccent)
+    static func png(
+        _ share: AnalyticsShare, scale: Double = 2, style: CardStyle = CardStyleSelection.current
+    ) -> Data? {
+        let palette = style.palette(dark: MatrixTheme.palette.isDark)
         let card = AnalyticsShare.Card(
             blocks: share.card.blocks, palette: palette, height: share.card.height)
         return render(card, scale: scale)
@@ -98,7 +95,7 @@ enum AnalyticsCardRenderer {
                                             Int32(card.height.rounded()),
                                             scale,
                                             AnalyticsShare.Card.pad,
-                                            palette.canvas, palette.raised, palette.rule,
+                                            palette.canvas, palette.canvasEnd, palette.raised, palette.rule,
                                             palette.text, palette.textDim, palette.accent,
                                             palette.info, palette.warn, palette.special,
                                             kindPtrs, aPtrs, bPtrs, cPtrs,

@@ -2444,7 +2444,8 @@ void tailscode_file_save(
 
 unsigned char *tailscode_analytics_card_png(
     int width, int height, double scale, double pad,
-    const char *canvas, const char *raised, const char *rule, const char *text,
+    const char *canvas, const char *canvas_end, const char *raised, const char *rule,
+    const char *text,
     const char *text_dim, const char *accent, const char *info, const char *warn,
     const char *special,
     const char *const *kinds, const char *const *a, const char *const *b,
@@ -2465,6 +2466,17 @@ unsigned char *tailscode_analytics_card_png(
     cairo_scale(cr, scale, scale);
     tailscode_cairo_set_hex(cr, canvas, 1.0);
     cairo_paint(cr);
+    if (canvas_end && *canvas_end && strcmp(canvas_end, canvas) != 0) {
+        double r0, g0, b0, r1, g1, b1;
+        if (tailscode_hex_rgb(canvas, &r0, &g0, &b0) && tailscode_hex_rgb(canvas_end, &r1, &g1, &b1)) {
+            cairo_pattern_t *fall = cairo_pattern_create_linear(0, 0, 0, height);
+            cairo_pattern_add_color_stop_rgb(fall, 0, r0, g0, b0);
+            cairo_pattern_add_color_stop_rgb(fall, 1, r1, g1, b1);
+            cairo_set_source(cr, fall);
+            cairo_paint(cr);
+            cairo_pattern_destroy(fall);
+        }
+    }
 
     PangoLayout *layout = pango_cairo_create_layout(cr);
     double content = width - pad * 2.0;

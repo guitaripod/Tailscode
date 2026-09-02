@@ -646,6 +646,7 @@ final class AnalyticsWindowController: NSWindowController {
     private func footer() -> NSView {
         var views: [NSView] = [RowKit.spacer()]
         if analytics != nil {
+            views.append(stylePopUp())
             let share = RowKit.ActionButton(title: Localized.text("Share")) { [weak self] in
                 self?.share(from: self?.shareAnchor)
             }
@@ -664,6 +665,33 @@ final class AnalyticsWindowController: NSWindowController {
         row.orientation = .horizontal
         row.spacing = MacTheme.Spacing.s
         return row
+    }
+
+    /// The look the card wears, chosen where the card is shared: every style with its swatch,
+    /// the remembered one selected. It dresses the card only, so nothing on screen changes.
+    private func stylePopUp() -> NSPopUpButton {
+        let popUp = NSPopUpButton()
+        popUp.controlSize = .small
+        popUp.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let chosen = CardStyleSelection.current
+        for style in CardStyle.all {
+            let item = NSMenuItem(title: style.name, action: nil, keyEquivalent: "")
+            item.image = AnalyticsCardRenderer.swatch(style)
+            item.toolTip = style.tagline
+            item.representedObject = style.id
+            popUp.menu?.addItem(item)
+            if style.id == chosen.id { popUp.select(item) }
+        }
+        popUp.target = self
+        popUp.action = #selector(styleChanged(_:))
+        popUp.toolTip = Localized.text("Card style")
+        popUp.setAccessibilityLabel(Localized.text("Card style"))
+        return popUp
+    }
+
+    @objc private func styleChanged(_ sender: NSPopUpButton) {
+        guard let id = sender.selectedItem?.representedObject as? String else { return }
+        CardStyleSelection.set(CardStyle.named(id))
     }
 
     private func share(from anchor: NSView?) {

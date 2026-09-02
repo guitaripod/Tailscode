@@ -915,10 +915,25 @@ enum SelfTest {
             guard
                 let mixed = UsageAnalytics(
                     servers: [("studio", DemoWorld.demoAnalytics()), ("desk · opencode", free)],
-                    missingServers: ["laptop"]),
-                let png = AnalyticsCardRenderer.png(AnalyticsShare(mixed), scale: 2, dark: true)
+                    missingServers: ["laptop"])
             else { throw SelfTestFailure("the mixed ledger cannot be shared") }
-            try png.data.write(to: URL(fileURLWithPath: path))
+            let mixedPackage = AnalyticsShare(mixed)
+            if path.hasSuffix("/") {
+                let directory = URL(fileURLWithPath: path, isDirectory: true)
+                try FileManager.default.createDirectory(
+                    at: directory, withIntermediateDirectories: true)
+                for style in CardStyle.all {
+                    guard
+                        let png = AnalyticsCardRenderer.png(
+                            mixedPackage, scale: 1, dark: true, style: style)
+                    else { throw SelfTestFailure("style \(style.id) cannot be painted") }
+                    try png.data.write(to: directory.appendingPathComponent("\(style.id).png"))
+                }
+            } else {
+                guard let png = AnalyticsCardRenderer.png(mixedPackage, scale: 2, dark: true)
+                else { throw SelfTestFailure("the mixed ledger cannot be painted") }
+                try png.data.write(to: URL(fileURLWithPath: path))
+            }
         }
         return 4
     }

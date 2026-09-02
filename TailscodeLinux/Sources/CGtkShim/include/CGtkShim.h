@@ -111,7 +111,8 @@ void tailscode_file_save(
 /// or NULL on failure.
 unsigned char *tailscode_analytics_card_png(
     int width, int height, double scale, double pad,
-    const char *canvas, const char *raised, const char *rule, const char *text,
+    const char *canvas, const char *canvas_end, const char *raised, const char *rule,
+    const char *text,
     const char *text_dim, const char *accent, const char *info, const char *warn,
     const char *special,
     const char *const *kinds, const char *const *a, const char *const *b,

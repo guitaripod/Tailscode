@@ -5,13 +5,11 @@ import UIKit
 /// turns points into pixels at the scale the phone's screen can actually show.
 enum AnalyticsCardRenderer {
     static func png(
-        _ share: AnalyticsShare, scale: CGFloat = 3, dark: Bool? = nil
+        _ share: AnalyticsShare, scale: CGFloat = 3, dark: Bool? = nil,
+        style: CardStyle = CardStyleSelection.current
     ) -> (data: Data, filename: String)? {
-        let palette: AnalyticsShare.Palette = {
-            if ThemeSelection.usesSystemPalette { return .shareDefault }
-            let isDark = dark ?? (UITraitCollection.current.userInterfaceStyle == .dark)
-            return .current(dark: isDark)
-        }()
+        let isDark = dark ?? (UITraitCollection.current.userInterfaceStyle == .dark)
+        let palette = style.palette(dark: isDark)
         let card = AnalyticsShare.Card(
             blocks: share.card.blocks, palette: palette, height: share.card.height)
         let size = CGSize(
@@ -28,8 +26,10 @@ enum AnalyticsCardRenderer {
         return (data, share.filename)
     }
 
-    static func temporaryFile(_ share: AnalyticsShare) -> URL? {
-        guard let rendered = png(share) else { return nil }
+    static func temporaryFile(
+        _ share: AnalyticsShare, style: CardStyle = CardStyleSelection.current
+    ) -> URL? {
+        guard let rendered = png(share, style: style) else { return nil }
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("shared-analytics", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -64,12 +64,7 @@ enum AnalyticsCardRenderer {
         let pad = AnalyticsShare.Card.pad * scale
         let contentWidth = AnalyticsShare.Card.contentWidth * scale
 
-        ctx.setFillColor(color(card.palette.canvas))
-        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
-
-        roundedRect(
-            ctx, CGRect(x: 0, y: 0, width: width, height: height),
-            radius: AnalyticsShare.Card.corner * scale, fill: color(card.palette.canvas))
+        paintCanvas(card.palette, in: CGRect(x: 0, y: 0, width: width, height: height), ctx: ctx)
 
         var y = pad
         for block in card.blocks {
@@ -165,6 +160,49 @@ enum AnalyticsCardRenderer {
             }
             y += AnalyticsShare.Card.height(block) * scale
         }
+    }
+
+    /// The canvas falls from its top colour to its foot colour; a flat palette names the same
+    /// colour twice and the fall is invisible.
+    private static func paintCanvas(
+        _ palette: AnalyticsShare.Palette, in rect: CGRect, ctx: CGContext
+    ) {
+        ctx.setFillColor(color(palette.canvas))
+        ctx.fill(rect)
+        guard palette.canvasEnd != palette.canvas,
+            let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [color(palette.canvas), color(palette.canvasEnd)] as CFArray,
+                locations: [0, 1])
+        else { return }
+        ctx.saveGState()
+        ctx.clip(to: rect)
+        ctx.drawLinearGradient(
+            gradient, start: CGPoint(x: rect.midX, y: rect.minY),
+            end: CGPoint(x: rect.midX, y: rect.maxY), options: [])
+        ctx.restoreGState()
+    }
+
+    /// A swatch for the menu: the style's canvas as a disc with its accent as a dot, so a name
+    /// like Ember is shown rather than described.
+    static func swatch(_ style: CardStyle, size: CGFloat = 22) -> UIImage {
+        let palette = style.palette(dark: true)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        return UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format)
+            .image { context in
+                let ctx = context.cgContext
+                let rect = CGRect(x: 0, y: 0, width: size, height: size)
+                ctx.addEllipse(in: rect.insetBy(dx: 0.5, dy: 0.5))
+                ctx.clip()
+                paintCanvas(palette, in: rect, ctx: ctx)
+                ctx.resetClip()
+                ctx.setStrokeColor(color(palette.rule))
+                ctx.setLineWidth(1)
+                ctx.strokeEllipse(in: rect.insetBy(dx: 0.5, dy: 0.5))
+                ctx.setFillColor(color(palette.accent))
+                ctx.fillEllipse(in: rect.insetBy(dx: size * 0.3, dy: size * 0.3))
+            }.withRenderingMode(.alwaysOriginal)
     }
 
     private static func paintBars(

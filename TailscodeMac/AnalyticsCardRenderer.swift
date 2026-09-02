@@ -5,15 +5,13 @@ import TailscodeCore
 /// turns points into pixels at a Retina scale.
 enum AnalyticsCardRenderer {
     static func png(
-        _ share: AnalyticsShare, scale: CGFloat = 2, dark: Bool? = nil
+        _ share: AnalyticsShare, scale: CGFloat = 2, dark: Bool? = nil,
+        style: CardStyle = CardStyleSelection.current
     ) -> (data: Data, image: NSImage, filename: String)? {
-        let palette: AnalyticsShare.Palette = {
-            if ThemeSelection.usesSystemPalette { return .shareDefault }
-            let isDark =
-                dark
-                ?? (NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
-            return .current(dark: isDark)
-        }()
+        let isDark =
+            dark
+            ?? (NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+        let palette = style.palette(dark: isDark)
         let card = AnalyticsShare.Card(
             blocks: share.card.blocks, palette: palette, height: share.card.height)
         let logical = NSSize(width: AnalyticsShare.Card.width, height: card.height)
@@ -85,8 +83,7 @@ enum AnalyticsCardRenderer {
         let pad = AnalyticsShare.Card.pad
         let contentWidth = AnalyticsShare.Card.contentWidth
 
-        ctx.setFillColor(color(card.palette.canvas))
-        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        paintCanvas(card.palette, in: CGRect(x: 0, y: 0, width: width, height: height), ctx: ctx)
 
         var y = pad
         for block in card.blocks {
@@ -180,6 +177,49 @@ enum AnalyticsCardRenderer {
             }
             y += AnalyticsShare.Card.height(block)
         }
+    }
+
+    /// The canvas falls from its top colour to its foot colour; a flat palette names the same
+    /// colour twice and the fall is invisible.
+    private static func paintCanvas(
+        _ palette: AnalyticsShare.Palette, in rect: CGRect, ctx: CGContext
+    ) {
+        ctx.setFillColor(color(palette.canvas))
+        ctx.fill(rect)
+        guard palette.canvasEnd != palette.canvas,
+            let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [color(palette.canvas), color(palette.canvasEnd)] as CFArray,
+                locations: [0, 1])
+        else { return }
+        ctx.saveGState()
+        ctx.clip(to: rect)
+        ctx.drawLinearGradient(
+            gradient, start: CGPoint(x: rect.midX, y: rect.minY),
+            end: CGPoint(x: rect.midX, y: rect.maxY), options: [])
+        ctx.restoreGState()
+    }
+
+    /// A swatch for the menu: the style's canvas as a disc with its accent as a dot, so a name
+    /// like Ember is shown rather than described.
+    static func swatch(_ style: CardStyle, size: CGFloat = 16) -> NSImage {
+        let palette = style.palette(dark: true)
+        let image = NSImage(size: NSSize(width: size, height: size), flipped: true) { rect in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+            ctx.saveGState()
+            ctx.addEllipse(in: rect.insetBy(dx: 0.5, dy: 0.5))
+            ctx.clip()
+            paintCanvas(palette, in: rect, ctx: ctx)
+            ctx.restoreGState()
+            ctx.setStrokeColor(color(palette.rule))
+            ctx.setLineWidth(1)
+            ctx.strokeEllipse(in: rect.insetBy(dx: 0.5, dy: 0.5))
+            ctx.setFillColor(color(palette.accent))
+            ctx.fillEllipse(in: rect.insetBy(dx: size * 0.3, dy: size * 0.3))
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 
     private static func paintBars(
