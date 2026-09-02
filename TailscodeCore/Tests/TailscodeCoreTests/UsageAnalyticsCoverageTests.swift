@@ -240,4 +240,46 @@ struct UsageAnalyticsCoverageTests {
         #expect(analytics.records.contains { $0.id == "priciestSession" } == false)
         #expect(analytics.records.contains { $0.id == "busiestDay" })
     }
+
+    /// Ollama Cloud is a subscription and a gateway's free tier is somebody's money. A server
+    /// that has no rate for a hosted door reports zero, and zero drawn as "Free" claims a bill
+    /// that exists is nothing — only a model on a machine the person owns is free.
+    @Test("A hosted model the server cannot price reads Unpriced, never Free")
+    func hostedZeroIsUnpriced() throws {
+        let cloud = SessionSpendReport.Tokens(input: 2_000_000, output: 40_000)
+        let local = SessionSpendReport.Tokens(input: 1_000_000, output: 20_000)
+        let paid = SessionSpendReport.Tokens(input: 100_000, output: 5_000)
+        let report = UsageAnalyticsReport(
+            since: Date(timeIntervalSinceNow: -30 * 86400), generatedAt: Date(), days: 30,
+            totals: UsageAnalyticsReport.Totals(
+                costUSD: 12, tokens: SessionSpendReport.Tokens(input: 3_100_000, output: 65_000),
+                sessions: 3, activeDays: 1),
+            daily: [
+                UsageAnalyticsReport.Day(
+                    day: "2026-08-07", costUSD: 12,
+                    tokens: SessionSpendReport.Tokens(input: 3_100_000, output: 65_000),
+                    sessions: 3)
+            ],
+            models: [
+                SessionSpendReport.ModelShare(
+                    model: "ollama-cloud/glm-5.3-flash", turns: 0, tokens: cloud, costUSD: 0),
+                SessionSpendReport.ModelShare(
+                    model: "ollama/qwen3-coder:30b", turns: 0, tokens: local, costUSD: 0),
+                SessionSpendReport.ModelShare(
+                    model: "anthropic/claude-opus-5", turns: 0, tokens: paid, costUSD: 12),
+            ],
+            coverage: .sessionTotals)
+        let analytics = try #require(UsageAnalytics(servers: [("desk · opencode", report)]))
+        let glm = try #require(analytics.models.first { $0.label.contains("glm") })
+        #expect(glm.money == "Unpriced")
+        let qwen = try #require(analytics.models.first { $0.label.contains("qwen") })
+        #expect(qwen.money == "Free")
+        let cloudRow = try #require(analytics.providers.first { $0.label == "Ollama Cloud" })
+        #expect(cloudRow.money == "Unpriced")
+        let line = try #require(analytics.modelsLine)
+        #expect(line.contains("unpriced"))
+        #expect(line.contains("Ollama Cloud"))
+        #expect(line.contains("on a machine you already own"))
+        #expect(!line.contains("2 models cost nothing"))
+    }
 }

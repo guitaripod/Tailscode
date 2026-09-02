@@ -123,51 +123,12 @@ enum AnalyticsPanel {
         window: UnsafeMutablePointer<GtkWidget>
     ) {
         Gtk.removeChildren(of: slot)
-        let package = AnalyticsShare(analytics)
         let windowBits = UInt(bitPattern: window)
-        gtk_box_append(ptr(slot), stylePicker())
-        let copy = Gtk.button(Localized.text("Copy card")) {
-            if let png = AnalyticsCardRenderer.png(package) {
-                png.withUnsafeBytes { raw in
-                    guard let base = raw.baseAddress else { return }
-                    tailscode_clipboard_set_text_and_image_png(
-                        package.plainText, base, gsize(png.count))
-                }
-            } else {
-                Gtk.copyToClipboard(package.plainText)
-            }
+        let open = Gtk.button(Localized.text("Share card…")) {
+            guard let windowRaw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
+            ShareCardDialog.present(analytics, parent: ptr(windowRaw))
         }
-        let save = Gtk.button(Localized.text("Save image…")) {
-            guard let png = AnalyticsCardRenderer.png(package),
-                let windowRaw = UnsafeMutableRawPointer(bitPattern: windowBits)
-            else { return }
-            Gtk.saveFile(
-                parent: ptr(windowRaw), suggestedName: package.filename, data: png
-            ) { _ in }
-        }
-        gtk_box_append(ptr(slot), copy)
-        gtk_box_append(ptr(slot), save)
-    }
-
-    /// The look the card wears, chosen where the card is copied or saved: every style by name,
-    /// the remembered one selected. It dresses the card only, so nothing on screen changes.
-    private static func stylePicker() -> UnsafeMutablePointer<GtkWidget> {
-        let model = gtk_string_list_new(nil)!
-        for style in CardStyle.all { gtk_string_list_append(model, style.name) }
-        let picker = gtk_drop_down_new(OpaquePointer(UnsafeMutableRawPointer(model)), nil)!
-        let chosen = CardStyleSelection.current
-        let index = CardStyle.all.firstIndex { $0.id == chosen.id } ?? 0
-        gtk_drop_down_set_selected(op(picker), guint(index))
-        gtk_widget_set_tooltip_text(picker, Localized.text("Card style"))
-        let bits = UInt(bitPattern: picker)
-        Gtk.onNotify(UnsafeMutableRawPointer(picker), property: "selected") {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-            let selected = Int(gtk_drop_down_get_selected(op(raw)))
-            guard CardStyle.all.indices.contains(selected) else { return }
-            CardStyleSelection.set(CardStyle.all[selected])
-            SettingsFile.capture()
-        }
-        return picker
+        gtk_box_append(ptr(slot), open)
     }
 
     /// Every server the app knows, asked for its whole ledger — every model the person runs
@@ -190,6 +151,8 @@ enum AnalyticsPanel {
                 } else {
                     missing.append(name)
                 }
+            } catch AgentError.decoding {
+                missing.append(name)
             } catch {
                 continue
             }

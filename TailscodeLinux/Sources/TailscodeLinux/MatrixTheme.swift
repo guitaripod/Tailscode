@@ -967,6 +967,7 @@ enum MatrixTheme {
         .analytics-delta-down { color: \(accent); \(t(.metricDetail)) }
         .analytics-delta-flat { color: \(textDim); \(t(.metricDetail)) }
         .analytics-free { color: \(info); \(t(.metricDetail)) }
+        .share-card-preview { border-radius: 14px; }
         .analytics-bar { background-color: \(accentDim); border-radius: 2px; }
         .analytics-bar-today { background-color: \(accent); border-radius: 2px; }
         .analytics-hour { background-color: alpha(\(info), 0.75); border-radius: 2px; }

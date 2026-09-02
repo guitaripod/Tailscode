@@ -1197,6 +1197,8 @@ final class MainWindowController: NSWindowController {
                 } else {
                     missing.append(name)
                 }
+            } catch AgentError.decoding {
+                missing.append(name)
             } catch {
                 continue
             }

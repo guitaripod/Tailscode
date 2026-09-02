@@ -16,6 +16,7 @@ enum AnalyticsFetcher {
     private enum Answer: Sendable {
         case report(index: Int, name: String, report: UsageAnalyticsReport)
         case tooOld(index: Int, name: String)
+        case unreadable(index: Int, name: String)
         case unreachable
     }
 
@@ -46,6 +47,9 @@ enum AnalyticsFetcher {
                             return .tooOld(index: index, name: name)
                         }
                         return .report(index: index, name: name, report: report)
+                    } catch AgentError.decoding(let detail) {
+                        AppLogger.session.error("analytics: \(name) answered unreadably: \(detail)")
+                        return .unreadable(index: index, name: name)
                     } catch {
                         return .unreachable
                     }
@@ -69,7 +73,7 @@ enum AnalyticsFetcher {
             switch answer {
             case .report(let index, let name, let report):
                 reported.append((index, name, report))
-            case .tooOld(let index, let name):
+            case .tooOld(let index, let name), .unreadable(let index, let name):
                 missing.append((index, name))
             case .unreachable:
                 break

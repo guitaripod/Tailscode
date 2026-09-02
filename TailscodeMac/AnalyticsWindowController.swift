@@ -22,7 +22,6 @@ final class AnalyticsWindowController: NSWindowController {
     /// a menu that opens from the far edge of a resizable window reads as one that came from
     /// nowhere. The footer is rebuilt with every render, so the button is remembered rather than
     /// looked up.
-    private weak var shareAnchor: NSView?
 
     private static let chartHeight: CGFloat = 100
     private static let weekdayHeight: CGFloat = 56
@@ -646,11 +645,9 @@ final class AnalyticsWindowController: NSWindowController {
     private func footer() -> NSView {
         var views: [NSView] = [RowKit.spacer()]
         if analytics != nil {
-            views.append(stylePopUp())
-            let share = RowKit.ActionButton(title: Localized.text("Share")) { [weak self] in
-                self?.share(from: self?.shareAnchor)
+            let share = RowKit.ActionButton(title: Localized.text("Share…")) { [weak self] in
+                self?.share()
             }
-            shareAnchor = share
             share.bezelStyle = .rounded
             share.controlSize = .small
             views.append(share)
@@ -667,56 +664,11 @@ final class AnalyticsWindowController: NSWindowController {
         return row
     }
 
-    /// The look the card wears, chosen where the card is shared: every style with its swatch,
-    /// the remembered one selected. It dresses the card only, so nothing on screen changes.
-    private func stylePopUp() -> NSPopUpButton {
-        let popUp = NSPopUpButton()
-        popUp.controlSize = .small
-        popUp.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        let chosen = CardStyleSelection.current
-        for style in CardStyle.all {
-            let item = NSMenuItem(title: style.name, action: nil, keyEquivalent: "")
-            item.image = AnalyticsCardRenderer.swatch(style)
-            item.toolTip = style.tagline
-            item.representedObject = style.id
-            popUp.menu?.addItem(item)
-            if style.id == chosen.id { popUp.select(item) }
-        }
-        popUp.target = self
-        popUp.action = #selector(styleChanged(_:))
-        popUp.toolTip = Localized.text("Card style")
-        popUp.setAccessibilityLabel(Localized.text("Card style"))
-        return popUp
-    }
-
-    @objc private func styleChanged(_ sender: NSPopUpButton) {
-        guard let id = sender.selectedItem?.representedObject as? String else { return }
-        CardStyleSelection.set(CardStyle.named(id))
-    }
-
-    private func share(from anchor: NSView?) {
-        guard let analytics else { return }
-        let package = AnalyticsShare(analytics)
-        var items: [Any] = [package.plainText]
-        if let rendered = AnalyticsCardRenderer.png(package) {
-            let directory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("shared-analytics", isDirectory: true)
-            try? FileManager.default.createDirectory(
-                at: directory, withIntermediateDirectories: true)
-            let url = directory.appendingPathComponent(rendered.filename)
-            if (try? rendered.data.write(to: url, options: .atomic)) != nil {
-                items.insert(url, at: 0)
-            } else {
-                items.insert(rendered.image, at: 0)
-            }
-        }
-        let picker = NSSharingServicePicker(items: items)
-        let source = anchor ?? window?.contentView
-        guard let source else { return }
-        let rect =
-            anchor.map { $0.bounds }
-            ?? NSRect(x: source.bounds.midX - 1, y: source.bounds.minY + 12, width: 2, height: 2)
-        picker.show(relativeTo: rect, of: source, preferredEdge: .minY)
+    /// Every road out goes through the preview: the card at its look, the look changeable in
+    /// place, and share, copy or save from there.
+    private func share() {
+        guard let analytics, let window else { return }
+        ShareCardPanel.present(analytics, on: window)
     }
 
     private func clearColumn() {

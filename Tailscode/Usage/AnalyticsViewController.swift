@@ -82,52 +82,17 @@ final class AnalyticsViewController: UIViewController {
             navigationItem.rightBarButtonItem = nil
             return
         }
-        let item = UIBarButtonItem(
-            image: UIImage(systemName: "square.and.arrow.up"), style: .plain, target: nil,
-            action: nil)
-        item.menu = shareMenu()
-        item.accessibilityLabel = String(localized: "Share")
-        navigationItem.rightBarButtonItem = item
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "square.and.arrow.up"), style: .plain, target: self,
+            action: #selector(shareTapped))
+        navigationItem.rightBarButtonItem?.accessibilityLabel = String(localized: "Share")
     }
 
-    /// The share is a menu rather than a bare button because the card has a look to choose:
-    /// share first, then every style the card can wear with its swatch, the chosen one ticked.
-    /// Picking a style is remembered and changes nothing on screen — the card is the thing it
-    /// dresses, and the next share wears it.
-    private func shareMenu() -> UIMenu {
-        let share = UIAction(
-            title: String(localized: "Share card"),
-            image: UIImage(systemName: "square.and.arrow.up")
-        ) { [weak self] _ in self?.shareTapped() }
-        let chosen = CardStyleSelection.current
-        let styles = CardStyle.all.map { style in
-            UIAction(
-                title: style.name, subtitle: style.tagline,
-                image: AnalyticsCardRenderer.swatch(style),
-                state: style.id == chosen.id ? .on : .off
-            ) { [weak self] _ in
-                CardStyleSelection.set(style)
-                self?.refreshShareButton()
-            }
-        }
-        let looks = UIMenu(
-            title: String(localized: "Card style"), image: UIImage(systemName: "paintpalette"),
-            options: [.singleSelection], children: styles)
-        return UIMenu(children: [share, looks])
-    }
-
+    /// The share is a preview first: the card drawn at its look, the look changeable in place,
+    /// and the share sheet from there — nobody hands over a picture they have not seen.
     @objc private func shareTapped() {
         guard let analytics else { return }
-        let share = AnalyticsShare(analytics)
-        var items: [Any] = [share.plainText]
-        if let url = AnalyticsCardRenderer.temporaryFile(share) {
-            items.insert(url, at: 0)
-        }
-        let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        sheet.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItem
-        sheet.popoverPresentationController?.sourceView = view
-        Theme.Haptics.success()
-        present(sheet, animated: true)
+        ShareCardViewController.present(analytics, from: self)
     }
 
     override func viewDidLayoutSubviews() {
