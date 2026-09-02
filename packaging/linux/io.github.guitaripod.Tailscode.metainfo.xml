@@ -69,6 +69,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.33" date="2026-09-02">
+      <description>
+        <p>Compacting works on every server. A compaction asked for while the agent is still writing waits behind that turn as a /compact row instead of cutting the answer off, the seam it leaves is drawn with what it traded (tokens before and after, the time it took, the summary behind it), and an Oh My Pi conversation can no longer get stuck busy after one — a message sent into it used to sit there unanswered.</p>
+        <p>The page glides after the writing instead of jumping a line at a time, a sent prompt rises to the top whichever way the server echoes it, and a fast model is written at its own speed rather than throttled.</p>
+        <p>The usage screen counts every model, including ones on your own machine that cost nothing, and lets you pick how much of the month you are reading — week, month, quarter or year — with the chart's grain following. A server says what let this device in — trusted through the tailnet, or by its password — and a tailnet-only refusal is never shown as a password prompt.</p>
+      </description>
+    </release>
     <release version="1.32" date="2026-08-31">
       <description>
         <p>Clicking through chats is quick and always lands: the sidebar redraws only the row that changed instead of rebuilding the whole list, and never while the mouse is down. Expanding a tool call while the answer is still being written always registers, and a finished conversation holds still — tool marks and workflow circles stop the moment the turn ends.</p>
