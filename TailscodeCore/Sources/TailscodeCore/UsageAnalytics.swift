@@ -24,7 +24,7 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// much time the reader asked to see (``UsageWindow/grain``).
     public struct DayBar: Sendable, Equatable {
         public let key: String
-        /// What this bar is, in words: a day as `Sun 9`, a week as `Sep 8–14`, a month as
+        /// What this bar is, in words: a day as `Sun Aug 9`, a week as `Sep 8–14`, a month as
         /// `September`. Every reading of a bar — the tooltip, the peak annotation, the line a
         /// screen reader is given — says this rather than assembling one of its own.
         public let title: String
@@ -65,6 +65,22 @@ public struct UsageAnalytics: Sendable, Equatable {
             self.share = share
             self.isFree = isFree
         }
+    }
+
+    /// One thing worth saying about the window, typed by what it is about so a surface that
+    /// already draws the models or the tools can leave out the line that repeats them.
+    public struct Insight: Sendable, Equatable {
+        public enum Topic: Sendable, Equatable {
+            case model
+            case cache
+            case tool
+            case subagents
+            case streak
+            case clock
+        }
+
+        public let topic: Topic
+        public let text: String
     }
 
     public struct HourBar: Sendable, Equatable {
@@ -115,7 +131,10 @@ public struct UsageAnalytics: Sendable, Equatable {
     public let records: [Record]
     /// Per-server shares — empty when only one machine reported, because a split of one is noise.
     public let machines: [Meter]
-    public let insights: [String]
+    /// Everything worth saying, in the order it is worth saying it; ``insights`` is the three a
+    /// surface with nothing else on it leads with.
+    public let findings: [Insight]
+    public var insights: [String] { findings.prefix(3).map(\.text) }
     public let source: String
     /// Servers that answered but are too old for the route, named so their absence from the
     /// numbers is a stated fact rather than a silent hole.
@@ -134,6 +153,9 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// charts it sits beside.
     public let trophies: [Trophy]
     public let scores: [TrophyScore]
+    private let rankedModels: [SessionSpendReport.ModelShare]
+    private let priced: Bool
+    private let prefix: String
 
     public static let defaultWindowDays = UsageWindow.fallback.days
     private static let projectLimit = 8
@@ -316,8 +338,11 @@ public struct UsageAnalytics: Sendable, Equatable {
         // Which model did the work is a token count, not a bill: a model on the server's own GPU
         // costs nothing and can still have done most of the month. The money stays on the row.
         let rankedModels = modelRows.values.sorted(by: Self.byWork)
+        self.rankedModels = rankedModels
+        self.priced = priced
+        self.prefix = prefix
         let modelPeak = rankedModels.map { Double($0.tokens.fresh) }.max() ?? 0
-        let modelLabels = Self.modelLabels(rankedModels)
+        let modelLabels = Self.modelLabels(Array(rankedModels.prefix(Self.modelLimit)))
         self.models = rankedModels.prefix(Self.modelLimit).map { row in
             Meter(
                 label: modelLabels[row.model] ?? ModelBadge.shortName(row.model),
@@ -329,7 +354,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         }
         self.providers = Self.providerMeters(models: modelRows, prefix: prefix)
         self.modelsLine = Self.modelsLine(
-            ranked: rankedModels, models: modelRows, priced: priced, prefix: prefix)
+            ranked: rankedModels, priced: priced, prefix: prefix, shown: Self.modelLimit)
 
         let projectPeak = projectRows.values.map { Self.rank($0.costUSD, $0.tokens, priced) }
             .max() ?? 0
@@ -457,7 +482,7 @@ public struct UsageAnalytics: Sendable, Equatable {
             self.machines = []
         }
 
-        self.insights = Self.insightLines(
+        self.findings = Self.findings(
             totals: totals, models: modelRows, tools: toolRows, hourTurns: hourTurns,
             cacheSaved: cacheSaved, streak: streak, subagents: subagents, prefix: prefix)
 
@@ -469,6 +494,13 @@ public struct UsageAnalytics: Sendable, Equatable {
         self.missingServers = missingServers
         self.coverageNote = Self.coverageNote(
             coarse: coarse, servers: reports.count, coverage: coverage)
+    }
+
+    /// The caption under a models list that shows only its first `shown` rows: what it left out,
+    /// and what ran for nothing. A card that draws four rows must not caption them with what a
+    /// list of twelve left out.
+    public func modelsLine(shown: Int) -> String? {
+        Self.modelsLine(ranked: rankedModels, priced: priced, prefix: prefix, shown: shown)
     }
 
     /// The tallest bar in the daily chart, which the chart annotates along with today and
@@ -546,7 +578,9 @@ public struct UsageAnalytics: Sendable, Equatable {
         let ranked = rows.values.sorted { byWork($0.share, $1.share) }
         let peak = ranked.map { Double($0.share.tokens.fresh) }.max() ?? 0
         return ranked.map { row in
-            var detail = Localized.text("%d models", row.models)
+            var detail =
+                row.models == 1
+                ? Localized.text("1 model") : Localized.text("%d models", row.models)
             detail += Localized.text(" · %@ tokens", StatusFacts.tokens(row.share.tokens.total))
             if ProviderIdentity.isLocal(row.share.model) {
                 detail += Localized.text(" · on your own machine")
@@ -561,7 +595,8 @@ public struct UsageAnalytics: Sendable, Equatable {
 
     /// Two models can wear the same name through two different doors — the same weights served
     /// by a gateway and by its vendor — and two identical rows read as a bug rather than as a
-    /// choice. Only the names that actually collide are qualified; the rest stay short.
+    /// choice. Only the names that collide among the rows actually listed are qualified; a twin
+    /// the list cut leaves the row it cannot be confused with short.
     private static func modelLabels(_ ranked: [SessionSpendReport.ModelShare]) -> [String: String] {
         var counts: [String: Int] = [:]
         for row in ranked { counts[ModelBadge.shortName(row.model), default: 0] += 1 }
@@ -601,31 +636,32 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// The caption under the models: what the list could not fit, and what the models that cost
     /// nothing actually did — the fact a column of "$0" hides.
     private static func modelsLine(
-        ranked: [SessionSpendReport.ModelShare], models: [String: SessionSpendReport.ModelShare],
-        priced: Bool, prefix: String
+        ranked: [SessionSpendReport.ModelShare], priced: Bool, prefix: String, shown: Int
     ) -> String? {
         var parts: [String] = []
-        let hidden = ranked.dropFirst(modelLimit)
+        let hidden = ranked.dropFirst(shown)
         if !hidden.isEmpty {
+            let tokens = StatusFacts.tokens(hidden.reduce(0) { $0 + $1.tokens.total })
+            let money = value(
+                costUSD: hidden.reduce(0) { $0 + $1.costUSD },
+                tokens: SessionSpendReport.Tokens(
+                    output: hidden.reduce(0) { $0 + $1.tokens.total }),
+                prefix: prefix)
             parts.append(
-                Localized.text(
-                    "%d more models not shown · %@ tokens · %@", hidden.count,
-                    StatusFacts.tokens(hidden.reduce(0) { $0 + $1.tokens.total }),
-                    value(
-                        costUSD: hidden.reduce(0) { $0 + $1.costUSD },
-                        tokens: SessionSpendReport.Tokens(
-                            output: hidden.reduce(0) { $0 + $1.tokens.total }),
-                        prefix: prefix)))
+                hidden.count == 1
+                    ? Localized.text("1 more model not shown · %@ tokens · %@", tokens, money)
+                    : Localized.text(
+                        "%d more models not shown · %@ tokens · %@", hidden.count, tokens, money))
         }
-        if let free = freeLine(models: models, priced: priced) { parts.append(free) }
+        if let free = freeLine(models: ranked, priced: priced) { parts.append(free) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// What the models that cost nothing actually did, which is the fact a column of "$0" hides.
     private static func freeLine(
-        models: [String: SessionSpendReport.ModelShare], priced: Bool
+        models: [SessionSpendReport.ModelShare], priced: Bool
     ) -> String? {
-        let free = models.values.filter { $0.costUSD <= 0 && $0.tokens.total > 0 }
+        let free = models.filter { $0.costUSD <= 0 && $0.tokens.total > 0 }
         guard !free.isEmpty else { return nil }
         let freeTokens = free.reduce(0) { $0 + $1.tokens.fresh }
         guard freeTokens > 0 else { return nil }
@@ -634,12 +670,17 @@ public struct UsageAnalytics: Sendable, Equatable {
                 "Every token this window ran on a machine you already own — %@ of them, at no cost",
                 StatusFacts.tokens(freeTokens))
         }
-        let allTokens = models.values.reduce(0) { $0 + $1.tokens.fresh }
+        let allTokens = models.reduce(0) { $0 + $1.tokens.fresh }
         // A hundred percent is reserved for a window where nothing was paid for at all: rounding
         // a sliver of paid work away would say the month was free when it was not.
         var percent =
             allTokens > 0 ? Int((Double(freeTokens) / Double(allTokens) * 100).rounded()) : 0
         if freeTokens < allTokens { percent = min(99, percent) }
+        if free.count == 1 {
+            return Localized.text(
+                "%@ tokens on %@ cost nothing — %d%% of the window's work ran on a machine you already own",
+                StatusFacts.tokens(freeTokens), ModelBadge.shortName(free[0].model), percent)
+        }
         return Localized.text(
             "%@ tokens across %d models cost nothing — %d%% of the window's work ran on a machine you already own",
             StatusFacts.tokens(freeTokens), free.count, percent)
@@ -706,9 +747,10 @@ public struct UsageAnalytics: Sendable, Equatable {
         return formatter
     }
 
-    /// One bar's worth of days, with the words that name it. A day names itself by weekday, a
-    /// week by the dates it spans, a month by its own name — a reader should never have to work
-    /// out what a column is from how many there are.
+    /// One bar's worth of days, with the words that name it. A day names itself by weekday and
+    /// date with its month — thirty days always straddle two, and a `Sun 9` is one of two Sundays
+    /// — a week by the dates it spans, a month by its own name; a reader should never have to
+    /// work out what a column is from how many there are.
     private struct Group {
         let key: String
         let title: String
@@ -722,10 +764,14 @@ public struct UsageAnalytics: Sendable, Equatable {
         let formatter = dayFormatter(calendar)
         let todayKey = formatter.string(from: now)
         guard grain != .day else {
+            let display = DateFormatter()
+            display.calendar = calendar
+            display.timeZone = calendar.timeZone
+            display.dateFormat = "MMM d"
             return days.map { key in
                 let date = formatter.date(from: key)
                 let title =
-                    date.map { "\(weekdayName($0, calendar: calendar)) \(calendar.component(.day, from: $0))" }
+                    date.map { "\(weekdayName($0, calendar: calendar)) \(display.string(from: $0))" }
                     ?? key
                 return Group(key: key, title: title, days: [key], holdsToday: key == todayKey)
             }
@@ -975,51 +1021,66 @@ public struct UsageAnalytics: Sendable, Equatable {
         return rows
     }
 
-    private static func insightLines(
+    private static func findings(
         totals: UsageAnalyticsReport.Totals, models: [String: SessionSpendReport.ModelShare],
         tools: [String: Int], hourTurns: [Int], cacheSaved: Double, streak: Int,
         subagents: UsageAnalyticsReport.Subagents, prefix: String
-    ) -> [String] {
-        var lines: [String] = []
+    ) -> [Insight] {
+        var lines: [Insight] = []
         let work = models.values.reduce(0) { $0 + $1.tokens.fresh }
         if let top = models.values.max(by: { $0.tokens.fresh < $1.tokens.fresh }), work > 0 {
             let percent = Int((Double(top.tokens.fresh) / Double(work) * 100).rounded())
             if percent >= 60, models.count > 1 {
                 lines.append(
-                    Localized.text(
-                        "%@ did most of it: %d%% of the window's tokens",
-                        ModelBadge.shortName(top.model), percent))
+                    Insight(
+                        topic: .model,
+                        text: Localized.text(
+                            "%@ did most of it: %d%% of the window's tokens",
+                            ModelBadge.shortName(top.model), percent)))
             }
         }
         if cacheSaved > totals.costUSD, totals.costUSD > 0 {
             lines.append(
-                Localized.text(
-                    "Caching kept %@ off the ledger — more than the window itself cost",
-                    "~" + SessionSpend.money(cacheSaved)))
+                Insight(
+                    topic: .cache,
+                    text: Localized.text(
+                        "Caching kept %@ off the ledger — more than the window itself cost",
+                        "~" + SessionSpend.money(cacheSaved))))
         }
         if let top = tools.max(by: { $0.value < $1.value }) {
             let total = tools.values.reduce(0, +)
             let percent = total > 0 ? Int((Double(top.value) / Double(total) * 100).rounded()) : 0
             if percent >= 40 {
                 lines.append(
-                    Localized.text("%@ carries the work: %d%% of all tool calls", top.key, percent))
+                    Insight(
+                        topic: .tool,
+                        text: Localized.text(
+                            "%@ carries the work: %d%% of all tool calls", top.key, percent)))
             }
         }
         if subagents.runs >= 100 {
             lines.append(
-                Localized.text(
-                    "%@ subagent runs did part of the work — %@ of it",
-                    Self.count(subagents.runs), prefix + SessionSpend.money(subagents.costUSD)))
+                Insight(
+                    topic: .subagents,
+                    text: Localized.text(
+                        "%@ subagent runs did part of the work — %@ of it",
+                        Self.count(subagents.runs), prefix + SessionSpend.money(subagents.costUSD))))
         }
         if streak >= 5 {
-            lines.append(Localized.text("%d days without missing one", streak))
+            lines.append(
+                Insight(
+                    topic: .streak,
+                    text: Localized.text("%d days without missing one", streak)))
         }
-        if lines.isEmpty, let peak = hourTurns.indices.max(by: { hourTurns[$0] < hourTurns[$1] }),
+        if let peak = hourTurns.indices.max(by: { hourTurns[$0] < hourTurns[$1] }),
             hourTurns[peak] > 0
         {
-            lines.append(Localized.text("The %02d:00 hour starts the most turns", peak))
+            lines.append(
+                Insight(
+                    topic: .clock,
+                    text: Localized.text("The %02d:00 hour starts the most turns", peak)))
         }
-        return Array(lines.prefix(3))
+        return lines
     }
 
     static func count(_ value: Int) -> String {

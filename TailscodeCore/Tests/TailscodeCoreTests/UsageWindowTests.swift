@@ -87,7 +87,7 @@ struct UsageWindowTests {
     func barsNameThemselves() throws {
         let month = try #require(analytics(.month))
         #expect(month.days.last?.title.contains(",") == false)
-        #expect(month.days.last?.title.split(separator: " ").count == 2)
+        #expect(month.days.last?.title.split(separator: " ").count == 3)
         let quarter = try #require(analytics(.quarter))
         #expect(quarter.days.contains { $0.title.contains("–") })
         let year = try #require(analytics(.year))

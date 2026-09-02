@@ -2252,19 +2252,55 @@ static void tailscode_cairo_round_rect(
     cairo_close_path(cr);
 }
 
-static void tailscode_pango_draw(
-    cairo_t *cr, PangoLayout *layout, const char *text, double x, double y, double width,
-    int size, int weight, const char *hex, double tracking, int align) {
-    if (!text) text = "";
-    pango_layout_set_text(layout, text, -1);
-    pango_layout_set_width(layout, (int)(width * PANGO_SCALE));
-    pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+static void tailscode_pango_font(PangoLayout *layout, int size, int weight) {
     PangoFontDescription *font = pango_font_description_new();
     pango_font_description_set_family(font, "Inter, Cantarell, sans-serif");
     pango_font_description_set_absolute_size(font, size * PANGO_SCALE);
     pango_font_description_set_weight(font, weight);
     pango_layout_set_font_description(layout, font);
     pango_font_description_free(font);
+}
+
+/// The ink width of one line of text, so a detail can start where a label ends.
+static double tailscode_pango_width(PangoLayout *layout, const char *text, int size, int weight) {
+    if (!text) text = "";
+    pango_layout_set_attributes(layout, NULL);
+    pango_layout_set_width(layout, -1);
+    pango_layout_set_height(layout, -1);
+    pango_layout_set_text(layout, text, -1);
+    tailscode_pango_font(layout, size, weight);
+    int w = 0, h = 0;
+    pango_layout_get_pixel_size(layout, &w, &h);
+    return (double)w;
+}
+
+/// Text set on `lines` lines: wrapped by word inside `width`, the last line ellipsised, and the
+/// lines placed 1.28 em apart as the card reserves on every desk — a face whose own leading is
+/// taller would otherwise run its second line into the block below.
+static void tailscode_pango_draw_lines(
+    cairo_t *cr, PangoLayout *layout, const char *text, double x, double y, double width,
+    int size, int weight, const char *hex, double tracking, int align, int lines) {
+    if (!text) text = "";
+    if (lines < 1) lines = 1;
+    pango_layout_set_text(layout, text, -1);
+    pango_layout_set_width(layout, (int)(width * PANGO_SCALE));
+    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+    pango_layout_set_height(layout, -lines);
+    pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+    tailscode_pango_font(layout, size, weight);
+    pango_layout_set_line_spacing(layout, 0);
+    if (lines > 1) {
+        PangoLayoutLine *first = pango_layout_get_line_readonly(layout, 0);
+        PangoRectangle logical;
+        if (first) {
+            pango_layout_line_get_pixel_extents(first, NULL, &logical);
+            double natural = (double)logical.height;
+            double wanted = size * 1.28;
+            pango_layout_set_spacing(layout, (int)((wanted - natural) * PANGO_SCALE));
+        }
+    } else {
+        pango_layout_set_spacing(layout, 0);
+    }
     if (align == 1) pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
     else if (align == 2) pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
     else pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
@@ -2279,6 +2315,12 @@ static void tailscode_pango_draw(
     tailscode_cairo_set_hex(cr, hex, 1.0);
     cairo_move_to(cr, x, y);
     pango_cairo_show_layout(cr, layout);
+}
+
+static void tailscode_pango_draw(
+    cairo_t *cr, PangoLayout *layout, const char *text, double x, double y, double width,
+    int size, int weight, const char *hex, double tracking, int align) {
+    tailscode_pango_draw_lines(cr, layout, text, x, y, width, size, weight, hex, tracking, align, 1);
 }
 
 static int tailscode_split_csv(const char *csv, double *out, int max) {
@@ -2443,11 +2485,13 @@ unsigned char *tailscode_analytics_card_png(
             tailscode_pango_draw(cr, layout, a[i], pad, y, content, 84, PANGO_WEIGHT_BOLD, text, 0, 0);
             y += 88;
         } else if (strcmp(kind, "body") == 0) {
-            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 28, PANGO_WEIGHT_NORMAL, text, 0, 0);
-            y += 28 * 1.28 * 2;
+            int lines = i0[i] > 0 ? i0[i] : 1;
+            tailscode_pango_draw_lines(cr, layout, a[i], pad, y, content, 28, PANGO_WEIGHT_NORMAL, text, 0, 0, lines);
+            y += 28 * 1.28 * lines;
         } else if (strcmp(kind, "dim") == 0) {
-            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 24, PANGO_WEIGHT_NORMAL, text_dim, 0, 0);
-            y += 24 * 1.28 * 2;
+            int lines = i0[i] > 0 ? i0[i] : 1;
+            tailscode_pango_draw_lines(cr, layout, a[i], pad, y, content, 24, PANGO_WEIGHT_NORMAL, text_dim, 0, 0, lines);
+            y += 24 * 1.28 * lines;
         } else if (strcmp(kind, "trend") == 0) {
             const char *ink = text_dim;
             if (i0[i] == 0) ink = warn;
@@ -2504,18 +2548,32 @@ unsigned char *tailscode_analytics_card_png(
                         tailscode_cairo_set_hex(cr, fill, alpha);
                         cairo_fill(cr);
                     }
-                    y += daily_h;
+                    y += daily_h + 22;
                 }
             } else {
-                y += is_week ? (weekday_h + 22) : daily_h;
+                y += is_week ? (weekday_h + 22) : (daily_h + 22);
             }
+        } else if (strcmp(kind, "axis") == 0) {
+            double axis_y = y - 22 + 6;
+            tailscode_pango_draw(cr, layout, a[i], pad, axis_y, content / 2.0, 16, PANGO_WEIGHT_MEDIUM, text_dim, 0, 0);
+            tailscode_pango_draw(cr, layout, b[i], pad + content / 2.0, axis_y, content / 2.0, 16, PANGO_WEIGHT_MEDIUM, text_dim, 0, 2);
         } else if (strcmp(kind, "section") == 0) {
             char *upper = g_utf8_strup(a[i] ? a[i] : "", -1);
             tailscode_pango_draw(cr, layout, upper, pad, y, content, 22, PANGO_WEIGHT_BOLD, text_dim, 2, 0);
             g_free(upper);
             y += 26;
         } else if (strcmp(kind, "meter") == 0) {
-            tailscode_pango_draw(cr, layout, a[i], pad, y, content * 0.55, 24, PANGO_WEIGHT_SEMIBOLD, text, 0, 0);
+            double label_w = content * 0.55;
+            tailscode_pango_draw(cr, layout, a[i], pad, y, label_w, 24, PANGO_WEIGHT_SEMIBOLD, text, 0, 0);
+            if (b[i] && b[i][0]) {
+                double ink = tailscode_pango_width(layout, a[i], 24, PANGO_WEIGHT_SEMIBOLD);
+                if (ink > label_w) ink = label_w;
+                double detail_x = pad + ink + 14;
+                double detail_w = pad + content - 180 - detail_x;
+                if (detail_w > 60) {
+                    tailscode_pango_draw(cr, layout, b[i], detail_x, y + 5, detail_w, 18, PANGO_WEIGHT_NORMAL, text_dim, 0, 0);
+                }
+            }
             if (c[i] && c[i][0]) {
                 tailscode_pango_draw(cr, layout, c[i], pad, y, content, 24, PANGO_WEIGHT_SEMIBOLD, text, 0, 2);
             }
@@ -2541,18 +2599,18 @@ unsigned char *tailscode_analytics_card_png(
             tailscode_pango_draw(cr, layout, c[i], pad + 40, y + 20, content - 40, 24, PANGO_WEIGHT_SEMIBOLD, text, 0, 0);
             y += 48;
         } else if (strcmp(kind, "insight") == 0) {
-            char *line = g_strdup_printf("✦  %s", a[i] ? a[i] : "");
-            tailscode_pango_draw(cr, layout, line, pad, y, content, 28, PANGO_WEIGHT_NORMAL, text, 0, 0);
-            g_free(line);
-            y += 28 * 1.28 * 3;
+            int lines = i0[i] > 0 ? i0[i] : 1;
+            tailscode_pango_draw_lines(cr, layout, a[i], pad, y, content, 28, PANGO_WEIGHT_NORMAL, text, 0, 0, lines);
+            y += 28 * 1.28 * lines;
         } else if (strcmp(kind, "rule") == 0) {
             tailscode_cairo_set_hex(cr, rule, 1.0);
             cairo_rectangle(cr, pad, y, content, 1);
             cairo_fill(cr);
             y += 1;
         } else if (strcmp(kind, "foot") == 0) {
-            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 20, PANGO_WEIGHT_NORMAL, text_dim, 0, 0);
-            y += 20 * 1.28 * 2;
+            int lines = i0[i] > 0 ? i0[i] : 1;
+            tailscode_pango_draw_lines(cr, layout, a[i], pad, y, content, 20, PANGO_WEIGHT_NORMAL, text_dim, 0, 0, lines);
+            y += 20 * 1.28 * lines;
         } else if (strcmp(kind, "spacer") == 0) {
             y += d0[i];
         }

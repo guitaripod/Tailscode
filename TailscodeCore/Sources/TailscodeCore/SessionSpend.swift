@@ -213,7 +213,18 @@ public struct SessionSpend: Sendable, Equatable {
         if value < 0.01 { return "<$0.01" }
         if value < 1 { return String(format: "$%.2f", value) }
         if value < 100 { return String(format: "$%.2f", value) }
-        return String(format: "$%.0f", value)
+        return "$" + wholeDollars(value)
+    }
+
+    /// Dollars grouped by thousands, because a card that writes 1,305 turns beside $9358 is
+    /// spelling the same kind of number two ways.
+    private static func wholeDollars(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value.rounded()))
+            ?? String(format: "%.0f", value)
     }
 
     /// The label the band wears: money if there is any, the token count if there is not. Prefixed

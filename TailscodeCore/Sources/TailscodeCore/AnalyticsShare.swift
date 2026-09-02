@@ -12,10 +12,9 @@ public struct AnalyticsShare: Sendable, Equatable {
     public let card: Card
 
     public init(_ analytics: UsageAnalytics, now: Date = Date(), calendar: Calendar = .current) {
-        let window = analytics.windowLabel
-        self.subject = Localized.text("The month in numbers · %@", analytics.headline)
+        self.subject = "\(analytics.window.surfaceTitle) · \(analytics.headline)"
         self.filename = Self.filename(
-            window: window, money: analytics.headline, now: now, calendar: calendar)
+            window: analytics.window, money: analytics.headline, now: now, calendar: calendar)
         self.plainText = Self.plainText(analytics)
         self.markdown = Self.markdown(analytics)
         self.card = Card(analytics: analytics)
@@ -91,6 +90,21 @@ public struct AnalyticsShare: Sendable, Equatable {
         public let title: String
         public let value: String
         public let detail: String?
+
+        /// The dim line over the value: the record's name, and what it was set by — the
+        /// conversation, the prompt — because a priciest conversation with no name is a number.
+        public var caption: String {
+            guard let detail, !detail.isEmpty else { return title }
+            return "\(title) · \(detail)"
+        }
+    }
+
+    /// The bars over time with the two dates that anchor them; thirty unlabelled columns are a
+    /// texture, not a chart.
+    public struct DailyChart: Sendable, Equatable {
+        public let bars: [DayBar]
+        public let leading: String
+        public let trailing: String
     }
 
     public enum Block: Sendable, Equatable {
@@ -100,7 +114,7 @@ public struct AnalyticsShare: Sendable, Equatable {
         case body(String)
         case dim(String)
         case trend(String, TrendTone)
-        case daily([DayBar])
+        case daily(DailyChart)
         case weekday([DayBar])
         case section(String)
         case meter(MeterBar)
@@ -144,7 +158,7 @@ public struct AnalyticsShare: Sendable, Equatable {
             var out: [Block] = [
                 .brand("TAILSCODE"),
                 .spacer(6),
-                .kicker(Localized.text("The month in numbers")),
+                .kicker(analytics.window.surfaceTitle),
                 .spacer(18),
                 .hero(analytics.headline),
                 .spacer(10),
@@ -167,21 +181,31 @@ public struct AnalyticsShare: Sendable, Equatable {
                             }
                         }()))
             }
-            if analytics.days.contains(where: { $0.share > 0 }) {
+            var drawnRecords = analytics.records
+            if analytics.days.contains(where: { $0.share > 0 }),
+                let first = analytics.days.first, let last = analytics.days.last
+            {
                 out.append(.spacer(28))
                 out.append(.section(analytics.window.chartTitle))
                 out.append(.spacer(14))
                 out.append(
                     .daily(
-                        analytics.days.map {
-                            DayBar(share: $0.share, isToday: $0.isToday, isEmpty: $0.share <= 0)
-                        }))
+                        DailyChart(
+                            bars: analytics.days.map {
+                                DayBar(share: $0.share, isToday: $0.isToday, isEmpty: $0.share <= 0)
+                            },
+                            leading: first.title,
+                            trailing: last.isToday ? Localized.text("Today") : last.title)))
                 if let peak = analytics.peakDay, peak.share > 0 {
-                    out.append(.spacer(10))
-                    out.append(
-                        .dim(
-                            Localized.text(
-                                "Peak %@ · %@", peak.title, peak.value)))
+                    var caption = Localized.text("Peak %@ · %@", peak.title, peak.value)
+                    if let busiest = drawnRecords.first(where: { $0.id == "busiestDay" }) {
+                        if let detail = busiest.detail, !detail.isEmpty {
+                            caption += " · \(detail)"
+                        }
+                        drawnRecords.removeAll { $0.id == "busiestDay" }
+                    }
+                    out.append(.spacer(6))
+                    out.append(.dim(caption))
                 }
             }
             if analytics.weekdays.contains(where: { $0.share > 0 }) {
@@ -193,40 +217,53 @@ public struct AnalyticsShare: Sendable, Equatable {
                         analytics.weekdays.map {
                             DayBar(share: $0.share, isToday: false, isEmpty: $0.share <= 0)
                         }))
+                if let busiest = analytics.weekdays.max(by: { $0.share < $1.share }),
+                    busiest.share > 0, let money = busiest.money
+                {
+                    out.append(.spacer(6))
+                    out.append(.dim(Localized.text("Busiest on %@ · %@", busiest.label, money)))
+                }
             }
+            var drawnTopics: Set<UsageAnalytics.Insight.Topic> = [.cache]
             if !analytics.providers.isEmpty {
                 out.append(
                     contentsOf: meterSection(
-                        Localized.text("Providers"), analytics.providers.prefix(4)))
+                        Localized.text("Providers"), analytics.providers.prefix(meterLimit)))
             }
             if !analytics.models.isEmpty {
                 out.append(contentsOf: meterSection(
-                    Localized.text("Models"), analytics.models.prefix(4)))
+                    Localized.text("Models"), analytics.models.prefix(meterLimit)))
+                drawnTopics.insert(.model)
             }
             if !analytics.projects.isEmpty {
                 out.append(contentsOf: meterSection(
-                    Localized.text("Projects"), analytics.projects.prefix(4)))
+                    Localized.text("Projects"), analytics.projects.prefix(meterLimit)))
             }
             if !analytics.tools.isEmpty {
                 out.append(contentsOf: meterSection(
-                    Localized.text("Tools"), analytics.tools.prefix(4)))
+                    Localized.text("Tools"), analytics.tools.prefix(meterLimit)))
+                drawnTopics.insert(.tool)
             }
-            if !analytics.records.isEmpty {
+            let records = drawnRecords.prefix(recordLimit)
+            if !records.isEmpty {
                 out.append(.spacer(28))
                 out.append(.section(Localized.text("Records")))
-                for record in analytics.records.prefix(5) {
+                for record in records {
                     out.append(.spacer(12))
                     out.append(
                         .record(
                             RecordLine(
                                 glyph: record.glyph, title: record.title, value: record.value,
                                 detail: record.detail)))
+                    if record.id == "streak" { drawnTopics.insert(.streak) }
+                    if record.id == "subagents" { drawnTopics.insert(.subagents) }
                 }
             }
-            if !analytics.insights.isEmpty {
+            let standouts = standouts(analytics, drawn: drawnTopics)
+            if !standouts.isEmpty {
                 out.append(.spacer(28))
                 out.append(.section(Localized.text("What stands out")))
-                for line in analytics.insights.prefix(3) {
+                for line in standouts {
                     out.append(.spacer(10))
                     out.append(.insight(line))
                 }
@@ -234,25 +271,42 @@ public struct AnalyticsShare: Sendable, Equatable {
             out.append(.spacer(28))
             out.append(.rule)
             out.append(.spacer(16))
-            if let modelsLine = analytics.modelsLine {
-                out.append(.spacer(10))
+            if let modelsLine = analytics.modelsLine(shown: meterLimit) {
                 out.append(.foot(modelsLine))
+                out.append(.spacer(8))
             }
             if let coverageNote = analytics.coverageNote {
-                out.append(.spacer(10))
                 out.append(.foot(coverageNote))
+                out.append(.spacer(8))
             }
             out.append(.foot(analytics.source))
-            out.append(.spacer(6))
+            out.append(.spacer(8))
             out.append(.foot(Localized.text("API-equivalent estimate · not a bill")))
             if !analytics.missingServers.isEmpty {
-                out.append(.spacer(6))
+                out.append(.spacer(8))
                 out.append(
                     .foot(
                         Localized.text(
                             "Not counted: %@", analytics.missingServers.joined(separator: ", "))))
             }
             return out
+        }
+
+        public static let meterLimit = 4
+        public static let recordLimit = 6
+
+        /// What the card can still say once its own sections have spoken: it already shows the
+        /// models, the tools and the records, so a line that repeats one of them is a line the
+        /// reader has just read. Caching is told from the hit rate rather than the brag, because
+        /// the card has no tier chart to carry it.
+        private static func standouts(
+            _ analytics: UsageAnalytics, drawn: Set<UsageAnalytics.Insight.Topic>
+        ) -> [String] {
+            var lines: [String] = []
+            if let cache = analytics.cacheLine { lines.append(cache) }
+            lines.append(
+                contentsOf: analytics.findings.filter { !drawn.contains($0.topic) }.map(\.text))
+            return Array(lines.prefix(3))
         }
 
         private static func meterSection<S: Sequence>(
@@ -271,30 +325,72 @@ public struct AnalyticsShare: Sendable, Equatable {
         }
 
         /// Fixed metrics so three clients land every line on the same Y without asking a toolkit
-        /// for font bounds. A share card is typeset, not reflowed.
+        /// for font bounds. A share card is typeset, not reflowed: a paragraph's line count is
+        /// estimated once here from its length, and every client wraps it to exactly that many.
         public static func measure(_ blocks: [Block]) -> Double {
-            var y = pad
-            for block in blocks {
-                switch block {
-                case .brand: y += 22
-                case .kicker: y += 28
-                case .hero: y += 88
-                case .body: y += lineHeight(bodySize, lines: 2)
-                case .dim: y += lineHeight(dimSize, lines: 2)
-                case .trend: y += lineHeight(bodySize, lines: 1)
-                case .daily: y += dailyHeight
-                case .weekday: y += weekdayHeight + 22
-                case .section: y += 26
-                case .meter: y += 44
-                case .record: y += 48
-                case .insight: y += lineHeight(bodySize, lines: 3)
-                case .rule: y += 1
-                case .foot: y += lineHeight(footSize, lines: 2)
-                case .spacer(let gap): y += gap
-                }
-            }
-            return y + pad
+            blocks.reduce(pad) { $0 + height($1) } + pad
         }
+
+        public static func height(_ block: Block) -> Double {
+            switch block {
+            case .brand: return 22
+            case .kicker: return 28
+            case .hero: return 88
+            case .body, .dim, .trend, .insight, .foot:
+                return lineHeight(fontSize(block), lines: lines(block))
+            case .daily: return dailyHeight + axisHeight
+            case .weekday: return weekdayHeight + axisHeight
+            case .section: return 26
+            case .meter: return 44
+            case .record: return 48
+            case .rule: return 1
+            case .spacer(let gap): return gap
+            }
+        }
+
+        /// How many lines a text block is set on. Estimated from its length against a glyph
+        /// width wide enough for any of the three faces, so an estimate errs toward a line of
+        /// air rather than one paragraph drawn over the next; a client truncates the last line
+        /// it is given rather than growing past it.
+        public static func lines(_ block: Block) -> Int {
+            let (text, maximum): (String, Int) = {
+                switch block {
+                case .body(let text), .dim(let text): return (text, 2)
+                case .trend(let text, _): return (text, 1)
+                case .insight(let text): return (insightPrefix + text, 3)
+                case .foot(let text): return (text, 3)
+                default: return ("", 1)
+                }
+            }()
+            let capacity = contentWidth / (fontSize(block) * glyphWidth)
+            let needed = Int((Double(text.count) / capacity).rounded(.up))
+            return min(max(1, needed), maximum)
+        }
+
+        public static func fontSize(_ block: Block) -> Double {
+            switch block {
+            case .brand: return brandSize
+            case .kicker: return kickerSize
+            case .hero: return heroSize
+            case .body, .trend, .insight: return bodySize
+            case .dim: return dimSize
+            case .section: return sectionSize
+            case .meter: return meterSize
+            case .record: return recordSize
+            case .foot: return footSize
+            case .daily, .weekday, .rule, .spacer: return 0
+            }
+        }
+
+        public static let insightPrefix = "✦  "
+        public static let glyphWidth: Double = 0.56
+        public static let axisHeight: Double = 22
+        public static let axisSize: Double = 16
+        public static let meterDetailSize: Double = 18
+        public static let recordTitleSize: Double = 18
+        /// Room the trailing value keeps on a meter row, so a label's detail never runs under
+        /// the money.
+        public static let meterValueWidth: Double = 180
 
         public static let brandSize: Double = 18
         public static let kickerSize: Double = 24
@@ -312,7 +408,7 @@ public struct AnalyticsShare: Sendable, Equatable {
     }
 
     private static func filename(
-        window: String, money: String, now: Date, calendar: Calendar
+        window: UsageWindow, money: String, now: Date, calendar: Calendar
     ) -> String {
         let formatter = DateFormatter()
         formatter.calendar = calendar
@@ -324,12 +420,12 @@ public struct AnalyticsShare: Sendable, Equatable {
             .replacingOccurrences(of: "$", with: "")
             .replacingOccurrences(of: ",", with: "")
             .replacingOccurrences(of: " ", with: "")
-        return "tailscode-month-\(day)-\(safeMoney).png"
+        return "tailscode-\(window.rawValue)-\(day)-\(safeMoney).png"
     }
 
     private static func plainText(_ analytics: UsageAnalytics) -> String {
         var lines: [String] = [
-            Localized.text("The month in numbers"),
+            analytics.window.surfaceTitle,
             analytics.headline,
             analytics.windowLabel,
             analytics.perDayLine,
@@ -381,7 +477,7 @@ public struct AnalyticsShare: Sendable, Equatable {
 
     private static func markdown(_ analytics: UsageAnalytics) -> String {
         var lines: [String] = [
-            "# \(Localized.text("The month in numbers"))",
+            "# \(analytics.window.surfaceTitle)",
             "",
             "**\(analytics.headline)** · \(analytics.windowLabel)",
             "",

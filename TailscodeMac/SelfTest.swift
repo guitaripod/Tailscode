@@ -104,6 +104,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkAnalyticsShare()
+            report("analytics share: \(checks) claims hold — words, card and PNG")
+        } catch {
+            report("analytics share: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkRepeatingMotion()
             report(
                 "repeating motion: \(checks) claims hold — every never-ending lap asks again")
@@ -855,6 +863,66 @@ enum SelfTest {
     /// turning over a run that ended long ago. Proved without a window, because what a mark is doing
     /// is a state it wears rather than an animation to watch — and a screenshot could never tell a
     /// settled ring from a sweep caught mid-frame anyway.
+    /// The share card is Core geometry painted by AppKit: a demo ledger must yield words, a card
+    /// of fixed width and a real PNG. `TAILSCODE_SHARE_CARD_OUT=<path>` also writes the card an
+    /// agent can look at — the demo ledger merged with a per-conversation server whose models
+    /// run for nothing, so every section the card can draw is on it.
+    private static func checkAnalyticsShare() throws -> Int {
+        guard
+            let analytics = UsageAnalytics(
+                servers: [("demo", DemoWorld.demoAnalytics())], missingServers: [])
+        else { throw SelfTestFailure("demo analytics produced nothing to share") }
+        let package = AnalyticsShare(analytics)
+        guard package.plainText.contains(analytics.headline) else {
+            throw SelfTestFailure("plain text lost the total")
+        }
+        guard package.card.height > 400, AnalyticsShare.Card.width == 1080 else {
+            throw SelfTestFailure("card geometry drifted")
+        }
+        guard let rendered = AnalyticsCardRenderer.png(package, scale: 1, dark: true),
+            rendered.data.count > 800
+        else { throw SelfTestFailure("renderer produced no PNG") }
+        let signature = [UInt8](rendered.data.prefix(8))
+        guard signature == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] else {
+            throw SelfTestFailure("PNG signature missing")
+        }
+        if let path = ProcessInfo.processInfo.environment["TAILSCODE_SHARE_CARD_OUT"],
+            !path.isEmpty
+        {
+            let tokens = SessionSpendReport.Tokens(input: 4_000_000, output: 600_000)
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM-dd"
+            let free = UsageAnalyticsReport(
+                since: Date(timeIntervalSinceNow: -30 * 86400), generatedAt: Date(), days: 30,
+                totals: UsageAnalyticsReport.Totals(
+                    costUSD: 0, tokens: tokens, sessions: 41, activeDays: 12),
+                daily: [
+                    UsageAnalyticsReport.Day(
+                        day: formatter.string(from: Date()), costUSD: 0, tokens: tokens,
+                        sessions: 41)
+                ],
+                models: [
+                    SessionSpendReport.ModelShare(
+                        model: "ollama/qwen3-coder:30b", turns: 0, tokens: tokens, costUSD: 0)
+                ],
+                projects: [
+                    UsageAnalyticsReport.Project(
+                        directory: "/home/demo/dev/pulse-server", name: "pulse-server",
+                        sessions: 41, tokens: tokens)
+                ],
+                coverage: .sessionTotals)
+            guard
+                let mixed = UsageAnalytics(
+                    servers: [("studio", DemoWorld.demoAnalytics()), ("desk · opencode", free)],
+                    missingServers: ["laptop"]),
+                let png = AnalyticsCardRenderer.png(AnalyticsShare(mixed), scale: 2, dark: true)
+            else { throw SelfTestFailure("the mixed ledger cannot be shared") }
+            try png.data.write(to: URL(fileURLWithPath: path))
+        }
+        return 4
+    }
+
     private static func checkWorkflowCard() throws -> Int {
         var checks = 0
         func expect(_ condition: Bool, _ label: String) throws {

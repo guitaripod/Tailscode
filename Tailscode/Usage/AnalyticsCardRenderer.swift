@@ -73,37 +73,33 @@ enum AnalyticsCardRenderer {
 
         var y = pad
         for block in card.blocks {
+            let lines = AnalyticsShare.Card.lines(block)
             switch block {
             case .brand(let text):
                 drawText(
                     text, at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.brandSize * scale, weight: .bold,
                     color: color(card.palette.accent), tracking: 4 * scale, ctx: ctx)
-                y += 22 * scale
             case .kicker(let text):
                 drawText(
                     text, at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.kickerSize * scale, weight: .semibold,
                     color: color(card.palette.text), ctx: ctx)
-                y += 28 * scale
             case .hero(let text):
                 drawText(
                     text, at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.heroSize * scale, weight: .bold,
                     color: color(card.palette.text), rounded: true, ctx: ctx)
-                y += 88 * scale
             case .body(let text):
                 drawText(
                     text, at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.bodySize * scale, weight: .regular,
-                    color: color(card.palette.text), lines: 2, ctx: ctx)
-                y += AnalyticsShare.Card.lineHeight(AnalyticsShare.Card.bodySize, lines: 2) * scale
+                    color: color(card.palette.text), lines: lines, ctx: ctx)
             case .dim(let text):
                 drawText(
                     text, at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.dimSize * scale, weight: .regular,
-                    color: color(card.palette.textDim), lines: 2, ctx: ctx)
-                y += AnalyticsShare.Card.lineHeight(AnalyticsShare.Card.dimSize, lines: 2) * scale
+                    color: color(card.palette.textDim), lines: lines, ctx: ctx)
             case .trend(let text, let tone):
                 let ink: CGColor = {
                     switch tone {
@@ -116,57 +112,58 @@ enum AnalyticsCardRenderer {
                     text, at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.bodySize * scale, weight: .semibold,
                     color: ink, ctx: ctx)
-                y += AnalyticsShare.Card.lineHeight(AnalyticsShare.Card.bodySize, lines: 1) * scale
-            case .daily(let bars):
+            case .daily(let chart):
                 paintBars(
-                    bars, in: CGRect(
+                    chart.bars, in: CGRect(
                         x: pad, y: y, width: contentWidth,
                         height: AnalyticsShare.Card.dailyHeight * scale),
                     barWidth: AnalyticsShare.Card.dailyBarWidth * scale,
                     palette: card.palette, ctx: ctx)
-                y += AnalyticsShare.Card.dailyHeight * scale
+                let axisY = y + (AnalyticsShare.Card.dailyHeight + 6) * scale
+                drawText(
+                    chart.leading, at: CGPoint(x: pad, y: axisY), width: contentWidth / 2,
+                    size: AnalyticsShare.Card.axisSize * scale, weight: .medium,
+                    color: color(card.palette.textDim), ctx: ctx)
+                drawText(
+                    chart.trailing, at: CGPoint(x: pad + contentWidth / 2, y: axisY),
+                    width: contentWidth / 2, size: AnalyticsShare.Card.axisSize * scale,
+                    weight: .medium, color: color(card.palette.textDim), align: .right, ctx: ctx)
             case .weekday(let bars):
                 paintWeekday(
                     bars, in: CGRect(
                         x: pad, y: y, width: contentWidth,
-                        height: (AnalyticsShare.Card.weekdayHeight + 22) * scale),
-                    palette: card.palette, ctx: ctx)
-                y += (AnalyticsShare.Card.weekdayHeight + 22) * scale
+                        height: AnalyticsShare.Card.weekdayHeight * scale),
+                    palette: card.palette, scale: scale, ctx: ctx)
             case .section(let text):
                 drawText(
                     text.uppercased(), at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.sectionSize * scale, weight: .bold,
                     color: color(card.palette.textDim), tracking: 2 * scale, ctx: ctx)
-                y += 26 * scale
             case .meter(let meter):
                 paintMeter(
                     meter, at: CGPoint(x: pad, y: y), width: contentWidth,
                     palette: card.palette, scale: scale, ctx: ctx)
-                y += 44 * scale
             case .record(let record):
                 paintRecord(
                     record, at: CGPoint(x: pad, y: y), width: contentWidth,
                     palette: card.palette, scale: scale, ctx: ctx)
-                y += 48 * scale
             case .insight(let text):
                 drawText(
-                    "✦  \(text)", at: CGPoint(x: pad, y: y), width: contentWidth,
-                    size: AnalyticsShare.Card.bodySize * scale, weight: .regular,
-                    color: color(card.palette.text), lines: 3, ctx: ctx)
-                y += AnalyticsShare.Card.lineHeight(AnalyticsShare.Card.bodySize, lines: 3) * scale
+                    AnalyticsShare.Card.insightPrefix + text, at: CGPoint(x: pad, y: y),
+                    width: contentWidth, size: AnalyticsShare.Card.bodySize * scale,
+                    weight: .regular, color: color(card.palette.text), lines: lines, ctx: ctx)
             case .rule:
                 ctx.setFillColor(color(card.palette.rule))
                 ctx.fill(CGRect(x: pad, y: y, width: contentWidth, height: 1 * scale))
-                y += 1 * scale
             case .foot(let text):
                 drawText(
                     text, at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.footSize * scale, weight: .regular,
-                    color: color(card.palette.textDim), lines: 2, ctx: ctx)
-                y += AnalyticsShare.Card.lineHeight(AnalyticsShare.Card.footSize, lines: 2) * scale
-            case .spacer(let gap):
-                y += gap * scale
+                    color: color(card.palette.textDim), lines: lines, ctx: ctx)
+            case .spacer:
+                break
             }
+            y += AnalyticsShare.Card.height(block) * scale
         }
     }
 
@@ -193,16 +190,16 @@ enum AnalyticsCardRenderer {
 
     private static func paintWeekday(
         _ bars: [AnalyticsShare.DayBar], in rect: CGRect,
-        palette: AnalyticsShare.Palette, ctx: CGContext
+        palette: AnalyticsShare.Palette, scale: CGFloat, ctx: CGContext
     ) {
         guard !bars.isEmpty else { return }
         let labels = ["M", "T", "W", "T", "F", "S", "S"]
         let column = rect.width / CGFloat(bars.count)
-        let barWidth = min(28, column * 0.45)
-        let chartHeight = AnalyticsShare.Card.weekdayHeight * (rect.height / ((AnalyticsShare.Card.weekdayHeight + 22)))
+        let barWidth = min(28 * scale, column * 0.45)
+        let chartHeight = rect.height
         for (index, bar) in bars.enumerated() {
             let mid = rect.minX + column * (CGFloat(index) + 0.5)
-            let height = bar.isEmpty ? 3 : max(4, chartHeight * bar.share)
+            let height = bar.isEmpty ? 3 * scale : max(4 * scale, chartHeight * bar.share)
             let y = rect.minY + chartHeight - height
             let fill =
                 bar.share >= 1
@@ -210,13 +207,13 @@ enum AnalyticsCardRenderer {
                 : bar.isEmpty ? color(palette.rule) : color(palette.info, alpha: 0.85)
             roundedRect(
                 ctx, CGRect(x: mid - barWidth / 2, y: y, width: barWidth, height: height),
-                radius: 3, fill: fill)
+                radius: 3 * scale, fill: fill)
             if labels.indices.contains(index) {
                 drawText(
                     labels[index],
-                    at: CGPoint(x: mid - column / 2, y: rect.minY + chartHeight + 6),
-                    width: column, size: 16, weight: .medium, color: color(palette.textDim),
-                    align: .center, ctx: ctx)
+                    at: CGPoint(x: mid - column / 2, y: rect.minY + chartHeight + 6 * scale),
+                    width: column, size: AnalyticsShare.Card.axisSize * scale, weight: .medium,
+                    color: color(palette.textDim), align: .center, ctx: ctx)
             }
         }
     }
@@ -226,10 +223,22 @@ enum AnalyticsCardRenderer {
         palette: AnalyticsShare.Palette, scale: CGFloat, ctx: CGContext
     ) {
         let labelWidth = width * 0.55
+        let labelSize = AnalyticsShare.Card.meterSize * scale
         drawText(
-            meter.label, at: origin, width: labelWidth,
-            size: AnalyticsShare.Card.meterSize * scale, weight: .semibold,
+            meter.label, at: origin, width: labelWidth, size: labelSize, weight: .semibold,
             color: color(palette.text), ctx: ctx)
+        if !meter.detail.isEmpty {
+            let labelInk = min(labelWidth, textWidth(meter.label, size: labelSize, weight: .semibold))
+            let detailX = origin.x + labelInk + 14 * scale
+            let detailWidth =
+                origin.x + width - AnalyticsShare.Card.meterValueWidth * scale - detailX
+            if detailWidth > 60 * scale {
+                drawText(
+                    meter.detail, at: CGPoint(x: detailX, y: origin.y + 5 * scale),
+                    width: detailWidth, size: AnalyticsShare.Card.meterDetailSize * scale,
+                    weight: .regular, color: color(palette.textDim), ctx: ctx)
+            }
+        }
         if let money = meter.money {
             drawText(
                 money, at: origin, width: width,
@@ -258,8 +267,9 @@ enum AnalyticsCardRenderer {
             color: color(palette.special), ctx: ctx)
         let textX = origin.x + 40 * scale
         drawText(
-            record.title, at: CGPoint(x: textX, y: origin.y), width: width - 40 * scale,
-            size: 18 * scale, weight: .medium, color: color(palette.textDim), ctx: ctx)
+            record.caption, at: CGPoint(x: textX, y: origin.y), width: width - 40 * scale,
+            size: AnalyticsShare.Card.recordTitleSize * scale, weight: .medium,
+            color: color(palette.textDim), ctx: ctx)
         drawText(
             record.value, at: CGPoint(x: textX, y: origin.y + 20 * scale),
             width: width - 40 * scale,
@@ -287,14 +297,27 @@ enum AnalyticsCardRenderer {
         }
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = align
-        paragraph.lineBreakMode = .byTruncatingTail
+        paragraph.lineBreakMode = breakMode(lines: lines)
         attributes[.paragraphStyle] = paragraph
         let rect = CGRect(
             x: origin.x, y: origin.y, width: width,
             height: font.lineHeight * CGFloat(lines) + 4)
         NSAttributedString(string: string, attributes: attributes).draw(with: rect, options: [
-            .usesLineFragmentOrigin, .usesFontLeading,
+            .usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine,
         ], context: nil)
+    }
+
+    /// A truncating break mode never wraps under string drawing — a paragraph given three lines
+    /// came out as one line and an ellipsis — so a paragraph wraps by word and only its last
+    /// visible line is cut.
+    private static func breakMode(lines: Int) -> NSLineBreakMode {
+        lines > 1 ? .byWordWrapping : .byTruncatingTail
+    }
+
+    private static func textWidth(_ string: String, size: CGFloat, weight: UIFont.Weight) -> CGFloat {
+        NSAttributedString(
+            string: string, attributes: [.font: UIFont.systemFont(ofSize: size, weight: weight)]
+        ).size().width
     }
 
     private static func roundedRect(

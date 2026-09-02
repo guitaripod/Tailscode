@@ -152,8 +152,49 @@ struct AnalyticsShareTests {
             if case .meter(let meter) = block { return meter }
             return nil
         }
-        #expect(meters.count <= 12)
+        #expect(meters.count <= 16)
         #expect(meters.first?.hot == true)
+    }
+
+    @Test("The card names its axis, keeps every record's name, and never says a thing twice")
+    func cardSaysEachThingOnce() throws {
+        let analytics = try analytics()
+        let share = AnalyticsShare(analytics, now: now, calendar: calendar)
+        let daily = share.card.blocks.compactMap { block -> AnalyticsShare.DailyChart? in
+            if case .daily(let chart) = block { return chart }
+            return nil
+        }
+        #expect(daily.first?.leading.isEmpty == false)
+        #expect(daily.first?.trailing == "Today")
+        let dims = share.card.blocks.compactMap { block -> String? in
+            if case .dim(let text) = block { return text }
+            return nil
+        }
+        #expect(dims.contains { $0.hasPrefix("Peak ") && $0.contains("turns") })
+        let records = share.card.blocks.compactMap { block -> AnalyticsShare.RecordLine? in
+            if case .record(let record) = block { return record }
+            return nil
+        }
+        #expect(!records.contains { $0.title == "Busiest day" })
+        let priciest = try #require(records.first { $0.title == "Priciest conversation" })
+        #expect(priciest.caption.contains("Rewrite the feed"))
+        let insights = share.card.blocks.compactMap { block -> String? in
+            if case .insight(let text) = block { return text }
+            return nil
+        }
+        #expect(!insights.contains { $0.contains("carries the work") })
+        #expect(insights.allSatisfy { !$0.contains("did most of it") })
+    }
+
+    @Test("A paragraph is given the lines its length needs, and a client draws exactly those")
+    func paragraphsAreMeasured() {
+        let short = AnalyticsShare.Block.foot("Estimated from every transcript")
+        let long = AnalyticsShare.Block.foot(
+            String(repeating: "Turn, tool and clock counts cover 2 of 4 servers. ", count: 3))
+        #expect(AnalyticsShare.Card.lines(short) == 1)
+        #expect(AnalyticsShare.Card.lines(long) >= 2)
+        #expect(AnalyticsShare.Card.height(long) > AnalyticsShare.Card.height(short))
+        #expect(AnalyticsShare.Card.lines(.trend("Up 300% on the 7 days before", .up)) == 1)
     }
 
     @Test("A quiet ledger still shares, without empty charts")

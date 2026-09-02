@@ -2081,7 +2081,43 @@ public enum SelfTest {
         guard signature == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] else {
             throw SelfTestFailure("PNG signature missing")
         }
+        try dumpShareCard()
         return 5
+    }
+
+    /// `TAILSCODE_SHARE_CARD_OUT=<path>` writes the card an agent can look at: the demo ledger
+    /// merged with a second, per-conversation server whose models run for nothing, so every
+    /// section the card can draw — providers, the free line, the coverage note — is on it.
+    private static func dumpShareCard() throws {
+        guard let path = ProcessInfo.processInfo.environment["TAILSCODE_SHARE_CARD_OUT"],
+            !path.isEmpty
+        else { return }
+        let tokens = SessionSpendReport.Tokens(input: 4_000_000, output: 600_000)
+        let free = UsageAnalyticsReport(
+            since: Date(timeIntervalSinceNow: -30 * 86400), generatedAt: Date(), days: 30,
+            totals: UsageAnalyticsReport.Totals(
+                costUSD: 0, tokens: tokens, sessions: 41, activeDays: 12),
+            daily: [
+                UsageAnalyticsReport.Day(
+                    day: Self.today(), costUSD: 0, tokens: tokens, sessions: 41)
+            ],
+            models: [
+                SessionSpendReport.ModelShare(
+                    model: "ollama/qwen3-coder:30b", turns: 0, tokens: tokens, costUSD: 0)
+            ],
+            projects: [
+                UsageAnalyticsReport.Project(
+                    directory: "/home/demo/dev/pulse-server", name: "pulse-server",
+                    sessions: 41, tokens: tokens)
+            ],
+            coverage: .sessionTotals)
+        guard
+            let analytics = UsageAnalytics(
+                servers: [("studio", DemoWorld.demoAnalytics()), ("desk · opencode", free)],
+                missingServers: ["laptop"]),
+            let png = AnalyticsCardRenderer.png(AnalyticsShare(analytics), scale: 2)
+        else { throw SelfTestFailure("the mixed ledger cannot be shared") }
+        try png.write(to: URL(fileURLWithPath: path))
     }
 
     /// A month spent entirely on models that bill nothing is still a month, and a server whose
