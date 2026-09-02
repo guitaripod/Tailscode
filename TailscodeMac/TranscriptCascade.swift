@@ -245,7 +245,7 @@ extension TranscriptViewController {
         if canvasHold != nil {
             recomputeFreshCanvas()
         } else if followsBottom {
-            pinToBottom()
+            pinToBottom(gliding: true)
         }
         return true
     }

@@ -3066,6 +3066,7 @@ final class TranscriptViewController: NSViewController {
     @objc private func scrollBoundsChanged() {
         scheduleImageSweep()
         guard !isAutoScrolling else { return }
+        followClock = nil
         guard canvasHold == nil else {
             followsBottom = false
             return
@@ -3083,10 +3084,13 @@ final class TranscriptViewController: NSViewController {
         schedulePinCorrector()
     }
 
+    /// A reader following a glide is a few points behind the written end by design, so while a
+    /// row is being written the reading is generous enough to keep them following.
     private func isNearBottom() -> Bool {
         let clip = scrollView.contentView
         let ceiling = visibleScrollOrigin()
-        return clip.bounds.origin.y >= ceiling - 8
+        let slack: CGFloat = cascade.key == nil ? 8 : 80
+        return clip.bounds.origin.y >= ceiling - slack
     }
 
     private func maxScrollOrigin() -> CGFloat {
@@ -3109,12 +3113,32 @@ final class TranscriptViewController: NSViewController {
         if following { pinToBottom() }
     }
 
-    func pinToBottom() {
+    /// When the follow last moved, so a glide knows how much time one frame was.
+    private var followClock: CFTimeInterval?
+
+    /// Gliding, the origin eases toward the written end on `FreshCanvas.followTime` rather than
+    /// landing on it: the end moves a line at a time, and a page that jumped a line every time the
+    /// reveal crossed one twitched under the writing. A glide never moves back — the writing only
+    /// grows — while an ordinary pin lands wherever the end now is.
+    func pinToBottom(gliding: Bool = false) {
         let clip = scrollView.contentView
         let target = visibleScrollOrigin()
-        guard abs(clip.bounds.origin.y - target) > 0.5 else { return }
+        let current = clip.bounds.origin.y
+        let next: CGFloat
+        if gliding, cascade.key != nil,
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        {
+            let now = CACurrentMediaTime()
+            let elapsed = min(max(now - (followClock ?? now), 0), 0.1)
+            followClock = now
+            next = CGFloat(FreshCanvas.glide(current: current, target: target, elapsed: elapsed))
+        } else {
+            followClock = nil
+            next = target
+        }
+        guard abs(current - next) > 0.01 else { return }
         isAutoScrolling = true
-        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: target))
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: next))
         scrollView.reflectScrolledClipView(clip)
         isAutoScrolling = false
     }
