@@ -55,13 +55,14 @@ struct StreamCascadeTests {
         let steps = play(arrivals: arrivals, until: 3.2)
         let painted = steps.filter { $0 > 0 }
         #expect(painted.count > 250)
-        #expect(painted.allSatisfy { $0 <= 4 })
+        #expect(painted.allSatisfy { $0 <= 8 })
 
         let quarters = stride(from: 0, to: steps.count - 60, by: 60).map { start in
             steps[start..<(start + 60)].reduce(0, +)
         }
-        let busiest = quarters.max() ?? 0
-        let quietest = quarters.filter { $0 > 0 }.min() ?? 0
+        let writing = quarters.dropFirst()
+        let busiest = writing.max() ?? 0
+        let quietest = writing.filter { $0 > 0 }.min() ?? 0
         #expect(Double(busiest) < Double(quietest) * 3.2)
     }
 
@@ -87,6 +88,34 @@ struct StreamCascadeTests {
         cadence.observe(available: 40_000, sealed: false)
         cadence.advance(to: 1.0 / 120)
         #expect(cadence.revealed == 40_000)
+    }
+
+    @Test("a model faster than the hand is written at its own speed, never capped then pasted")
+    func fastModelIsNotCapped() {
+        let arrivals = (1...90).map { index in (at: Double(index) / 30, count: index * 100) }
+        let steps = play(arrivals: arrivals, until: 3.6)
+        #expect(steps.allSatisfy { $0 <= 60 })
+        #expect(steps.reduce(0, +) > 8_200)
+        let lastSecond = steps.suffix(120)
+        #expect(lastSecond.filter { $0 > 0 }.count > 100)
+    }
+
+    @Test("a backlog the hand can clear in a moment is written, not flushed")
+    func flushIsMeasuredInTime() {
+        var cadence = StreamCadence()
+        cadence.advance(to: 0)
+        var time = 0.0
+        for index in 1...60 {
+            time = Double(index) / 30
+            cadence.observe(available: index * 100, sealed: false)
+            cadence.advance(to: time)
+        }
+        #expect(cadence.arrivalRate > 2_000)
+        #expect(cadence.ceiling > 2_500)
+        let before = cadence.revealed
+        cadence.observe(available: 6_000 + 2_000, sealed: false)
+        cadence.advance(to: time + 1.0 / 120)
+        #expect(cadence.revealed - before < 100)
     }
 
     @Test("a sealed turn lands its tail instead of lingering")

@@ -77,4 +77,23 @@ public enum FreshCanvas {
         guard end > viewport else { return 0 }
         return max(0, end - viewport - offset)
     }
+
+    /// How long the transcript takes to settle on a new follow target. The written end moves in
+    /// steps of a line — a glyph is on one line or the next — and a viewport that jumped by a
+    /// line every time the reveal crossed one read as the page twitching under the writing. So
+    /// the offset eases toward where the writing is rather than landing on it, on a constant
+    /// short enough that the last written line is never more than a moment from the bottom.
+    public static let followTime: Double = 0.14
+
+    /// One frame of that easing: where the offset should be `elapsed` seconds after being at
+    /// `current` with `target` as its goal. Lands exactly once within half a point, so a settled
+    /// follow stops asking. Never moves back: the writing only grows, and a target behind the
+    /// offset — a transient of a layout that has not caught up — is a frame to wait through, not
+    /// a place to go.
+    public static func glide(current: Double, target: Double, elapsed: Double) -> Double {
+        guard target > current else { return current }
+        if target - current < 0.5 || elapsed <= 0 { return target }
+        let next = current + (target - current) * (1 - exp(-elapsed / followTime))
+        return target - next < 0.5 ? target : next
+    }
 }

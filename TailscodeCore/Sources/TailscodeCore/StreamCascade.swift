@@ -8,17 +8,34 @@ import Foundation
 /// reached: hold a buffer, and play out of the buffer at a speed that changes slowly. The network
 /// fills the buffer; the buffer feeds the eye; the two are never wired to each other directly.
 public struct CadenceTuning: Sendable {
-    /// How much text the hand tries to keep in front of it, in seconds. This is the whole budget
-    /// the smoothing has to spend: the reveal trails what has arrived by about this much.
+    /// How much text the hand tries to keep in front of it, in seconds of the model's own pace.
+    /// This is the whole budget the smoothing has to spend: the reveal trails what has arrived by
+    /// about this much, and a lump that lands while the buffer holds is absorbed rather than seen.
     public var buffer: Double
+    /// How long the hand takes to let the buffer refill once it has dipped below that level. Text
+    /// above the level is written off on `buffer`, as fast as a lump deserves; a shortfall is
+    /// made up slowly, so a model that hesitates reads as a hand easing rather than one that
+    /// sprints to the last word and stops dead.
+    public var settle: Double
     /// How long a change of speed takes to take effect. Long on purpose — the point of a buffer is
     /// that the hand does not react to the network, and a rate that chases every arrival is the
     /// stutter with extra steps.
     public var response: Double
     /// The slowest the hand may write while it still has anything to say.
     public var minimumRate: Double
-    /// The fastest it may write. Past this, a cascade stops reading as writing.
+    /// The fastest it may write while the model is slower than this. It is a floor on the
+    /// ceiling rather than the ceiling: a model that produces text faster than a hand could write
+    /// it is written at the model's own speed — the reveal may never fall behind an arrival rate
+    /// for good, because a buffer that only grows ends as a paste, and a paste is the one thing the
+    /// pacer exists to prevent.
     public var maximumRate: Double
+    /// How much faster than the measured arrival rate the hand may write, so a backlog that built
+    /// up while the rate was being learned is worked off rather than carried to the end of the
+    /// turn.
+    public var headroom: Double
+    /// How long a change in the arrival rate takes to be believed. Shorter than `response`, since
+    /// the arrival rate is what decides whether the hand can keep up at all.
+    public var arrivalResponse: Double
     /// The buffer may never be drained faster than this, whatever the rate says. It is what turns
     /// running out into decelerating: the reveal glides toward empty instead of hitting it, so a
     /// model that pauses to think looks like a hand pausing rather than a frame dropping.
@@ -29,6 +46,11 @@ public struct CadenceTuning: Sendable {
     /// Past this much unshown text it is not a stream, it is a paste — history arriving, a tool
     /// dumping a wall of output, a reconnect replaying. Nobody wants to watch that type.
     public var flush: Int
+    /// A paste is also measured in time: a backlog past `flush` is still a stream while the hand,
+    /// at the speed it is allowed, would clear it within this many seconds. A fast model fills
+    /// `flush` in under a second of ordinary writing, and snapping that to the screen every time
+    /// the ceiling lagged the model would be the stutter with extra steps.
+    public var flushTime: Double
     /// How long the reveal may owe the reader text without moving, and how long the renderer may be
     /// held behind a token that has not closed, before the row is handed over whole.
     ///
@@ -41,20 +63,25 @@ public struct CadenceTuning: Sendable {
     public var patience: Double
 
     public init(
-        buffer: Double = 0.42, response: Double = 0.55,
+        buffer: Double = 0.42, settle: Double = 1.1, response: Double = 0.55,
         minimumRate: Double = 26, maximumRate: Double = 380,
+        headroom: Double = 1.25, arrivalResponse: Double = 0.6,
         floorTime: Double = 0.10,
         sealedBuffer: Double = 0.16, sealedResponse: Double = 0.22,
-        flush: Int = 1600, patience: Double = 1.0
+        flush: Int = 1600, flushTime: Double = 2.5, patience: Double = 1.0
     ) {
         self.buffer = buffer
+        self.settle = settle
         self.response = response
         self.minimumRate = minimumRate
         self.maximumRate = maximumRate
+        self.headroom = headroom
+        self.arrivalResponse = arrivalResponse
         self.floorTime = floorTime
         self.sealedBuffer = sealedBuffer
         self.sealedResponse = sealedResponse
         self.flush = flush
+        self.flushTime = flushTime
         self.patience = patience
     }
 
@@ -68,6 +95,11 @@ public struct StreamCadence: Sendable {
     public private(set) var available: Int = 0
     public private(set) var rate: Double = 0
     public private(set) var sealed: Bool = false
+    /// How fast text has been arriving, in characters per second, smoothed over
+    /// `arrivalResponse`. The hand's ceiling follows it, so a model faster than the ceiling was
+    /// written for is written at its own speed rather than capped and then pasted.
+    public private(set) var arrivalRate: Double = 0
+    private var arrived = 0
     private var carry: Double = 0
     private var clock: Double?
     private let tuning: CadenceTuning
@@ -93,6 +125,7 @@ public struct StreamCadence: Sendable {
     /// hand over a shorter string — a fence closing moves a segment's boundary — and the reveal
     /// clamps rather than pretending to have shown characters that no longer exist.
     public mutating func observe(available count: Int, sealed: Bool) {
+        if count > available { arrived += count - available }
         available = count
         self.sealed = sealed
         if revealed > count {
@@ -108,6 +141,14 @@ public struct StreamCadence: Sendable {
         revealed = count
         carry = 0
         rate = 0
+        arrivalRate = 0
+        arrived = 0
+    }
+
+    /// The fastest the hand may write right now: the tuned maximum, or the model's own pace with
+    /// headroom when the model is the faster of the two.
+    public var ceiling: Double {
+        max(tuning.maximumRate, arrivalRate * tuning.headroom)
     }
 
     /// Moves the reveal to where it should be at `time`. Returns true when the visible prefix
@@ -119,18 +160,29 @@ public struct StreamCadence: Sendable {
         guard let previous = clock else { return false }
         let elapsed = min(max(time - previous, 0), 0.1)
         guard elapsed > 0 else { return false }
+        let ceiling = self.ceiling
+        if backlog > tuning.flush, Double(backlog) > ceiling * tuning.flushTime {
+            revealed = available
+            carry = 0
+            rate = 0
+            arrived = 0
+            return true
+        }
+        arrivalRate +=
+            (Double(arrived) / elapsed - arrivalRate) * (1 - exp(-elapsed / tuning.arrivalResponse))
+        arrived = 0
         guard backlog > 0 else {
             carry = 0
             return false
         }
-        if backlog > tuning.flush {
-            revealed = available
-            carry = 0
-            rate = 0
-            return true
+        let want: Double
+        if sealed {
+            want = Double(backlog) / tuning.sealedBuffer
+        } else {
+            let excess = Double(backlog) - arrivalRate * tuning.buffer
+            want = arrivalRate + excess / (excess >= 0 ? tuning.buffer : tuning.settle)
         }
-        let want = Double(backlog) / (sealed ? tuning.sealedBuffer : tuning.buffer)
-        let goal = min(max(want, tuning.minimumRate), tuning.maximumRate)
+        let goal = min(max(want, tuning.minimumRate), ceiling)
         let tau = sealed ? tuning.sealedResponse : tuning.response
         rate += (goal - rate) * (1 - exp(-elapsed / tau))
         let spendable = Double(backlog) / max(tuning.floorTime, 0.001)

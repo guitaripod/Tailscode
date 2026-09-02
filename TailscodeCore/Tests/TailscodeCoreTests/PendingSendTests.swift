@@ -192,6 +192,18 @@ struct FreshCanvasTests {
         #expect(FreshCanvas.followOffset(visibleEnd: 300, viewport: 800, contentHeight: 5000) == 0)
     }
 
+    @Test("Following eases toward the writing, lands exactly, and never moves back")
+    func glide() {
+        let step = FreshCanvas.glide(current: 100, target: 120, elapsed: 1.0 / 120)
+        #expect(step > 100 && step < 120)
+        var offset = 100.0
+        for _ in 0..<120 { offset = FreshCanvas.glide(current: offset, target: 120, elapsed: 1.0 / 120) }
+        #expect(offset == 120)
+        #expect(FreshCanvas.glide(current: 100, target: 100.3, elapsed: 0.01) == 100.3)
+        #expect(FreshCanvas.glide(current: 100, target: 80, elapsed: 0.01) == 100)
+        #expect(FreshCanvas.glide(current: 100, target: 120, elapsed: 0) == 120)
+    }
+
     @Test("A reader on the last written word is at the bottom, whatever the layout holds")
     func distanceFromVisibleEnd() {
         #expect(FreshCanvas.distanceFromVisibleEnd(offset: 3880, viewport: 800, contentHeight: 5000, unrevealed: 320) == 0)
