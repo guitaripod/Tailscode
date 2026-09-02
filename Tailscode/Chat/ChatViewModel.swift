@@ -385,6 +385,24 @@ final class ChatViewModel {
         }
         let model = selectedModel
         let effort = currentEffort
+        if isBusy {
+            AppLogger.chat.info(
+                "command queued session=\(session.id) name=\(command.name) queue=\(queue.count + 1)")
+            queue.append(
+                QueuedSend(
+                    text: command.invocation(arguments: arguments), model: model, effort: effort,
+                    kind: .command(name: command.name, arguments: arguments ?? "")))
+            onPending?()
+            return
+        }
+        runNow(command, arguments: arguments, model: model, effort: effort)
+    }
+
+    /// A command is a turn the server runs from its own catalog, so it goes straight out — an
+    /// echo row would wait for a user message no backend writes for it.
+    private func runNow(
+        _ command: AgentCommand, arguments: String?, model: ModelSelection?, effort: String?
+    ) {
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -853,6 +871,13 @@ final class ChatViewModel {
         else { return }
         guard let next = queue.takeFirst() else { return }
         AppLogger.chat.info("queue drain session=\(session.id) left=\(queue.count)")
+        if case .command(let name, let arguments) = next.kind {
+            runNow(
+                AgentCommand(name: name, details: "", source: .builtin),
+                arguments: arguments.isEmpty ? nil : arguments, model: next.model,
+                effort: next.effort)
+            return
+        }
         deliver(next.text, model: next.model, effort: next.effort, attachments: next.attachments)
     }
 

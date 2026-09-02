@@ -1241,6 +1241,10 @@ final class TranscriptViewController: NSViewController {
         draining = true
         defer { draining = false }
         guard let next = queue.takeFirst() else { return }
+        if next.isCommand {
+            runCommand(next)
+            return
+        }
         sendPrompt(
             next.text, model: next.model, effort: next.effort, attachments: next.attachments)
     }
@@ -1542,7 +1546,7 @@ final class TranscriptViewController: NSViewController {
 
     /// opens the shared decision screen first, whose every word is ``CompactPreflight``'s.
     func presentCompactPreflight(initialInstruction: String = "") {
-        guard let conversation, let entry else { return }
+        guard conversation != nil, let entry else { return }
         MacDialogs.compactPreflight(
             on: view.window,
             facts: CompactPreflight.make(
@@ -1550,11 +1554,46 @@ final class TranscriptViewController: NSViewController {
                 showsInstruction: backend?.capabilities.supportsCompactionInstructions ?? true),
             initialInstruction: initialInstruction,
             draft: .compaction(profileID: entry.profileID, sessionID: entry.session.id)
-        ) { [choice = composer.promptChoice] instruction in
-            Task {
-                try? await conversation.compact(
-                    instructions: instruction, model: choice.model,
-                    reasoningEffort: choice.effort)
+        ) { [weak self] instruction in
+            self?.requestCompaction(instruction: instruction ?? "")
+        }
+    }
+
+    /// A compaction is a turn like any other, so one asked for while a turn runs waits behind
+    /// it rather than cutting it off — oh-my-pi aborts the active turn for a compaction, and
+    /// every server refuses two turns at once. It is queued as the command it is, so the
+    /// waiting row reads `/compact` and drains through the command route, never as words.
+    func requestCompaction(instruction: String) {
+        let arguments = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let choice = composer.promptChoice
+        let send = QueuedSend(
+            text: arguments, model: choice.model, effort: choice.effort,
+            kind: .command(name: "compact", arguments: arguments))
+        if lastState?.status == .running || lastState?.compaction?.isRunning == true
+            || !queue.isEmpty
+        {
+            queue.append(send)
+            if let state = lastState { apply(state: state, rows: lastFullRows) }
+            scrollToBottom()
+            return
+        }
+        runCommand(send)
+    }
+
+    /// A command goes out without an echo row: it is a turn the server runs from its own
+    /// catalog, and no backend writes a user message for an echo to reconcile against, so a
+    /// pending row would say "still sending" for the rest of the conversation.
+    private func runCommand(_ send: QueuedSend) {
+        guard let conversation, case .command(let name, let arguments) = send.kind else { return }
+        SlashRecents.record(name)
+        Task { [weak self] in
+            do {
+                try await conversation.run(
+                    AgentCommand(name: name, details: "", source: .builtin),
+                    arguments: arguments.isEmpty ? nil : arguments, model: send.model,
+                    reasoningEffort: send.effort)
+            } catch {
+                self?.onToast?(AgentErrorText.readable(error))
             }
         }
     }

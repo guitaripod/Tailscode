@@ -1297,9 +1297,58 @@ final class ChatPane: @unchecked Sendable {
     /// sending re-applies.
     private var draining = false
 
+    /// A compaction is a turn like any other, so one asked for while a turn runs waits behind
+    /// it rather than cutting it off — oh-my-pi aborts the active turn for a compaction, and
+    /// every server refuses two turns at once. It is queued as the command it is, so the
+    /// waiting row reads `/compact` and drains through the command route, never as words.
+    func requestCompaction(instruction: String) {
+        guard let conversation else { return }
+        let arguments = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        enqueueOrRun(
+            QueuedSend(
+                text: arguments, model: chosenModel,
+                effort: ModelEffort.surviving(chosenEffort, options: effortOptions()),
+                kind: .command(name: "compact", arguments: arguments)),
+            through: conversation)
+    }
+
+    private func enqueueOrRun(_ send: QueuedSend, through conversation: AgentConversation) {
+        guard lastState?.status != .running, lastState?.compaction?.isRunning != true,
+            queue.isEmpty
+        else {
+            queue.append(send)
+            if let state = lastState { apply(state: state, rows: lastFullRows) }
+            scrollToBottom()
+            return
+        }
+        deliver(send, through: conversation)
+    }
+
+    /// A command goes out without an echo row: it is a turn the server runs from its own
+    /// catalog, and no backend writes a user message for an echo to reconcile against, so a
+    /// pending row would say "still sending" for the rest of the conversation.
+    private func runCommand(_ send: QueuedSend, through conversation: AgentConversation) {
+        guard case .command(let name, let arguments) = send.kind else { return }
+        SlashRecents.record(name)
+        Task { [weak self] in
+            do {
+                try await conversation.run(
+                    AgentCommand(name: name, details: "", source: .builtin),
+                    arguments: arguments.isEmpty ? nil : arguments, model: send.model,
+                    reasoningEffort: send.effort)
+            } catch {
+                Gtk.onMain { [weak self] in self?.setNotice(AgentErrorText.readable(error)) }
+            }
+        }
+    }
+
     private func deliver(
         _ send: QueuedSend, through conversation: AgentConversation, reusing row: UUID? = nil
     ) {
+        if send.isCommand {
+            runCommand(send, through: conversation)
+            return
+        }
         let userMessages = lastState?.messages.count { $0.role == .user } ?? 0
         let id: UUID
         if let row, pending.restart(id: row, userMessages: userMessages) != nil {
@@ -1315,8 +1364,6 @@ final class ChatPane: @unchecked Sendable {
             ultracodeInFlight = true
             refreshUltracodeAura()
         }
-        // Only prompts are ever queued here: a slash command is answered before the composer
-        // reaches the queue, by the server's own grammar.
         Task { [weak self] in
             do {
                 try await conversation.send(
@@ -4404,13 +4451,12 @@ final class ChatPane: @unchecked Sendable {
             return true
         case .run(let command, let arguments):
             guard let conversation else { return false }
-            SlashRecents.record(command.name)
-            let model = chosenModel
-            let effort = ModelEffort.surviving(chosenEffort, options: effortOptions())
-            Task {
-                try? await conversation.run(
-                    command, arguments: arguments, model: model, reasoningEffort: effort)
-            }
+            enqueueOrRun(
+                QueuedSend(
+                    text: arguments ?? "", model: chosenModel,
+                    effort: ModelEffort.surviving(chosenEffort, options: effortOptions()),
+                    kind: .command(name: command.name, arguments: arguments ?? "")),
+                through: conversation)
             return true
         case .plainText:
             return false

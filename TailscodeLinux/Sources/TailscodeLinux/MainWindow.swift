@@ -292,6 +292,8 @@ final class MainWindow: @unchecked Sendable {
                         notice: { _ in })
                 case "compactdemo":
                     self.activePane.driverCompactionDemo(argument.isEmpty ? "done" : argument)
+                case "compact":
+                    self.activePane.requestCompaction(instruction: argument)
                 case "compactui":
                     Dialogs.compactPreflight(
                         parent: self.window,
@@ -2776,7 +2778,7 @@ final class MainWindow: @unchecked Sendable {
     }
 
     func presentCompactPreflight(for pane: ChatPane, initialInstruction: String = "") {
-        guard let conversation = pane.conversation else { return }
+        guard pane.conversation != nil else { return }
         Dialogs.compactPreflight(
             parent: window,
             facts: CompactPreflight.make(
@@ -2784,12 +2786,8 @@ final class MainWindow: @unchecked Sendable {
                 showsInstruction: pane.backend?.capabilities.supportsCompactionInstructions ?? true),
             initialInstruction: initialInstruction,
             draft: pane.compactionScope
-        ) { [choice = pane.promptChoice] instruction in
-            Task {
-                try? await conversation.compact(
-                    instructions: instruction, model: choice.model,
-                    reasoningEffort: choice.effort)
-            }
+        ) { [weak pane] instruction in
+            pane?.requestCompaction(instruction: instruction ?? "")
         }
     }
 
