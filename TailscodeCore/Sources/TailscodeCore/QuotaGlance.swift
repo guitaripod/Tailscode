@@ -9,8 +9,11 @@ import Foundation
 ///
 /// - **a wall exists**: one line per used-up window, soonest reset first, and beside them the one
 ///   line that makes a wall actionable: what still has room. A wall with no relief says so;
-/// - **no wall, something warm** (≥60%): one line per warm window, tightest first;
-/// - **everything quiet**: one line, the verdict and the window that is closest to mattering.
+/// - **no wall**: one line per provider on the board — its tightest window, in the board's own
+///   order so the strip holds still — warm (≥60%) in the attention tone and the rest quiet, with
+///   anything past the strip's room counted rather than dropped. A provider the person keeps on
+///   the board is on the strip; a strip that listed only the warm ones read as the others having
+///   gone.
 ///
 /// A prepaid balance keeps its own line in every state, because it is the one number that moves
 /// whatever the windows are doing. A reading that is not live says so before it says anything
@@ -119,32 +122,7 @@ public struct QuotaGlance: Sendable, Equatable {
             }
             lines += relief(among: windows, walls: walls, holdings: holdings, now: now)
         } else {
-            let warm =
-                windows
-                .filter { $0.1.fraction >= warmFloor && standing($0.1, now: now) }
-                .sorted { $0.1.fraction > $1.1.fraction }
-            if !warm.isEmpty {
-                lines += warm.prefix(maxWindows).map { line(for: $0.0, $0.1, tone: .warn, now: now) }
-                if warm.count > maxWindows {
-                    lines.append(
-                        Line(
-                            kind: .notice,
-                            text: Localized.text(
-                                "+%@ more past 60%%", String(warm.count - maxWindows)),
-                            tone: .warn))
-                }
-            } else if let tightest = windows.max(by: { $0.1.fraction < $1.1.fraction }) {
-                lines.append(
-                    Line(
-                        kind: .window,
-                        text: Localized.text(
-                            "Quotas clear · %@ %@", tightest.0.providerName, tightest.1.label),
-                        trailing: percent(tightest.1), tone: .ok,
-                        fraction: clamped(tightest.1.fraction), slug: tightest.0.slug))
-            } else if balance(in: holdings) == nil {
-                lines.append(
-                    Line(kind: .notice, text: Localized.text("Quotas clear"), tone: .ok))
-            }
+            lines += standing(among: windows, holdings: holdings, board: board, now: now)
         }
 
         if let money = balance(in: holdings) {
@@ -230,6 +208,34 @@ public struct QuotaGlance: Sendable, Equatable {
                     kind: .notice,
                     text: Localized.text(
                         "+%@ more open", String(rest.count - (maxWindows - 1))),
+                    tone: .quiet))
+        }
+        return out
+    }
+
+    /// The strip with no wall in it: every provider the board shows, one line each, its tightest
+    /// window in the board's order. The tone says which are worth watching; the presence says
+    /// which the person chose to see.
+    private static func standing(
+        among windows: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding],
+        board: QuotaBoardPreferences, now: Date
+    ) -> [Line] {
+        let ordered = QuotaBoard.arrange(holdings, preferences: board)
+        let picks = ordered.compactMap { holding -> (QuotaHolding, UsageQuota.Gauge)? in
+            windows.filter { key($0.0) == key(holding) }
+                .max { $0.1.fraction < $1.1.fraction }
+        }
+        guard !picks.isEmpty else {
+            return balance(in: holdings) == nil
+                ? [Line(kind: .notice, text: Localized.text("Quotas clear"), tone: .ok)] : []
+        }
+        var out = picks.prefix(maxWindows).map {
+            line(for: $0.0, $0.1, tone: $0.1.fraction >= warmFloor ? .warn : .ok, now: now)
+        }
+        if picks.count > maxWindows {
+            out.append(
+                Line(
+                    kind: .notice, text: Localized.text("+%@ more", String(picks.count - maxWindows)),
                     tone: .quiet))
         }
         return out

@@ -37,7 +37,7 @@ struct QuotaGlanceTests {
         QuotaGlance.make(from: reports, answeredAt: answeredAt ?? now, now: now)
     }
 
-    @Test("A quiet account says so, and names the window closest to mattering")
+    @Test("A quiet account names each provider's window closest to mattering")
     func quiet() {
         let strip = glance([("arch", quota("Claude", [("Weekly", 0.3), ("Session", 0.1)]))])
         #expect(strip.lines.count == 1)
@@ -49,16 +49,27 @@ struct QuotaGlanceTests {
         #expect(line.slug == "claude")
     }
 
-    @Test("Warm windows read one line each, tightest first, and the healthy stay home")
+    @Test("Every provider on the board has a line, warm ones in the attention tone")
     func warm() {
         let strip = glance([
             ("arch", quota("Claude", [("Weekly", 0.85), ("Session", 0.2)])),
             ("arch", quota("Grok", [("Weekly credits", 0.72)])),
+            ("arch", quota("Ollama Cloud", [("Weekly", 0.24), ("Session", 0.02)])),
         ])
-        #expect(strip.lines.count == 2)
-        #expect(strip.lines[0].trailing == "85%")
-        #expect(strip.lines[1].trailing == "72%")
-        #expect(strip.lines.allSatisfy { $0.tone == .warn })
+        #expect(strip.lines.count == 3)
+        #expect(strip.lines.map(\.slug) == ["claude", "grok", "ollama-cloud"], "the board's order")
+        #expect(strip.lines[0].trailing == "85%" && strip.lines[0].tone == .warn)
+        #expect(strip.lines[1].trailing == "72%" && strip.lines[1].tone == .warn)
+        #expect(strip.lines[2].trailing == "24%" && strip.lines[2].tone == .ok)
+        #expect(!strip.lines[2].text.contains("Session"), "one line per provider, its tightest")
+        var board = QuotaBoardPreferences()
+        board.setHidden("claude", true)
+        let hidden = QuotaGlance.make(
+            from: [
+                ("arch", quota("Claude", [("Weekly", 0.85)])),
+                ("arch", quota("Ollama Cloud", [("Weekly", 0.24)])),
+            ], answeredAt: now, now: now, board: board)
+        #expect(hidden.lines.map(\.slug) == ["ollama-cloud"], "hiding one never hides another")
     }
 
     @Test("A wall leads, and is answered by where there is still room")

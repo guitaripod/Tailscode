@@ -1082,8 +1082,8 @@ public enum SelfTest {
         let quiet = glance([("", quota("Claude", [("Weekly", 0.3), ("5-hour session", 0.1)]))])
         try expect(quiet.lines.count == 1, "a quiet account is one line")
         try expect(
-            quiet.lines[0].tone == .ok && quiet.lines[0].text.contains(Localized.text("Quotas clear")),
-            "the quiet line says what it means")
+            quiet.lines[0].tone == .ok && quiet.lines[0].text.contains("Claude"),
+            "the quiet line names the provider")
         try expect(
             quiet.lines[0].text.contains("Weekly") && quiet.lines[0].trailing == "30%"
                 && quiet.lines[0].fraction == 0.3,
@@ -1093,7 +1093,7 @@ public enum SelfTest {
             ("", quota("Claude", [("Weekly", 0.85), ("5-hour session", 0.3)])),
             ("", quota("Grok", [("Weekly credits", 0.7)])),
         ])
-        try expect(warm.lines.count == 2, "warm windows read one line each, the healthy stay home")
+        try expect(warm.lines.count == 2, "every provider on the board reads one line")
         try expect(
             warm.lines[0].tone == .warn && warm.lines[0].trailing == "85%", "the tightest leads")
         try expect(!warm.lines[0].text.contains("5-hour"), "a quiet window is not news")
