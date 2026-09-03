@@ -346,12 +346,15 @@ enum UIScale {
 
     static func step(_ delta: Double) {
         let next = min(2.0, max(0.6, ((factor + delta) * 10).rounded() / 10))
-        UserDefaults.standard.set(next, forKey: key)
+        SettingsFile.set(next, forKey: key)
         tailscode_set_text_scale(next)
     }
 
+    /// Back to 1.0 in the file as well as the session: the settings file only ever learns values
+    /// and never a removal, so a reset that cleared the defaults alone came back as the old zoom on
+    /// the next launch.
     static func reset() {
-        UserDefaults.standard.removeObject(forKey: key)
+        SettingsFile.set(nil, forKey: key)
         tailscode_set_text_scale(1.0)
     }
 }
