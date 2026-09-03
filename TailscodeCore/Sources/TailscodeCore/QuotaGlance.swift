@@ -120,7 +120,8 @@ public struct QuotaGlance: Sendable, Equatable {
                             "+%@ more used up", String(walls.count - maxWindows)),
                         tone: .danger))
             }
-            lines += relief(among: windows, walls: walls, holdings: holdings, now: now)
+            lines += relief(
+                among: windows, walls: walls, holdings: holdings, board: board, now: now)
         } else {
             lines += standing(among: windows, holdings: holdings, board: board, now: now)
         }
@@ -153,32 +154,23 @@ public struct QuotaGlance: Sendable, Equatable {
     /// by a window that meters its whole account — a wall around one model leaves the provider
     /// open, which is exactly the difference between picking something else and waiting.
     ///
-    /// *Every* provider still open gets a line, roomiest first, rather than only the one with the
-    /// most left. Naming one and dropping the rest is not brevity: it reads as the whole answer to
-    /// what is left, so an account holding four live providers with one window full showed up as
-    /// an account holding one — and the provider a person actually sends with can be the one that
-    /// silently goes missing.
+    /// Every provider still open gets a line, in the board's own order, because the board is the
+    /// person's answer to which providers they want to see: naming only the roomiest reads as the
+    /// whole answer to what is left, and re-ranking them by pressure moves the rows under the
+    /// reader every poll. The roomiest is still the one told to say it is *still open* — that is
+    /// the sentence a wall is answered with.
     private static func relief(
         among windows: [(QuotaHolding, UsageQuota.Gauge)],
-        walls: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding], now: Date
+        walls: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding],
+        board: QuotaBoardPreferences, now: Date
     ) -> [Line] {
         let blocked = Set(
             walls.filter { QuotaBinding.scope(of: $0.1) == .account }.map { key($0.0) })
         let open = windows.filter {
             !blocked.contains(key($0.0)) && $0.1.fraction < QuotaSurface.exhaustedFloor
         }
-        var tightestPerProvider: [String: (QuotaHolding, UsageQuota.Gauge)] = [:]
-        for entry in open {
-            let id = key(entry.0)
-            if let held = tightestPerProvider[id], held.1.fraction >= entry.1.fraction { continue }
-            tightestPerProvider[id] = entry
-        }
-        let ranked = tightestPerProvider.values.sorted {
-            $0.1.fraction != $1.1.fraction
-                ? $0.1.fraction < $1.1.fraction
-                : $0.0.providerName < $1.0.providerName
-        }
-        guard let pick = ranked.first else {
+        let picks = tightestPerProvider(open, holdings: holdings, board: board)
+        guard let roomiest = picks.min(by: { $0.1.fraction < $1.1.fraction }) else {
             if let money = balance(in: holdings), money.1.fraction < QuotaSurface.exhaustedFloor {
                 return [
                     Line(
@@ -190,27 +182,17 @@ public struct QuotaGlance: Sendable, Equatable {
                 Line(kind: .notice, text: Localized.text("Nothing left to send with"), tone: .danger)
             ]
         }
-        var out = [
-            Line(
+        return picks.map { holding, gauge in
+            guard key(holding) == key(roomiest.0), gauge.label == roomiest.1.label else {
+                return line(
+                    for: holding, gauge, tone: gauge.fraction >= warmFloor ? .warn : .ok, now: now)
+            }
+            return Line(
                 kind: .window,
-                text: Localized.text(
-                    "%@ %@ still open", pick.0.providerName, pick.1.label),
-                trailing: percent(pick.1), tone: .ok, fraction: clamped(pick.1.fraction),
-                slug: pick.0.slug)
-        ]
-        let rest = ranked.dropFirst()
-        out += rest.prefix(maxWindows - 1).map {
-            line(for: $0.0, $0.1, tone: $0.1.fraction >= warmFloor ? .warn : .ok, now: now)
+                text: Localized.text("%@ %@ still open", holding.providerName, gauge.label),
+                trailing: percent(gauge), tone: .ok, fraction: clamped(gauge.fraction),
+                slug: holding.slug)
         }
-        if rest.count > maxWindows - 1 {
-            out.append(
-                Line(
-                    kind: .notice,
-                    text: Localized.text(
-                        "+%@ more open", String(rest.count - (maxWindows - 1))),
-                    tone: .quiet))
-        }
-        return out
     }
 
     /// The strip with no wall in it: every provider the board shows, one line each, its tightest
@@ -220,25 +202,27 @@ public struct QuotaGlance: Sendable, Equatable {
         among windows: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding],
         board: QuotaBoardPreferences, now: Date
     ) -> [Line] {
-        let ordered = QuotaBoard.arrange(holdings, preferences: board)
-        let picks = ordered.compactMap { holding -> (QuotaHolding, UsageQuota.Gauge)? in
-            windows.filter { key($0.0) == key(holding) }
-                .max { $0.1.fraction < $1.1.fraction }
-        }
+        let picks = tightestPerProvider(windows, holdings: holdings, board: board)
         guard !picks.isEmpty else {
             return balance(in: holdings) == nil
                 ? [Line(kind: .notice, text: Localized.text("Quotas clear"), tone: .ok)] : []
         }
-        var out = picks.prefix(maxWindows).map {
+        return picks.map {
             line(for: $0.0, $0.1, tone: $0.1.fraction >= warmFloor ? .warn : .ok, now: now)
         }
-        if picks.count > maxWindows {
-            out.append(
-                Line(
-                    kind: .notice, text: Localized.text("+%@ more", String(picks.count - maxWindows)),
-                    tone: .quiet))
+    }
+
+    /// One window per provider — the one closest to its wall — with the providers in the order the
+    /// board keeps them. Every provider on the board is answered for: a strip that lists only some
+    /// of them reads as the others having gone.
+    private static func tightestPerProvider(
+        _ windows: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding],
+        board: QuotaBoardPreferences
+    ) -> [(QuotaHolding, UsageQuota.Gauge)] {
+        QuotaBoard.arrange(holdings, preferences: board).compactMap { holding in
+            windows.filter { key($0.0) == key(holding) }
+                .max { $0.1.fraction < $1.1.fraction }
         }
-        return out
     }
 
     private static func balanceLine(_ holding: QuotaHolding, _ gauge: UsageQuota.Gauge) -> Line {

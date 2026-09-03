@@ -87,7 +87,7 @@ struct QuotaGlanceTests {
         #expect(strip.lines[1].trailing == "40%")
     }
 
-    @Test("A wall names every provider still open, not just the roomiest one")
+    @Test("A wall names every provider still open, in the board's order")
     func reliefNamesEveryOpenProvider() {
         let strip = glance([
             ("arch", quota("opencode go", [("Weekly", 1.0)])),
@@ -95,14 +95,18 @@ struct QuotaGlanceTests {
             ("arch", quota("Grok", [("Monthly spend", 0.14)])),
         ])
         #expect(strip.lines[0].tone == .danger)
-        #expect(strip.lines[1].text.contains("Grok"))
-        #expect(strip.lines[1].tone == .ok)
+        #expect(strip.lines.map(\.slug) == ["opencode", "claude", "grok"], "the board's order")
         #expect(strip.lines.contains { $0.text.contains("Claude") && $0.trailing == "63%" })
         #expect(strip.lines.contains { $0.text.contains("Claude") && $0.tone == .warn })
+        #expect(
+            strip.lines.contains {
+                $0.text.contains("Grok") && $0.text.contains(Localized.text("still open"))
+            },
+            "the roomiest is the one that answers the wall")
     }
 
-    @Test("Open providers past the strip's room are counted, never dropped")
-    func reliefOverflow() {
+    @Test("Every provider still open keeps its line, however many there are")
+    func reliefKeepsEveryProvider() {
         let strip = glance([
             ("arch", quota("opencode go", [("Weekly", 1.0)])),
             ("arch", quota("Claude", [("Weekly", 0.5)])),
@@ -110,11 +114,13 @@ struct QuotaGlanceTests {
             ("arch", quota("Kimi", [("Weekly", 0.2)])),
             ("arch", quota("Bonsai", [("Weekly", 0.3)])),
         ])
-        #expect(strip.lines.filter { $0.kind == .window }.count == 4)
+        #expect(strip.lines.filter { $0.kind == .window }.count == 5)
+        #expect(!strip.lines.contains { $0.kind == .notice })
         #expect(
-            strip.lines.contains {
-                $0.kind == .notice && $0.text == Localized.text("+%@ more open", "1")
-            })
+            Set(strip.lines.compactMap(\.slug)) == ["opencode", "claude", "grok"],
+            "a provider with no brand keeps its line under its own name")
+        #expect(strip.lines.contains { $0.text.contains("Kimi") })
+        #expect(strip.lines.contains { $0.text.contains("Bonsai") })
     }
 
     @Test("A wall around one model leaves its provider open")
