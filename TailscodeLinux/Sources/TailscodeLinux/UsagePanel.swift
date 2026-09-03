@@ -97,7 +97,7 @@ final class UsagePanel: @unchecked Sendable {
         gtk_box_append(ptr(actions), dismiss)
         gtk_box_append(ptr(content), actions)
 
-        Gtk.observe(UnsafeMutableRawPointer(window), "close-request") {
+        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") {
             Gtk.onMain { UsagePanel.open = nil }
         }
         gtk_window_present(ptr(window))

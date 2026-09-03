@@ -831,6 +831,7 @@ final class MainWindow: @unchecked Sendable {
         NotificationCenter.default.addObserver(
             forName: QuotaBoardStore.didChange, object: nil, queue: nil
         ) { [weak self] _ in
+            SettingsFile.capture()
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 self.renderUsage(self.lastQuotas)
