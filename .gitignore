@@ -6,20 +6,9 @@ Tailscode/Info.plist
 .DS_Store
 *.xcuserstate
 xcuserdata/
-build-ios/
+build-*/
 
-# Device build output (on-Mac device builds)
-build-device/
-build-sim/
-build-rel/
 LAUNCH.md
 
 __pycache__/
 TailscodeMac/Info.plist
-build-mac/
-build-tsmac/
-build-tsmacstore/
-build-macrel/
-build-macstore/
-build-dev/
-build-macstore-shots/
