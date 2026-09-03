@@ -1478,7 +1478,7 @@ final class ChatPane: @unchecked Sendable {
         let verdict = AutoResume.decide(
             row: row, profileID: entry.profileID, sessionID: entry.session.id, trigger: .refused,
             failure: reason, quotas: resumeQuotas(), model: activeModelID,
-            selection: chosenModel, enabled: resumeEnabled, attempt: resumeAttempts)
+            selection: activeSelection, enabled: resumeEnabled, attempt: resumeAttempts)
         adopt(verdict, text: send.text, attachments: send.attachments, model: send.model,
             effort: send.effort)
     }
@@ -1506,7 +1506,7 @@ final class ChatPane: @unchecked Sendable {
         let verdict = AutoResume.decide(
             row: UUID(), profileID: entry.profileID, sessionID: entry.session.id,
             trigger: .answerless, failure: failure.message, quotas: resumeQuotas(),
-            model: activeModelID, selection: chosenModel, enabled: resumeEnabled,
+            model: activeModelID, selection: activeSelection, enabled: resumeEnabled,
             attempt: resumeAttempts)
         adopt(verdict, text: words, attachments: [], model: chosenModel, effort: chosenEffort)
     }
@@ -1564,8 +1564,9 @@ final class ChatPane: @unchecked Sendable {
             setNotice(ResumeReading.missed(plan))
         }
         for plan in resume.due() {
+            let resending = pending.send(id: plan.id)?.model ?? activeSelection
             switch AutoResume.recheck(
-                plan, quotas: resumeQuotas(), model: activeModelID, selection: chosenModel,
+                plan, quotas: resumeQuotas(), model: resending?.modelID, selection: resending,
                 enabled: resumeEnabled)
             {
             case .send:
@@ -2465,7 +2466,7 @@ final class ChatPane: @unchecked Sendable {
         let facts = StatusFacts.from(
             state: state, agents: agents, usage: usage,
             attachments: attachments.count, contextTokens: contextEstimate, quotas: quotas,
-            spend: spend, git: git, model: activeModelID)
+            spend: spend, git: git, model: activeModelID, selection: activeSelection)
         if identityActivity != facts.activity {
             identityActivity = facts.activity
             refreshIdentity()
@@ -2509,16 +2510,18 @@ final class ChatPane: @unchecked Sendable {
         {
             return ResumeReading.short(waiting)
         }
-        guard state.lastFailure == nil, state.status != .running else { return nil }
+        guard state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
-        let effectiveSelection: ModelSelection? = {
-            if let chosenModel { return chosenModel }
-            guard let id = activeModelID,
-                let info = models.first(where: { $0.id == id })
-            else { return nil }
-            return info.selection
-        }()
+        let effectiveSelection = activeSelection
         let effectiveModel = activeModelID ?? effectiveSelection?.modelID
+        if let failure = state.lastFailure,
+            QuotaSurface.read(
+                failure: failure.message, quotas: relevant, model: effectiveModel,
+                selection: effectiveSelection, failedOn: ActiveModel.failedTurn(in: state.messages)
+            ) != .moved
+        {
+            return nil
+        }
         return QuotaSurface.hottestExhausted(
             in: QuotaSurface.billingQuotas(
                 in: relevant, selection: effectiveSelection, model: effectiveModel),
@@ -2861,6 +2864,15 @@ final class ChatPane: @unchecked Sendable {
         chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
     }
 
+    /// The model a send from here would run on, with the door it runs through — the pick, else
+    /// the transcript's own record, else the session's, resolved against the catalog before the
+    /// door is given up. Every quota reading bills against this.
+    var activeSelection: ModelSelection? {
+        ActiveModel.selection(
+            picked: chosenModel, messages: lastState?.messages ?? [], session: entry?.session,
+            catalog: models)
+    }
+
     private func modelPillText() -> String {
         if let chosenModel { return ModelBadge.label(model: chosenModel, effort: nil) }
         if let observed = observedModelID() {
@@ -3032,6 +3044,7 @@ final class ChatPane: @unchecked Sendable {
             SettingsFile.capture()
         }
         refreshPills()
+        updateStatus()
     }
 
     private func effortRows() -> [(String, String?, @Sendable () -> Void)] {
@@ -3069,6 +3082,7 @@ final class ChatPane: @unchecked Sendable {
         }
         refreshPills()
         refreshUltracodeAura()
+        updateStatus()
     }
 
     private static func preferenceKey(_ entry: SessionEntry) -> String {

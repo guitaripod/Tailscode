@@ -99,6 +99,15 @@ public enum QuotaBinding {
         _ quota: UsageQuota, selection: ModelSelection?, model: String? = nil, named name: String? = nil
     ) -> Bool {
         guard let slug = ProviderBrand.slug(quota.providerName) else { return true }
+        return bills(house: slug, selection: selection, model: model, named: name)
+    }
+
+    /// The same rule with the house already named — what a failure that names its provider asks,
+    /// where there is no gauge to hand. `house` is a `ProviderBrand` slug.
+    public static func bills(
+        house slug: String, selection: ModelSelection?, model: String? = nil,
+        named name: String? = nil
+    ) -> Bool {
         let probeID = model ?? selection?.modelID ?? name ?? ""
         let probeName = name ?? model ?? selection?.modelID ?? ""
         if slug == "opencode",

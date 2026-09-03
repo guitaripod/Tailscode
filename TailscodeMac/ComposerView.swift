@@ -71,10 +71,16 @@ final class ComposerView: NSView {
         (chosenModel, ModelEffort.surviving(chosenEffort, options: effortOptions()))
     }
     var pickedModel: ModelSelection? { chosenModel }
-    func selection(for modelID: String?) -> ModelSelection? {
-        guard let modelID, let info = models.first(where: { $0.id == modelID }) else { return nil }
-        return info.selection
+    /// The model a send from here would run on, with the door it runs through — the pick, else
+    /// the transcript's own record, else the session's, resolved against the catalog before the
+    /// door is given up. Every quota reading bills against this.
+    var activeSelection: ModelSelection? {
+        ActiveModel.selection(
+            picked: chosenModel, messages: lastState?.messages ?? [], session: entry?.session,
+            catalog: models)
     }
+    /// The model or effort in the composer changed by a pick rather than by the transcript.
+    var onModelChanged: (() -> Void)?
     /// The effort a send from this composer would carry, surviving what the model actually offers.
     var activeEffort: String? { ModelEffort.surviving(chosenEffort, options: effortOptions()) }
     /// The used-up windows on this server's account, for marking a model spent where it is picked.
@@ -681,6 +687,7 @@ final class ComposerView: NSView {
             return
         }
         refreshPills()
+        onModelChanged?()
     }
 
     private func effortMenuRows() -> [PillsRow.MenuRow] {
@@ -717,6 +724,7 @@ final class ComposerView: NSView {
         }
         refreshPills()
         refreshAura()
+        onModelChanged?()
     }
 
     /// On the server first — what this machine will actually resolve — then what the app itself

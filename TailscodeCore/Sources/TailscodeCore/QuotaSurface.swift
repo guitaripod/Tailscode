@@ -181,26 +181,90 @@ public enum QuotaSurface {
     /// `failureMessage == nil` asks for, and nothing else may summon it.
     public static func resolve(
         failureMessage: String?, quotas: [UsageQuota], model: String? = nil,
-        named name: String? = nil, selection: ModelSelection? = nil, now: Date = Date()
+        named name: String? = nil, selection: ModelSelection? = nil,
+        failedOn: ModelSelection? = nil, now: Date = Date()
     ) -> QuotaExhaustion? {
         guard let message = failureMessage else {
             let billed = billingQuotas(in: quotas, selection: selection, model: model, named: name)
             return hottestExhausted(in: billed, model: model, named: name, now: now)
         }
-        guard isQuotaFailure(message) else { return nil }
-        let hint = providerHint(in: message)
-        let attributed = hint.map { provider in
-            quotas.filter { ProviderBrand.slug($0.providerName) == ProviderBrand.slug(provider) }
-        } ?? billingQuotas(in: quotas, selection: selection, model: model, named: name)
-        if let gauge = hottestExhausted(in: attributed, model: model, named: name, now: now) {
-            return gauge
+        if case .wall(let wall) = read(
+            failure: message, quotas: quotas, model: model, named: name, selection: selection,
+            failedOn: failedOn, now: now)
+        {
+            return wall
         }
-        guard !attributed.contains(where: \.live) else { return nil }
-        return QuotaExhaustion(
-            provider: hint ?? Localized.text("Provider"),
-            window: windowHint(in: message) ?? Localized.text("Usage"),
-            fraction: 1, resetsAt: parsedReset(in: message, now: now), trustedReset: false,
-            source: .failure)
+        return nil
+    }
+
+    /// What a failed turn has to say above the composer, read against the model the next send
+    /// would use rather than the one that died.
+    public enum FailureReading: Sendable, Hashable {
+        /// The turn died of a wall, and the wall is in front of the model this chat is on now.
+        case wall(QuotaExhaustion)
+        /// The turn died of a wall the model now in front never spends against. The person has
+        /// already done the one thing the wall asked — switched model — so there is nothing left
+        /// to say: neither the countdown, which belongs to a door the next send will not take,
+        /// nor the raw sentence, which is that same countdown in the provider's own words.
+        case moved
+        /// Not a wall. The failure's own words are the news.
+        case words
+    }
+
+    /// The wall a failure belongs to is the wall of the door the failed turn went through: stamped
+    /// on the failed message itself (`failedOn`) where the backend records which provider ran each
+    /// turn, else named in the message where the provider signs its refusals — the stamp outranks
+    /// the signature, because a reseller's refusal quotes the vendor it fronts. Only with a
+    /// door in hand can the reading say whether the wall is still in the way — a chat moved from
+    /// opencode go's spent window to a model on the server's own GPU is not behind that window,
+    /// and telling it to switch model or wait is advice it has already taken. A failure whose
+    /// door nobody can name keeps the old reading: whichever quotas bill the model now in front.
+    ///
+    /// A turn that died on a local runtime has no wall to be behind, whatever limit word it used:
+    /// a `429` from llama.cpp is a slot, not a plan, and its sentence is the whole of the news.
+    public static func read(
+        failure message: String, quotas: [UsageQuota], model: String? = nil,
+        named name: String? = nil, selection: ModelSelection? = nil,
+        failedOn: ModelSelection? = nil, now: Date = Date()
+    ) -> FailureReading {
+        guard isQuotaFailure(message) else { return .words }
+        if let failedOn, ProviderIdentity.isLocal(failedOn.providerID) { return .words }
+        let hint = providerHint(in: message)
+        let house =
+            failedOn.flatMap { ProviderIdentity.slug($0.providerID) }
+            ?? hint.flatMap(ProviderBrand.slug)
+        if let house,
+            !QuotaBinding.bills(house: house, selection: selection, model: model, named: name)
+        {
+            return .moved
+        }
+        let attributed: [UsageQuota]
+        if let house {
+            attributed = quotas.filter { ProviderBrand.slug($0.providerName) == house }
+        } else if let hint {
+            attributed = quotas.filter {
+                ProviderBrand.slug($0.providerName) == ProviderBrand.slug(hint)
+            }
+        } else {
+            if let selection, ProviderIdentity.isLocal(selection.providerID) { return .words }
+            attributed = billingQuotas(in: quotas, selection: selection, model: model, named: name)
+        }
+        if let gauge = hottestExhausted(in: attributed, model: model, named: name, now: now) {
+            return .wall(gauge)
+        }
+        guard !attributed.contains(where: \.live) else { return .words }
+        let provider: String
+        if let hint, house == nil || ProviderBrand.slug(hint) == house {
+            provider = hint
+        } else {
+            provider = house.map(ProviderBrand.short) ?? Localized.text("Provider")
+        }
+        return .wall(
+            QuotaExhaustion(
+                provider: provider,
+                window: windowHint(in: message) ?? Localized.text("Usage"),
+                fraction: 1, resetsAt: parsedReset(in: message, now: now), trustedReset: false,
+                source: .failure))
     }
 
     /// Banner / phase line: names what is used up.
@@ -275,17 +339,22 @@ public enum QuotaSurface {
         fraction >= exhaustedFloor
     }
 
-    /// The message StatusFacts should show for a failed turn when the failure is a quota wall.
+    /// The message StatusFacts should show for a failed turn: the wall in one line when the
+    /// failure is one, the failure's own words when it is not, and nothing at all for a wall the
+    /// chat has already moved away from.
     public static func statusFailureMessage(
-        failure: String?, quotas: [UsageQuota], model: String? = nil, named name: String? = nil
+        failure: String?, quotas: [UsageQuota], model: String? = nil, named name: String? = nil,
+        selection: ModelSelection? = nil, failedOn: ModelSelection? = nil, now: Date = Date()
     ) -> String? {
         guard let failure else { return nil }
-        if let exhaustion = resolve(
-            failureMessage: failure, quotas: quotas, model: model, named: name)
+        switch read(
+            failure: failure, quotas: quotas, model: model, named: name, selection: selection,
+            failedOn: failedOn, now: now)
         {
-            return short(exhaustion)
+        case .wall(let exhaustion): return short(exhaustion)
+        case .moved: return nil
+        case .words: return failure
         }
-        return failure
     }
 
     private static func resetPhrase(_ exhaustion: QuotaExhaustion) -> String? {

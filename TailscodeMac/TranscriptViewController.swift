@@ -1015,6 +1015,7 @@ final class TranscriptViewController: NSViewController {
             host.presentNewChat(on: profile)
         }
         composer.onAttachmentsChanged = { [weak self] in self?.updateStatus() }
+        composer.onModelChanged = { [weak self] in self?.updateStatus() }
         composer.onBrowseCommands = { [weak self] in self?.presentCommandCatalog() }
         composer.quotasForModels = { [weak self] in
             guard let self else { return [] }
@@ -1306,7 +1307,7 @@ final class TranscriptViewController: NSViewController {
             AutoResume.decide(
                 row: row, profileID: entry.profileID, sessionID: entry.session.id,
                 trigger: .refused, failure: reason, quotas: resumeQuotas(),
-                model: composer.activeModelID, selection: composer.pickedModel,
+                model: composer.activeModelID, selection: composer.activeSelection,
                 enabled: resumeEnabled, attempt: resumeAttempts),
             text: send.text, attachments: send.attachments, model: send.model,
             effort: send.effort)
@@ -1338,7 +1339,7 @@ final class TranscriptViewController: NSViewController {
             AutoResume.decide(
                 row: UUID(), profileID: entry.profileID, sessionID: entry.session.id,
                 trigger: .answerless, failure: failure.message, quotas: resumeQuotas(),
-                model: composer.activeModelID, selection: composer.pickedModel,
+                model: composer.activeModelID, selection: composer.activeSelection,
                 enabled: resumeEnabled, attempt: resumeAttempts),
             text: words, attachments: [], model: composer.pickedModel,
             effort: composer.activeEffort)
@@ -1398,9 +1399,10 @@ final class TranscriptViewController: NSViewController {
             onToast?(ResumeReading.missed(plan))
         }
         for plan in resume.due() {
+            let resending = pending.send(id: plan.id)?.model ?? composer.activeSelection
             switch AutoResume.recheck(
-                plan, quotas: resumeQuotas(), model: composer.activeModelID,
-                selection: composer.pickedModel, enabled: resumeEnabled)
+                plan, quotas: resumeQuotas(), model: resending?.modelID,
+                selection: resending, enabled: resumeEnabled)
             {
             case .send:
                 onToast?(ResumeReading.firing(plan))
@@ -1921,7 +1923,8 @@ final class TranscriptViewController: NSViewController {
         let facts = StatusFacts.from(
             state: state, agents: agents, usage: usage,
             attachments: composer.attachmentCount, contextTokens: contextEstimate, quotas: quotas,
-            spend: spend, git: git, model: composer.activeModelID)
+            spend: spend, git: git, model: composer.activeModelID,
+            selection: composer.activeSelection)
         lastFacts = facts
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
         statusBand.render(facts: facts, notice: bandNotice)
@@ -1938,10 +1941,18 @@ final class TranscriptViewController: NSViewController {
         {
             return ResumeReading.short(waiting)
         }
-        guard state.lastFailure == nil, state.status != .running else { return nil }
+        guard state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
-        let effectiveSelection = composer.pickedModel ?? composer.selection(for: composer.activeModelID)
+        let effectiveSelection = composer.activeSelection
         let effectiveModel = composer.activeModelID ?? effectiveSelection?.modelID
+        if let failure = state.lastFailure,
+            QuotaSurface.read(
+                failure: failure.message, quotas: relevant, model: effectiveModel,
+                selection: effectiveSelection, failedOn: ActiveModel.failedTurn(in: state.messages)
+            ) != .moved
+        {
+            return nil
+        }
         return QuotaSurface.hottestExhausted(
             in: QuotaSurface.billingQuotas(
                 in: relevant, selection: effectiveSelection, model: effectiveModel),

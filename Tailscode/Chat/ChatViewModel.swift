@@ -173,7 +173,7 @@ final class ChatViewModel {
     /// the transcript or the session record names, wearing a "server" door when no real one is
     /// known. `ModelEffort`/`ModelAbilities` resolve a doorless pick by id.
     private var effectiveSelection: ModelSelection? {
-        selectedModel ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) }
+        displayedModel
     }
 
     /// Effort is a property of the model where the catalog says so (opencode's variants differ
@@ -184,17 +184,6 @@ final class ChatViewModel {
         ModelEffort.options(
             models: knownModels, selection: effectiveSelection,
             agentOptions: backend.reasoningEffortOptions)
-    }
-
-    private var activeModelID: String? {
-        selectedModel?.modelID ?? lastAssistantModelID ?? session.model
-    }
-
-    private var lastAssistantModelID: String? {
-        for message in state.messages.reversed() where message.role == .assistant {
-            if let id = message.modelID, !id.isEmpty { return id }
-        }
-        return nil
     }
 
     private var lastAssistantEffort: String? {
@@ -211,14 +200,9 @@ final class ChatViewModel {
     /// assistant message names the model that wrote it — and the session record
     /// is the fallback for a chat that has no answer in it yet.
     var displayedModel: ModelSelection? {
-        if let selectedModel { return selectedModel }
-        if let observed = lastAssistantModelID {
-            return ModelSelection(providerID: "server", modelID: observed)
-        }
-        if let stored = session.model, !stored.isEmpty {
-            return ModelSelection(providerID: "server", modelID: stored)
-        }
-        return nil
+        ActiveModel.selection(
+            picked: selectedModel, messages: state.messages, session: session,
+            catalog: knownModels)
     }
 
     /// The effort the chip names, and nothing at all where the model takes no effort: a word left
@@ -701,9 +685,10 @@ final class ChatViewModel {
             onResumeChange?(nil)
         }
         for plan in resume.due() {
+            let resending = pending.send(id: plan.id)?.model ?? displayedModel
             switch AutoResume.recheck(
-                plan, quotas: resumeQuotas(), model: displayedModel?.modelID,
-                selection: displayedModel, enabled: resumeEnabled)
+                plan, quotas: resumeQuotas(), model: resending?.modelID,
+                selection: resending, enabled: resumeEnabled)
             {
             case .send:
                 fireResume(plan)

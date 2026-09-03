@@ -81,12 +81,19 @@ struct QuotaBindingTests {
         #expect(QuotaSurface.hottestExhausted(in: quotas, model: nil) != nil)
     }
 
-    @Test("A failed turn's own wall is reported whatever the chat is on")
-    func failureIgnoresScope() {
-        let e = QuotaSurface.resolve(
-            failureMessage: "claude usage limit reached", quotas: [], model: "gpt-5.6")
-        #expect(e?.provider == "Claude")
-        #expect(e?.source == .failure)
+    @Test("A failed turn's own wall is reported for any model its house bills, and for none it does not")
+    func failureFollowsTheHouse() {
+        let unplaced = QuotaSurface.resolve(
+            failureMessage: "claude usage limit reached", quotas: [], model: nil)
+        #expect(unplaced?.provider == "Claude")
+        #expect(unplaced?.source == .failure)
+        let sonnet = QuotaSurface.resolve(
+            failureMessage: "claude usage limit reached", quotas: [], model: "claude-sonnet-4-5")
+        #expect(sonnet?.provider == "Claude")
+        #expect(
+            QuotaSurface.resolve(
+                failureMessage: "claude usage limit reached", quotas: [], model: "gpt-5.6") == nil,
+            "a chat that has moved to a model Claude never billed is not behind Claude's wall")
     }
 
     @Test("A row note says what ran out and when it comes back")
@@ -346,6 +353,44 @@ struct QuotaBindingTests {
                 model: viaGo.modelID
             )?.provider == "opencode go",
             "the plan's weekly wall speaks above a chat the plan bills")
+    }
+
+    @Test("A model on the server's own machine wears no reseller's wall")
+    func localModelUnderGoWall() {
+        let quotas = [quota("opencode go", [gauge("5-hour session", 1.0)])]
+        let local = ModelSelection(providerID: "llama-server", modelID: "qwen38-nvfp4")
+        #expect(!QuotaBinding.bills(quotas[0], selection: local))
+        #expect(QuotaSurface.billingQuotas(in: quotas, selection: local).isEmpty)
+        #expect(QuotaSurface.resolve(failureMessage: nil, quotas: quotas, selection: local) == nil)
+        let viaGo = ModelSelection(providerID: "opencode-go", modelID: "qwen3-coder")
+        #expect(
+            QuotaSurface.resolve(failureMessage: nil, quotas: quotas, selection: viaGo)?.provider
+                == "opencode go", "the same family through Go's door is Go's to stop")
+        let doorless = ModelSelection(providerID: ActiveModel.unknownDoor, modelID: "qwen38-nvfp4")
+        #expect(
+            QuotaBinding.bills(quotas[0], selection: doorless),
+            "a qwen nobody can place is still assumed to be the reseller's, which is why the door must travel")
+    }
+
+    @Test("A chat read from its transcript bills through the door the answer came by")
+    func transcriptDoorBilling() {
+        let quotas = [quota("opencode go", [gauge("Monthly", 1.0)])]
+        let now = Date()
+        let answered = ChatMessage(
+            id: "a", role: .assistant, agentType: .openCode, createdAt: now,
+            providerID: "llama-server", modelID: "qwen38-nvfp4")
+        let selection = ActiveModel.selection(picked: nil, messages: [answered], session: nil)
+        #expect(
+            QuotaSurface.resolve(failureMessage: nil, quotas: quotas, selection: selection) == nil,
+            "the transcript said llama-server, and Go's month is not that machine's")
+        let record = AgentSession(
+            id: "s", agentType: .openCode, title: "t", createdAt: now, updatedAt: now,
+            model: "qwen38-nvfp4",
+            modelProviderID: "llama-server")
+        #expect(
+            QuotaSurface.resolve(
+                failureMessage: nil, quotas: quotas,
+                selection: ActiveModel.selection(picked: nil, messages: [], session: record)) == nil)
     }
 
     @Test("The chooser's own selftest passes")

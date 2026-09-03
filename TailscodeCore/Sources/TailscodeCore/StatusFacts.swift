@@ -163,13 +163,16 @@ public struct StatusFacts: Sendable {
         state: ConversationState, agents: [SubagentSummary],
         usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil,
         quotas: [UsageQuota] = [], queued: Int = 0, spend: SessionSpend? = nil,
-        git: GitState? = nil, model: String? = nil, now: Date = Date()
+        git: GitState? = nil, model: String? = nil, selection: ModelSelection? = nil,
+        now: Date = Date()
     ) -> StatusFacts {
         var facts = StatusFacts()
         facts.readAt = now
-        if let failure = state.lastFailure {
+        if let failure = state.lastFailure,
             let message = QuotaSurface.statusFailureMessage(
-                failure: failure.message, quotas: quotas, model: model) ?? failure.message
+                failure: failure.message, quotas: quotas, model: model, selection: selection,
+                failedOn: ActiveModel.failedTurn(in: state.messages), now: now)
+        {
             facts.phase = .failed(message)
         } else {
             switch state.connection {

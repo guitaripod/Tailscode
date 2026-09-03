@@ -1994,7 +1994,11 @@ final class ChatViewController: UIViewController {
             guard let self else { return }
             self.updateBanner(for: self.viewModel.state)
         }
-        viewModel.onModelChange = { [weak self] in self?.updateNavControls() }
+        viewModel.onModelChange = { [weak self] in
+            guard let self else { return }
+            self.updateNavControls()
+            self.updateBanner(for: self.viewModel.state)
+        }
         viewModel.onCommandsChange = { [weak self] in
             guard let self, !self.commandPalette.isHidden else { return }
             self.updateCommandPalette(for: self.composer.currentText)
@@ -2503,12 +2507,22 @@ final class ChatViewController: UIViewController {
             for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
         let selection = viewModel.displayedModel
         let model = selection?.modelID
-        let failure: String? = {
-            guard let f = state.lastFailure, f != viewModel.dismissedFailure else { return nil }
-            return f.message
-        }()
-        let exhaustion = QuotaSurface.resolve(
-            failureMessage: failure, quotas: quotas, model: model, selection: selection)
+        let exhaustion: QuotaExhaustion?
+        if let failure = state.lastFailure, failure != viewModel.dismissedFailure {
+            switch QuotaSurface.read(
+                failure: failure.message, quotas: quotas, model: model, selection: selection,
+                failedOn: ActiveModel.failedTurn(in: state.messages))
+            {
+            case .wall(let wall): exhaustion = wall
+            case .moved:
+                banner.hide()
+                return true
+            case .words: return false
+            }
+        } else {
+            exhaustion = QuotaSurface.resolve(
+                failureMessage: nil, quotas: quotas, model: model, selection: selection)
+        }
         guard let exhaustion else { return false }
         banner.show(
             QuotaSurface.bannerBody(exhaustion), color: Theme.Color.danger,

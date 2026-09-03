@@ -254,6 +254,86 @@ struct QuotaEvidenceTests {
         #expect(wall?.window == "5-hour session")
     }
 
+    @Test("A wall the chat has moved away from has nothing left to say")
+    func movedAway() {
+        let goFailure =
+            "monthly usage limit reached. It will reset in 3 days 5 hours. "
+            + "https://opencode.ai/workspace/wrk_01KWZ4MWEY0CDNAK0WMP4VRH7Q/go"
+        let spent = [quota("opencode go", [gauge("Monthly", 1.0, resetsIn: 9000)])]
+        let local = ModelSelection(providerID: "llama-server", modelID: "qwen38-nvfp4")
+        let viaGo = ModelSelection(providerID: "opencode-go", modelID: "kimi-k2.5")
+        #expect(
+            QuotaSurface.read(failure: goFailure, quotas: spent, selection: local) == .moved,
+            "the person switched to the machine's own model, which is what the wall asked")
+        #expect(QuotaSurface.read(failure: goFailure, quotas: [], selection: local) == .moved)
+        if case .wall(let wall) = QuotaSurface.read(
+            failure: goFailure, quotas: spent, selection: viaGo)
+        {
+            #expect(wall.provider == "opencode go")
+        } else {
+            Issue.record("still on Go's door, still behind Go's wall")
+        }
+        #expect(
+            QuotaSurface.read(failure: goFailure, quotas: spent, selection: nil) != .moved,
+            "a chat on nobody-knows-what is not assumed to have moved")
+        #expect(
+            QuotaSurface.statusFailureMessage(failure: goFailure, quotas: spent, selection: local)
+                == nil)
+        #expect(
+            QuotaSurface.resolve(failureMessage: nil, quotas: spent, selection: local) == nil,
+            "and no pre-emptive wall stands in front of the local model either")
+    }
+
+    @Test("A failure with no signature is placed by the door the failed turn went through")
+    func failedTurnDoor() {
+        let spent = [quota("opencode go", [gauge("Monthly", 1.0, resetsIn: 9000)])]
+        let local = ModelSelection(providerID: "llama-server", modelID: "qwen38-nvfp4")
+        let viaGo = ModelSelection(providerID: "opencode-go", modelID: "kimi-k2.5")
+        #expect(
+            QuotaSurface.read(
+                failure: "429 too many requests", quotas: spent, selection: local, failedOn: viaGo)
+                == .moved)
+        #expect(
+            QuotaSurface.read(
+                failure: "429 too many requests", quotas: spent, selection: local, failedOn: local)
+                == .words, "a local runtime has no wall; its sentence is the news")
+        #expect(
+            QuotaSurface.read(failure: "429 too many requests", quotas: spent, selection: local)
+                == .words, "nor does a wall get invented for a local model nobody saw fail")
+        if case .wall(let wall) = QuotaSurface.read(
+            failure: "429 too many requests", quotas: [], selection: viaGo, failedOn: viaGo)
+        {
+            #expect(wall.provider == "opencode", "the door names the house when the message does not")
+        } else {
+            Issue.record("a turn that died on Go with no gauge to hand is still Go's wall")
+        }
+    }
+
+    @Test("The band drops a moved wall instead of wearing it as a failed phase")
+    func bandMovedWall() {
+        let now = Date()
+        let failed = ChatMessage(
+            id: "a", role: .assistant, agentType: .openCode, createdAt: now,
+            error: "monthly usage limit reached", providerID: "opencode-go", modelID: "kimi-k2.5")
+        let state = ConversationState(
+            messages: [failed], status: .idle,
+            lastFailure: BackendFailure(message: "monthly usage limit reached"), connection: .live)
+        let spent = [quota("opencode go", [gauge("Monthly", 1.0, resetsIn: 9000)])]
+        let local = ModelSelection(providerID: "llama-server", modelID: "qwen38-nvfp4")
+        let moved = StatusFacts.from(
+            state: state, agents: [], usage: nil, attachments: 0, quotas: spent,
+            model: local.modelID, selection: local)
+        if case .idle = moved.phase {} else { Issue.record("a moved wall is not a failed phase") }
+        let stayed = StatusFacts.from(
+            state: state, agents: [], usage: nil, attachments: 0, quotas: spent,
+            model: "kimi-k2.5", selection: ModelSelection(providerID: "opencode-go", modelID: "kimi-k2.5"))
+        if case .failed(let message) = stayed.phase {
+            #expect(message.contains("Monthly"))
+        } else {
+            Issue.record("a wall still in the way is still the phase")
+        }
+    }
+
     @Test("A window whose reset has passed is not a wall, whatever the snapshot recorded")
     func aSpentWindowExpires() {
         let stale = [quota("Claude", [gauge("Weekly", 1.0, resetsIn: -60)])]
