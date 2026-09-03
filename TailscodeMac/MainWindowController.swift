@@ -36,7 +36,7 @@ final class MainWindowController: NSWindowController {
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
     private var usageTask: Task<Void, Never>?
-    private var usagePopover: NSPopover?
+    private var usageWindow: UsageWindowController?
     private var spendPopover: NSPopover?
     private var gitPopover: NSPopover?
     /// Diff windows outlive the popover that opened them, so the controller holds them: a window
@@ -1143,25 +1143,16 @@ final class MainWindowController: NSWindowController {
         return quotas
     }
 
-    private func presentUsagePopover(from anchor: NSView) {
-        if let usagePopover, usagePopover.isShown {
-            usagePopover.close()
-            self.usagePopover = nil
-            return
+    /// The usage board, one window per app, held in a property because a window presented from a
+    /// local is dead on arrival — released while shown, its buttons do nothing.
+    private func presentUsageWindow() {
+        if usageWindow == nil {
+            usageWindow = UsageWindowController(
+                initial: lastQuotas,
+                refresh: { await Self.collectQuotas(profiles: ServerDirectory.shared.profiles) },
+                onAnalytics: { [weak self] in self?.presentAnalytics() })
         }
-        let panel = UsagePanelViewController(
-            initial: lastQuotas,
-            refresh: { await Self.collectQuotas(profiles: ServerDirectory.shared.profiles) },
-            onAnalytics: { [weak self] in
-                self?.usagePopover?.close()
-                self?.usagePopover = nil
-                self?.presentAnalytics()
-            })
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.contentViewController = panel
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
-        usagePopover = popover
+        usageWindow?.present()
     }
 
     /// The month in numbers, one window per app, held in a property because a window presented
@@ -2006,9 +1997,8 @@ extension MainWindowController: NSToolbarDelegate {
             button.toolTip = Localized.text("Every provider's quota picture")
             item.view = button
             item.menuFormRepresentation = ClosureMenuItem(title: Localized.text("Usage")) {
-                [weak self, weak button] in
-                guard let self, let anchor = self.popoverAnchor(preferring: button) else { return }
-                self.presentUsagePopover(from: anchor)
+                [weak self] in
+                self?.presentUsageWindow()
             }
             return item
         case ToolbarID.newChat:
@@ -2080,7 +2070,7 @@ extension MainWindowController: NSToolbarDelegate {
     #endif
 
     @objc private func toolbarUsage(_ sender: NSButton) {
-        presentUsagePopover(from: sender)
+        presentUsageWindow()
     }
 
     @objc private func toolbarNewChat() {

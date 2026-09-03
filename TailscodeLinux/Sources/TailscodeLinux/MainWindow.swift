@@ -828,6 +828,14 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_cursor_from_name(usageBox, "pointer")
         gtk_widget_set_tooltip_text(usageBox, Localized.text("The full quota picture"))
         Gtk.onRelease(usageBox) { [weak self] in self?.presentUsage() }
+        NotificationCenter.default.addObserver(
+            forName: QuotaBoardStore.didChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.renderUsage(self.lastQuotas)
+            }
+        }
         gtk_widget_set_tooltip_text(orb.widget, Localized.text("Nothing is running"))
         Gtk.onRelease(orb.widget) { [weak self] in
             guard let self, let entry = self.orbTarget else { return }
@@ -3608,7 +3616,8 @@ final class MainWindow: @unchecked Sendable {
     private func renderUsage(_ quotas: [(String, UsageQuota)]) {
         let glance =
             usageDemo
-            ?? QuotaGlance.make(from: quotas, answeredAt: quotasAnsweredAt)
+            ?? QuotaGlance.make(
+                from: quotas, answeredAt: quotasAnsweredAt, board: QuotaBoardStore.current)
         let signature =
             "\(usageBarsFit)|" + glance.lines.map {
                 "\($0.kind.rawValue):\($0.text):\($0.trailing):\($0.tone.rawValue):\($0.fraction.map { String(format: "%.3f", $0) } ?? ""):\($0.slug ?? "")"

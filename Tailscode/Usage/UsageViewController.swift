@@ -12,27 +12,12 @@ private struct QuotaUnavailableError: LocalizedError, Sendable {
     }
 }
 
-private struct CredentialsUnavailableError: LocalizedError, Sendable {
-    let profileName: String
-    var errorDescription: String? {
-        String(localized: "Couldn't read stored credentials for \(profileName).")
-    }
-}
-
 private struct GaugeVM {
     let name: String
     let fraction: Double
     let percentText: String
     let caption: String
-}
-
-private struct CardModel {
-    let subtitle: String
-    let pill: String
-    let accent: UIColor
-    let gauges: [GaugeVM]
-    let details: [(String, String)]
-    let note: String
+    let isBalance: Bool
 }
 
 private func rampColor(for fraction: Double, accent: UIColor) -> UIColor {
@@ -41,9 +26,17 @@ private func rampColor(for fraction: Double, accent: UIColor) -> UIColor {
     return accent
 }
 
+/// The account's quota picture, arranged the way the person keeps it. The board's switches lead —
+/// every provider the account reported or this phone can offer a key for, shown or hidden with one
+/// tap, the arrangement and the lead behind one menu — then the tightest window as the ring, then
+/// a card per provider with its windows as bars, its reset, its money and the facts the provider
+/// reports. Which cards, in what order and whether the lead shows is ``QuotaBoard``'s; this
+/// screen draws them, opens on the last figures the app landed anywhere, and asks every bridge
+/// again while it is up.
 @MainActor
 final class UsageViewController: UIViewController {
     private static let staleInterval: TimeInterval = 5 * 60
+    private static let fetchDeadline: TimeInterval = 10
 
     private let scrollView = UIScrollView()
     private var rail: ReadableRail?
@@ -51,27 +44,25 @@ final class UsageViewController: UIViewController {
     private let refresher = UIRefreshControl()
     private let errorLabel = UILabel()
     private let updatedLabel = UILabel()
+    private let boardBar = BoardBar()
+    private let heroCard = HeroCard()
+    private let cardsStack = UIStackView()
+    private let monthCard = MonthCard()
     private var loadTask: Task<Void, Never>?
     private var analyticsTask: Task<Void, Never>?
     private var lastRefreshed: Date?
-    /// Cards currently showing real numbers, whether from the saved snapshot or
-    /// a live answer. A refresh that fails must leave these alone.
-    private var filledCards: Set<CardKind> = []
-    private var appliedModels: [CardKind: CardModel] = [:]
     private var analytics: UsageAnalytics?
     private var hasSeeded = false
-    /// Which DeepSeek key state the DeepSeek card last rendered, so returning from the key editor
-    /// knows whether the card needs a reload.
-    private var deepseekHasKey: Bool?
-    private var ollamaHasKey: Bool?
+    private var refreshing = false
+    private var hasClaudeProfile = false
+    private var hasOpencodeProfile = false
 
-    private let heroCard = HeroCard()
-    private let claudeCard = ProviderCard(title: "Claude Code", accent: Theme.Color.claude)
-    private let grokCard = ProviderCard(title: "Grok", accent: Theme.Color.grok)
-    private let opencodeCard = ProviderCard(title: "opencode go", accent: Theme.Color.opencode)
-    private let deepseekCard = DeepSeekCard()
-    private let ollamaCard = OllamaCard()
-    private let monthCard = MonthCard()
+    /// What every bridge reported, by the server that answered — kept as reports so a second
+    /// machine refines the account's numbers instead of replacing them.
+    private var reports: [(String, UsageQuota)] = []
+    /// This phone's own readings: doors no bridge holds a key for.
+    private var deepseek: UsageQuota?
+    private var ollama: UsageQuota?
 
     private lazy var emptyStateView = EmptyStateView(
         symbol: "gauge.with.dots.needle.67percent",
@@ -85,20 +76,14 @@ final class UsageViewController: UIViewController {
         setupScroll()
         setupEmptyState()
         buildContent()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(boardChanged), name: QuotaBoardStore.didChange, object: nil)
         startLoad()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         refreshUpdatedLabel()
-        if deepseekCard.isVisible, let deepseekHasKey, deepseekHasKey != DeepSeekCredentials.hasToken {
-            startLoad()
-            return
-        }
-        if ollamaCard.isVisible, let ollamaHasKey, ollamaHasKey != OllamaCredentials.hasToken {
-            startLoad()
-            return
-        }
         guard loadTask == nil else { return }
         if let lastRefreshed, Date().timeIntervalSince(lastRefreshed) > Self.staleInterval {
             startLoad()
@@ -186,23 +171,25 @@ final class UsageViewController: UIViewController {
         errorLabel.isHidden = true
 
         heroCard.isHidden = true
+        cardsStack.axis = .vertical
+        cardsStack.spacing = Theme.Spacing.l
         monthCard.addTarget(self, action: #selector(openAnalytics), for: .touchUpInside)
-        deepseekCard.onOpenEditor = { [weak self] in self?.openDeepSeekEditor() }
-        ollamaCard.onOpenEditor = { [weak self] in self?.openOllamaEditor() }
 
         contentStack.addArrangedSubview(updatedLabel)
         contentStack.addArrangedSubview(errorLabel)
+        contentStack.addArrangedSubview(boardBar)
         contentStack.addArrangedSubview(heroCard)
-        contentStack.addArrangedSubview(claudeCard)
-        contentStack.addArrangedSubview(grokCard)
-        contentStack.addArrangedSubview(opencodeCard)
-        contentStack.addArrangedSubview(deepseekCard)
-        contentStack.addArrangedSubview(ollamaCard)
+        contentStack.addArrangedSubview(cardsStack)
+        contentStack.addArrangedSubview(monthCard)
         contentStack.isHidden = true
     }
 
     @objc private func pulledToRefresh() {
         startLoad()
+    }
+
+    @objc private func boardChanged() {
+        render()
     }
 
     @objc private func openAnalytics() {
@@ -213,36 +200,40 @@ final class UsageViewController: UIViewController {
 
     private func openDeepSeekEditor() {
         Theme.Haptics.tap()
-        let editor = DeepSeekKeyViewController()
-        navigationController?.pushViewController(editor, animated: true)
+        navigationController?.pushViewController(DeepSeekKeyViewController(), animated: true)
     }
 
     private func openOllamaEditor() {
         Theme.Haptics.tap()
-        let editor = OllamaKeyViewController()
-        navigationController?.pushViewController(editor, animated: true)
+        navigationController?.pushViewController(OllamaKeyViewController(), animated: true)
     }
 
     private func refreshUpdatedLabel() {
         guard let lastRefreshed else {
-            updatedLabel.isHidden = true
+            updatedLabel.isHidden = refreshing ? false : true
+            updatedLabel.text = refreshing ? String(localized: "Asking the providers…") : nil
             return
         }
         let age = Date().timeIntervalSince(lastRefreshed)
-        updatedLabel.text = age < 60
+        var text =
+            age < 60
             ? String(localized: "Updated just now")
             : String(
                 localized: "Updated \(lastRefreshed.formatted(.relative(presentation: .named)))")
+        if refreshing { text += " · " + String(localized: "refreshing") }
+        updatedLabel.text = text
         updatedLabel.isHidden = false
     }
 
     private func load() async {
         let controller = ConnectionController.shared
         let profiles = controller.profiles
-        let claudeProfile = preferredProfile(.claudeCode, profiles: profiles, controller: controller)
-        let opencodeProfile = preferredProfile(.openCode, profiles: profiles, controller: controller)
+        let claudeProfiles = profiles.filter { $0.backend == .claudeCode }
+            .sorted { lhs, _ in lhs.id == controller.activeProfileID }
+        hasClaudeProfile = !claudeProfiles.isEmpty
+        hasOpencodeProfile = profiles.contains { $0.backend == .openCode }
 
-        guard claudeProfile != nil || opencodeProfile != nil else {
+        guard hasClaudeProfile || hasOpencodeProfile else {
             AppLogger.session.info("usage: no Claude Code or opencode profile connected")
             showEmptyState()
             return
@@ -251,73 +242,99 @@ final class UsageViewController: UIViewController {
         emptyStateView.isHidden = true
         scrollView.isHidden = false
         errorLabel.isHidden = true
-        seedFromSnapshot()
-        claudeCard.setLoading(claudeProfile != nil && !filledCards.contains(.claude))
-        grokCard.setLoading(claudeProfile != nil && !filledCards.contains(.grok))
-        opencodeCard.setLoading(opencodeProfile != nil && !filledCards.contains(.opencode))
-        claudeCard.isHidden = claudeProfile == nil
-        grokCard.isHidden = claudeProfile == nil
-        opencodeCard.isHidden = opencodeProfile == nil
-        deepseekCard.isVisible = opencodeProfile != nil || DeepSeekCredentials.hasToken
-        ollamaCard.isVisible = opencodeProfile != nil || OllamaCredentials.hasToken
-        monthCard.isHidden = claudeProfile == nil
         contentStack.isHidden = false
+        seedFromSnapshot()
+        refreshing = true
+        refreshUpdatedLabel()
+        render()
 
-        let claudeProfiles = orderedProfiles(.claudeCode, profiles: profiles, controller: controller)
-        async let claudeFailure: Error? = fillClaude(profiles: claudeProfiles, controller: controller)
-        async let grokDone: Void = fillGrok(profiles: claudeProfiles, controller: controller)
-        async let opencodeFailure: Error? = fillOpencode(
-            profile: opencodeProfile, claudeProfiles: claudeProfiles, controller: controller)
-        async let deepseekReading: DeepSeekBalance.Reading? = fillDeepseek()
-        async let ollamaReading: OllamaCloud.Reading? = fillOllama()
-        let failures = await (claudeFailure, opencodeFailure, grokDone, deepseekReading)
-        _ = await ollamaReading
+        async let bridges = fetchReports(
+            profiles: claudeProfiles, controller: controller, deadline: Self.fetchDeadline)
+        async let deepseekReading = DeepSeekBalance.refresh()
+        async let ollamaReading = OllamaUsage.refresh()
+        let fetched = await bridges
+        let readings = await (deepseekReading, ollamaReading)
         guard !Task.isCancelled else { return }
-        if let failure = failures.0 ?? failures.1 { showError(failure) }
 
-        lastRefreshed = Date()
+        if !fetched.isEmpty { reports = fetched }
+        if let reading = readings.0 {
+            deepseek = Self.deepseekQuota(reading)
+        } else if deepseek == nil {
+            deepseek = Self.savedQuota(named: DeepSeekBalance.providerName)
+        }
+        if let reading = readings.1 {
+            ollama = OllamaCloud.snapshot(for: reading)
+        } else if ollama == nil {
+            ollama = Self.savedQuota(named: OllamaCloud.providerName)
+        }
+        if !DeepSeekCredentials.hasToken { deepseek = nil }
+        if !OllamaCredentials.hasToken { ollama = nil }
+
+        refreshing = false
+        if hasClaudeProfile, fetched.isEmpty, reports.isEmpty {
+            AppLogger.session.info("usage: no Claude usage API reachable from any bridge")
+            showError(QuotaUnavailableError())
+        } else if hasClaudeProfile, fetched.isEmpty {
+            AppLogger.session.info("usage: bridges did not answer; keeping the last figures")
+        }
+        if !fetched.isEmpty { lastRefreshed = Date() }
         refreshUpdatedLabel()
         refresher.endRefreshing()
-        if claudeProfile != nil { loadAnalytics() }
+        render()
+        if hasClaudeProfile { loadAnalytics() }
     }
 
-    /// The prepaid balance is this device's own credential, fetched straight from
-    /// api.deepseek.com rather than through any bridge. A refresh that fails keeps whatever the
-    /// card already shows; only a missing key (or a card that never had numbers) reads as the
-    /// invitation to add one.
-    private func fillDeepseek() async -> DeepSeekBalance.Reading? {
-        guard let reading = await DeepSeekBalance.refresh() else {
-            guard !Task.isCancelled else { return nil }
-            deepseekHasKey = DeepSeekCredentials.hasToken
-            if !DeepSeekCredentials.hasToken || !filledCards.contains(.deepseek) {
-                deepseekCard.renderKeyless()
-            }
-            return nil
+    /// Every bridge asked at once, each answer landing as it arrives and the haul kept when the
+    /// deadline fires, so a dead bridge cannot starve the reachable ones. A bridge answers with
+    /// what its machine can read, and where the provider's own usage API is unreachable that
+    /// includes a reading it worked out from a local database — not the account's number, and
+    /// indistinguishable from one once stored beside it — so the screen takes the measurement or
+    /// nothing.
+    private func fetchReports(
+        profiles: [ConnectionProfile], controller: ConnectionController, deadline: TimeInterval
+    ) async -> [(String, UsageQuota)] {
+        let bridges = profiles.enumerated().compactMap { index, profile in
+            controller.makeBackend(for: profile).map { (index, profile.name, $0) }
         }
-        deepseekHasKey = true
-        apply(Self.deepseekModel(reading), to: .deepseek)
-        return reading
-    }
-
-    /// The cloud plan's windows are this device's own credential, fetched straight from
-    /// ollama.com rather than through any bridge. A refresh that fails keeps whatever the card
-    /// already shows; a missing key reads as the invitation to add one.
-    private func fillOllama() async -> OllamaCloud.Reading? {
-        guard let reading = await OllamaUsage.refresh() else {
-            guard !Task.isCancelled else { return nil }
-            ollamaHasKey = OllamaCredentials.hasToken
-            if !OllamaCredentials.hasToken || !filledCards.contains(.ollama) {
-                ollamaCard.renderKeyless()
+        guard !bridges.isEmpty else { return [] }
+        let results = await withTaskGroup(
+            of: (index: Int, server: String, quotas: [UsageQuota])?.self
+        ) { group in
+            for (index, name, backend) in bridges {
+                group.addTask {
+                    var fetched: [UsageQuota] = []
+                    if let primary = try? await backend.usageQuota() { fetched.append(primary) }
+                    if let extra = try? await backend.additionalUsageQuotas() {
+                        fetched.append(contentsOf: extra)
+                    }
+                    return (
+                        index, name,
+                        fetched.filter { !$0.source.lowercased().contains("estimated") }
+                    )
+                }
             }
-            return nil
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(deadline * 1_000_000_000))
+                return nil
+            }
+            var collected: [(index: Int, server: String, quotas: [UsageQuota])] = []
+            while collected.count < bridges.count, let outcome = await group.next() {
+                guard let outcome else { break }
+                collected.append(outcome)
+            }
+            group.cancelAll()
+            return collected
         }
-        ollamaHasKey = true
-        apply(Self.ollamaModel(reading), to: .ollama)
-        return reading
+        for entry in results {
+            AppLogger.session.info(
+                "usage: \(entry.server) answered with \(entry.quotas.count) quota(s)")
+        }
+        return results.sorted { $0.index < $1.index }
+            .flatMap { entry in entry.quotas.map { (entry.server, $0) } }
     }
 
-    /// The sparkline is a preview and the analytics screen is the point: one
-    /// fetch feeds both, cached here so the push opens on numbers it already has.
+    /// The sparkline is a preview and the analytics screen is the point: one fetch feeds both,
+    /// cached here so the push opens on numbers it already has.
     private func loadAnalytics() {
         guard analyticsTask == nil else { return }
         analyticsTask = Task {
@@ -331,396 +348,243 @@ final class UsageViewController: UIViewController {
         }
     }
 
-    private enum CardKind: CaseIterable {
-        case claude, grok, opencode, deepseek, ollama
-    }
-
-    private func apply(_ model: CardModel, to kind: CardKind) {
-        card(for: kind).apply(model)
-        appliedModels[kind] = model
-        filledCards.insert(kind)
-        refreshHero()
-    }
-
-    /// The one number that matters most: whichever quota window across every
-    /// provider is closest to its wall wears the big ring. A balance at rest
-    /// never leads — a topped-up DeepSeek account is not a fact worth the hero —
-    /// but an empty one is a wall and wins like any other; a fresh account with
-    /// every window at zero still shows its least-empty window rather than none.
-    private func refreshHero() {
-        var windows: [(title: String, accent: UIColor, gauge: GaugeVM)] = []
-        var walls: [(title: String, accent: UIColor, gauge: GaugeVM)] = []
-        for kind in CardKind.allCases {
-            guard let model = appliedModels[kind] else { continue }
-            for gauge in model.gauges where gauge.fraction > 0 {
-                walls.append((Self.providerTitle(for: kind), model.accent, gauge))
-            }
-            for gauge in model.gauges where kind != .deepseek && kind != .ollama {
-                windows.append((Self.providerTitle(for: kind), model.accent, gauge))
-            }
-        }
-        let best =
-            walls.max(by: { $0.gauge.fraction < $1.gauge.fraction })
-            ?? windows.max(by: { $0.gauge.fraction < $1.gauge.fraction })
-        guard let best else {
-            heroCard.isHidden = true
-            return
-        }
-        heroCard.isHidden = false
-        heroCard.apply(provider: best.title, gauge: best.gauge, accent: best.accent)
-    }
-
-    private static func providerTitle(for kind: CardKind) -> String {
-        switch kind {
-        case .claude: return "Claude Code"
-        case .grok: return "Grok"
-        case .opencode: return "opencode go"
-        case .deepseek: return "DeepSeek API"
-        case .ollama: return "Ollama Cloud"
-        }
-    }
-
-    /// Opens every card on the last numbers the app landed anywhere — the shared
-    /// snapshot the widget, the background refresh, and silent pushes all write
-    /// — instead of three spinners re-derived from scratch on every visit. Runs
-    /// once per screen: a later pull-to-refresh must not roll live cards back to
-    /// the older saved figures on its way to fetching new ones.
+    /// Opens on the last numbers the app landed anywhere — the shared snapshot the widget, the
+    /// background refresh and silent pushes all write — instead of spinners re-derived from
+    /// scratch on every visit. Runs once per screen: a later pull-to-refresh must not roll live
+    /// cards back to the older saved figures on its way to fetching new ones.
     private func seedFromSnapshot() {
         guard !hasSeeded else { return }
         hasSeeded = true
         guard let entry = UsageWidgetStore.read() else { return }
+        var seeded: [(String, UsageQuota)] = []
         for provider in entry.providers where !provider.gauges.isEmpty {
-            let kind = Self.kind(for: provider.providerName)
-            guard kind != .deepseek, kind != .ollama else { continue }
-            apply(Self.snapshotModel(provider, accent: Self.accent(for: kind)), to: kind)
+            switch ProviderBrand.brand(provider.providerName) {
+            case "deepseek": deepseek = Self.quota(from: provider)
+            case "ollama-cloud": ollama = Self.quota(from: provider)
+            default: seeded.append(("", Self.quota(from: provider)))
+            }
         }
-        if let ollama = entry.providers
-            .first(where: { $0.providerName == OllamaCloud.providerName })
-        {
-            apply(Self.snapshotModel(ollama, accent: Self.accent(for: .ollama)), to: .ollama)
-            ollamaHasKey = true
-        }
-        if let deepseek = entry.providers
-            .first(where: { $0.providerName == DeepSeekBalance.providerName })
-        {
-            apply(Self.snapshotDeepseekModel(deepseek), to: .deepseek)
-            deepseekHasKey = true
-        }
-        guard lastRefreshed == nil, !filledCards.isEmpty else { return }
-        lastRefreshed = entry.date
-        refreshUpdatedLabel()
+        if reports.isEmpty { reports = seeded }
+        if lastRefreshed == nil, !seeded.isEmpty { lastRefreshed = entry.date }
     }
 
-    /// A stored snapshot carries whatever name the server that answered used, so the card it
-    /// belongs to is read from the brand rather than matched against one spelling of it.
-    private static func kind(for providerName: String) -> CardKind {
-        switch ProviderBrand.brand(providerName) {
-        case "grok": return .grok
-        case "opencode": return .opencode
-        case "deepseek": return .deepseek
-        case "ollama-cloud": return .ollama
-        default: return .claude
-        }
+    private static func savedQuota(named name: String) -> UsageQuota? {
+        UsageWidgetStore.read()?.providers.first { $0.providerName == name }.map(quota(from:))
     }
 
-    private static func accent(for kind: CardKind) -> UIColor {
-        switch kind {
-        case .claude: return Theme.Color.claude
-        case .grok: return Theme.Color.grok
-        case .opencode: return Theme.Color.opencode
-        case .deepseek: return Theme.Color.modelFamily(.deepseek)
-        case .ollama: return Theme.Color.ollamaCloud
-        }
-    }
-
-    private func card(for kind: CardKind) -> ProviderCard {
-        switch kind {
-        case .claude: return claudeCard
-        case .grok: return grokCard
-        case .opencode: return opencodeCard
-        case .deepseek: return deepseekCard
-        case .ollama: return ollamaCard
-        }
-    }
-
-    private static func snapshotModel(
-        _ provider: UsageWidgetEntry.ProviderSnapshot, accent: UIColor
-    ) -> CardModel {
-        CardModel(
+    /// A stored snapshot as a report: whatever name the server that answered used, its windows as
+    /// gauges, and a source that says the figures were saved rather than just measured.
+    private static func quota(from provider: UsageWidgetEntry.ProviderSnapshot) -> UsageQuota {
+        UsageQuota(
+            providerName: provider.providerName,
             subtitle: provider.subtitle,
-            pill: provider.isLive ? String(localized: "LIVE") : String(localized: "EST"),
-            accent: accent,
-            gauges: provider.gauges.prefix(3).map {
-                GaugeVM(
-                    name: UsageGaugeFormat.gaugeLabel($0.label), fraction: $0.fraction,
-                    percentText: $0.percentText, caption: $0.caption)
+            source: String(localized: "saved figures"),
+            live: provider.isLive,
+            gauges: provider.gauges.map { gauge in
+                UsageQuota.Gauge(
+                    key: gauge.label, label: gauge.label, fraction: gauge.fraction,
+                    resetsAt: gauge.resetsAt, trustedReset: false, usedUSD: gauge.usedUSD,
+                    limitUSD: gauge.limitUSD, currency: gauge.currency)
             },
-            details: [],
-            note: String(localized: "Last saved figures — refreshing from the server now."))
+            details: [])
     }
 
-    private static func snapshotDeepseekModel(
-        _ provider: UsageWidgetEntry.ProviderSnapshot
-    ) -> CardModel {
-        let gauge = provider.gauges.first
-        return CardModel(
-            subtitle: provider.subtitle,
-            pill: String(localized: "LIVE"),
-            accent: Theme.Color.modelFamily(.deepseek),
-            gauges: gauge.map {
-                [
-                    GaugeVM(
-                        name: UsageGaugeFormat.gaugeLabel($0.label), fraction: $0.fraction,
-                        percentText: $0.percentText, caption: $0.caption)
-                ]
-            } ?? [],
-            details: [],
-            note: String(
-                localized: "Prepaid — billed per token from your own DeepSeek account, not a plan.")
-        )
+    /// The prepaid balance as a report: money with no ceiling, which every renderer draws as the
+    /// number itself, with what the money is made of behind the card.
+    private static func deepseekQuota(_ reading: DeepSeekBalance.Reading) -> UsageQuota {
+        UsageQuota(
+            providerName: DeepSeekBalance.providerName,
+            subtitle: String(localized: "Prepaid balance · direct API"),
+            source: "api.deepseek.com",
+            live: true,
+            gauges: [
+                UsageQuota.Gauge(
+                    key: "balance", label: String(localized: "Balance"),
+                    fraction: reading.isAvailable ? 0 : 1, resetsAt: nil, trustedReset: false,
+                    usedUSD: reading.total, limitUSD: nil, currency: reading.currency)
+            ],
+            details: [
+                UsageQuota.Detail(
+                    key: String(localized: "Topped up"),
+                    value: DeepSeekBalance.currency(reading.toppedUp, reading.currency)),
+                UsageQuota.Detail(
+                    key: String(localized: "Granted"),
+                    value: DeepSeekBalance.currency(reading.granted, reading.currency)),
+            ])
     }
 
-    private func preferredProfile(
-        _ backend: AgentType, profiles: [ConnectionProfile], controller: ConnectionController
-    ) -> ConnectionProfile? {
-        orderedProfiles(backend, profiles: profiles, controller: controller).first
+    private func allReports() -> [(String, UsageQuota)] {
+        var all = reports
+        if let deepseek { all.append(("", deepseek)) }
+        if let ollama { all.append(("", ollama)) }
+        return all
     }
 
-    private func orderedProfiles(
-        _ backend: AgentType, profiles: [ConnectionProfile], controller: ConnectionController
-    ) -> [ConnectionProfile] {
-        let matching = profiles.filter { $0.backend == backend }
-        return matching.sorted { lhs, _ in lhs.id == controller.activeProfileID }
-    }
-
-    /// The account's Claude quota, not one bridge's: the first machine to answer paints the card
-    /// immediately and every later answer is folded into it, so a second machine refines the
-    /// numbers instead of being discarded for arriving late.
-    private func fillClaude(profiles: [ConnectionProfile], controller: ConnectionController) async -> Error? {
-        guard let primary = profiles.first else { return nil }
-        guard controller.makeBackend(for: primary) != nil else {
-            renderFailure(.claude, on: claudeCard)
-            return CredentialsUnavailableError(profileName: primary.name)
+    /// The doors this phone can only offer a key for, offered only where they could matter — an
+    /// opencode server is what fronts these models.
+    private func offers(reported: Set<String>) -> [QuotaBoard.Offer] {
+        var out: [QuotaBoard.Offer] = []
+        if !reported.contains("deepseek"), hasOpencodeProfile || DeepSeekCredentials.hasToken {
+            out.append(QuotaBoard.Offer(key: "deepseek", name: DeepSeekBalance.providerName))
         }
-        var reports: [(String, UsageQuota)] = []
-        for profile in profiles {
-            guard let candidate = controller.makeBackend(for: profile),
-                let quota = try? await candidate.usageQuota()
-            else { continue }
-            guard !Task.isCancelled else { return nil }
-            AppLogger.session.info(
-                "usage: Claude live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
-            reports.append((profile.name, quota))
-            guard let account = QuotaRollup.account(from: reports).first else { continue }
-            apply(Self.liveModel(account.quota, accent: Theme.Color.claude), to: .claude)
+        if !reported.contains("ollama-cloud"), hasOpencodeProfile || OllamaCredentials.hasToken {
+            out.append(QuotaBoard.Offer(key: "ollama-cloud", name: OllamaCloud.providerName))
         }
-        guard !Task.isCancelled else { return nil }
-        if !reports.isEmpty { return nil }
-        AppLogger.session.info("usage: no Claude usage API reachable from any bridge")
-        renderFailure(.claude, on: claudeCard)
-        return QuotaUnavailableError()
+        return out
     }
 
-    /// A card that is already showing saved numbers keeps them: wiping it to
-    /// dashes because one refresh missed is strictly less information than
-    /// leaving the last known reading up.
-    private func renderFailure(_ kind: CardKind, on card: ProviderCard) {
-        card.setLoading(false)
-        guard !filledCards.contains(kind) else { return }
-        card.renderError()
-    }
-
-    /// Grok quota rides on the Claude Code bridge, which reads the server machine's grok
-    /// login; older bridges (or hosts without one) return nothing and the card hides itself.
-    private func fillGrok(profiles: [ConnectionProfile], controller: ConnectionController) async {
-        var reports: [(String, UsageQuota)] = []
-        for profile in profiles {
-            guard let backend = controller.makeBackend(for: profile),
-                let quota = (try? await backend.additionalUsageQuotas())?
-                    .first(where: { $0.providerName == "Grok" })
-            else { continue }
-            guard !Task.isCancelled else { return }
-            AppLogger.session.info(
-                "usage: Grok live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
-            reports.append((profile.name, quota))
-            guard let account = QuotaRollup.account(from: reports).first else { continue }
-            apply(Self.liveModel(account.quota, accent: Theme.Color.grok), to: .grok)
-            grokCard.isHidden = false
+    private func render() {
+        let preferences = QuotaBoardStore.current
+        let holdings = QuotaRollup.account(from: allReports())
+        let offers = offers(reported: Set(holdings.map(QuotaBoard.key)))
+        boardBar.render(
+            QuotaBoard.choices(holdings: holdings, offers: offers, preferences: preferences),
+            preferences: preferences
+        ) { [weak self] change in
+            QuotaBoardStore.update(change)
+            self?.render()
         }
-        guard !Task.isCancelled, reports.isEmpty else { return }
-        AppLogger.session.info("usage: no Grok quota from any Claude Code bridge")
-        grokCard.setLoading(false)
-        grokCard.isHidden = !filledCards.contains(.grok)
-    }
 
-    /// Go's own usage API answers through the Claude Code bridge, which reads the server
-    /// machine's Go key: account-wide dollars with the exact reset of each window. It is the only
-    /// reading — a number this phone estimated by replaying sessions against guessed windows looked
-    /// exactly like a measurement and was not one, and a card that cannot say what the account has
-    /// spent is worth more than a card that guesses.
-    private func fillOpencode(
-        profile: ConnectionProfile?, claudeProfiles: [ConnectionProfile],
-        controller: ConnectionController
-    ) async -> Error? {
-        guard let profile else { return nil }
-        for claudeProfile in claudeProfiles {
-            guard let backend = controller.makeBackend(for: claudeProfile),
-                let quota = (try? await backend.additionalUsageQuotas())?
-                    .first(where: { Self.isOpencode($0) && !$0.source.lowercased().contains("estimated") })
-            else { continue }
-            guard !Task.isCancelled else { return nil }
-            AppLogger.session.info(
-                "usage: opencode Go live quota from \(claudeProfile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
-            apply(Self.liveOpencodeModel(quota), to: .opencode)
-            return nil
+        let visible = QuotaBoard.arrange(holdings, preferences: preferences)
+        let keys = visible.map(QuotaBoard.key)
+        if let lead = QuotaBoard.lead(visible, preferences: preferences) {
+            heroCard.isHidden = false
+            heroCard.apply(
+                provider: lead.holding.providerName,
+                gauge: Self.gaugeVM(lead.gauge, in: lead.holding.quota),
+                accent: Self.accent(for: QuotaBoard.key(lead.holding)))
+        } else {
+            heroCard.isHidden = true
         }
-        guard !Task.isCancelled else { return nil }
-        AppLogger.session.info("usage: no opencode go quota from any Claude Code bridge")
-        renderFailure(.opencode, on: opencodeCard)
-        return nil
+
+        cardsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        if holdings.isEmpty, offers.isEmpty {
+            cardsStack.addArrangedSubview(
+                Self.note(
+                    refreshing
+                        ? String(localized: "Asking the providers…")
+                        : String(localized: "No provider reports a quota.")))
+        } else if visible.isEmpty, !holdings.isEmpty {
+            cardsStack.addArrangedSubview(
+                Self.note(String(localized: "Every provider is hidden — switch one on above.")))
+        }
+        for (index, holding) in visible.enumerated() {
+            let key = QuotaBoard.key(holding)
+            let card = ProviderCard(
+                holding: holding, accent: Self.accent(for: key),
+                gauges: holding.gauges.map { Self.gaugeVM($0, in: holding.quota) })
+            card.onMenu = { [weak self] in
+                self?.cardMenu(for: key, position: index, of: keys) ?? UIMenu()
+            }
+            cardsStack.addArrangedSubview(card)
+        }
+        for offer in offers where QuotaBoard.shows(offer, preferences: preferences) {
+            let card = OfferCard(offer: offer, accent: Self.accent(for: offer.key))
+            card.onOpenEditor = { [weak self] in
+                if offer.key == "deepseek" {
+                    self?.openDeepSeekEditor()
+                } else {
+                    self?.openOllamaEditor()
+                }
+            }
+            card.onHide = { [weak self] in
+                QuotaBoardStore.update { $0.setHidden(offer.key, true) }
+                self?.render()
+            }
+            cardsStack.addArrangedSubview(card)
+        }
+        monthCard.isHidden = !hasClaudeProfile
     }
 
-    private static func isOpencode(_ quota: UsageQuota) -> Bool {
-        ProviderBrand.slug(quota.providerName) == "opencode"
+    /// The verbs a card owns: its place on the board, and whether it is on it at all.
+    private func cardMenu(for key: String, position: Int, of keys: [String]) -> UIMenu {
+        let up = UIAction(
+            title: String(localized: "Move up"), image: UIImage(systemName: "chevron.up"),
+            attributes: position > 0 ? [] : .disabled
+        ) { [weak self] _ in
+            QuotaBoardStore.update { $0.move(key, by: -1, among: keys) }
+            self?.render()
+        }
+        let down = UIAction(
+            title: String(localized: "Move down"), image: UIImage(systemName: "chevron.down"),
+            attributes: position < keys.count - 1 ? [] : .disabled
+        ) { [weak self] _ in
+            QuotaBoardStore.update { $0.move(key, by: 1, among: keys) }
+            self?.render()
+        }
+        let hide = UIAction(
+            title: String(localized: "Hide"), image: UIImage(systemName: "eye.slash")
+        ) { [weak self] _ in
+            QuotaBoardStore.update { $0.setHidden(key, true) }
+            self?.render()
+        }
+        return UIMenu(children: [up, down, hide])
     }
 
-    /// The live reading with its own voice: dollars against caps, resets stated by opencode
-    /// itself, and the plan's billing anchor behind the monthly window.
-    private static func liveOpencodeModel(_ quota: UsageQuota) -> CardModel {
-        let gauges = quota.gauges.map { gauge -> GaugeVM in
-            let percent = Int((min(max(gauge.fraction, 0), 1) * 100).rounded())
-            return GaugeVM(
-                name: UsageGaugeFormat.gaugeLabel(gauge.label),
+    private static func accent(for key: String) -> UIColor {
+        switch key {
+        case "claude": return Theme.Color.claude
+        case "grok": return Theme.Color.grok
+        case "opencode": return Theme.Color.opencode
+        case "deepseek": return Theme.Color.modelFamily(.deepseek)
+        case "ollama-cloud": return Theme.Color.ollamaCloud
+        default: return Theme.Color.accent
+        }
+    }
+
+    private static func gaugeVM(_ gauge: UsageQuota.Gauge, in quota: UsageQuota) -> GaugeVM {
+        let isBalance = QuotaBoard.isBalance(gauge)
+        let percent: String
+        if isBalance {
+            percent =
+                gauge.fraction >= QuotaSurface.exhaustedFloor
+                ? String(localized: "Empty")
+                : QuotaGlance.money(gauge.usedUSD ?? 0, gauge.currency)
+        } else {
+            percent = QuotaSurface.amountLabel(
                 fraction: gauge.fraction,
-                percentText: QuotaSurface.amountLabel(
-                    fraction: gauge.fraction, percentText: "\(percent)%"),
-                caption: caption(gauge))
+                percentText: "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%")
         }
-        return CardModel(
-            subtitle: quota.subtitle,
-            pill: String(localized: "LIVE"),
-            accent: Theme.Color.opencode,
-            gauges: gauges,
-            details: quota.details.map { ($0.key, $0.value) },
-            note: String(
-                localized:
-                    "Straight from the OpenCode Go usage API — exact account-wide dollars against your caps, not an estimate."
-            ))
-    }
-
-    private static func liveModel(_ quota: UsageQuota, accent: UIColor) -> CardModel {
-        let gauges = quota.gauges.map { gauge -> GaugeVM in
-            let percent = Int((min(max(gauge.fraction, 0), 1) * 100).rounded())
-            return GaugeVM(
-                name: gauge.label,
-                fraction: gauge.fraction,
-                percentText: QuotaSurface.amountLabel(
-                    fraction: gauge.fraction, percentText: "\(percent)%"),
-                caption: caption(gauge))
-        }
-        return CardModel(
-            subtitle: quota.subtitle,
-            pill: String(localized: "LIVE"),
-            accent: accent,
-            gauges: gauges,
-            details: quota.details.map { ($0.key, $0.value) },
-            note: String(
-                localized:
-                    "Live rolling rate limits straight from \(quota.source). Percentages are your actual plan consumption, not an estimate."
-            ))
+        return GaugeVM(
+            name: UsageGaugeFormat.gaugeLabel(gauge.label), fraction: gauge.fraction,
+            percentText: percent, caption: caption(gauge, in: quota), isBalance: isBalance)
     }
 
     /// One line under the bar: the money where the window is money, and the reset where the
-    /// provider said when it comes — never two stacked lines of fine print.
-    private static func caption(_ gauge: UsageQuota.Gauge) -> String {
+    /// provider said when it comes — never two stacked lines of fine print. A balance's caption
+    /// is what the money is made of.
+    private static func caption(_ gauge: UsageQuota.Gauge, in quota: UsageQuota) -> String {
+        if QuotaBoard.isBalance(gauge) {
+            if gauge.fraction >= QuotaSurface.exhaustedFloor {
+                return String(localized: "Top up to keep DeepSeek models running")
+            }
+            let made = quota.details.map { "\($0.key) \($0.value)" }
+            return made.isEmpty ? "—" : made.joined(separator: " · ")
+        }
         var parts: [String] = []
         if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-            parts.append("\(currency(used)) / \(currency(limit))")
+            parts.append(
+                "\(QuotaGlance.money(used, gauge.currency)) / \(QuotaGlance.money(limit, gauge.currency))"
+            )
         }
-        let reset = resetCaption(gauge)
-        if reset != "—" { parts.append(reset) }
+        if let resetsAt = gauge.resetsAt {
+            let remaining = QuotaSurface.countdown(to: resetsAt)
+            parts.append(
+                gauge.trustedReset
+                    ? String(localized: "resets \(remaining)")
+                    : String(localized: "~resets \(remaining)"))
+        }
         return parts.isEmpty ? "—" : parts.joined(separator: " · ")
     }
 
-    private static func deepseekModel(_ reading: DeepSeekBalance.Reading) -> CardModel {
-        let value = reading.isAvailable
-            ? DeepSeekBalance.currency(reading.total, reading.currency)
-            : String(localized: "Empty")
-        let gaugeCaption: String
-        if reading.isAvailable {
-            var caption = String(
-                localized:
-                    "Topped up \(DeepSeekBalance.currency(reading.toppedUp, reading.currency))")
-            if reading.granted > 0 {
-                caption += " · "
-                    + String(
-                        localized:
-                            "granted \(DeepSeekBalance.currency(reading.granted, reading.currency))")
-            }
-            gaugeCaption = caption
-        } else {
-            gaugeCaption = String(localized: "Top up to keep DeepSeek models running")
-        }
-        return CardModel(
-            subtitle: String(localized: "Prepaid balance · direct API"),
-            pill: String(localized: "LIVE"),
-            accent: Theme.Color.modelFamily(.deepseek),
-            gauges: [
-                GaugeVM(
-                    name: String(localized: "Balance"), fraction: reading.isAvailable ? 0 : 1,
-                    percentText: value, caption: gaugeCaption)
-            ],
-            details: [
-                (String(localized: "Topped up"),
-                    DeepSeekBalance.currency(reading.toppedUp, reading.currency)),
-                (String(localized: "Granted"),
-                    DeepSeekBalance.currency(reading.granted, reading.currency)),
-            ],
-            note: String(
-                localized:
-                    "Billed per token from your own DeepSeek account — no plan caps and no reset, so a balance is exactly the number above."))
-    }
-
-    private static func ollamaModel(_ reading: OllamaCloud.Reading) -> CardModel {
-        let quota = OllamaCloud.snapshot(for: reading)
-        let gauges = quota.gauges.map { gauge -> GaugeVM in
-            return GaugeVM(
-                name: UsageGaugeFormat.gaugeLabel(gauge.label),
-                fraction: gauge.fraction,
-                percentText: UsageGaugeFormat.percentText(fraction: gauge.fraction),
-                caption: gauge.fraction >= QuotaSurface.exhaustedFloor
-                    ? String(localized: "Used up — the window resets on ollama's own clock")
-                    : "—")
-        }
-        return CardModel(
-            subtitle: quota.subtitle,
-            pill: String(localized: "LIVE"),
-            accent: Theme.Color.ollamaCloud,
-            gauges: gauges,
-            details: quota.details.map { ($0.key, $0.value) },
-            note: String(
-                localized:
-                    "Straight from ollama.com — the plan's session and weekly windows, not an estimate."))
-    }
-
-    private static func resetCaption(_ gauge: UsageQuota.Gauge) -> String {
-        guard let resetsAt = gauge.resetsAt else { return "—" }
-        let elapsed = humanize(until: resetsAt)
-        return gauge.trustedReset
-            ? String(localized: "resets \(elapsed)") : String(localized: "~resets \(elapsed)")
-    }
-
-    private static func humanize(until date: Date) -> String {
-        let seconds = max(0, date.timeIntervalSinceNow)
-        let minutes = Int(seconds / 60)
-        if minutes < 60 { return "\(minutes)m" }
-        let hours = minutes / 60
-        if hours < 24 { return "\(hours)h \(minutes % 60)m" }
-        return "\(hours / 24)d \(hours % 24)h"
-    }
-
-    private static func currency(_ value: Double) -> String {
-        String(format: "$%.2f", value)
+    private static func note(_ text: String) -> UILabel {
+        let label = UILabel()
+        label.text = text
+        label.font = Theme.Ramp.font(.panelLabel)
+        label.textColor = Theme.Color.secondaryLabel
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        return label
     }
 
     private func showEmptyState() {
@@ -735,8 +599,129 @@ final class UsageViewController: UIViewController {
     }
 }
 
-/// The tightest window across every provider, worn big: the one number a visit
-/// to this screen is usually for.
+/// The board's switches: one chip per provider, lit in its brand's colour while shown and dimmed
+/// while hidden — never removed, because a switch that vanishes when it is off cannot be switched
+/// back — with the arrangement and the lead behind one menu at the end.
+@MainActor
+private final class BoardBar: UIView {
+    private let scroller = UIScrollView()
+    private let row = UIStackView()
+    private let arrangeButton = UIButton(type: .system)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        scroller.showsHorizontalScrollIndicator = false
+        scroller.translatesAutoresizingMaskIntoConstraints = false
+        row.axis = .horizontal
+        row.spacing = Theme.Spacing.s
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+        scroller.addSubview(row)
+
+        var arrange = UIButton.Configuration.plain()
+        arrange.image = UIImage(systemName: "line.3.horizontal.decrease.circle")
+        arrange.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 20)
+        arrangeButton.configuration = arrange
+        arrangeButton.showsMenuAsPrimaryAction = true
+        arrangeButton.accessibilityLabel = String(localized: "Arrange the board")
+        arrangeButton.setContentHuggingPriority(.required, for: .horizontal)
+        arrangeButton.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(scroller)
+        addSubview(arrangeButton)
+        NSLayoutConstraint.activate([
+            scroller.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scroller.topAnchor.constraint(equalTo: topAnchor),
+            scroller.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scroller.trailingAnchor.constraint(
+                equalTo: arrangeButton.leadingAnchor, constant: -Theme.Spacing.s),
+            arrangeButton.trailingAnchor.constraint(equalTo: trailingAnchor),
+            arrangeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            row.leadingAnchor.constraint(equalTo: scroller.contentLayoutGuide.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: scroller.contentLayoutGuide.trailingAnchor),
+            row.topAnchor.constraint(equalTo: scroller.contentLayoutGuide.topAnchor),
+            row.bottomAnchor.constraint(equalTo: scroller.contentLayoutGuide.bottomAnchor),
+            row.heightAnchor.constraint(equalTo: scroller.frameLayoutGuide.heightAnchor),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 36),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func render(
+        _ choices: [QuotaBoard.Choice], preferences: QuotaBoardPreferences,
+        change: @escaping ((inout QuotaBoardPreferences) -> Void) -> Void
+    ) {
+        row.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for choice in choices {
+            let accent = Self.accent(for: choice)
+            var configuration =
+                choice.isHidden ? UIButton.Configuration.plain() : UIButton.Configuration.tinted()
+            configuration.title = choice.name
+            configuration.cornerStyle = .capsule
+            configuration.buttonSize = .small
+            configuration.baseForegroundColor = choice.isHidden ? Theme.Color.secondaryLabel : accent
+            configuration.baseBackgroundColor = accent
+            configuration.background.strokeWidth = 1
+            configuration.background.strokeColor =
+                choice.isHidden ? Theme.Color.separator : accent.withAlphaComponent(0.4)
+            if !choice.isReported {
+                configuration.image = UIImage(systemName: "key")
+                configuration.imagePadding = 4
+                configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+                    pointSize: 10)
+            }
+            let chip = UIButton(configuration: configuration)
+            chip.accessibilityLabel = choice.name
+            chip.accessibilityValue =
+                choice.isHidden ? String(localized: "Hidden") : String(localized: "Shown")
+            chip.accessibilityHint =
+                choice.isHidden
+                ? String(localized: "Shows this provider on the board")
+                : String(localized: "Hides this provider from the board")
+            let key = choice.key
+            let hidden = choice.isHidden
+            chip.addAction(
+                UIAction { _ in
+                    Theme.Haptics.selection()
+                    change { $0.setHidden(key, !hidden) }
+                }, for: .touchUpInside)
+            row.addArrangedSubview(chip)
+        }
+
+        let arrangements = QuotaBoardPreferences.Arrangement.allCases.map { option in
+            UIAction(
+                title: option.title, state: option == preferences.arrangement ? .on : .off
+            ) { _ in
+                change { $0.arrangement = option }
+            }
+        }
+        let lead = UIAction(
+            title: String(localized: "Lead with the tightest window"),
+            state: preferences.leadsWithTightest ? .on : .off
+        ) { _ in
+            change { $0.leadsWithTightest.toggle() }
+        }
+        arrangeButton.menu = UIMenu(children: [
+            UIMenu(title: String(localized: "Arrange"), options: .displayInline, children: arrangements),
+            UIMenu(options: .displayInline, children: [lead]),
+        ])
+    }
+
+    private static func accent(for choice: QuotaBoard.Choice) -> UIColor {
+        switch choice.key {
+        case "claude": return Theme.Color.claude
+        case "grok": return Theme.Color.grok
+        case "opencode": return Theme.Color.opencode
+        case "deepseek": return Theme.Color.modelFamily(.deepseek)
+        case "ollama-cloud": return Theme.Color.ollamaCloud
+        default: return Theme.Color.accent
+        }
+    }
+}
+
+/// The tightest window across every provider, worn big: the one number a visit to this screen
+/// is usually for.
 @MainActor
 private final class HeroCard: UIView {
     private let ring = RingGaugeView()
@@ -772,6 +757,12 @@ private final class HeroCard: UIView {
             ring.heightAnchor.constraint(equalToConstant: 132),
         ])
 
+        let caption = UILabel()
+        caption.text = String(localized: "Tightest window")
+        caption.font = Theme.Ramp.font(.metricLabel)
+        caption.textColor = Theme.Color.secondaryLabel
+        caption.textAlignment = .center
+
         titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.textAlignment = .center
@@ -784,10 +775,11 @@ private final class HeroCard: UIView {
         captionLabel.numberOfLines = 2
         captionLabel.text = "—"
 
-        let stack = UIStackView(arrangedSubviews: [ring, titleLabel, captionLabel])
+        let stack = UIStackView(arrangedSubviews: [caption, ring, titleLabel, captionLabel])
         stack.axis = .vertical
         stack.alignment = .center
         stack.spacing = Theme.Spacing.s
+        stack.setCustomSpacing(Theme.Spacing.m, after: caption)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -799,65 +791,39 @@ private final class HeroCard: UIView {
     }
 }
 
-/// One provider's quota card. Every provider wears the same anatomy — name, plan, provenance,
-/// windows as labelled bars, and the fine print folded behind a chevron — so the screen reads as
-/// one repeated shape rather than three cards that each invented their own.
+/// One provider's card. Every provider wears the same anatomy — name, plan, provenance, windows
+/// as labelled bars, a menu for its place on the board, and the fine print folded behind a
+/// chevron — so the screen reads as one repeated shape rather than five cards that each invented
+/// their own. A balance is the one exception the shape allows: money with no ceiling is drawn as
+/// the number itself rather than a bar against a cap nobody stated.
 @MainActor
-private class ProviderCard: UIView {
-    private let cardTitle: String
-    private let accent: UIColor
-    private let subtitleLabel = UILabel()
-    private let pillLabel = UILabel()
-    private let pillBackground = UIView()
-    private let gaugeStack = UIStackView()
+private final class ProviderCard: UIView {
+    var onMenu: (() -> UIMenu)?
+
     private let disclosure = DisclosureRow(title: String(localized: "How this is counted"))
     private let noteLabel = UILabel()
     private let detailsStack = UIStackView()
     private var detailsExpanded = false
-    private let spinner = ActivityBadgeView(pointSize: 16)
+    private let menuButton = UIButton(type: .system)
 
-    init(title: String, accent: UIColor) {
-        self.cardTitle = title
-        self.accent = accent
+    init(holding: QuotaHolding, accent: UIColor, gauges: [GaugeVM]) {
         super.init(frame: .zero)
-        build()
+        build(holding: holding, accent: accent, gauges: gauges)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func setLoading(_ loading: Bool) {
-        spinner.working(loading)
-    }
-
-    func renderError() {
-        spinner.working(false)
-    }
-
-    func apply(_ model: CardModel) {
-        spinner.working(false)
-        subtitleLabel.text = model.subtitle
-        pillLabel.text = model.pill
-        pillBackground.backgroundColor = model.accent.withAlphaComponent(0.14)
-        pillLabel.textColor = model.accent
-
-        gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for gauge in model.gauges {
-            gaugeStack.addArrangedSubview(gaugeRow(gauge, accent: model.accent))
-        }
-
-        noteLabel.text = model.note
-        detailsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for (key, value) in model.details {
-            detailsStack.addArrangedSubview(detailRow(key, value))
-        }
-        disclosure.isHidden = model.note.isEmpty && model.details.isEmpty
-    }
-
-    private func build() {
+    private func build(holding: QuotaHolding, accent: UIColor, gauges: [GaugeVM]) {
+        let quota = holding.quota
+        let gaugeStack = UIStackView()
         gaugeStack.axis = .vertical
         gaugeStack.spacing = Theme.Spacing.m
-        let container = card(
-            [header(), gaugeStack, fold()], spacing: Theme.Spacing.l)
+        for gauge in gauges {
+            gaugeStack.addArrangedSubview(
+                gauge.isBalance ? balanceRow(gauge) : gaugeRow(gauge, accent: accent))
+        }
+        let container = Self.card(
+            [header(quota, accent: accent), gaugeStack, fold(holding)], spacing: Theme.Spacing.l)
         container.translatesAutoresizingMaskIntoConstraints = false
         addSubview(container)
         NSLayoutConstraint.activate([
@@ -866,24 +832,22 @@ private class ProviderCard: UIView {
             container.leadingAnchor.constraint(equalTo: leadingAnchor),
             container.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
-        setGauges(
-            (0..<3).map { _ in GaugeVM(name: "—", fraction: 0, percentText: "—", caption: "—") },
-            accent: accent)
     }
 
-    private func header() -> UIView {
+    private func header(_ quota: UsageQuota, accent: UIColor) -> UIView {
         let title = UILabel()
-        title.text = cardTitle
+        title.text = quota.providerName
         title.font = Theme.Ramp.font(.cardTitle)
-        title.textColor = Theme.Color.label
+        title.textColor = accent
         title.setContentHuggingPriority(.required, for: .horizontal)
 
-        subtitleLabel.text = "—"
-        subtitleLabel.font = Theme.Ramp.font(.panelFootnote)
-        subtitleLabel.textColor = Theme.Color.secondaryLabel
-        subtitleLabel.numberOfLines = 1
+        let subtitle = UILabel()
+        subtitle.text = quota.subtitle.isEmpty ? " " : quota.subtitle
+        subtitle.font = Theme.Ramp.font(.panelFootnote)
+        subtitle.textColor = Theme.Color.secondaryLabel
+        subtitle.numberOfLines = 1
 
-        let names = UIStackView(arrangedSubviews: [title, subtitleLabel])
+        let names = UIStackView(arrangedSubviews: [title, subtitle])
         names.axis = .vertical
         names.spacing = 2
         names.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -892,25 +856,51 @@ private class ProviderCard: UIView {
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let header = UIStackView(arrangedSubviews: [names, spacer, spinner, pill()])
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(systemName: "ellipsis.circle")
+        configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 18)
+        configuration.contentInsets = .zero
+        menuButton.configuration = configuration
+        menuButton.showsMenuAsPrimaryAction = true
+        menuButton.menu = UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] completion in
+                completion([self?.onMenu?() ?? UIMenu()])
+            }
+        ])
+        menuButton.accessibilityLabel = String(localized: "Card options")
+        menuButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        let header = UIStackView(arrangedSubviews: [
+            names, spacer, Self.pill(QuotaSurface.badge(quota), live: quota.live, accent: accent),
+            menuButton,
+        ])
         header.axis = .horizontal
         header.alignment = .center
         header.spacing = Theme.Spacing.s
         return header
     }
 
-    private func setGauges(_ gauges: [GaugeVM], accent: UIColor) {
-        gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for gauge in gauges {
-            gaugeStack.addArrangedSubview(gaugeRow(gauge, accent: accent))
-        }
-    }
-
-    /// Replaces the gauge area with one custom row — the escape hatch the balance card uses,
-    /// because money without a cap is not a bar.
-    func setGaugeRow(_ view: UIView) {
-        gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        gaugeStack.addArrangedSubview(view)
+    private static func pill(_ text: String, live: Bool, accent: UIColor) -> UIView {
+        let label = UILabel()
+        label.text = text
+        label.font = Theme.Ramp.font(.metricLabel)
+        label.textColor = live ? accent : Theme.Color.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let background = UIView()
+        background.backgroundColor =
+            (live ? accent : Theme.Color.secondaryLabel).withAlphaComponent(0.14)
+        background.layer.cornerRadius = 9
+        background.layer.cornerCurve = .continuous
+        background.setContentHuggingPriority(.required, for: .horizontal)
+        background.addSubview(label)
+        NSLayoutConstraint.activate([
+            background.heightAnchor.constraint(equalToConstant: 18),
+            label.centerYAnchor.constraint(equalTo: background.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Theme.Spacing.s),
+            label.trailingAnchor.constraint(
+                equalTo: background.trailingAnchor, constant: -Theme.Spacing.s),
+        ])
+        return background
     }
 
     private func gaugeRow(_ gauge: GaugeVM, accent: UIColor) -> UIView {
@@ -945,7 +935,8 @@ private class ProviderCard: UIView {
         let percent = UILabel()
         percent.text = gauge.percentText
         percent.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
-        percent.textColor = Theme.Color.label
+        percent.textColor =
+            gauge.fraction >= QuotaSurface.exhaustedFloor ? Theme.Color.danger : Theme.Color.label
         percent.textAlignment = .right
         percent.setContentHuggingPriority(.required, for: .horizontal)
         percent.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -971,43 +962,63 @@ private class ProviderCard: UIView {
         return row
     }
 
-    private func pill() -> UIView {
-        pillLabel.text = "—"
-        pillLabel.font = Theme.Ramp.font(.metricLabel)
-        pillLabel.translatesAutoresizingMaskIntoConstraints = false
+    private func balanceRow(_ gauge: GaugeVM) -> UIView {
+        let value = UILabel()
+        value.text = gauge.percentText
+        value.font = Theme.Ramp.font(.metricLarge)
+        value.textColor =
+            gauge.fraction >= QuotaSurface.exhaustedFloor ? Theme.Color.danger : Theme.Color.label
+        value.numberOfLines = 1
 
-        pillBackground.layer.cornerRadius = 9
-        pillBackground.layer.cornerCurve = .continuous
-        pillBackground.setContentHuggingPriority(.required, for: .horizontal)
-        pillBackground.addSubview(pillLabel)
-        NSLayoutConstraint.activate([
-            pillBackground.heightAnchor.constraint(equalToConstant: 18),
-            pillLabel.centerYAnchor.constraint(equalTo: pillBackground.centerYAnchor),
-            pillLabel.leadingAnchor.constraint(equalTo: pillBackground.leadingAnchor, constant: Theme.Spacing.s),
-            pillLabel.trailingAnchor.constraint(equalTo: pillBackground.trailingAnchor, constant: -Theme.Spacing.s),
-        ])
-        return pillBackground
+        let caption = UILabel()
+        caption.text = gauge.caption
+        caption.font = Theme.Ramp.font(.toolOutput)
+        caption.textColor = Theme.Color.secondaryLabel
+        caption.numberOfLines = 2
+
+        let row = UIStackView(arrangedSubviews: [value, caption])
+        row.axis = .vertical
+        row.spacing = Theme.Spacing.xs
+        row.isAccessibilityElement = true
+        row.accessibilityLabel = "\(gauge.name), \(gauge.percentText), \(gauge.caption)"
+        return row
     }
 
-    /// The fine print folds away: the bars answer the daily question, and the
-    /// counting — caps, hosts, the source the numbers came from — is there for
-    /// the visit that asks.
-    private func fold() -> UIView {
+    /// The fine print folds away: the bars answer the daily question, and the counting — caps,
+    /// hosts, the source the numbers came from — is there for the visit that asks.
+    private func fold(_ holding: QuotaHolding) -> UIView {
         disclosure.addTarget(self, action: #selector(toggleDetails), for: .touchUpInside)
         noteLabel.font = Theme.Ramp.font(.panelFootnote)
         noteLabel.textColor = Theme.Color.secondaryLabel
         noteLabel.numberOfLines = 0
-        noteLabel.text = " "
+        noteLabel.text = Self.provenanceNote(holding)
+        noteLabel.isHidden = true
+        noteLabel.alpha = 0
 
         detailsStack.axis = .vertical
         detailsStack.spacing = Theme.Spacing.s
         detailsStack.isHidden = true
         detailsStack.alpha = 0
+        for detail in holding.quota.details {
+            detailsStack.addArrangedSubview(detailRow(detail.key, detail.value))
+        }
 
         let stack = UIStackView(arrangedSubviews: [disclosure, noteLabel, detailsStack])
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.s
         return stack
+    }
+
+    /// Where the numbers came from, in a sentence: the provider's own source, the machines that
+    /// answered when more than one did, and what a live reading is.
+    private static func provenanceNote(_ holding: QuotaHolding) -> String {
+        let source = QuotaRollup.provenance(holding)
+        guard holding.quota.live else {
+            return String(localized: "Last saved figures from \(source) — refreshed from the server while this screen is up.")
+        }
+        return String(
+            localized:
+                "Live from \(source). Percentages are the account's actual consumption, not an estimate.")
     }
 
     @objc private func toggleDetails() {
@@ -1043,7 +1054,7 @@ private class ProviderCard: UIView {
         return row
     }
 
-    private func card(_ views: [UIView], spacing: CGFloat) -> UIView {
+    fileprivate static func card(_ views: [UIView], spacing: CGFloat) -> UIView {
         let container = UIView()
         container.backgroundColor = Theme.Color.secondaryBackground
         container.layer.cornerRadius = Theme.Radius.card
@@ -1064,114 +1075,98 @@ private class ProviderCard: UIView {
     }
 }
 
-/// The DeepSeek prepaid balance: a number, not a gauge. With no key it is a quiet invitation to
-/// add one rather than an error — the surface stays whole either way.
+/// A door with no reading to draw: a key nobody has set is a quiet invitation to add one rather
+/// than an error, and a key that has been set but not answered for says exactly that — the
+/// surface stays whole either way, and the invitation can be hidden like any card.
 @MainActor
-private final class DeepSeekCard: ProviderCard {
+private final class OfferCard: UIView {
     var onOpenEditor: (() -> Void)?
+    var onHide: (() -> Void)?
 
-    private let balanceStack = UIStackView()
+    init(offer: QuotaBoard.Offer, accent: UIColor) {
+        super.init(frame: .zero)
+        let deepseek = offer.key == "deepseek"
+        let hasKey = deepseek ? DeepSeekCredentials.hasToken : OllamaCredentials.hasToken
 
-    init() {
-        super.init(title: "DeepSeek API", accent: Theme.Color.modelFamily(.deepseek))
-        balanceStack.axis = .vertical
-        balanceStack.spacing = Theme.Spacing.xs
-    }
+        let title = UILabel()
+        title.text = offer.name
+        title.font = Theme.Ramp.font(.cardTitle)
+        title.textColor = accent
 
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+        let subtitle = UILabel()
+        subtitle.text =
+            deepseek
+            ? String(localized: "Billed per token — no plan caps")
+            : String(localized: "Plan-metered — session and weekly windows")
+        subtitle.font = Theme.Ramp.font(.panelFootnote)
+        subtitle.textColor = Theme.Color.secondaryLabel
+        let names = UIStackView(arrangedSubviews: [title, subtitle])
+        names.axis = .vertical
+        names.spacing = 2
 
-    var isVisible: Bool {
-        get { !isHidden }
-        set { isHidden = !newValue }
-    }
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(systemName: "ellipsis.circle")
+        configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 18)
+        configuration.contentInsets = .zero
+        let menu = UIButton(configuration: configuration)
+        menu.showsMenuAsPrimaryAction = true
+        menu.menu = UIMenu(children: [
+            UIAction(title: String(localized: "Hide"), image: UIImage(systemName: "eye.slash")) {
+                [weak self] _ in self?.onHide?()
+            }
+        ])
+        menu.accessibilityLabel = String(localized: "Card options")
+        menu.setContentHuggingPriority(.required, for: .horizontal)
+        let header = UIStackView(arrangedSubviews: [names, UIView(), menu])
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = Theme.Spacing.s
 
-    /// The balance is drawn as money and the standard bar anatomy is dropped — one bar shape is
-    /// for windows with caps, and a balance has neither.
-    override func apply(_ model: CardModel) {
-        super.apply(model)
-        balanceStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        guard let gauge = model.gauges.first else { return renderKeyless() }
+        let words = UILabel()
+        words.numberOfLines = 0
+        words.font = Theme.Ramp.font(.panelFootnote)
+        words.textColor = Theme.Color.secondaryLabel
+        if deepseek {
+            words.text =
+                hasKey
+                ? String(
+                    localized:
+                        "The key is set and api.deepseek.com has not answered yet — the prepaid balance appears here as soon as it does.")
+                : String(
+                    localized:
+                        "DeepSeek models billed straight to your own platform account are metered by a prepaid balance rather than by a plan. Add the key and the balance joins these numbers.")
+        } else {
+            words.text =
+                hasKey
+                ? String(
+                    localized:
+                        "The key is set and ollama.com has not answered yet — the plan's windows appear here as soon as it does.")
+                : String(
+                    localized:
+                        "Ollama models served by ollama.com are metered by your plan. Add the account's API key and the session and weekly windows join these numbers.")
+        }
 
-        let value = UILabel()
-        value.text = gauge.percentText
-        value.font = Theme.Ramp.font(.metricLarge)
-        value.textColor =
-            gauge.fraction >= QuotaSurface.exhaustedFloor
-            ? Theme.Color.danger : Theme.Color.label
-        value.numberOfLines = 1
-
-        let caption = UILabel()
-        caption.text = gauge.caption
-        caption.font = Theme.Ramp.font(.toolOutput)
-        caption.textColor = Theme.Color.secondaryLabel
-        caption.numberOfLines = 2
-
-        balanceStack.addArrangedSubview(value)
-        balanceStack.addArrangedSubview(caption)
-        setGaugeRow(balanceStack)
-    }
-
-    func renderKeyless() {
-        super.apply(
-            CardModel(
-                subtitle: String(localized: "Billed per token — no plan caps"),
-                pill: String(localized: "OPTIONAL"),
-                accent: Theme.Color.modelFamily(.deepseek),
-                gauges: [],
-                details: [],
-                note: String(
-                    localized: "Add your DeepSeek platform key and the prepaid balance shows here."
-                )))
         let button = UIButton(type: .system)
-        button.setTitle(String(localized: "Add API key to track the balance"), for: .normal)
+        button.setTitle(
+            hasKey ? String(localized: "Edit API key") : String(localized: "Add API key"),
+            for: .normal)
         button.titleLabel?.font = Theme.Ramp.font(.panelLabel)
         button.setTitleColor(Theme.Color.accent, for: .normal)
         button.contentHorizontalAlignment = .leading
-        button.addAction(
-            UIAction { [weak self] _ in self?.onOpenEditor?() }, for: .touchUpInside)
-        balanceStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        balanceStack.addArrangedSubview(button)
-        setGaugeRow(balanceStack)
-    }
-}
+        button.addAction(UIAction { [weak self] _ in self?.onOpenEditor?() }, for: .touchUpInside)
 
-/// The Ollama Cloud plan: two windows drawn as ordinary gauges. With no key it is a quiet
-/// invitation to add one rather than an error — the surface stays whole either way.
-@MainActor
-private final class OllamaCard: ProviderCard {
-    var onOpenEditor: (() -> Void)?
-
-    init() {
-        super.init(title: "Ollama Cloud", accent: Theme.Color.ollamaCloud)
+        let container = ProviderCard.card([header, words, button], spacing: Theme.Spacing.m)
+        container.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(container)
+        NSLayoutConstraint.activate([
+            container.topAnchor.constraint(equalTo: topAnchor),
+            container.bottomAnchor.constraint(equalTo: bottomAnchor),
+            container.leadingAnchor.constraint(equalTo: leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    var isVisible: Bool {
-        get { !isHidden }
-        set { isHidden = !newValue }
-    }
-
-    func renderKeyless() {
-        super.apply(
-            CardModel(
-                subtitle: String(localized: "Plan-metered — session and weekly windows"),
-                pill: String(localized: "OPTIONAL"),
-                accent: Theme.Color.ollamaCloud,
-                gauges: [],
-                details: [],
-                note: String(
-                    localized: "Add your Ollama Cloud API key and the plan's windows show here."
-                )))
-        let button = UIButton(type: .system)
-        button.setTitle(String(localized: "Add API key to track the plan"), for: .normal)
-        button.titleLabel?.font = Theme.Ramp.font(.panelLabel)
-        button.setTitleColor(Theme.Color.accent, for: .normal)
-        button.contentHorizontalAlignment = .leading
-        button.addAction(
-            UIAction { [weak self] _ in self?.onOpenEditor?() }, for: .touchUpInside)
-        setGaugeRow(button)
-    }
 }
 
 @MainActor
@@ -1223,9 +1218,8 @@ private final class DisclosureRow: UIControl {
     }
 }
 
-/// The doorway to the analytics screen, wearing a month of days as its own
-/// preview: the sparkline appears once a ledger has been read and the total
-/// rides beside the chevron.
+/// The doorway to the analytics screen, wearing a month of days as its own preview: the
+/// sparkline appears once a ledger has been read and the total rides beside the chevron.
 @MainActor
 private final class MonthCard: UIControl {
     private let totalLabel = UILabel()

@@ -411,6 +411,9 @@ final class HomeViewController: UIViewController {
             self, selector: #selector(archiveDidChange),
             name: ArchivedChatStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(boardDidChange),
+            name: QuotaBoardStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
             name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(
@@ -443,6 +446,8 @@ final class HomeViewController: UIViewController {
     @objc private func activityDidChange() { applySnapshot() }
 
     @objc private func archiveDidChange() { applySnapshot() }
+
+    @objc private func boardDidChange() { applySnapshot() }
 
     /// Settings edited the servers. Rebuilding the backends here — rather than
     /// recreating the whole screen — keeps scroll position, the composer draft,
@@ -973,7 +978,10 @@ final class HomeViewController: UIViewController {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
-        let usageCards = quotas.map { QuotaCard(quota: $0) }
+        let board = QuotaBoardStore.current
+        let usageCards = quotas
+            .filter { !board.isHidden(QuotaBoard.key(providerName: $0.providerName)) }
+            .map { QuotaCard(quota: $0) }
         let reserved = reservedUsageCards
         if !usageCards.isEmpty || reserved > 0 {
             snapshot.appendSections([.usage])

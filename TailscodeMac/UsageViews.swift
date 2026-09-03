@@ -188,6 +188,8 @@ final class UsageFooterView: NSView {
             self, selector: #selector(repaint), name: DeepSeekBalance.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: OllamaUsage.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: QuotaBoardStore.didChange, object: nil)
     }
 
     @available(*, unavailable)
@@ -208,7 +210,8 @@ final class UsageFooterView: NSView {
         if let reading = OllamaUsage.cached {
             folded = folded + [("", OllamaCloud.snapshot(for: reading))]
         }
-        let glance = QuotaGlance.make(from: folded, answeredAt: answeredAt)
+        let glance = QuotaGlance.make(
+            from: folded, answeredAt: answeredAt, board: QuotaBoardStore.current)
         isHidden = glance.isEmpty
         toolTip = glance.tooltip.isEmpty ? nil : glance.tooltip
         for line in glance.lines {
@@ -309,12 +312,17 @@ final class UsageFooterView: NSView {
     }
 }
 
-/// The full quota picture behind the toolbar gauge: one card per provider, every gauge as a wide
-/// bar with its reset, spend windows in money, and the account facts the provider reports. Opens
-/// on what the footer already knows, then refetches so the numbers are current; the refresh
-/// button asks again. Popover chrome is the system material — content, not floating glass.
+/// The full quota picture behind the toolbar gauge, in a window of its own rather than a popover
+/// the width of a phone: the board's switches across the top — every provider the account
+/// reported or this Mac can offer a key for, shown or hidden with one press, the arrangement and
+/// the lead beside them — then the tightest window as one wide bar, then a card per provider two
+/// across, each with its windows as bars that fill the card, its reset, its money and the facts
+/// the provider reports. Which cards, in what order and whether the lead shows is
+/// ``QuotaBoard``'s; this decides only how a card is drawn. Opens on what the footer already
+/// knows, then refetches so the numbers are current; the refresh button asks again.
 @MainActor
 final class UsagePanelViewController: NSViewController {
+    private let boardBar = NSStackView()
     private let column = FillingStack()
     private var quotas: [(String, UsageQuota)]
     private let refresh: () async -> [(String, UsageQuota)]
@@ -323,6 +331,11 @@ final class UsagePanelViewController: NSViewController {
     /// The prepaid balance is this Mac's own reading rather than a server's report, so it is held
     /// beside the servers' quotas and folded in only where the cards are built.
     private var balance: DeepSeekBalance.Reading?
+    private let arrangementPicker = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let leadSwitch = NSButton(
+        checkboxWithTitle: Localized.text("Lead with the tightest"), target: nil, action: nil)
+
+    static let openingSize = NSSize(width: 780, height: 760)
 
     init(
         initial: [(String, UsageQuota)],
@@ -334,16 +347,38 @@ final class UsagePanelViewController: NSViewController {
         self.onAnalytics = onAnalytics
         self.balance = DeepSeekBalance.cached
         super.init(nibName: nil, bundle: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(boardChanged), name: QuotaBoardStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(boardChanged), name: MacTheme.Chrome.didRepaint, object: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
+        boardBar.orientation = .horizontal
+        boardBar.alignment = .centerY
+        boardBar.spacing = MacTheme.Spacing.s
+        boardBar.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.m, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.xs,
+            right: MacTheme.Spacing.l)
+        boardBar.translatesAutoresizingMaskIntoConstraints = false
+
+        arrangementPicker.addItems(
+            withTitles: QuotaBoardPreferences.Arrangement.allCases.map(\.title))
+        arrangementPicker.controlSize = .small
+        arrangementPicker.target = self
+        arrangementPicker.action = #selector(arrangementPicked)
+        arrangementPicker.toolTip = Localized.text("How the cards are arranged")
+        leadSwitch.controlSize = .small
+        leadSwitch.target = self
+        leadSwitch.action = #selector(leadToggled)
+
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(
-            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
-            right: MacTheme.Spacing.m)
+            top: MacTheme.Spacing.s, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.m,
+            right: MacTheme.Spacing.l)
         column.translatesAutoresizingMaskIntoConstraints = false
 
         let clip = RowKit.FlippedClip()
@@ -376,30 +411,30 @@ final class UsagePanelViewController: NSViewController {
         let footer = NSStackView(views: [monthButton, RowKit.spacer(), refreshButton])
         footer.orientation = .horizontal
         footer.edgeInsets = NSEdgeInsets(
-            top: 0, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
-            right: MacTheme.Spacing.m)
+            top: MacTheme.Spacing.s, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.m,
+            right: MacTheme.Spacing.l)
         footer.translatesAutoresizingMaskIntoConstraints = false
 
-        let content = FillingStack(views: [scroll, footer])
-        content.spacing = MacTheme.Spacing.s
+        let content = FillingStack(views: [boardBar, scroll, footer])
+        content.spacing = 0
         content.translatesAutoresizingMaskIntoConstraints = false
 
         let container = NSView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
         container.addSubview(content)
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             content.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             content.topAnchor.constraint(equalTo: container.topAnchor),
             content.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            container.widthAnchor.constraint(equalToConstant: 372),
-            scroll.heightAnchor.constraint(lessThanOrEqualToConstant: 560),
         ])
         view = container
         renderCards()
         startRefresh()
     }
 
-    private func startRefresh() {
+    func startRefresh() {
         guard !refreshing else { return }
         refreshing = true
         renderCards()
@@ -415,29 +450,67 @@ final class UsagePanelViewController: NSViewController {
         }
     }
 
+    @objc private func boardChanged() {
+        view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+        renderCards()
+    }
+
+    @objc private func arrangementPicked() {
+        let index = arrangementPicker.indexOfSelectedItem
+        guard QuotaBoardPreferences.Arrangement.allCases.indices.contains(index) else { return }
+        let picked = QuotaBoardPreferences.Arrangement.allCases[index]
+        guard picked != QuotaBoardStore.current.arrangement else { return }
+        QuotaBoardStore.update { $0.arrangement = picked }
+    }
+
+    @objc private func leadToggled() {
+        let on = leadSwitch.state == .on
+        guard on != QuotaBoardStore.current.leadsWithTightest else { return }
+        QuotaBoardStore.update { $0.leadsWithTightest = on }
+    }
+
     private func renderCards() {
-        column.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let preferences = QuotaBoardStore.current
         let holdings = QuotaRollup.account(from: reports())
-        if holdings.isEmpty {
+        let offers = offers(reported: Set(holdings.map(QuotaBoard.key)))
+        renderBoard(
+            QuotaBoard.choices(holdings: holdings, offers: offers, preferences: preferences),
+            preferences: preferences)
+
+        column.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let visible = QuotaBoard.arrange(holdings, preferences: preferences)
+        let keys = visible.map(QuotaBoard.key)
+        if holdings.isEmpty, offers.isEmpty {
             column.addArrangedSubview(
                 RowKit.label(
                     refreshing
                         ? Localized.text("Asking the providers…")
                         : Localized.text("No provider reports a quota."),
                     font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.secondaryLabel))
-        } else {
-            if let hero = heroCard(holdings) {
-                column.addArrangedSubview(hero)
-            }
-            for holding in holdings {
-                column.addArrangedSubview(card(holding))
-            }
+        } else if visible.isEmpty, !holdings.isEmpty {
+            column.addArrangedSubview(
+                RowKit.label(
+                    Localized.text("Every provider is hidden — switch one on above."),
+                    font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.secondaryLabel))
         }
-        if let invitation = deepseekCard() {
-            column.addArrangedSubview(invitation)
+        if let lead = QuotaBoard.lead(visible, preferences: preferences) {
+            column.addArrangedSubview(heroCard(lead.holding, lead.gauge))
         }
-        if let invitation = ollamaCard() {
-            column.addArrangedSubview(invitation)
+        var cards: [NSView] = visible.enumerated().map { index, holding in
+            card(holding, position: index, of: keys)
+        }
+        for offer in offers where QuotaBoard.shows(offer, preferences: preferences) {
+            cards.append(offerCard(offer))
+        }
+        for pair in stride(from: 0, to: cards.count, by: 2) {
+            let row = NSStackView(views: Array(cards[pair..<min(pair + 2, cards.count)]))
+            if cards.count - pair == 1 { row.addArrangedSubview(NSView()) }
+            row.orientation = .horizontal
+            row.alignment = .top
+            row.distribution = .fillEqually
+            row.spacing = MacTheme.Spacing.m
+            row.translatesAutoresizingMaskIntoConstraints = false
+            column.addArrangedSubview(row)
         }
         if refreshing {
             column.addArrangedSubview(
@@ -445,6 +518,45 @@ final class UsagePanelViewController: NSViewController {
                     Localized.text("Refreshing…"), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
+    }
+
+    /// The row of switches: one chip per provider, lit in the brand's colour while it is shown and
+    /// dimmed while it is hidden — never removed, because a switch that vanishes when it is off
+    /// cannot be switched back — then the arrangement and the lead.
+    private func renderBoard(_ choices: [QuotaBoard.Choice], preferences: QuotaBoardPreferences) {
+        boardBar.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for choice in choices {
+            let chip = NSButton(title: choice.name, target: self, action: #selector(chipPressed(_:)))
+            chip.setButtonType(.pushOnPushOff)
+            chip.bezelStyle = .recessed
+            chip.controlSize = .small
+            chip.state = choice.isHidden ? .off : .on
+            chip.identifier = NSUserInterfaceItemIdentifier(choice.key)
+            chip.toolTip =
+                choice.isHidden
+                ? Localized.text("Hidden — press to show %@", choice.name)
+                : Localized.text("Shown — press to hide %@", choice.name)
+            let slug = ProviderBrand.slug(choice.name) ?? ProviderBrand.brand(choice.name)
+            chip.contentTintColor =
+                choice.isHidden
+                ? MacTheme.Color.tertiaryLabel
+                : (UsageFormat.brandColor(slug) ?? MacTheme.Color.label)
+            chip.alphaValue = choice.isReported ? 1 : 0.75
+            boardBar.addArrangedSubview(chip)
+        }
+        boardBar.addArrangedSubview(RowKit.spacer())
+        arrangementPicker.selectItem(
+            at: QuotaBoardPreferences.Arrangement.allCases.firstIndex(of: preferences.arrangement)
+                ?? 0)
+        leadSwitch.state = preferences.leadsWithTightest ? .on : .off
+        boardBar.addArrangedSubview(arrangementPicker)
+        boardBar.addArrangedSubview(leadSwitch)
+    }
+
+    @objc private func chipPressed(_ sender: NSButton) {
+        guard let key = sender.identifier?.rawValue else { return }
+        let hidden = sender.state == .off
+        QuotaBoardStore.update { $0.setHidden(key, hidden) }
     }
 
     private func reports() -> [(String, UsageQuota)] {
@@ -458,93 +570,56 @@ final class UsagePanelViewController: NSViewController {
         return reports
     }
 
-    /// What the panel says about DeepSeek when there is no balance to draw: a key nobody has set
-    /// is a state with words and one action rather than a blank space, and a key that has been set
-    /// but not yet answered for says exactly that instead of reading as an account with no money.
-    /// It is offered only where it could matter — an opencode server is what fronts these models —
-    /// so an account that has never touched DeepSeek is not told about one.
-    private func deepseekCard() -> NSView? {
-        guard balance == nil else { return nil }
-        let hasKey = DeepSeekCredentials.hasToken
+    /// The doors this Mac can only offer a key for. Offered only where it could matter — an
+    /// opencode server is what fronts these models — so an account that has never touched them
+    /// is not told about them.
+    private func offers(reported: Set<String>) -> [QuotaBoard.Offer] {
         let fronted = ServerDirectory.shared.profiles.contains { $0.backend == .openCode }
-        guard hasKey || fronted else { return nil }
-
-        let words =
-            hasKey
-            ? Localized.text(
-                "The key is set and api.deepseek.com has not answered yet — the prepaid balance appears here as soon as it does.")
-            : Localized.text(
-                "DeepSeek models billed straight to your own platform account are metered by a prepaid balance rather than by a plan. Add the key and the balance joins these numbers.")
-        let action =
-            hasKey ? Localized.text("Edit key…") : Localized.text("Add key…")
-
-        let card = FillingStack()
-        card.spacing = MacTheme.Spacing.s
-        card.edgeInsets = NSEdgeInsets(
-            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
-            right: MacTheme.Spacing.m)
-        card.wantsLayer = true
-        card.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
-        card.layer?.cornerRadius = MacTheme.Radius.control
-        card.translatesAutoresizingMaskIntoConstraints = false
-        card.addArrangedSubview(
-            RowKit.label(
-                Localized.text("DeepSeek"), font: MacTheme.Ramp.font(.panelTitle),
-                color: MacTheme.Color.label))
-        card.addArrangedSubview(
-            RowKit.wrapping(
-                words, font: MacTheme.Ramp.font(.panelFootnote),
-                color: MacTheme.Color.secondaryLabel))
-        let button = RowKit.ActionButton(title: action) { [weak self] in
-            self?.editDeepSeekKey()
+        var out: [QuotaBoard.Offer] = []
+        if !reported.contains("deepseek"), fronted || DeepSeekCredentials.hasToken {
+            out.append(QuotaBoard.Offer(key: "deepseek", name: Localized.text("DeepSeek")))
         }
-        button.controlSize = .small
-        let row = NSStackView(views: [button, RowKit.spacer()])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = MacTheme.Spacing.s
-        card.addArrangedSubview(row)
-        return card
+        if !reported.contains("ollama-cloud"), fronted || OllamaCredentials.hasToken {
+            out.append(QuotaBoard.Offer(key: "ollama-cloud", name: OllamaCloud.providerName))
+        }
+        return out
     }
 
-    /// What the panel says about Ollama Cloud when there is no reading to draw: a key nobody has
-    /// set is a state with words and one action rather than a blank space. Offered only where it
-    /// could matter — an opencode server fronts cloud models — so an account that has never
-    /// touched ollama.com is not told about one.
-    private func ollamaCard() -> NSView? {
-        guard OllamaUsage.cached == nil else { return nil }
-        let hasKey = OllamaCredentials.hasToken
-        let fronted = ServerDirectory.shared.profiles.contains { $0.backend == .openCode }
-        guard hasKey || fronted else { return nil }
+    /// What the panel says about a door with no reading to draw: a key nobody has set is a state
+    /// with words and one action rather than a blank space, and a key that has been set but not
+    /// yet answered for says exactly that instead of reading as an account with no money.
+    private func offerCard(_ offer: QuotaBoard.Offer) -> NSView {
+        let deepseek = offer.key == "deepseek"
+        let hasKey = deepseek ? DeepSeekCredentials.hasToken : OllamaCredentials.hasToken
+        let words: String
+        if deepseek {
+            words =
+                hasKey
+                ? Localized.text(
+                    "The key is set and api.deepseek.com has not answered yet — the prepaid balance appears here as soon as it does.")
+                : Localized.text(
+                    "DeepSeek models billed straight to your own platform account are metered by a prepaid balance rather than by a plan. Add the key and the balance joins these numbers.")
+        } else {
+            words =
+                hasKey
+                ? Localized.text(
+                    "The key is set and ollama.com has not answered yet — the plan's windows appear here as soon as it does.")
+                : Localized.text(
+                    "Ollama models served by ollama.com are metered by your plan. Add the account's API key and the session and weekly windows join these numbers.")
+        }
+        let action = hasKey ? Localized.text("Edit key…") : Localized.text("Add key…")
 
-        let words =
-            hasKey
-            ? Localized.text(
-                "The key is set and ollama.com has not answered yet — the plan's windows appear here as soon as it does.")
-            : Localized.text(
-                "Ollama models served by ollama.com are metered by your plan. Add the account's API key and the session and weekly windows join these numbers.")
-        let action =
-            hasKey ? Localized.text("Edit key…") : Localized.text("Add key…")
-
-        let card = FillingStack()
-        card.spacing = MacTheme.Spacing.s
-        card.edgeInsets = NSEdgeInsets(
-            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
-            right: MacTheme.Spacing.m)
-        card.wantsLayer = true
-        card.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
-        card.layer?.cornerRadius = MacTheme.Radius.control
-        card.translatesAutoresizingMaskIntoConstraints = false
+        let card = Self.cardStack()
         card.addArrangedSubview(
             RowKit.label(
-                Localized.text("Ollama Cloud"), font: MacTheme.Ramp.font(.panelTitle),
-                color: UsageFormat.brandColor("ollama-cloud") ?? MacTheme.Color.label))
+                offer.name, font: MacTheme.Ramp.font(.panelTitle),
+                color: UsageFormat.brandColor(offer.key) ?? MacTheme.Color.label))
         card.addArrangedSubview(
             RowKit.wrapping(
                 words, font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.secondaryLabel))
         let button = RowKit.ActionButton(title: action) { [weak self] in
-            self?.editOllamaKey()
+            if deepseek { self?.editDeepSeekKey() } else { self?.editOllamaKey() }
         }
         button.controlSize = .small
         let row = NSStackView(views: [button, RowKit.spacer()])
@@ -556,18 +631,15 @@ final class UsagePanelViewController: NSViewController {
     }
 
     private func editOllamaKey() {
-        OllamaKeySheet.present(on: NSApp?.mainWindow) { [weak self] in
+        OllamaKeySheet.present(on: view.window) { [weak self] in
             guard let self else { return }
             self.renderCards()
             self.startRefresh()
         }
     }
 
-    /// The editor is sheeted on the app's own window rather than on the popover, which is
-    /// transient: a sheet hung off a window that closes the moment the keyboard moves is a sheet
-    /// that vanishes mid-paste.
     private func editDeepSeekKey() {
-        DeepSeekKeySheet.present(on: NSApp?.mainWindow) { [weak self] in
+        DeepSeekKeySheet.present(on: view.window) { [weak self] in
             guard let self else { return }
             self.balance = DeepSeekBalance.cached
             self.renderCards()
@@ -575,12 +647,22 @@ final class UsagePanelViewController: NSViewController {
         }
     }
 
-    /// The panel leads with the tightest window across every provider — the one that decides
-    /// when the next send unlocks — as one big bar with its countdown. The cards below carry
-    /// the rest.
-    private func heroCard(_ holdings: [QuotaHolding]) -> NSView? {
-        guard let (holding, gauge) = QuotaRollup.tightest(in: Self.windowsOnly(holdings))
-        else { return nil }
+    private static func cardStack() -> FillingStack {
+        let card = FillingStack()
+        card.spacing = MacTheme.Spacing.s
+        card.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
+            right: MacTheme.Spacing.m)
+        card.wantsLayer = true
+        card.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
+        card.layer?.cornerRadius = MacTheme.Radius.control
+        card.translatesAutoresizingMaskIntoConstraints = false
+        return card
+    }
+
+    /// The board leads with the tightest window across the visible providers — the one that
+    /// decides when the next send unlocks — as one big bar with its countdown.
+    private func heroCard(_ holding: QuotaHolding, _ gauge: UsageQuota.Gauge) -> NSView {
         let quota = holding.quota
         let slug = holding.slug
         let fraction = min(max(gauge.fraction, 0), 1)
@@ -604,11 +686,13 @@ final class UsagePanelViewController: NSViewController {
         nameRow.alignment = .firstBaseline
         nameRow.spacing = MacTheme.Spacing.s
 
-        let bar = UsageFormat.fullWidthBar(
-            fraction: fraction, height: 9,
-            fill: UsageFormat.fillColor(severity: severity, slug: slug))
-
-        var views: [NSView] = [caption, nameRow, bar]
+        var views: [NSView] = [caption, nameRow]
+        if !UsageFormat.isBalance(gauge) {
+            views.append(
+                UsageFormat.fullWidthBar(
+                    fraction: fraction, height: 9,
+                    fill: UsageFormat.fillColor(severity: severity, slug: slug)))
+        }
         if let resets = gauge.resetsAt {
             let phrasing =
                 gauge.trustedReset
@@ -619,55 +703,34 @@ final class UsagePanelViewController: NSViewController {
                     phrasing, font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
-        let hero = FillingStack(views: views)
-        hero.spacing = MacTheme.Spacing.s
-        hero.edgeInsets = NSEdgeInsets(
-            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
-            right: MacTheme.Spacing.m)
-        hero.wantsLayer = true
-        hero.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
-        hero.layer?.cornerRadius = MacTheme.Radius.control
-        hero.translatesAutoresizingMaskIntoConstraints = false
+        let hero = Self.cardStack()
+        hero.layer?.borderWidth = 1
+        hero.layer?.borderColor = MacTheme.Color.accent.withAlphaComponent(0.35).cgColor
+        for view in views { hero.addArrangedSubview(view) }
         return hero
     }
 
-    /// A balance never leads. The hero is the window that decides when the next send unlocks, and
-    /// a prepaid balance is neither a window nor a countdown — an empty one would otherwise take
-    /// the top of the panel wearing "Tightest window" over money that resets on nothing.
-    private static func windowsOnly(_ holdings: [QuotaHolding]) -> [QuotaHolding] {
-        holdings.compactMap { holding -> QuotaHolding? in
-            var quota = holding.quota
-            quota.gauges = quota.gauges.filter { !UsageFormat.isBalance($0) }
-            guard !quota.gauges.isEmpty else { return nil }
-            return QuotaHolding(quota: quota, machines: holding.machines)
-        }
-    }
-
-    private func card(_ holding: QuotaHolding) -> NSView {
+    private func card(_ holding: QuotaHolding, position: Int, of keys: [String]) -> NSView {
         let quota = holding.quota
         let slug = holding.slug
-        let card = FillingStack()
-        card.spacing = MacTheme.Spacing.s
-        card.edgeInsets = NSEdgeInsets(
-            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
-            right: MacTheme.Spacing.m)
-        card.wantsLayer = true
-        card.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
-        card.layer?.cornerRadius = MacTheme.Radius.control
-        card.translatesAutoresizingMaskIntoConstraints = false
+        let card = Self.cardStack()
 
         let name = RowKit.label(
             quota.providerName, font: MacTheme.Ramp.font(.panelTitle),
             color: UsageFormat.brandColor(slug) ?? MacTheme.Color.label)
+        name.setContentCompressionResistancePriority(.required, for: .horizontal)
         let header = NSStackView(views: [name])
         if !quota.subtitle.isEmpty {
-            header.addArrangedSubview(
-                RowKit.label(
-                    quota.subtitle, font: MacTheme.Ramp.font(.panelFootnote),
-                    color: MacTheme.Color.secondaryLabel))
+            let plan = RowKit.label(
+                quota.subtitle, font: MacTheme.Ramp.font(.panelFootnote),
+                color: MacTheme.Color.secondaryLabel)
+            plan.lineBreakMode = .byTruncatingTail
+            plan.setContentCompressionResistancePriority(.init(100), for: .horizontal)
+            header.addArrangedSubview(plan)
         }
         header.addArrangedSubview(RowKit.spacer())
         header.addArrangedSubview(Self.badge(for: quota))
+        header.addArrangedSubview(moveButtons(for: QuotaBoard.key(holding), position: position, of: keys))
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = MacTheme.Spacing.s
@@ -697,6 +760,47 @@ final class UsagePanelViewController: NSViewController {
                 QuotaRollup.provenance(holding), font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.tertiaryLabel))
         return card
+    }
+
+    /// A card is moved from its own header, one place at a time; the ends are disabled rather
+    /// than absent, so the two arrows sit in the same place on every card.
+    private func moveButtons(for key: String, position: Int, of keys: [String]) -> NSView {
+        let up = MoveButton(symbol: "chevron.up", tip: Localized.text("Move up")) {
+            QuotaBoardStore.update { $0.move(key, by: -1, among: keys) }
+        }
+        up.isEnabled = position > 0
+        let down = MoveButton(symbol: "chevron.down", tip: Localized.text("Move down")) {
+            QuotaBoardStore.update { $0.move(key, by: 1, among: keys) }
+        }
+        down.isEnabled = position < keys.count - 1
+        let row = NSStackView(views: [up, down])
+        row.orientation = .horizontal
+        row.spacing = 0
+        return row
+    }
+
+    private final class MoveButton: NSButton {
+        private let handler: () -> Void
+
+        init(symbol: String, tip: String, handler: @escaping () -> Void) {
+            self.handler = handler
+            super.init(frame: .zero)
+            image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)
+            imagePosition = .imageOnly
+            isBordered = false
+            bezelStyle = .accessoryBarAction
+            controlSize = .small
+            toolTip = tip
+            contentTintColor = MacTheme.Color.secondaryLabel
+            target = self
+            self.action = #selector(pressed)
+            setContentHuggingPriority(.required, for: .horizontal)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        @objc private func pressed() { handler() }
     }
 
     /// One gauge, and one exception to it: money with no ceiling is drawn as the number itself.
@@ -763,5 +867,54 @@ final class UsagePanelViewController: NSViewController {
             label.bottomAnchor.constraint(equalTo: wrap.bottomAnchor, constant: -2),
         ])
         return wrap
+    }
+}
+
+/// The usage board in a titled window of its own, one per app: a popover the width of a phone
+/// could hold one column of cards and nothing about the board, and it closed the moment the
+/// keyboard moved. Held in a property by whoever presents it, because a window presented from a
+/// local is dead on arrival.
+@MainActor
+final class UsageWindowController: NSWindowController {
+    private let panel: UsagePanelViewController
+
+    init(
+        initial: [(String, UsageQuota)],
+        refresh: @escaping () async -> [(String, UsageQuota)],
+        onAnalytics: @escaping () -> Void
+    ) {
+        panel = UsagePanelViewController(
+            initial: initial, refresh: refresh, onAnalytics: onAnalytics)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: UsagePanelViewController.openingSize),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.title = Localized.text("Usage")
+        window.isReleasedWhenClosed = false
+        window.contentMinSize = NSSize(width: 560, height: 320)
+        MacTheme.Chrome.adopt(window)
+        super.init(window: window)
+        window.contentViewController = panel
+        window.center()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Opens at the size the board was drawn for, and asks the providers again on every showing.
+    func present() {
+        if let window, !window.isVisible, let screen = window.screen ?? NSScreen.main {
+            let room = screen.visibleFrame
+            let size = NSSize(
+                width: min(UsagePanelViewController.openingSize.width, room.width - 80),
+                height: min(UsagePanelViewController.openingSize.height, room.height - 80))
+            window.setFrame(
+                NSRect(
+                    x: room.midX - size.width / 2, y: room.midY - size.height / 2,
+                    width: size.width, height: size.height),
+                display: false)
+        }
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        panel.startRefresh()
     }
 }

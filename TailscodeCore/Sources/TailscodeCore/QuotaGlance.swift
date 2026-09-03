@@ -74,10 +74,17 @@ public struct QuotaGlance: Sendable, Equatable {
     /// `answeredAt` is when the last snapshot actually arrived — nil while the first poll is still
     /// out, which is a state with its own line rather than an empty strip: a person who has just
     /// opened the app and sees nothing cannot tell a quiet account from one nobody has asked.
+    ///
+    /// `board` is the person's board: a provider hidden there is left out of the strip as well,
+    /// because the strip is the account glanced at and the board is what the account looks like
+    /// to them. What the chat says about a wall is decided elsewhere and never hidden.
     public static func make(
-        from reports: [(String, UsageQuota)], answeredAt: Date?, now: Date = Date()
+        from reports: [(String, UsageQuota)], answeredAt: Date?, now: Date = Date(),
+        board: QuotaBoardPreferences = .default
     ) -> QuotaGlance {
-        let holdings = QuotaRollup.account(from: reports)
+        let holdings = QuotaRollup.account(from: reports).filter {
+            !board.isHidden(QuotaBoard.key($0))
+        }
         guard !holdings.isEmpty else {
             guard answeredAt == nil else { return QuotaGlance(lines: [], tooltip: "") }
             return QuotaGlance(

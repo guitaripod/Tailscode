@@ -933,6 +933,39 @@ enum MatrixTheme {
             padding: 1px 8px;
         }
         .usage-gauge-label { color: \(text); \(t(.panelLabel)) }
+        .usage-board { padding: 0px 0px 4px 0px; }
+        .usage-chip {
+            \(t(.pill))
+            padding: 2px 10px;
+            min-height: 0px;
+            border-radius: 99px;
+            border: 1px solid alpha(currentColor, 0.35);
+            background: none;
+            color: \(textDim);
+            opacity: 0.6;
+        }
+        .usage-chip:checked { opacity: 1; color: \(text); border-color: alpha(currentColor, 0.6); }
+        .usage-chip.chip-claude:checked { color: \(palette.brandClaude); }
+        .usage-chip.chip-opencode:checked { color: \(palette.brandOpencode); }
+        .usage-chip.chip-grok:checked { color: \(palette.brandGrok); }
+        .usage-chip.chip-deepseek:checked { color: \(palette.brandDeepseek); }
+        .usage-chip.chip-ollama-cloud:checked { color: \(palette.brandOllama); }
+        .usage-chip.usage-chip-offer { border-style: dashed; }
+        .usage-arrangement { \(t(.control)) }
+        .usage-lead { \(t(.panelDetail)) color: \(textDim); }
+        .usage-move {
+            \(t(.pill))
+            padding: 0px 5px;
+            min-height: 0px;
+            min-width: 0px;
+            background: none;
+            border: none;
+            color: \(textDim);
+            opacity: 0.7;
+        }
+        .usage-move:hover { opacity: 1; color: \(text); }
+        .usage-move:disabled { opacity: 0.2; }
+        .usage-hero { border-color: alpha(\(accent), 0.35); }
         .usage-rule { background-color: \(rule); min-height: 1px; margin: 2px 0px; }
         .usage-detail-key { color: \(textDim); \(t(.panelDetail)) }
         .usage-detail-value { color: \(text); \(t(.metricDetail)) }
