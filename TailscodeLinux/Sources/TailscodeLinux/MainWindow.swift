@@ -515,6 +515,8 @@ final class MainWindow: @unchecked Sendable {
                     let forge = self.presentForge()
                     if !argument.isEmpty { forge.demonstrate(argument) }
                     FileHandle.standardOutput.write(Data("FORGE \(forge.summary)\n".utf8))
+                case "delegate":
+                    _ = self.presentDelegate(host: argument.isEmpty ? nil : argument)
                 case "fstate":
                     ForgeWindow.current?.demonstrate(argument)
                     FileHandle.standardOutput.write(
@@ -758,9 +760,13 @@ final class MainWindow: @unchecked Sendable {
                 let forge: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in _ = self?.presentForge() }
                 }
+                let delegate: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in self?.presentDelegate() }
+                }
                 return [
                     (ForgeEntryPoint.menuTitle,
                      ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil), forge),
+                    (DelegateEntryPoint.menuTitle, DelegateEntryPoint.subtitle, delegate),
                     (Localized.text("Settings…"),
                      Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
                     (Localized.text("Servers…"),
@@ -2473,6 +2479,13 @@ final class MainWindow: @unchecked Sendable {
     @discardableResult
     func presentForge() -> ForgeWindow {
         ForgeWindow.present(parent: window)
+    }
+
+    /// The dispatcher board, opened over the work the same way the forge is: a thing you check on
+    /// rather than a place you type, so it costs the conversation behind it nothing.
+    @discardableResult
+    func presentDelegate(host: String? = nil) -> DelegateWindow {
+        DelegateWindow.present(parent: window, host: host)
     }
 
     /// A slot that started, stopped, or learned the stream's own title. The layout is written back

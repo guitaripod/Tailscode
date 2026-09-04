@@ -337,6 +337,26 @@ final class ServerManager: @unchecked Sendable {
             adw_expander_row_add_row(ptr(row), restart)
         }
 
+        if !isDemo {
+            let delegateRow = adw_action_row_new()!
+            adw_preferences_row_set_use_markup(ptr(delegateRow), 0)
+            adw_preferences_row_set_title(ptr(delegateRow), DelegateEntryPoint.serverRowTitle)
+            adw_action_row_set_subtitle(ptr(delegateRow), DelegateEntryPoint.subtitle)
+            adw_action_row_set_subtitle_lines(ptr(delegateRow), 0)
+            gtk_list_box_row_set_activatable(ptr(delegateRow), 1)
+            let chevron = Gtk.label("›", css: "dim", selectable: false)
+            gtk_widget_set_valign(chevron, GTK_ALIGN_CENTER)
+            adw_action_row_add_suffix(ptr(delegateRow), chevron)
+            let delegateHost = profile.baseURL.host ?? profile.name
+            Gtk.connect(UnsafeMutableRawPointer(delegateRow), "activated") { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self, let window = self.window else { return }
+                    DelegateWindow.present(parent: window, host: delegateHost)
+                }
+            }
+            adw_expander_row_add_row(ptr(row), delegateRow)
+        }
+
         if !isEnvironment {
             let remove = adw_action_row_new()!
             adw_preferences_row_set_use_markup(ptr(remove), 0)

@@ -169,6 +169,11 @@ enum MatrixTheme {
         .fact-good .subtitle { color: alpha(\(accent), 0.85); opacity: 1; }
         .fact-warn .subtitle { color: \(warn); opacity: 1; }
         .fact-bad .subtitle { color: \(danger); opacity: 1; }
+        .delegate-tone-live { color: \(accent); }
+        .delegate-tone-attention { color: \(warn); }
+        .delegate-tone-danger { color: \(danger); }
+        .delegate-tone-quiet { color: \(textDim); }
+        .delegate-rung { border: 1px solid alpha(\(textDim), 0.3); border-radius: 8px; }
         .dim { color: \(textDim); }
         .attachment { color: \(info); \(t(.attachment)) }
         .status-line {
