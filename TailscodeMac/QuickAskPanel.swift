@@ -101,7 +101,7 @@ final class QuickAskPanel: NSPanel {
         isFloatingPanel = true
         isReleasedWhenClosed = false
 
-        editor.widthAnchor.constraint(greaterThanOrEqualToConstant: 460).isActive = true
+        editor.widthAnchor.constraint(greaterThanOrEqualToConstant: 600).isActive = true
         editor.onChanged = { [weak self] in
             self?.stashDraft()
             self?.refreshStarterVisibility()

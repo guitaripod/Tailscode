@@ -107,7 +107,7 @@ final class QuickAskWindow: @unchecked Sendable {
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Quick ask"))
         gtk_window_set_modal(ptr(window), 1)
-        gtk_window_set_default_size(ptr(window), 620, -1)
+        gtk_window_set_default_size(ptr(window), 720, -1)
         if let parent, let root = gtk_widget_get_root(parent) {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
         }
@@ -781,7 +781,7 @@ final class QuickAskWindow: @unchecked Sendable {
     /// time that changes: a box that grew inside a window that did not would write the question
     /// off the bottom edge of its own surface.
     private func fitToContents() {
-        gtk_window_set_default_size(ptr(window), 560, -1)
+        gtk_window_set_default_size(ptr(window), 720, -1)
     }
 
     /// A starter is the first half of a sentence, never a question the app asked on somebody's
