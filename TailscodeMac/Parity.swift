@@ -76,6 +76,15 @@ enum ParityManifest {
         case .userEcho: return .implemented("PendingSendRowView")
         case .freshCanvas: return .implemented("riseFreshCanvas")
         case .chooserBriefing: return .implemented("BriefingPanelViewController")
+        case .delegateBoard: return .implemented("DelegateWindowController")
+        case .delegateComposer: return .implemented("DelegateComposerSheet")
+        case .delegateRun: return .implemented("DelegateRunView")
+        case .delegateApproval: return .implemented("DelegateApprovalBar")
+        case .delegateProGate:
+            return .varies(
+                direct: .notApplicable("a build somebody installed themselves sells nothing, so the dispatcher's window simply opens"),
+                appStore: .implemented("MacDelegateGate"),
+                because: "delegation is the door Pro is sold through, and only the store copy has a receipt to sell")
         case .vimComposer: return .implemented("VimEngine")
         case .slashCompletion: return .implemented("renderCompletion")
         case .slashDispatch: return .implemented("SlashDispatch.decide")

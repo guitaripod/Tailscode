@@ -116,6 +116,7 @@ final class MainMenu: NSObject {
         menu.addItem(
             item(Localized.text("Archived Chats"), #selector(toggleArchiveView), "e", [.command, .shift]))
         menu.addItem(videoForgeItem())
+        menu.addItem(delegateItem())
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Split Right"), #selector(splitRight), "d", [.command, .shift]))
         menu.addItem(
@@ -188,6 +189,14 @@ final class MainMenu: NSObject {
     /// only way in. Named by `ForgeEntryPoint` rather than by this menu, and explained by the one
     /// sentence that cannot go stale: the menu bar is built once at launch, so the tooltip that
     /// changes when a renderer is set up belongs on the control that redraws itself, not here.
+    /// The dispatcher's keyboard route, beside the forge's: a packet is a task you start and watch,
+    /// so it opens in its own window over the work rather than in a pane.
+    private func delegateItem() -> NSMenuItem {
+        let entry = item(DelegateEntryPoint.menuTitle, #selector(openDelegate), "d", [.command, .option])
+        entry.toolTip = DelegateEntryPoint.subtitle
+        return entry
+    }
+
     private func videoForgeItem() -> NSMenuItem {
         let entry = item(ForgeEntryPoint.menuTitle, #selector(videoForge), "v", [.command, .option])
         entry.toolTip = ForgeSurface.subtitle
@@ -254,6 +263,8 @@ final class MainMenu: NSObject {
     #endif
     @objc private func toggleArchiveView() { hub.perform(.toggleArchiveView) }
     @objc private func videoForge() { hub.presentForge() }
+
+    @objc private func openDelegate() { hub.presentDelegate() }
     @objc private func zoomIn() { hub.perform(.zoomIn) }
     @objc private func zoomOut() { hub.perform(.zoomOut) }
     @objc private func zoomReset() { hub.perform(.zoomReset) }

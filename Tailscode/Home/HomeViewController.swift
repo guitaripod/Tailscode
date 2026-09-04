@@ -209,6 +209,9 @@ final class HomeViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         startLiveRefresh()
+        #if DEBUG
+            DelegateGate.debugOpenIfAsked(from: self)
+        #endif
         if wantsComposerFocus {
             wantsComposerFocus = false
             composerBar.focus()
@@ -600,7 +603,36 @@ final class HomeViewController: UIViewController {
                 })
         }
         composeItem.accessibilityLabel = String(localized: "New chat")
-        navigationItem.rightBarButtonItems = [composeItem, videoItem]
+        navigationItem.rightBarButtonItems = [composeItem, videoItem, delegateItem(for: servers)]
+    }
+
+    /// The dispatcher's door on Home: one server opens its board outright, more than one asks which
+    /// machine first. A free copy meets the Pro sheet with the delegate pitch either way.
+    private func delegateItem(for servers: [ConnectionProfile]) -> UIBarButtonItem {
+        let image = UIImage(systemName: DelegateEntryPoint.symbol)
+        let item: UIBarButtonItem
+        if servers.count > 1 {
+            let actions = servers.map { profile in
+                UIAction(
+                    title: profile.name, subtitle: ServerLabel.address(profile),
+                    image: UIImage(systemName: profile.backend.symbolName)?
+                        .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
+                ) { [weak self] _ in
+                    guard let self else { return }
+                    DelegateGate.open(from: self, profile: profile)
+                }
+            }
+            item = UIBarButtonItem(image: image, menu: UIMenu(title: DelegateEntryPoint.menuTitle, children: actions))
+        } else {
+            item = UIBarButtonItem(
+                image: image,
+                primaryAction: UIAction { [weak self] _ in
+                    guard let self, let profile = servers.first else { return }
+                    DelegateGate.open(from: self, profile: profile)
+                })
+        }
+        item.accessibilityLabel = DelegateEntryPoint.title
+        return item
     }
 
     private var lastEnrichment: Date?

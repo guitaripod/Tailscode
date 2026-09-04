@@ -1,4 +1,5 @@
 import StoreKit
+import TailscodeCore
 import UIKit
 
 /// The Pro unlock + tip jar sheet. Shown only when a gate is touched or the
@@ -13,9 +14,24 @@ final class ProUpgradeViewController: UIViewController {
     private let tipHeader = UILabel()
     private let statusLabel = UILabel()
     private var proProduct: Product?
+    private let lead: Lead
 
-    static func present(from presenter: UIViewController) {
-        let nav = UINavigationController(rootViewController: ProUpgradeViewController())
+    /// Which perk brought somebody here, so the sheet leads with the thing they touched rather than
+    /// the general case.
+    enum Lead {
+        case general
+        case delegate
+    }
+
+    init(lead: Lead = .general) {
+        self.lead = lead
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    static func present(from presenter: UIViewController, lead: Lead = .general) {
+        let nav = UINavigationController(rootViewController: ProUpgradeViewController(lead: lead))
         if let sheet = nav.sheetPresentationController {
             sheet.detents = [.medium(), .large()]
             sheet.prefersGrabberVisible = true
@@ -52,21 +68,18 @@ final class ProUpgradeViewController: UIViewController {
 
         let heroIcon = UIImageView(
             image: UIImage(
-                systemName: "sparkles",
+                systemName: lead == .delegate ? DelegateEntryPoint.symbol : "sparkles",
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 34, weight: .medium)))
         heroIcon.tintColor = Theme.Color.accent
         heroIcon.contentMode = .scaleAspectFit
 
         let heroTitle = UILabel()
-        heroTitle.text = String(localized: "Support Tailscode")
+        heroTitle.text = lead == .delegate ? DelegateProGate.requirement : String(localized: "Support Tailscode")
         heroTitle.font = Theme.Ramp.font(.cardTitle)
         heroTitle.textAlignment = .center
 
         let heroBody = UILabel()
-        heroBody.text = String(
-            localized:
-                "Tailscode is open source, with no ads, no tracking, and no server between you and your agents. The one-time Pro unlock funds development."
-        )
+        heroBody.text = lead == .delegate ? DelegateProGate.pitch : ProOffer.pitch
         heroBody.font = Theme.Ramp.font(.panelLabel)
         heroBody.textColor = Theme.Color.secondaryLabel
         heroBody.textAlignment = .center
@@ -98,7 +111,8 @@ final class ProUpgradeViewController: UIViewController {
         stack.addArrangedSubview(heroContainer)
         stack.setCustomSpacing(Theme.Spacing.xl, after: heroContainer)
 
-        for (symbol, text) in [
+        let delegatePerk = (DelegateProGate.perk.symbol, DelegateProGate.perk.text)
+        for (symbol, text) in [delegatePerk] + [
             (
                 "server.rack",
                 String(

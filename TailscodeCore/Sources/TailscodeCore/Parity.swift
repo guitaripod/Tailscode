@@ -165,6 +165,11 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case autoResume
     case freshCanvas
     case chooserBriefing
+    case delegateBoard
+    case delegateComposer
+    case delegateRun
+    case delegateApproval
+    case delegateProGate
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -406,6 +411,26 @@ public enum CapabilityRegistry {
             id: .userEcho, area: "transcript", title: "Sent words appear at once, and the ink says what became of them",
             spec:
                 "A sent message renders immediately as a pending row built from what is in memory — never from a rebuild of the transcript, which is what made a long conversation swallow a send — and the row carries its phase from PendingSend. The phase is told by ink rather than by a word: a message on the wire is drawn faint (PendingSendReading.ink → .faint, opacity under one) with the words fully readable, and the colour fills in when the server has it (.full) — the transition a person watches is the bubble arriving rather than a caption changing from sending to sent under it, and neither word is ever drawn. A line appears only when the wait has become news (caption is nil until then): still sending past slowAfter, waiting for the machine to start past quietAfter — and a client wakes its clock for that moment (nextCaptionChange) rather than ticking under a row with nothing to say. A failure keeps the words at full strength in the danger tone, quotes the server's reason, and offers send-again/edit/discard. The state is spoken in words to a screen reader (PendingSendReading.state), which cannot read ink. Retired only when the server's account grows the message it stood in for."),
+        CapabilityDefinition(
+            id: .delegateBoard, area: "delegate", title: "A machine's dispatcher is a board",
+            spec:
+                "Each server may run the delegate daemon beside its agent (port 4100, Basic auth as user \"delegate\", its own password): a tiered task dispatcher that takes a packet, lets a cheaper model try it in an isolated worktree, judges it with the packet's verifier, escalates a failure up the ladder with the verifier's own words, and applies the passing patch unstaged. The board is where a person meets it: reached from the server's own screen (DelegateEntryPoint.serverRowTitle) and from Home, it says whether the daemon answers and what version (DelegateBoard.statusLine), draws every tier as a rung with the model answering there right now and whether it is up (DelegateTierLine), lists every run newest first as a story row — the goal as its headline, where it is or how it ended as the line under it (DelegateRunStory.subtitle), the rung it passed at as its badge, the run's activity breathing while it works, knocking while it waits for you, and holding still once settled — and folds the pass-rate table into rows with the daemon's own promotion hints (DelegatePromotion.hints) under them, because a tier assignment changes only on a streak the table can show. Live runs fold as their events arrive; the words are Core's and a client draws rows."),
+        CapabilityDefinition(
+            id: .delegateComposer, area: "delegate", title: "A packet is written, not dictated",
+            spec:
+                "A new packet is a form with three fields that matter — the goal written for a reader with no other context, the paths the worker may write, and the verify command that judges the result — and defaults for everything else: the class from the daemon's own table, the repository on that machine, mode, effort, and the ladder. The ladder is one custom control everywhere (DelegateLadder): a rung per tier, tap a rung to start there, drag the cap to set how far the run may climb, each rung labelled with the model it resolves to on that server; unset means the class decides. The words are DelegateComposerWords'; what stops a packet from going (DelegateDraft.problems) and what is merely worth saying before it goes (DelegateDraft.cautions: an open scope, no verifier) are two different things and the form shows the difference. Verifiers worth offering are suggested from what the paths look like (DelegateDraft.verifySuggestions). Sending starts the run and lands on its story; the packet is the daemon's, kept in the repository's own .delegate/packets as that repository's regression set."),
+        CapabilityDefinition(
+            id: .delegateRun, area: "delegate", title: "One run is a story with a ladder",
+            spec:
+                "A run opens on its ladder — the rung it is on lit, the ones it failed marked, the ones beyond its ceiling greyed (DelegateRungState) — over the story of the run in the daemon's own lines (DelegateStoryLine, one per event, a worker's progress indented under its attempt), then every attempt with its tier, model, status, duration, tokens, the files it changed and the verifier's tail when it failed. The past is read from the daemon's stored events and the present streams in on the same stream, so reopening a run finds it exactly where it is. Two actions and no more: replay the same packet on another tier (the road to qualifying a model: DelegateClient.replay), and cancel a run that is still out. A finished run says what was applied; nothing here commits it, because a patch nobody reviewed on the machine that has to live with it is not a commit."),
+        CapabilityDefinition(
+            id: .delegateApproval, area: "delegate", title: "A gated rung asks before it spends",
+            spec:
+                "In conserve mode the daemon stops before the tier it was told to ask about and waits. The wait is a state with a face: the run's activity knocks (ActivityKind.needsApproval), its ladder holds the rung as held, its row says which rung it is waiting on, and the run screen offers exactly two answers — approve, which climbs, and hold, which ends the run as held (DelegateClient.approve). The request survives the screen: a run left waiting is still waiting when the board is reopened, read from the stored approval_required event, and a decision made from another device is seen as approval_resolved rather than as silence."),
+        CapabilityDefinition(
+            id: .delegateProGate, area: "delegate", title: "Delegation is the paywall's door",
+            spec:
+                "On a client that sells Pro, delegation is part of it and is the feature that opens the purchase: every road into the board — the server row, the Home entry, the menu — leads a free copy to the Pro sheet with the delegate pitch (DelegateProGate.pitch, the perk listed in ProOffer.perks) rather than to a half of the feature, and a Pro copy straight to the board. The gate is DelegateProGate.allows(isPro:sells:): a client that sells nothing gates nothing, so the direct Mac build and Linux are simply whole. Nothing nags: the gate is touched only by a person walking through it."),
         CapabilityDefinition(
             id: .chooserBriefing, area: "composer", title: "A tab and a door explain themselves",
             spec:

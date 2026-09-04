@@ -79,6 +79,9 @@ Be clear about what this buys: exhaustiveness forces **disclosure**, not impleme
 
 ## What it does
 
+**Delegate** (Pro on iPhone and Mac)
+- **A packet goes down the ladder, a verified patch comes back.** Each server can run the [`delegate`](https://github.com/guitaripod/delegate) daemon beside its agent: write a goal, the paths the worker may touch and the command that judges it, pick how far up the tier ladder it may climb, and watch a local or cheap-cloud model try it in an isolated worktree — every attempt verified, failures escalated with the verifier's own words, the passing patch applied unstaged. The board shows each machine's tiers and what answers there, every run as a story with its ladder, and a pass-rate table whose promotion hints are streaks, never feelings. A gated rung waits for your approve or hold.
+
 **Chat**
 - Streaming transcripts with collapsible **thought + tool activity groups**, syntax-highlighted code blocks (~60 languages, one toolkit-free lexer, byte-exact copy), real **markdown tables**, tappable links, and per-turn timestamps.
 - **The answer is written, not pasted** — streamed prose plays out of a buffer at an evenly adapting pace, held at the last markdown-safe position so nothing flashes its asterisks, laid out once so no line ever re-wraps under the reader, with a heat-and-shimmer wave riding the newest characters at up to 120 Hz. iOS has a second renderer that hands the glyphs to the GPU; which hand writes is a setting you can watch change.

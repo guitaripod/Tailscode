@@ -52,6 +52,7 @@ final class MainWindowController: NSWindowController {
     private var analyticsWindow: AnalyticsWindowController?
     private var updateWindow: UpdateWindowController?
     private var proWindow: ProWindowController?
+    private var delegateWindow: DelegateWindowController?
     /// The settings toolbar item's button, which carries the standing mark. Weak because the
     /// toolbar owns its item's view, and this is only the handle that repaints the dot.
     private weak var updateMark: UpdateMarkButton?
@@ -542,12 +543,13 @@ final class MainWindowController: NSWindowController {
             if parts.count > 1 { sheet?.demonstrate(parts[1]) }
         case "renderer", "forgesetup":
             presentForge()?.openRenderer()
+        case "delegate": presentDelegate()
         default:
             FileHandle.standardError.write(
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, analytics, newchat, "
                         + "quickask, cheatsheet, commands, chooser, models, spend, git, "
-                        + "forge[:state], renderer\n").utf8))
+                        + "forge[:state], renderer, delegate\n").utf8))
         }
     }
 
@@ -582,6 +584,17 @@ final class MainWindowController: NSWindowController {
             updateWindow = UpdateWindowController()
         }
         updateWindow?.present()
+    }
+
+    /// The dispatcher's window, one per app. A store copy without Pro meets the unlock instead,
+    /// because delegation is the door the purchase is sold through.
+    func presentDelegate() {
+        guard MacDelegateGate.isOpen else {
+            presentPro()
+            return
+        }
+        if delegateWindow == nil { delegateWindow = DelegateWindowController() }
+        delegateWindow?.present()
     }
 
     /// The unlock, opened by hand — from the menu, or from the one gate that asks for it.

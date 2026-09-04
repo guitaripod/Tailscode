@@ -7,7 +7,7 @@ import UIKit
 final class ServerDetailViewController: UIViewController {
     private var profile: ConnectionProfile
 
-    private enum Section: Int, CaseIterable { case info, status, software, defaults, actions }
+    private enum Section: Int, CaseIterable { case info, status, software, defaults, delegate, actions }
     private enum Item: Hashable {
         case value(label: String, value: String)
         case status(String)
@@ -22,6 +22,7 @@ final class ServerDetailViewController: UIViewController {
         case makeDefault
         case isDefault
         case defaultModel
+        case delegate
         case restart
         case edit
         case remove
@@ -73,8 +74,14 @@ final class ServerDetailViewController: UIViewController {
             object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(ledgerChanged), name: UpdateLedger.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(deskChanged), name: DelegateDesk.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(deskChanged), name: ProStore.didChange, object: nil)
         Task { await refresh() }
     }
+
+    @objc private func deskChanged() { reconfigure([.delegate]) }
 
     /// An answer landed for some machine — possibly this one, possibly from a sweep started on
     /// another screen, and during an update every few seconds. The row is redrawn either way.
@@ -152,6 +159,8 @@ final class ServerDetailViewController: UIViewController {
                 localized:
                     "The default server is where a new chat starts when you haven't aimed the composer somewhere else."
             )
+        case .delegate:
+            return DelegateEntryPoint.subtitle
         case .info, .status, .actions:
             return nil
         }
@@ -174,6 +183,7 @@ final class ServerDetailViewController: UIViewController {
         case .status: return String(localized: "Health")
         case .software: return String(localized: "Software")
         case .defaults: return String(localized: "Defaults")
+        case .delegate: return DelegateEntryPoint.title
         case .actions, .none: return nil
         }
     }
@@ -287,6 +297,14 @@ final class ServerDetailViewController: UIViewController {
             content.image = UIImage(systemName: "cpu")
             content.imageProperties.tintColor = Theme.Color.accent
             cell.accessories = [.customView(configuration: modelAccessory())]
+        case .delegate:
+            content.text = DelegateEntryPoint.serverRowTitle
+            content.secondaryText = profile.baseURL.host.map(DelegateGate.rowDetail) ?? ""
+            content.secondaryTextProperties.numberOfLines = 0
+            content.secondaryTextProperties.color = DelegateGate.isOpen ? Theme.Color.secondaryLabel : Theme.Color.special
+            content.image = UIImage(systemName: DelegateEntryPoint.symbol)
+            content.imageProperties.tintColor = DelegateGate.isOpen ? Theme.Color.accent : Theme.Color.special
+            cell.accessories = [.disclosureIndicator()]
         case .edit:
             content.text = String(localized: "Edit server")
             content.textProperties.color = Theme.Color.accent
@@ -553,6 +571,8 @@ final class ServerDetailViewController: UIViewController {
         if supportsModelDefaults { defaults.append(.defaultModel) }
         snapshot.appendItems(defaults, toSection: .defaults)
 
+        if !isDemo { snapshot.appendItems([.delegate], toSection: .delegate) }
+
         var actions: [Item] = isDemo ? [] : [.edit]
         if !isDemo, ServerRestart.isOffered(profile.backend) { actions.insert(.restart, at: 0) }
         actions.append(.remove)
@@ -758,6 +778,8 @@ extension ServerDetailViewController: UICollectionViewDelegate {
             makeDefault()
         case .edit:
             presentEditor()
+        case .delegate:
+            DelegateGate.open(from: self, profile: profile)
         case .remove:
             confirmRemove()
         case .pushState:
