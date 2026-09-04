@@ -30,6 +30,24 @@ extension DeviceStores {
         body: "Your agent finished.", reason: reason)
     }
 
+    @Test("News about a chat that is working again is not news")
+    func liveSessionsAreNotFiled() {
+      fresh()
+      ActivityInbox.record(
+        [
+          MissedActivity(
+            identifier: "done:s1", profileID: "p1", sessionID: "s1", title: "A chat",
+            body: "Your agent finished.", reason: .turnEnded),
+          MissedActivity(
+            identifier: "perm:1", profileID: "p1", sessionID: "s1", title: "A chat",
+            body: "Needs approval", reason: .needsApproval),
+          MissedActivity(
+            identifier: "done:s2", profileID: "p1", sessionID: "s2", title: "Another",
+            body: "Your agent finished.", reason: .turnEnded),
+        ], liveSessionIDs: ["s1"])
+      #expect(Set(ActivityInbox.all().map(\.identifier)) == ["perm:1", "done:s2"])
+    }
+
     @Test("A repeated render adds nothing")
     func recordIsIdempotent() {
       fresh()

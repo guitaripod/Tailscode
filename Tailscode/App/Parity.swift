@@ -15,6 +15,7 @@ enum ParityManifest {
         case .sessionPinning: return .implemented("togglePinned")
         case .unreadTracking: return .implemented("markUnread")
         case .savedChats: return .implemented("SavedChatsViewController")
+        case .savedChatSync: return .implemented("SavedChatSync")
         case .archivedChats: return .implemented("ArchivedChatsViewController")
         case .deleteSession: return .implemented("confirmDelete")
         case .bulkSelection: return .implemented("performBulk")

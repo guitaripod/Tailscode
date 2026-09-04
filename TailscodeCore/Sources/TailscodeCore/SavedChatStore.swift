@@ -56,11 +56,40 @@ public struct SavedChat: Codable, Hashable, Sendable {
     }
 }
 
-/// Saved chats, on this device. Servers have no notion of a bookmark, so this
-/// is deliberately local: it is the user's own shortlist, not shared state.
+/// A bookmark this device has made or dropped and the server has not been told about yet.
+public struct PendingSaveIntent: Codable, Hashable, Sendable {
+    public let profileID: String
+    public let sessionID: String
+    public let saved: Bool
+    public let at: Date
+
+    public init(profileID: String, sessionID: String, saved: Bool, at: Date = Date()) {
+        self.profileID = profileID
+        self.sessionID = sessionID
+        self.saved = saved
+        self.at = at
+    }
+
+    public var key: String { "\(profileID)\u{1}\(sessionID)" }
+}
+
+/// Saved chats: the list is device-local, the bookmark is the server's.
+///
+/// A bookmark is a fact about a conversation rather than about the phone that made it — a chat
+/// saved from the couch is what a person goes looking for at the desk an hour later — so a server
+/// that can keep one (``BackendCapabilities/supportsSavedChats``) is the authority, and every
+/// client reading its listing sees the same shortlist. The list stays written here anyway, whole:
+/// the point of a saved chat is to still find it when its server is asleep, unreachable or gone,
+/// which is exactly when there is nobody to ask.
+///
+/// A mark made while that server could not be reached is not lost and not silently reverted: it is
+/// held as a ``PendingSaveIntent`` that outranks whatever the listing says until the server has
+/// been told, and ``SavedChatSync`` is what tells it. A server with no notion of a bookmark leaves
+/// the mark where it has always been — on the device — and the intent is retired unsent.
 public enum SavedChatStore {
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
     static let storageKey = "tailscode.saved.chats"
+    static let pendingKey = "tailscode.saved.pending"
     private static let capacity = 200
 
     public static let didChange = Notification.Name("tailscode.saved.didChange")
@@ -68,6 +97,16 @@ public enum SavedChatStore {
     /// Read far more often than written — every list render, every swipe row —
     /// so the decode is done once and held until this process writes again.
     nonisolated(unsafe) private static var cache: [SavedChat]?
+    nonisolated(unsafe) private static var pendingCache: [PendingSaveIntent]?
+
+    /// The process cache is what makes the list cheap to read on every render, so a suite that
+    /// emptied `UserDefaults` behind it would be testing a list this process no longer believes in.
+    static func forgetForTesting() {
+        defaults.removeObject(forKey: storageKey)
+        defaults.removeObject(forKey: pendingKey)
+        cache = nil
+        pendingCache = nil
+    }
 
     public static func all() -> [SavedChat] {
         if let cache { return cache }
@@ -103,6 +142,7 @@ public enum SavedChatStore {
     }
 
     public static func save(_ entry: SessionEntry) {
+        note(PendingSaveIntent(profileID: entry.profileID, sessionID: entry.session.id, saved: true))
         var list = all().filter {
             !($0.profileID == entry.profileID && $0.sessionID == entry.session.id)
         }
@@ -121,6 +161,7 @@ public enum SavedChatStore {
     }
 
     public static func remove(profileID: String, sessionID: String) {
+        note(PendingSaveIntent(profileID: profileID, sessionID: sessionID, saved: false))
         let list = all()
         let trimmed = list.filter { !($0.profileID == profileID && $0.sessionID == sessionID) }
         guard trimmed.count != list.count else { return }
@@ -131,6 +172,9 @@ public enum SavedChatStore {
     /// chat on a server that no longer exists can never be opened again.
     public static func removeAll(profileID: String) {
         let list = all()
+        for chat in list where chat.profileID == profileID {
+            forget(profileID: profileID, sessionID: chat.sessionID)
+        }
         let trimmed = list.filter { $0.profileID != profileID }
         guard trimmed.count != list.count else { return }
         write(trimmed)
@@ -145,6 +189,35 @@ public enum SavedChatStore {
             uniquingKeysWith: { first, _ in first })
         var list = all()
         var changed = false
+        var membershipChanged = false
+        let held = Set(pending().map(\.key))
+        for entry in entries {
+            guard let saved = entry.session.saved else { continue }
+            let key = "\(entry.profileID)\u{1}\(entry.session.id)"
+            guard !held.contains(key) else { continue }
+            let index = list.firstIndex {
+                $0.profileID == entry.profileID && $0.sessionID == entry.session.id
+            }
+            switch (saved, index) {
+            case (true, nil):
+                list.insert(
+                    SavedChat(
+                        profileID: entry.profileID, sessionID: entry.session.id,
+                        title: entry.session.title, profileName: entry.profileName,
+                        backend: entry.backendType, directory: entry.session.directory,
+                        updatedAt: entry.session.updatedAt, savedAt: entry.session.updatedAt),
+                    at: 0)
+                changed = true
+                membershipChanged = true
+            case (false, .some(let index)):
+                list.remove(at: index)
+                changed = true
+                membershipChanged = true
+            default:
+                break
+            }
+        }
+        list = Array(list.prefix(capacity))
         for index in list.indices {
             guard let entry = live["\(list[index].profileID)\u{1}\(list[index].sessionID)"]
             else { continue }
@@ -167,7 +240,41 @@ public enum SavedChatStore {
             }
         }
         guard changed else { return }
-        write(list, notify: false)
+        write(list, notify: membershipChanged)
+    }
+
+    /// What this device has decided and its server has not been told.
+    public static func pending() -> [PendingSaveIntent] {
+        if let pendingCache { return pendingCache }
+        guard let data = defaults.data(forKey: pendingKey),
+            let stored = try? JSONDecoder().decode([PendingSaveIntent].self, from: data)
+        else {
+            pendingCache = []
+            return []
+        }
+        pendingCache = stored
+        return stored
+    }
+
+    /// Records what this device just decided, replacing any earlier undelivered decision about the
+    /// same conversation — the last press is the one the server has to hear about.
+    private static func note(_ intent: PendingSaveIntent) {
+        writePending(pending().filter { $0.key != intent.key } + [intent])
+    }
+
+    /// Retires an intent: either the server has been told, or it turned out to have no notion of a
+    /// bookmark and never will be.
+    public static func forget(profileID: String, sessionID: String) {
+        let key = "\(profileID)\u{1}\(sessionID)"
+        let kept = pending().filter { $0.key != key }
+        guard kept.count != pending().count else { return }
+        writePending(kept)
+    }
+
+    private static func writePending(_ intents: [PendingSaveIntent]) {
+        pendingCache = intents
+        guard let data = try? JSONEncoder().encode(intents) else { return }
+        defaults.set(data, forKey: pendingKey)
     }
 
     private static func write(_ list: [SavedChat], notify: Bool = true) {

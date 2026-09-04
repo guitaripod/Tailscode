@@ -1251,6 +1251,8 @@ final class MainWindow: @unchecked Sendable {
             knownDirectories: Array(known), previous: self.entries)
         let heard = await ServerDirectory.shared.lastHeard
         if !entries.isEmpty { SessionListCache.save(entries) }
+        await SavedChatSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
+        SavedChatStore.reconcile(with: entries)
         UpdateWatch.keep(profiles)
         Gtk.onMain { [weak self] in
             self?.knownProfiles = profiles

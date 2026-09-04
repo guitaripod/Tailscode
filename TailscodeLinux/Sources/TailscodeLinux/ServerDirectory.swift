@@ -78,6 +78,13 @@ public actor ServerDirectory {
         return (try? store.password(for: profile.id)) ?? nil
     }
 
+    /// The backend for a profile named by id alone — what a stored intent carries, a listing
+    /// having long since gone. Nil for a server that is no longer connected.
+    public func backend(forProfileID id: String) -> (any CodingAgentBackend)? {
+        guard let profile = cached.first(where: { $0.id == id }) else { return nil }
+        return backend(for: profile)
+    }
+
     public func backend(for profile: ConnectionProfile) -> (any CodingAgentBackend)? {
         if profile.id.hasPrefix(DemoWorld.profilePrefix) {
             return DemoWorld.backend(for: profile.id)

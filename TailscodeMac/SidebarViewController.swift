@@ -243,6 +243,7 @@ final class SidebarViewController: NSViewController {
         ServerDirectory.shared.reload()
         let (fresh, down) = await ServerDirectory.shared.entries(knownDirectories: recentDirectories)
         if !fresh.isEmpty { SessionListCache.save(fresh) }
+        await SavedChatSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
         SavedChatStore.reconcile(with: fresh)
         applyEntries(fresh, unreachable: down)
     }

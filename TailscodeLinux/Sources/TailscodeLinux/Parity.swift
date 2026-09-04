@@ -19,6 +19,7 @@ enum ParityManifest {
         case .sessionPinning: return .implemented("pill-pinned")
         case .unreadTracking: return .implemented("toggleUnreadSelected")
         case .savedChats: return .implemented("SavedChatStore")
+        case .savedChatSync: return .implemented("SavedChatSync")
         case .archivedChats: return .implemented("ArchivedChatStore")
         case .deleteSession: return .implemented("deleteSession")
         case .renameSession: return .implemented("renameSession")

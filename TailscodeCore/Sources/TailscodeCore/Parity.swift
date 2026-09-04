@@ -42,6 +42,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case sessionPinning
     case unreadTracking
     case savedChats
+    case savedChatSync
     case archivedChats
     case deleteSession
     case bulkSelection
@@ -245,7 +246,11 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .savedChats, area: "chat list", title: "Saved chats with full snapshot",
             spec:
-                "Bookmarks are device-local (SavedChatStore) and carry their own copy of everything needed to list and explain themselves when the server is unreachable or the session deleted."),
+                "Bookmarks carry their own copy of everything needed to list and explain themselves when the server is unreachable or the session deleted (SavedChatStore), so the list is drawn without asking anybody."),
+        CapabilityDefinition(
+            id: .savedChatSync, area: "chat list", title: "Bookmarks follow the conversation",
+            spec:
+                "A bookmark is a fact about a conversation rather than about the device that made it — a chat saved from the couch is what a person goes looking for at the desk an hour later — so the server that holds the transcript holds the mark (claude-bridge: saved on the session summary, PATCH /sessions/:id {saved}), and every client reading that listing shows the same shortlist. The device's own copy stays whole, because the point of a saved chat is to still find it when its server is asleep. A press answers instantly and may be made with no server in reach, so it never waits on the wire: it leaves a PendingSaveIntent behind, that intent outranks the listing until it is delivered, and SavedChatSync.drain delivers it on the next listing — a server with no notion of a bookmark (opencode) retires the intent unsent and keeps the mark where it has always been, on the device, and a bridge too old for the field answers a permanent refusal, which reads the same way. SavedChatStore.reconcile then adopts the server's truth for everything nobody is holding an intent about, so a bookmark dropped on another machine goes here too."),
         CapabilityDefinition(
             id: .archivedChats, area: "chat list", title: "Device-local archive",
             spec:

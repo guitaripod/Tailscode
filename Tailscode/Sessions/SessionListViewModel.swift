@@ -188,6 +188,19 @@ final class SessionListViewModel {
             startStreams()
         }
         await refresh(sources, deadline: Self.sourceDeadline)
+        await syncBookmarks()
+    }
+
+    /// Tells each server what this device decided about its bookmarks, so a chat saved here is on
+    /// the shortlist at the desk and one dropped there is gone from here. Runs after the listing
+    /// rather than on the press: the press has to answer instantly and may be made with no server
+    /// in reach at all, so it leaves an intent behind and this is what delivers it.
+    private func syncBookmarks() async {
+        let sources = sources
+        guard await SavedChatSync.drain(backendFor: { profileID in
+            sources.first { $0.profile.id == profileID }?.backend
+        }) else { return }
+        SavedChatStore.reconcile(with: entries)
     }
 
     /// Lists `targets` concurrently and merges their answers into what is

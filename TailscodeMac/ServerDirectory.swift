@@ -45,6 +45,13 @@ final class ServerDirectory {
         profiles = listed
     }
 
+    /// The backend for a profile named by id alone — what a stored intent carries, a listing
+    /// having long since gone. Nil for a server that is no longer connected.
+    func backend(forProfileID id: String) -> (any CodingAgentBackend)? {
+        guard let profile = profiles.first(where: { $0.id == id }) else { return nil }
+        return backend(for: profile)
+    }
+
     func backend(for profile: ConnectionProfile) -> (any CodingAgentBackend)? {
         if profile.id.hasPrefix(DemoWorld.profilePrefix) {
             return DemoWorld.backend(for: profile.id)

@@ -17,7 +17,7 @@ enum SettingsFile {
     /// state, model choices, and the renderer the forge points at with the clips it brought back.
     /// Captured by prefix because their key space is per session.
     private static let capturedPrefixes = [
-        "tailscode.saved.chats", "tailscode.seen.", "tailscode.selectedModel.",
+        "tailscode.saved.chats", "tailscode.saved.pending", "tailscode.seen.", "tailscode.selectedModel.",
         "tailscode.effort.", "tailscode.recentModels", "tailscode.modelCatalog.",
         "tailscode.archived.", "tailscode.activity.missed", "tailscode.watch.",
         "tailscode.quickask.", "tailscode.updates.", "tailscode.commandCatalog.",

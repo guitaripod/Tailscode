@@ -31,6 +31,7 @@ enum ParityManifest {
         case .sessionPinning: return .implemented("menuTogglePinned")
         case .unreadTracking: return .implemented("markUnread")
         case .savedChats: return .implemented("SavedChatStore")
+        case .savedChatSync: return .implemented("SavedChatSync")
         case .archivedChats: return .implemented("ArchivedChatStore")
         case .deleteSession: return .implemented("deleteSession")
         case .bulkSelection: return .implemented("SidebarBulkBar")

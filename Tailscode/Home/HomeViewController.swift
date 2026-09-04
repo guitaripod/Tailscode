@@ -754,7 +754,12 @@ final class HomeViewController: UIViewController {
             viewModel.entries.map { ($0.session.id, $0.profileID) }, uniquingKeysWith: { first, _ in
                 first
             })
-        await NotificationManager.adoptDelivered { owners[$0] }
+        let live = Set(
+            viewModel.entries.filter { $0.session.isWorking }.map(\.session.id)
+        ).union(
+            SessionActivity.shared.statuses.filter { $0.value != .idle }.map(\.key))
+        await NotificationManager.adoptDelivered(
+            profileForSession: { owners[$0] }, liveSessionIDs: live)
     }
 
     /// Deliberately not awaited by `performLoad`: quota and scan work is

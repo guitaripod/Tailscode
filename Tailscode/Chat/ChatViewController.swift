@@ -1368,8 +1368,14 @@ final class ChatViewController: UIViewController {
         ])
     }
 
+    /// A conversation on screen when the app comes back is a conversation being looked at, which
+    /// is the only thing that answers a notice about it — a banner raised while the phone was in a
+    /// pocket must not still be waiting in Missed under the chat it is about.
     @objc private func sceneDidActivate() {
         suppressBannerUntil = Date().addingTimeInterval(3)
+        if view.window != nil {
+            NotificationManager.clearNotices(sessionID: viewModel.session.id)
+        }
         viewModel.resync()
         viewModel.serviceResume()
     }

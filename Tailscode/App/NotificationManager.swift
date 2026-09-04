@@ -155,7 +155,9 @@ enum NotificationManager {
     ///
     /// The bridge's own turn-end notice is given the identifier the local one would have had, so
     /// the same turn cannot be listed twice by two machines that both noticed it.
-    static func adoptDelivered(profileForSession: (String) -> String?) async {
+    static func adoptDelivered(
+        profileForSession: (String) -> String?, liveSessionIDs: Set<String> = []
+    ) async {
         let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
         var adopted: [MissedActivity] = []
         for notice in delivered {
@@ -172,7 +174,7 @@ enum NotificationManager {
                     body: content.body, reason: reason(forIdentifier: fromServer ? "done:" : raised),
                     at: notice.date))
         }
-        ActivityInbox.record(adopted)
+        ActivityInbox.record(adopted, liveSessionIDs: liveSessionIDs)
     }
 
     /// What a delivered notice was about, read from the name it was raised under — the only thing

@@ -167,6 +167,18 @@ public enum ActivityInbox {
     /// The same, for a client that raises its notifications from its own state rather than through
     /// `ActivityWatch`. What matters is that the list and the notifications are written by one
     /// decision — a notice suppressed by preference was never raised, so it was never missed.
+    /// The same, for notices read back from somewhere that kept them while the app was gone — a
+    /// system notification centre, most of all — where the news may already be out of date.
+    ///
+    /// A turn that ended is news until that conversation is working again: the agent answered, was
+    /// answered from another machine and is off doing the next thing, and a row saying it finished
+    /// sends someone back to something they have already dealt with. Only a settled conversation
+    /// can be missed. A request still waiting on a person is not covered by this — a live turn is
+    /// exactly what a question blocks — so blocking notices are filed whatever the listing says.
+    public static func record(_ entries: [MissedActivity], liveSessionIDs: Set<String>) {
+        record(entries.filter { $0.isBlocking || !liveSessionIDs.contains($0.sessionID) })
+    }
+
     public static func record(_ entries: [MissedActivity]) {
         guard !entries.isEmpty else { return }
         var current = all()
