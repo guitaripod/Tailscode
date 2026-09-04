@@ -9,6 +9,7 @@ import UIKit
 final class DelegateBoardViewController: UIViewController {
     private enum Section: Int, CaseIterable { case status, tiers, runs, stats }
     private enum Item: Hashable {
+        case note
         case status
         case password
         case tier(String)
@@ -115,11 +116,11 @@ final class DelegateBoardViewController: UIViewController {
         let board = board
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.status])
-        var status: [Item] = [.status]
+        var status: [Item] = board.note == nil ? [.status] : [.note, .status]
         if case .wantsPassword = reach { status.append(.password) }
         if case .refused = reach { status.append(.password) }
         if desk.password(host: host) == nil, !board.isReady { status.append(.password) }
-        snapshot.appendItems(Array(Set(status)).sorted { $0 == .status && $1 != .status }, toSection: .status)
+        snapshot.appendItems(status.reduce(into: [Item]()) { if !$0.contains($1) { $0.append($1) } }, toSection: .status)
         if !board.tiers.isEmpty {
             snapshot.appendSections([.tiers])
             snapshot.appendItems(board.tierLines.map { .tier($0.tier) }, toSection: .tiers)
@@ -144,6 +145,13 @@ final class DelegateBoardViewController: UIViewController {
         cell.accessories = []
         let board = board
         switch item {
+        case .note:
+            content.text = board.note
+            content.textProperties.numberOfLines = 0
+            content.textProperties.font = Theme.Ramp.font(.rowNote)
+            content.textProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "play.circle")
+            content.imageProperties.tintColor = Theme.Color.special
         case .status:
             content.text = board.statusLine
             content.secondaryText = reach.isAnswering || board.statusLine == reach.line ? DelegateEntryPoint.subtitle : reach.line
@@ -253,7 +261,7 @@ extension DelegateBoardViewController: UICollectionViewDelegate {
                 DelegateRunViewController(host: host, serverName: serverName, runID: runID), animated: true)
         case .empty:
             compose()
-        case .tier, .stat, .hint:
+        case .tier, .stat, .hint, .note:
             break
         }
     }

@@ -175,6 +175,9 @@ public struct DelegateBoard: Sendable, Equatable {
 
     public var liveRunIDs: [String] { runs.filter { $0.status == .running }.map(\.id) }
 
+    /// The demo's one standing sentence, and nil on a real machine.
+    public var note: String? { DelegateDemo.isDemoHost(host) ? DelegateDemo.note : nil }
+
     public var emptyLine: String {
         Localized.text("No runs yet. Write a packet and this machine will pick a tier for it.")
     }
@@ -189,11 +192,10 @@ public struct DelegateBoard: Sendable, Equatable {
         phase = .failed(reason)
     }
 
+    /// The listing replaces the records; every fold this device made is kept, because the record
+    /// has no events and a story rebuilt from it would forget the rungs it failed on.
     public mutating func filled(runs: [DelegateRun]) {
         self.runs = runs
-        for run in runs where run.status != .running {
-            stories[run.id] = nil
-        }
     }
 
     public mutating func filled(stats: [DelegateStat]) {

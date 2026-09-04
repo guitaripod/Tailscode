@@ -10,7 +10,9 @@ enum MacDelegateGate {
     static let desk = DelegateDesk(secrets: KeychainSecretStore())
 
     static var isOpen: Bool {
-        DelegateProGate.allows(isPro: MacProStore.shared.isPro, sells: MacProStore.shared.sellsPro)
+        DelegateProGate.allows(
+            isPro: MacProStore.shared.isPro, sells: MacProStore.shared.sellsPro,
+            demo: ServerDirectory.shared.isDemoMode)
     }
 }
 
@@ -23,6 +25,7 @@ final class DelegateWindowController: NSWindowController {
     private let serverPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
     private let statusBadge = ActivityBadgeView()
+    private let noteLabel = NSTextField(wrappingLabelWithString: "")
     private let passwordButton = RowKit.ActionButton(title: Localized.text("Password…"), action: {})
     private let newButton = RowKit.ActionButton(title: DelegateEntryPoint.newPacketTitle, action: {})
     private let tiersColumn = NSStackView()
@@ -118,6 +121,10 @@ final class DelegateWindowController: NSWindowController {
         buttons.heightAnchor.constraint(equalToConstant: 26).isActive = true
         left.addArrangedSubview(buttons)
 
+        noteLabel.font = MacTheme.Ramp.font(.rowNote)
+        noteLabel.textColor = MacTheme.Color.mark
+        left.addArrangedSubview(noteLabel)
+
         left.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("LADDER")))
         tiersColumn.orientation = .vertical
         tiersColumn.alignment = .leading
@@ -139,7 +146,7 @@ final class DelegateWindowController: NSWindowController {
         statsColumn.spacing = MacTheme.Spacing.xs
         left.addArrangedSubview(statsColumn)
 
-        for view in [serverPopup, statusRow, tiersColumn, runsScroll, statsColumn] {
+        for view in [serverPopup, statusRow, noteLabel, tiersColumn, runsScroll, statsColumn] {
             view.widthAnchor.constraint(equalTo: left.widthAnchor).isActive = true
         }
         runsScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
@@ -200,6 +207,9 @@ final class DelegateWindowController: NSWindowController {
         statusLabel.textColor = board.statusTone == .quiet ? MacTheme.Color.secondaryLabel : board.statusTone.color
         statusBadge.show(board.phase == .checking ? ActivityKind.connecting.icon : nil, spoken: nil)
         newButton.isEnabled = board.isReady
+        noteLabel.stringValue = board.note ?? ""
+        noteLabel.isHidden = board.note == nil
+        passwordButton.isHidden = desk.isDemo(host: host)
 
         tiersColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for line in board.tierLines {

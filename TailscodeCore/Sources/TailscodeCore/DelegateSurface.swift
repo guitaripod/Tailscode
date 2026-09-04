@@ -28,7 +28,9 @@ public enum DelegateEntryPoint {
 /// board's pitch and the purchase, never a half of the feature. A client with no store sells
 /// nothing and gates nothing.
 public enum DelegateProGate {
-    public static func allows(isPro: Bool, sells: Bool) -> Bool { isPro || !sells }
+    /// The demo world is not the real thing, so it is never behind the price: a copy that has not
+    /// bought Pro still works the whole feature on the scripted machines.
+    public static func allows(isPro: Bool, sells: Bool, demo: Bool = false) -> Bool { isPro || !sells || demo }
 
     public static var requirement: String {
         Localized.text("Delegating work to your machines' cheaper tiers is part of Tailscode Pro.")

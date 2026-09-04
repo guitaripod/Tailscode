@@ -10,7 +10,9 @@ import UIKit
 enum DelegateGate {
     static let desk = DelegateDesk(secrets: KeychainSecretStore())
 
-    static var isOpen: Bool { DelegateProGate.allows(isPro: ProStore.shared.isPro, sells: true) }
+    static var isOpen: Bool {
+        DelegateProGate.allows(isPro: ProStore.shared.isPro, sells: true, demo: ConnectionController.shared.isDemoMode)
+    }
 
     static func open(from presenter: UIViewController, profile: ConnectionProfile) {
         guard let host = DelegateAccess.host(of: profile.baseURL) else { return }
@@ -50,6 +52,15 @@ enum DelegateGate {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 open(from: home, host: host, serverName: name)
+                guard let runID = env["TAILSCODE_OPEN_DELEGATE_RUN"], !runID.isEmpty else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    home.navigationController?.pushViewController(
+                        DelegateRunViewController(host: host, serverName: name, runID: runID), animated: true)
+                    guard env["TAILSCODE_DELEGATE_APPROVE"] == "1" else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        Task { try? await desk.approve(runID: runID, host: host, approved: true) }
+                    }
+                }
             }
         }
     #endif

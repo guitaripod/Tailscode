@@ -38,7 +38,8 @@ public final class DelegateDesk {
     }
 
     public func password(host: String) -> String? {
-        handed[host] ?? ((try? secrets.value(for: DelegateAccess(host: host).secretKey)) ?? nil)
+        if DelegateDemo.isDemoHost(host) { return "demo" }
+        return handed[host] ?? ((try? secrets.value(for: DelegateAccess(host: host).secretKey)) ?? nil)
     }
 
     /// Remembers the daemon's password for a machine and asks it again straight away.
@@ -58,9 +59,13 @@ public final class DelegateDesk {
         announce()
     }
 
-    public func client(host: String) -> DelegateClient? {
-        access(host: host).config(password: password(host: host)).map(DelegateClient.init)
+    /// The daemon behind a host — or the demo's scripted one, which needs no password and no network.
+    public func client(host: String) -> (any DelegateTransport)? {
+        if DelegateDemo.isDemoHost(host) { return DelegateDemo.server }
+        return access(host: host).config(password: password(host: host)).map(DelegateClient.init)
     }
+
+    public func isDemo(host: String) -> Bool { DelegateDemo.isDemoHost(host) }
 
     /// Asks the machine what it is and what it holds. A 401 is a machine that wants its password,
     /// which is a different fact from a machine that is not there.
@@ -103,7 +108,7 @@ public final class DelegateDesk {
         guard let client = client(host: host), var board = boards[host] else { return }
         do {
             let runs = try await client.runs(limit: 100)
-            let stats = try await client.stats()
+            let stats = try await client.stats(taskClass: nil)
             board = boards[host] ?? board
             board.filled(runs: runs)
             board.filled(stats: stats)
@@ -115,18 +120,31 @@ public final class DelegateDesk {
         }
     }
 
-    /// Reads one run's stored record and attempts, so a run opened cold has its whole past before
-    /// the stream adds its present.
+    /// Reads one run's stored record and folds its stored events, so a run opened cold has its
+    /// whole past — every attempt, every rung it failed on — before the stream adds its present.
+    /// A fold this device already holds is kept rather than rebuilt from the record.
     public func load(runID: String, host: String) async {
         guard let client = client(host: host), let board = boards[host] else { return }
         guard let detail = try? await client.run(id: runID) else { return }
-        var story = DelegateRunStory(detail: detail, tiers: board.tiers)
-        if let live = boards[host]?.stories[runID], live.lastSeq > 0 {
-            story = live
+        let held = boards[host]?.stories[runID]
+        if let held, held.lastSeq > 0 {
+            if detail.run.status == .running { follow(runID: runID, host: host) }
+            return
         }
-        boards[host]?.remember(story)
+        boards[host]?.remember(DelegateRunStory(runID: runID, tiers: board.tiers, run: detail.run))
         announce()
-        if detail.run.status == .running { follow(runID: runID, host: host) }
+        if detail.run.status == .running {
+            follow(runID: runID, host: host)
+            return
+        }
+        do {
+            for try await envelope in client.events(runID: runID, after: 0) {
+                boards[host]?.fold(envelope)
+            }
+        } catch {
+            reach[host] = Self.reading(error)
+        }
+        announce()
     }
 
     /// Follows a run from where this device last saw it until the daemon says it is over.
