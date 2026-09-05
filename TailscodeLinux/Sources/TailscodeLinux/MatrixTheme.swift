@@ -513,6 +513,19 @@ enum MatrixTheme {
             border: 1px solid alpha(\(textDim), 0.28);
         }
         .ask-chip:hover { color: \(accent); border-color: alpha(\(accent), 0.7); }
+        .ask-aim-segment {
+            \(t(.chip))
+            color: \(textDim);
+            padding: 3px 10px;
+            border: 1px solid alpha(\(textDim), 0.28);
+            background: none;
+        }
+        .ask-aim-segment:hover { color: \(accent); }
+        .ask-aim-segment:checked {
+            color: \(accent);
+            background-color: alpha(\(accent), 0.14);
+            border-color: alpha(\(accent), 0.7);
+        }
         .ask-section {
             \(t(.sectionLabel))
             color: \(textDim);

@@ -46,6 +46,8 @@ final class QuickAskWindow: @unchecked Sendable {
     private let editor: PromptEditor
     private let title: UnsafeMutablePointer<GtkWidget>
     private let target: UnsafeMutablePointer<GtkWidget>
+    private let aimStrip: UnsafeMutablePointer<GtkWidget>
+    private var aimToggles: [UnsafeMutablePointer<GtkWidget>] = []
     private let model: UnsafeMutablePointer<GtkWidget>
     private let effort: UnsafeMutablePointer<GtkWidget>
     private let attach: UnsafeMutablePointer<GtkWidget>
@@ -130,6 +132,9 @@ final class QuickAskWindow: @unchecked Sendable {
         send = Gtk.button("↵", css: ["flat", "ask-send"]) {
             Gtk.onMain { QuickAskWindow.open?.submit() }
         }
+        aimStrip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(aimStrip, "linked")
+        Gtk.addClass(aimStrip, "ask-aim")
         gtk_widget_set_valign(send, GTK_ALIGN_END)
         chips = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
@@ -163,6 +168,8 @@ final class QuickAskWindow: @unchecked Sendable {
         gtk_box_append(ptr(field), editor.widget)
         gtk_box_append(ptr(field), vimBadge)
         gtk_box_append(ptr(field), send)
+        buildAimStrip()
+        gtk_box_append(ptr(column), aimStrip)
         gtk_box_append(ptr(column), field)
         gtk_box_append(ptr(column), chips)
         gtk_box_append(ptr(column), hint)
@@ -289,6 +296,57 @@ final class QuickAskWindow: @unchecked Sendable {
     }
 
     private var targetServer: ConnectionProfile { servers[targetIndex] }
+
+    private static let aimStripCeiling = 5
+
+    /// Every machine the question could go to, as one row of linked toggles above the field —
+    /// each named with the agent that would answer, the aimed one pressed, the address a tooltip
+    /// away — so re-aiming is one click rather than a menu opened and read. A fleet too wide for
+    /// a row keeps the header's menu instead; one machine needs neither.
+    private func buildAimStrip() {
+        guard (2...Self.aimStripCeiling).contains(servers.count) else {
+            gtk_widget_set_visible(aimStrip, 0)
+            gtk_widget_set_visible(target, servers.count > 1 ? 1 : 0)
+            return
+        }
+        gtk_widget_set_visible(target, 0)
+        var lead: UnsafeMutablePointer<GtkWidget>?
+        for (index, server) in servers.enumerated() {
+            let button = gtk_toggle_button_new_with_label(ServerLabel.display(server))!
+            Gtk.addClass(button, "ask-aim-segment")
+            gtk_widget_set_tooltip_text(button, ServerLabel.address(server))
+            gtk_widget_set_hexpand(button, 1)
+            if let lead {
+                gtk_toggle_button_set_group(ptr(button), ptr(lead))
+            } else {
+                lead = button
+            }
+            if index == targetIndex { gtk_toggle_button_set_active(ptr(button), 1) }
+            let bits = UInt(bitPattern: button)
+            Gtk.connect(UnsafeMutableRawPointer(button), "toggled") {
+                Gtk.onMain {
+                    guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(raw)
+                    guard gtk_toggle_button_get_active(toggle) != 0,
+                        let window = QuickAskWindow.open, !window.asking
+                    else { return }
+                    window.retarget(to: index)
+                }
+            }
+            aimToggles.append(button)
+            gtk_box_append(ptr(aimStrip), button)
+        }
+    }
+
+    /// The pressed segment follows the aim wherever it was moved from — Tab, the model chooser
+    /// landing on another machine — and a segment already pressed is left alone, since pressing
+    /// it again is what fires the retarget it would be answering.
+    private func syncAimStrip() {
+        guard aimToggles.indices.contains(targetIndex) else { return }
+        let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(aimToggles[targetIndex])
+        guard gtk_toggle_button_get_active(toggle) == 0 else { return }
+        gtk_toggle_button_set_active(toggle, 1)
+    }
 
     private var draftScope: DraftScope { .quickAsk(profileID: targetServer.id) }
 
@@ -508,6 +566,7 @@ final class QuickAskWindow: @unchecked Sendable {
 
     private func refreshTarget() {
         let server = targetServer
+        syncAimStrip()
         gtk_menu_button_set_label(op(target), server.name + " · " + ServerLabel.agent(server.backend))
         adw_window_title_set_subtitle(
             op(UnsafeMutableRawPointer(title)), Self.subtitle())
@@ -891,6 +950,7 @@ final class QuickAskWindow: @unchecked Sendable {
         editor.setSensitive(false)
         gtk_widget_set_sensitive(attach, 0)
         gtk_widget_set_sensitive(send, 0)
+        gtk_widget_set_sensitive(aimStrip, 0)
         refreshStarterVisibility()
         setHint(QuickAskComposition.waitingTitle(server: targetServer.name))
         let server = targetServer
@@ -911,6 +971,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 self.asking = false
                 self.editor.setSensitive(true)
                 gtk_widget_set_sensitive(self.attach, 1)
+                gtk_widget_set_sensitive(self.aimStrip, 1)
                 self.refreshSend()
                 self.editor.focus()
                 self.setHint("\(failure.title) — \(failure.detail)")
