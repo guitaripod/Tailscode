@@ -69,6 +69,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.34" date="2026-09-05">
+      <description>
+        <p>Delegate hands a bounded piece of work down a ladder of models and reads the result back to you. Write a packet on any server — the class of work, the goal, the files it may touch and the command that proves it — and the dispatcher on that machine tries it on the cheapest tier first, climbs a rung when the check says no, and stops where the work passes. The board shows every tier and what answers there right now, every run with the rungs it failed on and the one it passed at, and the pass rate each class of work has earned per tier, with a hint when a class has proved it can start lower or should start higher.</p>
+        <p>A run that reaches a gated tier waits for your approval before spending it, and from the run you can cancel it or replay it at another tier to see what a rung is worth. Delegate is part of Pro on iPhone and Mac, and the demo machines carry a scripted dispatcher so you can work the whole feature — approve the run waiting for you, write a packet and watch it climb — before you own a machine that runs one.</p>
+        <p>On Linux the delegate window, packet dialog and run view are there too, with no Pro needed.</p>
+      </description>
+    </release>
     <release version="1.33" date="2026-09-02">
       <description>
         <p>Compacting works on every server. A compaction asked for while the agent is still writing waits behind that turn as a /compact row instead of cutting the answer off, the seam it leaves is drawn with what it traded (tokens before and after, the time it took, the summary behind it), and an Oh My Pi conversation can no longer get stuck busy after one — a message sent into it used to sit there unanswered.</p>
