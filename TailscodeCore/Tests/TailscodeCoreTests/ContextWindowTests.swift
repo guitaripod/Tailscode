@@ -173,4 +173,13 @@ struct ContextWindowTests {
         #expect(segment?.action == .context)
         #expect(abs((segment?.meter ?? 0) - 0.1) < 0.001)
     }
+    @Test("A slice smaller than the rounding reads under one percent, not zero")
+    func aSmallSliceSaysUnderOnePercent() {
+        #expect(StatusFacts.share(518.0 / 1_000_000) == "<1%")
+        #expect(StatusFacts.share(0) == "0%")
+        #expect(StatusFacts.share(0.186187) == "19%")
+        #expect(StatusFacts.share(0.995) == "100%")
+    }
+
 }
+

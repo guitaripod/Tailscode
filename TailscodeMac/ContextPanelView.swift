@@ -221,7 +221,7 @@ final class ContextPanelViewController: NSViewController {
             let name = RowKit.label(
                 slice.label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
             let share = RowKit.label(
-                "\(Int((slice.share * 100).rounded()))%", font: MacTheme.Ramp.font(.panelFootnote),
+                StatusFacts.share(slice.share), font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.tertiaryLabel)
             share.setContentHuggingPriority(.required, for: .horizontal)
             let count = RowKit.label(

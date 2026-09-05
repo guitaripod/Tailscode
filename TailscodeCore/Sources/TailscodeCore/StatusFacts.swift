@@ -552,6 +552,14 @@ public struct StatusFacts: Sendable {
         return "\(count)"
     }
 
+    /// A slice's share of the whole, honest about smallness: a rounding that reads 0% beside a
+    /// nonzero count is a lie the reader can see, so anything under half a point reads "<1%".
+    public static func share(_ fraction: Double) -> String {
+        let points = fraction * 100
+        if points > 0, points < 0.5 { return "<1%" }
+        return "\(Int(points.rounded()))%"
+    }
+
     /// An age reads in the largest sensible unit — "2m", "3h", "2d" — where a stopwatch reading
     /// of "1789m 34s" would be noise.
     public static func age(_ interval: TimeInterval) -> String {

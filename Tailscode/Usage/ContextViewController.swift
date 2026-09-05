@@ -223,7 +223,7 @@ final class ContextViewController: UIViewController {
             ])
             let name = label(slice.label, role: .metricDetail, color: Theme.Color.label)
             let share = label(
-                "\(Int((slice.share * 100).rounded()))%", role: .panelFootnote,
+                StatusFacts.share(slice.share), role: .panelFootnote,
                 color: Theme.Color.tertiaryLabel)
             share.setContentHuggingPriority(.required, for: .horizontal)
             let count = label(StatusFacts.tokens(slice.tokens), role: .metricValue, color: Theme.Color.label)

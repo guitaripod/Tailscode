@@ -160,8 +160,7 @@ enum ContextPanel {
             gtk_widget_set_hexpand(name, 1)
             gtk_box_append(ptr(row), name)
             let share = Gtk.label(
-                "\(Int((slice.share * 100).rounded()))%", css: "spend-caption", selectable: false)
-            gtk_label_set_ellipsize(op(share), PANGO_ELLIPSIZE_NONE)
+                StatusFacts.share(slice.share), css: "spend-caption", selectable: false)
             gtk_box_append(ptr(row), share)
             let count = Gtk.label(
                 StatusFacts.tokens(slice.tokens), css: "usage-detail-value", selectable: false)
