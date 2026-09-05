@@ -195,10 +195,13 @@ enum SpendPanel {
         -> UnsafeMutablePointer<GtkWidget>
     {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let title = Gtk.label(text, css: "usage-provider", selectable: false)
-        gtk_label_set_xalign(op(title), 0)
-        gtk_widget_set_hexpand(title, 1)
-        gtk_box_append(ptr(row), title)
+            let title = Gtk.label(text, css: "usage-provider", selectable: false)
+            // The title yields when the row runs narrow; the count beside it is the fact this
+            // card exists to state, so it is never the label that loses its ending.
+            gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
+            gtk_label_set_xalign(op(title), 0)
+            gtk_widget_set_hexpand(title, 1)
+            gtk_box_append(ptr(row), title)
         if let trailing {
             let caption = Gtk.label(trailing, css: "spend-caption", selectable: false)
             gtk_label_set_ellipsize(op(caption), PANGO_ELLIPSIZE_NONE)
