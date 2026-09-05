@@ -52,14 +52,71 @@ public struct DelegateRung: Sendable, Hashable, Identifiable {
     public var label: String
     public var model: String?
     public var state: DelegateRungState
+    /// What the numbers say about this rung for the class being written — a pass rate and an
+    /// average, or that it is untried — so a start is chosen on evidence rather than a hunch.
+    public var note: String?
 
     public var id: String { tier }
 
-    public init(tier: String, label: String = "", model: String? = nil, state: DelegateRungState) {
+    public init(tier: String, label: String = "", model: String? = nil, state: DelegateRungState, note: String? = nil) {
         self.tier = tier
         self.label = label
         self.model = model
         self.state = state
+        self.note = note
+    }
+}
+
+/// What a settled run invites next. Two roads and no more: the same packet on another rung —
+/// one down after a pass, to qualify the cheaper tier; one up or the same after a stop — and a
+/// fresh packet that starts from this one's words.
+public struct DelegateNextStep: Sendable, Hashable, Identifiable {
+    public enum Kind: Sendable, Hashable {
+        case replay(tier: String)
+        case duplicate
+    }
+
+    public var kind: Kind
+    public var title: String
+    public var detail: String
+
+    public var id: String {
+        switch kind {
+        case .replay(let tier): return "replay:\(tier)"
+        case .duplicate: return "duplicate"
+        }
+    }
+
+    public init(kind: Kind, title: String, detail: String) {
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+    }
+
+    public static var duplicate: DelegateNextStep {
+        DelegateNextStep(
+            kind: .duplicate, title: Localized.text("New packet like this"),
+            detail: Localized.text("The same goal, paths and verifier, open to edit before it goes."))
+    }
+}
+
+/// What the app says when a run it follows needs a person or is over: the words are the story's,
+/// and a client only decides how its platform taps a shoulder.
+public struct DelegateNotice: Sendable, Hashable {
+    public enum Kind: Sendable, Hashable {
+        case asks
+        case passed
+        case failed
+    }
+
+    public var kind: Kind
+    public var title: String
+    public var body: String
+
+    public init(kind: Kind, title: String, body: String) {
+        self.kind = kind
+        self.title = title
+        self.body = body
     }
 }
 
@@ -386,4 +443,73 @@ public struct DelegateRunStory: Sendable, Hashable {
 
     public var tokensIn: Int { attempts.reduce(0) { $0 + $1.tokensIn } }
     public var tokensOut: Int { attempts.reduce(0) { $0 + $1.tokensOut } }
+
+    /// The highest rung this run tried, from its attempts and where it was standing.
+    public var highestTriedTier: String? {
+        let order = tierOrder
+        let tried = Set(attempts.map(\.tier) + [currentTier].compactMap { $0 })
+        return order.last { tried.contains($0) } ?? tried.first
+    }
+
+    /// What this run invites next, empty while it is still out.
+    public func nextSteps(tierOrder order: [String]) -> [DelegateNextStep] {
+        guard !isLive else { return [] }
+        let ladder = order.isEmpty ? tierOrder : order
+        var steps: [DelegateNextStep] = []
+        switch status {
+        case .passed:
+            if let passed = passedTier, let index = ladder.firstIndex(of: passed), index > 0 {
+                let cheaper = ladder[index - 1]
+                if !failedTiers.contains(cheaper) {
+                    steps.append(
+                        DelegateNextStep(
+                            kind: .replay(tier: cheaper), title: Localized.text("Try it at %@", cheaper),
+                            detail: Localized.text("The same packet one rung down — a pass there is a streak the table can promote on.")))
+                }
+            }
+        case .failed, .held, .cancelled, .error:
+            if let tried = highestTriedTier, let index = ladder.firstIndex(of: tried) {
+                if index + 1 < ladder.count {
+                    steps.append(
+                        DelegateNextStep(
+                            kind: .replay(tier: ladder[index + 1]), title: Localized.text("Climb to %@", ladder[index + 1]),
+                            detail: Localized.text("The same packet one rung above where it stopped.")))
+                }
+                steps.append(
+                    DelegateNextStep(
+                        kind: .replay(tier: tried), title: Localized.text("Run it again at %@", tried),
+                        detail: status == .held
+                            ? Localized.text("Start over where it was held.")
+                            : Localized.text("Another attempt on the same rung.")))
+            }
+        case .running:
+            break
+        }
+        steps.append(.duplicate)
+        return steps
+    }
+
+    /// The notice one event earns once it has been folded: a rung waiting for a person, or an end
+    /// nobody chose. A hold or a cancel is the person's own doing and says nothing.
+    public func notice(after event: DelegateEvent) -> DelegateNotice? {
+        switch event {
+        case .approvalRequired(let tier, _):
+            return DelegateNotice(
+                kind: .asks, title: Localized.text("Delegate needs you"),
+                body: Localized.text("%@ waits before %@", headline, tier))
+        case .runFinished(let status, let passed, _, _, _):
+            switch status {
+            case .passed:
+                return DelegateNotice(
+                    kind: .passed, title: Localized.text("Delegate passed at %@", passed ?? "-"),
+                    body: headline)
+            case .failed, .error:
+                return DelegateNotice(kind: .failed, title: Localized.text("Delegate failed"), body: headline + " · " + subtitle)
+            case .running, .held, .cancelled:
+                return nil
+            }
+        default:
+            return nil
+        }
+    }
 }

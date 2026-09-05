@@ -59,6 +59,9 @@ final class DelegateRunner: @unchecked Sendable {
         return access(host: host).config(password: password(host: host)).map(DelegateClient.init)
     }
 
+    /// Whether this desk has ever reached the dispatcher on a machine, remembered on its first answer.
+    func isKnown(host: String) -> Bool { DelegateAccessStore.access(host: host) != nil }
+
     func isDemo(host: String) -> Bool { DelegateDemo.isDemoHost(host) }
 
     /// Confirms a typed password (or none) against the daemon, remembers it on success, and probes
@@ -218,6 +221,15 @@ final class DelegateRunner: @unchecked Sendable {
     /// call more than once for the same run — a second call while one is already out is a no-op —
     /// and safe to call for a run nobody is watching any more, since closing the window never stops
     /// what is already in flight here.
+    /// Raises the notice an event earns, but only for an event that just happened: a stream
+    /// reopened on a run replays its past, and a wait from ten minutes ago is not news.
+    private func notice(_ envelope: DelegateEnvelope, runID: String, host: String) {
+        guard DelegateDesk.isRecent(envelope.timestamp),
+            let notice = boards[host]?.story(for: runID)?.notice(after: envelope.event)
+        else { return }
+        Notifier.shared.raiseDelegate(notice, identifier: "delegate:\(runID):\(notice.kind)")
+    }
+
     func follow(runID: String, host: String) {
         guard followers[runID] == nil, let client = client(host: host) else { return }
         let after = boards[host]?.stories[runID]?.lastSeq ?? 0
@@ -230,6 +242,7 @@ final class DelegateRunner: @unchecked Sendable {
                         guard let self else { return }
                         self.boards[host]?.fold(envelope)
                         self.changed()
+                        self.notice(envelope, runID: runID, host: host)
                     }
                 }
                 Gtk.onMain { [weak self] in

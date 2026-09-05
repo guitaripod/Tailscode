@@ -81,6 +81,10 @@ enum ParityManifest {
         case .delegateRun: return .implemented("DelegateRunView")
         case .delegateApproval: return .implemented("DelegateApprovalBar")
         case .delegateBeta: return .implemented("DelegateBetaBadge")
+        case .delegateClassDefaults: return .implemented("renderLegend")
+        case .delegateNextSteps: return .implemented("performNextStep")
+        case .delegateSetup: return .implemented("copySetupCommand")
+        case .delegateNotices: return .implemented("watchNotices")
         case .delegateProGate:
             return .varies(
                 direct: .notApplicable("a build somebody installed themselves sells nothing, so the dispatcher's window simply opens"),

@@ -18,6 +18,10 @@ final class TierLadderControl: UIControl {
     var rungs: [DelegateRung] = [] { didSet { rebuild() } }
     private(set) var start: String?
     private(set) var ceiling: String?
+    /// Where the run will start and stop when nothing is set: the class's own range, drawn so
+    /// "the class decides" is a picture rather than a shrug.
+    private var impliedStart: String?
+    private var impliedCeiling: String?
     var onChange: ((String?, String?) -> Void)?
 
     private let row = UIStackView()
@@ -37,6 +41,12 @@ final class TierLadderControl: UIControl {
     func set(start: String?, ceiling: String?) {
         self.start = start
         self.ceiling = ceiling
+        render()
+    }
+
+    func setImplied(start: String?, ceiling: String?) {
+        impliedStart = start
+        impliedCeiling = ceiling
         render()
     }
 
@@ -79,7 +89,7 @@ final class TierLadderControl: UIControl {
             let button = UIButton(configuration: config)
             button.accessibilityIdentifier = "rung-\(rung.tier)"
             button.addAction(UIAction { [weak self] _ in self?.tapped(rung.tier) }, for: .touchUpInside)
-            button.titleLabel?.numberOfLines = 3
+            button.titleLabel?.numberOfLines = 4
             button.titleLabel?.textAlignment = .center
             row.addArrangedSubview(button)
             return button
@@ -116,8 +126,9 @@ final class TierLadderControl: UIControl {
     private func index(of tier: String) -> Int { rungs.firstIndex { $0.tier == tier } ?? 0 }
 
     private func render() {
-        let startIndex = start.map(index(of:))
-        let ceilingIndex = ceiling.map(index(of:))
+        let chosenStart = start.map(index(of:))
+        let startIndex = chosenStart ?? impliedStart.map(index(of:))
+        let ceilingIndex = (ceiling ?? impliedCeiling).map(index(of:))
         for (offset, rung) in rungs.enumerated() {
             let button = buttons[offset]
             var config = button.configuration ?? .filled()
@@ -131,7 +142,7 @@ final class TierLadderControl: UIControl {
                     state = .belowStart
                 } else if let ceilingIndex, offset > ceilingIndex {
                     state = .beyondCeiling
-                } else if let startIndex, offset == startIndex {
+                } else if let chosenStart, offset == chosenStart {
                     state = .current
                 } else {
                     state = .pending
@@ -187,7 +198,7 @@ final class TierLadderControl: UIControl {
             glyph.foregroundColor = ink
             title += glyph
         }
-        let detailText = [rung.label, rung.model.map { Self.shortModel($0) }].compactMap { $0 }.filter { !$0.isEmpty }
+        let detailText = [rung.label, rung.model.map { Self.shortModel($0) }, rung.note].compactMap { $0 }.filter { !$0.isEmpty }
         if !detailText.isEmpty {
             var detail = AttributedString("\n" + detailText.joined(separator: "\n"))
             detail.font = Theme.Ramp.font(.rowMeta)

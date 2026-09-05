@@ -517,6 +517,10 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(Data("FORGE \(forge.summary)\n".utf8))
                 case "delegate":
                     _ = self.presentDelegate(host: argument.isEmpty ? nil : argument)
+                case "dcompose":
+                    DelegateWindow.current?.presentComposer()
+                case "drun":
+                    DelegateWindow.current?.openFirstRun()
                 case "fstate":
                     ForgeWindow.current?.demonstrate(argument)
                     FileHandle.standardOutput.write(

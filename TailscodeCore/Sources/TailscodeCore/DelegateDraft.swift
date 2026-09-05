@@ -86,6 +86,22 @@ public struct DelegateDraft: Sendable, Equatable {
 
     public var canSend: Bool { problems.isEmpty }
 
+    /// Picks a class and lets it fill the verifier: a blank one, or one that was only ever the
+    /// previous class's own default, becomes the new class's — a command somebody typed stays.
+    public mutating func choose(taskClass name: String, capabilities: DelegateCapabilities?) {
+        let previous = capabilities?.policy(for: taskClass)?.verify ?? ""
+        taskClass = name
+        let current = verify.trimmingCharacters(in: .whitespaces)
+        guard current.isEmpty || current == previous else { return }
+        verify = capabilities?.policy(for: name)?.verify ?? ""
+    }
+
+    /// Where this packet will start and how far it may climb once the daemon fills every blank
+    /// from its own table, resolved the way the daemon resolves it.
+    public func plan(capabilities: DelegateCapabilities?, tierOrder: [String]) -> DelegateDraftPlan {
+        DelegateDraftPlan(draft: self, capabilities: capabilities, tierOrder: tierOrder)
+    }
+
     public func packet() -> DelegatePacket? {
         guard canSend else { return nil }
         var packet = DelegatePacket.draft(
@@ -128,6 +144,84 @@ public struct DelegateDraft: Sendable, Equatable {
     }
 }
 
+/// Where a packet will start and how far it may climb once every blank is filled by the class it
+/// belongs to and the mode it runs in — and the sentence that says so before it goes, because a
+/// ladder whose unset rungs read "the class decides" is a ladder nobody can read.
+public struct DelegateDraftPlan: Sendable, Equatable {
+    public var start: String?
+    public var ceiling: String?
+    public var startIsYours: Bool
+    public var ceilingIsYours: Bool
+    public var askBefore: String?
+    public var legend: String
+
+    public init(draft: DelegateDraft, capabilities: DelegateCapabilities?, tierOrder: [String]) {
+        let policy = capabilities?.policy(for: draft.taskClass)
+        guard !tierOrder.isEmpty else {
+            start = draft.tier ?? policy?.tier
+            ceiling = draft.ceiling ?? policy?.ceiling
+            startIsYours = draft.tier != nil
+            ceilingIsYours = draft.ceiling != nil
+            askBefore = nil
+            legend = Localized.text("The ladder is read from the machine once it answers.")
+            return
+        }
+        let last = tierOrder.count - 1
+        func index(_ tier: String?) -> Int? { tier.flatMap { tierOrder.firstIndex(of: $0) } }
+        startIsYours = index(draft.tier) != nil
+        ceilingIsYours = index(draft.ceiling) != nil
+        var startIndex = index(draft.tier) ?? index(policy?.tier) ?? 0
+        var ceilingIndex = index(draft.ceiling) ?? index(policy?.ceiling) ?? last
+        let mode: DelegateModePolicy? = {
+            switch draft.mode {
+            case .normal: return nil
+            case .conserve: return capabilities?.modePolicies?.conserve ?? DelegateModePolicy(shift: -1)
+            case .rush: return capabilities?.modePolicies?.rush ?? DelegateModePolicy(shift: 1)
+            }
+        }()
+        let unshifted = startIndex
+        if let mode {
+            let verified = policy?.verified == true || !draft.verify.trimmingCharacters(in: .whitespaces).isEmpty
+                || !(policy?.verify ?? "").isEmpty
+            if verified, let cap = index(mode.ceilingVerified), cap < ceilingIndex { ceilingIndex = cap }
+            startIndex = min(max(startIndex + mode.shift, 0), last)
+        }
+        if startIndex > ceilingIndex { ceilingIndex = startIndex }
+        start = tierOrder[startIndex]
+        ceiling = tierOrder[ceilingIndex]
+        if let mode, let ask = index(mode.askBefore), ask > startIndex, ask <= ceilingIndex {
+            askBefore = tierOrder[ask]
+        } else {
+            askBefore = nil
+        }
+        let range: String
+        switch (startIsYours, ceilingIsYours) {
+        case (false, false):
+            range = startIndex == ceilingIndex
+                ? Localized.text("Runs only at %@ — the %@ class's own rung.", tierOrder[startIndex], draft.taskClass)
+                : Localized.text("Starts at %@ and may climb to %@ — the %@ class's own range.", tierOrder[unshifted], tierOrder[ceilingIndex], draft.taskClass)
+        case (true, false):
+            range = Localized.text("Starts at %@ because you set it, and may climb to %@, the class's ceiling.", tierOrder[unshifted], tierOrder[ceilingIndex])
+        case (false, true):
+            range = Localized.text("Starts at %@, the class's own rung, and may climb to %@ because you set it.", tierOrder[unshifted], tierOrder[ceilingIndex])
+        case (true, true):
+            range = unshifted == ceilingIndex
+                ? Localized.text("Runs only at %@, as you set it.", tierOrder[unshifted])
+                : Localized.text("Starts at %@ and may climb to %@, as you set it.", tierOrder[unshifted], tierOrder[ceilingIndex])
+        }
+        var extra: [String] = []
+        if draft.mode == .conserve {
+            if startIndex != unshifted {
+                extra.append(Localized.text("Conserve moves the start down to %@", tierOrder[startIndex]))
+            }
+            if let askBefore { extra.append(Localized.text("asks before %@", askBefore)) }
+        } else if draft.mode == .rush, startIndex != unshifted {
+            extra.append(Localized.text("Rush moves the start up to %@", tierOrder[startIndex]))
+        }
+        legend = extra.isEmpty ? range : range + " " + extra.joined(separator: Localized.text(" and ")) + "."
+    }
+}
+
 /// The form's words, typed once. A phone draws fields, a Mac draws a sheet, Linux draws a dialog,
 /// and none of them invents a label.
 public enum DelegateComposerWords {
@@ -161,4 +255,7 @@ public enum DelegateComposerWords {
     public static var sendTitle: String { Localized.text("Run packet") }
     public static var sendingTitle: String { Localized.text("Starting…") }
     public static var cautionsTitle: String { Localized.text("Before it goes") }
+    public static var classHelp: String {
+        Localized.text("A class is the daemon's own table: where a blank packet starts, how far it may climb, and what judges it.")
+    }
 }

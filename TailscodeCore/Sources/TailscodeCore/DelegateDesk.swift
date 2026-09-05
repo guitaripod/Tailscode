@@ -11,6 +11,9 @@ import Foundation
 @MainActor
 public final class DelegateDesk {
     public static let didChange = Notification.Name("tailscode.delegate.desk.didChange")
+    /// A run this device follows needs a person or is over. The userInfo carries the `DelegateNotice`
+    /// under "notice", the run under "runID" and the machine under "host".
+    public static let didNotice = Notification.Name("tailscode.delegate.desk.didNotice")
 
     public private(set) var boards: [String: DelegateBoard] = [:]
     public private(set) var reach: [String: DelegateReach] = [:]
@@ -36,6 +39,10 @@ public final class DelegateDesk {
     public func access(host: String) -> DelegateAccess {
         DelegateAccessStore.access(host: host) ?? DelegateAccess(host: host)
     }
+
+    /// Whether this device has ever reached the dispatcher on a machine — remembered on the first
+    /// answer, so a board that was once alive is not shown the road to installing one.
+    public func isKnown(host: String) -> Bool { DelegateAccessStore.access(host: host) != nil }
 
     public func password(host: String) -> String? {
         if DelegateDemo.isDemoHost(host) { return "demo" }
@@ -86,6 +93,7 @@ public final class DelegateDesk {
                 board.landed(capabilities: capabilities, tiers: tiers)
                 self.boards[host] = board
                 self.reach[host] = .answering(version: capabilities.version)
+                if !DelegateDemo.isDemoHost(host) { DelegateAccessStore.remember(self.access(host: host)) }
                 self.announce()
                 await self.refresh(host: host)
                 for runID in self.boards[host]?.liveRunIDs ?? [] {
@@ -158,6 +166,7 @@ public final class DelegateDesk {
                     guard let self else { return }
                     self.boards[host]?.fold(envelope)
                     self.announce()
+                    self.notice(envelope, runID: runID, host: host)
                 }
             } catch {
                 guard let self, !Task.isCancelled else { return }
@@ -210,6 +219,22 @@ public final class DelegateDesk {
 
     public func announce() {
         NotificationCenter.default.post(name: Self.didChange, object: self)
+    }
+
+    /// Raises the notice an event earns, but only for an event that just happened: a stream
+    /// reopened on a run replays its past, and a wait from ten minutes ago is not news.
+    private func notice(_ envelope: DelegateEnvelope, runID: String, host: String) {
+        guard Self.isRecent(envelope.timestamp),
+            let notice = boards[host]?.story(for: runID)?.notice(after: envelope.event)
+        else { return }
+        NotificationCenter.default.post(
+            name: Self.didNotice, object: self,
+            userInfo: ["notice": notice, "runID": runID, "host": host])
+    }
+
+    public nonisolated static func isRecent(_ timestamp: String, now: Date = Date()) -> Bool {
+        guard let date = DelegateTimestamp.parse(timestamp) else { return false }
+        return now.timeIntervalSince(date) < 90
     }
 
     static func reading(_ error: Error) -> DelegateReach {

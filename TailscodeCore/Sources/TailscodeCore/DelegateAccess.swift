@@ -1,7 +1,8 @@
 import CodingAgentKit
 import Foundation
 
-/// Where the daemon is for one server: beside the agent, on its own port, behind its own password.
+/// Where the daemon is for one server: beside the agent, on its own port. It trusts the tailnet
+/// the way the bridges do, so a password is kept only for a daemon set to ask for one.
 ///
 /// The key is the machine, not the profile. Two profiles on one host (opencode and a bridge) share
 /// one dispatcher, so a password typed once serves both, and removing one profile leaves the
@@ -77,12 +78,16 @@ public enum DelegateReach: Sendable, Equatable {
     case refused
     case unreachable(String)
 
+    /// Whether the machine answered and turned this device away for want of a password — the only
+    /// time a password is worth asking a person for.
+    public var asksForPassword: Bool { self == .wantsPassword || self == .refused }
+
     public var line: String {
         switch self {
         case .unknown: return Localized.text("Not checked")
         case .checking: return Localized.text("Checking…")
         case .answering(let version): return Localized.text("delegate %@ is answering", version)
-        case .wantsPassword: return Localized.text("Answering, wants its password")
+        case .wantsPassword: return Localized.text("Answering, set to ask for its password")
         case .refused: return Localized.text("The password was refused")
         case .unreachable(let reason): return Localized.text("Not answering: %@", reason)
         }

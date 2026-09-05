@@ -118,6 +118,30 @@ final class MacNotifier: NSObject {
             UNNotificationRequest(identifier: alert.identifier, content: content, trigger: nil))
     }
 
+    /// A delegate run's notice, under the same switches a conversation's alerts answer to: a wait
+    /// for a person is an approval, an end is a finished turn. Nothing to open, so no session rides
+    /// along and a click merely brings the app forward.
+    func raiseDelegate(_ notice: DelegateNotice, identifier: String) {
+        guard !NSApp.isActive else { return }
+        switch notice.kind {
+        case .asks: guard Self.notifyNeedsYou else { return }
+        case .passed, .failed: guard Self.notifyTurnComplete else { return }
+        }
+        requestAuthorizationIfNeeded()
+        let face: AlertFace = notice.kind == .asks ? .needsApproval : .turnEnded
+        let content = UNMutableNotificationContent()
+        content.title = notice.title
+        content.body = notice.body
+        content.sound = .default
+        content.categoryIdentifier = face.category.rawValue
+        content.threadIdentifier = "delegate"
+        if let attachment = Self.faceAttachment(face) {
+            content.attachments = [attachment]
+        }
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+    }
+
     /// The alert's face as a thumbnail, so a glance at a stack of banners separates the finished
     /// from the waiting before a word is read. Written fresh per notification because the system
     /// takes ownership of the file it is handed.

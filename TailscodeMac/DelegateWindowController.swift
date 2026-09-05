@@ -8,6 +8,23 @@ import TailscodeCore
 @MainActor
 enum MacDelegateGate {
     static let desk = DelegateDesk(secrets: KeychainSecretStore())
+    nonisolated(unsafe) private static var noticeWatcher: NSObjectProtocol?
+
+    /// A run this Mac follows taps its shoulder: a wait for a person under the approvals switch,
+    /// an end nobody chose under the turn-complete switch, never while the app is in front.
+    static func watchNotices() {
+        guard noticeWatcher == nil else { return }
+        noticeWatcher = NotificationCenter.default.addObserver(
+            forName: DelegateDesk.didNotice, object: nil, queue: .main
+        ) { note in
+            guard let notice = note.userInfo?["notice"] as? DelegateNotice,
+                let runID = note.userInfo?["runID"] as? String
+            else { return }
+            MainActor.assumeIsolated {
+                MacNotifier.shared.raiseDelegate(notice, identifier: "delegate:\(runID):\(notice.kind)")
+            }
+        }
+    }
 
     static var isOpen: Bool {
         DelegateProGate.allows(
@@ -28,6 +45,7 @@ final class DelegateWindowController: NSWindowController {
     private let noteLabel = NSTextField(wrappingLabelWithString: "")
     private let passwordButton = RowKit.ActionButton(title: Localized.text("Password…"), action: {})
     private let newButton = RowKit.ActionButton(title: DelegateEntryPoint.newPacketTitle, action: {})
+    private let setupColumn = NSStackView()
     private let tiersColumn = NSStackView()
     private let runsColumn = NSStackView()
     private let statsColumn = NSStackView()
@@ -37,6 +55,8 @@ final class DelegateWindowController: NSWindowController {
     private var hosts: [(host: String, name: String)] = []
     private var selectedHost: String?
     private var selectedRun: String?
+    private var wantsFirstRun = false
+    private var wantsCompose = false
 
     init() {
         let window = NSWindow(
@@ -55,6 +75,7 @@ final class DelegateWindowController: NSWindowController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         runView.onSelectRun = { [weak self] runID in self?.select(runID: runID) }
+        runView.onDuplicate = { [weak self] packet in self?.compose(draft: DelegateDraft(packet: packet)) }
     }
 
     @available(*, unavailable)
@@ -140,6 +161,11 @@ final class DelegateWindowController: NSWindowController {
         noteLabel.textColor = MacTheme.Color.mark
         left.addArrangedSubview(noteLabel)
 
+        setupColumn.orientation = .vertical
+        setupColumn.alignment = .leading
+        setupColumn.spacing = MacTheme.Spacing.xs
+        left.addArrangedSubview(setupColumn)
+
         left.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("LADDER")))
         tiersColumn.orientation = .vertical
         tiersColumn.alignment = .leading
@@ -161,7 +187,7 @@ final class DelegateWindowController: NSWindowController {
         statsColumn.spacing = MacTheme.Spacing.xs
         left.addArrangedSubview(statsColumn)
 
-        for view in [serverPopup, statusRow, noteLabel, tiersColumn, runsScroll, statsColumn] {
+        for view in [serverPopup, statusRow, noteLabel, setupColumn, tiersColumn, runsScroll, statsColumn] {
             view.widthAnchor.constraint(equalTo: left.widthAnchor).isActive = true
         }
         runsScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
@@ -205,7 +231,17 @@ final class DelegateWindowController: NSWindowController {
         desk.probe(host: host, serverName: serverName)
     }
 
-    @objc private func deskChanged() { render() }
+    @objc private func deskChanged() {
+        if wantsFirstRun, let host = selectedHost, let first = Self.firstSettled(desk.boards[host]?.runStories ?? []) {
+            wantsFirstRun = false
+            select(runID: first.runID)
+        }
+        if wantsCompose, let host = selectedHost, desk.boards[host]?.isReady == true {
+            wantsCompose = false
+            compose()
+        }
+        render()
+    }
 
     @objc private func repaint() { render() }
 
@@ -224,7 +260,30 @@ final class DelegateWindowController: NSWindowController {
         newButton.isEnabled = board.isReady
         noteLabel.stringValue = board.note ?? ""
         noteLabel.isHidden = board.note == nil
-        passwordButton.isHidden = desk.isDemo(host: host)
+        passwordButton.isHidden = desk.isDemo(host: host) || !(reach.asksForPassword || desk.password(host: host) != nil)
+
+        setupColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        setupColumn.isHidden = !DelegateSetup.isWanted(board: board, known: desk.isKnown(host: host))
+        if !setupColumn.isHidden {
+            setupColumn.addArrangedSubview(MacDialogs.sectionHeader(DelegateSetup.title.uppercased()))
+            let lead = RowKit.wrapping(DelegateSetup.lead(serverName: serverName), font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.secondaryLabel)
+            setupColumn.addArrangedSubview(lead)
+            lead.widthAnchor.constraint(equalTo: setupColumn.widthAnchor).isActive = true
+            for step in DelegateSetup.steps {
+                let title = RowKit.label(step.title, font: MacTheme.Ramp.font(.rowTitle), color: MacTheme.Color.label)
+                let command = RowKit.wrapping(step.command, font: MacTheme.Ramp.font(.code), color: MacTheme.Color.secondaryLabel)
+                let copy = RowKit.ActionButton(title: Localized.text("Copy")) { [weak self] in self?.copySetupCommand(step) }
+                let head = NSStackView(views: [title, copy])
+                head.orientation = .horizontal
+                head.alignment = .centerY
+                head.distribution = .fill
+                head.spacing = MacTheme.Spacing.s
+                head.heightAnchor.constraint(equalToConstant: 22).isActive = true
+                setupColumn.addArrangedSubview(head)
+                setupColumn.addArrangedSubview(command)
+                command.widthAnchor.constraint(equalTo: setupColumn.widthAnchor).isActive = true
+            }
+        }
 
         tiersColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for line in board.tierLines {
@@ -273,10 +332,50 @@ final class DelegateWindowController: NSWindowController {
         render()
     }
 
-    private func compose() {
+    /// The first run the board lists, opened as a click would open it — the road `--open
+    /// delegate-run` takes so the run view can be dumped and checked without a pointer.
+    func selectFirstRun() {
+        guard let host = selectedHost else { return }
+        if let first = Self.firstSettled(desk.boards[host]?.runStories ?? []) {
+            select(runID: first.runID)
+            return
+        }
+        wantsFirstRun = true
+    }
+
+    /// A settled run shows its next moves, so it is the one worth dumping; a board with only live
+    /// runs falls back to its first.
+    private static func firstSettled(_ stories: [DelegateRunStory]) -> DelegateRunStory? {
+        stories.first { !$0.isLive } ?? stories.first
+    }
+
+    /// The composer, opened once the board has its ladder — the road `--open delegate-compose`
+    /// takes, since a sheet opened before the machine answered would draw no rungs.
+    func composeWhenReady() {
+        guard let host = selectedHost else { return }
+        if desk.boards[host]?.isReady == true {
+            compose()
+            return
+        }
+        wantsCompose = true
+    }
+
+    func compose(draft: DelegateDraft? = nil) {
         guard let host = selectedHost, let window else { return }
-        DelegateComposerSheet.present(on: window, host: host, serverName: serverName) { [weak self] runID in
+        DelegateComposerSheet.present(on: window, host: host, serverName: serverName, draft: draft) { [weak self] runID in
             self?.select(runID: runID)
+        }
+    }
+
+    /// One command onto the pasteboard, and the status line says so for a moment.
+    private func copySetupCommand(_ step: DelegateSetup.Step) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(step.command, forType: .string)
+        let before = statusLabel.stringValue
+        statusLabel.stringValue = DelegateSetup.copied + " · " + step.command
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            guard let self, self.statusLabel.stringValue.hasPrefix(DelegateSetup.copied) else { return }
+            self.statusLabel.stringValue = before
         }
     }
 
@@ -361,6 +460,10 @@ final class MacLadderView: NSView {
     var rungs: [DelegateRung] = [] { didSet { rebuild() } }
     private(set) var start: String?
     private(set) var ceiling: String?
+    /// Where the run will start and stop when nothing is set — the class's own range, drawn so
+    /// "the class decides" is a picture rather than a shrug.
+    private var impliedStart: String?
+    private var impliedCeiling: String?
     var onChange: ((String?, String?) -> Void)?
     private let row = NSStackView()
 
@@ -389,12 +492,20 @@ final class MacLadderView: NSView {
         rebuild()
     }
 
+    func setImplied(start: String?, ceiling: String?) {
+        guard impliedStart != start || impliedCeiling != ceiling else { return }
+        impliedStart = start
+        impliedCeiling = ceiling
+        rebuild()
+    }
+
     private func index(of tier: String) -> Int { rungs.firstIndex { $0.tier == tier } ?? 0 }
 
     private func rebuild() {
         row.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let startIndex = start.map(index(of:))
-        let ceilingIndex = ceiling.map(index(of:))
+        let chosenStart = start.map(index(of:))
+        let startIndex = chosenStart ?? impliedStart.map(index(of:))
+        let ceilingIndex = (ceiling ?? impliedCeiling).map(index(of:))
         for (offset, rung) in rungs.enumerated() {
             let state: DelegateRungState
             if compose {
@@ -402,7 +513,7 @@ final class MacLadderView: NSView {
                     state = .belowStart
                 } else if let ceilingIndex, offset > ceilingIndex {
                     state = .beyondCeiling
-                } else if let startIndex, offset == startIndex {
+                } else if let chosenStart, offset == chosenStart {
                     state = .current
                 } else {
                     state = .pending
@@ -469,13 +580,13 @@ final class MacLadderView: NSView {
             }
             let title = RowKit.label(rung.tier + mark + (cap ? " ⌃" : ""), font: MacTheme.Ramp.font(.rowTitleStrong), color: ink)
             title.alignment = .center
-            let detailText = [rung.label, rung.model?.split(separator: "/").last.map(String.init)].compactMap { $0 }.filter { !$0.isEmpty }
+            let detailText = [rung.label, rung.model?.split(separator: "/").last.map(String.init), rung.note].compactMap { $0 }.filter { !$0.isEmpty }
             let detail = RowKit.label(detailText.joined(separator: "\n"), font: MacTheme.Ramp.font(.rowMeta), color: ink.withAlphaComponent(0.8))
             detail.alignment = .center
-            detail.maximumNumberOfLines = 2
+            detail.maximumNumberOfLines = 3
             let lines = NSStackView(views: [title, detail])
             lines.orientation = .vertical
-            lines.alignment = .centerX
+            lines.alignment = .width
             lines.spacing = 2
             lines.translatesAutoresizingMaskIntoConstraints = false
             addSubview(lines)
@@ -487,7 +598,7 @@ final class MacLadderView: NSView {
                 lines.topAnchor.constraint(equalTo: topAnchor, constant: MacTheme.Spacing.s),
                 lines.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -MacTheme.Spacing.s),
                 lines.centerXAnchor.constraint(equalTo: centerXAnchor),
-                lines.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -MacTheme.Spacing.s),
+                lines.widthAnchor.constraint(equalTo: widthAnchor, constant: -MacTheme.Spacing.s),
             ])
             toolTip = "\(rung.tier) \(DelegateLadder.word(state))"
             setAccessibilityElement(true)
@@ -509,6 +620,8 @@ final class MacLadderView: NSView {
 @MainActor
 final class DelegateRunView: NSView {
     var onSelectRun: ((String) -> Void)?
+    /// A fresh packet opened from this run's words, handed up to the window that owns the sheet.
+    var onDuplicate: ((DelegatePacket) -> Void)?
     private let column = NSStackView()
     private let heading = NSTextField(wrappingLabelWithString: "")
     private let status = NSTextField(labelWithString: "")
@@ -519,6 +632,7 @@ final class DelegateRunView: NSView {
     private let applied = NSTextField(wrappingLabelWithString: "")
     private let cancelButton = RowKit.ActionButton(title: Localized.text("Cancel run"), action: {})
     private let replayPopup = NSPopUpButton(frame: .zero, pullsDown: true)
+    private let stepsColumn = NSStackView()
     private let nothing = NSTextField(wrappingLabelWithString: "")
     private var scroll: NSScrollView!
     private var runID: String?
@@ -553,6 +667,10 @@ final class DelegateRunView: NSView {
         applied.textColor = MacTheme.Color.success
         column.addArrangedSubview(applied)
         replayPopup.addItem(withTitle: Localized.text("Replay on…"))
+        stepsColumn.orientation = .vertical
+        stepsColumn.alignment = .leading
+        stepsColumn.spacing = MacTheme.Spacing.s
+        column.addArrangedSubview(stepsColumn)
         let actions = NSStackView(views: [cancelButton, replayPopup])
         actions.orientation = .horizontal
         actions.alignment = .centerY
@@ -560,7 +678,7 @@ final class DelegateRunView: NSView {
         actions.spacing = MacTheme.Spacing.s
         actions.heightAnchor.constraint(equalToConstant: 26).isActive = true
         column.addArrangedSubview(actions)
-        for view in [heading, ladder, approval, storyColumn, attemptsColumn, applied] {
+        for view in [heading, ladder, approval, storyColumn, attemptsColumn, applied, stepsColumn] {
             view.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -2 * MacTheme.Spacing.l).isActive = true
         }
         scroll = MacDialogs.scrollColumn(holding: column)
@@ -645,6 +763,39 @@ final class DelegateRunView: NSView {
         replayPopup.removeAllItems()
         replayPopup.addItem(withTitle: Localized.text("Replay on…"))
         replayPopup.addItems(withTitles: tiers)
+        stepsColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for step in story.nextSteps(tierOrder: tiers) {
+            let button = RowKit.ActionButton(title: step.title) { [weak self] in self?.performNextStep(step) }
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            let detail = RowKit.wrapping(step.detail, font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.secondaryLabel)
+            detail.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            let pair = NSStackView(views: [button, detail])
+            pair.orientation = .horizontal
+            pair.alignment = .centerY
+            pair.distribution = .fill
+            pair.spacing = MacTheme.Spacing.s
+            pair.heightAnchor.constraint(greaterThanOrEqualToConstant: 26).isActive = true
+            stepsColumn.addArrangedSubview(pair)
+            pair.widthAnchor.constraint(equalTo: stepsColumn.widthAnchor).isActive = true
+        }
+    }
+
+    /// One of the run's own next moves: the same packet on the rung it names, or a fresh packet
+    /// opened from this one's words.
+    private func performNextStep(_ step: DelegateNextStep) {
+        switch step.kind {
+        case .replay(let tier):
+            guard let runID, let host, let desk else { return }
+            Task { [weak self] in
+                if let started = try? await desk.replay(runID: runID, host: host, tier: tier, ceiling: nil) {
+                    self?.onSelectRun?(started)
+                }
+            }
+        case .duplicate:
+            guard let runID, let host, let desk, let packet = desk.boards[host]?.story(for: runID)?.packet else { return }
+            onDuplicate?(packet)
+        }
     }
 
     @objc private func replayPicked() {
@@ -751,18 +902,21 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
     private let sendButton = RowKit.ActionButton(title: DelegateComposerWords.sendTitle, action: {})
     private var sending = false
 
-    static func present(on window: NSWindow, host: String, serverName: String, onStarted: @escaping (String) -> Void) {
-        let made = DelegateComposerSheet(host: host, serverName: serverName, onStarted: onStarted)
+    static func present(on window: NSWindow, host: String, serverName: String, draft: DelegateDraft? = nil, onStarted: @escaping (String) -> Void) {
+        let made = DelegateComposerSheet(host: host, serverName: serverName, draft: draft, onStarted: onStarted)
         active = made
         window.beginSheet(made.sheet) { _ in Self.active = nil }
     }
 
-    private init(host: String, serverName: String, onStarted: @escaping (String) -> Void) {
+    private let legendLabel = NSTextField(wrappingLabelWithString: "")
+    private var board: DelegateBoard { desk.board(host: host, serverName: serverName) }
+
+    private init(host: String, serverName: String, draft: DelegateDraft?, onStarted: @escaping (String) -> Void) {
         self.host = host
         self.serverName = serverName
         self.onStarted = onStarted
         let board = MacDelegateGate.desk.board(host: host, serverName: serverName)
-        draft = DelegateDraft(capabilities: board.capabilities, repo: board.runs.first?.repo ?? "")
+        self.draft = draft ?? DelegateDraft(capabilities: board.capabilities, repo: board.runs.first?.repo ?? "")
         sheet = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
             styleMask: [.titled, .resizable], backing: .buffered, defer: false)
@@ -809,10 +963,15 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
         classPopup.addItems(withTitles: board.classes.isEmpty ? [draft.taskClass] : board.classes)
         classPopup.selectItem(withTitle: draft.taskClass)
         classPopup.target = self
-        classPopup.action = #selector(fieldChanged)
-        column.addArrangedSubview(labelled(DelegateComposerWords.classLabel, classPopup))
+        classPopup.action = #selector(classChanged)
+        column.addArrangedSubview(labelled(DelegateComposerWords.classLabel, classPopup, help: DelegateComposerWords.classHelp))
 
         repoField.stringValue = draft.repo
+        (goalView.documentView as? NSTextView)?.string = draft.goal
+        (pathsView.documentView as? NSTextView)?.string = draft.paths
+        verifyField.stringValue = draft.verify
+        readField.stringValue = draft.read
+        (notesView.documentView as? NSTextView)?.string = draft.notes
         repoField.placeholderString = DelegateComposerWords.repoPlaceholder
         repoField.font = MacTheme.Ramp.font(.code)
         repoField.delegate = self
@@ -840,16 +999,22 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
         column.addArrangedSubview(labelled(DelegateComposerWords.notesLabel, textView(notesView, height: 50)))
 
         ladder.compose = true
-        ladder.rungs = board.tiers.map { DelegateRung(tier: $0.tier, label: $0.label, model: $0.activeEntry?.model, state: .pending) }
+        ladder.rungs = board.composerRungs(taskClass: draft.taskClass)
+        ladder.set(start: draft.tier, ceiling: draft.ceiling)
         ladder.onChange = { [weak self] start, ceiling in
             self?.draft.tier = start
             self?.draft.ceiling = ceiling
             self?.render()
         }
-        ladder.heightAnchor.constraint(equalToConstant: 56).isActive = true
-        column.addArrangedSubview(labelled(DelegateComposerWords.ladderLabel, ladder, help: Localized.text("Click a rung to start there; shift-click sets how far the run may climb. Unset means the class decides.")))
+        ladder.heightAnchor.constraint(equalToConstant: 72).isActive = true
+        legendLabel.font = MacTheme.Ramp.font(.rowNote)
+        legendLabel.textColor = MacTheme.Color.label
+        let ladderBlock = labelled(DelegateComposerWords.ladderLabel, ladder, help: Localized.text("Click a rung to start there; shift-click sets how far the run may climb. Unset means the class decides."))
+        ladderBlock.insertArrangedSubview(legendLabel, at: 2)
+        legendLabel.widthAnchor.constraint(equalTo: ladderBlock.widthAnchor).isActive = true
+        column.addArrangedSubview(ladderBlock)
 
-        modeControl.selectedSegment = 0
+        modeControl.selectedSegment = DelegateMode.allCases.firstIndex(of: draft.mode) ?? 0
         modeControl.target = self
         modeControl.action = #selector(fieldChanged)
         column.addArrangedSubview(labelled(DelegateComposerWords.modeLabel, modeControl))
@@ -867,7 +1032,11 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
         let cancel = RowKit.ActionButton(title: Localized.text("Cancel")) { [weak self] in self?.close() }
         sendButton.setAction { [weak self] in self?.send() }
         sendButton.keyEquivalent = "\r"
-        let buttons = NSStackView(views: [cancel, sendButton])
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        cancel.setContentHuggingPriority(.required, for: .horizontal)
+        sendButton.setContentHuggingPriority(.required, for: .horizontal)
+        let buttons = NSStackView(views: [spacer, cancel, sendButton])
         buttons.orientation = .horizontal
         buttons.alignment = .centerY
         buttons.distribution = .fill
@@ -890,6 +1059,15 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
     }
 
     func textDidChange(_ notification: Notification) { fieldChanged() }
+
+    @objc private func classChanged() {
+        guard let name = classPopup.titleOfSelectedItem else { return }
+        draft.choose(taskClass: name, capabilities: board.capabilities)
+        verifyField.stringValue = draft.verify
+        ladder.rungs = board.composerRungs(taskClass: name)
+        ladder.set(start: draft.tier, ceiling: draft.ceiling)
+        fieldChanged()
+    }
 
     func controlTextDidChange(_ obj: Notification) { fieldChanged() }
 
@@ -915,6 +1093,7 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
         self.cautions.isHidden = cautions.isEmpty
         sendButton.isEnabled = draft.canSend && !sending
         sendButton.title = sending ? DelegateComposerWords.sendingTitle : DelegateComposerWords.sendTitle
+        renderLegend()
         suggestionRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for suggestion in DelegateDraft.verifySuggestions(paths: draft.pathList, repo: draft.repo) where suggestion != draft.verify {
             suggestionRow.addArrangedSubview(RowKit.ActionButton(title: suggestion) { [weak self] in
@@ -922,6 +1101,15 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
                 self?.fieldChanged()
             })
         }
+        suggestionRow.isHidden = suggestionRow.arrangedSubviews.isEmpty
+    }
+
+    /// The one sentence that resolves the ladder the way the daemon will, and the implied range
+    /// drawn on the rungs so an unset ladder is still a picture.
+    private func renderLegend() {
+        let plan = draft.plan(capabilities: board.capabilities, tierOrder: board.tierOrder)
+        legendLabel.stringValue = plan.legend
+        ladder.setImplied(start: plan.start, ceiling: plan.ceiling)
     }
 
     private func send() {

@@ -19,6 +19,129 @@ struct DelegateTests {
         DelegateEnvelope(runID: "R", seq: seq, timestamp: "2026-09-04T20:00:0\(seq % 10)+00:00", event: event)
     }
 
+    private var capabilities: DelegateCapabilities {
+        DelegateCapabilities(
+            api: 1, version: "0.2.0", host: "arch", features: ["runs", "policies"], tiers: ["t1", "t2", "t3"],
+            classes: ["default", "rust-mech", "docs"], modes: ["normal", "conserve", "rush"],
+            classPolicies: [
+                "default": DelegateClassPolicy(tier: "t2", ceiling: "t3"),
+                "rust-mech": DelegateClassPolicy(tier: "t1", ceiling: "t2", verify: "cargo test", verified: true, attempts: 2),
+                "docs": DelegateClassPolicy(tier: "t1", ceiling: "t2"),
+            ],
+            modePolicies: DelegateModePolicies(
+                conserve: DelegateModePolicy(shift: -1, ceilingVerified: "t2", askBefore: "t3"),
+                rush: DelegateModePolicy(shift: 1)))
+    }
+
+    @Test("Picking a class fills a verifier that was blank or the previous class's, never one that was typed")
+    func classFillsTheVerifier() {
+        var draft = DelegateDraft(capabilities: capabilities)
+        draft.choose(taskClass: "rust-mech", capabilities: capabilities)
+        #expect(draft.verify == "cargo test")
+        draft.choose(taskClass: "docs", capabilities: capabilities)
+        #expect(draft.verify == "")
+        draft.verify = "make check"
+        draft.choose(taskClass: "rust-mech", capabilities: capabilities)
+        #expect(draft.verify == "make check")
+    }
+
+    @Test("The plan resolves the ladder the way the daemon does and says whose choice each rung was")
+    func planReadsTheLadder() {
+        var draft = DelegateDraft(capabilities: capabilities)
+        draft.choose(taskClass: "rust-mech", capabilities: capabilities)
+        var plan = draft.plan(capabilities: capabilities, tierOrder: ["t1", "t2", "t3"])
+        #expect(plan.start == "t1")
+        #expect(plan.ceiling == "t2")
+        #expect(!plan.startIsYours)
+        #expect(plan.legend == "Starts at t1 and may climb to t2 — the rust-mech class's own range.")
+        draft.tier = "t2"
+        plan = draft.plan(capabilities: capabilities, tierOrder: ["t1", "t2", "t3"])
+        #expect(plan.startIsYours)
+        #expect(plan.legend.hasPrefix("Starts at t2 because you set it"))
+        draft.tier = nil
+        draft.choose(taskClass: "default", capabilities: capabilities)
+        #expect(draft.verify.isEmpty)
+        draft.mode = .conserve
+        plan = draft.plan(capabilities: capabilities, tierOrder: ["t1", "t2", "t3"])
+        #expect(plan.start == "t1")
+        #expect(plan.ceiling == "t3")
+        #expect(plan.askBefore == "t3")
+        #expect(plan.legend.contains("Conserve moves the start down to t1"))
+        #expect(plan.legend.contains("asks before t3"))
+        draft.mode = .rush
+        plan = draft.plan(capabilities: capabilities, tierOrder: ["t1", "t2", "t3"])
+        #expect(plan.start == "t3")
+        #expect(plan.legend.contains("Rush moves the start up to t3"))
+    }
+
+    @Test("The composer's rungs wear the numbers for the class being written")
+    func rungsWearTheNumbers() {
+        var board = DelegateBoard(host: "arch", serverName: "arch")
+        board.landed(capabilities: capabilities, tiers: tiers)
+        board.filled(stats: [DelegateStat(taskClass: "docs", tier: "t1", attempts: 14, passes: 13, passRate: 0.93, averageMS: 6_400, tokensIn: 1, tokensOut: 1)])
+        let rungs = board.composerRungs(taskClass: "docs")
+        #expect(rungs.map(\.note) == ["93% · 6.4s", "untried", "untried"])
+    }
+
+    @Test("A settled run offers the rung below after a pass, the rungs above and here after a stop, and a copy always")
+    func nextStepsFollowTheOutcome() {
+        var passed = DelegateRunStory(runID: "P", tiers: tiers)
+        passed.fold(envelope(1, .runStarted(packetID: "P", taskClass: "docs", startTier: "t1", ceiling: "t3", mode: .normal, host: "arch", repo: "/r")))
+        passed.fold(envelope(2, .attemptFinished(DelegateAttemptOutcome(tier: "t1", attempt: 1, status: .fail, verifyExit: 1, durationMS: 1))))
+        passed.fold(envelope(3, .escalated(from: "t1", to: "t2", reason: "verify")))
+        passed.fold(envelope(4, .runFinished(status: .passed, passedTier: "t2", escalations: 1, durationMS: 9, summary: "1 file")))
+        #expect(passed.nextSteps(tierOrder: []).map(\.id) == ["duplicate"])
+        var clean = DelegateRunStory(runID: "C", tiers: tiers)
+        clean.fold(envelope(1, .runFinished(status: .passed, passedTier: "t2", escalations: 0, durationMS: 9, summary: "")))
+        #expect(clean.nextSteps(tierOrder: []).map(\.id) == ["replay:t1", "duplicate"])
+        #expect(clean.nextSteps(tierOrder: []).first?.title == "Try it at t1")
+        var failed = DelegateRunStory(runID: "F", tiers: tiers)
+        failed.fold(envelope(1, .attemptFinished(DelegateAttemptOutcome(tier: "t1", attempt: 1, status: .fail, verifyExit: 1, durationMS: 1))))
+        failed.fold(envelope(2, .runFinished(status: .failed, passedTier: nil, escalations: 0, durationMS: 9, summary: "ran out of ladder")))
+        #expect(failed.nextSteps(tierOrder: []).map(\.id) == ["replay:t2", "replay:t1", "duplicate"])
+        #expect(failed.nextSteps(tierOrder: []).first?.title == "Climb to t2")
+        var live = DelegateRunStory(runID: "L", tiers: tiers)
+        live.fold(envelope(1, .attemptStarted(tier: "t1", attempt: 1, model: "m")))
+        #expect(live.nextSteps(tierOrder: []).isEmpty)
+    }
+
+    @Test("A wait and an end nobody chose earn a notice; a hold does not, and neither does the past")
+    func noticesFollowTheEvents() {
+        var story = DelegateRunStory(runID: "N", tiers: tiers)
+        story.packet = DelegatePacket.draft(taskClass: "docs", goal: "Write the README", repo: "/r")
+        let asks = story.notice(after: .approvalRequired(tier: "t3", reason: "conserve"))
+        #expect(asks?.kind == .asks)
+        #expect(asks?.body == "Write the README waits before t3")
+        story.fold(envelope(1, .runFinished(status: .passed, passedTier: "t1", escalations: 0, durationMS: 1, summary: "")))
+        #expect(story.notice(after: .runFinished(status: .passed, passedTier: "t1", escalations: 0, durationMS: 1, summary: ""))?.title == "Delegate passed at t1")
+        #expect(story.notice(after: .runFinished(status: .held, passedTier: nil, escalations: 0, durationMS: 1, summary: "")) == nil)
+        #expect(story.notice(after: .attemptStarted(tier: "t1", attempt: 1, model: "m")) == nil)
+        let now = Date()
+        #expect(DelegateDesk.isRecent(DelegateTimestamp.format(now.addingTimeInterval(-10)), now: now))
+        #expect(!DelegateDesk.isRecent(DelegateTimestamp.format(now.addingTimeInterval(-600)), now: now))
+        #expect(!DelegateDesk.isRecent("not a date", now: now))
+    }
+
+    @Test("A machine with no dispatcher is shown three copyable commands, and the demo never is")
+    func setupIsTheRoad() {
+        #expect(DelegateSetup.steps.count == 2)
+        #expect(DelegateSetup.steps.map(\.command).allSatisfy { !$0.isEmpty })
+        #expect(DelegateSetup.steps[0].command.hasPrefix("cargo install"))
+        #expect(DelegateSetup.steps[1].command.contains("install-service"))
+        #expect(DelegateReach.wantsPassword.asksForPassword)
+        #expect(DelegateReach.refused.asksForPassword)
+        #expect(!DelegateReach.answering(version: "0.3.0").asksForPassword)
+        #expect(!DelegateReach.unreachable("x").asksForPassword)
+        var board = DelegateBoard(host: "arch", serverName: "arch")
+        #expect(DelegateSetup.isWanted(board: board, known: false))
+        #expect(!DelegateSetup.isWanted(board: board, known: true))
+        board.failed("no route")
+        #expect(DelegateSetup.isWanted(board: board, known: false))
+        board.landed(capabilities: capabilities, tiers: tiers)
+        #expect(!DelegateSetup.isWanted(board: board, known: false))
+        #expect(!DelegateSetup.isWanted(board: DelegateBoard(host: "studio.tailnet-demo.ts.net", serverName: "studio"), known: false))
+    }
+
     @Test("The beta mark is one word on the badge and three paragraphs behind it")
     func betaExplainsItself() {
         #expect(DelegateBeta.badge == "BETA")

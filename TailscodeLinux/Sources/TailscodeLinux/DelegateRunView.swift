@@ -1,5 +1,6 @@
 import CAdw
 import CGtkShim
+import CodingAgentKit
 import TailscodeCore
 
 /// One run, drawn: the ladder it climbed, the story in the daemon's own lines, every attempt, and
@@ -12,13 +13,17 @@ enum DelegateRunView {
         onApprove: @escaping @Sendable () -> Void,
         onHold: @escaping @Sendable () -> Void,
         onCancel: @escaping @Sendable () -> Void,
-        onReplay: @escaping @Sendable (String) -> Void
+        onReplay: @escaping @Sendable (String) -> Void,
+        onDuplicate: @escaping @Sendable (DelegatePacket) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 14)
         Gtk.margins(column, top: 4, bottom: 16, leading: 4, trailing: 4)
 
         gtk_box_append(ptr(column), header(story))
         gtk_box_append(ptr(column), ladder(story))
+        if let steps = nextSteps(story, board: board, onReplay: onReplay, onDuplicate: onDuplicate) {
+            gtk_box_append(ptr(column), steps)
+        }
         if let actions = actions(story, board: board, onApprove: onApprove, onHold: onHold, onCancel: onCancel, onReplay: onReplay) {
             gtk_box_append(ptr(column), actions)
         }
@@ -110,6 +115,42 @@ enum DelegateRunView {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         for button in buttons { gtk_box_append(ptr(row), button) }
         return row
+    }
+
+    /// What a settled run invites next, each move a button with its own second line; a live run
+    /// invites nothing yet.
+    private static func nextSteps(
+        _ story: DelegateRunStory, board: DelegateBoard,
+        onReplay: @escaping @Sendable (String) -> Void, onDuplicate: @escaping @Sendable (DelegatePacket) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget>? {
+        let steps = story.nextSteps(tierOrder: board.tierOrder)
+        guard !steps.isEmpty else { return nil }
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        for step in steps {
+            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+            let packet = story.packet
+            let button = Gtk.button(step.title, css: ["pill"]) {
+                Gtk.onMain { performNextStep(step, packet: packet, onReplay: onReplay, onDuplicate: onDuplicate) }
+            }
+            gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(row), button)
+            let detail = Gtk.label(step.detail, css: "row-detail", wrap: true, selectable: false)
+            gtk_widget_set_hexpand(detail, 1)
+            gtk_widget_set_valign(detail, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(row), detail)
+            gtk_box_append(ptr(column), row)
+        }
+        return column
+    }
+
+    private static func performNextStep(
+        _ step: DelegateNextStep, packet: DelegatePacket?,
+        onReplay: @escaping @Sendable (String) -> Void, onDuplicate: @escaping @Sendable (DelegatePacket) -> Void
+    ) {
+        switch step.kind {
+        case .replay(let tier): onReplay(tier)
+        case .duplicate: if let packet { onDuplicate(packet) }
+        }
     }
 
     static func sectionLabel(_ text: String) -> UnsafeMutablePointer<GtkWidget> {

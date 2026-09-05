@@ -28,6 +28,7 @@ final class DelegateComposerViewController: UIViewController, UITextViewDelegate
     private let ladder = TierLadderControl()
     private let modeControl = UISegmentedControl(items: DelegateMode.allCases.map(DelegateWords.mode))
     private let effortControl = UISegmentedControl(items: [DelegateComposerWords.effortDefault] + DelegateEffort.allCases.map(DelegateWords.effort))
+    private let legendLabel = UILabel()
     private let cautions = UILabel()
     private let problems = UILabel()
     private let send = PrimaryButton(title: DelegateComposerWords.sendTitle)
@@ -54,6 +55,33 @@ final class DelegateComposerViewController: UIViewController, UITextViewDelegate
         render()
     }
 
+    #if DEBUG
+        /// `TAILSCODE_DELEGATE_CLASS=<name>` picks a class the way the menu would and
+        /// `TAILSCODE_DELEGATE_SCROLL=1` lands on the ladder, so a simulator can be photographed
+        /// with the legend and the rungs' notes in view.
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            let env = ProcessInfo.processInfo.environment
+            if let name = env["TAILSCODE_DELEGATE_CLASS"], !name.isEmpty, name != draft.taskClass {
+                draft.choose(taskClass: name, capabilities: board.capabilities)
+                verify.textField.text = draft.verify
+                ladder.rungs = board.composerRungs(taskClass: name)
+                ladder.set(start: draft.tier, ceiling: draft.ceiling)
+                classButton.menu = classMenu()
+                render()
+            }
+            if env["TAILSCODE_DELEGATE_SCROLL"] == "1" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                    guard let self else { return }
+                    self.view.layoutIfNeeded()
+                    let target = self.ladder.convert(self.ladder.bounds, to: self.scroll)
+                    let y = max(min(target.minY - 120, self.scroll.contentSize.height - self.scroll.bounds.height + self.scroll.adjustedContentInset.bottom), 0)
+                    self.scroll.setContentOffset(CGPoint(x: 0, y: y), animated: false)
+                }
+            }
+        }
+    #endif
+
     private static func lastRepo(host: String) -> String {
         DelegateGate.desk.board(host: host, serverName: "").runs.first?.repo ?? ""
     }
@@ -77,7 +105,7 @@ final class DelegateComposerViewController: UIViewController, UITextViewDelegate
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -Theme.Spacing.xxl),
         ])
 
-        stack.addArrangedSubview(labelled(DelegateComposerWords.classLabel, classButton))
+        stack.addArrangedSubview(labelled(DelegateComposerWords.classLabel, classButton, help: DelegateComposerWords.classHelp))
         classButton.showsMenuAsPrimaryAction = true
         classButton.contentHorizontalAlignment = .leading
         classButton.menu = classMenu()
@@ -120,7 +148,12 @@ final class DelegateComposerViewController: UIViewController, UITextViewDelegate
             self?.draft.ceiling = ceiling
             self?.render()
         }
-        stack.addArrangedSubview(labelled(DelegateComposerWords.ladderLabel, ladder, help: DelegateComposerWords.ladderHelp))
+        legendLabel.numberOfLines = 0
+        legendLabel.font = Theme.Ramp.font(.rowNote)
+        legendLabel.textColor = Theme.Color.label
+        let ladderBlock = labelled(DelegateComposerWords.ladderLabel, ladder, help: DelegateComposerWords.ladderHelp)
+        (ladderBlock as? UIStackView)?.insertArrangedSubview(legendLabel, at: 2)
+        stack.addArrangedSubview(ladderBlock)
 
         modeControl.addAction(UIAction { [weak self] _ in self?.draftChanged() }, for: .valueChanged)
         stack.addArrangedSubview(labelled(DelegateComposerWords.modeLabel, modeControl))
@@ -147,9 +180,7 @@ final class DelegateComposerViewController: UIViewController, UITextViewDelegate
         notes.text = draft.notes
         modeControl.selectedSegmentIndex = DelegateMode.allCases.firstIndex(of: draft.mode) ?? 0
         effortControl.selectedSegmentIndex = draft.effort.flatMap { DelegateEffort.allCases.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
-        ladder.rungs = board.tiers.map { tier in
-            DelegateRung(tier: tier.tier, label: tier.label, model: tier.activeEntry?.model, state: .pending)
-        }
+        ladder.rungs = board.composerRungs(taskClass: draft.taskClass)
         ladder.set(start: draft.tier, ceiling: draft.ceiling)
     }
 
@@ -195,9 +226,13 @@ final class DelegateComposerViewController: UIViewController, UITextViewDelegate
         let classes = board.classes.isEmpty ? [draft.taskClass] : board.classes
         return UIMenu(children: classes.map { name in
             UIAction(title: name, state: name == draft.taskClass ? .on : .off) { [weak self] _ in
-                self?.draft.taskClass = name
-                self?.classButton.menu = self?.classMenu()
-                self?.render()
+                guard let self else { return }
+                self.draft.choose(taskClass: name, capabilities: self.board.capabilities)
+                self.verify.textField.text = self.draft.verify
+                self.ladder.rungs = self.board.composerRungs(taskClass: name)
+                self.ladder.set(start: self.draft.tier, ceiling: self.draft.ceiling)
+                self.classButton.menu = self.classMenu()
+                self.render()
             }
         })
     }
@@ -229,6 +264,15 @@ final class DelegateComposerViewController: UIViewController, UITextViewDelegate
         send.isEnabled = draft.canSend && !sending
         send.setLoading(sending)
         renderSuggestions()
+        renderLegend()
+    }
+
+    /// The one sentence that resolves the ladder the way the daemon will, and the implied range
+    /// drawn on the rungs so an unset ladder is still a picture.
+    private func renderLegend() {
+        let plan = draft.plan(capabilities: board.capabilities, tierOrder: board.tierOrder)
+        legendLabel.text = plan.legend
+        ladder.setImplied(start: plan.start, ceiling: plan.ceiling)
     }
 
     private func renderSuggestions() {

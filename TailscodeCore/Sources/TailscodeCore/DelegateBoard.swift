@@ -167,6 +167,24 @@ public struct DelegateBoard: Sendable, Equatable {
 
     public var promotions: [String] { DelegatePromotion.hints(stats, tiers: tierOrder) }
 
+    /// What the numbers say about one rung for one class: a pass rate and an average, or that the
+    /// rung is untried, so the composer's ladder is chosen on evidence.
+    public func rungNote(taskClass: String, tier: String) -> String {
+        guard let stat = stats.first(where: { $0.taskClass == taskClass && $0.tier == tier }), stat.attempts > 0 else {
+            return Localized.text("untried")
+        }
+        return "\(Int((stat.passRate * 100).rounded()))% · \(DelegateWords.seconds(Int(stat.averageMS)))"
+    }
+
+    /// The ladder as the composer draws it for one class: every tier, unlit, each with its note.
+    public func composerRungs(taskClass: String) -> [DelegateRung] {
+        tiers.map { tier in
+            DelegateRung(
+                tier: tier.tier, label: tier.label, model: tier.activeEntry?.model, state: .pending,
+                note: rungNote(taskClass: taskClass, tier: tier.tier))
+        }
+    }
+
     /// Every run, newest first, as the story a row is drawn from — the live fold where one exists,
     /// otherwise the daemon's stored record.
     public var runStories: [DelegateRunStory] {

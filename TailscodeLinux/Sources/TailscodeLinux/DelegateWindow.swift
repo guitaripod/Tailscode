@@ -261,6 +261,8 @@ final class DelegateWindow: @unchecked Sendable {
         case .board:
             if (runner.reach[currentHost] ?? .unknown).isAnswering {
                 gtk_box_append(ptr(below), boardContent())
+            } else if DelegateSetup.isWanted(board: runner.board(host: currentHost, serverName: currentHost), known: runner.isKnown(host: currentHost)) {
+                gtk_box_append(ptr(below), setupBlock())
             }
         case .run(let runID):
             gtk_box_append(ptr(below), runContent(runID))
@@ -287,7 +289,7 @@ final class DelegateWindow: @unchecked Sendable {
         let isDemo = runner.isDemo(host: currentHost)
         gtk_widget_set_sensitive(checkButton, checking ? 0 : 1)
         gtk_button_set_label(ptr(checkButton), checking ? Localized.text("Checking…") : Localized.text("Check"))
-        gtk_widget_set_visible(passwordEntry, (reach.isAnswering || isDemo) ? 0 : 1)
+        gtk_widget_set_visible(passwordEntry, reach.asksForPassword && !isDemo ? 1 : 0)
         gtk_widget_set_visible(checkButton, isDemo ? 0 : 1)
     }
 
@@ -310,6 +312,37 @@ final class DelegateWindow: @unchecked Sendable {
             gtk_box_append(ptr(column), statsBlock(board))
         }
         return column
+    }
+
+    /// The road from a machine with no dispatcher to one that answers: three commands, each with a
+    /// copy button and a line saying what it does.
+    private func setupBlock() -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+        gtk_box_append(ptr(column), DelegateRunView.sectionLabel(DelegateSetup.title))
+        gtk_box_append(ptr(column), Gtk.label(DelegateSetup.lead(serverName: currentHost), css: "row-detail", wrap: true, selectable: false))
+        for step in DelegateSetup.steps {
+            let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+            let head = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+            let title = Gtk.label(step.title, css: "row-title", selectable: false)
+            gtk_widget_set_hexpand(title, 1)
+            gtk_box_append(ptr(head), title)
+            gtk_box_append(
+                ptr(head),
+                Gtk.button(Localized.text("Copy"), css: ["flat", "pill"]) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.copySetupCommand(step) }
+                })
+            gtk_box_append(ptr(block), head)
+            let command = Gtk.label(step.command, css: "tool-line", wrap: true, selectable: true)
+            gtk_box_append(ptr(block), command)
+            gtk_box_append(ptr(block), Gtk.label(step.detail, css: "watch-meta", wrap: true, selectable: false))
+            gtk_box_append(ptr(column), block)
+        }
+        return column
+    }
+
+    private func copySetupCommand(_ step: DelegateSetup.Step) {
+        Gtk.copyToClipboard(step.command)
+        toast(DelegateSetup.copied + " · " + step.command)
     }
 
     private func statusRow(_ board: DelegateBoard) -> UnsafeMutablePointer<GtkWidget> {
@@ -359,9 +392,17 @@ final class DelegateWindow: @unchecked Sendable {
         return button
     }
 
-    private func presentComposer() {
+    /// The first run the board lists, opened as a click would open it — the road the `drun` drive
+    /// verb takes so the run view can be photographed without a pointer.
+    func openFirstRun() {
+        let stories = runner.board(host: currentHost, serverName: currentHost).runStories
+        guard let first = stories.first(where: { !$0.isLive }) ?? stories.first else { return }
+        openRun(first.runID)
+    }
+
+    func presentComposer(draft: DelegateDraft? = nil) {
         let board = runner.board(host: currentHost, serverName: currentHost)
-        DelegateComposerDialog.present(parent: window, board: board) { [weak self] draft in
+        DelegateComposerDialog.present(parent: window, board: board, draft: draft) { [weak self] draft in
             self?.send(draft)
         }
     }
@@ -465,7 +506,10 @@ final class DelegateWindow: @unchecked Sendable {
             onApprove: { [weak self] in self?.respondToApproval(runID: runID, approved: true) },
             onHold: { [weak self] in self?.respondToApproval(runID: runID, approved: false) },
             onCancel: { [weak self] in self?.cancelRun(runID) },
-            onReplay: { [weak self] tier in self?.replayRun(runID, tier: tier) })
+            onReplay: { [weak self] tier in self?.replayRun(runID, tier: tier) },
+            onDuplicate: { [weak self] packet in
+                Gtk.onMain { [weak self] in self?.presentComposer(draft: DelegateDraft(packet: packet)) }
+            })
     }
 
     /// The run screen's only gated decision: approve climbs, hold ends the run as held. Both cross

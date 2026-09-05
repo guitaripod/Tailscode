@@ -209,6 +209,7 @@ final class HomeViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         startLiveRefresh()
+        DelegateGate.watchNotices()
         #if DEBUG
             DelegateGate.debugOpenIfAsked(from: self)
         #endif

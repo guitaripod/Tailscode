@@ -157,6 +157,35 @@ final class Notifier: @unchecked Sendable {
         g_object_unref(notification.map { UnsafeMutableRawPointer($0) })
     }
 
+    /// A delegate run's notice, under the same switches a conversation's alerts answer to: a wait
+    /// for a person is an approval, an end is a finished turn — and never while a window of this
+    /// app is the active one, because the person is looking at it.
+    func raiseDelegate(_ notice: DelegateNotice, identifier: String) {
+        guard let app = application, !Self.anyWindowActive else { return }
+        switch notice.kind {
+        case .asks: guard Self.notifyNeedsYou else { return }
+        case .passed, .failed: guard Self.notifyTurnComplete else { return }
+        }
+        let notification = g_notification_new(notice.title)
+        g_notification_set_body(notification, notice.body)
+        if notice.kind == .asks {
+            g_notification_set_priority(notification, G_NOTIFICATION_PRIORITY_HIGH)
+        }
+        g_application_send_notification(app, identifier, notification)
+        g_object_unref(notification.map { UnsafeMutableRawPointer($0) })
+    }
+
+    private static var anyWindowActive: Bool {
+        guard let list = gtk_window_list_toplevels() else { return false }
+        defer { g_list_free(list) }
+        var node: UnsafeMutablePointer<GList>? = list
+        while let current = node {
+            if let raw = current.pointee.data, gtk_window_is_active(ptr(raw)) != 0 { return true }
+            node = current.pointee.next
+        }
+        return false
+    }
+
     /// An approval or question notice left standing after it was answered is a lie the user
     /// taps into and finds nothing.
     func withdraw(_ identifiers: [String]) {

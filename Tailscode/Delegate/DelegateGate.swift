@@ -14,6 +14,26 @@ enum DelegateGate {
         DelegateProGate.allows(isPro: ProStore.shared.isPro, sells: true, demo: ConnectionController.shared.isDemoMode)
     }
 
+    nonisolated(unsafe) private static var noticeWatcher: NSObjectProtocol?
+
+    /// A run this phone follows taps its shoulder: a wait for a person under the approvals switch,
+    /// an end nobody chose under the turn-complete switch, never while the app is on screen.
+    static func watchNotices() {
+        guard noticeWatcher == nil else { return }
+        noticeWatcher = NotificationCenter.default.addObserver(
+            forName: DelegateDesk.didNotice, object: nil, queue: .main
+        ) { note in
+            guard let notice = note.userInfo?["notice"] as? DelegateNotice,
+                let runID = note.userInfo?["runID"] as? String
+            else { return }
+            MainActor.assumeIsolated {
+                NotificationManager.notify(
+                    kind: notice.kind == .asks ? .approval : .turnComplete, title: notice.title, body: notice.body,
+                    identifier: "delegate:\(runID):\(notice.kind)")
+            }
+        }
+    }
+
     static func open(from presenter: UIViewController, profile: ConnectionProfile) {
         guard let host = DelegateAccess.host(of: profile.baseURL) else { return }
         open(from: presenter, host: host, serverName: profile.name)
@@ -41,8 +61,8 @@ enum DelegateGate {
 
         /// `TAILSCODE_OPEN_DELEGATE=<host>` opens that machine's board once Home is up,
         /// `TAILSCODE_DELEGATE_PASSWORD` seeds the daemon's password and `TAILSCODE_DELEGATE_BETA=1`
-        /// opens the beta sheet over the board, so a simulator can be photographed on a real
-        /// dispatcher without a finger.
+        /// opens the beta sheet over the board and `TAILSCODE_DELEGATE_COMPOSE=1` the composer, so a
+        /// simulator can be photographed on a real dispatcher without a finger.
         static func debugOpenIfAsked(from home: UIViewController) {
             let env = ProcessInfo.processInfo.environment
             guard !debugOpened, let host = env["TAILSCODE_OPEN_DELEGATE"], !host.isEmpty else { return }
@@ -56,6 +76,11 @@ enum DelegateGate {
                 if env["TAILSCODE_DELEGATE_BETA"] == "1" {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                         (home.navigationController?.topViewController as? DelegateBoardViewController)?.explainBeta()
+                    }
+                }
+                if env["TAILSCODE_DELEGATE_COMPOSE"] == "1" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        (home.navigationController?.topViewController as? DelegateBoardViewController)?.compose()
                     }
                 }
                 guard let runID = env["TAILSCODE_OPEN_DELEGATE_RUN"], !runID.isEmpty else { return }

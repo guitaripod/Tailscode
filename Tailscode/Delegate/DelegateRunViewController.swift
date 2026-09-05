@@ -16,6 +16,7 @@ final class DelegateRunViewController: UIViewController {
         case cancel
         case replay
         case applied
+        case step(String)
     }
 
     private let host: String
@@ -52,6 +53,20 @@ final class DelegateRunViewController: UIViewController {
         title = story?.headline ?? title
         applySnapshot()
     }
+
+    #if DEBUG
+        /// `TAILSCODE_DELEGATE_SCROLL=1` lands on the run's last rows, so a simulator can be
+        /// photographed with the next moves in view.
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            guard ProcessInfo.processInfo.environment["TAILSCODE_DELEGATE_SCROLL"] == "1" else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                guard let self else { return }
+                let bottom = max(self.collectionView.contentSize.height - self.collectionView.bounds.height + self.collectionView.adjustedContentInset.bottom, 0)
+                self.collectionView.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+            }
+        }
+    #endif
 
     private func configure() {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
@@ -126,6 +141,9 @@ final class DelegateRunViewController: UIViewController {
         var actions: [Item] = []
         if !story.appliedFiles.isEmpty { actions.append(.applied) }
         if story.isLive { actions.append(.cancel) }
+        for step in story.nextSteps(tierOrder: desk.board(host: host, serverName: serverName).tierOrder) {
+            actions.append(.step(step.id))
+        }
         if !story.isLive { actions.append(.replay) }
         snapshot.appendItems(actions, toSection: .actions)
         let existing = dataSource.snapshot().itemIdentifiers
@@ -190,10 +208,47 @@ final class DelegateRunViewController: UIViewController {
             content.image = UIImage(systemName: "arrow.counterclockwise")
             content.imageProperties.tintColor = Theme.Color.accent
             cell.accessories = [.customView(configuration: .init(customView: replayButton(), placement: .trailing()))]
+        case .step(let id):
+            guard let step = nextStep(id) else { break }
+            content.text = step.title
+            content.secondaryText = step.detail
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.secondaryTextProperties.numberOfLines = 0
+            content.textProperties.color = Theme.Color.accent
+            switch step.kind {
+            case .replay: content.image = UIImage(systemName: "arrow.up.forward.circle")
+            case .duplicate: content.image = UIImage(systemName: "doc.on.doc")
+            }
+            content.imageProperties.tintColor = Theme.Color.accent
         case .ladder, .approval:
             break
         }
         cell.contentConfiguration = content
+    }
+
+    private func nextStep(_ id: String) -> DelegateNextStep? {
+        story?.nextSteps(tierOrder: desk.board(host: host, serverName: serverName).tierOrder).first { $0.id == id }
+    }
+
+    /// One of the run's own next moves: the same packet on the rung it names, or a fresh packet
+    /// opened from this one's words.
+    private func performNextStep(_ step: DelegateNextStep) {
+        switch step.kind {
+        case .replay(let tier):
+            replay(tier: tier)
+        case .duplicate:
+            guard let packet = story?.packet else { return }
+            Theme.Haptics.tap()
+            let composer = DelegateComposerViewController(host: host, serverName: serverName, draft: DelegateDraft(packet: packet))
+            composer.onStarted = { [weak self] runID in
+                guard let self else { return }
+                self.navigationController?.pushViewController(
+                    DelegateRunViewController(host: self.host, serverName: self.serverName, runID: runID), animated: true)
+            }
+            let nav = UINavigationController(rootViewController: composer)
+            nav.navigationBar.prefersLargeTitles = false
+            present(nav, animated: true)
+        }
     }
 
     private func replayButton() -> UIButton {
@@ -266,7 +321,11 @@ extension DelegateRunViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
-        if case .cancel = item { cancel() }
+        switch item {
+        case .cancel: cancel()
+        case .step(let id): if let step = nextStep(id) { performNextStep(step) }
+        default: break
+        }
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {

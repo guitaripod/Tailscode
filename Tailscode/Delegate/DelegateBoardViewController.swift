@@ -7,11 +7,13 @@ import UIKit
 /// `DelegateBoard`'s; this controller draws rows and forwards taps to the desk.
 @MainActor
 final class DelegateBoardViewController: UIViewController {
-    private enum Section: Int, CaseIterable { case status, tiers, runs, stats }
+    private enum Section: Int, CaseIterable { case status, setup, tiers, runs, stats }
     private enum Item: Hashable {
         case note
         case status
         case password
+        case setupLead
+        case setup(String)
         case tier(String)
         case run(String)
         case empty
@@ -26,6 +28,7 @@ final class DelegateBoardViewController: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private var board: DelegateBoard { desk.board(host: host, serverName: serverName) }
     private var reach: DelegateReach { desk.reach[host] ?? .unknown }
+    private var copiedStep: String?
 
     init(host: String, serverName: String) {
         self.host = host
@@ -108,6 +111,7 @@ final class DelegateBoardViewController: UIViewController {
     private func sectionTitle(at index: Int) -> String? {
         switch dataSource.snapshot().sectionIdentifiers[safe: index] {
         case .status: return serverName
+        case .setup: return DelegateSetup.title
         case .tiers: return String(localized: "Ladder")
         case .runs: return String(localized: "Runs")
         case .stats: return String(localized: "Pass rates")
@@ -120,10 +124,12 @@ final class DelegateBoardViewController: UIViewController {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.status])
         var status: [Item] = board.note == nil ? [.status] : [.note, .status]
-        if case .wantsPassword = reach { status.append(.password) }
-        if case .refused = reach { status.append(.password) }
-        if desk.password(host: host) == nil, !board.isReady { status.append(.password) }
+        if reach.asksForPassword || (desk.password(host: host) != nil && !desk.isDemo(host: host)) { status.append(.password) }
         snapshot.appendItems(status.reduce(into: [Item]()) { if !$0.contains($1) { $0.append($1) } }, toSection: .status)
+        if DelegateSetup.isWanted(board: board, known: desk.isKnown(host: host)) {
+            snapshot.appendSections([.setup])
+            snapshot.appendItems([.setupLead] + DelegateSetup.steps.map { .setup($0.id) }, toSection: .setup)
+        }
         if !board.tiers.isEmpty {
             snapshot.appendSections([.tiers])
             snapshot.appendItems(board.tierLines.map { .tier($0.tier) }, toSection: .tiers)
@@ -162,6 +168,26 @@ final class DelegateBoardViewController: UIViewController {
             content.image = UIImage(systemName: DelegateEntryPoint.symbol)
             content.imageProperties.tintColor = (reach == .unknown ? board.statusTone : reach.tone).color
             if board.phase == .checking { cell.accessories = [.working()] }
+        case .setupLead:
+            content.text = DelegateSetup.lead(serverName: serverName)
+            content.textProperties.numberOfLines = 0
+            content.textProperties.font = Theme.Ramp.font(.rowNote)
+            content.textProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "terminal")
+            content.imageProperties.tintColor = Theme.Color.accent
+        case .setup(let id):
+            guard let step = DelegateSetup.steps.first(where: { $0.id == id }) else { break }
+            content.text = step.title
+            content.secondaryText = step.command + "\n" + step.detail
+            content.secondaryTextProperties.numberOfLines = 0
+            content.secondaryTextProperties.font = Theme.Ramp.font(.code)
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            let copied = copiedStep == id
+            cell.accessories = [
+                .label(
+                    text: copied ? DelegateSetup.copied : String(localized: "Copy"),
+                    options: .init(tintColor: copied ? Theme.Color.success : Theme.Color.accent))
+            ]
         case .password:
             content.text = desk.password(host: host) == nil
                 ? String(localized: "Enter the dispatcher's password")
@@ -222,7 +248,7 @@ final class DelegateBoardViewController: UIViewController {
         DelegateBetaViewController.present(from: self)
     }
 
-    private func compose() {
+    func compose() {
         Theme.Haptics.tap()
         let composer = DelegateComposerViewController(host: host, serverName: serverName)
         composer.onStarted = { [weak self] runID in
@@ -233,6 +259,20 @@ final class DelegateBoardViewController: UIViewController {
         let nav = UINavigationController(rootViewController: composer)
         nav.navigationBar.prefersLargeTitles = false
         present(nav, animated: true)
+    }
+
+    /// One command onto the clipboard, and the row says so for a moment.
+    private func copySetupCommand(_ id: String) {
+        guard let step = DelegateSetup.steps.first(where: { $0.id == id }) else { return }
+        UIPasteboard.general.string = step.command
+        Theme.Haptics.tap()
+        copiedStep = id
+        applySnapshot()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            guard let self, self.copiedStep == id else { return }
+            self.copiedStep = nil
+            self.applySnapshot()
+        }
     }
 
     private func askPassword() {
@@ -269,7 +309,9 @@ extension DelegateBoardViewController: UICollectionViewDelegate {
                 DelegateRunViewController(host: host, serverName: serverName, runID: runID), animated: true)
         case .empty:
             compose()
-        case .tier, .stat, .hint, .note:
+        case .setup(let id):
+            copySetupCommand(id)
+        case .tier, .stat, .hint, .note, .setupLead:
             break
         }
     }

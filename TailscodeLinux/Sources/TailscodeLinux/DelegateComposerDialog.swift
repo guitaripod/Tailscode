@@ -13,20 +13,23 @@ final class DelegateComposerDialog: @unchecked Sendable {
     nonisolated(unsafe) private static var open: DelegateComposerDialog?
 
     static func present(
-        parent: UnsafeMutablePointer<GtkWidget>?, board: DelegateBoard,
+        parent: UnsafeMutablePointer<GtkWidget>?, board: DelegateBoard, draft seed: DelegateDraft? = nil,
         onSend: @escaping @Sendable (DelegateDraft) -> Void
     ) {
         if let open {
             gtk_window_present(ptr(open.window))
             return
         }
-        open = DelegateComposerDialog(parent: parent, board: board, onSend: onSend)
+        open = DelegateComposerDialog(parent: parent, board: board, seed: seed, onSend: onSend)
     }
 
     private let window = gtk_window_new()!
     private let onSend: @Sendable (DelegateDraft) -> Void
     private var draft: DelegateDraft
     private let classes: [String]
+    private let board: DelegateBoard
+    private let legendLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
+    private var noteLabels: [String: UnsafeMutablePointer<GtkWidget>] = [:]
 
     private let classDropdown: UnsafeMutablePointer<GtkWidget>
     private let goalView = gtk_text_view_new()!
@@ -46,11 +49,12 @@ final class DelegateComposerDialog: @unchecked Sendable {
     private let sendButton = gtk_button_new_with_label(DelegateComposerWords.sendTitle)!
 
     private init(
-        parent: UnsafeMutablePointer<GtkWidget>?, board: DelegateBoard,
+        parent: UnsafeMutablePointer<GtkWidget>?, board: DelegateBoard, seed: DelegateDraft?,
         onSend: @escaping @Sendable (DelegateDraft) -> Void
     ) {
         self.onSend = onSend
-        draft = DelegateDraft(capabilities: board.capabilities, repo: "")
+        self.board = board
+        draft = seed ?? DelegateDraft(capabilities: board.capabilities, repo: "")
         classes = board.classes.isEmpty ? [draft.taskClass] : board.classes
         classDropdown = Self.dropdown(classes)
         DelegateToneCSS.apply(problemsLabel, .danger)
@@ -80,6 +84,11 @@ final class DelegateComposerDialog: @unchecked Sendable {
         gtk_entry_set_placeholder_text(ptr(repoEntry), DelegateComposerWords.repoPlaceholder)
         gtk_entry_set_placeholder_text(ptr(verifyEntry), DelegateComposerWords.verifyPlaceholder)
         gtk_entry_set_placeholder_text(ptr(readEntry), "README.md, docs/")
+        gtk_editable_set_text(op(verifyEntry), draft.verify)
+        gtk_editable_set_text(op(readEntry), draft.read)
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(goalView)), draft.goal, -1)
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(pathsView)), draft.paths, -1)
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(notesView)), draft.notes, -1)
 
         buildTierToggles(
             into: ladderStartRow, tiers: board.tiers, selected: draft.tier,
@@ -103,6 +112,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
         wireSignals()
         refreshVerifySuggestions()
         renderStatus()
+        renderLegend()
 
         Gtk.onKey(window) { [weak self] keyval, _ in
             guard let self, keyval == Keymap.escape else { return false }
@@ -126,7 +136,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 14)
         Gtk.margins(column, top: 12, bottom: 12, leading: 16, trailing: 16)
 
-        gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.classLabel, classDropdown))
+        gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.classLabel, classDropdown, help: DelegateComposerWords.classHelp))
         gtk_box_append(
             ptr(column),
             fieldBlock(
@@ -160,10 +170,13 @@ final class DelegateComposerDialog: @unchecked Sendable {
         Gtk.addClass(ladderStartRow, "linked")
         Gtk.addClass(ladderCeilingRow, "linked")
         let ladder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        gtk_box_append(ptr(ladder), notesRow())
         gtk_box_append(ptr(ladder), Gtk.label(Localized.text("Start"), css: "watch-meta", selectable: false))
         gtk_box_append(ptr(ladder), ladderStartRow)
         gtk_box_append(ptr(ladder), Gtk.label(Localized.text("Ceiling"), css: "watch-meta", selectable: false))
         gtk_box_append(ptr(ladder), ladderCeilingRow)
+        Gtk.addClass(legendLabel, "delegate-tone-live")
+        gtk_box_append(ptr(ladder), legendLabel)
         gtk_box_append(
             ptr(column), fieldBlock(DelegateComposerWords.ladderLabel, ladder, help: DelegateComposerWords.ladderHelp))
 
@@ -172,6 +185,40 @@ final class DelegateComposerDialog: @unchecked Sendable {
         Gtk.addClass(effortRow, "linked")
         gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.effortLabel, effortRow))
         return column
+    }
+
+    /// One card per rung: the tier, the model answering there, and what the numbers say about it
+    /// for the class being written, so a start is chosen on evidence.
+    private func notesRow() -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        for rung in board.composerRungs(taskClass: draft.taskClass) {
+            let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+            Gtk.addClass(card, "delegate-rung")
+            Gtk.margins(card, top: 4, bottom: 4, leading: 8, trailing: 8)
+            gtk_widget_set_hexpand(card, 1)
+            gtk_box_append(ptr(card), Gtk.label(rung.label.isEmpty ? rung.tier : "\(rung.tier) · \(rung.label)", css: "row-title", selectable: false))
+            if let model = rung.model, !model.isEmpty {
+                let modelLabel = Gtk.label(model, css: "watch-meta", selectable: false)
+                gtk_label_set_ellipsize(op(modelLabel), PANGO_ELLIPSIZE_END)
+                gtk_label_set_max_width_chars(op(modelLabel), 18)
+                gtk_box_append(ptr(card), modelLabel)
+            }
+            let note = Gtk.label(rung.note ?? "", css: "row-detail", selectable: false)
+            noteLabels[rung.tier] = note
+            gtk_box_append(ptr(card), note)
+            gtk_box_append(ptr(row), card)
+        }
+        return row
+    }
+
+    /// The one sentence that resolves the ladder the way the daemon will, and each rung's note for
+    /// the class now chosen.
+    private func renderLegend() {
+        let plan = draft.plan(capabilities: board.capabilities, tierOrder: board.tierOrder)
+        gtk_label_set_text(op(legendLabel), plan.legend)
+        for (tier, label) in noteLabels {
+            gtk_label_set_text(op(label), board.rungNote(taskClass: draft.taskClass, tier: tier))
+        }
     }
 
     private func fieldBlock(
@@ -251,7 +298,11 @@ final class DelegateComposerDialog: @unchecked Sendable {
     }
 
     private func updateFromForm() {
-        draft.taskClass = selectedClass()
+        let chosen = selectedClass()
+        if chosen != draft.taskClass {
+            draft.choose(taskClass: chosen, capabilities: board.capabilities)
+            gtk_editable_set_text(op(verifyEntry), draft.verify)
+        }
         draft.goal = Self.text(of: goalView)
         draft.repo = Dialogs.entryText(repoEntry)
         draft.paths = Self.text(of: pathsView)
@@ -260,6 +311,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
         draft.notes = Self.text(of: notesView)
         refreshVerifySuggestions()
         renderStatus()
+        renderLegend()
     }
 
     private func selectedClass() -> String {
@@ -332,6 +384,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
                     guard gtk_toggle_button_get_active(toggle) != 0 else { return }
                     assign(id)
                     self?.renderStatus()
+                    self?.renderLegend()
                 }
             }
             gtk_box_append(ptr(row), button)
@@ -357,6 +410,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
                     guard gtk_toggle_button_get_active(toggle) != 0 else { return }
                     self?.draft.mode = mode
                     self?.renderStatus()
+                    self?.renderLegend()
                 }
             }
             gtk_box_append(ptr(modeRow), button)

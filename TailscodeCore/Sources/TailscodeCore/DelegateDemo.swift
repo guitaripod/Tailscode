@@ -47,10 +47,27 @@ public enum DelegateDemo {
             chain: [DelegateChainEntry(runner: "claude", model: "claude-fable-5-1", thinking: "high")]),
     ]
 
+    static let classes = ["default", "docs", "rust-mech", "rust-impl", "swift-impl", "strings", "review"]
+
     static let capabilities = DelegateCapabilities(
-        api: 1, version: "0.1.0", host: "studio", features: ["runs", "events", "approve", "cancel", "replay", "stats", "tiers"],
-        tiers: tiers.map(\.tier), classes: ["default", "docs", "rust-mech", "rust-impl", "swift-impl", "strings", "review"],
-        modes: ["normal", "conserve", "rush"])
+        api: 1, version: "0.2.0", host: "studio", features: ["runs", "events", "approve", "cancel", "replay", "stats", "tiers", "policies"],
+        tiers: tiers.map(\.tier), classes: classes, modes: ["normal", "conserve", "rush"],
+        classPolicies: Dictionary(uniqueKeysWithValues: classes.map { name in
+            (name, DelegateClassPolicy(tier: DelegateDemoServer.classStart(name), ceiling: DelegateDemoServer.classCeiling(name), verify: classVerify(name), verified: classVerify(name) != nil, attempts: 2))
+        }),
+        modePolicies: DelegateModePolicies(
+            conserve: DelegateModePolicy(shift: -1, ceilingVerified: "t2", askBefore: "t3"),
+            rush: DelegateModePolicy(shift: 1)))
+
+    static func classVerify(_ taskClass: String) -> String? {
+        switch taskClass {
+        case "rust-mech": return "cargo build && cargo test"
+        case "rust-impl": return "cargo clippy --all-targets -- -D warnings && cargo test"
+        case "swift-impl": return "swift test"
+        case "strings": return "swift build"
+        default: return nil
+        }
+    }
 
     static let stats = [
         DelegateStat(taskClass: "docs", tier: "t1", attempts: 14, passes: 13, passRate: 0.93, averageMS: 6_400, tokensIn: 812_000, tokensOut: 9_100),

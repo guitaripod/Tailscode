@@ -571,6 +571,12 @@ final class MainWindowController: NSWindowController {
         case "delegate-beta":
             presentDelegate()
             delegateWindow?.revealBeta()
+        case "delegate-compose":
+            presentDelegate()
+            delegateWindow?.composeWhenReady()
+        case "delegate-run":
+            presentDelegate()
+            delegateWindow?.selectFirstRun()
         default:
             FileHandle.standardError.write(
                 Data(
@@ -620,6 +626,7 @@ final class MainWindowController: NSWindowController {
             presentPro()
             return
         }
+        MacDelegateGate.watchNotices()
         if delegateWindow == nil { delegateWindow = DelegateWindowController() }
         delegateWindow?.present()
     }

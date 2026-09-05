@@ -41,8 +41,9 @@ enum Kit {
     static let remote = "https://github.com/guitaripod/CodingAgentKit.git"
     /// 0.24.1 adds `contextWindow` to the omp bridge's `/models` rows; a pin below it leaves
     /// every omp session's context ring on the client's name guess. 0.24.2 corrects the
-    /// claude-bridge table: fable, opus and sonnet run a million-token window.
-    static let version = Version(0, 24, 2)
+    /// claude-bridge table: fable, opus and sonnet run a million-token window. 0.25.0 carries
+    /// the delegate daemon's class and mode policies and its auth mode on the capabilities.
+    static let version = Version(0, 25, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
