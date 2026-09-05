@@ -17,6 +17,12 @@ import TailscodeCore
 /// `QuickAskStarters` (⌘1…⌘9, or a click) and hands back the last few questions asked on this
 /// machine, so the blank field is a way into everything the agent can do instead of a text box.
 ///
+/// Which machine answers is the first thing on the panel rather than a chip found by hovering:
+/// every server is a segment of one strip, named and wearing its agent's symbol, the aimed one
+/// selected, and a click or Tab — the key the Linux window spends on the same move — re-aims the
+/// question without a menu in between. A fleet too wide for segments becomes one popup, still a
+/// single click to the list.
+///
 /// It is a composer, so a slash means here what it means in a chat: the aimed machine's own
 /// catalog, minus the commands that read a transcript the mint has yet to write, ranked and walked
 /// the way the chat's box ranks and walks it — and what is typed leaves as the decision
@@ -32,7 +38,7 @@ final class QuickAskPanel: NSPanel {
 
     private let editor = PromptEditor(
         placeholder: Localized.text("Ask anything — no project, no setup"))
-    private let serverChip = NSButton()
+    private let aimStrip: QuickAskAimStrip
     private let modelButton = NSButton()
     private let effortButton = NSPopUpButton()
     private let attachButton = NSButton()
@@ -95,6 +101,7 @@ final class QuickAskPanel: NSPanel {
         self.recents = recents
         self.onAsk = onAsk
         self.onResume = onResume
+        self.aimStrip = QuickAskAimStrip(servers: servers)
         super.init(
             contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: false)
         title = Localized.text("Quick ask")
@@ -113,12 +120,13 @@ final class QuickAskPanel: NSPanel {
 
         aimedServerID = QuickAskDefaults.target(
             among: servers.map(\.id), fallback: preferredServer)
-        serverChip.bezelStyle = .rounded
-        serverChip.controlSize = .small
-        serverChip.target = self
-        serverChip.action = #selector(serverChipPicked)
-        serverChip.isHidden = servers.count < 2
-        serverChip.showsBorderOnlyWhileMouseInside = true
+        aimStrip.isHidden = servers.count < 2
+        aimStrip.onPick = { [weak self] id in
+            guard let self, id != self.aimedServerID else { return }
+            self.aim(at: id)
+            self.refreshAim()
+            self.editor.focus()
+        }
 
         modelButton.bezelStyle = .rounded
         modelButton.controlSize = .small
@@ -153,10 +161,12 @@ final class QuickAskPanel: NSPanel {
         completion.hasProject = false
         completion.onPick = { [weak self] command in self?.accept(command) }
 
-        let aim = NSStackView(views: [serverChip, modelButton, effortButton, attachButton])
+        let aim = NSStackView(views: [modelButton, effortButton, attachButton])
         aim.orientation = .horizontal
         aim.spacing = 8
-        let column = QuickAskDropView(views: [editor, completion, chips, aim, status, starters])
+        let column = QuickAskDropView(views: [
+            aimStrip, editor, completion, chips, aim, status, starters,
+        ])
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = 8
@@ -199,6 +209,11 @@ final class QuickAskPanel: NSPanel {
     /// unmodified key, so a walk claimed after it would never see j or k — and escape has to close
     /// the list before it closes the panel, since a question is lost the moment nobody thought to
     /// keep it. Nothing is taken while the list is down.
+    ///
+    /// Tab, with no list to walk, moves the aim to the next server and shift-Tab to the one
+    /// before, the way the Linux window spends the key: a question has no use for a tab character
+    /// and the field is the only thing on the panel worth focusing, so the key is free to be the
+    /// fastest way from one machine to the next.
     private func installMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self, !self.asking else { return event }
@@ -207,6 +222,10 @@ final class QuickAskPanel: NSPanel {
             let shift = flags.contains(.shift)
             let isReturn = event.keyCode == 36 || event.keyCode == 76
             if self.completion.isShowing, self.handleCompletionKey(event) { return nil }
+            if event.keyCode == 48, !control, !flags.contains(.command), !flags.contains(.option) {
+                self.cycleServer(by: shift ? -1 : 1)
+                return nil
+            }
             if PromptEditor.vimPreferred, self.editor.hasFocus {
                 let key = PromptEditor.vimKey(for: event)
                 let letter = event.charactersIgnoringModifiers?.lowercased()
@@ -431,41 +450,16 @@ final class QuickAskPanel: NSPanel {
         servers.first { $0.id == aimedServerID } ?? servers[0]
     }
 
-    @objc private func serverChipPicked(_ sender: NSButton) {
-        popServerMenu()
-    }
-
-    /// Where the question goes, as a menu rather than a blind cycle: every server named with the
-    /// agent that would answer, the aimed one ticked, the address a tooltip away.
-    private func popServerMenu() {
-        let menu = NSMenu()
-        for server in servers {
-            let item = NSMenuItem(
-                title: "\(server.name) · \(ServerLabel.agent(server.backend))",
-                action: #selector(serverMenuItemPicked(_:)), keyEquivalent: "")
-            item.state = server.id == aimedServerID ? .on : .off
-            item.representedObject = server.id
-            item.toolTip = server.baseURL.absoluteString
-            item.target = self
-            menu.addItem(item)
-        }
-        menu.popUp(
-            positioning: nil, at: NSPoint(x: 0, y: serverChip.bounds.maxY + 4),
-            in: serverChip)
-    }
-
-    @objc private func serverMenuItemPicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        guard id != aimedServerID else { return }
-        aimedServerID = id
-        serverChanged()
-    }
-
-    @objc private func serverChanged() {
+    /// One step along the strip, wrapping at either end, so the same key pressed enough times
+    /// reaches every machine and comes back.
+    private func cycleServer(by delta: Int) {
+        guard servers.count > 1, !asking,
+            let current = servers.firstIndex(where: { $0.id == targetServer.id })
+        else { return }
+        let count = servers.count
+        aim(at: servers[((current + delta) % count + count) % count].id)
         refreshAim()
-        retargetDraft()
-        refreshAim()
-        refreshCommands()
+        editor.focus()
     }
 
     private var draftScope: DraftScope { .quickAsk(profileID: targetServer.id) }
@@ -682,12 +676,12 @@ final class QuickAskPanel: NSPanel {
         return ModelAbilities.resolve(supportsAttachments: true, model: capabilities)
     }
 
-    /// The button names what the question will actually run on, and the line under it says how
-    /// to send — with one server that line also names the machine, which the hidden popup no
-    /// longer can.
+    /// The strip and the button name what the question will actually run on, and the line under
+    /// them says how to send — with one server that line also names the machine, which the hidden
+    /// strip no longer can.
     private func refreshAim() {
         let server = targetServer
-        serverChip.title = server.name + " · " + ServerLabel.agent(server.backend)
+        aimStrip.select(id: server.id)
         let picked = QuickAskDefaults.model(forProfileID: server.id)
         let starred = picked.map(ModelFavoritesStore.isFavorite) ?? false
         modelButton.title =
@@ -712,7 +706,7 @@ final class QuickAskPanel: NSPanel {
                 ? QuickAskComposition.droppedNotice(count: dropped)
                 : (servers.count < 2
                     ? Localized.text("Asks %@ — enter sends, esc closes", server.name)
-                    : Localized.text("Enter sends, esc closes")))
+                    : Localized.text("Enter sends, tab switches server, esc closes")))
     }
 
     /// The empty panel's argument for itself: what this thing can be asked to do, offered against
@@ -908,7 +902,7 @@ final class QuickAskPanel: NSPanel {
         asking = true
         dismissCompletion()
         editor.isEditable = false
-        serverChip.isEnabled = false
+        aimStrip.isEnabled = false
         modelButton.isEnabled = false
         effortButton.isEnabled = false
         attachButton.isEnabled = false
@@ -924,7 +918,7 @@ final class QuickAskPanel: NSPanel {
             }
             self.asking = false
             self.editor.isEditable = true
-            self.serverChip.isEnabled = true
+            self.aimStrip.isEnabled = true
             self.modelButton.isEnabled = true
             self.effortButton.isEnabled = true
             self.attachButton.isEnabled = true
@@ -963,5 +957,87 @@ final class QuickAskDropView: NSStackView {
         else { return false }
         onDropImage?(png)
         return true
+    }
+}
+
+/// Every machine the question could go to, as one control: segments while the fleet fits in a
+/// row, each named and wearing its agent's symbol with the agent's name a tooltip away, and one
+/// popup past that — a list is a single click either way, never a chip that only shows its
+/// border on hover. The strip states the aim; the panel decides it.
+@MainActor
+final class QuickAskAimStrip: NSView {
+    var onPick: ((String) -> Void)?
+    private let ids: [String]
+    private let segments: NSSegmentedControl?
+    private let popup: NSPopUpButton?
+
+    private static let segmentCeiling = 5
+
+    init(servers: [ConnectionProfile]) {
+        ids = servers.map(\.id)
+        if servers.count <= Self.segmentCeiling {
+            let control = NSSegmentedControl(
+                labels: servers.map(\.name), trackingMode: .selectOne, target: nil, action: nil)
+            control.controlSize = .small
+            control.segmentStyle = .rounded
+            control.segmentDistribution = .fit
+            for (index, server) in servers.enumerated() {
+                control.setImage(Self.symbol(for: server.backend), forSegment: index)
+                control.setImageScaling(.scaleProportionallyDown, forSegment: index)
+                control.setToolTip(
+                    ServerLabel.agent(server.backend) + " · " + ServerLabel.address(server),
+                    forSegment: index)
+            }
+            segments = control
+            popup = nil
+        } else {
+            let control = NSPopUpButton()
+            control.controlSize = .small
+            for server in servers {
+                control.addItem(withTitle: ServerLabel.display(name: server.name, backend: server.backend))
+                control.lastItem?.image = Self.symbol(for: server.backend)
+                control.lastItem?.toolTip = ServerLabel.address(server)
+            }
+            segments = nil
+            popup = control
+        }
+        super.init(frame: .zero)
+        let control: NSControl = segments ?? popup!
+        control.target = self
+        control.action = #selector(picked)
+        control.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(control)
+        NSLayoutConstraint.activate([
+            control.leadingAnchor.constraint(equalTo: leadingAnchor),
+            control.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            control.topAnchor.constraint(equalTo: topAnchor),
+            control.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    var isEnabled: Bool = true {
+        didSet {
+            segments?.isEnabled = isEnabled
+            popup?.isEnabled = isEnabled
+        }
+    }
+
+    func select(id: String) {
+        guard let index = ids.firstIndex(of: id) else { return }
+        segments?.selectedSegment = index
+        popup?.selectItem(at: index)
+    }
+
+    @objc private func picked() {
+        let index = segments?.selectedSegment ?? popup?.indexOfSelectedItem ?? -1
+        guard ids.indices.contains(index) else { return }
+        onPick?(ids[index])
+    }
+
+    private static func symbol(for agent: AgentType) -> NSImage? {
+        NSImage(systemSymbolName: MacTheme.brandSymbol(agent), accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .medium))
     }
 }
