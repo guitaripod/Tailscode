@@ -49,6 +49,38 @@ public enum DelegateProGate {
     }
 }
 
+/// The mark the feature wears while it is new. A badge is the whole announcement — an invitation
+/// with its own footing stated, never a warning — and the gesture a platform has for asking
+/// (hovering on a desk, tapping on a phone) opens the why in the same words everywhere. It leaves
+/// by being deleted, not hidden, so every client loses it together.
+public enum DelegateBeta {
+    public static var label: String { Localized.text("Beta") }
+
+    /// What the badge itself reads, in the caps a badge is set in.
+    public static var badge: String { Localized.text("BETA") }
+
+    public static var title: String { Localized.text("Delegate is in beta") }
+
+    /// What a screen reader hears where a sighted person sees the badge.
+    public static var spoken: String { Localized.text("Beta. Delegate is new; open this to read what that means.") }
+
+    public static var paragraphs: [String] {
+        [
+            Localized.text(
+                "Delegate is new and still being shaped. It does real work every day, and what it learns there changes it: the packet, the ladder, the words a run is told in and the tier a class starts at will keep moving between releases until the feature is right."),
+            Localized.text(
+                "Beta does not mean pretend. A run is real work on your machine — every attempt is verified before its patch lands, and a patch lands unstaged in your working tree, so read it the way you would read a pull request before you keep it."),
+            Localized.text(
+                "When a run, a rung or a sentence here gets something wrong, that is worth reporting: this stage exists to hear it, and the dispatcher's own log on that machine carries every word a report needs."),
+        ]
+    }
+
+    public static var body: String { paragraphs.joined(separator: "\n\n") }
+
+    /// A line that already says something, with the mark in front of it.
+    public static func marked(_ line: String) -> String { Localized.text("Beta · %@", line) }
+}
+
 /// The words the daemon's own vocabulary is read in. A tier is a rung, a mode is a posture, and a
 /// status is one of six settled words, so no client spells them for itself.
 public enum DelegateWords {

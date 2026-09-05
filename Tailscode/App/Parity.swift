@@ -65,6 +65,7 @@ enum ParityManifest {
         case .delegateRun: return .implemented("DelegateRunViewController")
         case .delegateApproval: return .implemented("DelegateApprovalCell")
         case .delegateProGate: return .implemented("DelegateGate")
+        case .delegateBeta: return .implemented("DelegateBetaBadge")
         case .vimComposer: return .notApplicable("a touch composer; modal editing presumes a hardware keyboard")
         case .slashCompletion: return .implemented("SlashCommandPalette")
         case .slashDispatch: return .implemented("SlashDispatch.decide")

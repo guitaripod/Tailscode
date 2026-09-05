@@ -33,6 +33,7 @@ final class DelegateWindowController: NSWindowController {
     private let statsColumn = NSStackView()
     private let emptyLabel = NSTextField(wrappingLabelWithString: "")
     private let runView = DelegateRunView()
+    private let betaBadge = DelegateBetaBadge()
     private var hosts: [(host: String, name: String)] = []
     private var selectedHost: String?
     private var selectedRun: String?
@@ -68,6 +69,9 @@ final class DelegateWindowController: NSWindowController {
         render()
     }
 
+    /// Why the feature wears its mark, opened as a press would open it.
+    func revealBeta() { betaBadge.reveal() }
+
     private var board: DelegateBoard? {
         guard let host = selectedHost else { return nil }
         return desk.boards[host]
@@ -100,6 +104,17 @@ final class DelegateWindowController: NSWindowController {
         left.alignment = .leading
         left.spacing = MacTheme.Spacing.s
         left.translatesAutoresizingMaskIntoConstraints = false
+
+        let heading = NSTextField(labelWithString: DelegateEntryPoint.title)
+        heading.font = MacTheme.Ramp.font(.panelTitle)
+        heading.textColor = MacTheme.Color.label
+        let titleRow = NSStackView(views: [heading, betaBadge])
+        titleRow.orientation = .horizontal
+        titleRow.alignment = .centerY
+        titleRow.distribution = .fill
+        titleRow.spacing = MacTheme.Spacing.s
+        titleRow.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        left.addArrangedSubview(titleRow)
 
         serverPopup.target = self
         serverPopup.action = #selector(serverChanged)

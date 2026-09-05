@@ -19,6 +19,19 @@ struct DelegateTests {
         DelegateEnvelope(runID: "R", seq: seq, timestamp: "2026-09-04T20:00:0\(seq % 10)+00:00", event: event)
     }
 
+    @Test("The beta mark is one word on the badge and three paragraphs behind it")
+    func betaExplainsItself() {
+        #expect(DelegateBeta.badge == "BETA")
+        #expect(DelegateBeta.paragraphs.count == 3)
+        for paragraph in DelegateBeta.paragraphs {
+            #expect(paragraph.hasSuffix("."))
+            #expect(paragraph.count > 80)
+        }
+        #expect(DelegateBeta.body.components(separatedBy: "\n\n").count == 3)
+        #expect(DelegateBeta.marked("Not checked yet") == "Beta · Not checked yet")
+        #expect(DelegateBeta.spoken.hasPrefix(DelegateBeta.label))
+    }
+
     @Test("A run climbs the ladder one rung at a time and the lit rung is where it passed")
     func ladderFollowsTheRun() {
         var story = DelegateRunStory(runID: "R", tiers: tiers)

@@ -39,9 +39,10 @@ enum DelegateGate {
     #if DEBUG
         nonisolated(unsafe) private static var debugOpened = false
 
-        /// `TAILSCODE_OPEN_DELEGATE=<host>` opens that machine's board once Home is up, and
-        /// `TAILSCODE_DELEGATE_PASSWORD` seeds the daemon's password, so a simulator can be
-        /// photographed on a real dispatcher without a finger.
+        /// `TAILSCODE_OPEN_DELEGATE=<host>` opens that machine's board once Home is up,
+        /// `TAILSCODE_DELEGATE_PASSWORD` seeds the daemon's password and `TAILSCODE_DELEGATE_BETA=1`
+        /// opens the beta sheet over the board, so a simulator can be photographed on a real
+        /// dispatcher without a finger.
         static func debugOpenIfAsked(from home: UIViewController) {
             let env = ProcessInfo.processInfo.environment
             guard !debugOpened, let host = env["TAILSCODE_OPEN_DELEGATE"], !host.isEmpty else { return }
@@ -52,6 +53,11 @@ enum DelegateGate {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 open(from: home, host: host, serverName: name)
+                if env["TAILSCODE_DELEGATE_BETA"] == "1" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        (home.navigationController?.topViewController as? DelegateBoardViewController)?.explainBeta()
+                    }
+                }
                 guard let runID = env["TAILSCODE_OPEN_DELEGATE_RUN"], !runID.isEmpty else { return }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     home.navigationController?.pushViewController(
@@ -68,8 +74,9 @@ enum DelegateGate {
     /// What the server row says under its title before the board is opened.
     static func rowDetail(host: String) -> String {
         guard isOpen else { return DelegateProGate.requirement }
-        if let reach = desk.reach[host] { return reach.line }
-        return DelegateAccessStore.access(host: host) == nil
-            ? DelegateEntryPoint.subtitle : Localized.text("Not checked yet")
+        if let reach = desk.reach[host] { return DelegateBeta.marked(reach.line) }
+        return DelegateBeta.marked(
+            DelegateAccessStore.access(host: host) == nil
+                ? DelegateEntryPoint.subtitle : Localized.text("Not checked yet"))
     }
 }

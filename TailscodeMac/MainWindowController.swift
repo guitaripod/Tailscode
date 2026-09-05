@@ -544,6 +544,9 @@ final class MainWindowController: NSWindowController {
         case "renderer", "forgesetup":
             presentForge()?.openRenderer()
         case "delegate": presentDelegate()
+        case "delegate-beta":
+            presentDelegate()
+            delegateWindow?.revealBeta()
         default:
             FileHandle.standardError.write(
                 Data(

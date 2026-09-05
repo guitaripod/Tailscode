@@ -256,6 +256,17 @@ enum MatrixTheme {
         .pill-saved { color: \(special); border: 1px solid alpha(\(special), 0.7); }
         .pill-pinned { color: \(accent); border: 1px solid alpha(\(accent), 0.7); }
         .pill-offline { color: \(textDim); border: 1px solid alpha(\(textDim), 0.5); }
+        .beta-badge {
+            \(t(.pill))
+            padding: 2px 9px;
+            border-radius: 999px;
+            color: \(special);
+            background-color: alpha(\(special), 0.14);
+            border: 1px solid alpha(\(special), 0.55);
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+        .beta-badge:hover { background-color: alpha(\(special), 0.26); }
         \(modelTintCSS(for: palette))
 
         .session-row {

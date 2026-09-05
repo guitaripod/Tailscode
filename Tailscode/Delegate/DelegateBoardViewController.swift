@@ -40,10 +40,13 @@ final class DelegateBoardViewController: UIViewController {
         title = board.title
         navigationItem.largeTitleDisplayMode = .always
         view.backgroundColor = Theme.Color.groupedBackground
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
+        let plus = UIBarButtonItem(
             image: UIImage(systemName: "plus"),
             primaryAction: UIAction { [weak self] _ in self?.compose() })
-        navigationItem.rightBarButtonItem?.accessibilityLabel = DelegateEntryPoint.newPacketTitle
+        plus.accessibilityLabel = DelegateEntryPoint.newPacketTitle
+        let beta = DelegateBetaBadge()
+        beta.onTap = { [weak self] in self?.explainBeta() }
+        navigationItem.rightBarButtonItems = [plus, UIBarButtonItem(customView: beta)]
         configure()
         NotificationCenter.default.addObserver(
             self, selector: #selector(deskChanged), name: DelegateDesk.didChange, object: nil)
@@ -212,6 +215,11 @@ final class DelegateBoardViewController: UIViewController {
             content.imageProperties.tintColor = Theme.Color.special
         }
         cell.contentConfiguration = content
+    }
+
+    /// Why the feature wears its mark, in Core's words, sized to them.
+    func explainBeta() {
+        DelegateBetaViewController.present(from: self)
     }
 
     private func compose() {

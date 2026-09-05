@@ -170,6 +170,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case delegateRun
     case delegateApproval
     case delegateProGate
+    case delegateBeta
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -431,6 +432,10 @@ public enum CapabilityRegistry {
             id: .delegateProGate, area: "delegate", title: "Delegation is the paywall's door",
             spec:
                 "On a client that sells Pro, delegation is part of it and is the feature that opens the purchase: every road into the board — the server row, the Home entry, the menu — leads a free copy to the Pro sheet with the delegate pitch (DelegateProGate.pitch, the perk listed in ProOffer.perks) rather than to a half of the feature, and a Pro copy straight to the board. The gate is DelegateProGate.allows(isPro:sells:demo:): a client that sells nothing gates nothing, so the direct Mac build and Linux are simply whole, and the demo world is never behind the price, so App Review and a first-run user work the whole feature on the scripted machines. Nothing nags: the gate is touched only by a person walking through it."),
+        CapabilityDefinition(
+            id: .delegateBeta, area: "delegate", title: "The feature says it is in beta, and why",
+            spec:
+                "Delegate wears a beta mark wherever its board is opened: a badge beside the board's title on every client (DelegateBeta.badge), drawn as an invitation rather than a warning, and the same mark in front of the server row's line on the phone (DelegateBeta.marked). It explains itself on the gesture the platform has for asking — hovering on a desktop is enough, a popover that stays while the pointer is on it and leaves when the pointer does; tapping on the phone, a sheet sized to its words — in Core's own paragraphs (DelegateBeta.title, DelegateBeta.paragraphs): the feature is new and shaped by real use, so its packet, ladder, words and tier assignments move between releases; beta is not pretend, a run is real verified work whose patch lands unstaged and is read like a pull request; and a wrong run, rung or sentence is worth reporting. A screen reader hears the same invitation (DelegateBeta.spoken). The mark leaves by being deleted, never hidden, so the day the feature leaves beta every client loses it together."),
         CapabilityDefinition(
             id: .chooserBriefing, area: "composer", title: "A tab and a door explain themselves",
             spec:

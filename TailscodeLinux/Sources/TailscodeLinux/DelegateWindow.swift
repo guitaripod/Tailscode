@@ -76,6 +76,7 @@ final class DelegateWindow: @unchecked Sendable {
 
     private let window: UnsafeMutablePointer<GtkWidget>
     private let titleWidget = adw_window_title_new(DelegateEntryPoint.title, "")!
+    private let beta = DelegateBetaBadge()
     private let backButton = gtk_button_new_from_icon_name("go-previous-symbolic")!
     private let scroller = gtk_scrolled_window_new()!
     private let toastOverlay = adw_toast_overlay_new()!
@@ -102,7 +103,11 @@ final class DelegateWindow: @unchecked Sendable {
         }
 
         let header = adw_header_bar_new()!
-        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), titleWidget)
+        let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_widget_set_halign(titleRow, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(titleRow), titleWidget)
+        gtk_box_append(ptr(titleRow), beta.widget)
+        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), titleRow)
         adw_header_bar_pack_start(op(UnsafeMutableRawPointer(header)), backButton)
         gtk_window_set_titlebar(ptr(window), header)
 
@@ -241,6 +246,7 @@ final class DelegateWindow: @unchecked Sendable {
     private static func destroyed(_ window: DelegateWindow) {
         if open === window { open = nil }
         window.runner.unwatch(window)
+        window.beta.tearDown()
     }
 
     private func render() {
