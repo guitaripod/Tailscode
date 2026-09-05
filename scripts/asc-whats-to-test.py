@@ -6,6 +6,11 @@ which does not exist until the build finishes processing — so this polls for t
 build, then creates or patches the en-US localization.
 
 Usage: python3 scripts/asc-whats-to-test.py <build-number> <notes-file>
+       python3 scripts/asc-whats-to-test.py 131 notes.txt --platform=macos   # the Mac train
+
+The two trains number independently and usually share a build number, so the
+train is named rather than guessed: without it the newest 131 could be the
+other platform's.
 """
 import os
 import sys
@@ -16,6 +21,7 @@ import asc  # noqa: E402
 
 APP = "6791660932"
 LOCALE = "en-US"
+PLATFORM = "MAC_OS" if "--platform=macos" in sys.argv else "IOS"
 
 
 def find_build(number: str, tries: int = 60, delay: int = 30) -> str:
@@ -25,6 +31,7 @@ def find_build(number: str, tries: int = 60, delay: int = 30) -> str:
             **{
                 "filter[app]": APP,
                 "filter[version]": number,
+                "filter[preReleaseVersion.platform]": PLATFORM,
                 "limit": "1",
                 "sort": "-uploadedDate",
             },
@@ -72,15 +79,16 @@ def set_notes(build_id: str, notes: str) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
+    args = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
+    if len(args) != 2:
         raise SystemExit(__doc__)
-    number, path = sys.argv[1], sys.argv[2]
+    number, path = args
     notes = open(path).read().strip()
     if len(notes) > 4000:
         raise SystemExit(f"notes are {len(notes)} chars; ASC caps whatsNew at 4000")
     build_id = find_build(number)
     set_notes(build_id, notes)
-    print(f"https://appstoreconnect.apple.com/apps/{APP}/testflight/ios")
+    print(f"https://appstoreconnect.apple.com/apps/{APP}/testflight/{'macos' if PLATFORM == 'MAC_OS' else 'ios'}")
 
 
 if __name__ == "__main__":
