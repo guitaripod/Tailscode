@@ -2004,6 +2004,7 @@ final class ChatViewController: UIViewController {
             guard let self else { return }
             self.updateNavControls()
             self.updateBanner(for: self.viewModel.state)
+            self.updateContextChip()
         }
         viewModel.onCommandsChange = { [weak self] in
             guard let self, !self.commandPalette.isHidden else { return }
@@ -2580,7 +2581,12 @@ final class ChatViewController: UIViewController {
     private var turnStartedAt: Date?
     private var elapsedTicker: Task<Void, Never>?
     private var lastStatusPhaseText = ""
-    private var contextFill: ContextFill?
+    private var transcriptFill: ContextFill?
+    /// The transcript's fill read against the model the next send will run on, so a model switch
+    /// re-sizes the ring at once.
+    private var contextFill: ContextFill? {
+        transcriptFill?.rewindowed(model: viewModel.selectedModel?.modelID, catalog: availableModels)
+    }
     private var countedMessages = -1
 
     /// The nav status states the same facts as the desktop status bands — phase, running tool,
@@ -2594,7 +2600,7 @@ final class ChatViewController: UIViewController {
         turnStartedAt = StatusFacts.turnStart(in: state)
         if messagesMoved {
             countedMessages = state.messages.count
-            contextFill = ContextFill.read(
+            transcriptFill = ContextFill.read(
                 messages: state.messages, sessionModel: viewModel.session.model,
                 catalog: availableModels)
             spendReading.note(messages: state.messages, for: viewModel.session.id)

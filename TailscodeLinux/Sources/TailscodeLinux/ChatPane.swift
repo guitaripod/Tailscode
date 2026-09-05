@@ -2464,7 +2464,8 @@ final class ChatPane: @unchecked Sendable {
         let quotas = host?.quotasForStatus() ?? []
         let facts = StatusFacts.from(
             state: state, agents: agents, usage: usage,
-            attachments: attachments.count, context: contextFill, quotas: quotas,
+            attachments: attachments.count,
+            context: contextFill?.rewindowed(model: activeModelID, catalog: models), quotas: quotas,
             spend: spend, git: git, model: activeModelID, selection: activeSelection)
         if identityActivity != facts.activity {
             identityActivity = facts.activity
@@ -2567,7 +2568,8 @@ final class ChatPane: @unchecked Sendable {
                 parent: host?.windowWidget, spend: spend,
                 title: entry.map { $0.session.title } ?? Localized.text("This conversation"))
         case .context:
-            guard let contextFill else { return }
+            guard let contextFill = contextFill?.rewindowed(model: activeModelID, catalog: models)
+            else { return }
             var compact: (@Sendable () -> Void)?
             if backend?.capabilities.supportsCompaction != false {
                 compact = { [weak self] in

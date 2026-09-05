@@ -141,6 +141,26 @@ struct ContextWindowTests {
         #expect(fill.facts.map(\.label) == ["in use", "window", "free", "model"])
     }
 
+    @Test("Switching models re-reads the share against the next model's window")
+    func rewindowFollowsTheChosenModel() {
+        let fill = ContextFill.read(messages: [
+            Self.assistant("a1", model: "claude-opus-4-8", context: MessageUsage(input: 1000, cacheRead: 149_000)),
+        ])!
+        #expect(fill.percent == 75)
+        let million = fill.rewindowed(model: "opus[1m]", catalog: [])
+        #expect(million.window == 1_000_000)
+        #expect(million.percent == 15)
+        #expect(million.used == fill.used)
+        #expect(million.slices.map(\.tokens) == fill.slices.map(\.tokens))
+        #expect(million.model == "opus[1m]")
+        let local = fill.rewindowed(
+            model: "qwen38-nvfp4",
+            catalog: [ModelInfo(id: "qwen38-nvfp4", name: "Qwen", providerID: "llama-server", contextWindow: 262_144)])
+        #expect(local.window == 262_144)
+        #expect(fill.rewindowed(model: nil, catalog: []) == fill)
+        #expect(fill.rewindowed(model: "claude-opus-4-8", catalog: []) == fill)
+    }
+
     @Test("The band segment wears the fill and opens it")
     func bandSegment() {
         let fill = ContextFill(used: 20_000, window: 200_000, model: "claude-haiku-4-5", basis: .reported)

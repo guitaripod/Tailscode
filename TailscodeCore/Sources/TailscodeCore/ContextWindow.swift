@@ -43,6 +43,7 @@ public struct ContextFill: Sendable, Equatable {
     public let model: String?
     public let basis: Basis
     public let slices: [Slice]
+    private let tiers: MessageUsage?
 
     public static let attentionAt = 0.5
     public static let dangerAt = 0.8
@@ -52,7 +53,20 @@ public struct ContextFill: Sendable, Equatable {
         self.window = window
         self.model = model
         self.basis = basis
+        self.tiers = tiers
         self.slices = Self.slices(tiers, used: used, window: window)
+    }
+
+    /// The same fill measured against the model the *next* send will run on. The transcript names
+    /// the model that wrote the last answer, but a person who has just switched models is about to
+    /// hand this same conversation to a different window — 200k to a million, or a local model's
+    /// own limit — and the share has to be read against that one. What is in use does not change;
+    /// only what it is a share of.
+    public func rewindowed(model next: String?, catalog: [ModelInfo]) -> ContextFill {
+        guard let next, !next.isEmpty, next != model else { return self }
+        return ContextFill(
+            used: used, window: ContextWindow.resolve(model: next, catalog: catalog, observed: used),
+            model: next, basis: basis, tiers: tiers)
     }
 
     public var fraction: Double? {

@@ -189,6 +189,9 @@ final class TranscriptViewController: NSViewController {
     var gitBackend: (any GitObservingBackend)? { backend as? any GitObservingBackend }
     /// How full the model's window is, re-read whenever the transcript changes and offered to the
     /// band and to the panel behind it.
+    private var transcriptFill: ContextFill?
+    /// The transcript's fill read against the model the next send will run on, so a model switch
+    /// re-sizes the ring at once.
     private(set) var contextFill: ContextFill?
     private var countedMessages = -1
     private var notice: String?
@@ -518,6 +521,7 @@ final class TranscriptViewController: NSViewController {
         agents = []
         usage = nil
         git = nil
+        transcriptFill = nil
         contextFill = nil
         countedMessages = -1
         tickerTask?.cancel()
@@ -1709,7 +1713,7 @@ final class TranscriptViewController: NSViewController {
         if turnEnded { replaceRows(where: \.hasOpenWork) }
         renderPendingCards(state)
         composer.noteState(state)
-        contextFill = ContextFill.read(
+        transcriptFill = ContextFill.read(
             messages: state.messages, sessionModel: entry?.session.model, catalog: composer.catalog)
         updateStatus()
         refreshWorkflowRuns()
@@ -1922,6 +1926,8 @@ final class TranscriptViewController: NSViewController {
             return
         }
         let quotas = quotasForStatus?() ?? []
+        contextFill = transcriptFill?.rewindowed(
+            model: composer.activeModelID, catalog: composer.catalog)
         let facts = StatusFacts.from(
             state: state, agents: agents, usage: usage,
             attachments: composer.attachmentCount, context: contextFill, quotas: quotas,
