@@ -154,13 +154,14 @@ enum ContextPanel {
             Gtk.addClass(swatch, "context-band-\(slice.id)")
             gtk_widget_set_size_request(swatch, 10, 10)
             gtk_widget_set_valign(swatch, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(row), swatch)
             let name = Gtk.label(slice.label, css: "usage-gauge-label", selectable: false)
+            gtk_label_set_ellipsize(op(name), PANGO_ELLIPSIZE_NONE)
             gtk_label_set_xalign(op(name), 0)
             gtk_widget_set_hexpand(name, 1)
             gtk_box_append(ptr(row), name)
             let share = Gtk.label(
                 StatusFacts.share(slice.share), css: "spend-caption", selectable: false)
+            gtk_label_set_ellipsize(op(share), PANGO_ELLIPSIZE_NONE)
             gtk_box_append(ptr(row), share)
             let count = Gtk.label(
                 StatusFacts.tokens(slice.tokens), css: "usage-detail-value", selectable: false)
