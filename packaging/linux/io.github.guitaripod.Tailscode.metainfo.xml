@@ -69,6 +69,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.36" date="2026-09-05">
+      <description>
+        <p>The quick ask on the Mac and Linux desktops now shows every server as a strip above the field: each machine is a segment named and wearing its agent's symbol, the aimed one selected, and a click or Tab moves the question to the next machine without a menu in between. A fleet too wide for segments becomes one popup. The line under the field says how to send and how to switch.</p>
+        <p>Slash commands reach the quick ask on Oh My Pi: a server whose commands only ever appeared inside an open chat now publishes its whole catalog — built-ins, skills, extensions and your own command files — the moment / is typed, on every client.</p>
+        <p>The context ring follows the model you are about to send to: switching models re-reads the same fill against that model's window. A share that rounding would erase reads under one percent instead of zero, and the legend and card titles keep their numbers whole at every width.</p>
+      </description>
+    </release>
     <release version="1.35" date="2026-09-05">
       <description>
         <p>Every chat now shows how full the model's context window is. The band above the prompt box wears a ring filled as far as the window is, with the share first and the token count after it, quiet while there is room, amber as it fills and red when a compaction is close. The number is the footprint of the last request the model was actually sent — what it was handed plus what it wrote — never the turn's whole bill, which for a turn of many tool calls is many times the window; a compaction resets it to what survived. The window itself comes from the server's own catalog, so a local model on your own machine is measured against the limit you gave it, and a Claude model reached through Claude Code against its 200k or million-token window.</p>
