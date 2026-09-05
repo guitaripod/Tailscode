@@ -989,6 +989,16 @@ enum MatrixTheme {
         .spend-total { color: \(text); \(t(.metricLarge)) }
         .spend-caption { color: \(textDim); \(t(.metricLabel)) }
         .spend-bar { background-color: \(accentDim); border-radius: 2px; }
+        .context-headline { color: \(text); \(t(.metricLarge)) }
+        .context-summary { color: \(textDim); \(t(.panelDetail)) }
+        .context-advice { color: \(warn); \(t(.panelDetail)) }
+        .context-advice-danger { color: \(danger); \(t(.panelDetail)) }
+        .context-track { background-color: \(rule); border-radius: 4px; }
+        .context-band-cacheRead { background-color: \(info); }
+        .context-band-cacheWrite { background-color: alpha(\(info), 0.55); }
+        .context-band-input { background-color: \(accent); }
+        .context-band-output { background-color: \(warn); }
+        .context-swatch { border-radius: 2px; }
         .spend-bar-hot { background-color: \(accent); border-radius: 2px; }
         .git-added { color: \(accent); }
         .git-removed { color: \(danger); }

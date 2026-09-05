@@ -105,6 +105,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case deepseekBalance
     case ollamaCloudUsage
     case sessionSpend
+    case contextWindow
     case toasts
     case serverManagement
     case tailnetDiscovery
@@ -508,6 +509,10 @@ public enum CapabilityRegistry {
             id: .sessionSpend, area: "sessions", title: "What this conversation cost",
             spec:
                 "The price on the chat's own chrome is the whole conversation's, not the last turn's — a turn's cost is a curiosity, a session's is a fact you act on — and touching it opens the account behind it. The server reads the CLI's own transcript (GET /sessions/:id/spend) for per-turn tokens by tier and prices them; a backend that reports money per message is summed locally instead (SessionSpend(messages:)); a server too old for either leaves the last turn's price where it was. The money is always marked as an estimate with its provenance stated, because a subscription bills a flat fee and the figure is API-equivalent value, never a bill. The panel is the same five sections on every client: the total with turns/each/over/rate/tokens, a bar per turn against the priciest, where the money went across answer / cache written / cache read / fresh input, which model spent it, and the five most expensive turns named by the words that started them. Every number comes from SessionSpend; a client decides only how tall a bar is."),
+        CapabilityDefinition(
+            id: .contextWindow, area: "sessions", title: "How full the context window is",
+            spec:
+                "The band wears how much of the model's window the conversation holds — the share first, the count after, coloured quiet, attention or danger by how near a compaction is, and drawn as a ring filled that far where the client can draw one. The number is the footprint of the last request the model was sent (ChatMessage.context: what it was handed plus what it wrote), never the turn's bill, because a turn of forty tool calls bills its context forty times; the bridge reads it off the CLI's last API call, opencode's per-step tokens already are it, and a transcript nobody measured is estimated from its own characters and wears a ~. A compaction resets the count to what survived it. The window comes from the server's catalog (ModelInfo.contextWindow) or from what the model's name is known to hold (ContextWindow.known), and a name nobody knows shows a count with no share rather than an invented ceiling; a fill past the matched window is read as Claude's million-token window rather than as more than 100%. Touching it opens the whole window: a hero ring, the fill banded by what kind of tokens fill it (cache read, cache written, fresh input, the answer), in-use / window / free / model, where the number came from, what to do about it when there is something to do, and one action — Compact — through the client's ordinary preflight. Every word and every threshold is ContextFill's; a client decides only how round a ring is."),
         CapabilityDefinition(
             id: .usagePanel, area: "status", title: "Usage details",
             spec:

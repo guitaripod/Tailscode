@@ -54,6 +54,9 @@ final class ComposerView: NSView {
     private var attachments: [PendingAttachment] = []
     private var pastedImageCount = 0
     private var models: [ModelInfo] = []
+    /// The server's catalog as this composer last heard it, for surfaces that read a model's
+    /// limits rather than pick one.
+    var catalog: [ModelInfo] { models }
     private var commands: [AgentCommand] = []
     /// Whether the last ask for this server's models failed rather than came back empty. Saying a
     /// server lists no models is a claim about that server, and a timeout is not that claim.

@@ -2472,10 +2472,17 @@ public enum SelfTest {
             agentSegment.rows.first?.action == .agent("t1")
         else { throw SelfTestFailure("agents popover does not list the agents") }
 
-        idle.contextTokens = 320_000
-        guard text(idle).contains("~320.0k"),
-            idle.segments.contains(where: { $0.css == "seg-warn" })
+        idle.context = ContextFill(
+            used: 148_900, window: 200_000, model: "claude-fable-5", basis: .reported)
+        guard text(idle).contains("74% · 148.9k"),
+            idle.segments.contains(where: { $0.id == "context" && $0.css == "seg-warn" }),
+            idle.segments.first(where: { $0.id == "context" })?.action == .context,
+            idle.segments.first(where: { $0.id == "context" })?.meter != nil
         else { throw SelfTestFailure("context band: \(text(idle))") }
+        idle.context = ContextFill(used: 40_000, window: nil, model: "mystery", basis: .estimated)
+        guard text(idle).contains("~40.0k"),
+            idle.segments.first(where: { $0.id == "context" })?.meter == nil
+        else { throw SelfTestFailure("context band without a window: \(text(idle))") }
 
         idle.lastCostUSD = 0.38
         guard text(idle).contains("$0.38") else { throw SelfTestFailure("cost: \(text(idle))") }

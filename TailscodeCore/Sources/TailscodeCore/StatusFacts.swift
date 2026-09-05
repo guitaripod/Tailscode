@@ -78,7 +78,9 @@ public struct StatusFacts: Sendable {
     public var agents: [SubagentSummary] = []
     public var activeAgents: Int { agents.filter(\.isActive).count }
     public var finishedAgents: Int { agents.filter(\.isCompleted).count }
-    public var contextTokens: Int?
+    /// How full the model's window is, when the transcript can say. The band wears the share and
+    /// the count, coloured by how close a compaction is, and clicking it opens the whole window.
+    public var context: ContextFill?
     public var lastCostUSD: Double?
     /// What the whole conversation has cost, when the server can account for it. The band shows
     /// this in place of the last turn's price — a turn's cost is a curiosity, a session's is a
@@ -161,7 +163,7 @@ public struct StatusFacts: Sendable {
 
     public static func from(
         state: ConversationState, agents: [SubagentSummary],
-        usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil,
+        usage: AgentUsage?, attachments: Int, context: ContextFill? = nil,
         quotas: [UsageQuota] = [], queued: Int = 0, spend: SessionSpend? = nil,
         git: GitState? = nil, model: String? = nil, selection: ModelSelection? = nil,
         now: Date = Date()
@@ -205,7 +207,7 @@ public struct StatusFacts: Sendable {
         facts.spend = spend
         facts.git = git
         facts.agents = agents
-        facts.contextTokens = contextTokens
+        facts.context = context
         facts.lastCostUSD = usage?.costUSD
         facts.lastTurnTokens = usage?.tokens
         if let goal = state.goal {
@@ -292,14 +294,19 @@ public struct StatusFacts: Sendable {
         /// colour inside one label. Nil for a segment that is one fact in one colour; `text` is
         /// always the same string joined, so ignoring this loses the colours and nothing else.
         public let parts: [GitBadgePart]?
+        /// A share to draw beside the words, `0...1`, for a segment that is about how full
+        /// something is. A client that can draw shows a ring filled that far in the segment's own
+        /// colour; one that cannot still has the percentage inside `text`.
+        public let meter: Double?
 
         public init(
             id: String, text: String, css: String, kind: Kind, icon: ActivityIcon? = nil,
-            parts: [GitBadgePart]? = nil
+            parts: [GitBadgePart]? = nil, meter: Double? = nil
         ) {
             self.id = id
             self.text = text
             self.css = css
+            self.meter = meter
             self.kind = kind
             self.icon = icon
             self.parts = parts
@@ -367,22 +374,17 @@ public struct StatusFacts: Sendable {
                     icon: activeAgents > 0 ? ActivityKind.delegating(active: activeAgents).icon : nil))
         }
 
-        if let contextTokens {
+        if let context {
+            let css: String
+            switch context.tone {
+            case .quiet: css = "seg-dim"
+            case .attention: css = "seg-warn"
+            case .danger: css = "seg-error"
+            }
             result.append(
                 Segment(
-                    id: "context", text: "~" + Self.tokens(contextTokens),
-                    css: contextTokens > 300_000 ? "seg-warn" : "seg-dim",
-                    kind: .menu([
-                        Segment.Row(
-                            title: Localized.text("%@ tokens in this conversation, about",
-                                Self.tokens(contextTokens)),
-                            detail: Localized.text("Estimated from the transcript itself"),
-                            action: nil),
-                        Segment.Row(
-                            title: Localized.text("Compact…"),
-                            detail: Localized.text("Trade the transcript for a summary"),
-                            action: .compact),
-                    ])))
+                    id: "context", text: context.badge, css: css, kind: .act(.context),
+                    meter: context.fraction))
         }
         if let spend, !spend.isEmpty {
             result.append(
@@ -579,6 +581,7 @@ public struct StatusFacts: Sendable {
     public enum Action: Equatable, Sendable {
         case stop
         case spend
+        case context
         case git
         case compact
         case goal

@@ -27,15 +27,18 @@ enum StatusBand {
             gtk_menu_button_popup(op(raw))
         }
         fileprivate var kinds: [String: String] = [:]
+        /// The ring beside a segment that carries a meter, so an update fills it in place.
+        fileprivate var rings: [String: UInt] = [:]
         fileprivate var notice: UInt = 0
         fileprivate var spacer: UInt = 0
     }
 
     private static func kindTag(_ segment: StatusFacts.Segment) -> String {
+        let meter = segment.meter == nil ? "" : "+meter"
         switch segment.kind {
-        case .plain: return "plain"
-        case .act: return "act"
-        case .menu: return "menu"
+        case .plain: return "plain" + meter
+        case .act: return "act" + meter
+        case .menu: return "menu" + meter
         }
     }
 
@@ -53,6 +56,7 @@ enum StatusBand {
             }
             state.widgets[id] = nil
             state.kinds[id] = nil
+            state.rings[id] = nil
         }
 
         var previous: UnsafeMutablePointer<GtkWidget>?
@@ -63,6 +67,7 @@ enum StatusBand {
             {
                 let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
                 update(widget, segment: segment)
+                fill(state.rings[segment.id], segment: segment)
                 previous = widget
                 continue
             }
@@ -122,13 +127,20 @@ enum StatusBand {
         }
     }
 
+    /// A button built around a ring keeps its own label, which the plain setter would replace with
+    /// a fresh one and drop the ring with it — so the words go to the label already inside.
     private static func write(
         _ text: String, to widget: UnsafeMutablePointer<GtkWidget>,
         kind: StatusFacts.Segment.Kind, parts: [GitBadgePart]? = nil
     ) {
         switch kind {
         case .plain: gtk_label_set_text(op(widget), text)
-        case .act: gtk_button_set_label(ptr(widget), text)
+        case .act:
+            if tailscode_is_label(widget) == 0, let label = labelInside(widget) {
+                gtk_label_set_text(op(label), text)
+            } else {
+                gtk_button_set_label(ptr(widget), text)
+            }
         case .menu: gtk_menu_button_set_label(op(widget), text)
         }
         guard let parts, !parts.isEmpty else { return }
@@ -160,6 +172,28 @@ enum StatusBand {
         return nil
     }
 
+    /// The ring wears the segment's own register: the neutral dim ink while there is room, the
+    /// warning and danger inks as the room goes, so the colour of the words and the colour of the
+    /// arc always agree.
+    private static func fill(_ bits: UInt?, segment: StatusFacts.Segment) {
+        guard let bits, let raw = UnsafeMutableRawPointer(bitPattern: bits),
+            let fraction = segment.meter
+        else { return }
+        let palette = MatrixTheme.palette
+        let hex: String
+        switch segment.css {
+        case "seg-warn": hex = palette.warn
+        case "seg-error": hex = palette.danger
+        case "seg-live": hex = palette.accent
+        default: hex = palette.textDim
+        }
+        let rgb = PresenceRGB(hex: hex) ?? PresenceRGB(red: 0.5, green: 0.5, blue: 0.5)
+        let ink = [rgb.red, rgb.green, rgb.blue]
+        ink.withUnsafeBufferPointer {
+            tailscode_ring_set(ptr(raw), fraction, $0.baseAddress, 2.0, 0.22)
+        }
+    }
+
     /// A menu segment's rows are read at open time, so a list opened mid-turn is the list as it
     /// is now.
     private static func make(
@@ -176,6 +210,18 @@ enum StatusBand {
         case .act(let action):
             let button = Gtk.button(segment.text, css: ["flat", "seg", segment.css]) {
                 perform(action)
+            }
+            if segment.meter != nil {
+                let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 5)
+                let ring = tailscode_ring_new()!
+                gtk_widget_set_size_request(ring, 12, 12)
+                gtk_widget_set_valign(ring, GTK_ALIGN_CENTER)
+                gtk_box_append(ptr(row), ring)
+                let label = Gtk.label(segment.text, css: nil, selectable: false)
+                gtk_box_append(ptr(row), label)
+                gtk_button_set_child(ptr(button), row)
+                state.rings[segment.id] = UInt(bitPattern: ring)
+                fill(state.rings[segment.id], segment: segment)
             }
             clamp(button)
             widget = button

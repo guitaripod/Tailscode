@@ -2580,7 +2580,7 @@ final class ChatViewController: UIViewController {
     private var turnStartedAt: Date?
     private var elapsedTicker: Task<Void, Never>?
     private var lastStatusPhaseText = ""
-    private var contextEstimate: Int?
+    private var contextFill: ContextFill?
     private var countedMessages = -1
 
     /// The nav status states the same facts as the desktop status bands — phase, running tool,
@@ -2592,16 +2592,18 @@ final class ChatViewController: UIViewController {
     ///   conversation would return exactly what they returned last time, at the same cost.
     private func updateNavStatus(for state: ConversationState, messagesMoved: Bool = true) {
         turnStartedAt = StatusFacts.turnStart(in: state)
-        if messagesMoved, state.messages.count != countedMessages {
+        if messagesMoved {
             countedMessages = state.messages.count
-            contextEstimate = StatusFacts.estimateContextTokens(state.messages)
+            contextFill = ContextFill.read(
+                messages: state.messages, sessionModel: viewModel.session.model,
+                catalog: availableModels)
+            spendReading.note(messages: state.messages, for: viewModel.session.id)
         }
-        if messagesMoved { spendReading.note(messages: state.messages, for: viewModel.session.id) }
         updateContextChip()
         updateSpendChip()
         let facts = StatusFacts.from(
             state: state, agents: viewModel.trackedSubagents,
-            usage: nil, attachments: pendingAttachments.count, contextTokens: contextEstimate,
+            usage: nil, attachments: pendingAttachments.count, context: contextFill,
             queued: viewModel.queued.count)
         var text: String?
         var color = Theme.Color.secondaryLabel
@@ -2676,22 +2678,18 @@ final class ChatViewController: UIViewController {
             ? "\(lastStatusPhaseText) · \(elapsed)" : lastStatusPhaseText
     }
 
-    /// The transcript's own size in tokens, always visible above the composer once it is worth
-    /// knowing — the same `~` estimate the desktop bands show, one tap from Compact.
+    /// How full the model's window is, always visible above the composer once the transcript can
+    /// say — the same share, count and ring the desktop bands wear, one tap from the whole window.
     private func configureContextChip() {
         var config = UIButton.Configuration.gray()
         config.cornerStyle = .capsule
         config.buttonSize = .small
-        config.image = UIImage(
-            systemName: "cylinder.split.1x2",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
         config.imagePadding = 6
         config.baseForegroundColor = Theme.Color.secondaryLabel
         contextChip.configuration = config
-        contextChip.accessibilityHint = String(
-            localized: "Estimated conversation size. Opens compaction.")
+        contextChip.accessibilityHint = String(localized: "Opens the context window.")
         contextChip.addAction(
-            UIAction { [weak self] _ in self?.presentCompactPreflight() }, for: .touchUpInside)
+            UIAction { [weak self] _ in self?.presentContextWindow() }, for: .touchUpInside)
     }
 
     /// The conversation's price, once the server can account for it. It opens the whole account —
@@ -2806,14 +2804,43 @@ final class ChatViewController: UIViewController {
     }
 
     private func updateContextChip() {
-        guard let contextEstimate, viewModel.supportsCompaction else {
+        guard let contextFill else {
             contextChip.isHidden = true
             return
         }
-        contextChip.configuration?.title = "~\(StatusFacts.tokens(contextEstimate))"
-        contextChip.configuration?.baseForegroundColor =
-            contextEstimate > 300_000 ? Theme.Color.warning : Theme.Color.secondaryLabel
+        let ink: UIColor
+        switch contextFill.tone {
+        case .quiet: ink = Theme.Color.secondaryLabel
+        case .attention: ink = Theme.Color.warning
+        case .danger: ink = Theme.Color.danger
+        }
+        contextChip.configuration?.title = contextFill.badge
+        contextChip.configuration?.baseForegroundColor = ink
+        contextChip.configuration?.image = contextFill.fraction.map {
+            ContextRing.image(fraction: $0, ink: ink, diameter: 12, stroke: 2)
+        } ?? UIImage(
+            systemName: "cylinder.split.1x2",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
+        contextChip.accessibilityLabel = contextFill.accessibilityLabel
         contextChip.isHidden = false
+    }
+
+    /// The whole window behind the chip's one ring, as a sheet, with Compact as the one thing it
+    /// offers to do — through the chat's ordinary preflight.
+    private func presentContextWindow() {
+        guard let contextFill else { return }
+        Theme.Haptics.tap()
+        let panel = ContextViewController(
+            fill: contextFill, title: title ?? viewModel.session.title,
+            compact: viewModel.supportsCompaction
+                ? { [weak self] in
+                    self?.dismiss(animated: true) { self?.presentCompactPreflight() }
+                } : nil)
+        let nav = UINavigationController(rootViewController: panel)
+        nav.modalPresentationStyle = .pageSheet
+        nav.sheetPresentationController?.detents = [.medium(), .large()]
+        nav.sheetPresentationController?.prefersGrabberVisible = true
+        present(nav, animated: true)
     }
 
     /// A transcript that names the same row twice is a trap for the diffable data source and for

@@ -135,7 +135,23 @@ final class StatusBandView: NSView {
 
     private func update(_ view: NSView, segment: StatusFacts.Segment) {
         write(segment.text, to: view, css: segment.css, parts: segment.parts)
+        ring(segment, on: view)
         animate(segment)
+    }
+
+    /// A segment about how full something is wears a ring filled that far, in its own ink, drawn
+    /// fresh on every update because the fraction is the whole of what it says. The image sits
+    /// before the words the way the activity icon does on a live segment.
+    private func ring(_ segment: StatusFacts.Segment, on view: NSView) {
+        guard let button = view as? BandButton else { return }
+        guard let fraction = segment.meter else {
+            button.image = nil
+            return
+        }
+        button.image = ContextRing.image(
+            fraction: fraction, ink: Self.color(for: segment.css), diameter: 11, stroke: 2)
+        button.imagePosition = .imageLeading
+        button.imageHugsTitle = true
     }
 
     /// A segment that arrives as runs is written run by run, each in the colour of what it means —
@@ -195,6 +211,7 @@ final class StatusBandView: NSView {
             }
             button.attributedTitle =
                 segment.parts.map(Self.tinted) ?? Self.title(segment.text, css: segment.css)
+            ring(segment, on: button)
             return button
         case .menu:
             let id = segment.id

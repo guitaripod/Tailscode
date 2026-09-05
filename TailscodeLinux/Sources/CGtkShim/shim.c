@@ -1233,6 +1233,62 @@ void tailscode_radar_set(
     gtk_widget_queue_draw(area);
 }
 
+typedef struct {
+    double fraction;
+    double ink[3];
+    double stroke;
+    double track;
+} TailscodeRing;
+
+static void tailscode_ring_draw(
+    GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
+    TailscodeRing *ring = raw;
+    double stroke = ring->stroke > 0 ? ring->stroke : 2.0;
+    double cx = width / 2.0;
+    double cy = height / 2.0;
+    double radius = MIN(width, height) / 2.0 - stroke / 2.0 - 0.5;
+    if (radius <= 0) return;
+    cairo_set_line_width(cr, stroke);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_source_rgba(cr, ring->ink[0], ring->ink[1], ring->ink[2], ring->track);
+    cairo_arc(cr, cx, cy, radius, 0, 2 * G_PI);
+    cairo_stroke(cr);
+    double fraction = CLAMP(ring->fraction, 0.0, 1.0);
+    if (fraction <= 0) return;
+    double start = -G_PI / 2;
+    cairo_set_source_rgb(cr, ring->ink[0], ring->ink[1], ring->ink[2]);
+    cairo_arc(cr, cx, cy, radius, start, start + fraction * 2 * G_PI);
+    cairo_stroke(cr);
+}
+
+GtkWidget *tailscode_ring_new(void) {
+    GtkWidget *area = gtk_drawing_area_new();
+    TailscodeRing *ring = g_new0(TailscodeRing, 1);
+    ring->ink[0] = ring->ink[1] = ring->ink[2] = 0.5;
+    ring->stroke = 2.0;
+    ring->track = 0.22;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-ring", ring, g_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_ring_draw, ring, NULL);
+    gtk_widget_set_can_target(area, FALSE);
+    return area;
+}
+
+void tailscode_ring_set(
+    GtkWidget *area, double fraction, const double *rgb, double stroke, double track) {
+    if (!area) return;
+    TailscodeRing *ring = g_object_get_data(G_OBJECT(area), "tailscode-ring");
+    if (!ring) return;
+    ring->fraction = fraction;
+    if (rgb) {
+        ring->ink[0] = rgb[0];
+        ring->ink[1] = rgb[1];
+        ring->ink[2] = rgb[2];
+    }
+    ring->stroke = stroke;
+    ring->track = track;
+    gtk_widget_queue_draw(area);
+}
+
 #define TAILSCODE_AURA_STOPS 16
 #define TAILSCODE_AURA_SEGMENTS 128
 

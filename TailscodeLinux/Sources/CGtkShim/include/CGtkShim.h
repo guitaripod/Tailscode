@@ -288,6 +288,16 @@ void tailscode_radar_set(
     GtkWidget *area, double sweep, double sweep_light, double ping, double ping_light,
     const double *rings, int ring_count, const double *sparks, int spark_count);
 
+/// A ring filled to a share: the context window's fill on the band and in its panel. Drawn rather
+/// than styled because CSS has no arc, and one painter for both sizes keeps the small ring and the
+/// hero the same picture. The area never takes input.
+GtkWidget *tailscode_ring_new(void);
+
+/// One state: how far round the ring is filled (0–1), its ink as RGB in 0–1, how thick the stroke
+/// is in pixels, and how bright the unfilled track is against the ink (0–1).
+void tailscode_ring_set(
+    GtkWidget *area, double fraction, const double *rgb, double stroke, double track);
+
 /// The ultracode aura, drawn rather than themed: a drawing area to lay over the prompt box, whose
 /// perimeter carries the rainbow round and round under a soft glow. A CSS gradient cannot travel
 /// around a box — its angle sweeps across the whole rectangle, so the colour crosses the corners

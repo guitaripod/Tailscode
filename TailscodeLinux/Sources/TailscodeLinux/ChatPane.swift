@@ -46,7 +46,7 @@ final class ChatPane: @unchecked Sendable {
     /// Which branch this conversation's work is landing on, read on the same slow poll. Nil for a
     /// server that cannot read a repository, which is how the band knows to say nothing at all.
     private var git: GitState?
-    private var contextEstimate: Int?
+    private var contextFill: ContextFill?
     /// What this device has written and the server has not echoed back, with what became of
     /// each. The ledger and every word it wears are Core's; this owns the clock and the sending.
     private var pending = PendingSendLedger()
@@ -960,7 +960,6 @@ final class ChatPane: @unchecked Sendable {
                         command, arguments: arguments, model: model, reasoningEffort: effort)
                 }
             }
-            var countedMessages = -1
             let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil
             var resubscribes = 0
             while !Task.isCancelled {
@@ -981,14 +980,14 @@ final class ChatPane: @unchecked Sendable {
                         guard let self, self.sessionID == sessionID else { return }
                         self.apply(state: state, rows: rows)
                     }
-                    if state.messages.count != countedMessages {
-                        countedMessages = state.messages.count
-                        let estimate = StatusFacts.estimateContextTokens(state.messages)
-                        Gtk.onMain { [weak self] in
-                            guard let self, self.sessionID == sessionID else { return }
-                            self.contextEstimate = estimate
-                            self.updateStatus()
-                        }
+                    let fill = ContextFill.read(
+                        messages: state.messages, sessionModel: self.entry?.session.model,
+                        catalog: self.models)
+                    Gtk.onMain { [weak self] in
+                        guard let self, self.sessionID == sessionID, fill != self.contextFill
+                        else { return }
+                        self.contextFill = fill
+                        self.updateStatus()
                     }
                 }
                 guard !Task.isCancelled else { return }
@@ -2465,7 +2464,7 @@ final class ChatPane: @unchecked Sendable {
         let quotas = host?.quotasForStatus() ?? []
         let facts = StatusFacts.from(
             state: state, agents: agents, usage: usage,
-            attachments: attachments.count, contextTokens: contextEstimate, quotas: quotas,
+            attachments: attachments.count, context: contextFill, quotas: quotas,
             spend: spend, git: git, model: activeModelID, selection: activeSelection)
         if identityActivity != facts.activity {
             identityActivity = facts.activity
@@ -2567,6 +2566,21 @@ final class ChatPane: @unchecked Sendable {
             SpendPanel.present(
                 parent: host?.windowWidget, spend: spend,
                 title: entry.map { $0.session.title } ?? Localized.text("This conversation"))
+        case .context:
+            guard let contextFill else { return }
+            var compact: (@Sendable () -> Void)?
+            if backend?.capabilities.supportsCompaction != false {
+                compact = { [weak self] in
+                    Gtk.onMain { [weak self] in
+                        guard let self else { return }
+                        self.host?.presentCompactPreflight(for: self)
+                    }
+                }
+            }
+            ContextPanel.present(
+                parent: host?.windowWidget, fill: contextFill,
+                title: entry.map { $0.session.title } ?? Localized.text("This conversation"),
+                compact: compact)
         case .reconnect:
             guard let conversation else { return }
             Task { await conversation.reconnect() }

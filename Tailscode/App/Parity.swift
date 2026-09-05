@@ -86,6 +86,7 @@ enum ParityManifest {
         case .deepseekBalance: return .implemented("DeepSeekBalance")
         case .ollamaCloudUsage: return .implemented("OllamaUsage")
         case .sessionSpend: return .implemented("SpendViewController")
+        case .contextWindow: return .implemented("ContextViewController")
         case .toasts: return .implemented("presentToast")
         case .serverManagement: return .implemented("ConnectionController")
         case .ompServer: return .implemented("ompChoice")

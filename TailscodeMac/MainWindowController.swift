@@ -38,6 +38,7 @@ final class MainWindowController: NSWindowController {
     private var usageTask: Task<Void, Never>?
     private var usageWindow: UsageWindowController?
     private var spendPopover: NSPopover?
+    private var contextPopover: NSPopover?
     private var gitPopover: NSPopover?
     /// Diff windows outlive the popover that opened them, so the controller holds them: a window
     /// controller nobody retains closes itself the moment the stack unwinds.
@@ -443,6 +444,8 @@ final class MainWindowController: NSWindowController {
             pane.scrollToAgent(id)
         case .spend:
             presentSpend(for: pane)
+        case .context:
+            presentContext(for: pane)
         case .git:
             presentGit(for: pane)
         case .reconnect:
@@ -463,6 +466,27 @@ final class MainWindowController: NSWindowController {
         let anchor = pane.bandAnchor
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         spendPopover = popover
+    }
+
+    /// The whole window behind the band's one ring, off the band itself, with Compact as the one
+    /// thing it offers to do — through the pane's ordinary preflight.
+    private func presentContext(for pane: TranscriptViewController) {
+        guard let fill = pane.contextFill else { return }
+        contextPopover?.close()
+        let canCompact = pane.canCompact
+        let panel = ContextPanelViewController(
+            fill: fill, title: pane.currentEntry?.session.title ?? Localized.text("This conversation"),
+            compact: canCompact
+                ? { [weak self, weak pane] in
+                    self?.contextPopover?.close()
+                    pane?.presentCompactPreflight()
+                } : nil)
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = panel
+        let anchor = pane.bandAnchor
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        contextPopover = popover
     }
 
     /// The repository behind the branch on the band, in a popover off the band itself. A path or a

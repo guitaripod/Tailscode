@@ -114,6 +114,7 @@ enum ParityManifest {
                 missing:
                     "The key is held in the same Keychain the profiles use, the fetch is local and throttled, and the plan's session and weekly windows are drawn as ordinary gauges — with the plan's cost, no invented reset — in the sidebar strip, the quota panel and the settings row. What it does not yet reach is the model chooser's walls: those read the quota list MainWindowController.collectQuotas gathers, which the Ollama reading is folded into only at the usage surfaces, not into the chooser's own copy.")
         case .sessionSpend: return .implemented("SpendPanelViewController")
+        case .contextWindow: return .implemented("ContextPanelViewController")
         case .toasts: return .implemented("ToastPresenter")
         case .serverManagement: return .implemented("ServersWindow")
         case .ompServer: return .implemented("ompRadio")

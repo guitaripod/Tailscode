@@ -478,7 +478,8 @@ public enum DemoWorld {
                     title: "Shard the UI test suite"))),
                 MessagePart(id: "t5", kind: .text(
                     "Both runners picked up jobs on the dry run. Summary:\n\n- `ci.yml` and `release.yml` now target the fleet with per-runner cache keys\n- concurrency groups cancel superseded runs\n- UI tests run in 3 shards, worst shard 11 min\n\n```yaml\nconcurrency:\n  group: ci-${{ github.ref }}\n  cancel-in-progress: true\n```\n\nHosted runners stay as a fallback behind the `hosted-fallback` label until the fleet has a week of green.")),
-            ], cost: nil, tokens: 52_800)),
+            ], cost: nil, tokens: 52_800,
+                context: MessageUsage(input: 1_800, output: 2_400, cacheRead: 141_600, cacheWrite: 3_100))),
             step(.status(.idle)),
         ]
     }
@@ -681,7 +682,8 @@ public enum DemoWorld {
                     title: "grep -rn completionHandler Sources/Auth"))),
                 MessagePart(id: "t3", kind: .text(
                     "Found 2 call sites — converting both and adding `AuthClientTests.login()`.\n\n```swift\nfunc login() async throws -> Session {\n    let token = try await api.token()\n    return Session(token: token)\n}\n```\n\nDone. Both call sites migrated; the test covers the happy path and the expired-token retry.")),
-            ], cost: 0.42, tokens: 18_431)),
+            ], cost: 0.42, tokens: 18_431,
+                context: MessageUsage(input: 900, output: 1_300, cacheRead: 61_200, cacheWrite: 2_000))),
             step(.status(.idle)),
         ]
     }
@@ -699,7 +701,8 @@ public enum DemoWorld {
                     ]),
                     title: "Write src/experiments/pricing-order.ts"))),
                 MessagePart(id: "t3", kind: .text("Both variants render behind the flag and the exposure event fires once per visitor. One decision before I flip it on:")),
-            ], cost: 0.55, tokens: 21_600)),
+            ], cost: 0.55, tokens: 21_600,
+                context: MessageUsage(input: 3_200, output: 1_900, cacheRead: 88_000))),
             step(.question(QuestionRequest(
                 id: "q-o2", sessionID: "demo-o2",
                 questions: [
@@ -735,7 +738,8 @@ public enum DemoWorld {
                     id: "o3t1", name: "Bash", status: .error,
                     output: "leaks: target process died before scan completed",
                     title: "leaks --atExit -- ./ImagePipelineBench"))),
-            ], cost: 0.85, tokens: 14_200)),
+            ], cost: 0.85, tokens: 14_200,
+                context: MessageUsage(input: 1_200, output: 2_600, cacheRead: 171_000))),
             step(assistant("o3a2", .openCode, at: ago(93_500),
                 error: "Provider overloaded — the turn was retried automatically.")),
             step(assistant("o3a3", .openCode, at: ago(93_300), model: "claude-opus-4-8", parts: [
@@ -908,13 +912,13 @@ public enum DemoWorld {
     private static func assistant(
         _ id: String, _ type: AgentType, at date: Date, streaming: Bool = false,
         error: String? = nil, model: String? = nil, parts: [MessagePart] = [],
-        cost: Double? = nil, tokens: Int? = nil
+        cost: Double? = nil, tokens: Int? = nil, context: MessageUsage? = nil
     ) -> ChatMessage {
         ChatMessage(
             id: id, role: .assistant, agentType: type, parts: parts, createdAt: date,
             completedAt: streaming ? nil : date.addingTimeInterval(45),
             isStreaming: streaming, error: error, costUSD: cost,
             providerID: type == .openCode ? "opencode-go" : "anthropic",
-            modelID: model, totalTokens: tokens)
+            modelID: model, totalTokens: tokens, context: context)
     }
 }

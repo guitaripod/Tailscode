@@ -91,6 +91,8 @@ final class TranscriptViewController: NSViewController {
     /// What this pane is showing, read by the hub and the tiling host: the focused pane's entry
     /// is the window's "current chat", and a restored layout rebinds by these.
     var currentEntry: SessionEntry? { entry }
+    /// Whether the server behind this pane can be asked to compact, for a surface that offers it.
+    var canCompact: Bool { backend?.capabilities.supportsCompaction != false }
     var currentBackend: (any CodingAgentBackend)? { backend }
     var currentState: ConversationState? { lastState }
 
@@ -185,7 +187,9 @@ final class TranscriptViewController: NSViewController {
     /// The same backend the pane already talks to, when it can answer questions about a
     /// repository. Exposed instead of the backend itself: the window needs the one capability.
     var gitBackend: (any GitObservingBackend)? { backend as? any GitObservingBackend }
-    private var contextEstimate: Int?
+    /// How full the model's window is, re-read whenever the transcript changes and offered to the
+    /// band and to the panel behind it.
+    private(set) var contextFill: ContextFill?
     private var countedMessages = -1
     private var notice: String?
     private var tickerTask: Task<Void, Never>?
@@ -514,7 +518,7 @@ final class TranscriptViewController: NSViewController {
         agents = []
         usage = nil
         git = nil
-        contextEstimate = nil
+        contextFill = nil
         countedMessages = -1
         tickerTask?.cancel()
         tickerTask = nil
@@ -1705,10 +1709,8 @@ final class TranscriptViewController: NSViewController {
         if turnEnded { replaceRows(where: \.hasOpenWork) }
         renderPendingCards(state)
         composer.noteState(state)
-        if state.messages.count != countedMessages {
-            countedMessages = state.messages.count
-            contextEstimate = StatusFacts.estimateContextTokens(state.messages)
-        }
+        contextFill = ContextFill.read(
+            messages: state.messages, sessionModel: entry?.session.model, catalog: composer.catalog)
         updateStatus()
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
@@ -1922,7 +1924,7 @@ final class TranscriptViewController: NSViewController {
         let quotas = quotasForStatus?() ?? []
         let facts = StatusFacts.from(
             state: state, agents: agents, usage: usage,
-            attachments: composer.attachmentCount, contextTokens: contextEstimate, quotas: quotas,
+            attachments: composer.attachmentCount, context: contextFill, quotas: quotas,
             spend: spend, git: git, model: composer.activeModelID,
             selection: composer.activeSelection)
         lastFacts = facts
