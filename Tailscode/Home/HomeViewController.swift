@@ -866,7 +866,7 @@ final class HomeViewController: UIViewController {
     }
 
     private func isLive(_ entry: SessionEntry) -> Bool {
-        entry.session.isWorking
+        entry.session.isWorking || entry.session.backgroundWork != nil
             || SessionActivity.shared.status(for: entry.session.id) != .idle
     }
 
@@ -876,7 +876,7 @@ final class HomeViewController: UIViewController {
     private func presence(for entry: SessionEntry) -> LiveCard.Presence {
         switch SessionActivity.shared.status(for: entry.session.id) {
         case .awaitingApproval: return .needsInput
-        case .running: return .working
+        case .running, .background: return .working
         case .idle: return hasLoadedOnce ? .working : .syncing
         }
     }
@@ -1692,7 +1692,10 @@ final class HomeViewController: UIViewController {
             switch SessionActivity.shared.status(for: entry.session.id) {
             case .awaitingApproval: return .needsApproval
             case .running: return .working
-            case .idle: return isLive(entry) ? .working : nil
+            case .background(let tasks): return .inBackground(tasks: tasks)
+            case .idle:
+                if isLive(entry) { return .working }
+                return entry.session.backgroundWork.map { .inBackground(tasks: $0.tasks) }
             }
         }
         kinds += viewModel.unreachable.map { _ in ActivityKind.offline }

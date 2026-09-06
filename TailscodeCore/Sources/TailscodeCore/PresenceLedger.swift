@@ -50,7 +50,7 @@ public struct PresenceLedger: Sendable {
             entries[key] = Entry(presence: presence, unsettledSince: nil)
         case .unobserved:
             entries[key] = nil
-        case .running, .awaitingApproval:
+        case .running, .awaitingApproval, .background:
             entries[key] = Entry(presence: presence, unsettledSince: nil)
         }
     }

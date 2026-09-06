@@ -54,6 +54,9 @@ public struct StatusFacts: Sendable {
     public enum Phase: Sendable {
         case idle
         case working
+        /// No turn is open and the agent's process is still working for the conversation; the
+        /// prompt is free and the agent will speak again when the work ends.
+        case background(tasks: Int)
         case compacting
         case awaitingApproval
         case awaitingAnswer
@@ -190,6 +193,8 @@ public struct StatusFacts: Sendable {
                     facts.phase = .awaitingAnswer
                 } else if state.status == .running {
                     facts.phase = .working
+                } else if let work = state.backgroundWork {
+                    facts.phase = .background(tasks: work.tasks)
                 } else {
                     facts.phase = .idle
                 }
@@ -234,6 +239,7 @@ public struct StatusFacts: Sendable {
         case .compacting: return .compacting
         case .awaitingApproval: return .needsApproval
         case .awaitingAnswer: return .needsAnswer
+        case .background(let tasks): return .inBackground(tasks: tasks)
         case .working:
             let active = agents.filter(\.isActive).count
             guard let kind = ActivityKind.inFlight(in: state) else {
@@ -335,6 +341,8 @@ public struct StatusFacts: Sendable {
                 Self.phase(kind, elapsed: elapsed, kind: .act(.stop)))
         case .compacting:
             result.append(Self.phase(.compacting, elapsed: elapsed, kind: .plain))
+        case .background(let tasks):
+            result.append(Self.phase(.inBackground(tasks: tasks), kind: .plain))
         case .awaitingApproval:
             result.append(Self.phase(.needsApproval, kind: .act(.scrollToPending)))
         case .awaitingAnswer:

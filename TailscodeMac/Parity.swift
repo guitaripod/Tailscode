@@ -28,6 +28,7 @@ enum ParityManifest {
         case .sessionSections: return .implemented("groupIntoSections")
         case .sessionRowStatus: return .implemented("observedPresence")
         case .activityIconography: return .implemented("ActivityBadgeView")
+        case .backgroundWork: return .implemented("inBackground")
         case .sessionPinning: return .implemented("menuTogglePinned")
         case .unreadTracking: return .implemented("markUnread")
         case .savedChats: return .implemented("SavedChatStore")

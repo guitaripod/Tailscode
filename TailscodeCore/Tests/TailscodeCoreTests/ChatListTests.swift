@@ -9,7 +9,7 @@ struct ChatListTests {
     private func entry(
         profileID: String = "one", sessionID: String = "s1", title: String = "chat",
         active: Bool? = nil, agents: Int? = nil, task: String? = nil,
-        updated: Date = Date(timeIntervalSince1970: 0)
+        updated: Date = Date(timeIntervalSince1970: 0), carrying: BackgroundWork? = nil
     ) -> SessionEntry {
         SessionEntry(
             profileID: profileID, profileName: profileID, host: profileID,
@@ -17,7 +17,29 @@ struct ChatListTests {
             session: AgentSession(
                 id: sessionID, agentType: .claudeCode, title: title, directory: "/tmp/\(profileID)",
                 createdAt: updated, updatedAt: updated, isActive: active, activeAgents: agents,
-                agentTask: task))
+                agentTask: task, backgroundWork: carrying))
+    }
+
+    @Test("A listing whose process still carries work is in LIVE NOW, wearing the work's own face")
+    func carriedWorkIsLive() {
+        let carrying = row(
+            entry(active: false, carrying: BackgroundWork(tasks: 1, task: "until grep DONE; do sleep 60; done")))
+        #expect(carrying.state == .background(tasks: 1))
+        #expect(carrying.state.isInFlight)
+        #expect(carrying.state.activity == .inBackground(tasks: 1))
+        #expect(carrying.state.pill?.text == "BACKGROUND")
+        #expect(carrying.snippet == "until grep DONE; do sleep 60; done")
+        #expect(groupIntoSections([carrying]).first?.0 == .live)
+
+        let turn = row(entry(active: true, carrying: BackgroundWork(tasks: 1)))
+        #expect(turn.state == .live, "an open turn is the louder fact")
+
+        let watched = row(
+            entry(active: false, carrying: BackgroundWork(tasks: 2)), presence: .background(tasks: 2))
+        #expect(watched.state == .background(tasks: 2))
+
+        let gone = row(entry(active: false, carrying: BackgroundWork(tasks: 1)), unreachable: true)
+        #expect(gone.state == .offline, "a server that stopped answering cannot vouch for its work")
     }
 
     private func row(

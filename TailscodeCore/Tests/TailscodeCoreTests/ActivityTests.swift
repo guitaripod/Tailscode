@@ -60,6 +60,53 @@ struct ActivityTests {
         #expect(abs(later - start) > 0.5)
     }
 
+    @Test("Work a process carries between turns has a face, and a turn outranks it")
+    func backgroundWorkHasAFace() {
+        let kind = ActivityKind.inBackground(tasks: 1)
+        #expect(kind.icon.motion == .working)
+        #expect(kind.icon.tone == .live)
+        #expect(kind.isInFlight)
+        #expect(!kind.wantsYou)
+        #expect(kind.title != ActivityKind.inBackground(tasks: 2).title)
+        #expect(kind.spoken != ActivityKind.inBackground(tasks: 2).spoken)
+
+        var state = ConversationState(status: .idle, connection: .live, hasLoadedTranscript: true)
+        state.backgroundWork = BackgroundWork(tasks: 1, task: "sleep 60")
+        let carrying = StatusFacts.from(state: state, agents: [], usage: nil, attachments: 0)
+        guard case .background(let tasks) = carrying.phase else {
+            Issue.record("a process carrying work reads as \(carrying.phase)")
+            return
+        }
+        #expect(tasks == 1)
+        #expect(carrying.activity == kind)
+        #expect(carrying.segments.first?.text == "◔ 1 in background")
+        #expect(carrying.segments.first?.icon?.motion == .working)
+        #expect(SessionPresence.reading(state, step: nil) == .background(tasks: 1))
+        #expect(SessionPresence.background(tasks: 1).isInFlight)
+        #expect(SessionPresence.background(tasks: 1).rank < SessionPresence.running(nil).rank)
+        #expect(SessionPresence.background(tasks: 1).rank > SessionPresence.failed.rank)
+        #expect(ActivityKind.inFlight(in: state) == nil, "inFlight reads the turn, and none is open")
+
+        state.status = .running
+        let running = StatusFacts.from(state: state, agents: [], usage: nil, attachments: 0)
+        guard case .working = running.phase else {
+            Issue.record("an open turn over carried work reads as \(running.phase)")
+            return
+        }
+        #expect(SessionPresence.reading(state, step: nil) == .running(nil))
+
+        let orb = PresenceSignal.aggregate([.inBackground(tasks: 1), nil])
+        #expect(orb.tone == .live)
+        #expect(orb.motion == .working)
+        #expect(orb.satellites == 1)
+
+        var ledger = PresenceLedger()
+        ledger.record(.background(tasks: 1), for: "k")
+        #expect(ledger.presence(for: "k") == .background(tasks: 1))
+        ledger.record(.failed, for: "k")
+        #expect(ledger.presence(for: "k") == .background(tasks: 1), "a failure may not overwrite work still open")
+    }
+
     @Test("Work breathes, attention knocks twice, and everything settled holds still")
     func motionCarriesTheMeaning() {
         #expect(ActivityKind.working.icon.motion == .working)

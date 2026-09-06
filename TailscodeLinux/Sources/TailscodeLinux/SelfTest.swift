@@ -2219,6 +2219,10 @@ public enum SelfTest {
         guard SessionRowState.live.activity == .working,
             SessionRowState.idle.activity == nil
         else { throw SelfTestFailure("a row's state and its activity disagree") }
+        guard SessionRowState.background(tasks: 1).activity == .inBackground(tasks: 1),
+            SessionRowState.background(tasks: 1).isInFlight,
+            ActivityKind.inBackground(tasks: 1).icon.motion.isAnimated
+        else { throw SelfTestFailure("work carried between turns does not read as work") }
     }
 
     /// Every motion in this client that never ends on its own, proved to ask the desk again rather

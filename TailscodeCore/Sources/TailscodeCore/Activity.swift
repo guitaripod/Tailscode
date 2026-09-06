@@ -320,6 +320,11 @@ public enum ActivityKind: Sendable, Equatable {
     case writing
     case usingTool(name: String, kind: ToolCallSummary.Kind)
     case delegating(active: Int)
+    /// No turn is open, and the machine is still working for this conversation: a command the
+    /// model started and stepped back from, an agent it backgrounded. The prompt is free, and the
+    /// agent speaks again on its own when the work ends — so it breathes like work, because it is,
+    /// and never reads as a conversation that finished.
+    case inBackground(tasks: Int)
     case compacting
     case needsApproval
     case needsAnswer
@@ -334,8 +339,8 @@ public enum ActivityKind: Sendable, Equatable {
     /// state has one, because a count of zero is not a state anybody sees.
     public static let everyState: [ActivityKind] = [
         .working, .thinking, .writing, .usingTool(name: "Bash", kind: .shell),
-        .delegating(active: 3), .compacting, .needsApproval, .needsAnswer, .queued(2),
-        .connecting, .reconnecting, .failed, .offline,
+        .delegating(active: 3), .inBackground(tasks: 1), .compacting, .needsApproval,
+        .needsAnswer, .queued(2), .connecting, .reconnecting, .failed, .offline,
     ]
 
     public var icon: ActivityIcon {
@@ -353,6 +358,8 @@ public enum ActivityKind: Sendable, Equatable {
                 motion: .working)
         case .delegating:
             return ActivityIcon(symbol: "person.2", glyph: "▸", tone: .live, motion: .working)
+        case .inBackground:
+            return ActivityIcon(symbol: "timer", glyph: "◔", tone: .live, motion: .working)
         case .compacting:
             return ActivityIcon(
                 symbol: "rectangle.compress.vertical", glyph: "◐", cycle: ActivityIcon.sweepCycle,
@@ -392,6 +399,10 @@ public enum ActivityKind: Sendable, Equatable {
         case .writing: return Localized.text("Writing")
         case .usingTool(let name, _): return name
         case .delegating(let active): return Localized.text("%@ agents", "\(active)")
+        case .inBackground(let tasks):
+            return tasks == 1
+                ? Localized.text("Background task")
+                : Localized.text("%@ background tasks", "\(tasks)")
         case .compacting: return Localized.text("Compacting")
         case .needsApproval: return Localized.text("Needs you")
         case .needsAnswer: return Localized.text("Needs an answer")
@@ -414,6 +425,7 @@ public enum ActivityKind: Sendable, Equatable {
         case .writing: return Localized.text("writing")
         case .usingTool(let name, _): return name
         case .delegating: return Localized.text("agents")
+        case .inBackground(let tasks): return Localized.text("%@ in background", "\(tasks)")
         case .compacting: return Localized.text("compacting")
         case .needsApproval: return Localized.text("y / a / n")
         case .needsAnswer: return Localized.text("answer")
@@ -434,6 +446,13 @@ public enum ActivityKind: Sendable, Equatable {
         case .writing: return Localized.text("Writing the answer")
         case .usingTool(let name, _): return Localized.text("Running %@", name)
         case .delegating(let active): return Localized.text("%@ agents working", "\(active)")
+        case .inBackground(let tasks):
+            return tasks == 1
+                ? Localized.text(
+                    "A background task is running on the machine; the agent continues when it finishes")
+                : Localized.text(
+                    "%@ background tasks are running on the machine; the agent continues when they finish",
+                    "\(tasks)")
         case .compacting: return Localized.text("Compacting the conversation")
         case .needsApproval: return Localized.text("Waiting for your approval")
         case .needsAnswer: return Localized.text("Waiting for your answer")
@@ -445,12 +464,13 @@ public enum ActivityKind: Sendable, Equatable {
         }
     }
 
-    /// Whether a turn is actually open on the other machine. A failure and an unreachable server
-    /// are states worth drawing, but nothing is running in either.
+    /// Whether work is actually open on the other machine — a turn, or the background work a
+    /// process carries between turns. A failure and an unreachable server are states worth drawing,
+    /// but nothing is running in either.
     public var isInFlight: Bool {
         switch self {
-        case .working, .thinking, .writing, .usingTool, .delegating, .compacting, .needsApproval,
-            .needsAnswer:
+        case .working, .thinking, .writing, .usingTool, .delegating, .inBackground, .compacting,
+            .needsApproval, .needsAnswer:
             return true
         case .queued, .connecting, .reconnecting, .failed, .offline:
             return false

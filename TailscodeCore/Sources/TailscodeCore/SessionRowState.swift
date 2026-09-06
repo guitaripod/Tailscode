@@ -11,6 +11,10 @@ public enum SessionRowState: Equatable, Sendable {
     case awaitingApproval
     /// A turn is running.
     case live
+    /// No turn is open, and the agent's process is still working for the conversation — a
+    /// command it started and stepped back from. It will speak again on its own, so the row stays
+    /// with the live ones rather than falling in with everything that finished.
+    case background(tasks: Int)
     /// Listed, reachable, nothing running.
     case idle
     /// Its server did not answer the last listing; what is shown is remembered, not observed.
@@ -22,6 +26,7 @@ public enum SessionRowState: Equatable, Sendable {
         switch self {
         case .awaitingApproval: return (Localized.text("NEEDS YOU"), "pill-needs")
         case .live: return (Localized.text("LIVE"), "pill-live")
+        case .background: return (Localized.text("BACKGROUND"), "pill-live")
         case .failed: return (Localized.text("FAILED"), "pill-error")
         case .offline: return (Localized.text("OFFLINE"), "pill-offline")
         case .idle: return nil
@@ -36,6 +41,7 @@ public enum SessionRowState: Equatable, Sendable {
         switch self {
         case .awaitingApproval: return .needsApproval
         case .live: return .working
+        case .background(let tasks): return .inBackground(tasks: tasks)
         case .failed: return .failed
         case .offline: return .offline
         case .idle: return nil
@@ -52,9 +58,13 @@ public enum SessionRowState: Equatable, Sendable {
 
     /// Whether the row belongs in LIVE NOW. A turn that stopped to ask something is still a turn
     /// in flight — it is the one the person most needs to find — so it leads the section rather
-    /// than falling back into recency with everything that finished hours ago.
+    /// than falling back into recency with everything that finished hours ago. So does a
+    /// conversation whose process is still working between turns: it is going to speak again.
     public var isInFlight: Bool {
-        self == .live || self == .awaitingApproval
+        switch self {
+        case .live, .awaitingApproval, .background: return true
+        case .idle, .offline, .failed: return false
+        }
     }
 }
 
@@ -76,12 +86,14 @@ public enum SessionPresence: Sendable, Equatable {
     case running(String?)
     /// A turn is running here and is waiting to be answered.
     case awaitingApproval
+    /// No turn is open here, and the agent's process is still carrying work for the conversation.
+    case background(tasks: Int)
     /// The last turn this device watched ended in a failure.
     case failed
 
     public var isInFlight: Bool {
         switch self {
-        case .running, .awaitingApproval: return true
+        case .running, .awaitingApproval, .background: return true
         case .unobserved, .unsettled, .failed: return false
         }
     }
@@ -95,8 +107,9 @@ public enum SessionPresence: Sendable, Equatable {
         case .unsettled: return 0
         case .unobserved: return 1
         case .failed: return 2
-        case .running: return 3
-        case .awaitingApproval: return 4
+        case .background: return 3
+        case .running: return 4
+        case .awaitingApproval: return 5
         }
     }
 
@@ -114,6 +127,7 @@ public enum SessionPresence: Sendable, Equatable {
         if state.status == .running || state.compaction?.isRunning == true {
             return .running(step)
         }
+        if let work = state.backgroundWork { return .background(tasks: work.tasks) }
         return .unobserved
     }
 }
@@ -171,7 +185,9 @@ public struct SessionRowModel: Equatable, Sendable {
         case .running(let step) where step?.isEmpty == false:
             self.snippet = step
         default:
-            self.snippet = entry.session.isWorking ? entry.session.agentTask : nil
+            self.snippet =
+                entry.session.isWorking
+                ? entry.session.agentTask : entry.session.backgroundWork?.task
         }
     }
 
@@ -190,21 +206,25 @@ public struct SessionRowModel: Equatable, Sendable {
             age: age)
     }
 
-    /// The order the row's five states are decided in. What this device watched wins over what the
+    /// The order the row's six states are decided in. What this device watched wins over what the
     /// listing remembered, an unreachable server outranks a flag it can no longer vouch for, and
     /// `isWorking` — not the bare `isActive` — is the listing's own answer, so a session whose
-    /// subagents are still out counts as live.
+    /// subagents are still out counts as live. Work a process carries between turns comes after a
+    /// turn, because a turn is the louder fact, and before idle, because it is not.
     private static func resolve(
         entry: SessionEntry, unreachable: Bool, presence: SessionPresence
     ) -> SessionRowState {
         switch presence {
         case .awaitingApproval: return .awaitingApproval
         case .running: return .live
+        case .background(let tasks): return .background(tasks: tasks)
         case .failed where !unreachable: return .failed
         case .failed, .unobserved, .unsettled: break
         }
         if unreachable { return .offline }
-        return entry.session.isWorking ? .live : .idle
+        if entry.session.isWorking { return .live }
+        if let work = entry.session.backgroundWork { return .background(tasks: work.tasks) }
+        return .idle
     }
 
     /// Compact and monospace-friendly, so a column of them lines up: seconds, minutes, hours, days.

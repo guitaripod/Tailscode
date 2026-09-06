@@ -2618,6 +2618,8 @@ final class ChatViewController: UIViewController {
             text = nil
         case .working:
             text = ChatViewModel.liveStatus(for: state).text
+        case .background(let tasks):
+            text = ActivityKind.inBackground(tasks: tasks).title
         case .compacting:
             text = String(localized: "Compacting…")
         case .awaitingApproval:

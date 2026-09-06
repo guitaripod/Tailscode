@@ -11,6 +11,8 @@ final class SessionActivity {
 
     enum Status: Equatable {
         case idle, running, awaitingApproval
+        /// No turn is open here, and the conversation's process is still working on the machine.
+        case background(tasks: Int)
     }
 
     static let didChange = Notification.Name("SessionActivity.didChange")
@@ -92,7 +94,7 @@ final class SessionActivity {
     ) {
         guard let status = Self.status(for: presence) else { return }
         switch status {
-        case .running, .awaitingApproval:
+        case .running, .awaitingApproval, .background:
             retained[sessionID] = keepAlive
         case .idle:
             retained[sessionID] = nil
@@ -131,6 +133,7 @@ final class SessionActivity {
         case .unsettled: return nil
         case .running: return .running
         case .awaitingApproval: return .awaitingApproval
+        case .background(let tasks): return .background(tasks: tasks)
         case .failed, .unobserved: return .idle
         }
     }

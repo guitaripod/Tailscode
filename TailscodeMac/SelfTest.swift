@@ -1197,6 +1197,11 @@ enum SelfTest {
         try expect(
             systemIndicator(in: card) == nil,
             "and is the only bar on it, because AppKit's own is drawn at a tempo nothing can read")
+        try expect(
+            SessionRowState.background(tasks: 1).activity == .inBackground(tasks: 1)
+                && SessionRowState.background(tasks: 1).isInFlight
+                && ActivityKind.inBackground(tasks: 1).icon.motion.isAnimated,
+            "work a process carries between turns reads as work, sits with the live rows, and breathes")
         return checks
     }
 

@@ -758,6 +758,7 @@ final class SessionListViewController: UIViewController {
         switch row.state {
         case .awaitingApproval: parts.append(String(localized: "Awaiting approval"))
         case .live: parts.append(String(localized: "Agent running"))
+        case .background(let tasks): parts.append(ActivityKind.inBackground(tasks: tasks).spoken)
         case .failed: parts.append(String(localized: "Last turn failed"))
         case .offline: parts.append(String(localized: "Server unreachable"))
         case .idle: break
@@ -877,8 +878,9 @@ final class SessionListViewController: UIViewController {
     /// liveness off the listing alone once this device is watching the turn itself.
     private func isLive(_ entry: SessionEntry) -> Bool {
         switch presence(for: entry) {
-        case .running, .awaitingApproval: return true
-        case .failed, .unobserved, .unsettled: return entry.session.isWorking
+        case .running, .awaitingApproval, .background: return true
+        case .failed, .unobserved, .unsettled:
+            return entry.session.isWorking || entry.session.backgroundWork != nil
         }
     }
 
@@ -918,6 +920,7 @@ final class SessionListViewController: UIViewController {
         switch SessionActivity.shared.status(for: entry.session.id) {
         case .running: return .running(SessionActivity.shared.liveDetail(for: entry.session.id))
         case .awaitingApproval: return .awaitingApproval
+        case .background(let tasks): return .background(tasks: tasks)
         case .idle: return .unobserved
         }
     }
