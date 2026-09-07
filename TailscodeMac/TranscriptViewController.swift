@@ -338,45 +338,77 @@ final class TranscriptViewController: NSViewController {
     /// The room held under the transcript so a just-sent prompt can rest at the top of the window
     /// with the answer streaming onto an empty page under it. Zero whenever nothing is rising.
     private var canvasPadding: CGFloat = 0
-    /// Where the prompt the canvas is holding room for sits in the canvas, measured once when it
-    /// rose. The server's own row replaces the echo at the same height, so the place is the
-    /// prompt's identity through the swap rather than a key that changes under it.
+    /// Where the prompt the canvas is holding room for stands in the canvas, re-measured on every
+    /// change of the page rather than captured when it rose: the echo is one card and the server's
+    /// account of the same send is a row per picture and one for the words, and a place frozen at
+    /// the first of those counts the room from somewhere the prompt no longer is.
     var canvasHold: (top: CGFloat, height: CGFloat)? {
         didSet { syncJumpPill() }
     }
     private static let canvasLog = Logger(subsystem: "com.guitaripod.tailscode", category: "chat")
 
+    /// The anchor the canvas rose to, followed across the swap from this device's echo to the
+    /// server's own account of the same send.
+    private var canvasKey: String?
+    /// Where in the transcript that send was drawn. A pending row discarded rather than reconciled
+    /// leaves an older prompt as the last thing the person said, and a canvas that fell back to
+    /// that one would rise to the wrong page.
+    private var canvasFloor = 0
+    /// The rise is being set up: the room has been asked for but the motion is not finished, and
+    /// nothing may retire the canvas until it is.
+    private var canvasRising = false
+    /// Whether the prompt is still being kept at the headroom. It is put there and held there:
+    /// every reason the one motion misses — a row measured after it is drawn, the room allocated a
+    /// pass late, the server's rows replacing this device's — happens after the motion is over.
+    private var canvasPinned = false
+    /// Guards the pin against the layout its own scroll provokes.
+    private var isPinningCanvas = false
+    private var canvasRiseDeadline: CFTimeInterval?
+
     /// The prompt just sent rises to the top: the padding is made, the follow-the-bottom pin is
     /// let go, and the move is one motion on the platform's clock from wherever the reader was.
     private func riseFreshCanvas(rowKey: String) {
+        canvasKey = rowKey
+        canvasFloor = renderedRows.firstIndex { $0.key == rowKey } ?? renderedRows.count
+        canvasRiseDeadline = CACurrentMediaTime() + FreshCanvas.patience
+        canvasRising = true
+        canvasPinned = false
+        attemptFreshCanvasRise()
+    }
+
+    /// A row appended this pass has no frame until the stack has laid it out, and a rise that read
+    /// an unmeasured row as a row that was not there gave the whole motion up — once, silently,
+    /// with nothing left to notice. So it asks again for as long as `FreshCanvas.patience`.
+    private func attemptFreshCanvasRise() {
+        guard canvasRising else { return }
         view.layoutSubtreeIfNeeded()
-        guard let index = renderedRows.firstIndex(where: { $0.key == rowKey }),
-            index < rowViews.count, rowViews[index].superview != nil
-        else { return }
-        let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
+        guard let block = promptBlock(), block.height > 0 else {
+            guard let deadline = canvasRiseDeadline, CACurrentMediaTime() < deadline else {
+                Self.canvasLog.notice("fresh canvas: prompt row never measured")
+                canvasRising = false
+                canvasRiseDeadline = nil
+                canvasKey = nil
+                return
+            }
+            DispatchQueue.main.async { [weak self] in self?.attemptFreshCanvasRise() }
+            return
+        }
+        canvasRiseDeadline = nil
         let clip = scrollView.contentView
-        let viewport = clip.bounds.height - chromeInsets.top - chromeInsets.bottom
-        let below = max(0, canvas.frame.height - frame.maxY)
-        let padding = FreshCanvas.padding(
-            viewport: viewport, prompt: frame.height, below: below)
-        canvasHold = (frame.minY, frame.height)
+        canvasHold = (block.minY, block.height)
         followsBottom = false
-        canvasPadding = padding
+        canvasPadding = freshCanvasRoom(promptTop: block.minY)
         applyInsets()
         view.layoutSubtreeIfNeeded()
-        let offset = FreshCanvas.offset(
-            promptTop: frame.minY + chromeInsets.top,
-            contentHeight: canvas.frame.height + scrollView.contentInsets.top
-                + scrollView.contentInsets.bottom,
-            viewport: clip.bounds.height)
-        let target = NSPoint(x: clip.bounds.origin.x, y: offset - chromeInsets.top)
+        let target = NSPoint(x: clip.bounds.origin.x, y: canvasOrigin(promptTop: block.minY))
         Self.canvasLog.notice(
-            "fresh canvas: prompt=\(frame.height) viewport=\(viewport) padding=\(padding)")
+            "fresh canvas: prompt=\(block.height) padding=\(self.canvasPadding)")
         isAutoScrolling = true
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             clip.scroll(to: target)
             scrollView.reflectScrolledClipView(scrollView.contentView)
             isAutoScrolling = false
+            landFreshCanvas()
         } else {
             NSAnimationContext.runAnimationGroup(
                 { animation in
@@ -388,51 +420,113 @@ final class TranscriptViewController: NSViewController {
                     guard let self else { return }
                     self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
                     self.isAutoScrolling = false
+                    self.landFreshCanvas()
                 })
         }
     }
 
-    /// The answer growing under the prompt takes the room back, until what is under the prompt
-    /// fills the window on its own and ordinary following resumes.
-    func recomputeFreshCanvas() {
-        remeasureCanvasHold()
-        guard let hold = canvasHold else { return }
+    /// The motion is over, so the keeping begins: from here the prompt's place is checked against
+    /// the page after every layout instead of being assumed from the scroll that aimed at it.
+    private func landFreshCanvas() {
+        canvasRising = false
+        guard canvasHold != nil else { return }
+        canvasPinned = true
+        recomputeFreshCanvas()
+    }
+
+    /// The block that rises: the row the send was keyed to and every row of the person's own
+    /// touching it, because a picture is drawn above the words it was clipped to and raising the
+    /// words alone leaves it one row above the top edge. The key follows the send across the swap
+    /// from the echo to the server's account of it, and never back past the send it was made for.
+    private func promptBlock() -> NSRect? {
+        guard let key = canvasKey else { return nil }
+        var index = renderedRows.firstIndex { $0.key == key }
+        if index == nil, key.hasPrefix("echo:"),
+            let last = renderedRows.lastIndex(where: {
+                if case .userText = $0.kind { return true }
+                return false
+            }), last >= canvasFloor - 2
+        {
+            canvasKey = renderedRows[last].key
+            index = last
+        }
+        guard let index, index < rowViews.count else { return nil }
+        var first = index
+        while first > 0, renderedRows[first - 1].isPromptBlock { first -= 1 }
+        var last = index
+        while last + 1 < renderedRows.count, last + 1 < rowViews.count,
+            renderedRows[last + 1].isPromptBlock
+        { last += 1 }
+        var union: NSRect?
+        for row in first...last where rowViews[row].superview != nil {
+            let frame = rowViews[row].convert(rowViews[row].bounds, to: canvas)
+            union = union.map { $0.union(frame) } ?? frame
+        }
+        return union
+    }
+
+    /// Where the clip must stand for the prompt to rest at `FreshCanvas.headroom` under the top of
+    /// what the chrome leaves visible.
+    private func canvasOrigin(promptTop: CGFloat) -> CGFloat {
+        let offset = FreshCanvas.offset(
+            promptTop: Double(promptTop),
+            contentHeight: Double(
+                canvas.frame.height + scrollView.contentInsets.top
+                    + scrollView.contentInsets.bottom),
+            viewport: Double(scrollView.contentView.bounds.height))
+        return CGFloat(offset) - chromeInsets.top
+    }
+
+    /// Keeps the prompt where the rise put it. Nothing moves once it is within a point of the
+    /// headroom, so this costs nothing on the frames where it is already right.
+    private func pinFreshCanvas() {
+        guard canvasPinned, !canvasRising, !isPinningCanvas, let block = promptBlock(),
+            block.height > 0
+        else { return }
         let clip = scrollView.contentView
-        let viewport = clip.bounds.height - chromeInsets.top - chromeInsets.bottom
-        let below = FreshCanvas.below(
-            contentHeight: canvas.frame.height, promptBottom: hold.top + hold.height,
-            unrevealed: unrevealedHeight())
-        guard FreshCanvas.holds(viewport: viewport, prompt: hold.height, below: below) else {
+        let landed = FreshCanvas.hasLanded(
+            promptTop: Double(block.minY), offset: Double(clip.bounds.origin.y + chromeInsets.top))
+        guard !landed else { return }
+        let target = canvasOrigin(promptTop: block.minY)
+        guard abs(target - clip.bounds.origin.y) > CGFloat(FreshCanvas.landing) else { return }
+        isPinningCanvas = true
+        isAutoScrolling = true
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: target))
+        scrollView.reflectScrolledClipView(clip)
+        isAutoScrolling = false
+        isPinningCanvas = false
+    }
+
+    /// The answer growing under the prompt takes the room back, until what is under the prompt
+    /// fills the window on its own and ordinary following resumes. The block is measured again
+    /// every time — its top as well as its height — because the echo is one card and the server's
+    /// account of the same send is a row per picture and one for the words, and a hold frozen at
+    /// the place the echo stood counts the room from somewhere the prompt no longer is.
+    func recomputeFreshCanvas() {
+        guard canvasHold != nil, let block = promptBlock(), block.height > 0 else { return }
+        canvasHold = (block.minY, block.height)
+        let room = freshCanvasRoom(promptTop: block.minY)
+        guard canvasRising || FreshCanvas.holds(room: room) else {
             releaseFreshCanvas(animated: false)
             setFollowing(isNearBottom())
             return
         }
-        canvasPadding = FreshCanvas.padding(viewport: viewport, prompt: hold.height, below: below)
+        canvasPadding = room
         applyInsets()
+        pinFreshCanvas()
     }
 
-    /// The block the canvas holds, measured again from the rows now standing at its top. The echo
-    /// is one card; the server's account of the same send is a row per picture and one for the
-    /// words, and it is taller — so the hold follows the rows rather than the card it was first
-    /// measured from, or the room under it would be counted short and the prompt would slide down
-    /// as the padding went.
-    private func remeasureCanvasHold() {
-        guard let hold = canvasHold else { return }
-        var union: NSRect?
-        for (index, row) in renderedRows.enumerated() where index < rowViews.count {
-            guard rowViews[index].superview != nil, row.isPromptBlock else {
-                if union != nil { break }
-                continue
-            }
-            let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
-            if let block = union {
-                union = block.union(frame)
-            } else if abs(frame.minY - hold.top) < 2 {
-                union = frame
-            }
-        }
-        guard let union, abs(union.height - hold.height) > 0.5 else { return }
-        canvasHold = (hold.top, union.height)
+    /// The room to hold, measured from the page rather than from a tally of its rows: the whole
+    /// scrollable extent less the room already in it and less the part of the live row laid out
+    /// ahead of its reveal.
+    private func freshCanvasRoom(promptTop: CGFloat) -> CGFloat {
+        let end =
+            canvas.frame.height + scrollView.contentInsets.top + scrollView.contentInsets.bottom
+            - canvasPadding - unrevealedHeight()
+        return CGFloat(
+            FreshCanvas.room(
+                promptTop: Double(promptTop),
+                viewport: Double(scrollView.contentView.bounds.height), end: Double(end)))
     }
 
     /// How much of the live row is laid out past its reveal: text the reader has not been shown
@@ -461,6 +555,10 @@ final class TranscriptViewController: NSViewController {
     /// The room goes: with the reader at the bottom the transcript settles onto its end, and
     /// anywhere else nothing moves that they did not move.
     private func releaseFreshCanvas(animated: Bool) {
+        canvasKey = nil
+        canvasPinned = false
+        canvasRising = false
+        canvasRiseDeadline = nil
         guard canvasHold != nil || canvasPadding > 0 else { return }
         canvasHold = nil
         canvasPadding = 0
@@ -2248,6 +2346,9 @@ final class TranscriptViewController: NSViewController {
     }
 
     func applyUIScale() {
+        // Every row is rebuilt at a new size, so a canvas holding a place in the old ones is
+        // holding a place that no longer exists.
+        releaseFreshCanvas(animated: false)
         rowBuilder.invalidate()
         Self.codeMemo = nil
         sessionRows = [:]
@@ -2448,11 +2549,12 @@ final class TranscriptViewController: NSViewController {
             canvas.alphaValue = 0
             pendingReveal = true
         }
-        let stick = initialFill || (followsBottom && canvasHold == nil)
+        let stick = (initialFill || followsBottom) && canvasHold == nil
         let growth = initialFill || canvasHold != nil ? 0 : appended
 
         let edit = preservingScroll { editRows(rows) }
         repaintChangedRows(rows, from: edit.start)
+        if canvasHold != nil { recomputeFreshCanvas() }
         fillComplete = edit.complete
         if !edit.complete {
             if stick { followsBottom = true }
@@ -3127,6 +3229,15 @@ final class TranscriptViewController: NSViewController {
         followClock = nil
         guard canvasHold == nil else {
             followsBottom = false
+            // The room shrinking under the prompt drags the scrollable range up with it, and the
+            // clip reports that clamp as a scroll nobody made. While the canvas holds, the pinned
+            // origin *is* the end of the range: short of it is a hand on the page, at it is the
+            // room being taken back.
+            if scrollView.contentView.bounds.origin.y < maxScrollOrigin() - 1 {
+                canvasPinned = false
+                canvasRising = false
+                canvasRiseDeadline = nil
+            }
             return
         }
         let atBottom = isNearBottom()

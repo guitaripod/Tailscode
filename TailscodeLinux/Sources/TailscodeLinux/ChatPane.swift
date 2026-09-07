@@ -115,13 +115,28 @@ final class ChatPane: @unchecked Sendable {
     private var canvasBox: UnsafeMutablePointer<GtkWidget>?
     /// The room under the transcript that lets a just-sent prompt rest at the top of the window,
     /// and the row it was made for. Zero once the answer has filled it or the turn has ended.
-    private let canvasSpacer = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private var canvasPadding = 0.0
     var canvasPromptKey: String? {
         didSet { syncJumpPill() }
     }
     private var canvasPromptTop: Double?
     private var canvasSettle: FreshCanvasScroll?
+    /// Where in the transcript the send the canvas rose to was drawn. The rows this device drew
+    /// are replaced by the server's own account of the same message, and the canvas follows them
+    /// across — but a pending row that was discarded rather than reconciled leaves an *older*
+    /// prompt as the last thing the person said, and a canvas that rose to that one would be the
+    /// wrong page.
+    private var canvasFloor = 0
+    /// Whether the prompt is still being kept at the top. It is put there and held there, because
+    /// every reason the one motion misses — room that lands a frame late, a row measured after it
+    /// is drawn, the server's own rows replacing this device's — happens after the motion is over.
+    /// A hand on the scroll ends the pin and leaves the room alone.
+    private var canvasPinned = false
+    /// The rise is being set up: the room has been asked for but the motion has not finished. The
+    /// canvas may not be retired while this is true — the first settle runs before the motion is
+    /// even started, and a prompt that needs no room was being retired there, which left the
+    /// motion aiming at a canvas that no longer existed and the page pinned to its own bottom.
+    private var canvasRising = false
     private var captionWakeGeneration = 0
     private var pendingSignature = "\u{0}"
     private var compactingElapsed: UnsafeMutablePointer<GtkWidget>?
@@ -284,8 +299,6 @@ final class ChatPane: @unchecked Sendable {
         gtk_box_append(ptr(canvas), transcriptBox)
         Gtk.margins(pendingBox, top: 8)
         gtk_box_append(ptr(canvas), pendingBox)
-        gtk_widget_set_visible(canvasSpacer, 0)
-        gtk_box_append(ptr(canvas), canvasSpacer)
         gtk_scrolled_window_set_child(op(scroller), makeTranscriptViewport(canvas))
         gtk_widget_set_vexpand(scroller, 1)
         Gtk.onPressHold(
@@ -326,6 +339,11 @@ final class ChatPane: @unchecked Sendable {
             }
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
                 guard let self, !self.isAutoScrolling else { return }
+                guard self.canvasPromptKey == nil else {
+                    if self.scrolledShortOfTheEnd() { self.canvasPinned = false }
+                    self.followsBottom = false
+                    return
+                }
                 let atBottom = self.isNearBottom()
                 self.followsBottom = atBottom
             }
@@ -942,9 +960,13 @@ final class ChatPane: @unchecked Sendable {
                 let words = queued.send.text
                 Gtk.onMain { [weak self] in
                     guard let self, self.sessionID == sessionID else { return }
-                    self.pending.begin(
+                    // The first message of a new chat is a send like any other, and it took the
+                    // one road that drew its row without ever asking for the rise.
+                    let row = self.pending.begin(
                         text: words,
                         userMessages: self.lastState?.messages.count { $0.role == .user } ?? 0)
+                    self.redrawPending()
+                    self.raiseFreshCanvas(for: row.id)
                     if Ultracode.invokes(words) || effort == Ultracode.effortLevel {
                         self.ultracodeInFlight = true
                         self.refreshUltracodeAura()
@@ -1836,7 +1858,9 @@ final class ChatPane: @unchecked Sendable {
             gtk_widget_set_opacity(transcriptBox, 0)
             pendingReveal = true
         }
-        let stick = initialFill || followsBottom
+        // A canvas holding a prompt at the top is not a page to pin to its own bottom, and the
+        // first fill of a chat opened on a message it is about to send is exactly that page.
+        let stick = (initialFill || followsBottom) && canvasPromptKey == nil
         let growth = initialFill ? 0 : appended
         let chunk = 40
 
@@ -3364,8 +3388,12 @@ final class ChatPane: @unchecked Sendable {
     /// viewport lacks below the prompt, the scroll rides one eased motion to put the prompt at
     /// `FreshCanvas.headroom`, and following the bottom is off until the answer has filled the room.
     private func raiseFreshCanvas(for id: UUID) {
-        canvasPromptKey = Self.pendingKey(id)
+        let key = Self.pendingKey(id)
+        canvasPromptKey = key
         canvasPromptTop = nil
+        canvasFloor = renderedRows.firstIndex { $0.key == key } ?? renderedRows.count
+        canvasPinned = false
+        canvasRising = true
         followsBottom = false
         awaitFreshCanvasPrompt(attempts: 0)
     }
@@ -3379,9 +3407,12 @@ final class ChatPane: @unchecked Sendable {
             animateFreshCanvas()
             return
         }
-        guard attempts < 30 else {
+        guard Double(attempts) * 0.016 < FreshCanvas.patience else {
             AppLog.write(.ui, "fresh canvas: prompt row never measured")
             canvasPromptKey = nil
+            canvasPinned = false
+            canvasRising = false
+            if canvasPadding > 0 { setCanvasPadding(0) }
             setFollowing(true)
             return
         }
@@ -3404,7 +3435,7 @@ final class ChatPane: @unchecked Sendable {
             let last = renderedRows.lastIndex(where: {
                 if case .userText = $0.kind { return true }
                 return false
-            })
+            }), last >= canvasFloor - 2
         {
             canvasPromptKey = renderedRows[last].key
             index = last
@@ -3451,57 +3482,81 @@ final class ChatPane: @unchecked Sendable {
     /// answer grows under the prompt, the prompt is kept where it was through a swap that
     /// changed its height, and once the answer fills the window the canvas lets go.
     func settleFreshCanvas() {
-        guard canvasPromptKey != nil, let scroller = transcriptScroller, let canvas = canvasBox,
+        guard canvasPromptKey != nil, let scroller = transcriptScroller,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
         else { return }
         guard let prompt = canvasPrompt() else { return }
         let viewport = gtk_adjustment_get_page_size(adjustment)
         guard viewport > 0 else { return }
-        let content = Self.naturalHeight(of: canvas) - canvasPadding
-        let below = FreshCanvas.below(
-            contentHeight: content, promptBottom: prompt.top + prompt.height,
-            unrevealed: unrevealedHeight())
-        let padding = FreshCanvas.padding(viewport: viewport, prompt: prompt.height, below: below)
-        if let previousTop = canvasPromptTop, abs(previousTop - prompt.top) > 0.5,
-            canvasSettle == nil
-        {
-            isAutoScrolling = true
-            gtk_adjustment_set_value(
-                adjustment, gtk_adjustment_get_value(adjustment) + prompt.top - previousTop)
-            isAutoScrolling = false
-        }
+        let room = FreshCanvas.room(
+            promptTop: prompt.top, viewport: viewport,
+            end: gtk_adjustment_get_upper(adjustment) - allocatedCanvasRoom - unrevealedHeight())
         canvasPromptTop = prompt.top
-        if padding != canvasPadding {
+        if room != canvasPadding {
             AppLog.write(
                 .ui,
-                "fresh canvas: prompt=\(Int(prompt.height)) viewport=\(Int(viewport)) padding=\(Int(padding))")
-            setCanvasPadding(padding)
+                "fresh canvas: prompt=\(Int(prompt.height)) viewport=\(Int(viewport)) padding=\(Int(room))")
+            setCanvasPadding(room)
         }
-        guard !FreshCanvas.holds(viewport: viewport, prompt: prompt.height, below: below) else {
-            return
-        }
+        pinFreshCanvas(to: prompt.top, adjustment: adjustment, viewport: viewport)
+        guard !canvasRising, !FreshCanvas.holds(room: room) else { return }
         canvasPromptKey = nil
         canvasPromptTop = nil
+        canvasPinned = false
         setFollowing(true)
     }
 
-    /// What the rows actually need, which is not what the canvas was given: a viewport hands its
-    /// child at least its own height, so a short conversation's canvas is as tall as the window
-    /// and the room under a prompt read as already full before a word had been written.
-    private static func naturalHeight(of widget: UnsafeMutablePointer<GtkWidget>) -> Double {
-        var minimum: Int32 = 0
-        var natural: Int32 = 0
-        gtk_widget_measure(
-            widget, GTK_ORIENTATION_VERTICAL, gtk_widget_get_width(widget), &minimum, &natural,
-            nil, nil)
-        return Double(natural)
+    /// Whether the page stands somewhere other than the end of its own range. The room shrinking
+    /// under the prompt drags that range up with it, and GTK reports the clamp as a value nobody
+    /// set — while the canvas holds, the pinned value *is* the end of the range, so short of the
+    /// end is a hand on the page and at the end is the room being taken back.
+    private func scrolledShortOfTheEnd() -> Bool {
+        guard let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return false }
+        let ceiling =
+            gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment)
+        return gtk_adjustment_get_value(adjustment) < ceiling - 1
     }
 
+    /// Keeps the prompt at the headroom rather than trusting the motion that put it there. The
+    /// room is asked for in one frame and allocated in the next, a row is measured after it is
+    /// drawn, and the server's own rows replace this device's under the whole thing — so where
+    /// the prompt actually stands is read again on every one of those and the scroll is moved
+    /// back when it has drifted. Nothing happens once the reader's own hand has been on it.
+    private func pinFreshCanvas(
+        to promptTop: Double, adjustment: UnsafeMutablePointer<GtkAdjustment>, viewport: Double
+    ) {
+        guard canvasPinned, canvasSettle == nil else { return }
+        let value = gtk_adjustment_get_value(adjustment)
+        guard !FreshCanvas.hasLanded(promptTop: promptTop, offset: value) else { return }
+        let offset = FreshCanvas.offset(
+            promptTop: promptTop, contentHeight: gtk_adjustment_get_upper(adjustment),
+            viewport: viewport)
+        guard abs(offset - value) > FreshCanvas.landing else { return }
+        isAutoScrolling = true
+        gtk_adjustment_set_value(adjustment, offset)
+        isAutoScrolling = false
+    }
+
+    /// The room is the canvas's own bottom margin rather than a spacer child: a box puts its
+    /// spacing at every visible child boundary, so a spacer grew the page by the room asked for
+    /// *and one gap*, and the gap came and went with the spacer's visibility. A margin is exactly
+    /// what it says, and it reads back exactly, which is what lets the room be measured against a
+    /// page that does not already contain it.
     private func setCanvasPadding(_ padding: Double) {
         canvasPadding = padding
-        gtk_widget_set_visible(canvasSpacer, padding > 0 ? 1 : 0)
-        gtk_widget_set_size_request(canvasSpacer, -1, Int32(padding.rounded()))
+        guard let canvas = canvasBox else { return }
+        gtk_widget_set_margin_bottom(canvas, Int32(padding.rounded()))
     }
+
+    /// The room the page is actually holding right now, which is not always the room last asked
+    /// for: a margin set this pass is allocated in the next.
+    private var allocatedCanvasRoom: Double {
+        guard let canvas = canvasBox else { return 0 }
+        return Double(gtk_widget_get_margin_bottom(canvas))
+    }
+
 
     /// One motion from wherever the reader was to the prompt at the top, on the display's clock.
     /// The target is read again every frame, because the padding the motion rides on lands a
@@ -3520,6 +3575,8 @@ final class ChatPane: @unchecked Sendable {
         let settle = FreshCanvasScroll(clock: scroller, adjustment: adjustment, target: target) {
             [weak self] in
             self?.canvasSettle = nil
+            self?.canvasRising = false
+            self?.settleFreshCanvas()
         }
         canvasSettle = settle
         let set: (Double) -> Void = { [weak self] value in
@@ -3527,6 +3584,7 @@ final class ChatPane: @unchecked Sendable {
             gtk_adjustment_set_value(adjustment, value)
             self?.isAutoScrolling = false
         }
+        canvasPinned = true
         settle.start(reduceMotion: !RepeatingMotion.allowed, set: set)
     }
 
@@ -3536,13 +3594,28 @@ final class ChatPane: @unchecked Sendable {
         canvasSettle = nil
         canvasPromptKey = nil
         canvasPromptTop = nil
+        canvasPinned = false
+        canvasRising = false
         if canvasPadding > 0 { setCanvasPadding(0) }
         setFollowing(true)
     }
 
-    /// For the driver: whether the canvas holds, and how much room it made.
+    /// For the driver: whether the canvas holds, how much room it made, and — the only reading
+    /// that says the feature worked — how far the prompt actually is from the headroom.
     var freshCanvasReading: String {
-        "holding=\(canvasPromptKey != nil) padding=\(Int(canvasPadding)) follows=\(followsBottom)"
+        var drift = "?"
+        if let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)),
+            let prompt = canvasPrompt()
+        {
+            drift = String(
+                Int(
+                    FreshCanvas.drift(
+                        promptTop: prompt.top, offset: gtk_adjustment_get_value(adjustment))
+                        .rounded()))
+        }
+        return
+            "holding=\(canvasPromptKey != nil) padding=\(Int(canvasPadding)) follows=\(followsBottom) pinned=\(canvasPinned) drift=\(drift)"
     }
 
     private func isNearBottom() -> Bool {

@@ -159,11 +159,27 @@ struct PendingSendTests {
 @Suite("Fresh canvas")
 struct FreshCanvasTests {
     @Test("A prompt gets the room it needs and no more")
-    func padding() {
-        #expect(FreshCanvas.padding(viewport: 800, prompt: 60, below: 0) == 800 - 12 - 60)
-        #expect(FreshCanvas.padding(viewport: 800, prompt: 60, below: 740) == 0)
-        #expect(FreshCanvas.holds(viewport: 800, prompt: 60, below: 300))
-        #expect(!FreshCanvas.holds(viewport: 800, prompt: 60, below: 900))
+    func room() {
+        // A prompt 60 tall standing at 1000 on a page that ends at 1060, in an 800 window: the
+        // room is the window less the headroom and the prompt.
+        #expect(FreshCanvas.room(promptTop: 1000, viewport: 800, end: 1060) == 800 - 12 - 60)
+        // The same prompt with 740 of answer already under it needs nothing.
+        #expect(FreshCanvas.room(promptTop: 1000, viewport: 800, end: 1800) == 0)
+        #expect(FreshCanvas.holds(room: FreshCanvas.room(promptTop: 1000, viewport: 800, end: 1360)))
+        #expect(!FreshCanvas.holds(room: FreshCanvas.room(promptTop: 1000, viewport: 800, end: 1960)))
+    }
+
+    @Test("The room is measured against a page that does not already hold it")
+    func roomDoesNotCompound() {
+        // The client subtracts the room it is holding before it asks, so asking again with the
+        // room in place returns the same answer rather than that much again.
+        let first = FreshCanvas.room(promptTop: 1000, viewport: 800, end: 1060)
+        let withRoom = 1060 + first
+        #expect(FreshCanvas.room(promptTop: 1000, viewport: 800, end: withRoom - first) == first)
+        // And what the reader has not been shown does not fill the window: the same page with 400
+        // of the live row still unread ends, for the reader, 400 earlier and asks for that much.
+        #expect(FreshCanvas.room(promptTop: 1000, viewport: 800, end: 1800) == 0)
+        #expect(FreshCanvas.room(promptTop: 1000, viewport: 800, end: 1400) == 388)
     }
 
     @Test("The offset lands the prompt at the top and never past the end")
@@ -174,13 +190,11 @@ struct FreshCanvasTests {
     }
 
     @Test("What is under the prompt is what the reader can see, not what the layout holds")
-    func belowDiscountsTheUnrevealed() {
-        #expect(FreshCanvas.below(contentHeight: 1000, promptBottom: 400, unrevealed: 0) == 600)
-        #expect(FreshCanvas.below(contentHeight: 1000, promptBottom: 400, unrevealed: 350) == 250)
-        #expect(FreshCanvas.below(contentHeight: 1000, promptBottom: 400, unrevealed: 900) == 0)
-        #expect(FreshCanvas.below(contentHeight: 1000, promptBottom: 400, unrevealed: -5) == 600)
-        #expect(FreshCanvas.holds(viewport: 800, prompt: 60, below: FreshCanvas.below(contentHeight: 1000, promptBottom: 60, unrevealed: 500)))
-        #expect(!FreshCanvas.holds(viewport: 800, prompt: 60, below: FreshCanvas.below(contentHeight: 1000, promptBottom: 60, unrevealed: 0)))
+    func roomDiscountsTheUnrevealed() {
+        // The page ends at 1000 with the prompt at 0; 500 of the live row is laid out but unread,
+        // so the reader's page ends at 500 and the room is measured against that.
+        #expect(FreshCanvas.holds(room: FreshCanvas.room(promptTop: 0, viewport: 800, end: 500)))
+        #expect(!FreshCanvas.holds(room: FreshCanvas.room(promptTop: 0, viewport: 800, end: 1000)))
     }
 
     @Test("Following keeps the written end at the bottom and never runs past the content")
@@ -202,6 +216,27 @@ struct FreshCanvasTests {
         #expect(FreshCanvas.glide(current: 100, target: 100.3, elapsed: 0.01) == 100.3)
         #expect(FreshCanvas.glide(current: 100, target: 80, elapsed: 0.01) == 100)
         #expect(FreshCanvas.glide(current: 100, target: 120, elapsed: 0) == 120)
+    }
+
+    @Test("The rise is checked, not assumed")
+    func landing() {
+        #expect(FreshCanvas.drift(promptTop: 5000, offset: 4988) == 0)
+        #expect(FreshCanvas.hasLanded(promptTop: 5000, offset: 4988))
+        #expect(FreshCanvas.hasLanded(promptTop: 5000, offset: 4988.5))
+        #expect(!FreshCanvas.hasLanded(promptTop: 5000, offset: 4900))
+        #expect(FreshCanvas.drift(promptTop: 5000, offset: 4900) == 88)
+        #expect(FreshCanvas.drift(promptTop: 5000, offset: 5100) == -112)
+    }
+
+    @Test("A page tall enough to lift the prompt needs no room to do it")
+    func reaches() {
+        #expect(FreshCanvas.reaches(promptTop: 5000, contentHeight: 5800, viewport: 800))
+        #expect(!FreshCanvas.reaches(promptTop: 5000, contentHeight: 5200, viewport: 800))
+        #expect(FreshCanvas.reaches(promptTop: 0, contentHeight: 100, viewport: 800))
+        // A short page reaches once the room it asked for is in it.
+        let room = FreshCanvas.room(promptTop: 900, viewport: 800, end: 960)
+        #expect(FreshCanvas.reaches(promptTop: 900, contentHeight: 960 + room, viewport: 800))
+        #expect(FreshCanvas.reaches(promptTop: 5000, contentHeight: 9000, viewport: 800))
     }
 
     @Test("A reader on the last written word is at the bottom, whatever the layout holds")
