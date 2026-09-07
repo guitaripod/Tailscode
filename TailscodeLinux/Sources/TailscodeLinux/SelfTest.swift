@@ -1357,34 +1357,58 @@ public enum SelfTest {
                 ["233", "60fps Cutscenes", "**Reignited Interpolated 60fps Cutscenes** (2.1GB .rar)"],
             ])
         guard gtk_init_check() != 0 else { return 0 }
-        let widget = TranscriptRow.table(table)
+        let widget = TranscriptRow.table(table, key: "selftest")
         g_object_ref_sink(UnsafeMutableRawPointer(widget))
         defer { g_object_unref(UnsafeMutableRawPointer(widget)) }
+        guard let grid = gtk_scrolled_window_get_child(op(widget)) else {
+            throw SelfTestFailure("a table is no longer a grid inside a scroller")
+        }
 
-        func measure(_ orientation: GtkOrientation, for size: Int32) -> Int32 {
+        func measure(
+            _ target: UnsafeMutablePointer<GtkWidget>, _ orientation: GtkOrientation, for size: Int32
+        ) -> Int32 {
             var minimum: Int32 = 0
             var natural: Int32 = 0
-            gtk_widget_measure(widget, orientation, size, &minimum, &natural, nil, nil)
+            gtk_widget_measure(target, orientation, size, &minimum, &natural, nil, nil)
             return natural
         }
 
-        let width = measure(GTK_ORIENTATION_HORIZONTAL, for: -1)
+        let width = measure(grid, GTK_ORIENTATION_HORIZONTAL, for: -1)
         guard width > 0 else { throw SelfTestFailure("a table with cells asks for no width") }
-        let drawn = measure(GTK_ORIENTATION_VERTICAL, for: width)
+        let drawn = measure(grid, GTK_ORIENTATION_VERTICAL, for: width)
+        guard drawn > 0 else { throw SelfTestFailure("a table with rows asks for no height") }
         var checks = 0
-        for pane in [width - 120, width, width + 200, width + 900] where pane > 0 {
-            let allocated = min(width, pane)
-            let asked = measure(GTK_ORIENTATION_VERTICAL, for: pane)
-            let needed = measure(GTK_ORIENTATION_VERTICAL, for: allocated)
-            guard asked >= needed else {
+        // Whatever the pane is, the row must ask for the whole table's height: it scrolls sideways
+        // rather than folding, so a pane narrower than the table may never cost it a row.
+        for pane in [Int32(120), width - 120, width, width + 200, width + 900] where pane > 0 {
+            let asked = measure(widget, GTK_ORIENTATION_VERTICAL, for: pane)
+            guard asked >= drawn else {
                 throw SelfTestFailure(
-                    "a table measured \(asked) tall for a \(pane) pane draws \(needed) at the "
-                        + "\(allocated) it is given — the rows past that fall on the words below")
+                    "a table asks for \(asked) tall in a \(pane) pane but draws \(drawn) — the "
+                        + "rows past that fall on the words below")
+            }
+            // And no more than it draws, bar the room an overlay scrollbar sits in: a row that
+            // asks for height it does not use is a hole in the transcript under the table.
+            guard asked <= drawn + 24 else {
+                throw SelfTestFailure(
+                    "a table asks for \(asked) tall in a \(pane) pane but draws only \(drawn) — "
+                        + "the difference is blank page under the table")
             }
             checks += 1
         }
-        guard drawn > 0 else { throw SelfTestFailure("a table with rows asks for no height") }
-        return checks + 1
+        // And it must never drag the pane out with it: a table wider than the window asks for the
+        // window, and reaches the rest under the finger.
+        let minimumWidth = { () -> Int32 in
+            var minimum: Int32 = 0
+            var natural: Int32 = 0
+            gtk_widget_measure(widget, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural, nil, nil)
+            return minimum
+        }()
+        guard minimumWidth < width else {
+            throw SelfTestFailure(
+                "a table demands \(minimumWidth) of width, so a narrow pane is dragged out by it")
+        }
+        return checks + 2
     }
 
     /// Pango markup is a string, so a code block is one escape away from a parse error that empties

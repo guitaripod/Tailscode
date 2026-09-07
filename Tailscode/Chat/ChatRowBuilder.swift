@@ -142,7 +142,8 @@ enum ChatRowBuilder {
                     } else {
                         rows.append(
                             contentsOf: Self.segmentRows(
-                                text, id: id, messageID: message.id, role: message.role))
+                                text, id: id, messageID: message.id, role: message.role,
+                                sealed: !message.isStreaming))
                     }
                 case .file(let file):
                     flushActivity()
@@ -199,10 +200,10 @@ enum ChatRowBuilder {
     /// empty code block. The index is the one name a paragraph keeps while everything after it
     /// grows. Both desktops have always built it unconditionally; this client was the outlier.
     private static func segmentRows(
-        _ text: String, id: String, messageID: String, role: MessageRole
+        _ text: String, id: String, messageID: String, role: MessageRole, sealed: Bool
     ) -> [ChatRow] {
         var rows: [ChatRow] = []
-        for (index, segment) in MessageSegment.split(text).enumerated() {
+        for (index, segment) in MessageSegment.split(text, sealed: sealed).enumerated() {
             let rowID = "\(id):seg\(index)"
             let content = segment.chatContent
             rows.append(

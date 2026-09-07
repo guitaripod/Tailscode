@@ -38,6 +38,57 @@ public struct MarkdownTable: Hashable, Sendable {
         alignments.indices.contains(column) ? alignments[column] : .leading
     }
 
+    /// Every cell of one column, header included, which is what a client measures a width from.
+    public func column(_ index: Int) -> [String] {
+        guard header.indices.contains(index) else { return [] }
+        return [header[index]] + rows.indices.map { cells(in: $0)[index] }
+    }
+
+    /// Whether a column is numbers. Its declared alignment is left exactly as written — the author
+    /// said where the column sits and this is not the place to argue — but digits that change
+    /// while somebody watches them, or sit in a stack meant to be compared down the page, are set
+    /// on one width so a column of figures reads as a column rather than as ragged text.
+    ///
+    /// A column of numbers is one where every cell that says anything is a number: a sign, digits
+    /// with the separators numbers are written with, and the marks a number wears — a percent, a
+    /// currency, an `×`, a plain unit right after the digits.
+    public func isNumeric(column index: Int) -> Bool {
+        let cells = column(index).dropFirst().filter { !$0.isEmpty && $0 != "-" && $0 != "—" }
+        guard !cells.isEmpty else { return false }
+        return cells.allSatisfy(Self.readsAsNumber)
+    }
+
+    private static let numberMarks = Set("+-−$€£¥%×x*/ ")
+
+    static func readsAsNumber(_ cell: String) -> Bool {
+        var digits = 0
+        for character in cell {
+            if character.isNumber {
+                digits += 1
+                continue
+            }
+            if character == "." || character == "," || character == "_" { continue }
+            if numberMarks.contains(character) { continue }
+            // A unit written against the digits — 12ms, 3kB, 40°C — is still a number in a column
+            // of numbers; a word is not.
+            if character.isLetter || character == "°" {
+                guard digits > 0, cell.count - digits <= 3 else { return false }
+                continue
+            }
+            return false
+        }
+        return digits > 0
+    }
+
+    /// Whether this table is the same table as `other` with more rows under it — which is what a
+    /// table being written looks like, and the one shape a client may grow into rather than
+    /// redraw. Everything else is a different table and is drawn again from the top.
+    public func extends(_ other: MarkdownTable) -> Bool {
+        header == other.header && alignments == other.alignments
+            && rows.count >= other.rows.count
+            && Array(rows.prefix(other.rows.count)) == other.rows
+    }
+
     /// The table written back as the pipes it came from, for exports and copies that must stay
     /// markdown.
     public var markdown: String {
@@ -61,19 +112,20 @@ public struct MarkdownTable: Hashable, Sendable {
     /// `start` does not begin one. A table begins only where a header row is immediately
     /// followed by a delimiter row of the same width; body rows run until the first line that
     /// carries no pipe.
+    /// - Parameter limit: how many lines may be read. A line still being typed is not a row, so a
+    ///   caller reading an answer as it arrives stops the scan short of it.
     public static func scan(
-        _ lines: [String], from start: Int
+        _ lines: [String], from start: Int, limit: Int? = nil
     ) -> (table: MarkdownTable, end: Int)? {
-        guard start + 1 < lines.count,
+        let end = min(limit ?? lines.count, lines.count)
+        guard start + 1 < end,
             let header = columns(lines[start]),
             let alignments = delimiterRow(lines[start + 1]),
             alignments.count == header.count
         else { return nil }
         var rows: [[String]] = []
         var index = start + 2
-        while index < lines.count, delimiterRow(lines[index]) == nil,
-            let cells = columns(lines[index])
-        {
+        while index < end, delimiterRow(lines[index]) == nil, let cells = columns(lines[index]) {
             rows.append(cells)
             index += 1
         }

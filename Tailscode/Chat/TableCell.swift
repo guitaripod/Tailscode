@@ -1,10 +1,17 @@
 import TailscodeCore
 import UIKit
 
-/// A pipe table as columns rather than punctuation. Column widths start at each column's natural
-/// measure; when the sum outgrows the transcript, the widest column gives way first and its cells
-/// wrap, so a table fits a phone by folding its prose column, never by shrinking its numbers.
-/// What still cannot fit scrolls sideways under the finger instead of clipping.
+/// A pipe table as columns rather than punctuation. Column widths come from the shared arithmetic
+/// (`TableLayout`): each column asks for its widest cell, and when the row is wider than the
+/// transcript the wide columns give way together and wrap, so a table fits a phone by folding its
+/// prose column and never by shrinking its numbers. What still cannot fit scrolls sideways under
+/// the finger instead of clipping.
+///
+/// A table that is still being written grows a row at a time, and this cell grows with it: the
+/// rows already on screen stay exactly where they are, the new one is added under them, and a
+/// column may widen but never narrow. Rebuilding the grid on every arrival — which is what a
+/// reconfigure asks for — reset the sideways scroll under the reader's thumb and moved every
+/// column each time a cell arrived wider than the last.
 final class TableCell: UICollectionViewCell {
     static let reuseID = "TableCell"
 
@@ -13,6 +20,11 @@ final class TableCell: UICollectionViewCell {
     private var gridTop: NSLayoutConstraint!
     private var table: MarkdownTable?
     private var builtWidth: CGFloat = 0
+    private var widths: [CGFloat] = []
+    /// One column's width constraint on every row drawn so far, so a column that widens under the
+    /// writing widens in the rows already standing rather than only in the new one.
+    private var columnConstraints: [[NSLayoutConstraint]] = []
+    private var ruleWidth: NSLayoutConstraint?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -56,16 +68,25 @@ final class TableCell: UICollectionViewCell {
     func configure(_ table: MarkdownTable, width: CGFloat) {
         let available = max(120, width - Theme.Spacing.l * 2)
         guard table != self.table || abs(available - builtWidth) > 0.5 else { return }
+        let sameWidth = abs(available - builtWidth) <= 0.5
+        let grewFrom = sameWidth ? self.table.flatMap { table.extends($0) ? $0.rows.count : nil } : nil
         self.table = table
         builtWidth = available
+        if let grewFrom {
+            append(table, from: grewFrom)
+            return
+        }
         scroll.setContentOffset(.zero, animated: false)
-        Self.build(table, into: grid, fitting: available)
+        build(table, fitting: available)
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
         table = nil
         builtWidth = 0
+        widths = []
+        columnConstraints = []
+        ruleWidth = nil
     }
 
     /// The same grid for a surface whose width nobody knows yet — a subagent report card — built
@@ -75,35 +96,77 @@ final class TableCell: UICollectionViewCell {
         grid.axis = .vertical
         grid.alignment = .leading
         grid.spacing = Theme.Spacing.xs
-        build(table, into: grid, fitting: .greatestFiniteMagnitude)
+        var tracking = [[NSLayoutConstraint]](repeating: [], count: table.columnCount)
+        let widths = naturalWidths(of: table)
+        grid.addArrangedSubview(headerRow(table, widths: widths, tracking: &tracking))
+        grid.addArrangedSubview(rule(widths: widths).view)
+        fill(grid, table: table, widths: widths, from: 0, tracking: &tracking)
         return grid
     }
 
-    private static let columnGap = Theme.Spacing.m
+    private static let columnGap = CGFloat(TableLayout.gap)
 
-    private static func build(_ table: MarkdownTable, into grid: UIStackView, fitting: CGFloat) {
+    private func build(_ table: MarkdownTable, fitting: CGFloat) {
         grid.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let header = table.header.map { rendered($0, header: true) }
-        let body = table.rows.indices.map { row in
-            table.cells(in: row).map { rendered($0, header: false) }
-        }
-        let widths = columnWidths(header: header, body: body, fitting: fitting)
-        let tableWidth = widths.reduce(0, +) + columnGap * CGFloat(max(0, widths.count - 1))
+        widths = Self.widths(for: table, fitting: fitting, since: [])
+        columnConstraints = [[NSLayoutConstraint]](repeating: [], count: table.columnCount)
+        grid.addArrangedSubview(
+            Self.headerRow(table, widths: widths, tracking: &columnConstraints))
+        let seat = Self.rule(widths: widths)
+        ruleWidth = seat.width
+        grid.addArrangedSubview(seat.view)
+        Self.fill(grid, table: table, widths: widths, from: 0, tracking: &columnConstraints)
+    }
 
-        grid.addArrangedSubview(rowView(header, widths: widths, table: table))
-        let rule = UIView()
-        rule.backgroundColor = Theme.Color.separator
-        rule.translatesAutoresizingMaskIntoConstraints = false
-        rule.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
-        rule.widthAnchor.constraint(equalToConstant: tableWidth).isActive = true
-        grid.addArrangedSubview(rule)
-        for cells in body {
-            grid.addArrangedSubview(rowView(cells, widths: widths, table: table))
+    /// The rows that arrived since the last time, added under the ones already drawn.
+    private func append(_ table: MarkdownTable, from first: Int) {
+        let grown = Self.widths(for: table, fitting: builtWidth, since: widths)
+        if grown != widths {
+            widths = grown
+            for (column, constraints) in columnConstraints.enumerated() where column < grown.count {
+                for constraint in constraints { constraint.constant = grown[column] }
+            }
+            ruleWidth?.constant = CGFloat(TableLayout.width(of: grown.map(Double.init)))
+        }
+        Self.fill(grid, table: table, widths: widths, from: first, tracking: &columnConstraints)
+    }
+
+    private static func headerRow(
+        _ table: MarkdownTable, widths: [CGFloat], tracking: inout [[NSLayoutConstraint]]
+    ) -> UIView {
+        let cells = table.header.indices.map { column in
+            rendered(table.header[column], header: true, tabular: table.isNumeric(column: column))
+        }
+        return rowView(cells, widths: widths, table: table, tracking: &tracking)
+    }
+
+    private static func rule(widths: [CGFloat]) -> (view: UIView, width: NSLayoutConstraint) {
+        let view = UIView()
+        view.backgroundColor = Theme.Color.separator
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
+        let width = view.widthAnchor.constraint(
+            equalToConstant: CGFloat(TableLayout.width(of: widths.map(Double.init))))
+        width.isActive = true
+        return (view, width)
+    }
+
+    private static func fill(
+        _ grid: UIStackView, table: MarkdownTable, widths: [CGFloat], from first: Int,
+        tracking: inout [[NSLayoutConstraint]]
+    ) {
+        for row in table.rows.indices where row >= first {
+            let cells = table.cells(in: row).enumerated().map { column, text in
+                rendered(text, header: false, tabular: table.isNumeric(column: column))
+            }
+            grid.addArrangedSubview(
+                rowView(cells, widths: widths, table: table, tracking: &tracking))
         }
     }
 
     private static func rowView(
-        _ cells: [NSAttributedString], widths: [CGFloat], table: MarkdownTable
+        _ cells: [NSAttributedString], widths: [CGFloat], table: MarkdownTable,
+        tracking: inout [[NSLayoutConstraint]]
     ) -> UIView {
         let row = UIStackView()
         row.axis = .horizontal
@@ -120,51 +183,66 @@ final class TableCell: UICollectionViewCell {
             }
             label.translatesAutoresizingMaskIntoConstraints = false
             if column < widths.count {
-                label.widthAnchor.constraint(equalToConstant: widths[column]).isActive = true
+                let width = label.widthAnchor.constraint(equalToConstant: widths[column])
+                width.isActive = true
+                if column < tracking.count { tracking[column].append(width) }
             }
             row.addArrangedSubview(label)
         }
         return row
     }
 
-    private static func rendered(_ text: String, header: Bool) -> NSAttributedString {
+    private static func rendered(_ text: String, header: Bool, tabular: Bool = false)
+        -> NSAttributedString
+    {
         let color = header ? Theme.Color.secondaryLabel : Theme.Color.label
         let base = TextBubbleCell.rendered(text, color: color)
-        guard header else { return base }
-        let bold = NSMutableAttributedString(attributedString: base)
-        bold.addAttribute(
-            .font, value: Theme.Ramp.font(.rowTitleStrong),
-            range: NSRange(location: 0, length: bold.length))
-        return bold
+        guard header || tabular else { return base }
+        let styled = NSMutableAttributedString(attributedString: base)
+        let whole = NSRange(location: 0, length: styled.length)
+        if header {
+            styled.addAttribute(.font, value: Theme.Ramp.font(.rowTitleStrong), range: whole)
+        }
+        if tabular { applyTabularFigures(to: styled) }
+        return styled
     }
 
-    /// Natural widths, then the widest column gives way until the table fits — never below the
-    /// floor that keeps a word per line, so a hopeless fit scrolls instead of crushing.
-    private static func columnWidths(
-        header: [NSAttributedString], body: [[NSAttributedString]], fitting: CGFloat
-    ) -> [CGFloat] {
-        let floor: CGFloat = 56
-        var widths = header.indices.map { column -> CGFloat in
-            var cells = [header[column]]
-            for row in body where column < row.count { cells.append(row[column]) }
-            return cells.map { ceil($0.size().width) + 1 }.max() ?? floor
+    /// One digit width across a column of figures, so the numbers line up down the page rather
+    /// than drifting with whichever glyphs a row happens to use.
+    private static func applyTabularFigures(to text: NSMutableAttributedString) {
+        let whole = NSRange(location: 0, length: text.length)
+        text.enumerateAttribute(.font, in: whole) { value, range, _ in
+            guard let font = value as? UIFont else { return }
+            let descriptor = font.fontDescriptor.addingAttributes([
+                .featureSettings: [
+                    [
+                        UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+                        UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector,
+                    ]
+                ]
+            ])
+            text.addAttribute(
+                .font, value: UIFont(descriptor: descriptor, size: font.pointSize), range: range)
         }
-        let gaps = columnGap * CGFloat(max(0, widths.count - 1))
-        var total = widths.reduce(0, +) + gaps
-        while total > fitting {
-            guard let widest = widths.indices.max(by: { widths[$0] < widths[$1] }),
-                widths[widest] > floor
-            else { break }
-            let runnerUp = widths.indices.filter { $0 != widest }.map { widths[$0] }.max() ?? 0
-            let target = max(floor, max(runnerUp, widths[widest] - (total - fitting)))
-            let cut = min(widths[widest] - target, total - fitting)
-            guard cut > 0 else {
-                widths[widest] = max(floor, widths[widest] - (total - fitting))
-                break
+    }
+
+    private static func naturalWidths(of table: MarkdownTable) -> [CGFloat] {
+        (0..<table.columnCount).map { column in
+            let tabular = table.isNumeric(column: column)
+            let measures = table.column(column).enumerated().map { index, text -> CGFloat in
+                ceil(rendered(text, header: index == 0, tabular: tabular).size().width) + 1
             }
-            widths[widest] -= cut
-            total -= cut
+            return measures.max() ?? CGFloat(TableLayout.minimumColumn)
         }
-        return widths
+    }
+
+    /// Column widths from the shared arithmetic, measured in this cell's own font, and never
+    /// narrower than they were a moment ago.
+    private static func widths(
+        for table: MarkdownTable, fitting: CGFloat, since previous: [CGFloat]
+    ) -> [CGFloat] {
+        let natural = naturalWidths(of: table).map(Double.init)
+        let fresh = TableLayout.widths(natural: natural, fitting: Double(fitting))
+        return TableLayout.settled(fresh, since: previous.map(Double.init)).map { CGFloat($0) }
     }
 }

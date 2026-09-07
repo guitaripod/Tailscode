@@ -308,7 +308,9 @@ struct TranscriptRow: Hashable {
                     }
                     continue
                 }
-                for (index, segment) in MessageSegment.split(stripped).enumerated() {
+                for (index, segment) in MessageSegment.split(stripped, sealed: !message.isStreaming)
+                    .enumerated()
+                {
                     switch segment {
                     case .prose(let prose):
                         let palette = MatrixTheme.palette
@@ -577,7 +579,7 @@ struct TranscriptRow: Hashable {
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body, context: context)
         case .table(let table):
-            return Self.table(table)
+            return Self.table(table, key: key)
         case .reasoning(let text):
             return Self.reasoning(text, key: key, context: context)
         case .tool(let call):
@@ -630,10 +632,10 @@ struct TranscriptRow: Hashable {
     /// Markdown as the transcript renders it — headings, emphasis, lists, links, fenced code with
     /// its own copy — for prose that lives outside the transcript: a compaction summary in the
     /// reader, where the CLI's own formatting is the only structure the text has.
-    static func richBody(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
+    static func richBody(_ text: String, key: String = "rich") -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         let palette = MatrixTheme.palette
-        for segment in MessageSegment.split(text) {
+        for (index, segment) in MessageSegment.split(text).enumerated() {
             switch segment {
             case .prose(let prose):
                 for chunk in paragraphChunks(prose) {
@@ -644,30 +646,45 @@ struct TranscriptRow: Hashable {
             case .code(let language, let body):
                 gtk_box_append(ptr(column), codeBlock(language: language, body: body, context: nil))
             case .table(let table):
-                gtk_box_append(ptr(column), Self.table(table))
+                gtk_box_append(ptr(column), Self.table(table, key: "\(key):s\(index)"))
             }
         }
         return column
     }
 
-    /// A pipe table as columns: GtkGrid does the sizing, a hairline seats the header, and every
-    /// cell is a wrapping label carrying its inline markdown — so a wide table folds its longest
-    /// column instead of running out of the pane.
-    static func table(_ table: MarkdownTable) -> UnsafeMutablePointer<GtkWidget> {
+    /// A pipe table as columns. The columns are sized by the shared arithmetic rather than by a
+    /// flat cap every client picked differently: each column asks for the width of its widest
+    /// cell, and when the row is wider than a comfortable measure the wide columns give way
+    /// together — so a six-column table folds instead of running the pane out, and a two-column
+    /// one uses the room it has. A column of figures is set on one digit width so the numbers line
+    /// up down the page. What still does not fit scrolls sideways inside the row rather than
+    /// pushing the pane wider or being clipped.
+    ///
+    /// Widths only ever grow while the answer is being written: each new body row can make a
+    /// column want more, and a column that narrowed to pay for it would move every column on the
+    /// screen under a reader who is reading the rows already there.
+    static func table(_ table: MarkdownTable, key: String) -> UnsafeMutablePointer<GtkWidget> {
         let palette = MatrixTheme.palette
         let widget = gtk_grid_new()!
         let grid: UnsafeMutablePointer<GtkGrid> = ptr(UnsafeMutableRawPointer(widget))
         Gtk.addClass(widget, "md-table")
-        gtk_grid_set_column_spacing(grid, 16)
+        gtk_grid_set_column_spacing(grid, guint(Self.tableGap * Self.tableCharacter))
         gtk_grid_set_row_spacing(grid, 3)
         gtk_widget_set_halign(widget, GTK_ALIGN_START)
+        gtk_widget_set_valign(widget, GTK_ALIGN_START)
+
+        let widths = Self.tableWidths(table, key: key)
 
         func cell(_ text: String, header: Bool, column: Int) -> UnsafeMutablePointer<GtkWidget> {
-            let inline = PangoMarkdown.inline(text, code: palette.info, accent: palette.accent)
+            var inline = PangoMarkdown.inline(text, code: palette.info, accent: palette.accent)
+            if header { inline = "<b>\(inline)</b>" }
+            if table.isNumeric(column: column) {
+                inline = "<span font_features=\"tnum=1\">\(inline)</span>"
+            }
             let label = Gtk.markupLabel(
-                header ? "<b>\(inline)</b>" : inline,
-                css: header ? "md-table-header" : "md-table-cell")
-            gtk_label_set_max_width_chars(op(label), 40)
+                inline, css: header ? "md-table-header" : "md-table-cell")
+            gtk_label_set_wrap(op(label), 1)
+            gtk_label_set_max_width_chars(op(label), Int32(widths[column].rounded()))
             gtk_widget_set_halign(label, GTK_ALIGN_FILL)
             gtk_widget_set_valign(label, GTK_ALIGN_START)
             switch table.alignment(of: column) {
@@ -675,6 +692,15 @@ struct TranscriptRow: Hashable {
             case .center: gtk_label_set_xalign(op(label), 0.5)
             case .trailing: gtk_label_set_xalign(op(label), 1)
             }
+            // A cell is as wide as it asks to be and no narrower. A wrapping label's minimum is
+            // its longest word, so a table in a narrow pane folded every column into a stack of
+            // single words — a hundred points of table asking for two thousand, and that much
+            // blank page under it. Pinned, the table keeps its shape and the pane reaches the
+            // rest of it sideways.
+            var minimum: Int32 = 0
+            var natural: Int32 = 0
+            gtk_widget_measure(label, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural, nil, nil)
+            gtk_widget_set_size_request(label, natural, -1)
             return label
         }
 
@@ -691,7 +717,37 @@ struct TranscriptRow: Hashable {
                     Int32(column), Int32(row + 2), 1, 1)
             }
         }
-        return widget
+
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER)
+        gtk_scrolled_window_set_child(op(scroller), widget)
+        gtk_widget_set_hexpand(scroller, 1)
+        Gtk.addClass(scroller, "md-table-scroll")
+        return scroller
+    }
+
+    /// A comfortable measure for one table row, in characters. Wide enough for a table of prose to
+    /// read as prose, narrow enough that the pane is never dragged out by one.
+    private static let tableMeasure: Double = 108
+    private static let tableGap: Double = 2
+    private static let tableMinimum: Double = 8
+    /// How wide a character is, near enough, for turning the gap into the grid's pixel spacing.
+    private static let tableCharacter: Double = 8
+
+    /// What the current widths are for this table, never narrower than the last time it was drawn.
+    /// Widgets are built on the main thread and nowhere else.
+    nonisolated(unsafe) private static var tableWidthMemo: [String: [Double]] = [:]
+
+    private static func tableWidths(_ table: MarkdownTable, key: String) -> [Double] {
+        let natural = (0..<table.columnCount).map { column in
+            Double(table.column(column).map(\.count).max() ?? 1)
+        }
+        let fresh = TableLayout.widths(
+            natural: natural, fitting: tableMeasure, gap: tableGap, minimum: tableMinimum)
+        let widths = TableLayout.settled(fresh, since: tableWidthMemo[key] ?? [])
+        tableWidthMemo[key] = widths
+        if tableWidthMemo.count > 400 { tableWidthMemo = [key: widths] }
+        return widths
     }
 
     /// Bounded labels: one Pango layout over forty thousand words takes a visible pause to
