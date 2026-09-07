@@ -101,9 +101,13 @@ public enum ModelPreferenceStore {
 }
 
 /// The last few models picked anywhere, surfaced as a "Recent" section at the
-/// top of the model picker (opencode catalogs run to hundreds of models).
+/// top of the model picker (opencode catalogs run to hundreds of models) and as
+/// the whole of the quick menu, which is why it holds a menu's worth: a menu
+/// that is only this person's own reaching is exactly as long as this list, and
+/// a shorter list left the menu two rows tall on a machine running dozens.
 public enum RecentModelsStore {
     static let storageKey = "tailscode.recentModels"
+    static let limit = ModelChooser.recentLimit
 
     public static func all() -> [ModelSelection] {
         (UserDefaults.standard.stringArray(forKey: storageKey) ?? [])
@@ -114,7 +118,7 @@ public enum RecentModelsStore {
         var raw = UserDefaults.standard.stringArray(forKey: storageKey) ?? []
         raw.removeAll { $0 == selection.rawValue }
         raw.insert(selection.rawValue, at: 0)
-        UserDefaults.standard.set(Array(raw.prefix(5)), forKey: storageKey)
+        UserDefaults.standard.set(Array(raw.prefix(limit)), forKey: storageKey)
     }
 }
 

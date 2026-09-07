@@ -588,7 +588,7 @@ public enum ModelChooserCommand: Sendable, Equatable {
 /// A row is a name, and under it only what settles which model this is. What a row wears is what
 /// would stop a send — a used-up window — or what the whole catalog does not share.
 public struct ModelChooser: Sendable, Equatable {
-    public static let recentLimit = 5
+    public static let recentLimit = 8
     /// How many of your own the Yours section holds before it stops being short.
     public static let yoursLimit = 8
 
