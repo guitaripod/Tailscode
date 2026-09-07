@@ -1558,12 +1558,13 @@ public struct ModelChooser: Sendable, Equatable {
         return id
     }
 
-    /// The models worth offering without opening the whole thing: what the person picked recently,
-    /// whatever is picked now, and — for a catalog small enough to read in one glance — all of it.
-    /// The quick menu and the full chooser are the same list at two lengths, never two lists.
-    /// The quick menu's answer, over every server you have: what this chat runs, then your
-    /// stars, then what you reached for lately, then the local floor. The same order the full
-    /// directory opens on, cut to menu length — two surfaces, one list.
+    /// The quick menu's answer, over every server you have: what this chat runs, then your stars,
+    /// then what you reached for lately — and nothing else. A menu is a record of the person's own
+    /// reaching, so it is exactly as long as that record: padding the remaining slots with whatever
+    /// the machines happen to run themselves buried two models somebody uses under six they never
+    /// picked, and made the same model appear twice because a second server also offers it. The
+    /// full directory is one row away and is where a model nobody has picked yet is found. The
+    /// same order the full directory opens on, cut to menu length — two surfaces, one list.
     public static func shortlist(
         sources: [ModelSource], selected: ModelSelection?, limit: Int = 8,
         recents: [ModelSelection] = RecentModelsStore.all(),
@@ -1580,8 +1581,21 @@ public struct ModelChooser: Sendable, Equatable {
         if let selected { admit(candidates.first { !$0.isElsewhere && $0.carries(selected) }) }
         for selection in favorites { admit(candidates.first { $0.carries(selection) }) }
         for selection in recents { admit(candidates.first { $0.carries(selection) }) }
-        for candidate in candidates where candidate.isLocal { admit(candidate) }
+        if result.isEmpty { seedUntouched(candidates, admit: admit) }
         return result
+    }
+
+    /// What a menu offers a device that has picked nothing yet. There is no history to show and an
+    /// empty menu teaches nothing, so it opens on the models the machines run themselves — the ones
+    /// that cost nothing to try — one per model rather than one per server offering it.
+    private static func seedUntouched(
+        _ candidates: [ModelCandidate], admit: (ModelCandidate?) -> Void
+    ) {
+        var seen: Set<String> = []
+        for candidate in candidates where candidate.isLocal {
+            guard seen.insert(candidate.name.lowercased()).inserted else { continue }
+            admit(candidate)
+        }
     }
 
     public static func shortlist(
@@ -1843,12 +1857,28 @@ public enum ModelChooserCheck {
         expect(!pinned.isFavorite(probe), "and toggles off")
 
         let quick = ModelChooser.shortlist(
-            sources: [studio, homelab], selected: nil, limit: 4,
+            sources: [studio, homelab], selected: nil, limit: 4, recents: [],
             favorites: [ModelSelection(providerID: "openrouter", modelID: "anthropic/claude-sonnet-4.5")])
         expect(quick.first?.name != nil && quick.count <= 4, "the quick list keeps its length")
         expect(
             quick.contains { $0.name == "Claude Sonnet 4.5" },
             "a star from another door still makes the quick list")
+
+        let reached = ModelChooser.shortlist(
+            sources: [studio, homelab], selected: nil, limit: 8,
+            recents: [ModelSelection(providerID: "anthropic", modelID: "opus")], favorites: [])
+        expect(
+            reached.count == 1 && reached.first?.name == "Opus",
+            "a quick menu is what the person reached for, never padded out with models they never picked")
+
+        let mirror = ModelSource(
+            profileID: "mirror", name: "mirror", backend: .openCode, models: catalog,
+            isCurrent: false, allowsServerDefault: true, acceptsAnyModelID: false)
+        let untouched = ModelChooser.shortlist(
+            sources: [studio, homelab, mirror], selected: nil, limit: 8, recents: [], favorites: [])
+        expect(
+            untouched.count == 1 && untouched.first?.name == "Qwen3",
+            "a device that has picked nothing opens on what the machines run themselves, once per model")
 
         fleet.search("claude-opus-4-5-20260101")
         expect(fleet.emptyResult == nil, "a name the catalog lacks is not the end of the list")
