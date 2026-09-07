@@ -110,10 +110,11 @@ let package = Package(
 /// never be built from an unpublished working copy.
 enum Kit {
     static let remote = "https://github.com/guitaripod/CodingAgentKit.git"
-    /// 0.24.1 carries the omp bridge's `contextWindow` into `ModelInfo`; 0.24.2 corrects the
-    /// claude-bridge table (fable, opus and sonnet run a million-token window); 0.25.0 carries
-    /// the delegate daemon's class and mode policies and its auth mode on the capabilities.
-    static let version = Version(0, 25, 0)
+    /// 0.24.2 corrects the claude-bridge model table (fable, opus and sonnet run a million-token
+    /// window); 0.25.0 carries the delegate daemon's class and mode policies and its auth mode on
+    /// the capabilities; 0.26.0 carries `BackgroundWork` — the work an agent's process holds
+    /// between turns — on the session, the revision, the transcript and the conversation state.
+    static let version = Version(0, 26, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
