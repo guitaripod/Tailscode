@@ -3231,9 +3231,11 @@ final class TranscriptViewController: NSViewController {
             followsBottom = false
             // The room shrinking under the prompt drags the scrollable range up with it, and the
             // clip reports that clamp as a scroll nobody made. While the canvas holds, the pinned
-            // origin *is* the end of the range: short of it is a hand on the page, at it is the
-            // room being taken back.
-            if scrollView.contentView.bounds.origin.y < maxScrollOrigin() - 1 {
+            // origin *is* the end of the *visible* range: short of it is a hand on the page, at it
+            // is the room being taken back. An answer is laid out whole and revealed a glyph at a
+            // time, so the laid-out end runs past the pin by the text nobody has been shown yet,
+            // and a pin measured against it let go on the first frame of the answer.
+            if scrollView.contentView.bounds.origin.y < visibleScrollOrigin() - 1 {
                 canvasPinned = false
                 canvasRising = false
                 canvasRiseDeadline = nil

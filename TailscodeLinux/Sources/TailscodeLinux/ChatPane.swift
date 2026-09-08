@@ -3582,12 +3582,21 @@ final class ChatPane: @unchecked Sendable {
     /// under the prompt drags that range up with it, and GTK reports the clamp as a value nobody
     /// set — while the canvas holds, the pinned value *is* the end of the range, so short of the
     /// end is a hand on the page and at the end is the room being taken back.
+    ///
+    /// The end that counts is the *visible* one. An answer is laid out in full the moment it
+    /// arrives and revealed a glyph at a time, so from the first word of streaming the range runs
+    /// past the pin by exactly the text nobody has been shown yet — and a pin measured against the
+    /// laid-out end read its own held position as a hand on the page and let go on the first
+    /// frame of the answer.
     private func scrolledShortOfTheEnd() -> Bool {
         guard let scroller = transcriptScroller,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
         else { return false }
         let ceiling =
-            gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment)
+            FreshCanvas.visibleEnd(
+                contentHeight: gtk_adjustment_get_upper(adjustment),
+                unrevealed: unrevealedHeight())
+            - gtk_adjustment_get_page_size(adjustment)
         return gtk_adjustment_get_value(adjustment) < ceiling - 1
     }
 
