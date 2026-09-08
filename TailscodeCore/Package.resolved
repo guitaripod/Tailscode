@@ -1,5 +1,5 @@
 {
-  "originHash" : "786a6429a5ed9e751d2821366cee5737af686e58a84264c578c50e8b14cf851e",
+  "originHash" : "0cc89660bdd73ff0b58001cb83d8cd52a7efb0ee3e684d07a1b1b3429f7122c5",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/guitaripod/CodingAgentKit.git",
       "state" : {
-        "revision" : "3e78cc7d3d9988f59fcb8d81d7c23b82d5fc0b01",
-        "version" : "0.24.2"
+        "revision" : "70d77e141e405a32ea9c9ff3bf4fbfeed029ef06",
+        "version" : "0.27.0"
       }
     },
     {
@@ -123,8 +123,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-http-types.git",
       "state" : {
-        "revision" : "6c8ca8297332ea2780c45e1bce9d7fd2a8b51e1d",
-        "version" : "1.7.0"
+        "revision" : "bff4b6903cdc99dda49649dd52f46c11cfd3ed50",
+        "version" : "1.8.0"
       }
     },
     {
@@ -132,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
-        "revision" : "3ffafb9722d5d918c614feb496c8789a3b59d222",
-        "version" : "1.15.0"
+        "revision" : "9c6fb14227f55d8f711ce3847dc2f419fb0ecacb",
+        "version" : "1.15.1"
       }
     },
     {
