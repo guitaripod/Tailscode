@@ -660,6 +660,8 @@ final class MainWindowController: NSWindowController {
         var chooser = PaneChooser(
             servers: chooserServers, entries: sidebar.allEntries, preferredServer: serverID)
         chooser.watchSummary = watchSummary
+        // The Mac has no pane that paints, so the row that offers one would answer with nothing.
+        chooser.offersDrawing = false
         #if TAILSCODE_MAS
             chooser.offersWatching = false
             chooser.offersBrowsing = false
@@ -751,7 +753,7 @@ final class MainWindowController: NSWindowController {
                 pane.showWeb(nil)
                 splitPanes.persist()
             #endif
-        case .chooseServer, .allChats, .back:
+        case .draw, .chooseServer, .allChats, .back:
             break
         }
     }
