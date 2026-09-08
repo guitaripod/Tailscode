@@ -69,6 +69,26 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.39" date="2026-09-08">
+      <description>
+        <p>Sending a message puts it at the top of the window, every time. The prompt you just sent rises and the answer streams onto an empty page under it — a rise that used to miss on exactly the conversations where it matters most: a long transcript, a prompt with a picture clipped to it, a message sent again after it failed, the first message in a brand-new chat. The app now waits for the row to be measurable instead of quietly giving the motion up, checks afterwards that the prompt really landed at the top, and puts it back whenever the page moves under it. A tap on the transcript, the keyboard coming up, or the server&#x27;s own copy of your message replacing yours no longer undoes it.</p>
+        <p>Tables are readable while they are being written. A row still being typed is no longer drawn with a cell cut in half and rewritten a moment later, a header no longer appears as a line of raw pipes while it waits for the line under it, and a column can widen as the table grows but never narrows — so the rows you are already reading stay where they are. Columns are also sized the same way everywhere now: each asks for its widest cell, the wide ones give way together when the row will not fit, a column of figures is set on one digit width so the numbers line up, and a table too wide for the screen scrolls sideways instead of being squeezed or clipped.</p>
+        <p>The model menu is what you actually reach for. It used to fill its empty slots with every local model on every server, so two models you had picked sat under six you had never chosen, and the same model appeared twice because a second machine also offered it. It now ends at this chat&#x27;s model, your stars and your recents — eight of them, enough to fill the menu — with the full directory one row away.</p>
+      </description>
+    </release>
+    <release version="1.38" date="2026-09-07">
+      <description>
+        <p>A conversation that is still working on the machine no longer looks finished. When Claude Code starts a long command or an agent in the background and hands you back the prompt, the chat used to go quiet — no spinner, no badge, nothing to say the test it kicked off was still running and that it would come back with the results. Now the server reports the work as long as it runs, and every surface wears it: the chat sits in LIVE NOW with a BACKGROUND pill and a breathing timer badge, the row&#x27;s second line quotes the task in the agent&#x27;s own words, the chat&#x27;s own status reads the count, the orb at the top of Home breathes with one satellite for it, and a screen reader hears that the agent continues on its own when the work ends. The prompt stays open the whole time, because Claude accepts your next message while it waits. Requires the latest claude-bridge on the server; nothing changes for opencode or Oh My Pi, which have no background tasks to report.</p>
+      </description>
+    </release>
+    <release version="1.37" date="2026-09-07">
+      <description>
+        <p>A conversation never goes quiet on you again. A turn that ended while the phone was in your pocket, a socket that dropped for a second, a Claude Code turn whose last frame never arrived — each of these used to leave the chat looking busy until you sent something else. The app now keeps its place through a dropped socket and says Reconnecting while it dials again, re-reads the transcript beside every redial so nothing said in between is lost, reads the server&#x27;s own word on whether a turn is open every time it looks, and redials the moment you come back to a chat instead of waiting for a watchdog.</p>
+        <p>opencode: a turn waiting on the provider between retries shows as still running rather than as a failure that ends it, and the server&#x27;s keepalive no longer counts as the conversation speaking, so a turn run by another process on that machine renders live again.</p>
+        <p>Oh My Pi: a turn the engine dropped is closed on the server&#x27;s own clock rather than by your next prompt, and an engine that exits mid-turn ends it at once with its reason.</p>
+        <p>Delegate got easy: picking a class fills the verifier, one sentence under the ladder says where a run starts and how far it climbs, every rung wears its pass rate for that class, a settled run names its next move, a machine with no dispatcher shows the commands that give it one, a run you follow taps your shoulder when it waits for you or ends, and the daemon trusts the tailnet so there is no password to paste.</p>
+      </description>
+    </release>
     <release version="1.36" date="2026-09-05">
       <description>
         <p>The quick ask on the Mac and Linux desktops now shows every server as a strip above the field: each machine is a segment named and wearing its agent's symbol, the aimed one selected, and a click or Tab moves the question to the next machine without a menu in between. A fleet too wide for segments becomes one popup. The line under the field says how to send and how to switch.</p>

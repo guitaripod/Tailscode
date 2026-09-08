@@ -13,9 +13,14 @@ Game Center build declares Game Center before it is offered for review, and a
 version still reading PREPARE_FOR_SUBMISSION at the end is a failure however
 cleanly the calls returned.
 
+Every version is set to release automatically once Apple approves it. Manual release — an
+approved build sitting there until somebody presses a button — is `--manual-release` and nothing
+else.
+
 Usage: python3 scripts/asc-release.py <marketing-version> <build-number>
        python3 scripts/asc-release.py 1.9 25 --no-submit
        python3 scripts/asc-release.py 1.26 119 --platform=macos   # the Mac train, notes from "<version>-macos"
+       python3 scripts/asc-release.py 1.39 137 --manual-release   # hold it for a hand
 """
 import json
 import os
@@ -29,6 +34,9 @@ import asc  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = "6791660932"
 PLATFORM = "MAC_OS" if "--platform=macos" in sys.argv else "IOS"
+# Approval is the last gate: an approved build goes on sale by itself. `--manual-release` is the
+# deliberate exception, never the default.
+RELEASE_TYPE = "MANUAL" if "--manual-release" in sys.argv else "AFTER_APPROVAL"
 
 
 def die(message: str) -> NoReturn:
@@ -42,7 +50,7 @@ def version_record(marketing: str) -> dict:
     ).get("data", []):
         if row["attributes"]["versionString"] == marketing:
             print(f"version {marketing} exists ({row['attributes']['appStoreState']})")
-            return row
+            return ensure_release_type(row)
     created = asc.post(
         "/v1/appStoreVersions",
         {
@@ -51,14 +59,40 @@ def version_record(marketing: str) -> dict:
                 "attributes": {
                     "platform": PLATFORM,
                     "versionString": marketing,
-                    "releaseType": "MANUAL",
+                    "releaseType": RELEASE_TYPE,
                 },
                 "relationships": {"app": {"data": {"type": "apps", "id": APP}}},
             }
         },
     )["data"]
-    print(f"version {marketing} created")
+    print(f"version {marketing} created, releasing {RELEASE_TYPE}")
     return created
+
+
+def ensure_release_type(row: dict) -> dict:
+    """Approval is the last gate. A version left on manual release is finished work waiting on
+    somebody to open a browser and press a button, which is the one step nobody asked for — so the
+    release type is set on every run rather than only at creation, because a version record made
+    earlier (by an earlier run, or by hand) carries whatever it was made with."""
+    current = row["attributes"].get("releaseType")
+    if current == RELEASE_TYPE:
+        return row
+    asc.patch(
+        f"/v1/appStoreVersions/{row['id']}",
+        {
+            "data": {
+                "type": "appStoreVersions",
+                "id": row["id"],
+                "attributes": {"releaseType": RELEASE_TYPE},
+            }
+        },
+    )
+    read = asc.get(f"/v1/appStoreVersions/{row['id']}")["data"]
+    got = read["attributes"].get("releaseType")
+    if got != RELEASE_TYPE:
+        die(f"release type is {got}, not {RELEASE_TYPE} — the version would wait to be released")
+    print(f"release type {current} -> {RELEASE_TYPE}")
+    return read
 
 
 def write_notes(version_id: str, marketing: str) -> None:
