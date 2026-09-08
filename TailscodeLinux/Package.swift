@@ -113,8 +113,10 @@ enum Kit {
     /// 0.24.2 corrects the claude-bridge model table (fable, opus and sonnet run a million-token
     /// window); 0.25.0 carries the delegate daemon's class and mode policies and its auth mode on
     /// the capabilities; 0.26.0 carries `BackgroundWork` — the work an agent's process holds
-    /// between turns — on the session, the revision, the transcript and the conversation state.
-    static let version = Version(0, 26, 0)
+    /// between turns — on the session, the revision, the transcript and the conversation state;
+    /// 0.27.0 reads the stored profile list an entry at a time, so one server whose backend a
+    /// build has no case for costs only itself rather than every server on the machine.
+    static let version = Version(0, 27, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
