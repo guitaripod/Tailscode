@@ -38,7 +38,12 @@ public actor ServerDirectory {
             return
         }
         ephemeralPasswords = [:]
-        var listed = (try? store.profiles()) ?? []
+        var listed: [ConnectionProfile] = []
+        do {
+            listed = try store.profiles()
+        } catch {
+            AppLog.write(.persistence, "stored servers unreadable — showing none: \(error)")
+        }
         demoMode = DemoMode.isActive
         if demoMode {
             listed.append(contentsOf: DemoWorld.profiles)

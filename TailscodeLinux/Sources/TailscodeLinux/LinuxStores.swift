@@ -62,17 +62,22 @@ public struct LinuxProfileStore: Sendable {
     }
 
     public func profiles() throws -> [ConnectionProfile] {
-        guard let data = try? Data(contentsOf: url) else { return [] }
-        return try JSONDecoder().decode([ConnectionProfile].self, from: data)
+        try file().known
+    }
+
+    /// Every read behind `save`/`delete` goes through here rather than through `profiles()`, so a
+    /// server whose backend this build has no case for survives the rewrite instead of being erased
+    /// by a version that merely does not know it yet.
+    private func file() throws -> ProfileFile {
+        guard let data = try? Data(contentsOf: url) else { return ProfileFile() }
+        return try ProfileFile.read(data)
     }
 
     public func save(_ profile: ConnectionProfile, password: String?) throws {
-        var all = try profiles().filter { $0.id != profile.id }
-        all.append(profile)
+        var stored = try file()
+        stored.replace(profile)
         try XDG.ensureDataDirectory()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(all).write(to: url, options: .atomic)
+        try stored.encoded().write(to: url, options: .atomic)
         if let password, !password.isEmpty {
             try secrets.setValue(password, for: profile.id)
         } else {
@@ -81,10 +86,9 @@ public struct LinuxProfileStore: Sendable {
     }
 
     public func delete(id: String) throws {
-        let remaining = try profiles().filter { $0.id != id }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(remaining).write(to: url, options: .atomic)
+        var remaining = try file()
+        remaining.remove(id: id)
+        try remaining.encoded().write(to: url, options: .atomic)
         try? secrets.removeValue(for: id)
     }
 
