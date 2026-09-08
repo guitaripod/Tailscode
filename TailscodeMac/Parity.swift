@@ -194,6 +194,9 @@ enum ParityManifest {
                     "no chooser row offers a page, no layout restores one, and there is no other way in, so this copy holds no browser at all"),
                 because:
                     "WebTarget takes any address, a bare host, or words to look up, which is the whole of what the age rating means by unrestricted web access — and the person who asked for this build says he has never opened a page in a pane on either desktop. A feature nobody uses is not worth re-rating a shared record over, so the store copy simply does not have one.")
+        case .imageGenSlot:
+            return .gap(
+                "Core's slot model, ComfyUI client and chooser row are shared, but the Mac has no pane that paints and no row that offers one; a layout snapshot that held a draw slot restores an empty pane")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("onChatDropped")
         case .clickToActivate: return .implemented("pressLanded")

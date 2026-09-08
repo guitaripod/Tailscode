@@ -144,6 +144,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case watchDirectory
     case watchAccounts
     case browserSlot
+    case imageGenSlot
     case hapticFeedback
     case homeQuickActions
     case usageWidgets
@@ -729,6 +730,10 @@ public enum CapabilityRegistry {
             id: .browserSlot, area: "splits", title: "Browser slot in the split grid",
             spec:
                 "A pane can hold a web page. WebTarget reads an address, a bare host, a port on this machine or words to look up; the page renders inside the grid with the platform's own engine, and every split verb treats it like any other pane. The slot asks for an address when it is empty, wears the page's own title in its identity strip, and claims only the chords a browser owns (ctrl+l, ctrl+r, alt+←→, ctrl+±/0, esc) so every other key belongs to the page."),
+        CapabilityDefinition(
+            id: .imageGenSlot, area: "splits", title: "Draw slot in the split grid",
+            spec:
+                "A pane can paint. ImageGenEndpoint names the ComfyUI server that does the work, ImageGenSlot holds the ask — words, an engine (Qwen for quality, Klein for speed), an aspect, and either a blank canvas or a picture handed in to edit — and the slot queues the render, watches it, and keeps every picture it finished, newest first, each one captioned with the words and the seconds that made it. The pane is a pane like any other: it splits, the dividers resize it, zoom hides its siblings, closing it hands the space back, and the layout snapshot restores the endpoint and the last prompt. An empty slot asks what to draw with the chips already showing, a painting one shows its progress in its own body, and a finished one puts the picture where the work is — beside the conversation that asked for it. What it costs is stated rather than discovered: the render runs on the machine ComfyUI runs on, not in this pane's grid."),
         CapabilityDefinition(
             id: .videoSlot, area: "splits", title: "Video slot in the split grid",
             spec:

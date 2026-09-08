@@ -455,15 +455,19 @@ public struct SplitSnapshot: Codable, Sendable, Equatable {
     public let videos: [String: String]
     /// The page each browser slot ended on, by pane — a slot restores what it was reading.
     public let pages: [String: String]
+    /// The draw slot each pane held: the ComfyUI endpoint and the last prompt, as one encoded
+    /// line — a slot restores the machine it painted on and the words it was last given.
+    public let draws: [String: String]
 
     public init(
         layout: SplitLayout, sessions: [String: SplitPaneSession], videos: [String: String] = [:],
-        pages: [String: String] = [:]
+        pages: [String: String] = [:], draws: [String: String] = [:]
     ) {
         self.layout = layout
         self.sessions = sessions
         self.videos = videos
         self.pages = pages
+        self.draws = draws
     }
 
     public init(from decoder: Decoder) throws {
@@ -472,6 +476,7 @@ public struct SplitSnapshot: Codable, Sendable, Equatable {
         sessions = try container.decode([String: SplitPaneSession].self, forKey: .sessions)
         videos = try container.decodeIfPresent([String: String].self, forKey: .videos) ?? [:]
         pages = try container.decodeIfPresent([String: String].self, forKey: .pages) ?? [:]
+        draws = try container.decodeIfPresent([String: String].self, forKey: .draws) ?? [:]
     }
 
     public var encoded: String? {
@@ -497,5 +502,11 @@ public struct SplitSnapshot: Codable, Sendable, Equatable {
 
     public func page(for pane: PaneID) -> WebTarget? {
         pages[pane.raw].flatMap(WebTarget.classify)
+    }
+
+    /// The draw slot a pane held, decoded leniently — a snapshot written before draw slots
+    /// existed still restores, and a slot that cannot come back restores as empty.
+    public func draw(for pane: PaneID) -> String? {
+        draws[pane.raw]
     }
 }

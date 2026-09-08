@@ -511,6 +511,30 @@ final class MainWindow: @unchecked Sendable {
                     pane.showWeb(WebTarget.classify(argument))
                     FileHandle.standardOutput.write(
                         Data("BROWSE \(pane.webSummary ?? "-")\n".utf8))
+                case "draw":
+                    let pane = self.activePane
+                    pane.showDraw(
+                        argument.isEmpty ? nil : ImageGenEndpoint(address: argument))
+                    FileHandle.standardOutput.write(
+                        Data("DRAW \(pane.isDrawing ? pane.drawEndpoint?.address ?? "-" : "-")\n"
+                            .utf8))
+                case "drawtype":
+                    self.activePane.draw?.driverType(argument)
+                    let typed = self.activePane.draw.map { pane in
+                        gtk_editable_get_text(op(pane.entry)).map(String.init(cString:)) ?? ""
+                    } ?? ""
+                    FileHandle.standardOutput.write(
+                        Data("DRAWTYPE \(typed.isEmpty ? "-" : typed)\n".utf8))
+                case "drawgo":
+                    self.activePane.draw?.driverSubmit()
+                    FileHandle.standardOutput.write(
+                        Data("DRAWGO \(self.activePane.draw?.slot.isBusy ?? false)\n".utf8))
+                case "drawsum":
+                    let lines = self.activePane.draw?.slot.pictures.map {
+                        ($0.name, $0.prompt)
+                    } ?? []
+                    FileHandle.standardOutput.write(
+                        Data("DRAWSUM \(lines)\n".utf8))
                 case "forge":
                     let forge = self.presentForge()
                     if !argument.isEmpty { forge.demonstrate(argument) }
@@ -2469,6 +2493,10 @@ final class MainWindow: @unchecked Sendable {
             splitHost.persist()
         case .watch:
             pane.showVideo(nil)
+            splitHost.focus(pane, grabKeyboard: false)
+            splitHost.persist()
+        case .draw:
+            pane.showDraw(nil)
             splitHost.focus(pane, grabKeyboard: false)
             splitHost.persist()
         case .chooseServer, .allChats, .back:

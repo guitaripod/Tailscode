@@ -41,6 +41,7 @@ public enum PaneChooserAction: Sendable, Equatable {
     case allChats(profileID: String)
     case watch
     case browse
+    case draw
     case back
 }
 
@@ -111,6 +112,9 @@ public struct PaneChooser: Sendable, Equatable {
     /// Whether this client can actually open a page in a pane. Same rule as ``offersWatching``:
     /// a chooser offers what pressing it would do, and the sandboxed build ships no browser.
     public var offersBrowsing = true
+    /// Whether this client can actually open a draw slot. Same rule as ``offersWatching``:
+    /// a chooser offers what pressing it would do, and a client without the pane owes a refusal.
+    public var offersDrawing = true
 
     /// - Parameter preferredServer: the server the pane was already looking at, if any; it is
     ///   pre-focused rather than pre-chosen, so the question is still asked and still answerable
@@ -205,6 +209,13 @@ public struct PaneChooser: Sendable, Equatable {
         action: .browse, title: Localized.text("Open a page…"),
         detail: Localized.text("A site, a localhost port, or a search"))
 
+    /// The third answer that is not a machine: a picture, painted in this pane, beside the work
+    /// it belongs to. The cost line states where the render actually runs, before anyone asks.
+    static let drawRow = PaneChooserRow(
+        action: .draw, title: Localized.text("Draw something…"),
+        detail: Localized.text("Paint a picture from words, or edit one"),
+        note: ImageGenNotice.splitCostLine)
+
     private var serverRows: [PaneChooserRow] {
         guard !servers.isEmpty else {
             return [
@@ -225,6 +236,7 @@ public struct PaneChooser: Sendable, Equatable {
                 detail: [server.address, Localized.text("%@ chats", "\(count)")].joined(
                     separator: " · "), badge: badge)
         } + (offersWatching ? [watchRow] : []) + (offersBrowsing ? [Self.browseRow] : [])
+            + (offersDrawing ? [Self.drawRow] : [])
     }
 
     private func chats(on profileID: String) -> [SessionEntry] {
@@ -264,7 +276,7 @@ public struct PaneChooser: Sendable, Equatable {
         case .back:
             back()
             return nil
-        case .openChat, .newChat, .addServer, .watch, .browse:
+        case .openChat, .newChat, .addServer, .watch, .browse, .draw:
             return action
         }
     }
@@ -291,6 +303,7 @@ public struct PaneChooser: Sendable, Equatable {
         // has no slot for — a second after the question was asked, and only sometimes.
         next.offersWatching = offersWatching
         next.offersBrowsing = offersBrowsing
+        next.offersDrawing = offersDrawing
         if let serverID, servers.contains(where: { $0.profileID == serverID }) {
             _ = next.activate(.chooseServer(serverID))
             if showsEveryChat { _ = next.activate(.allChats(profileID: serverID)) }

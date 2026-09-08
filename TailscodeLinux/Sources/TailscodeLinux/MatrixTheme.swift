@@ -757,6 +757,44 @@ enum MatrixTheme {
         .video-pane { background-color: #000000; }
         .web-pane { background-color: \(canvas); }
         .video-heading { color: \(accent); \(t(.paneHeadline)) }
+        .draw-pane { background-color: \(canvas); }
+        .draw-ask { background-color: alpha(\(canvas), 0.0); }
+        .draw-entry {
+            background-color: \(canvasRaised);
+            color: \(text);
+            border: 1px solid \(rule);
+            border-radius: 12px;
+            padding: 10px 14px;
+            \(t(.composer))
+        }
+        .draw-entry:focus {
+            border-color: alpha(\(accent), 0.55);
+            box-shadow: 0 0 0 1px alpha(\(accent), 0.35) inset;
+        }
+        .draw-chip {
+            background-color: \(canvasRaised);
+            color: \(textDim);
+            border: 1px solid \(rule);
+            border-radius: 999px;
+            padding: 3px 12px;
+            \(t(.hint))
+        }
+        .draw-chip:hover { color: \(text); border-color: alpha(\(accent), 0.45); }
+        .draw-chips { margin-top: 2px; }
+        .draw-picture { min-height: 170px; min-width: 240px; }
+        .draw-status { color: \(text); \(t(.panelDetail)) }
+        .draw-progress { color: \(accent); \(t(.statusLine)) }
+        .draw-working {
+            background-color: alpha(\(text), 0.05);
+            border: 1px solid \(rule);
+            border-radius: 10px;
+        }
+        .draw-tile { padding: 0; border-radius: 10px; }
+        .draw-tile-empty {
+            background-color: alpha(\(text), 0.05);
+            border-radius: 10px;
+        }
+        .draw-caption { color: \(textDim); \(t(.hint)) opacity: 0.85; }
         .video-notice {
             color: \(textDim);
             background-color: alpha(\(accent), 0.10);

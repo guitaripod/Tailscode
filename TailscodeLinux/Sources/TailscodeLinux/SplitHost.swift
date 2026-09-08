@@ -416,7 +416,12 @@ final class SplitHost: @unchecked Sendable {
         var sessions: [String: SplitPaneSession] = [:]
         var videos: [String: String] = [:]
         var pages: [String: String] = [:]
+        var draws: [String: String] = [:]
         for (id, pane) in panes {
+            if let endpoint = pane.drawEndpoint {
+                draws[id.raw] = endpoint.address
+                continue
+            }
             if let target = pane.webTarget {
                 pages[id.raw] = target.address
                 continue
@@ -429,7 +434,8 @@ final class SplitHost: @unchecked Sendable {
             sessions[id.raw] = SplitPaneSession(
                 profileID: entry.profileID, sessionID: entry.session.id)
         }
-        return SplitSnapshot(layout: layout, sessions: sessions, videos: videos, pages: pages)
+        return SplitSnapshot(
+            layout: layout, sessions: sessions, videos: videos, pages: pages, draws: draws)
     }
 
     /// Rebuilds panes from a persisted arrangement and hands back what each pane was showing.
@@ -443,7 +449,9 @@ final class SplitHost: @unchecked Sendable {
         var bindings: [PaneID: SplitPaneSession] = [:]
         for id in layout.paneIDs {
             let pane = makePane(id)
-            if let target = snapshot.page(for: id) {
+            if let address = snapshot.draw(for: id) {
+                pane.showDraw(ImageGenEndpoint(address: address))
+            } else if let target = snapshot.page(for: id) {
                 pane.showWeb(target)
             } else if let target = snapshot.video(for: id) {
                 pane.showVideo(target)
@@ -464,7 +472,9 @@ final class SplitHost: @unchecked Sendable {
     func persist() {
         let snapshot = snapshot()
         guard let encoded = snapshot.encoded else { return }
-        let worthKeeping = paneCount > 1 || !snapshot.videos.isEmpty || !snapshot.pages.isEmpty
+        let worthKeeping =
+            paneCount > 1 || !snapshot.videos.isEmpty || !snapshot.pages.isEmpty
+            || !snapshot.draws.isEmpty
         SettingsFile.set(worthKeeping ? encoded : nil, forKey: SplitSnapshot.defaultsKey)
     }
 }

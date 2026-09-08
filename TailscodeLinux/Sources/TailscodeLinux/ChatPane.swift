@@ -187,6 +187,8 @@ final class ChatPane: @unchecked Sendable {
     private(set) var video: VideoPane?
     /// What this pane is reading instead of talking, when it is a browser slot rather than a chat.
     private(set) var page: WebPane?
+    /// What this pane is painting instead of talking, when it is a draw slot rather than a chat.
+    private(set) var draw: DrawPane?
     private(set) var backend: (any CodingAgentBackend)?
     private var inFlightDesignBoards: Set<String> = []
     private(set) var conversation: AgentConversation?
@@ -629,6 +631,49 @@ final class ChatPane: @unchecked Sendable {
         refreshIdentity()
     }
 
+    /// Turns this pane into a draw slot, or points the one it already is at another server. The
+    /// endpoint persists in the layout snapshot, so a restart reopens the pane on the machine it
+    /// was painting on.
+    func showDraw(_ endpoint: ImageGenEndpoint?) {
+        chooser = nil
+        if draw == nil {
+            let pane = DrawPane(endpoint: endpoint)
+            draw = pane
+            gtk_box_append(ptr(root), pane.root)
+            setChatFurnitureVisible(false)
+            pane.wireChips()
+            pane.setOnChange { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.refreshIdentity()
+                    self.host?.videoSlotChanged()
+                }
+            }
+        }
+        draw?.focusPrompt()
+        refreshIdentity()
+    }
+
+    var isDrawing: Bool { draw != nil }
+
+    /// A drawing pane claims only the chords a draw slot owns; every other key belongs to the
+    /// entry, which is typing a prompt as often as not.
+    func handleDrawChord(_ chord: KeyChord) -> Bool {
+        guard let draw else { return false }
+        if Gtk.focusTakesText(draw.hostWindow ?? draw.root) {
+            guard let command = ImageGenCommand.command(for: chord), command == .submit else {
+                return false
+            }
+            draw.handle(command)
+            return true
+        }
+        guard let command = ImageGenCommand.command(for: chord) else { return false }
+        draw.handle(command)
+        return true
+    }
+
+    var drawEndpoint: ImageGenEndpoint? { draw?.target }
+
     var isBrowsing: Bool { page != nil }
     var webTarget: WebTarget? {
         page.flatMap { pane in pane.currentAddress.map(WebTarget.page) ?? pane.target }
@@ -692,7 +737,9 @@ final class ChatPane: @unchecked Sendable {
         var child = gtk_widget_get_first_child(root)
         while let current = child {
             let next = gtk_widget_get_next_sibling(current)
-            if current != identityLabel, current != video?.root, current != page?.root {
+            if current != identityLabel, current != video?.root, current != page?.root,
+                current != draw?.root
+            {
                 gtk_widget_set_visible(current, visible ? 1 : 0)
             }
             child = next
@@ -705,6 +752,10 @@ final class ChatPane: @unchecked Sendable {
     private func refreshIdentity() {
         if let page {
             setIdentity("\(page.slot.title) · \(page.slot.subtitle)", activity: nil)
+            return
+        }
+        if let draw {
+            setIdentity(draw.slot.title, activity: draw.isBusy ? ActivityKind.working : nil)
             return
         }
         if let video {
