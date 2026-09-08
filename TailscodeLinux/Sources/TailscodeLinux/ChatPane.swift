@@ -1047,7 +1047,9 @@ final class ChatPane: @unchecked Sendable {
                     if tracing {
                         let ms = Int(Date().timeIntervalSince(started) * 1000)
                         FileHandle.standardOutput.write(
-                            Data("BUILD \(messages.count) messages -> \(rows.count) rows in \(ms)ms\n".utf8))
+                            Data(
+                                ("BUILD \(messages.count) messages -> \(rows.count) rows in \(ms)ms "
+                                    + Self.driverCensus(of: messages) + "\n").utf8))
                     }
                     Gtk.onMain { [weak self] in
                         guard let self, self.sessionID == sessionID else { return }
@@ -3428,6 +3430,20 @@ final class ChatPane: @unchecked Sendable {
             sendFromComposer()
         }
         updateVimBadge()
+    }
+
+    /// What the transcript is actually made of, for the driver: a message's role, the head of its
+    /// id and how many characters it is carrying. A count alone says the transcript grew and never
+    /// says whether the same answer arrived twice under two names, which is exactly the question a
+    /// duplicate asks.
+    private static func driverCensus(of messages: [ChatMessage]) -> String {
+        let census = messages.map { message -> String in
+            let text = message.parts.reduce(into: 0) { total, part in
+                if case .text(let value) = part.kind { total += value.count }
+            }
+            return "\(message.role.rawValue.prefix(1)):\(message.id.prefix(8))/\(text)"
+        }
+        return "[" + census.joined(separator: " ") + "]"
     }
 
     private func composerCursor() -> Int { editor.cursor }
