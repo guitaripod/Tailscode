@@ -35,11 +35,18 @@ public enum FreshCanvas {
     /// instead; and because what it returns *corrects* the room already being held, it converges
     /// on the right answer however wrong the last one was.
     ///
-    /// `end` is where the page would end with no room made: its whole scrollable extent — content
-    /// plus every inset — less the room already held and less the part of the live row laid out
-    /// ahead of the reveal, since text nobody has been shown yet does not fill a window. It has to
-    /// exclude the room: an answer that measured the page *including* the room it was asked to
-    /// size would ask for that much again on the next pass, and again on the one after.
+    /// `end` is where the page would end with no room made: the content plus every inset that is
+    /// not the room, less the part of the live row laid out ahead of the reveal, since text nobody
+    /// has been shown yet does not fill a window. It has to exclude the room: an answer that
+    /// measured the page *including* the room it was asked to size would ask for that much again
+    /// on the next pass, and again on the one after.
+    ///
+    /// Exclude it by measuring something the room was never in — the content's own height — never
+    /// by subtracting the room back out of the scrollable extent. Room asked for in one pass is
+    /// allocated in the next, so that subtraction takes the new room off an extent still holding
+    /// the old one, and the difference comes back as the next pass's room. Nothing damps it: the
+    /// padding cycles through the same handful of values for as long as the answer streams, and
+    /// the prompt rides the cycle down the page and back up it.
     public static func room(promptTop: Double, viewport: Double, end: Double) -> Double {
         max(0, promptTop - headroom + viewport - end)
     }

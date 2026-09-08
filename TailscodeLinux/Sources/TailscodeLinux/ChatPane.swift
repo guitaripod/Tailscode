@@ -3562,7 +3562,7 @@ final class ChatPane: @unchecked Sendable {
         guard viewport > 0 else { return }
         let room = FreshCanvas.room(
             promptTop: prompt.top, viewport: viewport,
-            end: gtk_adjustment_get_upper(adjustment) - allocatedCanvasRoom - unrevealedHeight())
+            end: canvasContentEnd - unrevealedHeight())
         canvasPromptTop = prompt.top
         if room != canvasPadding {
             AppLog.write(
@@ -3631,11 +3631,19 @@ final class ChatPane: @unchecked Sendable {
         gtk_widget_set_margin_bottom(canvas, Int32(padding.rounded()))
     }
 
-    /// The room the page is actually holding right now, which is not always the room last asked
-    /// for: a margin set this pass is allocated in the next.
-    private var allocatedCanvasRoom: Double {
+    /// Where the conversation itself ends inside the canvas, with the room left out of the
+    /// reading rather than subtracted back out of it.
+    ///
+    /// The scrollable extent contains the margin the canvas is holding, and a margin asked for in
+    /// one pass is allocated in the next — so a room measured as *the range less the room* took
+    /// the new margin off a range that still held the old one, and the error became the next
+    /// pass's room. Nothing damped it: the padding cycled through the same handful of values for
+    /// as long as the answer streamed, and the prompt rode the cycle down the page and back.
+    /// A box's own allocated height is the content without the room, read from one allocation
+    /// pass, and asking for it again cannot change it.
+    private var canvasContentEnd: Double {
         guard let canvas = canvasBox else { return 0 }
-        return Double(gtk_widget_get_margin_bottom(canvas))
+        return Double(gtk_widget_get_height(canvas))
     }
 
 
