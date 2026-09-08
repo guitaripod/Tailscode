@@ -101,6 +101,12 @@ public enum FreshCanvas {
     /// read as the page moving on its own.
     public static let patience: Double = 1.0
 
+    /// The longest a rise waits under any circumstance. A page that is still being filled is worth
+    /// waiting for — that is the whole of `patience`'s exception — but not forever: past this the
+    /// send has been on screen long enough that moving the page would read as the page moving on
+    /// its own rather than as an answer to the Send key.
+    public static let ceiling: Double = 8.0
+
     /// Where the end of the visible conversation is: the content's end less what the live row has
     /// laid out ahead of its reveal.
     public static func visibleEnd(contentHeight: Double, unrevealed: Double) -> Double {

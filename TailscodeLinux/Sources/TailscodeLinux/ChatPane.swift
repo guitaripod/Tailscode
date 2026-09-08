@@ -1860,7 +1860,10 @@ final class ChatPane: @unchecked Sendable {
         }
         // A canvas holding a prompt at the top is not a page to pin to its own bottom, and the
         // first fill of a chat opened on a message it is about to send is exactly that page.
-        let stick = (initialFill || followsBottom) && canvasPromptKey == nil
+        // A canvas *holding* a prompt at the top is not a page to pin to its own bottom. A canvas
+        // that has only been asked for is: until the prompt can be measured and the rise happens,
+        // the newest thing on the page is the message just sent, and it belongs on screen.
+        let stick = (initialFill || followsBottom) && !canvasPinned
         let growth = initialFill ? 0 : appended
         let chunk = 40
 
@@ -3394,7 +3397,12 @@ final class ChatPane: @unchecked Sendable {
         canvasFloor = renderedRows.firstIndex { $0.key == key } ?? renderedRows.count
         canvasPinned = false
         canvasRising = true
-        followsBottom = false
+        // Following stays on until there is something to rise to. The row this send just appended
+        // has no height until the pane has laid it out — on a long conversation, several fills
+        // later — and letting go of the bottom first meant the words sat below the fold for every
+        // one of those frames: the message you just sent, nowhere on the screen, until the rise
+        // either happened or gave up. Now it lands at the bottom the instant it is drawn, and the
+        // rise takes the page from there.
         awaitFreshCanvasPrompt(attempts: 0)
     }
 
@@ -3403,12 +3411,25 @@ final class ChatPane: @unchecked Sendable {
     private func awaitFreshCanvasPrompt(attempts: Int) {
         guard canvasPromptKey != nil else { return }
         if canvasPrompt() != nil {
+            followsBottom = false
             settleFreshCanvas()
             animateFreshCanvas()
             return
         }
-        guard Double(attempts) * 0.016 < FreshCanvas.patience else {
-            AppLog.write(.ui, "fresh canvas: prompt row never measured")
+        // Patience is about the page, not the clock. A long conversation is filled a chunk of rows
+        // at a time with a main-loop hop between chunks, so the row this send just appended has no
+        // widget — and no measurable height — until the fill reaches it. A wall-clock second is
+        // gone long before that on a transcript of a few thousand rows, and the rise was given up
+        // on exactly the conversations it was built for. So the wait runs while the pane is still
+        // filling, and the clock only starts once it has stopped.
+        guard !fillComplete || isFillingInChunks
+            || Double(attempts) * 0.016 < FreshCanvas.patience,
+            Double(attempts) * 0.016 < FreshCanvas.ceiling
+        else {
+            AppLog.write(
+                .ui,
+                "fresh canvas: prompt row never measured after \(attempts) frames "
+                    + "(filled=\(fillComplete))")
             canvasPromptKey = nil
             canvasPinned = false
             canvasRising = false
