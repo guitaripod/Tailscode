@@ -18,6 +18,9 @@ final class DrawPane: @unchecked Sendable {
     /// Everything that outlives this view: the slot, the running job and the pictures it decoded.
     let studio: ImageStudio
     private var onChange: (@Sendable () -> Void)?
+    /// Something worth telling the person that this view has no room to say — a file written, a
+    /// picture put on the clipboard. Whoever hosts the pane owns where a notice appears.
+    var onNotice: (@Sendable (String) -> Void)?
     private var studioObserver: NSObjectProtocol?
     var slot: ImageGenSlot { studio.slot }
 
@@ -26,7 +29,14 @@ final class DrawPane: @unchecked Sendable {
     private let chipRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
     private let engineChip: UnsafeMutablePointer<GtkWidget>
     private let aspectChip: UnsafeMutablePointer<GtkWidget>
-    private let modeChip: UnsafeMutablePointer<GtkWidget>
+    private let referenceChip: UnsafeMutablePointer<GtkWidget>
+    private let renderButton: UnsafeMutablePointer<GtkWidget>
+    private let promptRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+    private let stagePicture = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let factsLabel = Gtk.label("", css: "draw-facts", selectable: true)
+    private let captionLabel = Gtk.label("", css: "draw-caption", wrap: true, selectable: true)
+    private let actionRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+    private let filmLabel = Gtk.label("", css: "draw-history", selectable: false)
     private let statusLabel = Gtk.label("", css: "draw-status", wrap: true, selectable: false)
     private let progressLabel = Gtk.label("", css: "draw-progress", selectable: false)
     private let stageBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
@@ -54,7 +64,8 @@ final class DrawPane: @unchecked Sendable {
         self.fills = fills
         engineChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         aspectChip = Gtk.button("", css: ["draw-chip"], onClick: {})
-        modeChip = Gtk.button("", css: ["draw-chip"], onClick: {})
+        referenceChip = Gtk.button("", css: ["draw-chip"], onClick: {})
+        renderButton = Gtk.button("", css: ["suggested-action", "pill"], onClick: {})
         buildRoot()
         render()
         refreshNotice()
@@ -78,8 +89,11 @@ final class DrawPane: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(aspectChip), "clicked") { [weak self] in
             self?.cycleAspect()
         }
-        Gtk.connect(UnsafeMutableRawPointer(modeChip), "clicked") { [weak self] in
-            self?.cycleMode()
+        Gtk.connect(UnsafeMutableRawPointer(referenceChip), "clicked") { [weak self] in
+            self?.referencePressed()
+        }
+        Gtk.connect(UnsafeMutableRawPointer(renderButton), "clicked") { [weak self] in
+            self?.renderPressed()
         }
     }
 
@@ -152,10 +166,6 @@ final class DrawPane: @unchecked Sendable {
         Gtk.addClass(chipRow, "draw-chips")
         gtk_widget_set_halign(chipRow, GTK_ALIGN_START)
         gtk_widget_set_hexpand(chipRow, 1)
-        for chip in [engineChip, aspectChip, modeChip] {
-            gtk_widget_set_halign(chip, GTK_ALIGN_START)
-            gtk_box_append(ptr(chipRow), chip)
-        }
 
         gtk_label_set_xalign(op(statusLabel), 0)
         gtk_label_set_xalign(op(progressLabel), 0)
@@ -165,17 +175,41 @@ final class DrawPane: @unchecked Sendable {
 
         gtk_scrolled_window_set_policy(op(stageScroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER)
         gtk_scrolled_window_set_child(op(stageScroller), stageHolder)
-        gtk_widget_set_vexpand(stageScroller, 1)
         gtk_widget_set_hexpand(stageScroller, 1)
         gtk_widget_set_hexpand(stageHolder, 1)
         Gtk.addClass(stageHolder, "draw-stage")
 
+        gtk_widget_set_vexpand(stagePicture, 1)
+        gtk_widget_set_hexpand(stagePicture, 1)
+        Gtk.addClass(stagePicture, "draw-stage-room")
+        gtk_label_set_xalign(op(factsLabel), 0)
+        gtk_label_set_xalign(op(captionLabel), 0)
+        gtk_label_set_max_width_chars(op(captionLabel), 96)
+        gtk_label_set_ellipsize(op(captionLabel), PANGO_ELLIPSIZE_END)
+        gtk_label_set_xalign(op(filmLabel), 0)
+        Gtk.addClass(actionRow, "draw-actions")
+
+        for chip in [engineChip, aspectChip, referenceChip] {
+            gtk_widget_set_halign(chip, GTK_ALIGN_START)
+            gtk_box_append(ptr(chipRow), chip)
+        }
+
+        gtk_widget_set_hexpand(entry, 1)
+        gtk_widget_set_valign(renderButton, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(promptRow), entry)
+        gtk_box_append(ptr(promptRow), renderButton)
+
+        gtk_box_append(ptr(askBox), stagePicture)
+        gtk_box_append(ptr(askBox), captionLabel)
+        gtk_box_append(ptr(askBox), factsLabel)
+        gtk_box_append(ptr(askBox), actionRow)
+        gtk_box_append(ptr(askBox), filmLabel)
         gtk_box_append(ptr(askBox), stageScroller)
         gtk_box_append(ptr(askBox), statusLabel)
         gtk_box_append(ptr(askBox), progressLabel)
         gtk_box_append(ptr(askBox), reasonLabel)
         gtk_box_append(ptr(askBox), chipRow)
-        gtk_box_append(ptr(askBox), entry)
+        gtk_box_append(ptr(askBox), promptRow)
         gtk_box_append(ptr(askBox), noticeLabel)
         gtk_box_append(ptr(root), askBox)
         gtk_box_append(ptr(root), historyLabel)
@@ -196,65 +230,143 @@ final class DrawPane: @unchecked Sendable {
     private func refreshChips() {
         gtk_button_set_label(ptr(engineChip), slot.engine.label)
         gtk_button_set_label(ptr(aspectChip), slot.aspect.label)
-        gtk_button_set_label(ptr(modeChip), slot.mode.label)
+        if let reference = slot.reference {
+            gtk_button_set_label(ptr(referenceChip), "\(reference.chip)  ✕")
+            gtk_widget_set_tooltip_text(referenceChip, ImageGenWords.detachHint)
+            Gtk.addClass(referenceChip, "draw-chip-on")
+        } else {
+            gtk_button_set_label(ptr(referenceChip), ImageGenWords.attachTitle)
+            gtk_widget_set_tooltip_text(referenceChip, ImageGenWords.attachTitle)
+            gtk_widget_remove_css_class(referenceChip, "draw-chip-on")
+        }
+        gtk_button_set_label(
+            ptr(renderButton),
+            slot.isBusy ? ImageGenWords.stopTitle : ImageGenWords.renderTitle(mode: slot.mode))
+        if slot.isBusy {
+            Gtk.addClass(renderButton, "destructive-action")
+            gtk_widget_remove_css_class(renderButton, "suggested-action")
+        } else {
+            Gtk.addClass(renderButton, "suggested-action")
+            gtk_widget_remove_css_class(renderButton, "destructive-action")
+        }
     }
 
     private func refreshNotice() {
-        let text = slot.isAsking ? ImageGenNotice.splitCostLine : ""
+        let text = fills ? ImageGenNotice.costLine : ImageGenNotice.splitCostLine
         gtk_label_set_text(op(noticeLabel), text)
-        gtk_widget_set_visible(noticeLabel, slot.isAsking ? 1 : 0)
+        let unspent = slot.pictures.isEmpty && !slot.isBusy
+        gtk_widget_set_visible(noticeLabel, unspent ? 1 : 0)
     }
 
     private func refreshStatus() {
         switch slot.phase {
         case .asking:
-            gtk_label_set_text(op(statusLabel), slot.hint)
-            gtk_label_set_text(op(progressLabel), "")
+            gtk_label_set_text(op(statusLabel), "")
+            gtk_widget_set_visible(statusLabel, 0)
             gtk_widget_set_visible(progressLabel, 0)
-        case .composing(let prompt):
-            gtk_label_set_text(
-                op(statusLabel),
-                Localized.text(
-                    "Ready — %@ · %@", slot.engine.label, prompt.ellipsized(to: 64)))
-            gtk_label_set_text(op(progressLabel), "")
+        case .composing:
+            gtk_label_set_text(op(statusLabel), "")
+            gtk_widget_set_visible(statusLabel, 0)
             gtk_widget_set_visible(progressLabel, 0)
         case .painting(let prompt, let engine, let mode):
-            let verb = mode == .edit ? "Editing with" : "Painting with"
+            let verb =
+                mode == .edit ? Localized.text("Editing with %@", engine.label)
+                : Localized.text("Painting with %@", engine.label)
             gtk_label_set_text(
-                op(statusLabel),
-                Localized.text("%@ %@ — %@", verb, engine.label, prompt.ellipsized(to: 72)))
+                op(statusLabel), "\(verb) — \(prompt.ellipsized(to: 72))")
+            gtk_widget_set_visible(statusLabel, 1)
             gtk_label_set_text(op(progressLabel), slot.busyLine)
             gtk_widget_set_visible(progressLabel, 1)
-        case .failed(let prompt, let reason):
+        case .failed(_, let reason):
             gtk_label_set_text(op(statusLabel), reason)
-            gtk_label_set_text(op(progressLabel), prompt.ellipsized(to: 72))
-            gtk_widget_set_visible(progressLabel, 1)
+            gtk_widget_set_visible(statusLabel, 1)
+            gtk_widget_set_visible(progressLabel, 0)
         }
     }
 
+    /// The room: one picture at the size the surface can give it, the words that made it, what it
+    /// cost, and the verbs that get it out of this app. An empty studio argues for itself rather
+    /// than showing a grey rectangle, and a render in flight paints in place of the picture so the
+    /// eye never has to go looking for where the answer will appear.
     private func refreshStage() {
-        Gtk.removeChildren(of: stageHolder)
-        if slot.isAsking {
-            gtk_widget_set_visible(stageScroller, 0)
+        Gtk.removeChildren(of: stagePicture)
+        let picture = slot.onStage
+        if slot.isBusy {
+            stagePicture.appendWorking(room: fills)
+        } else if let picture, let bits = textures[picture.path], bits != 0,
+            let widget = Gtk.pictureWidget(bits: bits)
+        {
+            gtk_widget_set_vexpand(widget, 1)
+            gtk_widget_set_hexpand(widget, 1)
+            let button = gtk_button_new()!
+            Gtk.addClass(button, "draw-tile")
+            gtk_widget_set_vexpand(button, 1)
+            gtk_widget_set_hexpand(button, 1)
+            gtk_widget_set_halign(button, GTK_ALIGN_FILL)
+            gtk_button_set_child(
+                UnsafeMutableRawPointer(button).assumingMemoryBound(to: GtkButton.self), widget)
+            gtk_widget_set_tooltip_text(button, ImageGenAction.open.hint)
+            Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
+                guard let self, let picture = self.slot.onStage else { return }
+                self.open(picture)
+            }
+            gtk_box_append(ptr(stagePicture), button)
+        } else {
+            stagePicture.appendEmpty(room: fills)
+        }
+
+        let facts = picture.map(ImageGenFacts.line(for:)) ?? ""
+        gtk_label_set_text(op(factsLabel), facts)
+        gtk_widget_set_visible(factsLabel, picture == nil || slot.isBusy ? 0 : 1)
+        gtk_label_set_text(op(captionLabel), picture?.prompt ?? "")
+        gtk_widget_set_visible(captionLabel, picture == nil || slot.isBusy ? 0 : 1)
+        refreshActions(for: picture)
+        refreshFilm()
+    }
+
+    /// The verbs a finished picture earns. They exist at all only when there is something to act
+    /// on, and the one that destroys sits apart from the hand reaching for the others.
+    private func refreshActions(for picture: ImageGenPicture?) {
+        Gtk.removeChildren(of: actionRow)
+        guard let picture, !slot.isBusy else {
+            gtk_widget_set_visible(actionRow, 0)
             return
         }
-        gtk_widget_set_visible(stageScroller, 1)
-        for picture in slot.pictures {
-            stageHolder.appendTile(
-                textureBits: textures[picture.path] ?? 0, caption: picture.prompt,
-                room: fills && slot.pictures.count == 1 && !slot.isBusy,
-                onClick: { [weak self] in self?.open(picture) })
-        }
-        if slot.isBusy {
-            stageHolder.appendWorking()
-        }
-        if slot.pictures.count > 1,
-            let adjustment = gtk_scrolled_window_get_hadjustment(op(stageScroller))
-        {
-            let bits = UInt(bitPattern: adjustment)
-            Gtk.after(50) {
-                gtk_adjustment_set_value(UnsafeMutablePointer(bitPattern: bits), 0)
+        gtk_widget_set_visible(actionRow, 1)
+        for action in ImageGenAction.forPicture {
+            if action.isDestructive {
+                let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+                gtk_widget_set_hexpand(spacer, 1)
+                gtk_box_append(ptr(actionRow), spacer)
             }
+            let button = Gtk.button(
+                "\(action.glyph)  \(action.title)",
+                css: action.isDestructive ? ["flat", "draw-action", "danger"]
+                    : ["flat", "draw-action"]
+            ) { [weak self] in
+                Gtk.onMain { [weak self] in self?.perform(action, on: picture) }
+            }
+            gtk_widget_set_tooltip_text(button, action.hint)
+            gtk_box_append(ptr(actionRow), button)
+        }
+    }
+
+    /// Everything made this session, as a strip under the picture. One render is not a history,
+    /// so the strip is not there until there is something to choose between.
+    private func refreshFilm() {
+        Gtk.removeChildren(of: stageHolder)
+        let many = slot.pictures.count > 1
+        gtk_widget_set_visible(stageScroller, many ? 1 : 0)
+        gtk_widget_set_visible(filmLabel, many ? 1 : 0)
+        guard many else { return }
+        gtk_label_set_text(op(filmLabel), ImageGenWords.historyTitle(count: slot.pictures.count))
+        let chosen = slot.onStage?.path
+        for picture in slot.pictures {
+            stageHolder.appendThumb(
+                textureBits: textures[picture.path] ?? 0, current: picture.path == chosen,
+                onClick: { [weak self] in
+                    Gtk.onMain { [weak self] in self?.studio.show(picture.path) }
+                })
         }
     }
 
@@ -274,24 +386,87 @@ final class DrawPane: @unchecked Sendable {
         render()
     }
 
-    private func cycleMode() {
-        studio.advance(.mode)
-        render()
-        if slot.mode == .edit { offerReference() }
+    /// One control, two meanings, and which one is on the chip: nothing attached opens the
+    /// picker, something attached lets go of it. A settings chip never opened a file dialog and
+    /// this one is not a settings chip.
+    private func referencePressed() {
+        if slot.reference != nil {
+            studio.hold(nil)
+            resetPlaceholder()
+            return
+        }
+        offerReference()
+    }
+
+    private func renderPressed() {
+        if slot.isBusy {
+            studio.stop()
+        } else {
+            submit()
+        }
     }
 
     func handle(_ command: ImageGenCommand) {
+        guard !slot.isBusy || command.duringRender else { return }
         switch command {
         case .submit: submit()
+        case .stop: studio.stop()
         case .engine: cycleEngine()
         case .aspect: cycleAspect()
-        case .mode: cycleMode()
+        case .reference: referencePressed()
+        case .again: studio.again()
+        case .save:
+            if let picture = slot.onStage { perform(.save, on: picture) }
+        case .copy:
+            if let picture = slot.onStage { perform(.copy, on: picture) }
         case .open:
-            if let newest = slot.pictures.first { open(newest) }
-        case .next, .previous:
-            break
-        case .bigger, .smaller:
-            break
+            if let picture = slot.onStage { open(picture) }
+        case .next: step(by: 1)
+        case .previous: step(by: -1)
+        }
+    }
+
+    /// Walks the strip. The newest is first, so "next" moves back through the session the way
+    /// the eye reads the strip rather than the way the list is stored.
+    private func step(by delta: Int) {
+        guard slot.pictures.count > 1 else { return }
+        let paths = slot.pictures.map(\.path)
+        let current = slot.onStage?.path ?? paths[0]
+        guard let index = paths.firstIndex(of: current) else { return }
+        let next = (index + delta + paths.count) % paths.count
+        studio.show(paths[next])
+    }
+
+    private func perform(_ action: ImageGenAction, on picture: ImageGenPicture) {
+        switch action {
+        case .save:
+            guard let data = studio.bytes(of: picture) else { return }
+            Gtk.saveFile(
+                parent: hostWindow, suggestedName: ImageGenFacts.fileName(for: picture),
+                data: data
+            ) { [weak self] path in
+                guard let path else { return }
+                Gtk.onMain { [weak self] in
+                    self?.onNotice?(ImageGenWords.savedNotice(path: path))
+                }
+            }
+        case .copy:
+            guard let data = studio.bytes(of: picture) else { return }
+            data.withUnsafeBytes { raw in
+                guard let base = raw.baseAddress else { return }
+                tailscode_clipboard_set_image_png(base, gsize(data.count))
+            }
+            onNotice?(ImageGenWords.copiedNotice)
+        case .open:
+            open(picture)
+        case .again:
+            studio.again()
+        case .reference:
+            studio.hold(ImageGenReference(path: picture.path))
+            resetPlaceholder()
+            focusPrompt()
+        case .discard:
+            studio.discard(picture.path)
         }
     }
 
@@ -302,15 +477,22 @@ final class DrawPane: @unchecked Sendable {
         render()
     }
 
+    /// The prompt says what it will do with what is attached, so the mode is legible in the one
+    /// place a person is already looking.
+    private func resetPlaceholder() {
+        let text =
+            slot.reference.map { Localized.text("What to change in %@…", $0.name) }
+            ?? ImageGenNotice.emptyBody
+        gtk_entry_set_placeholder_text(ptr(entry), text)
+    }
+
     private func offerReference() {
         Gtk.openFiles(parent: hostWindow) { [weak self] paths in
             guard let self, let path = paths.first else { return }
-            self.studio.referencePath = path
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                gtk_entry_set_placeholder_text(
-                    ptr(self.entry),
-                    Localized.text("What to change in %@…", (path as NSString).lastPathComponent))
+                self.studio.hold(ImageGenReference(path: path))
+                self.resetPlaceholder()
                 self.focusPrompt()
             }
         }
@@ -340,46 +522,53 @@ extension Gtk {
 }
 
 private extension UnsafeMutablePointer where Pointee == GtkWidget {
-    func appendWorking() {
-        let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
-        let pulse = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+    /// The render in flight, painted where the picture will be so the eye never has to go
+    /// looking for where the answer arrives.
+    func appendWorking(room: Bool) {
+        let pulse = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(pulse, "draw-working")
-        gtk_widget_set_size_request(pulse, 240, 200)
-        gtk_box_append(ptr(holder), pulse)
-        let words = Gtk.label(Localized.text("Painting…"), css: "draw-status", selectable: false)
-        gtk_box_append(ptr(holder), words)
-        gtk_box_append(ptr(self), holder)
+        gtk_widget_set_size_request(pulse, room ? 420 : 240, room ? 320 : 190)
+        gtk_widget_set_halign(pulse, GTK_ALIGN_CENTER)
+        gtk_widget_set_valign(pulse, GTK_ALIGN_CENTER)
+        gtk_widget_set_vexpand(pulse, 1)
+        gtk_box_append(ptr(self), pulse)
     }
 
-    func appendTile(
-        textureBits: UInt, caption: String, room: Bool = false,
-        onClick: @escaping @Sendable () -> Void
-    ) {
-        let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+    /// An empty studio makes its case rather than showing a grey rectangle.
+    func appendEmpty(room: Bool) {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        gtk_widget_set_valign(column, GTK_ALIGN_CENTER)
+        gtk_widget_set_halign(column, GTK_ALIGN_CENTER)
+        gtk_widget_set_vexpand(column, 1)
+        let title = Gtk.label(ImageGenWords.emptyTitle, css: "draw-empty-title", selectable: false)
+        let body = Gtk.label(
+            ImageGenWords.emptyBody, css: "dim", wrap: true, selectable: false)
+        gtk_label_set_max_width_chars(op(body), 48)
+        gtk_label_set_justify(op(body), GTK_JUSTIFY_CENTER)
+        gtk_box_append(ptr(column), title)
+        gtk_box_append(ptr(column), body)
+        gtk_box_append(ptr(self), column)
+    }
+
+    /// One frame of the session's strip. The one on the stage wears the accent, because a strip
+    /// where nothing is marked is a strip nobody can navigate.
+    func appendThumb(textureBits: UInt, current: Bool, onClick: @escaping @Sendable () -> Void) {
         let button = gtk_button_new()!
-        Gtk.addClass(button, "draw-tile")
-        if room {
-            gtk_widget_set_vexpand(holder, 1)
-            gtk_widget_set_vexpand(button, 1)
-            gtk_widget_set_hexpand(button, 1)
-        }
-        let buttonPtr = UnsafeMutableRawPointer(button).assumingMemoryBound(to: GtkButton.self)
+        Gtk.addClass(button, "draw-thumb")
+        if current { Gtk.addClass(button, "draw-thumb-on") }
+        let child: UnsafeMutablePointer<GtkWidget>
         if textureBits != 0, let picture = Gtk.pictureWidget(bits: textureBits) {
-            if room { gtk_widget_set_vexpand(picture, 1) }
-            gtk_button_set_child(buttonPtr, picture)
+            child = picture
         } else {
             let placeholder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             Gtk.addClass(placeholder, "draw-tile-empty")
-            gtk_widget_set_size_request(placeholder, room ? 420 : 240, room ? 360 : 200)
-            gtk_button_set_child(buttonPtr, placeholder)
+            child = placeholder
         }
+        gtk_widget_set_size_request(child, 92, 72)
+        gtk_button_set_child(
+            UnsafeMutableRawPointer(button).assumingMemoryBound(to: GtkButton.self), child)
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
-        let words = Gtk.label(caption, css: "draw-caption", selectable: false)
-        gtk_label_set_ellipsize(op(words), PANGO_ELLIPSIZE_END)
-        gtk_label_set_max_width_chars(op(words), 44)
-        gtk_box_append(ptr(holder), button)
-        gtk_box_append(ptr(holder), words)
-        gtk_box_append(ptr(self), holder)
+        gtk_box_append(ptr(self), button)
     }
 }
 

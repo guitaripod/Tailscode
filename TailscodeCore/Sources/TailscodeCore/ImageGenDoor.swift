@@ -12,7 +12,6 @@ public enum ImageGenStore {
     static let endpointKey = "tailscode.image.endpoint"
     static let engineKey = "tailscode.image.engine"
     static let aspectKey = "tailscode.image.aspect"
-    static let modeKey = "tailscode.image.mode"
     static let healthKey = "tailscode.image.health"
     public static let didChange = Notification.Name("tailscode.image.didChange")
 
@@ -43,15 +42,9 @@ public enum ImageGenStore {
         defaults.string(forKey: aspectKey).flatMap(ImageGenAspect.init(rawValue:)) ?? .square
     }
 
-    public static func mode() -> ImageGenMode {
-        defaults.string(forKey: modeKey).flatMap(ImageGenMode.init(rawValue:)) ?? .generate
-    }
-
-    public static func remember(engine: ImageGenEngine, aspect: ImageGenAspect, mode: ImageGenMode)
-    {
+    public static func remember(engine: ImageGenEngine, aspect: ImageGenAspect) {
         defaults.set(engine.rawValue, forKey: engineKey)
         defaults.set(aspect.rawValue, forKey: aspectKey)
-        defaults.set(mode.rawValue, forKey: modeKey)
         NotificationCenter.default.post(name: didChange, object: nil)
     }
 
@@ -69,7 +62,7 @@ public enum ImageGenStore {
     }
 
     public static func forget() {
-        for key in [endpointKey, engineKey, aspectKey, modeKey, healthKey] {
+        for key in [endpointKey, engineKey, aspectKey, healthKey] {
             defaults.removeObject(forKey: key)
         }
         NotificationCenter.default.post(name: didChange, object: nil)

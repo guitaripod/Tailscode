@@ -789,12 +789,38 @@ enum MatrixTheme {
             border: 1px solid \(rule);
             border-radius: 10px;
         }
-        .draw-tile { padding: 0; border-radius: 10px; }
+        .draw-tile { padding: 0; border-radius: 10px; background: none; border: none; }
+        .draw-tile:hover { background-color: alpha(\(text), 0.04); }
         .draw-tile-empty {
             background-color: alpha(\(text), 0.05);
             border-radius: 10px;
         }
         .draw-caption { color: \(textDim); \(t(.hint)) opacity: 0.85; }
+        .draw-chip-on {
+            color: \(text);
+            border-color: alpha(\(accent), 0.55);
+            background-color: alpha(\(accent), 0.14);
+        }
+        .draw-stage-room { min-height: 180px; }
+        .draw-facts { color: \(textDim); \(t(.badge)) }
+        .draw-actions { margin-top: 2px; }
+        .draw-action {
+            color: \(textDim);
+            border-radius: 8px;
+            padding: 3px 10px;
+            \(t(.hint))
+        }
+        .draw-action:hover { color: \(text); background-color: alpha(\(text), 0.07); }
+        .draw-action.danger { color: \(danger); }
+        .draw-action.danger:hover { background-color: alpha(\(danger), 0.14); }
+        .draw-empty-title { color: \(text); \(t(.panelTitle)) }
+        .draw-history { color: \(textDim); \(t(.badge)) margin-top: 4px; }
+        .draw-thumb {
+            padding: 0;
+            border-radius: 8px;
+            border: 1px solid transparent;
+        }
+        .draw-thumb-on { border-color: \(accent); }
         .video-notice {
             color: \(textDim);
             background-color: alpha(\(accent), 0.10);

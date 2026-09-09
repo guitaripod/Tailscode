@@ -69,6 +69,9 @@ final class ImageWindow: @unchecked Sendable {
         gtk_box_append(ptr(column), footer())
         gtk_window_set_child(ptr(window), column)
 
+        pane.onNotice = { [weak self] text in
+            Gtk.onMain { [weak self] in self?.say(text) }
+        }
         studioObserver = NotificationCenter.default.addObserver(
             forName: ImageStudio.didChange, object: nil, queue: nil
         ) { [weak self] _ in
@@ -109,6 +112,17 @@ final class ImageWindow: @unchecked Sendable {
         gtk_widget_set_valign(done, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(row), done)
         return row
+    }
+
+    /// A file written or a picture copied is worth one line, said where the work happened rather
+    /// than as a dialog somebody has to dismiss. It clears itself, because a notice that outstays
+    /// its news becomes chrome.
+    private func say(_ text: String) {
+        gtk_label_set_text(op(dismissNote), text)
+        gtk_widget_set_visible(dismissNote, 1)
+        Gtk.after(4000) { [weak self] in
+            Gtk.onMain { [weak self] in self?.drawFooter() }
+        }
     }
 
     private func drawFooter() {

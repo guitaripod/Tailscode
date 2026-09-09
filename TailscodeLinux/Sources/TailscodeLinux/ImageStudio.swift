@@ -16,7 +16,6 @@ final class ImageStudio: @unchecked Sendable {
 
     private(set) var slot: ImageGenSlot
     private(set) var textures: [String: UInt] = [:]
-    var referencePath: String?
     private var runner: ImageGenRunner?
     private var checked = false
 
@@ -26,7 +25,6 @@ final class ImageStudio: @unchecked Sendable {
                 ?? ImageGenEndpoint(host: "127.0.0.1"))
         slot.setEngine(ImageGenStore.engine())
         slot.setAspect(ImageGenStore.aspect())
-        slot.setMode(ImageGenStore.mode())
     }
 
     var isPainting: Bool { slot.isBusy }
@@ -46,7 +44,7 @@ final class ImageStudio: @unchecked Sendable {
         var fresh = ImageGenSlot(endpoint: endpoint)
         fresh.setEngine(slot.engine)
         fresh.setAspect(slot.aspect)
-        fresh.setMode(slot.mode)
+        fresh.hold(slot.reference)
         slot = fresh
         checked = false
         checkMachine()
@@ -55,8 +53,55 @@ final class ImageStudio: @unchecked Sendable {
 
     func advance(_ field: ImageGenField) {
         slot.advance(field)
-        ImageGenStore.remember(engine: slot.engine, aspect: slot.aspect, mode: slot.mode)
+        ImageGenStore.remember(engine: slot.engine, aspect: slot.aspect)
         announce()
+    }
+
+    /// Attaches or lets go of the picture the next render works from. Nothing else decides the
+    /// mode, so this one call is the whole gesture.
+    func hold(_ reference: ImageGenReference?) {
+        slot.hold(reference)
+        announce()
+    }
+
+    func show(_ path: String?) {
+        slot.show(path)
+        announce()
+    }
+
+    /// Lets go of a picture and the texture it was drawn from. The file on disk stays: this
+    /// surface is a place to work, not a thing that deletes what somebody's machine wrote.
+    func discard(_ path: String) {
+        slot.discard(path)
+        if let bits = textures.removeValue(forKey: path),
+            let raw = UnsafeMutableRawPointer(bitPattern: bits)
+        {
+            g_object_unref(raw)
+        }
+        announce()
+    }
+
+    /// Stops the render on this machine's side and says so. The queue on the other machine runs
+    /// its course — a client that promised to unspend somebody's card would be lying.
+    func stop() {
+        guard let runner, case .painting(let prompt, _, _) = slot.phase else { return }
+        runner.cancel()
+        self.runner = nil
+        slot.fail(prompt: prompt, reason: Localized.text("Stopped"))
+        announce()
+    }
+
+    /// The same words again, with a fresh seed — the one thing a person wants after a render
+    /// that was nearly right.
+    func again() {
+        guard let picture = slot.onStage, !isPainting else { return }
+        submit(prompt: picture.prompt)
+    }
+
+    /// The bytes as they were written, for a save or a clipboard — never a re-encode of the
+    /// scaled texture a tile is drawn from.
+    func bytes(of picture: ImageGenPicture) -> Data? {
+        try? Data(contentsOf: URL(fileURLWithPath: picture.path))
     }
 
     /// Asks the machine whether it is there and whether it holds the model files, and files the
@@ -80,7 +125,7 @@ final class ImageStudio: @unchecked Sendable {
         let engine = slot.engine
         let mode = slot.mode
         let aspect = slot.aspect
-        let reference = mode == .edit ? referencePath : nil
+        let reference = slot.reference?.path
         let fresh = ImageGenRunner(
             endpoint: slot.endpoint, prompt: text, engine: engine, mode: mode, aspect: aspect)
         runner = fresh

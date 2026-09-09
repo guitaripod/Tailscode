@@ -136,19 +136,21 @@ public enum ImageGenAspect: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// The three decisions a picture is made from, worn as chips wherever drawing is offered — a
-/// pane's own strip, the composer's lane, a phone's row — so no surface invents a fourth or
-/// names one of these something else.
+/// The two decisions a picture is made from, worn as chips wherever an image is asked for — a
+/// pane's own strip, the composer's lane, a phone's row.
+///
+/// A chip is a value that walks: pressing one changes what the next render is, immediately and
+/// with nothing to confirm. Anything that opens something is not a chip and never was — whether
+/// the render starts from a picture is decided by whether there is a picture attached, which is
+/// the attach control's business, not a setting's.
 public enum ImageGenField: String, Sendable, Equatable, CaseIterable {
     case engine
     case aspect
-    case mode
 
     public var label: String {
         switch self {
         case .engine: return Localized.text("Engine")
         case .aspect: return Localized.text("Aspect")
-        case .mode: return Localized.text("Mode")
         }
     }
 
@@ -157,7 +159,6 @@ public enum ImageGenField: String, Sendable, Equatable, CaseIterable {
         switch self {
         case .engine: return "cpu"
         case .aspect: return "aspectratio"
-        case .mode: return "wand.and.rays"
         }
     }
 
@@ -165,7 +166,6 @@ public enum ImageGenField: String, Sendable, Equatable, CaseIterable {
         switch self {
         case .engine: return "%"
         case .aspect: return "#"
-        case .mode: return "*"
         }
     }
 
@@ -174,7 +174,8 @@ public enum ImageGenField: String, Sendable, Equatable, CaseIterable {
     public var affordanceGlyph: String { "▾" }
 }
 
-/// Whether the slot paints from words alone or from a picture the person handed it.
+/// Whether the render starts from words alone or from a picture the person handed it. This is
+/// never asked as a question: it is read off whether anything is attached.
 public enum ImageGenMode: String, Codable, Sendable, CaseIterable {
     case generate
     case edit
@@ -184,6 +185,25 @@ public enum ImageGenMode: String, Codable, Sendable, CaseIterable {
         case .generate: return Localized.text("Generate")
         case .edit: return Localized.text("Edit")
         }
+    }
+}
+
+/// A picture handed to the model to work from. Holding one is the whole of asking for an edit,
+/// so this value is the mode: attach and the next render starts from it, remove and it does not.
+public struct ImageGenReference: Sendable, Equatable, Codable {
+    public let path: String
+
+    public init(path: String) {
+        self.path = path
+    }
+
+    public var name: String { (path as NSString).lastPathComponent }
+
+    /// What the chip under the prompt says it is holding, short enough to sit beside the words.
+    public var chip: String {
+        let short = name
+        guard short.count > 28 else { return short }
+        return String(short.prefix(25)) + "…"
     }
 }
 
@@ -220,11 +240,13 @@ public struct ImageGenPicture: Sendable, Equatable, Codable {
 /// the headless drivers can name a verb instead of a keycode.
 public enum ImageGenCommand: Sendable, Equatable {
     case submit
+    case stop
     case engine
     case aspect
-    case mode
-    case bigger
-    case smaller
+    case reference
+    case save
+    case copy
+    case again
     case open
     case next
     case previous
@@ -236,7 +258,10 @@ public enum ImageGenCommand: Sendable, Equatable {
             switch letter {
             case "e": return .engine
             case "a": return .aspect
-            case "m": return .mode
+            case "r": return .reference
+            case "s": return .save
+            case "c": return .copy
+            case "g": return .again
             case "o": return ImageGenCommand.open
             case "]": return .next
             case "[": return .previous
@@ -245,6 +270,15 @@ public enum ImageGenCommand: Sendable, Equatable {
         }
         if chord.keyval == Keymap.enter { return .submit }
         return nil
+    }
+
+    /// Whether this key means anything while a render is out. A studio mid-render answers stop
+    /// and the keys that move around what is already made; it does not start a second one.
+    public var duringRender: Bool {
+        switch self {
+        case .submit: return false
+        default: return true
+        }
     }
 }
 
@@ -295,7 +329,12 @@ public struct ImageGenSlot: Sendable, Equatable {
     public var phase: Phase
     public var engine: ImageGenEngine
     public var aspect: ImageGenAspect
-    public var mode: ImageGenMode
+    /// The picture the next render starts from, if there is one. Whether this is nil is the mode.
+    public var reference: ImageGenReference?
+    /// The picture on the stage. Nil means the newest, which is what a fresh render becomes —
+    /// so a person comparing an older one against new words keeps looking at the one they chose
+    /// until they choose another.
+    public var selected: String?
     public var promptDraft: String
     /// The session's finished pictures, newest first. A slot keeps its own history: a picture is
     /// a thing you compare against the words that made it, not a thing you overwrite.
@@ -305,15 +344,24 @@ public struct ImageGenSlot: Sendable, Equatable {
 
     public init(
         endpoint: ImageGenEndpoint, engine: ImageGenEngine = .quality,
-        aspect: ImageGenAspect = .square, mode: ImageGenMode = .generate
+        aspect: ImageGenAspect = .square
     ) {
         self.endpoint = endpoint
         self.phase = .asking
         self.engine = engine
         self.aspect = aspect
-        self.mode = mode
         self.promptDraft = ""
         self.pictures = []
+    }
+
+    /// Read rather than chosen: a render that has a picture to work from is an edit, and one
+    /// that does not is a generate. Nobody is ever asked which.
+    public var mode: ImageGenMode { reference == nil ? .generate : .edit }
+
+    /// The picture the stage is showing: the one chosen, else the newest there is.
+    public var onStage: ImageGenPicture? {
+        if let selected, let match = pictures.first(where: { $0.path == selected }) { return match }
+        return pictures.first
     }
 
     public var isAsking: Bool {
@@ -366,7 +414,6 @@ public struct ImageGenSlot: Sendable, Equatable {
         switch field {
         case .engine: return engine.short
         case .aspect: return aspect.short
-        case .mode: return mode.label
         }
     }
 
@@ -375,7 +422,6 @@ public struct ImageGenSlot: Sendable, Equatable {
         switch field {
         case .engine: engine = Self.next(engine)
         case .aspect: aspect = Self.next(aspect)
-        case .mode: mode = Self.next(mode)
         }
     }
 
@@ -387,17 +433,39 @@ public struct ImageGenSlot: Sendable, Equatable {
 
     public mutating func setEngine(_ engine: ImageGenEngine) { self.engine = engine }
     public mutating func setAspect(_ aspect: ImageGenAspect) { self.aspect = aspect }
-    public mutating func setMode(_ mode: ImageGenMode) { self.mode = mode }
+    /// Attaches or lets go of the picture the next render works from, which is also how the mode
+    /// is set — there is no third thing to keep in step.
+    public mutating func hold(_ reference: ImageGenReference?) { self.reference = reference }
+
+    /// Puts one of the pictures already made on the stage. A path this slot never made is
+    /// ignored rather than blanking the stage.
+    public mutating func show(_ path: String?) {
+        guard let path else {
+            selected = nil
+            return
+        }
+        guard pictures.contains(where: { $0.path == path }) else { return }
+        selected = path
+    }
 
     public mutating func begin(prompt: String) {
         promptDraft = prompt
         phase = .painting(prompt: prompt, engine: engine, mode: mode)
     }
 
+    /// A finished picture takes the stage: it is the thing that was just asked for, and a person
+    /// who then chooses an older one is choosing against it rather than being overruled by it.
     public mutating func finish(_ picture: ImageGenPicture) {
         pictures.insert(picture, at: 0)
+        selected = picture.path
         phase = .composing(prompt: picture.prompt)
         promptDraft = picture.prompt
+    }
+
+    /// Lets go of one picture. The stage falls back to the newest rather than going blank.
+    public mutating func discard(_ path: String) {
+        pictures.removeAll { $0.path == path }
+        if selected == path { selected = pictures.first?.path }
     }
 
     public mutating func fail(prompt: String, reason: String) {
@@ -413,4 +481,149 @@ extension String {
         if let space = cut.lastIndex(of: " ") { return String(cut[..<space]) + "…" }
         return cut + "…"
     }
+}
+/// What a finished picture can be made to do. These are the reason the surface is a place rather
+/// than a button: a render that lands and then needs a file manager, a browser and a terminal to
+/// be worth anything is a render nobody keeps.
+///
+/// The order is the order a hand reaches for them — the two that get the picture out of the app
+/// first, then the ones that make another, then the one that throws it away.
+public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
+    case save
+    case copy
+    case open
+    case again
+    case reference
+    case discard
+
+    public var title: String {
+        switch self {
+        case .save: return Localized.text("Save…")
+        case .copy: return Localized.text("Copy")
+        case .open: return Localized.text("Open")
+        case .again: return Localized.text("Again")
+        case .reference: return Localized.text("Use as reference")
+        case .discard: return Localized.text("Discard")
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .save: return "square.and.arrow.down"
+        case .copy: return "doc.on.doc"
+        case .open: return "arrow.up.left.and.arrow.down.right"
+        case .again: return "arrow.triangle.2.circlepath"
+        case .reference: return "photo.badge.plus"
+        case .discard: return "trash"
+        }
+    }
+
+    public var glyph: String {
+        switch self {
+        case .save: return "↓"
+        case .copy: return "⧉"
+        case .open: return "⤢"
+        case .again: return "↻"
+        case .reference: return "+"
+        case .discard: return "✕"
+        }
+    }
+
+    /// What the control promises before it is pressed, which is the whole difference between a
+    /// row of icons and a row of verbs somebody can trust.
+    public var hint: String {
+        switch self {
+        case .save: return Localized.text("Write the picture somewhere of your own")
+        case .copy: return Localized.text("Put the picture on the clipboard")
+        case .open: return Localized.text("See it at full size")
+        case .again: return Localized.text("Same words, another roll of the dice")
+        case .reference: return Localized.text("Start the next render from this picture")
+        case .discard: return Localized.text("Let go of this one")
+        }
+    }
+
+    /// The one action that destroys something, which a client draws differently and never puts
+    /// under a hand reaching for the ones beside it.
+    public var isDestructive: Bool { self == .discard }
+
+    /// Everything worth offering for a picture on the stage.
+    public static var forPicture: [ImageGenAction] { allCases }
+}
+
+/// What a picture cost and what made it, said as facts rather than as a caption. The words are
+/// Core's so a Mac, a phone and a GTK pane cannot each round the seconds differently.
+public enum ImageGenFacts {
+    public static func line(for picture: ImageGenPicture) -> String {
+        let seconds =
+            picture.seconds < 10
+            ? String(format: "%.1f s", picture.seconds)
+            : "\(Int(picture.seconds.rounded())) s"
+        return [picture.engine.short, picture.aspect.label, seconds, seedMark(picture.seed)]
+            .joined(separator: " · ")
+    }
+
+    /// A seed is twenty digits and a fact line is one line. What a person does with a seed is
+    /// recognise it and copy it whole from the viewer, so the mark shows both ends rather than
+    /// spending the row on the middle.
+    public static func seedMark(_ seed: UInt64) -> String {
+        let digits = "\(seed)"
+        guard digits.count > 12 else { return "#" + digits }
+        return "#\(digits.prefix(4))…\(digits.suffix(4))"
+    }
+
+    /// The words that made it, which is the one thing worth reading before the facts.
+    public static func caption(for picture: ImageGenPicture) -> String { picture.prompt }
+
+    /// A name to offer the desktop's save dialog: the words, made into a filename, so a folder of
+    /// these reads as what they are rather than as a row of timestamps.
+    public static func fileName(for picture: ImageGenPicture) -> String {
+        let allowed = picture.prompt.lowercased().map { character -> Character in
+            character.isLetter || character.isNumber ? character : "-"
+        }
+        let squashed = String(allowed).split(separator: "-").prefix(6).joined(separator: "-")
+        let stem = squashed.isEmpty ? "image" : squashed
+        return "\(stem).png"
+    }
+}
+
+/// Every word the image surface says that is not a field, an action or a fact. Held here so a
+/// client draws a studio rather than inventing one.
+public enum ImageGenWords {
+    /// The button that starts a render, which says which of the two things it is about to do.
+    public static func renderTitle(mode: ImageGenMode) -> String {
+        mode == .edit ? Localized.text("Edit") : Localized.text("Generate")
+    }
+
+    public static var stopTitle: String { Localized.text("Stop") }
+
+    public static var attachTitle: String { Localized.text("Add a reference") }
+
+    /// What the attached picture's chip promises when it is let go of.
+    public static var detachHint: String { Localized.text("Render from words alone again") }
+
+    public static func referenceHint(_ reference: ImageGenReference) -> String {
+        Localized.text("Editing %@ — the next render starts from it", reference.name)
+    }
+
+    /// The empty stage, which argues for itself rather than showing a grey rectangle.
+    public static var emptyTitle: String { Localized.text("Nothing painted yet") }
+
+    public static var emptyBody: String {
+        Localized.text("Describe a picture below. It is painted on the machine with the card.")
+    }
+
+    /// What the strip of everything made so far is called once there is more than one.
+    public static func historyTitle(count: Int) -> String {
+        count == 1
+            ? Localized.text("1 picture this session")
+            : Localized.text("%@ pictures this session", "\(count)")
+    }
+
+    public static func savedNotice(path: String) -> String {
+        Localized.text("Saved to %@", path)
+    }
+
+    public static var copiedNotice: String { Localized.text("Picture copied") }
+
+    public static var discardNotice: String { Localized.text("Picture let go of") }
 }
