@@ -186,6 +186,7 @@ public struct PaneChooser: Sendable, Equatable {
         }
         if offersWatching { rows.append(watchRow) }
         if offersBrowsing { rows.append(Self.browseRow) }
+        if offersDrawing { rows.append(Self.drawRow) }
         return rows
     }
 
@@ -382,7 +383,7 @@ public enum PaneChooserCheck {
 
         var two = PaneChooser(servers: [alpha, beta], entries: entries)
         expect(two.chosenServer == nil, "two servers ask the question")
-        expect(two.rows.count == 4, "one row per server, plus the two a pane can hold instead")
+        expect(two.rows.count == 5, "one row per server, plus the three a pane can hold instead")
         expect(two.rows[1].badge == .offline(Localized.text("offline")), "an unreachable server says so")
 
         var preferred = PaneChooser(servers: [alpha, beta], entries: entries, preferredServer: "b")
@@ -390,7 +391,9 @@ public enum PaneChooserCheck {
         expect(preferred.activate() == nil, "choosing a server is a step, not an outcome")
         expect(preferred.serverID == "b", "the chosen server is the one under the cursor")
         expect(preferred.rows.first?.action == .newChat(profileID: "b"), "new chat leads")
-        expect(preferred.rows.count == 5, "one chat on beta, plus new-chat, the way back, and the two")
+        expect(
+            preferred.rows.count == 6,
+            "one chat on beta, plus new-chat, the way back, and the three")
         expect(preferred.back(), "two servers can be asked again")
         expect(preferred.serverID == nil && preferred.cursor == 1, "back lands on the server left")
 
@@ -399,13 +402,15 @@ public enum PaneChooserCheck {
         expect(two.handle(.up).action == nil, "walking answers nothing")
         _ = two.handle(.activate)
         expect(two.serverID == "a", "enter chooses the focused server")
-        expect(two.rows.count == PaneChooser.chatLimit + 5, "eight chats, new chat, more, back, and the two")
+        expect(
+            two.rows.count == PaneChooser.chatLimit + 6,
+            "eight chats, new chat, more, back, and the three")
         expect(
             two.rows[PaneChooser.chatLimit + 1].action == .allChats(profileID: "a"),
             "the tail is offered rather than hidden")
         _ = two.handle(.pick(PaneChooser.chatLimit + 1))
         expect(two.showsEveryChat, "asking for every chat shows every chat")
-        expect(two.rows.count == 14, "ten chats, new chat, back, and the two")
+        expect(two.rows.count == 15, "ten chats, new chat, back, and the three")
         let picked = two.handle(.pick(1)).action
         expect(picked == .openChat(profileID: "a", sessionID: "a0"), "1-9 opens outright")
 
