@@ -14,9 +14,42 @@ import TailscodeCore
 /// over to ``AnalyticsPanel`` for the whole month.
 final class UsagePanel: @unchecked Sendable {
     static let trackWidth = 320
-    private static let heroTrackWidth = 704
     private static let windowWidth: Int32 = 780
     private static let windowHeight: Int32 = 760
+
+    /// A bar drawn against its real allocation rather than a nominal width, so a full window
+    /// reads full at whatever width the card landed on. The ink is the same one the CSS classes
+    /// carry — the brand's colour while the window is healthy, the severity's once it is not.
+    private static func meter(
+        fraction: Double, severity: String, slug: String?, height: Double
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let area = tailscode_meter_new()!
+        gtk_widget_set_hexpand(area, 1)
+        let palette = MatrixTheme.palette
+        let hex: String
+        if severity == "ok", let slug {
+            switch slug {
+            case "claude": hex = palette.brandClaude
+            case "opencode": hex = palette.brandOpencode
+            case "omp": hex = MatrixTheme.brandOmp(in: palette)
+            case "grok": hex = palette.brandGrok
+            case "deepseek": hex = palette.brandDeepseek
+            case "ollama-cloud": hex = palette.brandOllama
+            default: hex = palette.accentDim
+            }
+        } else if severity == "warn" {
+            hex = palette.warn
+        } else if severity == "danger" {
+            hex = palette.danger
+        } else {
+            hex = palette.accentDim
+        }
+        let rgb = PresenceRGB(hex: hex) ?? PresenceRGB(red: 0.5, green: 0.5, blue: 0.5)
+        [rgb.red, rgb.green, rgb.blue].withUnsafeBufferPointer {
+            tailscode_meter_set(area, fraction, $0.baseAddress, 0.12, height)
+        }
+        return area
+    }
 
     /// The open panel. A class-backed window presented from a local is dead on arrival — released
     /// while shown, its buttons do nothing — so the panel holds itself here until its window goes.
@@ -365,17 +398,9 @@ final class UsagePanel: @unchecked Sendable {
         gtk_box_append(ptr(card), header)
 
         if !QuotaBoard.isBalance(gauge) {
-            let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-            Gtk.addClass(track, "gauge-track")
-            gtk_widget_set_size_request(track, Int32(Self.heroTrackWidth), 10)
-            gtk_widget_set_hexpand(track, 1)
-            let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-            Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
-            gtk_widget_set_size_request(
-                fill, Int32((fraction * Double(Self.heroTrackWidth)).rounded()), 10)
-            gtk_widget_set_halign(fill, GTK_ALIGN_START)
-            gtk_box_append(ptr(track), fill)
-            gtk_box_append(ptr(card), track)
+            gtk_box_append(
+                ptr(card),
+                Self.meter(fraction: fraction, severity: severity, slug: slug, height: 10))
         }
 
         if let resets = gauge.resetsAt {
@@ -495,16 +520,10 @@ final class UsagePanel: @unchecked Sendable {
         gtk_box_append(ptr(block), row)
 
         if !isBalance {
-            let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-            Gtk.addClass(track, "gauge-track")
-            gtk_widget_set_size_request(track, Int32(trackWidth), 6)
-            gtk_widget_set_hexpand(track, 1)
-            let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-            Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
-            gtk_widget_set_size_request(fill, Int32((fraction * Double(trackWidth)).rounded()), 6)
-            gtk_widget_set_halign(fill, GTK_ALIGN_START)
-            gtk_box_append(ptr(track), fill)
-            gtk_box_append(ptr(block), track)
+            gtk_box_append(
+                ptr(block),
+                meter(
+                    fraction: fraction, severity: severity, slug: slug, height: 6))
         }
 
         gtk_box_append(

@@ -298,6 +298,17 @@ GtkWidget *tailscode_ring_new(void);
 void tailscode_ring_set(
     GtkWidget *area, double fraction, const double *rgb, double stroke, double track);
 
+/// A horizontal meter drawn rather than styled: the track and its fill both painted against the
+/// area's real allocation, so a bar reads its fraction of whatever width the layout gave it — a
+/// fill sized against a nominal constant inside a track that expands reads short forever, and a
+/// full window reading as 95% is a wall drawn as nearly enough. The area never takes input.
+GtkWidget *tailscode_meter_new(void);
+
+/// One state: how far across the bar is filled (0–1), the fill's ink as RGB in 0–1, how bright
+/// the unfilled track is against the ink (0–1), and the bar's height in pixels.
+void tailscode_meter_set(
+    GtkWidget *area, double fraction, const double *rgb, double track, double height);
+
 /// The ultracode aura, drawn rather than themed: a drawing area to lay over the prompt box, whose
 /// perimeter carries the rainbow round and round under a soft glow. A CSS gradient cannot travel
 /// around a box — its angle sweeps across the whole rectangle, so the colour crosses the corners

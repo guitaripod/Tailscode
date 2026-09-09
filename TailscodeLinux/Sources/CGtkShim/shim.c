@@ -1289,6 +1289,62 @@ void tailscode_ring_set(
     gtk_widget_queue_draw(area);
 }
 
+static void tailscode_meter_draw(
+    GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
+    TailscodeRing *meter = raw;
+    double bar_height = meter->stroke;
+    if (bar_height <= 0) bar_height = 6.0;
+    if (bar_height > height) bar_height = height;
+    double top = (height - bar_height) / 2.0;
+    double radius = bar_height / 2.0;
+    double w = MAX((double) width, bar_height);
+    if (radius <= 0) return;
+    cairo_set_source_rgba(cr, meter->ink[0], meter->ink[1], meter->ink[2], meter->track);
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, radius, top + radius, radius, G_PI / 2, G_PI * 3 / 2);
+    cairo_arc(cr, w - radius, top + radius, radius, -G_PI / 2, G_PI / 2);
+    cairo_close_path(cr);
+    cairo_fill(cr);
+    double fraction = CLAMP(meter->fraction, 0.0, 1.0);
+    if (fraction <= 0) return;
+    double span = MAX(fraction * w, bar_height);
+    cairo_set_source_rgb(cr, meter->ink[0], meter->ink[1], meter->ink[2]);
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, radius, top + radius, radius, G_PI / 2, G_PI * 3 / 2);
+    cairo_arc(cr, span - radius, top + radius, radius, -G_PI / 2, G_PI / 2);
+    cairo_close_path(cr);
+    cairo_fill(cr);
+}
+
+GtkWidget *tailscode_meter_new(void) {
+    GtkWidget *area = gtk_drawing_area_new();
+    TailscodeRing *ring = g_new0(TailscodeRing, 1);
+    ring->ink[0] = ring->ink[1] = ring->ink[2] = 0.5;
+    ring->stroke = 6.0;
+    ring->track = 0.12;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-meter", ring, g_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_meter_draw, ring, NULL);
+    gtk_widget_set_can_target(area, FALSE);
+    return area;
+}
+
+void tailscode_meter_set(
+    GtkWidget *area, double fraction, const double *rgb, double track, double height) {
+    if (!area) return;
+    TailscodeRing *meter = g_object_get_data(G_OBJECT(area), "tailscode-meter");
+    if (!meter) return;
+    meter->fraction = fraction;
+    if (rgb) {
+        meter->ink[0] = rgb[0];
+        meter->ink[1] = rgb[1];
+        meter->ink[2] = rgb[2];
+    }
+    meter->track = track;
+    meter->stroke = height > 0 ? height : 6.0;
+    gtk_widget_set_size_request(area, -1, (int) height);
+    gtk_widget_queue_draw(area);
+}
+
 #define TAILSCODE_AURA_STOPS 16
 #define TAILSCODE_AURA_SEGMENTS 128
 
