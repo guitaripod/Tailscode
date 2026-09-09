@@ -47,23 +47,30 @@ public struct UsageAnalytics: Sendable, Equatable {
     public struct Meter: Sendable, Equatable {
         public let label: String
         public let detail: String
-        /// The trailing value: money for a row that spent some, the word for free where a model
-        /// ran on a machine the person already owns, a share for a row counted rather than priced.
+        /// The trailing value: money for a row that spent some, otherwise the word for what a
+        /// zero there means — read from ``door`` — and a share for a row counted rather than priced.
         public let money: String?
         /// `0...1` against the largest row of its section.
         public let share: Double
-        /// True when this row did real work and none of it cost anything. A zero here is a price,
-        /// never an absence, and the row must not be drawn as an empty one.
+        /// True when this row did real work and nothing was billed for it at all. A zero here is
+        /// a price, never an absence, and the row must not be drawn as an empty one. A plan's
+        /// tokens are not free: the month was paid for, this ledger simply cannot divide it.
         public let isFree: Bool
+        /// Which kind of door the row's tokens went through, where the row is a model, a provider
+        /// or a machine. It is what makes a cost of nothing legible: hardware the person owns, a
+        /// plan they already pay for, or a rate the server does not have.
+        public let door: ModelDoorKind?
 
         public init(
-            label: String, detail: String, money: String?, share: Double, isFree: Bool = false
+            label: String, detail: String, money: String?, share: Double, isFree: Bool = false,
+            door: ModelDoorKind? = nil
         ) {
             self.label = label
             self.detail = detail
             self.money = money
             self.share = share
             self.isFree = isFree
+            self.door = door
         }
     }
 
@@ -335,6 +342,7 @@ public struct UsageAnalytics: Sendable, Equatable {
             self.clockLine = nil
         }
 
+        modelRows = Self.adoptDoors(modelRows)
         // Which model did the work is a token count, not a bill: a model on the server's own GPU
         // costs nothing and can still have done most of the month. The money stays on the row.
         let rankedModels = modelRows.values.sorted(by: Self.byWork)
@@ -344,15 +352,20 @@ public struct UsageAnalytics: Sendable, Equatable {
         let modelPeak = rankedModels.map { Double($0.tokens.fresh) }.max() ?? 0
         let modelLabels = Self.modelLabels(Array(rankedModels.prefix(Self.modelLimit)))
         self.models = rankedModels.prefix(Self.modelLimit).map { row in
-            Meter(
-                label: modelLabels[row.model] ?? ModelBadge.shortName(row.model),
+            let short = ModelBadge.shortName(row.model)
+            let label = modelLabels[row.model] ?? short
+            let provider = ProviderIdentity.provider(ofModel: row.model)
+            let door = provider.map(ModelDoorKind.classify)
+            return Meter(
+                label: label,
                 detail: Self.workDetail(
-                    turns: row.turns, tokens: row.tokens, costUSD: row.costUSD, prefix: prefix),
+                    turns: row.turns, tokens: row.tokens, costUSD: row.costUSD, prefix: prefix,
+                    through: label == short ? provider : nil),
                 money: Self.value(
-                    costUSD: row.costUSD, tokens: row.tokens, prefix: prefix,
-                    provider: ProviderIdentity.provider(ofModel: row.model)),
+                    costUSD: row.costUSD, tokens: row.tokens, prefix: prefix, door: door),
                 share: modelPeak > 0 ? Double(row.tokens.fresh) / modelPeak : 0,
-                isFree: row.costUSD <= 0 && row.tokens.total > 0)
+                isFree: Self.isFree(costUSD: row.costUSD, tokens: row.tokens, door: door),
+                door: door)
         }
         self.providers = Self.providerMeters(models: modelRows, prefix: prefix)
         self.modelsLine = Self.modelsLine(
@@ -376,10 +389,11 @@ public struct UsageAnalytics: Sendable, Equatable {
                     label: projectLabels[row.directory] ?? row.name, detail: detail,
                     money: Self.value(
                         costUSD: row.costUSD, tokens: row.tokens, prefix: prefix,
-                        provider: priced ? nil : "local"),
+                        door: priced ? nil : .local),
                     share: projectPeak > 0
                         ? Self.rank(row.costUSD, row.tokens, priced) / projectPeak : 0,
-                    isFree: row.costUSD <= 0 && row.tokens.total > 0)
+                    isFree: Self.isFree(
+                        costUSD: row.costUSD, tokens: row.tokens, door: priced ? nil : .local))
             }
 
         let toolPeak = toolRows.values.max() ?? 0
@@ -475,13 +489,17 @@ public struct UsageAnalytics: Sendable, Equatable {
                         detail += Localized.text(
                             " · %@ tokens", StatusFacts.tokens(totals.tokens.total))
                     }
+                    let door =
+                        Self.door(ofModels: server.report.models) ?? (priced ? nil : .local)
                     return Meter(
                         label: server.name, detail: detail,
                         money: Self.value(
                             costUSD: totals.costUSD, tokens: totals.tokens, prefix: prefix,
-                            provider: priced ? nil : "local"),
+                            door: door),
                         share: machinePeak > 0 ? machineRank(server.report) / machinePeak : 0,
-                        isFree: totals.costUSD <= 0 && totals.tokens.total > 0)
+                        isFree: Self.isFree(
+                            costUSD: totals.costUSD, tokens: totals.tokens, door: door),
+                        door: door)
                 }
         } else {
             self.machines = []
@@ -536,22 +554,40 @@ public struct UsageAnalytics: Sendable, Equatable {
     }
 
     /// The trailing value on a meter: what it cost, or — where it did real work and the server
-    /// priced none of it — the word for what that means. A row reading "$0" beside two million
-    /// tokens says the model went unused, which is the opposite of what happened; but only a
-    /// model on a machine the person owns is *free*. A hosted door the server has no rate for
-    /// (Ollama Cloud on an opencode server, a gateway's free tier) is *unpriced*: the bill
-    /// exists, this ledger just cannot see it.
+    /// priced none of it — the word for the door rather than a verdict on the bill. A row reading
+    /// "$0" beside two million tokens says the model went unused, which is the opposite of what
+    /// happened, and *free* says the same of a plan somebody pays for every month. So each zero
+    /// names what it is: *Local* for hardware the person already owns, *Plan* for a subscription
+    /// billed a flat month (Ollama Cloud, a coding plan), *Free tier* for models a provider gives
+    /// away, *Unpriced* for a hosted rate this ledger simply does not have.
     private static func value(
-        costUSD: Double, tokens: SessionSpendReport.Tokens, prefix: String, provider: String?
+        costUSD: Double, tokens: SessionSpendReport.Tokens, prefix: String, door: ModelDoorKind?
     ) -> String {
         if costUSD > 0 { return prefix + SessionSpend.money(costUSD) }
         guard tokens.total > 0 else { return SessionSpend.money(0) }
-        return provider.map(ProviderIdentity.isLocal) == true
-            ? Localized.text("Free") : Localized.text("Unpriced")
+        switch door {
+        case .local: return Localized.text("Local")
+        case .subscription: return Localized.text("Plan")
+        case .free: return Localized.text("Free tier")
+        case .gateway, .key, .none: return Localized.text("Unpriced")
+        }
     }
 
+    /// Whether a row's work was billed to nobody at all. A plan's tokens are excluded on purpose:
+    /// the money was spent, it just cannot be divided per token.
+    private static func isFree(
+        costUSD: Double, tokens: SessionSpendReport.Tokens, door: ModelDoorKind?
+    ) -> Bool {
+        guard costUSD <= 0, tokens.total > 0 else { return false }
+        return door == .local || door == .free
+    }
+
+    /// The numbers under a model's name, led by the door its tokens went through where the name
+    /// itself does not already carry it — which is how the list answers *what am I actually
+    /// running* rather than only *what did it cost*.
     private static func workDetail(
-        turns: Int, tokens: SessionSpendReport.Tokens, costUSD: Double, prefix: String
+        turns: Int, tokens: SessionSpendReport.Tokens, costUSD: Double, prefix: String,
+        through: String? = nil
     ) -> String {
         var detail = Localized.text("%@ tokens", StatusFacts.tokens(tokens.total))
         if turns > 0 {
@@ -560,6 +596,9 @@ public struct UsageAnalytics: Sendable, Equatable {
                 detail += Localized.text(
                     " · %@ a turn", prefix + SessionSpend.money(costUSD / Double(turns)))
             }
+        }
+        if let through {
+            detail = ProviderIdentity.displayName(through) + " · " + detail
         }
         return detail
     }
@@ -592,16 +631,21 @@ public struct UsageAnalytics: Sendable, Equatable {
                 row.models == 1
                 ? Localized.text("1 model") : Localized.text("%d models", row.models)
             detail += Localized.text(" · %@ tokens", StatusFacts.tokens(row.share.tokens.total))
-            if ProviderIdentity.isLocal(row.share.model) {
-                detail += Localized.text(" · on your own machine")
+            let door = ModelDoorKind.classify(row.share.model)
+            switch door {
+            case .local: detail += Localized.text(" · on your own machine")
+            case .subscription: detail += Localized.text(" · on a plan you already pay for")
+            case .free, .gateway, .key: break
             }
             return Meter(
                 label: ProviderIdentity.displayName(row.share.model), detail: detail,
                 money: value(
                     costUSD: row.share.costUSD, tokens: row.share.tokens, prefix: prefix,
-                    provider: row.share.model),
+                    door: door),
                 share: peak > 0 ? Double(row.share.tokens.fresh) / peak : 0,
-                isFree: row.share.costUSD <= 0 && row.share.tokens.total > 0)
+                isFree: isFree(
+                    costUSD: row.share.costUSD, tokens: row.share.tokens, door: door),
+                door: door)
         }
     }
 
@@ -665,27 +709,96 @@ public struct UsageAnalytics: Sendable, Equatable {
                     : Localized.text(
                         "%d more models not shown · %@ tokens · %@", hidden.count, tokens, money))
         }
-        if let free = freeLine(models: ranked, priced: priced) { parts.append(free) }
+        if let local = localLine(models: ranked, priced: priced) { parts.append(local) }
+        if let plan = planLine(models: ranked) { parts.append(plan) }
         if let unpriced = unpricedLine(models: ranked) { parts.append(unpriced) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// Whether a model ran on a machine the person owns — the only case in which a cost of
-    /// nothing is a fact rather than a gap in the ledger.
-    private static func isLocal(_ model: SessionSpendReport.ModelShare) -> Bool {
-        ProviderIdentity.provider(ofModel: model.model).map(ProviderIdentity.isLocal) ?? false
+    /// The same model reported by two servers under two names is one model. A bridge that serves
+    /// a single engine names the model alone (`glm-5.3-flash`) while an opencode server names the
+    /// door with it (`ollama-cloud/glm-5.3-flash`), and split in two the account reads as two
+    /// models — one of them filed under a vendor nobody holds an account with, its tokens
+    /// *unpriced* beside the very same tokens on a plan. So where exactly one qualified row wears
+    /// a bare row's name, the bare row joins it: a door a server actually reported outranks one
+    /// read off the model's family.
+    private static func adoptDoors(
+        _ rows: [String: SessionSpendReport.ModelShare]
+    ) -> [String: SessionSpendReport.ModelShare] {
+        var hosts: [String: Set<String>] = [:]
+        for key in rows.keys where key.contains("/") {
+            hosts[ModelBadge.shortName(key), default: []].insert(key)
+        }
+        var out: [String: SessionSpendReport.ModelShare] = [:]
+        for (key, row) in rows {
+            let twins = key.contains("/") ? nil : hosts[ModelBadge.shortName(key)]
+            let target = twins?.count == 1 ? twins?.first ?? key : key
+            var merged =
+                out[target]
+                ?? SessionSpendReport.ModelShare(
+                    model: target, turns: 0, tokens: .init(), costUSD: 0)
+            merged.turns += row.turns
+            merged.tokens = add(merged.tokens, row.tokens)
+            merged.costUSD += row.costUSD
+            out[target] = merged
+        }
+        return out
     }
 
-    /// What ran through a hosted door the server has no rate for. Ollama Cloud is a
-    /// subscription and a gateway's free tier is somebody's money; a card that called either
-    /// free would be claiming a bill that exists is zero.
+    /// Which door a model's tokens went through, where the model key names one at all.
+    private static func door(of model: SessionSpendReport.ModelShare) -> ModelDoorKind? {
+        ProviderIdentity.provider(ofModel: model.model).map(ModelDoorKind.classify)
+    }
+
+    /// The one door a whole machine's work went through, where its models agree on one — which
+    /// is what lets a server running nothing but Ollama read as local inside an account that
+    /// spent money elsewhere. A machine with two kinds of door has no single answer.
+    private static func door(ofModels models: [SessionSpendReport.ModelShare]) -> ModelDoorKind? {
+        let doors = Set(models.filter { $0.tokens.total > 0 }.compactMap(door(of:)))
+        return doors.count == 1 ? doors.first : nil
+    }
+
+    /// The models a clause is about: the ones that did real work and were billed nothing per
+    /// token, through the doors this clause speaks for.
+    private static func unbilled(
+        _ models: [SessionSpendReport.ModelShare], through doors: Set<ModelDoorKind>
+    ) -> [SessionSpendReport.ModelShare] {
+        models.filter {
+            $0.costUSD <= 0 && $0.tokens.total > 0 && door(of: $0).map(doors.contains) == true
+        }
+    }
+
+    /// The doors a clause ran through, named as brands.
+    private static func doorNames(_ models: [SessionSpendReport.ModelShare]) -> String {
+        let doors = Set(models.compactMap { ProviderIdentity.provider(ofModel: $0.model) })
+            .map(ProviderIdentity.displayName).sorted()
+        return doors.isEmpty ? "" : " " + Localized.text("through %@", doors.joined(separator: ", "))
+    }
+
+    /// What went through a plan rather than a meter. A subscription buys a flat month, so its
+    /// tokens are neither free nor unpriced — the money was spent and this ledger cannot divide
+    /// it — and saying so is the difference between a plan and a hole in the numbers.
+    private static func planLine(models: [SessionSpendReport.ModelShare]) -> String? {
+        let plan = unbilled(models, through: [.subscription])
+        guard !plan.isEmpty else { return nil }
+        let tokens = StatusFacts.tokens(plan.reduce(0) { $0 + $1.tokens.total })
+        let through = doorNames(plan)
+        return plan.count == 1
+            ? Localized.text(
+                "%@ tokens on %@%@ ran on a plan — billed by the month, not per token",
+                tokens, ModelBadge.shortName(plan[0].model), through)
+            : Localized.text(
+                "%@ tokens across %d models%@ ran on a plan — billed by the month, not per token",
+                tokens, plan.count, through)
+    }
+
+    /// What ran through a hosted door the server has no rate for. A gateway's free tier is
+    /// somebody's money; a card that called it free would be claiming a bill that exists is zero.
     private static func unpricedLine(models: [SessionSpendReport.ModelShare]) -> String? {
-        let unpriced = models.filter { $0.costUSD <= 0 && $0.tokens.total > 0 && !isLocal($0) }
+        let unpriced = unbilled(models, through: [.key, .gateway, .free])
         guard !unpriced.isEmpty else { return nil }
         let tokens = StatusFacts.tokens(unpriced.reduce(0) { $0 + $1.tokens.total })
-        let doors = Set(unpriced.compactMap { ProviderIdentity.provider(ofModel: $0.model) })
-            .map(ProviderIdentity.displayName).sorted()
-        let through = doors.isEmpty ? "" : " " + Localized.text("through %@", doors.joined(separator: ", "))
+        let through = doorNames(unpriced)
         return unpriced.count == 1
             ? Localized.text(
                 "%@ tokens on %@%@ are unpriced — the server reports no rate for it",
@@ -695,17 +808,18 @@ public struct UsageAnalytics: Sendable, Equatable {
                 tokens, unpriced.count, through)
     }
 
-    /// What the models that cost nothing actually did, which is the fact a column of "$0" hides.
-    private static func freeLine(
+    /// What the models on the person's own hardware actually did, which is the fact a column of
+    /// "$0" hides.
+    private static func localLine(
         models: [SessionSpendReport.ModelShare], priced: Bool
     ) -> String? {
-        let free = models.filter { $0.costUSD <= 0 && $0.tokens.total > 0 && isLocal($0) }
+        let free = unbilled(models, through: [.local])
         guard !free.isEmpty else { return nil }
         let freeTokens = free.reduce(0) { $0 + $1.tokens.fresh }
         guard freeTokens > 0 else { return nil }
         guard priced else {
             return Localized.text(
-                "Every token this window ran on a machine you already own — %@ of them, at no cost",
+                "Every token this window ran on hardware you already own — %@ of them, at no cost",
                 StatusFacts.tokens(freeTokens))
         }
         let allTokens = models.reduce(0) { $0 + $1.tokens.fresh }
@@ -716,11 +830,11 @@ public struct UsageAnalytics: Sendable, Equatable {
         if freeTokens < allTokens { percent = min(99, percent) }
         if free.count == 1 {
             return Localized.text(
-                "%@ tokens on %@ cost nothing — %d%% of the window's work ran on a machine you already own",
+                "%@ tokens on %@ ran on hardware you already own — %d%% of the window's work",
                 StatusFacts.tokens(freeTokens), ModelBadge.shortName(free[0].model), percent)
         }
         return Localized.text(
-            "%@ tokens across %d models cost nothing — %d%% of the window's work ran on a machine you already own",
+            "%@ tokens across %d models ran on hardware you already own — %d%% of the window's work",
             StatusFacts.tokens(freeTokens), free.count, percent)
     }
 
@@ -1036,7 +1150,7 @@ public struct UsageAnalytics: Sendable, Equatable {
                 "%@ tokens · %@", StatusFacts.tokens(subagents.tokens.total),
                 value(
                     costUSD: subagents.costUSD, tokens: subagents.tokens, prefix: prefix,
-                    provider: priced ? nil : "local"))
+                    door: priced ? nil : .local))
             if totalCostUSD > 0, subagents.costUSD > 0 {
                 let share = Int((subagents.costUSD / totalCostUSD * 100).rounded())
                 detail += Localized.text(" · %d%% of the window", share)

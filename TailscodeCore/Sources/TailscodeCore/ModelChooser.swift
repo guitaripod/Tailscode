@@ -2192,12 +2192,16 @@ public enum ModelDoorKind: Sendable, Hashable {
     case gateway
     case free
 
+    /// Ollama Cloud is a plan rather than a gateway: it is metered by a session window and a
+    /// weekly one and billed a flat month, which is the subscription's shape and not the
+    /// per-token routing a gateway does.
     public static func classify(_ providerID: String) -> ModelDoorKind {
+        if ProviderIdentity.isLocal(providerID) { return .local }
         switch providerID.lowercased() {
-        case "ollama", "arch", "vllm", "lmstudio", "llamacpp": return .local
-        case "opencode-go", "kimi-code", "claude", "anthropic-plan", "bonsai", "github-copilot":
+        case "opencode-go", "kimi-code", "claude", "anthropic-plan", "bonsai", "github-copilot",
+            "ollama-cloud":
             return .subscription
-        case "openrouter", "ollama-cloud", "together", "groq", "fireworks": return .gateway
+        case "openrouter", "together", "groq", "fireworks": return .gateway
         case "opencode", "opencode-free", "server": return .free
         default: return .key
         }

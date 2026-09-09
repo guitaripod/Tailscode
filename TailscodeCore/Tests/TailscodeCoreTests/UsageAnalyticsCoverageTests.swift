@@ -91,7 +91,7 @@ struct UsageAnalyticsCoverageTests {
         #expect(analytics.peakDay?.value.contains("$") == false)
         #expect(analytics.models.count == 1)
         #expect(analytics.models.first?.isFree == true)
-        #expect(analytics.models.first?.money == "Free")
+        #expect(analytics.models.first?.money == "Local")
         #expect(analytics.models.first?.share == 1)
         #expect(analytics.modelsLine?.isEmpty == false)
         #expect(analytics.weekdays.contains { $0.share > 0 })
@@ -241,24 +241,56 @@ struct UsageAnalyticsCoverageTests {
         #expect(analytics.records.contains { $0.id == "busiestDay" })
     }
 
-    /// Ollama Cloud is a subscription and a gateway's free tier is somebody's money. A server
-    /// that has no rate for a hosted door reports zero, and zero drawn as "Free" claims a bill
-    /// that exists is nothing — only a model on a machine the person owns is free.
-    @Test("A hosted model the server cannot price reads Unpriced, never Free")
-    func hostedZeroIsUnpriced() throws {
+    /// One bridge names the model alone and another names the door with it, and the account then
+    /// shows the same model twice — once on the plan that serves it and once under whatever
+    /// vendor its name suggests, unpriced. The reported door wins.
+    @Test("A model named without its door joins the one row that names it")
+    func aBareModelJoinsItsDoor() throws {
+        let bare = SessionSpendReport.Tokens(input: 900_000, output: 20_000)
+        let named = SessionSpendReport.Tokens(input: 300_000, output: 8_000)
+        let one = report(
+            models: [
+                SessionSpendReport.ModelShare(
+                    model: "glm-5.3-flash", turns: 10, tokens: bare, costUSD: 0)
+            ],
+            daily: [day(1, cost: 0, tokens: 920_000)], turns: 10, sessions: 2)
+        let two = report(
+            models: [
+                SessionSpendReport.ModelShare(
+                    model: "ollama-cloud/glm-5.3-flash", turns: 4, tokens: named, costUSD: 0)
+            ],
+            daily: [day(1, cost: 0, tokens: 308_000)], turns: 4, sessions: 1)
+        let analytics = try #require(
+            UsageAnalytics(servers: [("omp", one), ("desk", two)], now: now, calendar: calendar))
+        #expect(analytics.models.count == 1, "one model, not one per naming convention")
+        let row = try #require(analytics.models.first)
+        #expect(row.door == .subscription)
+        #expect(row.money == "Plan")
+        #expect(row.detail.contains("14 turns"))
+        #expect(analytics.providers.isEmpty, "one door needs no split")
+    }
+
+    /// A zero in the money column has three different meanings and the word has to say which.
+    /// Hardware the person owns is genuinely free; a subscription bought a flat month, so its
+    /// tokens are paid for and simply cannot be divided; a hosted door the server has no rate for
+    /// is a hole in the ledger. Calling any of the three "Free" claims a bill that exists is
+    /// nothing.
+    @Test("A zero names its door: Local, Plan or Unpriced, never one word for all three")
+    func aZeroNamesItsDoor() throws {
         let cloud = SessionSpendReport.Tokens(input: 2_000_000, output: 40_000)
         let local = SessionSpendReport.Tokens(input: 1_000_000, output: 20_000)
+        let unrated = SessionSpendReport.Tokens(input: 300_000, output: 6_000)
         let paid = SessionSpendReport.Tokens(input: 100_000, output: 5_000)
         let report = UsageAnalyticsReport(
             since: Date(timeIntervalSinceNow: -30 * 86400), generatedAt: Date(), days: 30,
             totals: UsageAnalyticsReport.Totals(
-                costUSD: 12, tokens: SessionSpendReport.Tokens(input: 3_100_000, output: 65_000),
-                sessions: 3, activeDays: 1),
+                costUSD: 12, tokens: SessionSpendReport.Tokens(input: 3_400_000, output: 71_000),
+                sessions: 4, activeDays: 1),
             daily: [
                 UsageAnalyticsReport.Day(
                     day: "2026-08-07", costUSD: 12,
-                    tokens: SessionSpendReport.Tokens(input: 3_100_000, output: 65_000),
-                    sessions: 3)
+                    tokens: SessionSpendReport.Tokens(input: 3_400_000, output: 71_000),
+                    sessions: 4)
             ],
             models: [
                 SessionSpendReport.ModelShare(
@@ -266,20 +298,33 @@ struct UsageAnalyticsCoverageTests {
                 SessionSpendReport.ModelShare(
                     model: "ollama/qwen3-coder:30b", turns: 0, tokens: local, costUSD: 0),
                 SessionSpendReport.ModelShare(
+                    model: "openrouter/mystery-1", turns: 0, tokens: unrated, costUSD: 0),
+                SessionSpendReport.ModelShare(
                     model: "anthropic/claude-opus-5", turns: 0, tokens: paid, costUSD: 12),
             ],
             coverage: .sessionTotals)
         let analytics = try #require(UsageAnalytics(servers: [("desk · opencode", report)]))
         let glm = try #require(analytics.models.first { $0.label.contains("glm") })
-        #expect(glm.money == "Unpriced")
+        #expect(glm.money == "Plan")
+        #expect(glm.door == .subscription)
+        #expect(glm.isFree == false, "a plan's month was paid for")
         let qwen = try #require(analytics.models.first { $0.label.contains("qwen") })
-        #expect(qwen.money == "Free")
+        #expect(qwen.money == "Local")
+        #expect(qwen.isFree)
+        #expect(qwen.detail.hasPrefix("Ollama · "), "a model row names the door it went through")
+        let mystery = try #require(analytics.models.first { $0.label.contains("mystery") })
+        #expect(mystery.money == "Unpriced")
         let cloudRow = try #require(analytics.providers.first { $0.label == "Ollama Cloud" })
-        #expect(cloudRow.money == "Unpriced")
+        #expect(cloudRow.money == "Plan")
+        #expect(cloudRow.detail.contains("on a plan you already pay for"))
+        let ollamaRow = try #require(analytics.providers.first { $0.label == "Ollama" })
+        #expect(ollamaRow.detail.contains("on your own machine"))
         let line = try #require(analytics.modelsLine)
-        #expect(line.contains("unpriced"))
+        #expect(line.contains("hardware you already own"))
+        #expect(line.contains("ran on a plan"))
         #expect(line.contains("Ollama Cloud"))
-        #expect(line.contains("on a machine you already own"))
-        #expect(!line.contains("2 models cost nothing"))
+        #expect(line.contains("unpriced"))
+        #expect(line.contains("OpenRouter"))
+        #expect(!line.contains("cost nothing"))
     }
 }

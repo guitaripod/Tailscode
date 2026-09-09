@@ -377,13 +377,17 @@ public struct AnalyticsShare: Sendable, Equatable {
         /// width wide enough for any of the three faces, so an estimate errs toward a line of
         /// air rather than one paragraph drawn over the next; a client truncates the last line
         /// it is given rather than growing past it.
+        ///
+        /// The foot is given four: it carries the models line, which names both what the list
+        /// left out and what each door of the account actually did, and a fact cut off at
+        /// "Aliba…" is a fact the card did not tell.
         public static func lines(_ block: Block) -> Int {
             let (text, maximum): (String, Int) = {
                 switch block {
                 case .body(let text), .dim(let text): return (text, 2)
                 case .trend(let text, _): return (text, 1)
                 case .insight(let text): return (insightPrefix + text, 3)
-                case .foot(let text): return (text, 3)
+                case .foot(let text): return (text, 4)
                 default: return ("", 1)
                 }
             }()
