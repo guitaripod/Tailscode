@@ -10,8 +10,6 @@ final class DrawViewer: @unchecked Sendable {
     private let picture: ImageGenPicture
     private let textureBits: UInt
     private var window: UnsafeMutablePointer<GtkWidget>?
-    private let titleLabel = Gtk.label("", css: "row-title", selectable: false)
-    private let detailLabel = Gtk.label("", css: "row-detail", selectable: false)
 
     static func present(
         picture: ImageGenPicture, textureBits: UInt, parent: UnsafeMutablePointer<GtkWidget>?
@@ -25,22 +23,35 @@ final class DrawViewer: @unchecked Sendable {
         self.textureBits = textureBits
     }
 
+    /// A picture is not a decision, so this is a window rather than a dialog.
+    ///
+    /// It used to be `Dialogs.window`, which is modal — and opened from the image studio, which is
+    /// itself modal, that is a modal transient for a modal: X11 hands input to a window the window
+    /// manager will not focus, and the pointer stops working for the whole session rather than for
+    /// this app. Nothing here may be modal, and the content is not wrapped in the dialog's own
+    /// scroller either — a picture inside two nested scrollers is measured against a natural size
+    /// neither of them has, which is why it came up small and squashed.
     private func presentWindow(parent: UnsafeMutablePointer<GtkWidget>?) {
-        let hostWidth = parent.map { gtk_widget_get_width($0) } ?? 0
-        let width = max(900, hostWidth - 120)
-        let (window, content) = Dialogs.window(
-            title: picture.name, parent: parent, width: width)
+        let window = gtk_window_new()!
+        gtk_window_set_title(ptr(window), picture.name)
+        if let parent, let root = gtk_widget_get_root(parent) {
+            gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
+        }
+        let size = Self.size(near: parent, aspect: picture.aspect)
+        gtk_window_set_default_size(ptr(window), size.width, size.height)
+        let header = adw_header_bar_new()!
+        adw_header_bar_set_title_widget(
+            op(UnsafeMutableRawPointer(header)),
+            adw_window_title_new(picture.prompt.ellipsized(to: 60), ImageGenFacts.line(for: picture))
+        )
+        gtk_window_set_titlebar(ptr(window), header)
+        let content = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 12)
+        Gtk.margins(content, 18)
+        gtk_window_set_child(ptr(window), content)
         self.window = window
 
-        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-        let titles = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        gtk_box_append(ptr(titles), titleLabel)
-        gtk_box_append(ptr(titles), detailLabel)
-        gtk_box_append(ptr(header), titles)
-        gtk_box_append(ptr(content), header)
-
         let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC)
         gtk_widget_set_hexpand(scroller, 1)
         gtk_widget_set_vexpand(scroller, 1)
         if textureBits != 0,
@@ -83,12 +94,11 @@ final class DrawViewer: @unchecked Sendable {
             })
         gtk_box_append(ptr(content), bar)
 
-        refresh()
         Gtk.onKey(window) { [weak self] keyval, _ in
             guard let self else { return false }
             if keyval == Keymap.escape {
                 Gtk.onMain {
-                    if let window = self.window { Dialogs.close(window) }
+                    if let window = self.window { gtk_window_destroy(ptr(window)) }
                 }
                 return true
             }
@@ -97,19 +107,22 @@ final class DrawViewer: @unchecked Sendable {
         gtk_window_present(ptr(window))
     }
 
-    private func refresh() {
-        gtk_label_set_text(op(titleLabel), picture.prompt.ellipsized(to: 72))
-        let when = Self.formatter.string(from: picture.madeAt)
-        gtk_label_set_text(
-            op(detailLabel),
-            [
-                picture.engine.label,
-                picture.mode.label,
-                picture.aspect.label,
-                String(format: "%.1fs", picture.seconds),
-                "seed \(picture.seed)",
-                when,
-            ].joined(separator: "  ·  "))
+    /// A window shaped like the picture in it, inside what the screen actually has — a portrait
+    /// render in a landscape window is letterboxed twice over and reads as small.
+    private static func size(
+        near widget: UnsafeMutablePointer<GtkWidget>?, aspect: ImageGenAspect
+    ) -> (width: Int32, height: Int32) {
+        let available = Double(tailscode_monitor_workarea_height(widget))
+        let ceiling = available > 0 ? available * 0.9 : 900
+        let pixels = aspect.pixels
+        let ratio = Double(pixels.width) / Double(pixels.height)
+        var height = min(ceiling, Double(pixels.height) + 140)
+        var width = (height - 140) * ratio
+        if width > 1600 {
+            width = 1600
+            height = width / ratio + 140
+        }
+        return (Int32(max(520, width)), Int32(max(420, height)))
     }
 
     private func openFolder(_ path: String) {

@@ -18,6 +18,10 @@ final class ImageStudio: @unchecked Sendable {
     private(set) var textures: [String: UInt] = [:]
     private var runner: ImageGenRunner?
     private var checked = false
+    /// When the render in flight started, so the surface can say how long it has been rather than
+    /// showing a bar it would have to invent — ComfyUI's queue tells this client done or failed
+    /// and nothing in between, and a fake percentage is worse than an honest clock.
+    private(set) var startedAt: Date?
 
     init(endpoint: ImageGenEndpoint?) {
         slot = ImageGenSlot(
@@ -88,6 +92,7 @@ final class ImageStudio: @unchecked Sendable {
         runner.cancel()
         self.runner = nil
         slot.fail(prompt: prompt, reason: Localized.text("Stopped"))
+        startedAt = nil
         announce()
     }
 
@@ -122,6 +127,7 @@ final class ImageStudio: @unchecked Sendable {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         slot.begin(prompt: text)
+        startedAt = Date()
         let engine = slot.engine
         let mode = slot.mode
         let aspect = slot.aspect
@@ -151,7 +157,10 @@ final class ImageStudio: @unchecked Sendable {
         case .failure(let reason):
             slot.fail(prompt: runner.prompt, reason: reason)
         }
-        if runner === self.runner { self.runner = nil }
+        if runner === self.runner {
+            self.runner = nil
+            startedAt = nil
+        }
         announce()
     }
 

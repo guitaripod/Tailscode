@@ -37,6 +37,7 @@ final class DrawPane: @unchecked Sendable {
     private let captionLabel = Gtk.label("", css: "draw-caption", wrap: true, selectable: true)
     private let actionRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
     private let filmLabel = Gtk.label("", css: "draw-history", selectable: false)
+    private let zoomHint = Gtk.label("", css: "dim", selectable: false)
     private let statusLabel = Gtk.label("", css: "draw-status", wrap: true, selectable: false)
     private let progressLabel = Gtk.label("", css: "draw-progress", selectable: false)
     private let stageBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
@@ -47,6 +48,10 @@ final class DrawPane: @unchecked Sendable {
     private let historyLabel = Gtk.label("", css: "draw-history", selectable: false)
 
     private let fills: Bool
+    /// Whether the picture has the whole surface. A studio that is itself a modal may not open a
+    /// window over itself — a modal transient for a modal takes the pointer away from the desktop
+    /// on X11 — so full size happens here, in the room this surface already has.
+    private var zoomed = false
     private var workingTexture: UInt = 0
     private var ticking = false
     private var textures: [String: UInt] { studio.textures }
@@ -200,6 +205,7 @@ final class DrawPane: @unchecked Sendable {
         gtk_box_append(ptr(promptRow), renderButton)
 
         gtk_box_append(ptr(askBox), stagePicture)
+        gtk_box_append(ptr(askBox), zoomHint)
         gtk_box_append(ptr(askBox), captionLabel)
         gtk_box_append(ptr(askBox), factsLabel)
         gtk_box_append(ptr(askBox), actionRow)
@@ -275,8 +281,9 @@ final class DrawPane: @unchecked Sendable {
             gtk_label_set_text(
                 op(statusLabel), "\(verb) — \(prompt.ellipsized(to: 72))")
             gtk_widget_set_visible(statusLabel, 1)
-            gtk_label_set_text(op(progressLabel), slot.busyLine)
+            gtk_label_set_text(op(progressLabel), elapsedLine())
             gtk_widget_set_visible(progressLabel, 1)
+            startTicking()
         case .failed(_, let reason):
             gtk_label_set_text(op(statusLabel), reason)
             gtk_widget_set_visible(statusLabel, 1)
@@ -291,6 +298,14 @@ final class DrawPane: @unchecked Sendable {
     private func refreshStage() {
         Gtk.removeChildren(of: stagePicture)
         let picture = slot.onStage
+        if picture == nil || slot.isBusy { zoomed = false }
+        for widget in [
+            captionLabel, factsLabel, actionRow, filmLabel, stageScroller, chipRow, promptRow,
+        ] {
+            gtk_widget_set_visible(widget, zoomed ? 0 : 1)
+        }
+        gtk_label_set_text(op(zoomHint), ImageGenWords.zoomHint)
+        gtk_widget_set_visible(zoomHint, zoomed ? 1 : 0)
         if slot.isBusy {
             stagePicture.appendWorking(room: fills)
         } else if let picture, let bits = textures[picture.path], bits != 0,
@@ -310,11 +325,13 @@ final class DrawPane: @unchecked Sendable {
                 guard let self, let picture = self.slot.onStage else { return }
                 self.open(picture)
             }
+            if zoomed { Gtk.addClass(button, "draw-tile-zoomed") }
             gtk_box_append(ptr(stagePicture), button)
         } else {
             stagePicture.appendEmpty(room: fills)
         }
 
+        guard !zoomed else { return }
         let facts = picture.map(ImageGenFacts.line(for:)) ?? ""
         gtk_label_set_text(op(factsLabel), facts)
         gtk_widget_set_visible(factsLabel, picture == nil || slot.isBusy ? 0 : 1)
@@ -322,6 +339,47 @@ final class DrawPane: @unchecked Sendable {
         gtk_widget_set_visible(captionLabel, picture == nil || slot.isBusy ? 0 : 1)
         refreshActions(for: picture)
         refreshFilm()
+    }
+
+    /// How long the machine has been at it. ComfyUI answers done or failed and nothing between,
+    /// so this is a clock rather than a bar — a percentage nobody measured is a lie with a
+    /// progress indicator on it.
+    private func elapsedLine() -> String {
+        guard let started = studio.startedAt else { return slot.busyLine }
+        let seconds = Int(Date().timeIntervalSince(started).rounded())
+        return "\(slot.busyLine) · \(seconds)s"
+    }
+
+    /// One second is the whole resolution a wait like this needs, and the clock stops the moment
+    /// the render does — a surface that keeps a timer alive over a settled state is a surface
+    /// spending frames on nothing.
+    private func startTicking() {
+        guard !ticking else { return }
+        ticking = true
+        tick()
+    }
+
+    private func tick() {
+        Gtk.after(1000) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                guard self.slot.isBusy else {
+                    self.ticking = false
+                    return
+                }
+                gtk_label_set_text(op(self.progressLabel), self.elapsedLine())
+                self.tick()
+            }
+        }
+    }
+
+    /// Whether Escape has something of this surface's own to close before it closes the surface.
+    var isZoomed: Bool { zoomed }
+
+    func unzoom() {
+        guard zoomed else { return }
+        zoomed = false
+        render()
     }
 
     /// The verbs a finished picture earns. They exist at all only when there is something to act
@@ -498,8 +556,16 @@ final class DrawPane: @unchecked Sendable {
         }
     }
 
+    /// Full size. In the grid that is a window of its own beside the pane; in the modal studio it
+    /// is this surface giving the picture everything it has, because a window opened over a modal
+    /// is how the pointer was lost.
     private func open(_ picture: ImageGenPicture) {
         guard let bits = textures[picture.path], bits != 0 else { return }
+        if fills {
+            zoomed.toggle()
+            render()
+            return
+        }
         DrawViewer.present(picture: picture, textureBits: bits, parent: hostWindow)
     }
 

@@ -14,6 +14,13 @@ import TailscodeCore
 /// Closing may never stop a render. The job, its runner and the pictures live in ``ImageStudio``,
 /// so this window is only the view: it says so while one is out (`ImageGenSurface.dismissNote`)
 /// and reopening finds the same picture exactly where it was.
+///
+/// It is transient for the main window but deliberately **not** modal. A studio opens a file
+/// picker for a reference, a save dialog for the result, and on a desktop a viewer beside itself;
+/// every one of those is a window over this one, and a modal transient for a modal hands X11 an
+/// input focus the window manager will not grant — the pointer stops working for the whole
+/// session, not just this app. Floating above the work is the whole of what this window needed,
+/// and it means the conversation behind it can still be read while a render runs.
 final class ImageWindow: @unchecked Sendable {
     nonisolated(unsafe) private static var open: ImageWindow?
 
@@ -43,7 +50,7 @@ final class ImageWindow: @unchecked Sendable {
     private init(parent: UnsafeMutablePointer<GtkWidget>?) {
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), ImageGenSurface.title)
-        gtk_window_set_modal(ptr(window), 1)
+        gtk_window_set_modal(ptr(window), 0)
         gtk_window_set_default_size(
             ptr(window), Int32(ImageGenSurface.preferredWidth), Self.height(near: parent))
         gtk_widget_set_size_request(
@@ -145,6 +152,10 @@ final class ImageWindow: @unchecked Sendable {
             return true
         }
         guard keyval == Keymap.escape else { return false }
+        if pane.isZoomed {
+            pane.unzoom()
+            return true
+        }
         close()
         return true
     }

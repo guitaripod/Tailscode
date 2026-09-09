@@ -625,5 +625,12 @@ public enum ImageGenWords {
 
     public static var copiedNotice: String { Localized.text("Picture copied") }
 
+    /// The way back out of full size, said in the surface rather than left to be guessed — a
+    /// picture filling the room has hidden every other control, so the one that returns is the
+    /// one thing that has to still be legible.
+    public static var zoomHint: String {
+        Localized.text("Click the picture or press Esc to go back")
+    }
+
     public static var discardNotice: String { Localized.text("Picture let go of") }
 }

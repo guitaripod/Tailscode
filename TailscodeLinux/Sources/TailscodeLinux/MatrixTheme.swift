@@ -821,6 +821,7 @@ enum MatrixTheme {
             border: 1px solid transparent;
         }
         .draw-thumb-on { border-color: \(accent); }
+        .draw-tile-zoomed { background-color: \(canvas); }
         .video-notice {
             color: \(textDim);
             background-color: alpha(\(accent), 0.10);
