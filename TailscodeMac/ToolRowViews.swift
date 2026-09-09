@@ -371,6 +371,7 @@ enum ToolRowView {
         case .error: return "✗"
         case .running: return "◐"
         case .pending: return "○"
+        case .stopped: return "■"
         }
     }
 
@@ -380,6 +381,7 @@ enum ToolRowView {
         case .error: return MacTheme.Color.danger
         case .running: return MacTheme.Color.accent
         case .pending: return MacTheme.Color.tertiaryLabel
+        case .stopped: return MacTheme.Color.tertiaryLabel
         }
     }
 

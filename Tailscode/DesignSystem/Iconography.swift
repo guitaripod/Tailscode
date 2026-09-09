@@ -61,6 +61,7 @@ enum ToolIconography {
         case .running: return Theme.Color.accent
         case .completed: return Theme.Color.success
         case .error: return Theme.Color.danger
+        case .stopped: return Theme.Color.tertiaryLabel
         }
     }
 }

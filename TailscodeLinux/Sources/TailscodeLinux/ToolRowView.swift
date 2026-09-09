@@ -302,6 +302,7 @@ enum ToolRowView {
         case .error: return "✗"
         case .running: return "◐"
         case .pending: return "○"
+        case .stopped: return "■"
         }
     }
 
@@ -311,6 +312,7 @@ enum ToolRowView {
         case .error: return "glyph-error"
         case .running: return "glyph-running"
         case .pending: return "glyph-pending"
+        case .stopped: return "glyph-pending"
         }
     }
 
