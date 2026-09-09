@@ -21,7 +21,7 @@ enum SettingsFile {
         "tailscode.effort.", "tailscode.recentModels", "tailscode.modelCatalog.",
         "tailscode.archived.", "tailscode.activity.missed", "tailscode.watch.",
         "tailscode.quickask.", "tailscode.updates.", "tailscode.commandCatalog.",
-        "tailscode.slash.recents", "tailscode.forge.", "tailscode.draw.", "tailscode.usageWindow",
+        "tailscode.slash.recents", "tailscode.forge.", "tailscode.image.", "tailscode.usageWindow",
         "tailscode.shareCardStyle", "tailscode.quotaBoard",
     ]
 

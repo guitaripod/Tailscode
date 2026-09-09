@@ -240,11 +240,11 @@ public enum SelfTest {
             failures += 1
         }
 
-        let drawFailures = ImageGenDoorCheck.run()
-        if drawFailures.isEmpty {
-            report("draw door: the machine, the lane it grows and the words it may say all hold")
+        let imageFailures = ImageGenDoorCheck.run()
+        if imageFailures.isEmpty {
+            report("image door: the machine, the lane it grows and the words it may say all hold")
         } else {
-            report("draw door: \(drawFailures.joined(separator: " · "))")
+            report("image door: \(imageFailures.joined(separator: " · "))")
             failures += 1
         }
 

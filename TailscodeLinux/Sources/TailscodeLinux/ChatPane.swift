@@ -390,12 +390,12 @@ final class ChatPane: @unchecked Sendable {
 
     /// The composer's lanes, worn as buttons because a desk has a pointer rather than a swipe.
     /// The lanes are Core's (`QuickAskLane.offered`), and on a desk each lane is a surface: chat
-    /// is this pane, ask is the question window the summon chord opens, draw is a slot in the
-    /// grid, video is the forge — so a press is a door, the words in this box stay this
+    /// is this pane, ask is the question window the summon chord opens, and image and video are
+    /// modals over the work — so a press is a door, the words in this box stay this
     /// conversation's, and the pill that is already this pane's lane wears the accent and does
     /// nothing but say so.
     ///
-    /// Which lanes there are is not a setting. Drawing needs a machine with a card, so its pill
+    /// Which lanes there are is not a setting. A picture needs a machine with a card, so its pill
     /// is here exactly when one is known and gone when none is — which is why the row is built
     /// again whenever either store says the answer changed rather than once at startup.
     private func makeLaneRow() -> UnsafeMutablePointer<GtkWidget> {
@@ -408,13 +408,14 @@ final class ChatPane: @unchecked Sendable {
     private func fillLaneRow() {
         Gtk.removeChildren(of: laneRow)
         let door = ImageGenDoor.current()
-        for lane in QuickAskLane.offered(drawing: door.isOpen) {
+        for lane in QuickAskLane.offered(imaging: door.isOpen) {
             let button = Gtk.button(lane.word.lowercased(), css: ["flat", "lane-pill"]) {
                 [weak self] in
                 Gtk.onMain { [weak self] in self?.enterLane(lane) }
             }
             if lane == .chat { Gtk.addClass(button, "lane-pill-on") }
-            gtk_widget_set_tooltip_text(button, lane == .draw ? door.line ?? lane.spoken : lane.spoken)
+            gtk_widget_set_tooltip_text(
+                button, lane == .image ? door.line ?? lane.spoken : lane.spoken)
             gtk_box_append(ptr(laneRow), button)
         }
     }
@@ -438,8 +439,8 @@ final class ChatPane: @unchecked Sendable {
             focusComposer()
         case .ask:
             host?.summonQuickAsk()
-        case .draw:
-            host?.openDrawSlot()
+        case .image:
+            host?.presentImageStudio()
         case .video:
             _ = host?.presentForge()
         }

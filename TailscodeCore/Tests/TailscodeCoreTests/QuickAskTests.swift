@@ -289,15 +289,15 @@ extension DeviceStores {
 
         @Test("The lanes walk in one order and a swipe is that walk with a direction")
         func lanesWalkAndSwipe() {
-            let three = QuickAskLane.offered(drawing: false)
+            let three = QuickAskLane.offered(imaging: false)
             #expect(three == [.chat, .ask, .video])
-            #expect(QuickAskLane.order == [.chat, .ask, .draw, .video])
+            #expect(QuickAskLane.order == [.chat, .ask, .image, .video])
             #expect(QuickAskLane.chat.toggled == .ask)
             #expect(QuickAskLane.ask.advanced(by: 1, among: three) == .video)
             #expect(QuickAskLane.video.advanced(by: 1, among: three) == .chat)
             #expect(QuickAskLane.chat.advanced(by: -1, among: three) == .video)
             #expect(QuickAskLane.chat.advanced(by: -1) == .video)
-            #expect(QuickAskLane.ask.toggled == .draw)
+            #expect(QuickAskLane.ask.toggled == .image)
             #expect(
                 ComposerLaneSwipe.landed(
                     .chat, translation: -ComposerLaneSwipe.threshold, among: three) == .ask)

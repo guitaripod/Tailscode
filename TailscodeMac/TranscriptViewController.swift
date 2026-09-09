@@ -1110,7 +1110,7 @@ final class TranscriptViewController: NSViewController {
             case .chat: self.composer.takeFocus()
             case .ask: host.summonQuickAsk()
             case .video: host.presentForge()
-            case .draw: break
+            case .image: break
             }
         }
         composer.onToast = { [weak self] text in self?.onToast?(text) }

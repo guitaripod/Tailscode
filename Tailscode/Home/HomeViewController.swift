@@ -2127,7 +2127,7 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// to whatever the composer was already pointed at rather than to an arbitrary server.
     var composerAim: ComposerAim? {
         switch askLane {
-        case .video, .draw:
+        case .video, .image:
             return nil
         case .chat:
             guard let target = composeTarget,
@@ -2383,7 +2383,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                 }
                 modelChoices[aim.memoryKey] = choice
             }
-        case .video, .draw:
+        case .video, .image:
             assertionFailure("a render lane has no ComposerAim")
         case .ask:
             QuickAskDefaults.recordModel(selection, forProfileID: aim.profile.id)
@@ -2408,7 +2408,7 @@ extension HomeViewController: HomeComposerBarDelegate {
             EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: aim.profile.id)
         case .ask:
             QuickAskDefaults.recordEffort(level, forProfileID: aim.profile.id)
-        case .video, .draw:
+        case .video, .image:
             assertionFailure("a render lane has no ComposerAim")
         }
         var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
@@ -2445,7 +2445,7 @@ extension HomeViewController: HomeComposerBarDelegate {
             case .ask:
                 QuickAskDefaults.adopt(pick)
                 self.aimAsk(at: pick.profileID)
-            case .video, .draw:
+            case .video, .image:
                 assertionFailure("a render lane has no ComposerAim")
             }
         }
@@ -2491,7 +2491,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                 ])
         case .video:
             return videoTargetMenu()
-        case .draw:
+        case .image:
             assertionFailure("a render lane has no ComposerAim")
             return UIMenu()
         }
@@ -2664,7 +2664,7 @@ extension HomeViewController: HomeComposerBarDelegate {
         case .ask:
             QuickAskDefaults.record(profileID: aim.profile.id)
             QuickAskDefaults.stamp(profileID: aim.profile.id, sessionID: entry.session.id)
-        case .video, .draw:
+        case .video, .image:
             assertionFailure("a render lane has no ComposerAim")
         }
         let payload = attachments.map(\.prompt)

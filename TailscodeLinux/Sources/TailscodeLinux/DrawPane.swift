@@ -15,8 +15,11 @@ import TailscodeCore
 /// each one costs.
 final class DrawPane: @unchecked Sendable {
     let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private(set) var slot: ImageGenSlot
+    /// Everything that outlives this view: the slot, the running job and the pictures it decoded.
+    let studio: ImageStudio
     private var onChange: (@Sendable () -> Void)?
+    private var studioObserver: NSObjectProtocol?
+    var slot: ImageGenSlot { studio.slot }
 
     private let askBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
     private(set) var entry = gtk_entry_new()!
@@ -33,43 +36,36 @@ final class DrawPane: @unchecked Sendable {
     private let reasonLabel = Gtk.label("", css: "dim", wrap: true, selectable: false)
     private let historyLabel = Gtk.label("", css: "draw-history", selectable: false)
 
-    /// The textures this pane owns, keyed by file path — a finished picture paints from its own
-    /// bytes, fetched once, held until the pane closes.
-    private var textures: [String: UInt] = [:]
+    private let fills: Bool
     private var workingTexture: UInt = 0
     private var ticking = false
-    private var referencePath: String?
-    private var runner: ImageGenRunner?
+    private var textures: [String: UInt] { studio.textures }
     /// Where the renders actually run. A slot is pointed at one machine; the address survives a
     /// restart and the pane re-checks the server when it wakes.
-    static var defaultEndpoint: ImageGenEndpoint {
-        ImageGenDoor.current().endpoint ?? ImageGenEndpoint(host: "127.0.0.1")
+    convenience init(endpoint: ImageGenEndpoint?) {
+        self.init(studio: ImageStudio(endpoint: endpoint))
     }
 
-    init(endpoint: ImageGenEndpoint?) {
-        slot = ImageGenSlot(endpoint: endpoint ?? Self.defaultEndpoint)
-        slot.setEngine(ImageGenStore.engine())
-        slot.setAspect(ImageGenStore.aspect())
-        slot.setMode(ImageGenStore.mode())
+    /// `fills` is the difference between a slot and a studio: a pane in the grid keeps its
+    /// controls at the bottom where a transcript's would be, while a modal opened for this one
+    /// job gives the picture the whole room.
+    init(studio: ImageStudio, fills: Bool = false) {
+        self.studio = studio
+        self.fills = fills
         engineChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         aspectChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         modeChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         buildRoot()
         render()
         refreshNotice()
-        checkMachine()
-    }
-
-    /// Asks the machine whether it is there and whether it holds the model files, and files the
-    /// answer where every surface can read it. Nothing here waits on it: the pane draws first and
-    /// the sighting arrives when it arrives — a socket-activated ComfyUI takes the better part of
-    /// a minute to wake, and a pane that stared at a spinner for it would be a pane that lied
-    /// about what it knows.
-    private func checkMachine() {
-        let endpoint = slot.endpoint
-        Task.detached {
-            let health = await ImageGenClient(endpoint: endpoint).health()
-            ImageGenStore.record(ImageGenSighting(endpoint: endpoint, health: health))
+        studio.checkMachine()
+        studioObserver = NotificationCenter.default.addObserver(
+            forName: ImageStudio.didChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            Gtk.onMain { [weak self] in
+                self?.render()
+                self?.onChange?()
+            }
         }
     }
 
@@ -87,29 +83,12 @@ final class DrawPane: @unchecked Sendable {
         }
     }
 
-    var target: ImageGenEndpoint { slot.endpoint }
+    var target: ImageGenEndpoint { studio.endpoint }
     var isAsking: Bool { slot.isAsking }
     var isBusy: Bool { slot.isBusy }
 
     /// One line for the headless driver: the phase, the chips, and what the stage is holding.
-    var summary: String {
-        let phase: String
-        switch slot.phase {
-        case .asking: phase = "asking"
-        case .composing: phase = "composing"
-        case .painting: phase = "painting"
-        case .failed: phase = "failed"
-        }
-        let prompt: String
-        switch slot.phase {
-        case .asking: prompt = "-"
-        case .composing(let text): prompt = text
-        case .painting(let text, _, _): prompt = text
-        case .failed(let text, _): prompt = text
-        }
-        return
-            "draw \(phase) engine=\(slot.engine.rawValue) aspect=\(slot.aspect.rawValue) mode=\(slot.mode.rawValue) prompt=\(prompt.isEmpty ? "-" : prompt) tiles=\(slot.pictures.count) reason=\(slot.failure ?? "-")"
-    }
+    var summary: String { studio.summary }
 
     /// Types into the prompt as a person would, so the driver exercises the same path a
     /// keystroke does rather than a private one that could drift from it.
@@ -138,12 +117,12 @@ final class DrawPane: @unchecked Sendable {
         }
     }
 
+    /// Lets go of the view. A studio of this pane's own dies with it; the shared one keeps
+    /// painting, because closing a window is not cancelling a render.
     func shutdown() {
-        runner?.cancel()
-        for bits in textures.values {
-            if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
-        }
-        textures = [:]
+        if let studioObserver { NotificationCenter.default.removeObserver(studioObserver) }
+        studioObserver = nil
+        if studio !== ImageStudio.shared { studio.release() }
         if workingTexture != 0, let raw = UnsafeMutableRawPointer(bitPattern: workingTexture) {
             g_object_unref(raw)
         }
@@ -160,7 +139,8 @@ final class DrawPane: @unchecked Sendable {
 
         Gtk.addClass(askBox, "draw-ask")
         Gtk.margins(askBox, top: 12, bottom: 12, leading: 18, trailing: 18)
-        gtk_widget_set_valign(askBox, GTK_ALIGN_END)
+        gtk_widget_set_valign(askBox, fills ? GTK_ALIGN_FILL : GTK_ALIGN_END)
+        gtk_widget_set_vexpand(askBox, fills ? 1 : 0)
         gtk_widget_set_hexpand(askBox, 1)
 
         gtk_entry_set_placeholder_text(ptr(entry), ImageGenNotice.emptyBody)
@@ -262,6 +242,7 @@ final class DrawPane: @unchecked Sendable {
         for picture in slot.pictures {
             stageHolder.appendTile(
                 textureBits: textures[picture.path] ?? 0, caption: picture.prompt,
+                room: fills && slot.pictures.count == 1 && !slot.isBusy,
                 onClick: { [weak self] in self?.open(picture) })
         }
         if slot.isBusy {
@@ -284,28 +265,19 @@ final class DrawPane: @unchecked Sendable {
     // MARK: - Actions
 
     private func cycleEngine() {
-        slot.advance(.engine)
-        rememberChips()
+        studio.advance(.engine)
         render()
     }
 
     private func cycleAspect() {
-        slot.advance(.aspect)
-        rememberChips()
+        studio.advance(.aspect)
         render()
     }
 
     private func cycleMode() {
-        slot.advance(.mode)
-        rememberChips()
+        studio.advance(.mode)
         render()
         if slot.mode == .edit { offerReference() }
-    }
-
-    /// What was last drawn with is what the next slot opens on, on this machine and after a
-    /// restart — three chips are a preference, not a per-pane accident.
-    private func rememberChips() {
-        ImageGenStore.remember(engine: slot.engine, aspect: slot.aspect, mode: slot.mode)
     }
 
     func handle(_ command: ImageGenCommand) {
@@ -325,68 +297,15 @@ final class DrawPane: @unchecked Sendable {
 
     func submit() {
         guard let raw = gtk_editable_get_text(op(entry)) else { return }
-        let text = String(cString: raw).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        slot.begin(prompt: text)
-        let engine = slot.engine
-        let mode = slot.mode
-        let aspect = slot.aspect
-        let reference = mode == .edit ? referencePath : nil
-        let fresh = ImageGenRunner(
-            endpoint: slot.endpoint, prompt: text, engine: engine, mode: mode, aspect: aspect)
-        runner = fresh
-        render()
-        let producing = fresh
-        producing.run(
-            prompt: text, engine: engine, mode: mode, aspect: aspect, referencePath: reference
-        ) { [weak self] outcome in
-            Gtk.onMain { [weak self] in
-                self?.finished(outcome, from: producing)
-            }
-        }
-        render()
-    }
-
-    /// The outcome is owned by the runner that produced it, not by whatever the pane is running
-    /// now — a second submit while one paints must not steal the first's picture or its words.
-    private func finished(_ outcome: ImageGenRunner.Outcome, from runner: ImageGenRunner) {
-        switch outcome {
-        case .picture(let data, let seconds):
-            let path = ImageGenFiles.write(data, engine: runner.engine)
-            let picture = ImageGenPicture(
-                path: path, prompt: runner.prompt, engine: runner.engine, mode: runner.mode,
-                aspect: runner.aspect, seconds: seconds, seed: runner.seed)
-            slot.finish(picture)
-            decode(picture.path, data: data)
-        case .failure(let reason):
-            slot.fail(prompt: runner.prompt, reason: reason)
-        }
-        if runner === self.runner { self.runner = nil }
-        render()
-    }
-
-    private func decode(_ path: String, data: Data) {
-        let bits: UInt = data.withUnsafeBytes { buffer in
-            guard let base = buffer.baseAddress else { return 0 }
-            var width: Int32 = 0
-            var height: Int32 = 0
-            guard let texture = tailscode_texture_scaled(
-                base, gsize(data.count), 1024, &width, &height)
-            else { return 0 }
-            return UInt(bitPattern: UnsafeMutableRawPointer(texture))
-        }
-        guard bits != 0 else { return }
-        if let stale = textures[path], let raw = UnsafeMutableRawPointer(bitPattern: stale) {
-            g_object_unref(raw)
-        }
-        textures[path] = bits
+        studio.submit(prompt: String(cString: raw))
+        gtk_editable_set_text(op(entry), "")
         render()
     }
 
     private func offerReference() {
         Gtk.openFiles(parent: hostWindow) { [weak self] paths in
             guard let self, let path = paths.first else { return }
-            self.referencePath = path
+            self.studio.referencePath = path
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 gtk_entry_set_placeholder_text(
@@ -432,17 +351,26 @@ private extension UnsafeMutablePointer where Pointee == GtkWidget {
         gtk_box_append(ptr(self), holder)
     }
 
-    func appendTile(textureBits: UInt, caption: String, onClick: @escaping @Sendable () -> Void) {
+    func appendTile(
+        textureBits: UInt, caption: String, room: Bool = false,
+        onClick: @escaping @Sendable () -> Void
+    ) {
         let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
         let button = gtk_button_new()!
         Gtk.addClass(button, "draw-tile")
+        if room {
+            gtk_widget_set_vexpand(holder, 1)
+            gtk_widget_set_vexpand(button, 1)
+            gtk_widget_set_hexpand(button, 1)
+        }
         let buttonPtr = UnsafeMutableRawPointer(button).assumingMemoryBound(to: GtkButton.self)
         if textureBits != 0, let picture = Gtk.pictureWidget(bits: textureBits) {
+            if room { gtk_widget_set_vexpand(picture, 1) }
             gtk_button_set_child(buttonPtr, picture)
         } else {
             let placeholder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             Gtk.addClass(placeholder, "draw-tile-empty")
-            gtk_widget_set_size_request(placeholder, 240, 200)
+            gtk_widget_set_size_request(placeholder, room ? 420 : 240, room ? 360 : 200)
             gtk_button_set_child(buttonPtr, placeholder)
         }
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)

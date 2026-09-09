@@ -159,10 +159,10 @@ final class PillsRow: NSView {
         restyle()
     }
 
-    /// The lanes this client draws. Drawing is a lane wherever a machine can paint and a client
-    /// has somewhere to put the picture; the Mac has no draw slot yet, so the control stays three
-    /// wide and never offers a door that opens on nothing.
-    static var offeredLanes: [QuickAskLane] { QuickAskLane.offered(drawing: false) }
+    /// The lanes this client draws. A picture is a lane wherever a machine can paint and a
+    /// client has a surface to make one in; the Mac has no image studio yet, so the control stays
+    /// three wide and never offers a door that opens on nothing.
+    static var offeredLanes: [QuickAskLane] { QuickAskLane.offered(imaging: false) }
 
     @objc private func laneTapped() {
         let lanes = PillsRow.offeredLanes

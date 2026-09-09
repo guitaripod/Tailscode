@@ -314,10 +314,10 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         addGestureRecognizer(pan)
     }
 
-    /// The lanes this client draws. Drawing is a lane wherever a machine can paint and a client
-    /// has somewhere to put the picture; the phone has no surface for one yet, so the walk stays
+    /// The lanes this client draws. A picture is a lane wherever a machine can paint and a
+    /// client has a surface to make one in; the phone has no image studio yet, so the walk stays
     /// three wide and the switch never offers a door that opens on nothing.
-    static var offeredLanes: [QuickAskLane] { QuickAskLane.offered(drawing: false) }
+    static var offeredLanes: [QuickAskLane] { QuickAskLane.offered(imaging: false) }
 
     private func laneTapped() {
         setLane(lane.advanced(by: 1, among: Self.offeredLanes), animated: true)

@@ -258,6 +258,11 @@ public struct ImageGenNotice {
     public static let emptyBody = Localized.text(
         "Describe a picture. ComfyUI paints it here.")
 
+    /// Where the work happens, said for a surface that is not a pane in the grid — the modal owes
+    /// the same fact without borrowing the split's own sentence about what it costs the tiling.
+    public static let costLine = Localized.text(
+        "Rendered on the machine ComfyUI runs on")
+
     public static let offlineBody = Localized.text(
         "ComfyUI is not answering at")
 }
@@ -345,9 +350,9 @@ public struct ImageGenSlot: Sendable, Equatable {
     /// One line for the identity strip: what this slot is right now.
     public var title: String {
         switch phase {
-        case .asking: return Localized.text("Draw")
+        case .asking: return ImageGenEntryPoint.title
         case .composing(let prompt):
-            return prompt.isEmpty ? Localized.text("Draw") : prompt.ellipsized(to: 42)
+            return prompt.isEmpty ? ImageGenEntryPoint.title : prompt.ellipsized(to: 42)
         case .painting(let prompt, let engine, _):
             return Localized.text("%@ · %@", engine.short, prompt.ellipsized(to: 38))
         case .failed(let prompt, _):

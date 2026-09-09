@@ -535,6 +535,22 @@ final class MainWindow: @unchecked Sendable {
                     } ?? []
                     FileHandle.standardOutput.write(
                         Data("DRAWSUM \(lines)\n".utf8))
+                case "image":
+                    let studio = self.presentImageStudio()
+                    FileHandle.standardOutput.write(
+                        Data("IMAGE \(studio == nil ? "-" : ImageStudio.shared.endpoint.address)\n"
+                            .utf8))
+                case "imagetype":
+                    ImageWindow.current?.driverType(argument)
+                    FileHandle.standardOutput.write(
+                        Data("IMAGETYPE \(argument.isEmpty ? "-" : argument)\n".utf8))
+                case "imagego":
+                    ImageWindow.current?.driverSubmit()
+                    FileHandle.standardOutput.write(
+                        Data("IMAGEGO \(ImageStudio.shared.isPainting)\n".utf8))
+                case "imagesum":
+                    FileHandle.standardOutput.write(
+                        Data("IMAGESUM \(ImageStudio.shared.summary)\n".utf8))
                 case "forge":
                     let forge = self.presentForge()
                     if !argument.isEmpty { forge.demonstrate(argument) }
@@ -2513,26 +2529,15 @@ final class MainWindow: @unchecked Sendable {
         ForgeWindow.present(parent: window)
     }
 
-    /// The draw lane's door. A picture belongs beside the conversation that asked for it, so this
-    /// opens a slot in the grid rather than a modal over it — the opposite of the forge, because
-    /// seconds of a card is a thing you watch land next to your words and minutes of one is a task
-    /// you go and collect. A window already painting raises that pane instead of growing a second
-    /// painter, and the machine is the one this device knows about rather than one typed again.
+    /// The image studio, opened over the work the same way the forge is. Making a picture is a
+    /// task you start, watch and collect rather than a place you work, so it costs the
+    /// conversation behind it nothing and never leaves a pane behind. One already open is raised
+    /// rather than made a second time, and closing it never touches a render, which lives in
+    /// `ImageStudio`.
     @discardableResult
-    func openDrawSlot() -> ChatPane? {
-        let door = ImageGenDoor.current()
-        guard door.isOpen else { return nil }
-        if let existing = splitHost.orderedPanes.first(where: { $0.isDrawing }) {
-            splitHost.focus(existing, grabKeyboard: false)
-            existing.showDraw(door.endpoint)
-            return existing
-        }
-        let source = splitHost.activePane
-        let pane = splitHost.split(source, edge: .right) ?? source
-        pane.showDraw(door.endpoint)
-        splitHost.focus(pane, grabKeyboard: false)
-        splitHost.persist()
-        return pane
+    func presentImageStudio() -> ImageWindow? {
+        guard ImageGenDoor.current().isOpen else { return nil }
+        return ImageWindow.present(parent: window)
     }
 
     /// The dispatcher board, opened over the work the same way the forge is: a thing you check on

@@ -188,7 +188,7 @@ public enum QuickAskRecents {
 public enum QuickAskLane: String, Sendable, CaseIterable {
     case chat
     case ask
-    case draw
+    case image
     case video
 
     /// The lanes in the order a flip walks them, which is also the order a swipe reads them:
@@ -201,7 +201,7 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
     public var needsRenderer: Bool {
         switch self {
         case .chat, .ask: return false
-        case .draw, .video: return true
+        case .image, .video: return true
         }
     }
 
@@ -210,10 +210,10 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
     /// This is the whole of why the switch has no setting: a lane is not turned on, it is either
     /// backed by a machine or it is not. The video lane stays whatever the answer is, because it
     /// is the road to pointing at that machine in the first place — a door that vanishes before
-    /// anyone has walked through it is a feature nobody can find. Drawing has no setup of its
-    /// own: it arrives the moment a renderer does and leaves with it.
-    public static func offered(drawing: Bool) -> [QuickAskLane] {
-        order.filter { $0 != .draw || drawing }
+    /// anyone has walked through it is a feature nobody can find. Pictures have no setup of their
+    /// own: the lane arrives the moment a renderer does and leaves with it.
+    public static func offered(imaging: Bool) -> [QuickAskLane] {
+        order.filter { $0 != .image || imaging }
     }
 
     /// The lane after this one, wrapping, among the lanes actually on offer — a walk must never
@@ -235,7 +235,7 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         switch self {
         case .chat: return Localized.text("Chat")
         case .ask: return Localized.text("Ask")
-        case .draw: return Localized.text("Draw")
+        case .image: return Localized.text("Image")
         case .video: return Localized.text("Video")
         }
     }
@@ -246,7 +246,7 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         switch self {
         case .chat: return "bubble.left"
         case .ask: return "sparkle"
-        case .draw: return "wand.and.rays"
+        case .image: return ImageGenEntryPoint.symbol
         case .video: return ForgeEntryPoint.symbol
         }
     }
@@ -255,7 +255,7 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         switch self {
         case .chat: return Localized.text("Start a new chat…")
         case .ask: return Localized.text("Ask anything — no project, no setup")
-        case .draw: return Localized.text("Describe the picture…")
+        case .image: return Localized.text("Describe the image…")
         case .video: return Localized.text("Describe the video…")
         }
     }
@@ -266,8 +266,7 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
     public var sendLabel: String {
         switch self {
         case .chat, .ask: return Localized.text("Send")
-        case .draw: return Localized.text("Draw")
-        case .video: return Localized.text("Render")
+        case .image, .video: return Localized.text("Render")
         }
     }
 
@@ -278,9 +277,9 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         ForgeField.allCases.filter(\.isCyclable)
     }
 
-    /// The settings the draw lane wears as chips under the box — the same three the slot walks,
-    /// so the composer and a draw pane never disagree about what a picture is made from.
-    public static var drawChips: [ImageGenField] { ImageGenField.allCases }
+    /// The settings the image lane wears as chips under the box — the same three the studio
+    /// walks, so the composer and the surface never disagree about what a picture is made from.
+    public static var imageChips: [ImageGenField] { ImageGenField.allCases }
 
     /// What a screen reader is told the switch is, said as the state it is in. A toggle that reads
     /// out its verb instead of its state leaves the one fact a blind reader came for unsaid.
@@ -293,9 +292,9 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
             return Localized.text(
                 "Quick ask on. Sending asks the named machine with no project, on the model this ask remembers."
             )
-        case .draw:
+        case .image:
             return Localized.text(
-                "Draw lane. Sending paints a picture on the machine with the card, with the settings named under this box."
+                "Image lane. Sending paints a picture on the machine with the card, with the settings named under this box."
             )
         case .video:
             return Localized.text(

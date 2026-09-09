@@ -213,8 +213,8 @@ public struct PaneChooser: Sendable, Equatable {
     /// The third answer that is not a machine: a picture, painted in this pane, beside the work
     /// it belongs to. The cost line states where the render actually runs, before anyone asks.
     static let drawRow = PaneChooserRow(
-        action: .draw, title: Localized.text("Draw something…"),
-        detail: Localized.text("Paint a picture from words, or edit one"),
+        action: .draw, title: Localized.text("Make an image…"),
+        detail: Localized.text("From words, or from a picture you hand it"),
         note: ImageGenNotice.splitCostLine)
 
     private var serverRows: [PaneChooserRow] {
