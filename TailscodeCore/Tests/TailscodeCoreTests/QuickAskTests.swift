@@ -287,15 +287,23 @@ extension DeviceStores {
             #expect(ModelEffort.isOffered(options: ["low"]))
         }
 
-        @Test("Three lanes walk in one order and a swipe is that walk with a direction")
+        @Test("The lanes walk in one order and a swipe is that walk with a direction")
         func lanesWalkAndSwipe() {
-            #expect(QuickAskLane.order == [.chat, .ask, .video])
+            let three = QuickAskLane.offered(drawing: false)
+            #expect(three == [.chat, .ask, .video])
+            #expect(QuickAskLane.order == [.chat, .ask, .draw, .video])
             #expect(QuickAskLane.chat.toggled == .ask)
-            #expect(QuickAskLane.ask.toggled == .video)
-            #expect(QuickAskLane.video.toggled == .chat)
+            #expect(QuickAskLane.ask.advanced(by: 1, among: three) == .video)
+            #expect(QuickAskLane.video.advanced(by: 1, among: three) == .chat)
+            #expect(QuickAskLane.chat.advanced(by: -1, among: three) == .video)
             #expect(QuickAskLane.chat.advanced(by: -1) == .video)
-            #expect(ComposerLaneSwipe.landed(.chat, translation: -ComposerLaneSwipe.threshold) == .ask)
-            #expect(ComposerLaneSwipe.landed(.chat, translation: ComposerLaneSwipe.threshold) == .video)
+            #expect(QuickAskLane.ask.toggled == .draw)
+            #expect(
+                ComposerLaneSwipe.landed(
+                    .chat, translation: -ComposerLaneSwipe.threshold, among: three) == .ask)
+            #expect(
+                ComposerLaneSwipe.landed(
+                    .chat, translation: ComposerLaneSwipe.threshold, among: three) == .video)
             #expect(ComposerLaneSwipe.landed(.chat, translation: -ComposerLaneSwipe.threshold + 1) == nil)
             #expect(ComposerLaneSwipe.offset(for: 1000) == ComposerLaneSwipe.lean)
             #expect(ComposerLaneSwipe.offset(for: -1000) == -ComposerLaneSwipe.lean)
@@ -311,6 +319,11 @@ extension DeviceStores {
             #expect(!QuickAskLane.videoChips.contains(.endpoint))
             let words = Set(QuickAskLane.allCases.map(\.word))
             #expect(words.count == QuickAskLane.allCases.count)
+        }
+
+        @Test("The draw lane arrives with a machine that can paint and leaves with it")
+        func drawLaneFollowsTheMachine() {
+            #expect(ImageGenDoorCheck.run().isEmpty, "\(ImageGenDoorCheck.run())")
         }
     }
 }

@@ -120,6 +120,7 @@ enum ParityManifest {
         case .watchAccounts: return .implemented("WatchSignInDialog")
         case .browserSlot: return .implemented("WebPane")
         case .imageGenSlot: return .implemented("DrawPane")
+        case .drawLane: return .implemented("fillLaneRow")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("acceptChatDrops")
         case .clickToActivate: return .implemented("onPressCapture")

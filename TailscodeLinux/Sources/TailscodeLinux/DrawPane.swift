@@ -42,16 +42,35 @@ final class DrawPane: @unchecked Sendable {
     private var runner: ImageGenRunner?
     /// Where the renders actually run. A slot is pointed at one machine; the address survives a
     /// restart and the pane re-checks the server when it wakes.
-    static let defaultEndpoint = ImageGenEndpoint(address: "http://127.0.0.1:8189")
+    static var defaultEndpoint: ImageGenEndpoint {
+        ImageGenDoor.current().endpoint ?? ImageGenEndpoint(host: "127.0.0.1")
+    }
 
     init(endpoint: ImageGenEndpoint?) {
         slot = ImageGenSlot(endpoint: endpoint ?? Self.defaultEndpoint)
+        slot.setEngine(ImageGenStore.engine())
+        slot.setAspect(ImageGenStore.aspect())
+        slot.setMode(ImageGenStore.mode())
         engineChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         aspectChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         modeChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         buildRoot()
         render()
         refreshNotice()
+        checkMachine()
+    }
+
+    /// Asks the machine whether it is there and whether it holds the model files, and files the
+    /// answer where every surface can read it. Nothing here waits on it: the pane draws first and
+    /// the sighting arrives when it arrives — a socket-activated ComfyUI takes the better part of
+    /// a minute to wake, and a pane that stared at a spinner for it would be a pane that lied
+    /// about what it knows.
+    private func checkMachine() {
+        let endpoint = slot.endpoint
+        Task.detached {
+            let health = await ImageGenClient(endpoint: endpoint).health()
+            ImageGenStore.record(ImageGenSighting(endpoint: endpoint, health: health))
+        }
     }
 
     /// Wires the chips once the pane exists — a closure over `self` cannot be built until every
@@ -265,21 +284,28 @@ final class DrawPane: @unchecked Sendable {
     // MARK: - Actions
 
     private func cycleEngine() {
-        slot.setEngine(slot.engine == .quality ? .fast : .quality)
+        slot.advance(.engine)
+        rememberChips()
         render()
     }
 
     private func cycleAspect() {
-        let all = ImageGenAspect.allCases
-        guard let index = all.firstIndex(of: slot.aspect) else { return }
-        slot.setAspect(all[(index + 1) % all.count])
+        slot.advance(.aspect)
+        rememberChips()
         render()
     }
 
     private func cycleMode() {
-        slot.setMode(slot.mode == .generate ? .edit : .generate)
+        slot.advance(.mode)
+        rememberChips()
         render()
         if slot.mode == .edit { offerReference() }
+    }
+
+    /// What was last drawn with is what the next slot opens on, on this machine and after a
+    /// restart — three chips are a preference, not a per-pane accident.
+    private func rememberChips() {
+        ImageGenStore.remember(engine: slot.engine, aspect: slot.aspect, mode: slot.mode)
     }
 
     func handle(_ command: ImageGenCommand) {
@@ -326,7 +352,7 @@ final class DrawPane: @unchecked Sendable {
     private func finished(_ outcome: ImageGenRunner.Outcome, from runner: ImageGenRunner) {
         switch outcome {
         case .picture(let data, let seconds):
-            let path = ImageGenStore.write(data, engine: runner.engine)
+            let path = ImageGenFiles.write(data, engine: runner.engine)
             let picture = ImageGenPicture(
                 path: path, prompt: runner.prompt, engine: runner.engine, mode: runner.mode,
                 aspect: runner.aspect, seconds: seconds, seed: runner.seed)

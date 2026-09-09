@@ -37,7 +37,7 @@ final class PillsRow: NSView {
     /// video is the forge sheet — so a press is a door, and the selection springs back to chat
     /// because this row never stops being a conversation's.
     private let laneControl = NSSegmentedControl(
-        labels: QuickAskLane.order.map(\.word), trackingMode: .momentary, target: nil,
+        labels: PillsRow.offeredLanes.map(\.word), trackingMode: .momentary, target: nil,
         action: nil)
     private let vimBadge = NSTextField(labelWithString: "")
     private let vimBadgeWrap = NSView()
@@ -115,7 +115,7 @@ final class PillsRow: NSView {
         laneControl.action = #selector(laneTapped)
         laneControl.setContentCompressionResistancePriority(.required, for: .horizontal)
         laneControl.translatesAutoresizingMaskIntoConstraints = false
-        for (index, lane) in QuickAskLane.order.enumerated() {
+        for (index, lane) in PillsRow.offeredLanes.enumerated() {
             laneControl.setToolTip(lane.spoken, forSegment: index)
         }
 
@@ -159,8 +159,13 @@ final class PillsRow: NSView {
         restyle()
     }
 
+    /// The lanes this client draws. Drawing is a lane wherever a machine can paint and a client
+    /// has somewhere to put the picture; the Mac has no draw slot yet, so the control stays three
+    /// wide and never offers a door that opens on nothing.
+    static var offeredLanes: [QuickAskLane] { QuickAskLane.offered(drawing: false) }
+
     @objc private func laneTapped() {
-        let lanes = QuickAskLane.order
+        let lanes = PillsRow.offeredLanes
         guard lanes.indices.contains(laneControl.selectedSegment) else { return }
         onLane?(lanes[laneControl.selectedSegment])
     }

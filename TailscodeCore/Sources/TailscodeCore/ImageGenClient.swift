@@ -111,21 +111,49 @@ public struct ImageGenClient: Sendable {
         "vae/flux2-vae.safetensors",
     ]
 
-    private func missingModels() async -> [String] {
-        guard let url = URL(string: endpoint.address + "/object_info/UNETLoader") else {
-            return Self.required
+    /// Which loader answers for a family of model files, and under which field. A store keeps
+    /// diffusion models, text encoders and VAEs in three directories and ComfyUI publishes each
+    /// one through its own node, so asking a single node about all three is asking a question it
+    /// has no way to answer — and taking its silence for absence is how every model reads as
+    /// missing on a machine that holds all of them.
+    private static let loaders: [String: (node: String, field: String)] = [
+        "diffusion_models": ("UNETLoader", "unet_name"),
+        "text_encoders": ("CLIPLoader", "clip_name"),
+        "vae": ("VAELoader", "vae_name"),
+    ]
+
+    private func available(from loader: (node: String, field: String)) async -> [String]? {
+        guard let url = URL(string: endpoint.address + "/object_info/\(loader.node)") else {
+            return nil
         }
         guard let (data, _) = try? await session.data(from: url),
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let loader = object["UNETLoader"] as? [String: Any],
-            let input = loader["input"] as? [String: Any],
+            let node = object[loader.node] as? [String: Any],
+            let input = node["input"] as? [String: Any],
             let required = input["required"] as? [String: Any],
-            let unet = required["unet_name"] as? [Any],
-            let available = unet.first as? [String]
-        else { return Self.required }
-        return Self.required.filter { name in
-            !available.contains(where: { $0.hasSuffix(name) })
+            let field = required[loader.field] as? [Any],
+            let names = field.first as? [String]
+        else { return nil }
+        return names
+    }
+
+    /// The required files the store cannot offer. A loader this server does not publish is
+    /// reported as its whole family missing rather than quietly passing, because a graph that
+    /// names a node ComfyUI has never heard of fails at queue time with an error nobody can read.
+    private func missingModels() async -> [String] {
+        var missing: [String] = []
+        for (directory, loader) in Self.loaders {
+            let wanted = Self.required.filter { $0.hasPrefix(directory + "/") }
+            guard !wanted.isEmpty else { continue }
+            guard let names = await available(from: loader) else {
+                missing.append(contentsOf: wanted)
+                continue
+            }
+            let offered = Set(names.map { ($0 as NSString).lastPathComponent })
+            missing.append(
+                contentsOf: wanted.filter { !offered.contains(($0 as NSString).lastPathComponent) })
         }
+        return missing.sorted()
     }
 
     /// Queues one render. The graph is built for the engine and mode; the seed is the caller's

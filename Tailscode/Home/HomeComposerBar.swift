@@ -314,8 +314,13 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         addGestureRecognizer(pan)
     }
 
+    /// The lanes this client draws. Drawing is a lane wherever a machine can paint and a client
+    /// has somewhere to put the picture; the phone has no surface for one yet, so the walk stays
+    /// three wide and the switch never offers a door that opens on nothing.
+    static var offeredLanes: [QuickAskLane] { QuickAskLane.offered(drawing: false) }
+
     private func laneTapped() {
-        setLane(lane.toggled, animated: true)
+        setLane(lane.advanced(by: 1, among: Self.offeredLanes), animated: true)
         Theme.Haptics.selection()
         delegate?.homeComposerDidToggleLane(self)
     }
@@ -330,7 +335,10 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         case .changed:
             lean(CGAffineTransform(
                 translationX: ComposerLaneSwipe.offset(for: translation), y: 0))
-            guard let next = ComposerLaneSwipe.landed(lane, translation: translation) else {
+            guard
+                let next = ComposerLaneSwipe.landed(
+                    lane, translation: translation, among: Self.offeredLanes)
+            else {
                 return
             }
             gesture.setTranslation(.zero, in: self)

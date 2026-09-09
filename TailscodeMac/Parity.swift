@@ -197,6 +197,9 @@ enum ParityManifest {
         case .imageGenSlot:
             return .gap(
                 "Core's slot model, ComfyUI client and chooser row are shared, but the Mac has no pane that paints and no row that offers one; a layout snapshot that held a draw slot restores an empty pane")
+        case .drawLane:
+            return .gap(
+                "Core carries the lane, the door and every word, and the pills row already walks lanes — but the Mac has no pane that paints (imageGenSlot is a gap here too), so PillsRow.offeredLanes answers three and the lane is never drawn")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("onChatDropped")
         case .clickToActivate: return .implemented("pressLanded")

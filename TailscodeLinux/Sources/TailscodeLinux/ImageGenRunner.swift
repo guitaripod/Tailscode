@@ -76,7 +76,7 @@ final class ImageGenRunner: @unchecked Sendable {
 /// Where finished pictures live on this machine: one directory per engine under the app's own
 /// pictures cache, named by the moment they were made. A picture is written once and read many
 /// times — the tile decodes from the same bytes the viewer opens.
-enum ImageGenStore {
+enum ImageGenFiles {
     static func directory(for engine: ImageGenEngine) -> URL {
         let base = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory

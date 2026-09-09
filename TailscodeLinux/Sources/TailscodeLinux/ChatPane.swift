@@ -33,6 +33,8 @@ final class ChatPane: @unchecked Sendable {
         GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 3 : 10)
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     private let authBanner = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+    private let laneRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
+    private var laneObservers: [NSObjectProtocol] = []
     private let statusBand = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     let bandState = StatusBand.State()
     private var agents: [SubagentSummary] = []
@@ -386,24 +388,48 @@ final class ChatPane: @unchecked Sendable {
         return row
     }
 
-    /// The composer's three lanes, worn as buttons because a desk has a pointer rather than a
-    /// swipe. The lanes are Core's (`QuickAskLane.order`), and on a desk each lane is a surface:
-    /// chat is this pane, ask is the question window the summon chord opens, video is the forge —
-    /// so a press is a door, the words in this box stay this conversation's, and the pill that is
-    /// already this pane's lane wears the accent and does nothing but say so.
+    /// The composer's lanes, worn as buttons because a desk has a pointer rather than a swipe.
+    /// The lanes are Core's (`QuickAskLane.offered`), and on a desk each lane is a surface: chat
+    /// is this pane, ask is the question window the summon chord opens, draw is a slot in the
+    /// grid, video is the forge — so a press is a door, the words in this box stay this
+    /// conversation's, and the pill that is already this pane's lane wears the accent and does
+    /// nothing but say so.
+    ///
+    /// Which lanes there are is not a setting. Drawing needs a machine with a card, so its pill
+    /// is here exactly when one is known and gone when none is — which is why the row is built
+    /// again whenever either store says the answer changed rather than once at startup.
     private func makeLaneRow() -> UnsafeMutablePointer<GtkWidget> {
-        let lanes = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
-        Gtk.addClass(lanes, "lane-row")
-        for lane in QuickAskLane.order {
+        Gtk.addClass(laneRow, "lane-row")
+        fillLaneRow()
+        observeLaneDoors()
+        return laneRow
+    }
+
+    private func fillLaneRow() {
+        Gtk.removeChildren(of: laneRow)
+        let door = ImageGenDoor.current()
+        for lane in QuickAskLane.offered(drawing: door.isOpen) {
             let button = Gtk.button(lane.word.lowercased(), css: ["flat", "lane-pill"]) {
                 [weak self] in
                 Gtk.onMain { [weak self] in self?.enterLane(lane) }
             }
             if lane == .chat { Gtk.addClass(button, "lane-pill-on") }
-            gtk_widget_set_tooltip_text(button, lane.spoken)
-            gtk_box_append(ptr(lanes), button)
+            gtk_widget_set_tooltip_text(button, lane == .draw ? door.line ?? lane.spoken : lane.spoken)
+            gtk_box_append(ptr(laneRow), button)
         }
-        return lanes
+    }
+
+    /// A renderer this device learned about is a lane this composer grows, in every pane at once
+    /// and without anybody restarting anything.
+    private func observeLaneDoors() {
+        for name in [ForgeStore.didChange, ImageGenStore.didChange] {
+            laneObservers.append(
+                NotificationCenter.default.addObserver(
+                    forName: name, object: nil, queue: nil
+                ) { [weak self] _ in
+                    Gtk.onMain { [weak self] in self?.fillLaneRow() }
+                })
+        }
     }
 
     private func enterLane(_ lane: QuickAskLane) {
@@ -412,6 +438,8 @@ final class ChatPane: @unchecked Sendable {
             focusComposer()
         case .ask:
             host?.summonQuickAsk()
+        case .draw:
+            host?.openDrawSlot()
         case .video:
             _ = host?.presentForge()
         }
@@ -1129,6 +1157,10 @@ final class ChatPane: @unchecked Sendable {
             host?.keepWatching(previousConversation, entry: previousEntry)
         }
         cascade.release()
+        for observer in laneObservers { NotificationCenter.default.removeObserver(observer) }
+        laneObservers = []
+        draw?.shutdown()
+        draw = nil
         video?.shutdown()
         video = nil
         page?.shutdown()

@@ -2513,6 +2513,28 @@ final class MainWindow: @unchecked Sendable {
         ForgeWindow.present(parent: window)
     }
 
+    /// The draw lane's door. A picture belongs beside the conversation that asked for it, so this
+    /// opens a slot in the grid rather than a modal over it — the opposite of the forge, because
+    /// seconds of a card is a thing you watch land next to your words and minutes of one is a task
+    /// you go and collect. A window already painting raises that pane instead of growing a second
+    /// painter, and the machine is the one this device knows about rather than one typed again.
+    @discardableResult
+    func openDrawSlot() -> ChatPane? {
+        let door = ImageGenDoor.current()
+        guard door.isOpen else { return nil }
+        if let existing = splitHost.orderedPanes.first(where: { $0.isDrawing }) {
+            splitHost.focus(existing, grabKeyboard: false)
+            existing.showDraw(door.endpoint)
+            return existing
+        }
+        let source = splitHost.activePane
+        let pane = splitHost.split(source, edge: .right) ?? source
+        pane.showDraw(door.endpoint)
+        splitHost.focus(pane, grabKeyboard: false)
+        splitHost.persist()
+        return pane
+    }
+
     /// The dispatcher board, opened over the work the same way the forge is: a thing you check on
     /// rather than a place you type, so it costs the conversation behind it nothing.
     @discardableResult

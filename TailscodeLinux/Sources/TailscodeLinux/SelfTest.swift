@@ -240,6 +240,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        let drawFailures = ImageGenDoorCheck.run()
+        if drawFailures.isEmpty {
+            report("draw door: the machine, the lane it grows and the words it may say all hold")
+        } else {
+            report("draw door: \(drawFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         let forgeFailures = ForgeBoardCheck.run()
         if forgeFailures.isEmpty {
             report("video forge: the graph, the frames, the job's walk and the board all hold")

@@ -188,20 +188,43 @@ public enum QuickAskRecents {
 public enum QuickAskLane: String, Sendable, CaseIterable {
     case chat
     case ask
+    case draw
     case video
 
     /// The lanes in the order a flip walks them, which is also the order a swipe reads them:
-    /// the everyday lane first, the question beside it, and the lane that spends another
-    /// machine's card last — the most deliberate flip is the longest one.
+    /// the everyday lane first, the question beside it, and the two that spend another machine's
+    /// card last — the most deliberate flip is the longest one, and the cheaper of the two comes
+    /// first because seconds of a card and minutes of one are not the same decision.
     public static var order: [QuickAskLane] { allCases }
 
-    /// The lane after this one, wrapping. With three lanes the tap on the switch is a walk
-    /// rather than a toggle, and a swipe is the same walk with a direction.
+    /// Whether this lane needs a machine with a card behind it before it means anything.
+    public var needsRenderer: Bool {
+        switch self {
+        case .chat, .ask: return false
+        case .draw, .video: return true
+        }
+    }
+
+    /// The lanes worth showing on a device that knows what it knows.
+    ///
+    /// This is the whole of why the switch has no setting: a lane is not turned on, it is either
+    /// backed by a machine or it is not. The video lane stays whatever the answer is, because it
+    /// is the road to pointing at that machine in the first place — a door that vanishes before
+    /// anyone has walked through it is a feature nobody can find. Drawing has no setup of its
+    /// own: it arrives the moment a renderer does and leaves with it.
+    public static func offered(drawing: Bool) -> [QuickAskLane] {
+        order.filter { $0 != .draw || drawing }
+    }
+
+    /// The lane after this one, wrapping, among the lanes actually on offer — a walk must never
+    /// land somewhere the switch is not drawing.
     public var toggled: QuickAskLane { advanced(by: 1) }
 
-    public func advanced(by steps: Int) -> QuickAskLane {
-        let all = Self.order
-        guard let index = all.firstIndex(of: self) else { return self }
+    public func advanced(by steps: Int, among lanes: [QuickAskLane] = QuickAskLane.order)
+        -> QuickAskLane
+    {
+        let all = lanes.isEmpty ? Self.order : lanes
+        guard let index = all.firstIndex(of: self) else { return all[0] }
         let count = all.count
         return all[((index + steps) % count + count) % count]
     }
@@ -212,6 +235,7 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         switch self {
         case .chat: return Localized.text("Chat")
         case .ask: return Localized.text("Ask")
+        case .draw: return Localized.text("Draw")
         case .video: return Localized.text("Video")
         }
     }
@@ -222,6 +246,7 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         switch self {
         case .chat: return "bubble.left"
         case .ask: return "sparkle"
+        case .draw: return "wand.and.rays"
         case .video: return ForgeEntryPoint.symbol
         }
     }
@@ -230,6 +255,7 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         switch self {
         case .chat: return Localized.text("Start a new chat…")
         case .ask: return Localized.text("Ask anything — no project, no setup")
+        case .draw: return Localized.text("Describe the picture…")
         case .video: return Localized.text("Describe the video…")
         }
     }
@@ -240,6 +266,7 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
     public var sendLabel: String {
         switch self {
         case .chat, .ask: return Localized.text("Send")
+        case .draw: return Localized.text("Draw")
         case .video: return Localized.text("Render")
         }
     }
@@ -251,6 +278,10 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         ForgeField.allCases.filter(\.isCyclable)
     }
 
+    /// The settings the draw lane wears as chips under the box — the same three the slot walks,
+    /// so the composer and a draw pane never disagree about what a picture is made from.
+    public static var drawChips: [ImageGenField] { ImageGenField.allCases }
+
     /// What a screen reader is told the switch is, said as the state it is in. A toggle that reads
     /// out its verb instead of its state leaves the one fact a blind reader came for unsaid.
     public var spoken: String {
@@ -261,6 +292,10 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         case .ask:
             return Localized.text(
                 "Quick ask on. Sending asks the named machine with no project, on the model this ask remembers."
+            )
+        case .draw:
+            return Localized.text(
+                "Draw lane. Sending paints a picture on the machine with the card, with the settings named under this box."
             )
         case .video:
             return Localized.text(
@@ -293,10 +328,14 @@ public enum ComposerLaneSwipe {
     }
 
     /// The lane a completed drag lands in, or nil for travel that stayed under the threshold.
-    /// Dragging left pulls the next lane in; dragging right pulls the previous one back.
-    public static func landed(_ lane: QuickAskLane, translation: Double) -> QuickAskLane? {
+    /// Dragging left pulls the next lane in; dragging right pulls the previous one back — among
+    /// the lanes this client is actually drawing, so a swipe can never land on one the switch
+    /// does not show.
+    public static func landed(
+        _ lane: QuickAskLane, translation: Double, among lanes: [QuickAskLane] = QuickAskLane.order
+    ) -> QuickAskLane? {
         guard abs(translation) >= threshold else { return nil }
-        return lane.advanced(by: translation < 0 ? 1 : -1)
+        return lane.advanced(by: translation < 0 ? 1 : -1, among: lanes)
     }
 }
 
