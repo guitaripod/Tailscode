@@ -71,6 +71,10 @@ enum MacMarkdown {
     private struct Style {
         var size: CGFloat = MacMarkdown.size(.answer)
         var bold = false
+        /// The weight the passage is set in before any `**` in it — a table's key column is set
+        /// medium, and a bold span inside it still goes semibold.
+        var weight: TypeWeight = .regular
+        var tracking: Double = 0
         var italic = false
         var strike = false
         var mono = false
@@ -202,14 +206,20 @@ enum MacMarkdown {
         return nil
     }
 
-    /// One table cell's inline spans at the table's own size — bold and quiet for a header —
-    /// without the block grammar, so a dashed cell never becomes a rule.
-    static func tableCell(_ text: String, header: Bool) -> NSAttributedString {
+    /// One table cell's inline spans in the voice its column asks for, without the block grammar,
+    /// so a dashed cell never becomes a rule. The role carries the size, the weight and the
+    /// tracking; the header is also the quieter ink, because a column's name is not one of its
+    /// readings.
+    static func tableCell(_ text: String, role: TypeRole, tabular: Bool = true)
+        -> NSAttributedString
+    {
+        let spec = Typography.spec(role)
         var style = Style()
-        style.size = size(.tableCell)
-        style.bold = header
-        style.tabular = true
-        if header { style.color = MacTheme.Color.secondaryLabel }
+        style.size = size(role)
+        style.weight = spec.weight
+        style.tracking = spec.tracking
+        style.tabular = tabular
+        if role == .tableHeader { style.color = MacTheme.Color.secondaryLabel }
         return inline(text, base: style)
     }
 
@@ -438,10 +448,21 @@ enum MacMarkdown {
 
     private static func attributes(_ style: Style) -> [NSAttributedString.Key: Any] {
         let size = style.size * MacTheme.UIScale.factor
+        let weight: NSFont.Weight =
+            if style.bold {
+                .semibold
+            } else {
+                switch style.weight {
+                case .regular: .regular
+                case .medium: .medium
+                case .semibold: .semibold
+                case .bold: .bold
+                }
+            }
         var font: NSFont =
             style.mono
-            ? .monospacedSystemFont(ofSize: size, weight: style.bold ? .semibold : .regular)
-            : .systemFont(ofSize: size, weight: style.bold ? .semibold : .regular)
+            ? .monospacedSystemFont(ofSize: size, weight: weight)
+            : .systemFont(ofSize: size, weight: weight)
         if style.italic {
             font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
         }
@@ -461,6 +482,9 @@ enum MacMarkdown {
             .foregroundColor: style.color,
             .paragraphStyle: paragraph(),
         ]
+        if style.tracking != 0 {
+            attributes[.tracking] = style.tracking * Double(size)
+        }
         if style.strike {
             attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
         }

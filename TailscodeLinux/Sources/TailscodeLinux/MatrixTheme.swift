@@ -152,8 +152,31 @@ enum MatrixTheme {
         .prompt-glyph { color: \(accent); \(t(.promptGlyph)) }
         .prompt-text { color: \(text); \(t(.prompt)) }
         .agent-text { color: \(text); \(t(.answer)) }
-        .md-table { padding: 2px 0; }
-        .md-table-header { color: \(text); \(t(.tableHeader)) }
+        .md-table {
+            border: 1px solid alpha(\(text), \(TableStyle.border));
+            border-radius: \(Int(TableStyle.radius))px;
+            margin: 4px 0;
+        }
+        .md-table-headrow {
+            background-color: alpha(\(accent), \(TableStyle.headerWash));
+            border-radius: \(Int(TableStyle.radius - 1))px \(Int(TableStyle.radius - 1))px 0 0;
+            padding: \(Int(TableStyle.headerPadding))px \(Int(TableStyle.edge))px;
+        }
+        .md-table-rule {
+            background-color: alpha(\(text), \(TableStyle.headerRule));
+            min-height: 1px;
+        }
+        .md-table-row { padding: \(Int(TableStyle.rowPadding))px \(Int(TableStyle.edge))px; }
+        .md-table-band { background-color: alpha(\(text), \(TableStyle.stripe)); }
+        .md-table-last {
+            border-radius: 0 0 \(Int(TableStyle.radius - 1))px \(Int(TableStyle.radius - 1))px;
+        }
+        .md-table-fade {
+            background-image: linear-gradient(
+                to right, alpha(\(canvas), 0), alpha(\(canvas), 0.92) 70%, \(canvas));
+        }
+        .md-table-header { color: \(textDim); \(t(.tableHeader)) }
+        .md-table-key { color: \(text); \(t(.tableKey)) }
         .md-table-cell { color: \(text); \(t(.tableCell)) }
         .tool-line, .mono { \(t(.toolDetail)) }
         .tool-name { color: \(info); \(t(.toolName)) }

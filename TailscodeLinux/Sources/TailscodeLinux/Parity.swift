@@ -37,6 +37,7 @@ enum ParityManifest {
         case .quotaExhaustion: return .implemented("quotaNotice")
         case .quotaScoping: return .implemented("model-fact-spent")
         case .markdownRendering: return .implemented("PangoMarkdown")
+        case .tableRendering: return .implemented("TableView")
         case .transcriptLinks: return .implemented("autolink")
         case .syntaxHighlighting: return .implemented("PangoSyntax")
         case .streamingGrowth: return .implemented("applyRows")

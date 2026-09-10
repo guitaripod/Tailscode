@@ -4737,6 +4737,68 @@ final class ChatPane: @unchecked Sendable {
         apply(state: state, rows: rowBuilder.rows(for: state.messages))
     }
 
+    /// The answer that made the tables worth redesigning: eight sparse columns of readings, a
+    /// column of addresses, a column of cipher suites long enough to fold, and a second table
+    /// whose header is shorter than every cell under it.
+    func driverTableDemo() {
+        let now = Date()
+        let asked = ChatMessage(
+            id: "demo-table-prompt", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "t",
+                    kind: .text("List all wifi networks you can see. all the details about them as well."))
+            ],
+            createdAt: now.addingTimeInterval(-120))
+        let answer = """
+            16 BSSIDs visible (5 distinct networks + a set of hidden-SSID radios), scanned on \
+            `wlo1` (Intel AX200/210, `wlxac198e9d34d3`, currently **DOWN**, rfkill unblocked). \
+            Sorted by signal.
+
+            ## By network
+
+            **Lord of the Pings** — Apple router (MAC `30:66:5E`), 3 bands + 4 hidden
+
+            | Band | BSSID | Ch | Freq | Width | Rate | Sig | Security |
+            |---|---|---|---|---|---|---|---|
+            | 2.4 | `92:30:66:5E:BF:4D` | 6 | 2437 MHz | 20 | 130 Mb/s | 94 | WPA2+WPA3 (PSK+SAE) |
+            | 6 | `96:30:66:5E:BF:4F` | 37 | 6135 MHz | 0 | 0 | 94 | WPA3 (SAE) |
+            | 5 | `96:30:66:5E:BF:4E` | 128 | 5640 MHz | 80 | 1170 Mb/s | 92 | WPA2+WPA3 (PSK+SAE) |
+            | 5 (hidden) | `8C:30:66:5E:BF:4E` | 128 | 5640 MHz | 80 | 1170 Mb/s | 94 | WPA2 (PSK) |
+            | 5 (hidden) | `92:30:66:5E:BF:4E` | 128 | 5640 MHz | 80 | 1170 Mb/s | 94 | WPA2 (PSK) |
+            | 6 (hidden) | `8C:30:66:5E:BF:4F` | 37 | 6135 MHz | 0 | 0 | 94 | WPA3 (SAE) |
+            | 6 (hidden) | `92:30:66:5E:BF:4F` | 37 | 6135 MHz | 0 | 0 | 94 | WPA3 (SAE) |
+
+            **DNA-WIFI-2E04** — DNA/Elisa router, 2 bands (BSSID pair `D8:33:B7:1E:2E:0x`)
+
+            | Band | BSSID | Ch | Freq | Width | Rate | Sig | Sec |
+            |---|---|---|---|---|---|---|---|
+            | 2.4 | `D8:33:B7:1E:2E:08` | 11 | 2462 MHz | 20 | 540 Mb/s | 42 | WPA2+WPA3 |
+            | 5 | `D8:33:B7:1E:2E:09` | 100 | 5500 MHz | 80 | 1170 Mb/s | 20 | WPA2+WPA3 |
+
+            ## Radios
+
+            | Interface | Driver | State |
+            |---|---|---|
+            | `wlo1` | iwlwifi | down |
+            | `wlxac198e9d34d3` | rtl8xxxu | up |
+
+            ## Notes
+
+            - **Nearest / strongest**: "Lord of the Pings" (Apple, ~92–94/100) — almost certainly \
+            your own network.
+            - **6 GHz "0 Mbit/s / 0 MHz"**: normal — NM doesn't populate rate/width for 6 GHz in \
+            this firmware path.
+            """
+        let reply = ChatMessage(
+            id: "demo-table-answer", role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "a", kind: .text(answer))],
+            createdAt: now)
+        let state = ConversationState(
+            messages: [asked, reply], status: .idle, hasLoadedTranscript: true)
+        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+    }
+
     func driverCompactionDemo(_ mode: String) {
         let now = Date()
         let compaction = Compaction(

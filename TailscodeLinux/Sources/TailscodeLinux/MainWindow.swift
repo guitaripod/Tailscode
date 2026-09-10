@@ -278,6 +278,8 @@ final class MainWindow: @unchecked Sendable {
                     self.activePane.driverResumeDemo(argument.isEmpty ? "waiting" : argument)
                 case "resumestate":
                     self.activePane.reportResumeState()
+                case "tabledemo":
+                    self.activePane.driverTableDemo()
                 case "cutoffdemo":
                     self.activePane.driverInterruptedDemo(
                         argument.isEmpty ? "busy" : argument)

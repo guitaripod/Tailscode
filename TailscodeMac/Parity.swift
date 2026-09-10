@@ -53,6 +53,7 @@ enum ParityManifest {
         case .quotaExhaustion: return .implemented("quotaNotice")
         case .quotaScoping: return .implemented("quotasForModels")
         case .markdownRendering: return .implemented("MacMarkdown")
+        case .tableRendering: return .implemented("MacTableView")
         case .transcriptLinks: return .implemented("extractBareLinks")
         case .syntaxHighlighting: return .implemented("RowKit.code")
         case .streamingGrowth: return .implemented("applyRows")

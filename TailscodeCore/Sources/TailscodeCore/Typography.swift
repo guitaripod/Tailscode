@@ -123,6 +123,7 @@ public enum TypeRole: String, CaseIterable, Sendable {
     case thoughtLabel
     case interruption
     case tableHeader
+    case tableKey
     case tableCell
 
     case toolName
@@ -222,7 +223,10 @@ public enum Typography {
             return TypeSpec(axis: .mono, family: .mono, ratio: 0.8, italic: true)
         case .tableHeader:
             return TypeSpec(
-                axis: .prose, family: .prose, ratio: 0.92, weight: .semibold, tracking: 0.02)
+                axis: .prose, family: .prose, ratio: 0.8, weight: .semibold, tracking: 0.05)
+        case .tableKey:
+            return TypeSpec(
+                axis: .prose, family: .prose, ratio: 0.92, weight: .medium, figures: .tabular)
         case .tableCell:
             return TypeSpec(
                 axis: .prose, family: .prose, ratio: 0.92, figures: .tabular)
@@ -371,7 +375,7 @@ public enum Typography {
     public static func group(_ role: TypeRole) -> TypeGroup {
         switch role {
         case .prompt, .promptGlyph, .composer, .answer, .thought, .thoughtLabel, .interruption,
-            .tableHeader, .tableCell:
+            .tableHeader, .tableKey, .tableCell:
             return .speech
         case .toolName, .toolDetail, .toolOutput, .code, .codeLabel, .codeAction, .diff, .attachment,
             .treeRow, .treePath:

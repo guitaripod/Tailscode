@@ -1341,13 +1341,16 @@ public enum SelfTest {
         return cases.count + 1
     }
 
-    /// The height a table hands the transcript has to be the height it will draw at.
+    /// The height a table hands the transcript has to be the height it will draw at, and a header
+    /// with room to stand in may never fold.
     ///
-    /// A grid whose columns hug their content is measured by the box above it for the width of the
+    /// A card whose columns hug their content is measured by the box above it for the width of the
     /// whole pane and then allocated only its own natural width, so the two heights have to agree.
-    /// A cell that asks for extra space — a rule spanning the columns is the tempting one — makes
-    /// `GtkGrid` measure a distribution it never allocates, every wrapping cell comes out a line
-    /// short, and the last rows are drawn over the paragraph beneath the table.
+    /// The folding half is the one that shipped broken for a year: columns were sized in characters
+    /// and handed to Pango as an *average*-character estimate, so a four-letter bold header in a
+    /// four-character column hyphenated itself to `Ban-d` with half the window empty beside it.
+    /// A header band measured against a real width may never be taller than the same band measured
+    /// against no width at all — both are one line, and any difference is a fold.
     private static func checkTable() throws -> Int {
         let table = MarkdownTable(
             header: ["Tab", "Mod", "Download"],
@@ -1368,8 +1371,13 @@ public enum SelfTest {
         let widget = TranscriptRow.table(table, key: "selftest")
         g_object_ref_sink(UnsafeMutableRawPointer(widget))
         defer { g_object_unref(UnsafeMutableRawPointer(widget)) }
-        guard let grid = gtk_scrolled_window_get_child(op(widget)) else {
-            throw SelfTestFailure("a table is no longer a grid inside a scroller")
+        guard let scroller = gtk_widget_get_first_child(widget),
+            let viewport = gtk_scrolled_window_get_child(op(scroller)),
+            let grid = gtk_viewport_get_child(op(viewport))
+        else { throw SelfTestFailure("a table is no longer a card in a viewport in a scroller") }
+        guard gtk_viewport_get_scroll_to_focus(op(viewport)) == 0 else {
+            throw SelfTestFailure(
+                "a table's viewport scrolls to focus, so selecting a cell slides the table")
         }
 
         func measure(
@@ -1415,6 +1423,21 @@ public enum SelfTest {
         guard minimumWidth < width else {
             throw SelfTestFailure(
                 "a table demands \(minimumWidth) of width, so a narrow pane is dragged out by it")
+        }
+        guard let head = gtk_widget_get_first_child(grid) else {
+            throw SelfTestFailure("a table has no header band")
+        }
+        let unbound = measure(head, GTK_ORIENTATION_VERTICAL, for: -1)
+        for pane in [width, width + 400, width + 1200] {
+            _ = measure(widget, GTK_ORIENTATION_HORIZONTAL, for: pane)
+            let folded = measure(head, GTK_ORIENTATION_VERTICAL, for: measure(
+                grid, GTK_ORIENTATION_HORIZONTAL, for: -1))
+            guard folded <= unbound else {
+                throw SelfTestFailure(
+                    "a table's header stands \(unbound) tall unbound but \(folded) in a "
+                        + "\(pane) pane — the columns are being sized in characters again")
+            }
+            checks += 1
         }
         return checks + 2
     }

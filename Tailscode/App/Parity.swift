@@ -37,6 +37,7 @@ enum ParityManifest {
         case .quotaExhaustion: return .implemented("applyQuotaExhaustion")
         case .quotaScoping: return .implemented("RowMarksView")
         case .markdownRendering: return .implemented("TextBubbleCell")
+        case .tableRendering: return .implemented("TableCell")
         case .transcriptLinks: return .implemented("dataDetectorTypes")
         case .syntaxHighlighting: return .implemented("CodeBlockCell.highlightedCode")
         case .streamingGrowth: return .implemented("reconfigureItems")

@@ -554,91 +554,11 @@ struct TranscriptRow: Hashable {
         return column
     }
 
-    /// A pipe table as columns. The columns are sized by the shared arithmetic rather than by the
-    /// flat cap each client used to pick for itself: every column asks for the width of its widest
-    /// cell, and when the row is wider than a comfortable measure the wide columns give way
-    /// together — so a six-column table folds instead of running the pane out, and a two-column one
-    /// uses the room it has. What still does not fit scrolls sideways inside the row rather than
-    /// being clipped at the pane's edge.
-    ///
-    /// Widths only ever grow while the answer is being written: each new body row can make a column
-    /// want more, and a column that narrowed to pay for it would move every column on the screen
-    /// under a reader who is reading the rows already there.
+    /// A pipe table, drawn by `MacTableView` — a card with a header band and washed rows, fitted
+    /// to the pane it is in.
     @MainActor
     static func table(_ table: MarkdownTable, key: String) -> NSView {
-        let grid = NSGridView()
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        grid.rowSpacing = 3
-        grid.columnSpacing = CGFloat(TableLayout.gap)
-        grid.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-
-        let widths = tableWidths(table, key: key)
-
-        func cell(_ text: String, header: Bool, column: Int) -> NSTextField {
-            let label = RowKit.attributedLabel(MacMarkdown.tableCell(text, header: header))
-            if column < widths.count { label.preferredMaxLayoutWidth = widths[column] }
-            label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
-            return label
-        }
-
-        grid.addRow(with: table.header.enumerated().map { cell($1, header: true, column: $0) })
-        grid.addRow(with: [RowKit.hairline(verticalPadding: 2)])
-        grid.mergeCells(
-            inHorizontalRange: NSRange(location: 0, length: table.columnCount),
-            verticalRange: NSRange(location: 1, length: 1))
-        for row in table.rows.indices {
-            grid.addRow(
-                with: table.cells(in: row).enumerated().map { cell($1, header: false, column: $0) })
-        }
-        for column in 0..<table.columnCount {
-            switch table.alignment(of: column) {
-            case .leading: grid.column(at: column).xPlacement = .leading
-            case .center: grid.column(at: column).xPlacement = .center
-            case .trailing: grid.column(at: column).xPlacement = .trailing
-            }
-        }
-
-        let scroll = NSScrollView()
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = false
-        scroll.hasHorizontalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.scrollerStyle = .overlay
-        scroll.horizontalScrollElasticity = .allowed
-        scroll.verticalScrollElasticity = .none
-        scroll.documentView = grid
-        NSLayoutConstraint.activate([
-            grid.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            grid.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
-            grid.bottomAnchor.constraint(equalTo: scroll.contentView.bottomAnchor),
-            scroll.heightAnchor.constraint(equalTo: grid.heightAnchor),
-        ])
-        return scroll
-    }
-
-    /// A comfortable measure for one table row. Wide enough for a table of prose to read as prose,
-    /// narrow enough that no table drags the pane out with it.
-    @MainActor
-    private static var tableMeasure: CGFloat { 640 * MacTheme.UIScale.factor }
-
-    /// What the current widths are for this table, never narrower than the last time it was drawn.
-    @MainActor private static var tableWidthMemo: [String: [CGFloat]] = [:]
-
-    @MainActor
-    private static func tableWidths(_ table: MarkdownTable, key: String) -> [CGFloat] {
-        let natural = (0..<table.columnCount).map { column -> Double in
-            let measures = table.column(column).enumerated().map { index, text in
-                ceil(MacMarkdown.tableCell(text, header: index == 0).size().width) + 1
-            }
-            return Double(measures.max() ?? CGFloat(TableLayout.minimumColumn))
-        }
-        let fresh = TableLayout.widths(natural: natural, fitting: Double(tableMeasure))
-        let previous = tableWidthMemo[key]?.map(Double.init) ?? []
-        let widths = TableLayout.settled(fresh, since: previous).map { CGFloat($0) }
-        tableWidthMemo[key] = widths
-        if tableWidthMemo.count > 400 { tableWidthMemo = [key: widths] }
-        return widths
+        MacTableView(table, key: key)
     }
 
     /// Bounded labels: one layout pass over forty thousand words takes a visible pause to

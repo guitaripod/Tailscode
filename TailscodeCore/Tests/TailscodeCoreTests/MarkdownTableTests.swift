@@ -138,9 +138,14 @@ struct TableLayoutTests {
         #expect(widths[0] == 90 && widths[2] == 90)
         #expect(widths[1] < 400)
         #expect(TableLayout.width(of: widths) <= 400.5)
-        let crushed = TableLayout.widths(natural: [300, 300, 300], fitting: 100)
-        #expect(crushed.allSatisfy { $0 == TableLayout.minimumColumn })
-        #expect(TableLayout.overflows(crushed, fitting: 100))
+        // A pane so narrow that even the floor will not fit is not folded at all: the table is
+        // going to be scrolled either way, and short beats marginally narrower.
+        let hopeless = TableLayout.widths(natural: [300, 300, 300], fitting: 100)
+        #expect(hopeless == [300, 300, 300])
+        #expect(TableLayout.overflows(hopeless, fitting: 100))
+        let floored = TableLayout.widths(
+            natural: [300, 300, 300], fitting: TableLayout.minimumColumn * 3, gap: 0)
+        #expect(floored.allSatisfy { $0 == TableLayout.minimumColumn })
     }
 
     @Test("A column never narrows while the table is still being written")
@@ -250,5 +255,105 @@ struct StreamingFenceTests {
             return
         }
         #expect(table.rows.count == 1)
+    }
+}
+
+@Suite("What a column holds")
+struct ColumnKindTests {
+    private static let wifi = MarkdownTable.scan(
+        [
+            "| Band | BSSID | Ch | Freq | Rate | Sig | Security |",
+            "|---|---|---|---|---|---|---|",
+            "| 2.4 | `92:30:66:5E:BF:4D` | 6 | 2437 MHz | 130 Mb/s | 94 | WPA2+WPA3 (PSK+SAE) |",
+            "| 5 (hidden) | `8C:30:66:5E:BF:4E` | 128 | 5640 MHz | 1170 Mb/s | 92 | WPA2 (PSK) |",
+        ], from: 0)!.table
+
+    @Test("A column of addresses is code, a column of readings is figures, prose is prose")
+    func kinds() {
+        #expect(Self.wifi.kinds == [.text, .code, .number, .number, .number, .number, .text])
+    }
+
+    @Test("A column the author never placed lands under its own last digit")
+    func undeclaredNumbersGoRight() {
+        #expect(Self.wifi.alignment(of: 5) == .leading)
+        #expect(Self.wifi.effectiveAlignment(of: 5) == .trailing)
+        #expect(Self.wifi.effectiveAlignment(of: 0) == .leading)
+        #expect(Self.wifi.effectiveAlignment(of: 6) == .leading)
+    }
+
+    @Test("A column the author did place stays exactly where they put it")
+    func declaredAlignmentIsNeverArguedWith() {
+        let table = MarkdownTable.scan(
+            ["| n | m |", "| :--- | ---: |", "| 12 | 13 |"], from: 0)!.table
+        #expect(table.isDeclared(0))
+        #expect(table.effectiveAlignment(of: 0) == .leading)
+        #expect(table.effectiveAlignment(of: 1) == .trailing)
+        #expect(table.markdown.contains(":--"))
+        #expect(MarkdownTable.scan(table.markdown.split(separator: "\n").map(String.init), from: 0)?
+            .table == table)
+    }
+
+    @Test("A reading with a unit in it is never folded in half")
+    func rigidity() {
+        #expect(Self.wifi.rigidColumns == [true, true, true, true, true, true, false])
+    }
+
+    @Test("A key-first table names its rows, a grid of numbers does not")
+    func namedRows() {
+        #expect(Self.wifi.namesItsRows)
+        let figures = MarkdownTable(
+            header: ["q1", "q2"], alignments: [.leading, .leading],
+            rows: [["1", "2"], ["3", "4"]])
+        #expect(!figures.namesItsRows)
+    }
+}
+
+@Suite("Room for the columns that can use it")
+struct RigidWidthTests {
+    @Test("A column with nothing to break keeps its measure and the prose pays")
+    func rigidColumnsAreNotSqueezed() {
+        let widths = TableLayout.widths(
+            natural: [60, 60, 400], fitting: 300, gap: 0, minimum: 20,
+            rigid: [true, true, false])
+        #expect(widths[0] == 60)
+        #expect(widths[1] == 60)
+        #expect(widths[2] == 180)
+    }
+
+    @Test("A narrow column is its own measure, not the squeeze floor")
+    func narrowColumnsAreNotGrown() {
+        let widths = TableLayout.widths(natural: [27, 37, 51], fitting: 1000, gap: 0)
+        #expect(widths == [27, 37, 51])
+    }
+
+    @Test("A table that will scroll whatever happens is not also folded")
+    func foldingMustEarnItsHeight() {
+        let hopeless = TableLayout.widths(
+            natural: [200, 200, 400], fitting: 300, gap: 0, minimum: 40,
+            rigid: [true, true, false])
+        #expect(hopeless == [200, 200, 400])
+        let worthwhile = TableLayout.widths(
+            natural: [100, 100, 400], fitting: 300, gap: 0, minimum: 40,
+            rigid: [true, true, false])
+        #expect(worthwhile == [100, 100, 100])
+    }
+
+    @Test("Nothing rigid is the arithmetic it always was")
+    func withoutRigidityNothingChanges() {
+        let natural = [40.0, 120, 300]
+        #expect(
+            TableLayout.widths(natural: natural, fitting: 320, gap: 0, minimum: 20)
+                == TableLayout.widths(
+                    natural: natural, fitting: 320, gap: 0, minimum: 20,
+                    rigid: [false, false, false]))
+    }
+
+    @Test("A table of nothing but rigid columns is handed back whole, to be scrolled")
+    func allRigidOverflows() {
+        let widths = TableLayout.widths(
+            natural: [200, 200, 200], fitting: 300, gap: 0, minimum: 20,
+            rigid: [true, true, true])
+        #expect(widths == [200, 200, 200])
+        #expect(TableLayout.overflows(widths, fitting: 300, gap: 0))
     }
 }
