@@ -1341,6 +1341,7 @@ final class ChatPane: @unchecked Sendable {
                     kind: .queuedSend(waiting, position: index + 1, of: queue.count)))
         }
         lastFullRows = rows
+        noteDoubledRows(rows)
         let turnOpen = state.status == .running
         let turnEnded = context.turnOpen && !turnOpen
         context.turnOpen = turnOpen
@@ -1378,6 +1379,44 @@ final class ChatPane: @unchecked Sendable {
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
         drainQueue(state)
     }
+
+    /// An answer that is on the page twice, named in the log the moment it is built.
+    ///
+    /// The doubling is intermittent and heals itself a few seconds later, which is exactly the
+    /// shape of bug that cannot be read off a screenshot: by the time anyone looks, the evidence
+    /// has been swept. Both candidate causes leave the same mark here and are told apart by the two
+    /// keys alone — one message id under two segment names is the row naming re-identifying settled
+    /// prose, two message ids carrying one answer is the transcript holding the same reply twice.
+    /// Only lengths, hashes and keys are written: a log a person is invited to paste into a bug
+    /// report never carries what was said.
+    private func noteDoubledRows(_ rows: [TranscriptRow]) {
+        var seen: [Int: String] = [:]
+        for row in rows {
+            let body: String
+            switch row.kind {
+            case .agentProse(let text, _): body = text
+            case .codeBlock(_, let code): body = code
+            default: continue
+            }
+            // Short lines repeat honestly — an agent says "Done." twice in a transcript and neither
+            // one is a bug. Only a passage long enough to be an answer is worth a word.
+            guard body.count >= 160 else { continue }
+            let hash = body.hashValue
+            guard let first = seen.updateValue(row.key, forKey: hash), first != row.key else {
+                continue
+            }
+            seen[hash] = first
+            guard reportedDoubles.insert(hash).inserted else { continue }
+            AppLog.write(
+                .ui,
+                "doubled row: chars=\(body.count) hash=\(String(hash, radix: 16)) "
+                    + "first=\(first) second=\(row.key) rows=\(rows.count)")
+        }
+    }
+
+    /// One line per doubled passage per pane: the diff rebuilds these rows many times a second,
+    /// and a log that repeated itself at that rate would bury the thing it is reporting.
+    private var reportedDoubles: Set<Int> = []
 
     /// The moment the turn yields, the next thing written goes. Never while one is running and
     /// never while the composer is holding one open for rewriting: sending it out from under the
