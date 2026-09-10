@@ -36,6 +36,9 @@ final class ImageStudioViewController: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private let refresher = UIRefreshControl()
     private let machineButton = UIButton(type: .system)
+    private let startOverButton = UIButton(type: .system)
+    private lazy var machineItem = UIBarButtonItem(customView: machineButton)
+    private lazy var startOverItem = UIBarButtonItem(customView: startOverButton)
 
     private let dock = Theme.Glass.view()
     private let chipRow = UIStackView()
@@ -123,8 +126,27 @@ final class ImageStudioViewController: UIViewController {
         machineButton.configuration = config
         machineButton.addAction(UIAction { [weak self] _ in self?.presentMachine() }, for: .touchUpInside)
         machineButton.accessibilityHint = ImageGenMachineWords.title
-        navigationItem.leftBarButtonItem = UIBarButtonItem(customView: machineButton)
+        var reset = UIButton.Configuration.plain()
+        reset.contentInsets = .zero
+        reset.image = UIImage(
+            systemName: "arrow.counterclockwise",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .medium))
+        startOverButton.configuration = reset
+        startOverButton.accessibilityLabel = ImageGenWords.startOver
+        startOverButton.accessibilityHint = ImageGenWords.startOverHint
+        startOverButton.addAction(UIAction { [weak self] _ in self?.startOver() }, for: .touchUpInside)
+        navigationItem.leftBarButtonItems = [machineItem]
         updateMachineControl()
+    }
+
+    /// Back to blank. The words in the box go with it, so a person who only wanted the stage gone
+    /// is told beforehand what else goes — and every picture stays on the shelf.
+    private func startOver() {
+        Theme.Haptics.tap()
+        view.endEditing(true)
+        studio.startOver()
+        setPrompt("")
+        scrollToStage()
     }
 
     private func updateMachineControl() {
@@ -139,6 +161,12 @@ final class ImageStudioViewController: UIViewController {
         config.baseForegroundColor = tone == .attention ? Theme.Color.warning : Theme.Color.accent
         machineButton.configuration = config
         machineButton.isHidden = !door.isOpen
+        let promptWords = (promptView.text ?? "").trimmed()
+        let items = studio.canStartOver || !promptWords.isEmpty
+            ? [machineItem, startOverItem] : [machineItem]
+        if navigationItem.leftBarButtonItems?.count != items.count {
+            navigationItem.setLeftBarButtonItems(items, animated: true)
+        }
         let summary = ImageGenMachineWords.summary(sighting)
         let words = [studio.endpoint.shortName, summary, sighting?.version.map { "ComfyUI \($0)" }]
             .compactMap { $0 }.joined(separator: " · ")
@@ -183,8 +211,15 @@ final class ImageStudioViewController: UIViewController {
     /// The prompt, the two decisions the picture is made from, and the one control that starts or
     /// stops the render — all on the keyboard's own edge, because composing a picture is typing
     /// with two settings beside it rather than filling in a form.
+    /// The dock is the floor of the screen: its glass runs to the bottom edge and under the home
+    /// indicator, and only its contents ride the keyboard — a slab that stopped at the safe area
+    /// read as a card someone had left on the page.
     private func configureDock() {
         dock.translatesAutoresizingMaskIntoConstraints = false
+        if #available(iOS 26.0, *) {
+            dock.cornerConfiguration = .uniformEdges(
+                topRadius: .fixed(Theme.Radius.card), bottomRadius: .fixed(0))
+        }
         chipRow.axis = .horizontal
         chipRow.spacing = Theme.Spacing.xs
         chipRow.alignment = .center
@@ -223,7 +258,7 @@ final class ImageStudioViewController: UIViewController {
             collectionView.bottomAnchor.constraint(equalTo: dock.topAnchor),
             dock.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             dock.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            dock.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+            dock.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             chipScroll.topAnchor.constraint(
                 equalTo: dock.contentView.topAnchor, constant: Theme.Spacing.s),
             chipScroll.leadingAnchor.constraint(equalTo: dock.contentView.leadingAnchor),
@@ -240,7 +275,7 @@ final class ImageStudioViewController: UIViewController {
             promptView.leadingAnchor.constraint(
                 equalTo: dock.contentView.leadingAnchor, constant: Theme.Spacing.l),
             promptView.bottomAnchor.constraint(
-                equalTo: dock.contentView.bottomAnchor, constant: -Theme.Spacing.s),
+                equalTo: view.keyboardLayoutGuide.topAnchor, constant: -Theme.Spacing.s),
             promptHeight,
             renderButton.leadingAnchor.constraint(
                 equalTo: promptView.trailingAnchor, constant: Theme.Spacing.s),
@@ -365,7 +400,7 @@ final class ImageStudioViewController: UIViewController {
             if image == nil { fetchOriginal(of: item) }
             library.describe(item)
         case nil:
-            break
+            if !studio.isPainting { ratio = 0.5 }
         }
         if let image, image.size.width > 0 { ratio = image.size.height / image.size.width }
         let caption: String?
@@ -376,7 +411,8 @@ final class ImageStudioViewController: UIViewController {
         }
         return ImageStageReading(
             slot: slot, exhibit: exhibit, image: image, placeholder: placeholder, ratio: ratio,
-            caption: caption, startedAt: studio.startedAt, progress: studio.progress)
+            caption: caption, startedAt: studio.startedAt, progress: studio.progress,
+            shelfHasPictures: !library.isEmpty)
     }
 
     private func fetchOriginal(of item: ImageGenLibraryItem) {
@@ -696,6 +732,13 @@ final class ImageStudioViewController: UIViewController {
         perform(action, on: exhibit)
     }
 
+    private func stage(_ exhibit: ImageExhibit) {
+        switch exhibit {
+        case .made(let picture): studio.show(picture.path)
+        case .kept(let item): studio.show(kept: item)
+        }
+    }
+
     private func perform(_ action: ImageGenAction, on exhibit: ImageExhibit) {
         switch action {
         case .save:
@@ -720,13 +763,12 @@ final class ImageStudioViewController: UIViewController {
             present(viewer(from: exhibit), animated: true)
         case .again:
             Theme.Haptics.send()
-            if exhibit != studio.exhibit {
-                switch exhibit {
-                case .made(let picture): studio.show(picture.path)
-                case .kept(let item): studio.show(kept: item)
-                }
-            }
+            if exhibit != studio.exhibit { stage(exhibit) }
             studio.again()
+            scrollToStage()
+        case .stage:
+            Theme.Haptics.selection()
+            stage(exhibit)
             scrollToStage()
         case .reference:
             Theme.Haptics.selection()
@@ -736,6 +778,7 @@ final class ImageStudioViewController: UIViewController {
             case .kept(let item):
                 studio.hold(kept: item)
             }
+            if exhibit != studio.exhibit { stage(exhibit) }
             promptView.becomeFirstResponder()
         case .discard:
             guard case .made(let picture) = exhibit else { return }
@@ -811,9 +854,8 @@ extension ImageStudioViewController: UICollectionViewDelegate {
         switch item {
         case .tile(let id):
             guard let kept = library.item(named: id) else { return }
-            Theme.Haptics.selection()
-            studio.show(kept: kept)
-            scrollToStage()
+            Theme.Haptics.tap()
+            present(viewer(from: exhibitFor(kept)), animated: true)
         default:
             break
         }
@@ -840,8 +882,15 @@ extension ImageStudioViewController: UICollectionViewDelegate {
         library.describe(kept)
     }
 
-    /// Press and hold a tile for its verbs without putting it on the stage first: the caption
-    /// names it, and every verb is the same one the stage offers.
+    /// A tile is a picture made this session when the session made it, else the kept file.
+    private func exhibitFor(_ kept: ImageGenLibraryItem) -> ImageExhibit {
+        if let made = slot.pictures.first(where: { $0.remoteName == kept.id }) { return .made(made) }
+        return .kept(kept)
+    }
+
+    /// Press and hold a tile for its verbs: the caption names it, the first verb puts it on the
+    /// stage, and the rest are the ones the stage offers. A tap opens the picture and decides
+    /// nothing about the next render.
     func collectionView(
         _ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath,
         point: CGPoint
@@ -850,21 +899,16 @@ extension ImageStudioViewController: UICollectionViewDelegate {
             let kept = library.item(named: id)
         else { return nil }
         library.describe(kept)
-        let exhibit: ImageExhibit
-        if let made = slot.pictures.first(where: { $0.remoteName == kept.id }) {
-            exhibit = .made(made)
-        } else {
-            exhibit = .kept(kept)
-        }
+        let exhibit = exhibitFor(kept)
         let facts = library.facts(of: kept)
         let words: String
         switch exhibit {
         case .made(let made): words = ImageGenFacts.caption(for: made)
         case .kept: words = ImageGenFacts.caption(for: facts)
         }
-        let offered = ImageGenAction.offered(
+        let offered = [ImageGenAction.stage] + ImageGenAction.offered(
             kept: true, hasWords: exhibit.isKept ? facts?.recipe?.prompt?.isEmpty == false : true,
-            sharing: true, tapOpens: false)
+            sharing: true, tapOpens: true)
         return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
             [weak self] _ in
             UIMenu(
@@ -883,6 +927,7 @@ extension ImageStudioViewController: UITextViewDelegate {
     func textViewDidChange(_ textView: UITextView) {
         updatePlaceholder()
         updateRenderButton()
+        updateMachineControl()
         grow()
     }
 }

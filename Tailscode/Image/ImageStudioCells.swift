@@ -16,6 +16,8 @@ struct ImageStageReading {
     let caption: String?
     let startedAt: Date?
     let progress: ImageGenProgress?
+    /// Whether the shelf below has anything on it, which changes what an empty stage suggests.
+    let shelfHasPictures: Bool
 }
 
 /// The room: one picture at the size the screen can give it, and — when there is no picture yet —
@@ -45,7 +47,7 @@ final class ImageStageCell: UICollectionViewListCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        stage.backgroundColor = Theme.Color.codeBackground
+        stage.backgroundColor = Theme.Color.groupedSurface
         stage.layer.cornerRadius = Theme.Radius.card
         stage.layer.cornerCurve = .continuous
         stage.clipsToBounds = true
@@ -53,7 +55,7 @@ final class ImageStageCell: UICollectionViewListCell {
         picture.contentMode = .scaleAspectFit
         picture.translatesAutoresizingMaskIntoConstraints = false
         picture.isAccessibilityElement = false
-        scrim.backgroundColor = Theme.Color.codeBackground.withAlphaComponent(0.72)
+        scrim.backgroundColor = Theme.Color.groupedSurface.withAlphaComponent(0.78)
         scrim.translatesAutoresizingMaskIntoConstraints = false
         scrim.isHidden = true
         glyph.contentMode = .center
@@ -193,7 +195,7 @@ final class ImageStageCell: UICollectionViewListCell {
             glyph.isHidden = false
             showGlyph(ImageGenEntryPoint.symbol, tint: Theme.Color.tertiaryLabel)
             show(title: ImageGenWords.emptyTitle, tone: Theme.Color.label)
-            show(body: ImageGenWords.emptyBody)
+            show(body: reading.shelfHasPictures ? ImageGenWords.stageEmptyKept : ImageGenWords.emptyBody)
         }
         isAccessibilityElement = true
         accessibilityLabel = [title.text, body.text].compactMap { $0 }.joined(separator: ", ")
@@ -214,7 +216,7 @@ final class ImageStageCell: UICollectionViewListCell {
         self.reading = ImageStageReading(
             slot: reading.slot, exhibit: reading.exhibit, image: reading.image,
             placeholder: reading.placeholder, ratio: reading.ratio, caption: reading.caption,
-            startedAt: startedAt, progress: progress)
+            startedAt: startedAt, progress: progress, shelfHasPictures: reading.shelfHasPictures)
     }
 
     /// One second is the whole resolution a wait like this needs, and the clock stops the moment

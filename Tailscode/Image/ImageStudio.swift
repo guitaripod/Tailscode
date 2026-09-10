@@ -56,6 +56,9 @@ final class ImageStudio {
     private(set) var keptOnStage: ImageGenLibraryItem?
     /// Whether the machine is being asked about itself right now, so a sheet can say so.
     private(set) var checking = false
+    /// The stage was cleared by hand and stays blank until a render lands or a picture is put on
+    /// it — a start over must not be undone by the newest picture quietly coming back.
+    private(set) var stageCleared = false
 
     private var runner: ImageGenRunner?
     private var checked = false
@@ -79,12 +82,28 @@ final class ImageStudio {
     var sighting: ImageGenSighting? { door.currentSighting }
 
     /// What the stage shows when nothing is being painted: the picture chosen, else the newest
-    /// made here, else the newest the machine keeps — a studio that opens on something.
+    /// made this session. A picture the machine keeps reaches the stage only by being put there —
+    /// tapping one opens it, and opening is not choosing.
     var exhibit: ImageExhibit? {
         if let keptOnStage { return .kept(keptOnStage) }
+        if stageCleared { return nil }
         if let made = slot.onStage { return .made(made) }
-        if let newest = library.items.first { return .kept(newest) }
         return nil
+    }
+
+    /// Whether there is anything a start over would clear.
+    var canStartOver: Bool {
+        exhibit != nil || slot.reference != nil || slot.failure != nil
+            || !slot.promptDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Back to blank, without touching a render in flight or a single file: the stage, the
+    /// reference, a failure and the words go; every picture stays on the shelf and in the session.
+    func startOver() {
+        keptOnStage = nil
+        stageCleared = true
+        slot.clearStage()
+        announce()
     }
 
     /// Points the studio at the machine the door resolves to, unless a render is in flight — a
@@ -165,6 +184,7 @@ final class ImageStudio {
     /// Puts a picture made this session on the stage.
     func show(_ path: String?) {
         keptOnStage = nil
+        stageCleared = false
         slot.show(path)
         announce()
     }
@@ -177,6 +197,7 @@ final class ImageStudio {
             return
         }
         keptOnStage = item
+        stageCleared = false
         slot.show(nil)
         library.describe(item)
         announce()
@@ -276,6 +297,7 @@ final class ImageStudio {
                 aspect: runner.aspect, seconds: seconds, seed: runner.seed, remoteName: remoteName)
             slot.finish(picture)
             keptOnStage = nil
+            stageCleared = false
             if let image = UIImage(data: data) {
                 decoded.setObject(image, forKey: path as NSString)
             }

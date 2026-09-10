@@ -580,6 +580,16 @@ public struct ImageGenSlot: Sendable, Equatable {
     public mutating func fail(prompt: String, reason: String) {
         phase = .failed(prompt: prompt, reason: reason)
     }
+
+    /// Back to blank: nothing chosen, no reference, no words, and a failure put away. A render in
+    /// flight is left exactly as it is — this clears a stage, it does not stop a machine.
+    public mutating func clearStage() {
+        selected = nil
+        reference = nil
+        promptDraft = ""
+        if case .painting = phase { return }
+        phase = .asking
+    }
 }
 
 extension ImageGenSlot {
@@ -713,6 +723,9 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
     case again
     case reference
     case discard
+    /// Put the picture on the stage without opening it — a deliberate choice, offered where a
+    /// tap opens the picture instead so that tapping never decides what the next render is about.
+    case stage
 
     public var title: String {
         switch self {
@@ -723,6 +736,7 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
         case .again: return Localized.text("Again")
         case .reference: return Localized.text("Use as reference")
         case .discard: return Localized.text("Discard")
+        case .stage: return Localized.text("Show on stage")
         }
     }
 
@@ -745,6 +759,7 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
         case .again: return "arrow.triangle.2.circlepath"
         case .reference: return "photo.badge.plus"
         case .discard: return "trash"
+        case .stage: return "rectangle.stack"
         }
     }
 
@@ -757,6 +772,7 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
         case .again: return "↻"
         case .reference: return "+"
         case .discard: return "✕"
+        case .stage: return "◧"
         }
     }
 
@@ -771,6 +787,7 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
         case .again: return Localized.text("Same words, another roll of the dice")
         case .reference: return Localized.text("Start the next render from this picture")
         case .discard: return Localized.text("Let go of this one")
+        case .stage: return Localized.text("Put this picture on the stage without opening it")
         }
     }
 
@@ -780,7 +797,7 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
 
     /// Everything worth offering for a picture made this session on a desk with no share sheet.
     public static var forPicture: [ImageGenAction] {
-        allCases.filter { $0 != .share }
+        allCases.filter { $0 != .share && $0 != .stage }
     }
 
     /// What a picture can be made to do, decided by what it is and where it is shown. A picture
@@ -979,7 +996,16 @@ public enum ImageGenWords {
     public static var keptNote: String { ImageGenLibraryWords.fromLibraryHint }
 
     public static var stageEmptyKept: String {
-        Localized.text("Pick a picture below, or describe a new one.")
+        Localized.text(
+            "Describe a picture below, or press and hold one on the shelf to start from it.")
+    }
+
+    /// The one control that takes the studio back to blank: the stage, the reference, a failure
+    /// and the words all go; the pictures stay on the shelf and in the session.
+    public static var startOver: String { Localized.text("Start over") }
+
+    public static var startOverHint: String {
+        Localized.text("Clear the stage, the reference and the words. Every picture stays on the shelf.")
     }
 }
 

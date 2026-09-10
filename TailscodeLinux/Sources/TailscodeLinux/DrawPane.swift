@@ -689,7 +689,7 @@ final class DrawPane: @unchecked Sendable {
             focusPrompt()
         case .discard:
             studio.discard(path)
-        case .share:
+        case .share, .stage:
             break
         }
     }
