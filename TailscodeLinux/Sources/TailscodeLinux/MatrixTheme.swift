@@ -440,6 +440,7 @@ enum MatrixTheme {
         }
         .model-star:hover { background-color: alpha(\(accent), 0.16); }
         .model-star-glyph { color: \(textDim); font-size: \(c(0.9)); }
+        .model-refresh-glyph { font-size: \(c(0.9)); }
         .model-row-current .model-star-glyph { color: \(accent); }
         .model-section-button {
             padding: 0;

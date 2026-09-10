@@ -3115,9 +3115,27 @@ final class ChatPane: @unchecked Sendable {
     private func openModelChooser() {
         ModelChooserWindow.present(
             sources: modelSources(), selected: chosenModel,
-            parent: host?.windowWidget ?? root, quotas: modelQuotas()
+            parent: host?.windowWidget ?? root, quotas: modelQuotas(),
+            onRefresh: { [weak self] in self?.refreshModelCatalog() }
         ) { [weak self] pick in
             Gtk.onMain { [weak self] in self?.apply(pick) }
+        }
+    }
+
+    /// A press in the open chooser, not a restart: the watch behind `models` already gave up
+    /// re-asking once the server answered, so a model that server picked up since — a llama-swap
+    /// entry just wired in, say — needs its own ask rather than waiting for this pane to reopen.
+    private func refreshModelCatalog() {
+        guard let backend, let profileID = entry?.profileID, let sessionID else { return }
+        Task { [weak self] in
+            let reading = await ModelCatalogWatch.refreshOnce(profileID: profileID, backend: backend)
+            Gtk.onMain { [weak self] in
+                guard let self, self.sessionID == sessionID else { return }
+                self.models = reading.models
+                self.modelsReachable = reading.reachable
+                ModelChooserWindow.updateOpen(sources: self.modelSources())
+                self.refreshPills()
+            }
         }
     }
 

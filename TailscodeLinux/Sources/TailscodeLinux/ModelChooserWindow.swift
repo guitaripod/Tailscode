@@ -16,6 +16,7 @@ final class ModelChooserWindow: @unchecked Sendable {
 
     private var chooser: ModelChooser
     private let onPick: @Sendable (ModelPick) -> Void
+    private let onRefresh: (@Sendable () -> Void)?
     private let selected: ModelSelection?
     private let quotas: [UsageQuota]
     private let recents: [ModelSelection]
@@ -26,6 +27,10 @@ final class ModelChooserWindow: @unchecked Sendable {
     private let count: UnsafeMutablePointer<GtkWidget>
     private let band: UnsafeMutablePointer<GtkWidget>
     private let fold: UnsafeMutablePointer<GtkWidget>
+    private let refreshButton: UnsafeMutablePointer<GtkWidget>
+    /// Set the moment a press fires, so a reader who taps twice sends one ask, not two — and
+    /// cleared only by the catalog that answers it, `updateOpen`'s own rebuild.
+    private var refreshInFlight = false
     /// One width for every row's capability marks, so what a model reads forms a column rather than
     /// a ragged edge that moves with the length of the name beside it.
     private var markColumns: [UnsafeMutableRawPointer] = []
@@ -48,22 +53,25 @@ final class ModelChooserWindow: @unchecked Sendable {
         sources: [ModelSource], selected: ModelSelection?,
         parent: UnsafeMutablePointer<GtkWidget>?, quotas: [UsageQuota] = [],
         recents: [ModelSelection] = RecentModelsStore.all(),
+        onRefresh: (@Sendable () -> Void)? = nil,
         onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
         open?.close()
         open = ModelChooserWindow(
             sources: sources, selected: selected, parent: parent, quotas: quotas,
-            recents: recents, onPick: onPick)
+            recents: recents, onRefresh: onRefresh, onPick: onPick)
     }
 
     private init(
         sources: [ModelSource], selected: ModelSelection?,
         parent: UnsafeMutablePointer<GtkWidget>?, quotas: [UsageQuota],
-        recents: [ModelSelection], onPick: @escaping @Sendable (ModelPick) -> Void
+        recents: [ModelSelection], onRefresh: (@Sendable () -> Void)?,
+        onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
         chooser = ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas)
         self.onPick = onPick
+        self.onRefresh = onRefresh
         self.selected = selected
         self.quotas = quotas
         self.recents = recents
@@ -102,6 +110,14 @@ final class ModelChooserWindow: @unchecked Sendable {
         fold = gtk_button_new_with_label("")!
         Gtk.addClass(fold, "flat")
         Gtk.addClass(fold, "model-scope")
+        refreshButton = gtk_button_new()!
+        Gtk.addClass(refreshButton, "flat")
+        Gtk.addClass(refreshButton, "model-scope")
+        gtk_button_set_child(
+            ptr(refreshButton), Gtk.label("⟳", css: "model-refresh-glyph", selectable: false))
+        gtk_widget_set_tooltip_text(
+            refreshButton, Localized.text("Ask the server for its models again"))
+        gtk_widget_set_visible(refreshButton, onRefresh == nil ? 0 : 1)
         band = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         Gtk.margins(band, top: 2, bottom: 2, leading: 2, trailing: 2)
         gtk_box_append(ptr(column), band)
@@ -334,7 +350,11 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_widget_set_hexpand(count, 1)
         gtk_widget_set_valign(count, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(band), count)
+        gtk_box_append(ptr(band), refreshButton)
         gtk_box_append(ptr(band), fold)
+        Gtk.connect(UnsafeMutableRawPointer(refreshButton), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in self?.pressRefresh() }
+        }
         Gtk.connect(UnsafeMutableRawPointer(fold), "clicked") { [weak self] in
             Gtk.onMain { [weak self] in
                 guard let self, let action = self.chooser.foldAction,
@@ -343,6 +363,18 @@ final class ModelChooserWindow: @unchecked Sendable {
                 self.refresh(keepingScroll: true)
             }
         }
+    }
+
+    /// One ask in flight at a time: the button goes inert and spins the glyph, and whichever catalog
+    /// answers next — this ask, or a watch still retrying on its own — is what turns it back on,
+    /// since `updateOpen` calling `render` does not touch this row.
+    private func pressRefresh() {
+        guard let onRefresh, !refreshInFlight else { return }
+        refreshInFlight = true
+        gtk_widget_set_sensitive(refreshButton, 0)
+        gtk_button_set_child(
+            ptr(refreshButton), Gtk.label("…", css: "model-refresh-glyph", selectable: false))
+        onRefresh()
     }
 
     /// The one press over the whole list: open everything a fold is holding, or shut it all again.
@@ -408,6 +440,10 @@ final class ModelChooserWindow: @unchecked Sendable {
         chooser.search(query)
         buildMachines()
         refresh(keepingScroll: false)
+        refreshInFlight = false
+        gtk_widget_set_sensitive(refreshButton, 1)
+        gtk_button_set_child(
+            ptr(refreshButton), Gtk.label("⟳", css: "model-refresh-glyph", selectable: false))
     }
 
     private func close() {

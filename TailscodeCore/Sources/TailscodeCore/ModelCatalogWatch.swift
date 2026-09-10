@@ -51,4 +51,21 @@ public enum ModelCatalogWatch {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
+
+    /// One ask outside the retry loop — for a reader who already has a list and wants to know
+    /// whether the server has more to say, not a watch that gives up the moment it hears anything.
+    /// `readings(profileID:backend:)` above stops re-asking after its first success, so a model
+    /// added to a server that was already answering never reaches a session that opened before it:
+    /// this is the other half, fired from a press rather than a restart.
+    public static func refreshOnce(
+        profileID: String, backend: any CodingAgentBackend
+    ) async -> ModelCatalogReading {
+        do {
+            let asked = try await backend.availableModels()
+            if !asked.isEmpty { ModelCatalogStore.store(asked, for: profileID) }
+            return ModelCatalogReading(models: asked, reachable: true)
+        } catch {
+            return ModelCatalogReading(models: ModelCatalogStore.cached(profileID), reachable: false)
+        }
+    }
 }
