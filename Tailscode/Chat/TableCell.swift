@@ -103,11 +103,61 @@ final class TableCell: UICollectionViewCell {
         }
         scroll.setContentOffset(.zero, animated: false)
         build(table, fitting: available)
+        if Wash.owed(cellKey) { wash() }
+    }
+
+    /// Which table this cell is drawing, so the wash is owed to the table that was a draft rather
+    /// than to whichever cell the collection view happened to reuse.
+    private var cellKey = ""
+
+    func configure(_ table: MarkdownTable, width: CGFloat, key: String) {
+        cellKey = key
+        configure(table, width: width)
+    }
+
+    /// The wash a finished table arrives on. The card is already standing — it was the draft — so
+    /// the entrance has nothing to move: every band comes up on light alone, top-down, on the
+    /// beat Core sets (`TableEntrance`). Only a table that was a draft a moment ago is washed in;
+    /// one read out of history is a settled fact, and a settled fact does not animate.
+    private func wash() {
+        let bands = grid.arrangedSubviews
+        guard !bands.isEmpty else { return }
+        for band in bands { band.alpha = 0 }
+        for (index, band) in bands.enumerated() {
+            let share = bands.count > 1 ? Double(index) / Double(bands.count - 1) : 0
+            UIView.animate(
+                withDuration: TableEntrance.duration, delay: TableEntrance.lead * share,
+                options: [.curveEaseOut, .allowUserInteraction]
+            ) {
+                band.alpha = 1
+            }
+        }
+    }
+
+    /// The ledger of which tables have earned a wash, kept for the process rather than the cell:
+    /// a reused cell is not the same table, and a table reopened tomorrow is not a new one.
+    @MainActor
+    enum Wash {
+        private static var drafted: Set<String> = []
+
+        static func note(draft key: String) {
+            drafted.insert(key)
+            if drafted.count > 400 { drafted = [key] }
+        }
+
+        static func owed(_ key: String) -> Bool {
+            guard !UIAccessibility.isReduceMotionEnabled else {
+                drafted.remove(key)
+                return false
+            }
+            return drafted.remove(key) != nil
+        }
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
         table = nil
+        cellKey = ""
         builtWidth = 0
         widths = []
         columnConstraints = []

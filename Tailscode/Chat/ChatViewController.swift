@@ -890,6 +890,8 @@ final class ChatViewController: UIViewController {
         collectionView.register(CodeBlockCell.self, forCellWithReuseIdentifier: CodeBlockCell.reuseID)
         collectionView.register(TableCell.self, forCellWithReuseIdentifier: TableCell.reuseID)
         collectionView.register(
+            TableDraftCell.self, forCellWithReuseIdentifier: TableDraftCell.reuseID)
+        collectionView.register(
             ImageBubbleCell.self, forCellWithReuseIdentifier: ImageBubbleCell.reuseID)
         collectionView.register(PermissionCell.self, forCellWithReuseIdentifier: PermissionCell.reuseID)
         collectionView.register(
@@ -1637,7 +1639,13 @@ final class ChatViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: TableCell.reuseID, for: indexPath) as! TableCell
                 cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(table, width: collectionView.bounds.width)
+                cell.configure(table, width: collectionView.bounds.width, key: row.id)
+                return cell
+            case .tableDraft(let draft):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: TableDraftCell.reuseID, for: indexPath) as! TableDraftCell
+                cell.turnInset = self.turnGap(at: indexPath)
+                cell.configure(draft, key: row.id)
                 return cell
             case .activity(let steps):
                 let cell = collectionView.dequeueReusableCell(
@@ -4303,6 +4311,8 @@ final class ChatViewController: UIViewController {
                 body = "```\(fence)\n\(block.source)\n```"
             case .table(let table):
                 body = table.markdown
+            case .tableDraft(let draft):
+                body = draft.reading
             case .activity(let steps):
                 body = steps.map {
                     switch $0 {
@@ -5381,6 +5391,8 @@ extension ChatViewController: UICollectionViewDelegate {
             return block.source
         case .table(let table):
             return table.markdown
+        case .tableDraft(let draft):
+            return draft.reading
         case .activity(let steps):
             return steps.map { step in
                 switch step {

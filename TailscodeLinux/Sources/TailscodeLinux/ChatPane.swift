@@ -4737,20 +4737,7 @@ final class ChatPane: @unchecked Sendable {
         apply(state: state, rows: rowBuilder.rows(for: state.messages))
     }
 
-    /// The answer that made the tables worth redesigning: eight sparse columns of readings, a
-    /// column of addresses, a column of cipher suites long enough to fold, and a second table
-    /// whose header is shorter than every cell under it.
-    func driverTableDemo() {
-        let now = Date()
-        let asked = ChatMessage(
-            id: "demo-table-prompt", role: .user, agentType: .claudeCode,
-            parts: [
-                MessagePart(
-                    id: "t",
-                    kind: .text("List all wifi networks you can see. all the details about them as well."))
-            ],
-            createdAt: now.addingTimeInterval(-120))
-        let answer = """
+    static let tableDemoAnswer = """
             16 BSSIDs visible (5 distinct networks + a set of hidden-SSID radios), scanned on \
             `wlo1` (Intel AX200/210, `wlxac198e9d34d3`, currently **DOWN**, rfkill unblocked). \
             Sorted by signal.
@@ -4790,6 +4777,21 @@ final class ChatPane: @unchecked Sendable {
             - **6 GHz "0 Mbit/s / 0 MHz"**: normal — NM doesn't populate rate/width for 6 GHz in \
             this firmware path.
             """
+
+    /// The answer that made the tables worth redesigning: eight sparse columns of readings, a
+    /// column of addresses, a column of cipher suites long enough to fold, and a second table
+    /// whose header is shorter than every cell under it.
+    func driverTableDemo() {
+        let now = Date()
+        let asked = ChatMessage(
+            id: "demo-table-prompt", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "t",
+                    kind: .text("List all wifi networks you can see. all the details about them as well."))
+            ],
+            createdAt: now.addingTimeInterval(-120))
+        let answer = Self.tableDemoAnswer
         let reply = ChatMessage(
             id: "demo-table-answer", role: .assistant, agentType: .claudeCode,
             parts: [MessagePart(id: "a", kind: .text(answer))],
@@ -4797,6 +4799,40 @@ final class ChatPane: @unchecked Sendable {
         let state = ConversationState(
             messages: [asked, reply], status: .idle, hasLoadedTranscript: true)
         apply(state: state, rows: rowBuilder.rows(for: state.messages))
+    }
+
+    private func driverTableStreamStep(
+        _ upto: Int, of total: Int, asked: ChatMessage, now: Date
+    ) {
+        let text = Self.tableDemoAnswer.split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init).prefix(upto).joined(separator: "\n")
+        let done = upto == total
+        let reply = ChatMessage(
+            id: "demo-tstream-answer", role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "a", kind: .text(text))],
+            createdAt: now, isStreaming: !done)
+        let state = ConversationState(
+            messages: [asked, reply], status: done ? .idle : .running, hasLoadedTranscript: true)
+        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+    }
+
+    /// The table demo written out a row at a time, which is what the draft card and the wash are
+    /// for: the whole answer is streamed in with the message left incomplete until the end.
+    func driverTableStreamDemo() {
+        let now = Date()
+        let asked = ChatMessage(
+            id: "demo-tstream-prompt", role: .user, agentType: .claudeCode,
+            parts: [MessagePart(id: "t", kind: .text("wifi networks, everything you can see"))],
+            createdAt: now.addingTimeInterval(-30))
+        let lines = Self.tableDemoAnswer.split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        driverTableStreamStep(1, of: lines.count, asked: asked, now: now)
+        let total = lines.count
+        for step in 2...total {
+            Gtk.after(UInt32(120 * (step - 1))) { [weak self] in
+                self?.driverTableStreamStep(step, of: total, asked: asked, now: now)
+            }
+        }
     }
 
     func driverCompactionDemo(_ mode: String) {

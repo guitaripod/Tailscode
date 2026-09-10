@@ -175,6 +175,9 @@ enum MatrixTheme {
             background-image: linear-gradient(
                 to right, alpha(\(canvas), 0), alpha(\(canvas), 0.92) 70%, \(canvas));
         }
+        .md-table-draft { margin: 4px 0; }
+        .md-table-sweep { color: \(accent); \(t(.tableCell)) }
+        .md-table-draft-count { color: \(textDim); \(t(.tableCell)) }
         .md-table-header { color: \(textDim); \(t(.tableHeader)) }
         .md-table-key { color: \(text); \(t(.tableKey)) }
         .md-table-cell { color: \(text); \(t(.tableCell)) }

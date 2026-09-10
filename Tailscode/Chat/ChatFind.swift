@@ -15,6 +15,8 @@ enum ChatFind {
             return "\(block.language ?? "") \(block.source)"
         case .table(let table):
             return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
+        case .tableDraft(let draft):
+            return draft.reading
         case .activity(let steps):
             return steps.map { step in
                 switch step {

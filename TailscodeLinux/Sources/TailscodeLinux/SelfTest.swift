@@ -51,6 +51,8 @@ public enum SelfTest {
         do {
             let checks = try checkTable()
             report("table: \(checks) widths measure the height they draw")
+            let arrival = try checkTableArrival()
+            report("table arrival: \(arrival) a draft holds its rows and the wash lands")
         } catch {
             report("table: \(error)")
             failures += 1
@@ -1440,6 +1442,65 @@ public enum SelfTest {
             checks += 1
         }
         return checks + 2
+    }
+
+    /// A table being written costs no measurement, and the table that replaces it arrives on light.
+    ///
+    /// Both halves are invisible in a screenshot — a draft card and a finished table are two
+    /// different widgets, and a wash is a value that has already landed by the time anything is
+    /// captured — so they are asserted instead: the draft is a card with no grid in it at all, the
+    /// table that follows a draft starts below full opacity, and a table nobody watched arrive
+    /// starts fully lit, because a settled fact does not animate.
+    private static func checkTableArrival() throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        let table = MarkdownTable(
+            header: ["Band", "BSSID", "Sig"],
+            alignments: [.leading, .leading, .leading],
+            rows: [["2.4", "`92:30:66:5E:BF:4D`", "94"], ["5", "`96:30:66:5E:BF:4E`", "92"]])
+        var checks = 0
+
+        let draft = TableView.draft(TableDraft(table), key: "selftest-arrival")
+        g_object_ref_sink(UnsafeMutableRawPointer(draft))
+        defer { g_object_unref(UnsafeMutableRawPointer(draft)) }
+        guard gtk_widget_get_first_child(draft) != nil else {
+            throw SelfTestFailure("a table draft draws nothing at all")
+        }
+        var height: Int32 = 0
+        var natural: Int32 = 0
+        gtk_widget_measure(draft, GTK_ORIENTATION_VERTICAL, -1, &height, &natural, nil, nil)
+        guard natural > 0 else { throw SelfTestFailure("a table draft asks for no height") }
+        checks += 1
+
+        // The draft that just stood there is what earns the wash, and it is earned exactly once.
+        let washed = TableView.make(table, key: "selftest-arrival")
+        g_object_ref_sink(UnsafeMutableRawPointer(washed))
+        defer { g_object_unref(UnsafeMutableRawPointer(washed)) }
+        guard let scroller = gtk_widget_get_first_child(washed),
+            let viewport = gtk_scrolled_window_get_child(op(scroller)),
+            let card = gtk_viewport_get_child(op(viewport)),
+            let head = gtk_widget_get_first_child(card)
+        else { throw SelfTestFailure("a washed table is not a card in a viewport in a scroller") }
+        if RepeatingMotion.allowed {
+            guard gtk_widget_get_opacity(head) < 1 else {
+                throw SelfTestFailure(
+                    "a table that replaced a draft arrives at full light — the wash never ran")
+            }
+            checks += 1
+        }
+
+        let settled = TableView.make(table, key: "selftest-arrival")
+        g_object_ref_sink(UnsafeMutableRawPointer(settled))
+        defer { g_object_unref(UnsafeMutableRawPointer(settled)) }
+        guard let scroller = gtk_widget_get_first_child(settled),
+            let viewport = gtk_scrolled_window_get_child(op(scroller)),
+            let card = gtk_viewport_get_child(op(viewport)),
+            let head = gtk_widget_get_first_child(card)
+        else { throw SelfTestFailure("a settled table lost its shape") }
+        guard gtk_widget_get_opacity(head) == 1 else {
+            throw SelfTestFailure(
+                "a table nobody watched arrive is being animated in — the ledger kept the key")
+        }
+        return checks + 1
     }
 
     /// Pango markup is a string, so a code block is one escape away from a parse error that empties

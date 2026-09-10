@@ -17,6 +17,81 @@ import TailscodeCore
 /// there. `layout()` is where a view is finally told how wide it is, so that is where the columns
 /// are fitted — only the ones with something to fold pay for it, and what still will not fit
 /// scrolls sideways with its last inch dissolving rather than cut off.
+/// The card a table wears while it is being written: its own border, the open-work mark turning,
+/// and the count of what has landed. `TableDraft` says why the rows are held — nothing here is
+/// measured against anything, so an arrival costs two label sets and no layout at all.
+@MainActor
+final class MacTableDraftView: NSView {
+    init(_ draft: TableDraft, key: String) {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        MacTableView.Wash.note(draft: key)
+
+        let mark = NSImageView()
+        mark.translatesAutoresizingMaskIntoConstraints = false
+        mark.image = NSImage(
+            systemSymbolName: TableDraft.mark.symbol, accessibilityDescription: nil)
+        mark.contentTintColor = MacTheme.Color.accent
+        mark.imageScaling = .scaleProportionallyUpOrDown
+
+        let title = RowKit.attributedLabel(
+            MacMarkdown.tableCell(draft.title, role: .tableHeader, tabular: false))
+        let row = NSStackView(views: [mark, title])
+        if let detail = draft.detail {
+            row.addView(
+                RowKit.attributedLabel(MacMarkdown.tableCell(detail, role: .tableCell)),
+                in: .leading)
+        }
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 6
+        let air = CGFloat(TableStyle.rowPadding) + 2
+        row.edgeInsets = NSEdgeInsets(
+            top: air, left: CGFloat(TableStyle.edge), bottom: air, right: CGFloat(TableStyle.edge))
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let card = NSView()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(row)
+        RowKit.ground(
+            behind: card, fill: nil,
+            stroke: MacTheme.Color.label.withAlphaComponent(CGFloat(TableStyle.border)),
+            radius: CGFloat(TableStyle.radius))
+        addSubview(card)
+
+        setAccessibilityLabel(draft.reading)
+        NSLayoutConstraint.activate([
+            mark.widthAnchor.constraint(equalToConstant: 13),
+            mark.heightAnchor.constraint(equalToConstant: 13),
+            row.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            row.topAnchor.constraint(equalTo: card.topAnchor),
+            row.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            card.leadingAnchor.constraint(equalTo: leadingAnchor),
+            card.topAnchor.constraint(equalTo: topAnchor),
+            card.bottomAnchor.constraint(equalTo: bottomAnchor),
+            card.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+        ])
+        turn(mark)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    private func turn(_ mark: NSImageView) {
+        guard TableDraft.motion.honoring(
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        ).isAnimated else { return }
+        mark.wantsLayer = true
+        mark.layer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        let sweep = CABasicAnimation(keyPath: "transform.rotation.z")
+        sweep.fromValue = 0
+        sweep.toValue = -2 * Double.pi
+        sweep.duration = ActivityTuning.sweepPeriod
+        sweep.repeatCount = .infinity
+        mark.layer?.add(sweep, forKey: "sweep")
+    }
+}
+
 final class MacTableView: NSView {
     private let table: MarkdownTable
     private let key: String
@@ -158,6 +233,8 @@ final class MacTableView: NSView {
             heightAnchor.constraint(equalTo: card.heightAnchor),
         ])
 
+        if Wash.owed(key) { wash(bands: grid.arrangedSubviews) }
+
         natural = (0..<table.columnCount).map { column in
             Double(cells[column].map { ceil($0.attributedStringValue.size().width) + 1 }.max() ?? 1)
         }
@@ -242,6 +319,50 @@ final class MacTableView: NSView {
         paragraph.lineBreakMode = .byWordWrapping
         styled.addAttribute(.paragraphStyle, value: paragraph, range: whole)
         return styled
+    }
+
+    /// The wash a finished table arrives on. The card is already standing — it was the draft — so
+    /// the entrance has nothing to move: every band comes up on light alone, top-down, on the beat
+    /// Core sets (`TableEntrance`). Only a table that was a draft a moment ago is washed in; one
+    /// read out of history is a settled fact, and a settled fact does not animate.
+    private func wash(bands: [NSView]) {
+        guard !bands.isEmpty else { return }
+        for band in bands {
+            band.wantsLayer = true
+            band.alphaValue = 0
+        }
+        for (index, band) in bands.enumerated() {
+            let share = bands.count > 1 ? Double(index) / Double(bands.count - 1) : 0
+            let rise = CABasicAnimation(keyPath: "opacity")
+            rise.fromValue = 0
+            rise.toValue = 1
+            rise.duration = TableEntrance.duration
+            rise.beginTime = CACurrentMediaTime() + TableEntrance.lead * share
+            rise.fillMode = .backwards
+            rise.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            band.alphaValue = 1
+            band.layer?.add(rise, forKey: "wash")
+        }
+    }
+
+    /// The ledger of which tables have earned a wash. Kept for the process rather than the view:
+    /// a rebuilt row is not a new table, and a table reopened tomorrow is not one either.
+    @MainActor
+    enum Wash {
+        private static var drafted: Set<String> = []
+
+        static func note(draft key: String) {
+            drafted.insert(key)
+            if drafted.count > 400 { drafted = [key] }
+        }
+
+        static func owed(_ key: String) -> Bool {
+            guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+                drafted.remove(key)
+                return false
+            }
+            return drafted.remove(key) != nil
+        }
     }
 
     /// What each table's columns measured last time it was built, so a table rebuilt on every

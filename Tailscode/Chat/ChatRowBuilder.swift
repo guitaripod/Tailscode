@@ -203,9 +203,17 @@ enum ChatRowBuilder {
         _ text: String, id: String, messageID: String, role: MessageRole, sealed: Bool
     ) -> [ChatRow] {
         var rows: [ChatRow] = []
-        for (index, segment) in MessageSegment.split(text, sealed: sealed).enumerated() {
+        let segments = MessageSegment.split(text, sealed: sealed)
+        for (index, segment) in segments.enumerated() {
             let rowID = "\(id):seg\(index)"
-            let content = segment.chatContent
+            var content = segment.chatContent
+            // A table still being written holds its rows rather than being measured on every
+            // arrival: TableDraft says why, and the card that stands in for it says so on screen.
+            if case .table(let table) = content,
+                TableDraft.isGrowing(segment: index, of: segments.count, sealed: sealed)
+            {
+                content = .tableDraft(TableDraft(table))
+            }
             rows.append(
                 ChatRow(
                     id: rowID, messageID: messageID, role: role, content: content))

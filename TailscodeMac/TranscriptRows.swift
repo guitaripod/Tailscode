@@ -164,6 +164,8 @@ struct TranscriptRow: Hashable {
         case agentProse(text: String, rendered: NSAttributedString)
         case codeBlock(language: String?, body: String)
         case table(MarkdownTable)
+        /// A table still being written: its card, its count, and none of its rows measured.
+        case tableDraft(TableDraft)
         case reasoning(String)
         case tool(ToolCall)
         case run([ActivityStep])
@@ -254,9 +256,8 @@ struct TranscriptRow: Hashable {
                     }
                     continue
                 }
-                for (index, segment) in MessageSegment.split(stripped, sealed: !message.isStreaming)
-                    .enumerated()
-                {
+                let segments = MessageSegment.split(stripped, sealed: !message.isStreaming)
+                for (index, segment) in segments.enumerated() {
                     switch segment {
                     case .prose(let prose):
                         rows.append(
@@ -270,7 +271,13 @@ struct TranscriptRow: Hashable {
                                 key: "\(key):s\(index)",
                                 kind: .codeBlock(language: language, body: body)))
                     case .table(let table):
-                        rows.append(TranscriptRow(key: "\(key):s\(index)", kind: .table(table)))
+                        let growing = TableDraft.isGrowing(
+                            segment: index, of: segments.count, sealed: !message.isStreaming)
+                        rows.append(
+                            TranscriptRow(
+                                key: "\(key):s\(index)",
+                                kind: growing
+                                    ? .tableDraft(TableDraft(table)) : .table(table)))
                     }
                 }
             case .reasoning(let text):
@@ -420,6 +427,8 @@ struct TranscriptRow: Hashable {
             return "\(language ?? "") \(body)"
         case .table(let table):
             return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
+        case .tableDraft(let draft):
+            return draft.reading
         case .tool(let call), .subagent(let call), .workflow(let call):
             return Self.searchText(for: call)
         case .run(let steps):
@@ -471,6 +480,8 @@ struct TranscriptRow: Hashable {
             return Self.codeBlock(language: language, body: body, context: context)
         case .table(let table):
             return Self.table(table, key: key)
+        case .tableDraft(let draft):
+            return MacTableDraftView(draft, key: key)
         case .reasoning(let text):
             return ToolRowView.reasoning(text, key: key, context: context)
         case .tool(let call):
@@ -614,7 +625,6 @@ struct TranscriptRow: Hashable {
         column.addArrangedSubview(header)
 
         let text = RowKit.code(body, language: language)
-        let lines = body.split(separator: "\n", omittingEmptySubsequences: false).count
         let scrolled = RowKit.codeScroll(
             around: text, cap: TranscriptBlocks.fitsInline(body) ? nil : TranscriptBlocks.cappedHeight)
         column.addArrangedSubview(scrolled)

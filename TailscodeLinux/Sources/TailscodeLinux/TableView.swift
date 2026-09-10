@@ -24,6 +24,81 @@ import TailscodeCore
 /// the columns with something to fold pay for it (`MarkdownTable.rigidColumns`); what still will
 /// not fit scrolls sideways, and the last inch of it dissolves rather than being cut off.
 enum TableView {
+    /// The card a table wears while it is being written: its own border, a sweep, and the count of
+    /// what has landed. Nothing here is measured against anything — one glyph one advance wide and
+    /// two labels whose text changes — so an arrival costs a label set and no layout at all.
+    /// `TableDraft` says why the rows are held.
+    static func draft(_ draft: TableDraft, key: String) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(card, "md-table")
+        Gtk.addClass(card, "md-table-draft")
+        gtk_widget_set_halign(card, GTK_ALIGN_START)
+        gtk_widget_set_valign(card, GTK_ALIGN_START)
+
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.addClass(row, "md-table-row")
+        func word(_ text: String, css: String) -> UnsafeMutablePointer<GtkWidget> {
+            let label = Gtk.label(text, css: css, selectable: false)
+            // A card this small is never squeezed, so an ellipsis on it is not a truncation the
+            // reader can do anything about — it is the label's own minimum quietly winning.
+            gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
+            return label
+        }
+        let sweep = word(TableDraft.mark.glyph, css: "md-table-sweep")
+        gtk_box_append(ptr(row), sweep)
+        gtk_box_append(ptr(row), word(draft.title, css: "md-table-header"))
+        if let detail = draft.detail {
+            gtk_box_append(ptr(row), word(detail, css: "md-table-draft-count"))
+        }
+        gtk_box_append(ptr(card), row)
+        Sweep.lay(on: sweep, key: key)
+        Wash.note(draft: key)
+        return card
+    }
+
+    /// The sweep on a draft card, on the display's own clock rather than a chained timeout, and
+    /// held by the widget it turns so a card scrolled out of existence takes its lap with it.
+    final class Sweep: @unchecked Sendable {
+        private let label: UnsafeMutablePointer<GtkWidget>
+        private lazy var lap = RepeatingMotion(holding: false) { [weak self] in self?.step() }
+        private var shown = ""
+
+        private init(label: UnsafeMutablePointer<GtkWidget>) {
+            self.label = label
+        }
+
+        static func lay(on label: UnsafeMutablePointer<GtkWidget>, key: String) {
+            let sweep = Sweep(label: label)
+            g_object_set_data_full(
+                ptr(UnsafeMutableRawPointer(label)), "tailscode-table-sweep",
+                Unmanaged.passRetained(sweep).toOpaque(),
+                { raw in
+                    guard let raw else { return }
+                    Unmanaged<Sweep>.fromOpaque(raw).release()
+                })
+            sweep.relay()
+            RepeatingMotion.watch(label) { [weak sweep] in sweep?.relay() }
+        }
+
+        /// The desk may change its mind about motion while a table is still arriving, so the
+        /// question is asked again rather than remembered.
+        private func relay() {
+            lap.lay(on: label, meaning: TableDraft.motion)
+        }
+
+        /// Every glyph in the cycle is one advance wide, so the label never re-measures and the
+        /// frame changes light rather than layout.
+        private func step() {
+            guard
+                let frame = TableDraft.motion.frame(
+                    at: CascadePainter.now, of: TableDraft.mark.cycle),
+                frame != shown
+            else { return }
+            shown = frame
+            gtk_label_set_text(op(label), frame)
+        }
+    }
+
     static func make(_ table: MarkdownTable, key: String) -> UnsafeMutablePointer<GtkWidget> {
         let palette = MatrixTheme.palette
         let kinds = table.kinds
@@ -72,7 +147,9 @@ enum TableView {
             return row
         }
 
+        var bands: [UnsafeMutablePointer<GtkWidget>] = []
         let head = band("md-table-headrow")
+        bands.append(head)
         for (column, title) in table.header.enumerated() {
             gtk_box_append(ptr(head), cell(title, header: true, column: column))
         }
@@ -91,6 +168,7 @@ enum TableView {
                 gtk_box_append(ptr(line), cell(text, header: false, column: column))
             }
             gtk_box_append(ptr(card), line)
+            bands.append(line)
         }
 
         let scroller = gtk_scrolled_window_new()!
@@ -119,6 +197,8 @@ enum TableView {
         gtk_overlay_add_overlay(op(overlay), fade)
         gtk_widget_set_hexpand(overlay, 1)
 
+        if Wash.owed(key) { Wash.lay(on: card, bands: bands) }
+
         let fold = Fold(
             key: key, table: table, columns: columns, fade: fade,
             viewport: gtk_scrolled_window_get_hadjustment(op(scroller)))
@@ -135,6 +215,85 @@ enum TableView {
         }
         Fold.keep(fold, on: overlay)
         return overlay
+    }
+
+    /// The wash a finished table arrives on, and the ledger of which tables have earned one.
+    ///
+    /// Only a table that was a draft on this screen a moment ago is washed in: a table read out of
+    /// history, or one this pane is rebuilding for the tenth time, is already a settled fact and a
+    /// settled fact does not animate. The arithmetic and the beat are Core's (`TableEntrance`); the
+    /// only thing done here is setting an opacity per band per frame, which changes light and never
+    /// layout.
+    final class Wash: @unchecked Sendable {
+        private let bands: [UnsafeMutablePointer<GtkWidget>]
+        private let clock: UnsafeMutablePointer<GtkWidget>
+        private var tick: UInt = 0
+        private var startedAt = 0.0
+
+        /// Which tables were last drawn as a draft, so the wash is owed exactly once. Widgets are
+        /// built on the main thread and nowhere else.
+        nonisolated(unsafe) private static var drafted: Set<String> = []
+
+        static func note(draft key: String) {
+            drafted.insert(key)
+            if drafted.count > 400 { drafted = [key] }
+        }
+
+        static func owed(_ key: String) -> Bool {
+            guard RepeatingMotion.allowed else {
+                drafted.remove(key)
+                return false
+            }
+            return drafted.remove(key) != nil
+        }
+
+        private init(clock: UnsafeMutablePointer<GtkWidget>, bands: [UnsafeMutablePointer<GtkWidget>]) {
+            self.clock = clock
+            self.bands = bands
+        }
+
+        static func lay(
+            on clock: UnsafeMutablePointer<GtkWidget>, bands: [UnsafeMutablePointer<GtkWidget>]
+        ) {
+            guard !bands.isEmpty else { return }
+            let wash = Wash(clock: clock, bands: bands)
+            for band in bands { gtk_widget_set_opacity(band, 0) }
+            wash.startedAt = CascadePainter.now
+            g_object_ref(UnsafeMutableRawPointer(clock))
+            // A frame clock only ticks for a widget the compositor is drawing. A table built into
+            // a pane nobody looks at would otherwise sit at zero opacity forever, so the wash has
+            // an end it reaches without the clock.
+            Gtk.after(UInt32(TableEntrance.span * 1000) + 250) { [weak wash] in wash?.land() }
+            wash.tick = UInt(
+                tailscode_add_tick(
+                    clock,
+                    { raw in
+                        guard let raw else { return }
+                        Unmanaged<Wash>.fromOpaque(raw).takeUnretainedValue().step()
+                    }, Unmanaged.passRetained(wash).toOpaque()))
+        }
+
+        private func step() {
+            guard tick != 0 else { return }
+            let elapsed = CascadePainter.now - startedAt
+            for (index, band) in bands.enumerated() {
+                gtk_widget_set_opacity(
+                    band, TableEntrance.opacity(band: index, of: bands.count, elapsed: elapsed))
+            }
+            // A settled table is a still one: the clock comes off by hand, because the entrance
+            // merely ending changes no value a frame could notice.
+            guard TableEntrance.isFinished(elapsed) else { return }
+            land()
+        }
+
+        func land() {
+            for band in bands { gtk_widget_set_opacity(band, 1) }
+            guard tick != 0 else { return }
+            tailscode_remove_tick(clock, guint(tick))
+            tick = 0
+            g_object_unref(UnsafeMutableRawPointer(clock))
+            Unmanaged.passUnretained(self).release()
+        }
     }
 
     private static func css(for role: TypeRole) -> String {

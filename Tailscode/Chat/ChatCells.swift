@@ -17,6 +17,8 @@ struct ChatRow: Hashable {
         case text(String)
         case code(CodeBlock)
         case table(MarkdownTable)
+        /// A table still being written: its card, its count, and none of its rows measured.
+        case tableDraft(TableDraft)
         case activity([ActivityStep])
         case subagent(SubagentCard)
         case workflow(WorkflowRun)
