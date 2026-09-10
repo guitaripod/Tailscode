@@ -96,7 +96,7 @@ jobs:
           python3 - "$version" > /tmp/notes.txt <<'PY'
           import json, sys
           notes = json.load(open("docs/release-notes.json"))
-          entry = notes.get(sys.argv[1], {})
+          entry = notes.get(sys.argv[1] + "-linux") or notes.get(sys.argv[1], {})
           body = entry.get("en-US") or next(iter(entry.values()), "")
           print(json.dumps(body))
           PY

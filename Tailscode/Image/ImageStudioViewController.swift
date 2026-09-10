@@ -658,7 +658,8 @@ final class ImageStudioViewController: UIViewController {
     }
 
     private func viewer(from exhibit: ImageExhibit) -> ImageViewerViewController {
-        let items = library.items
+        let shelf = library
+        let items = shelf.items
         let client = ImageGenClient(endpoint: studio.endpoint)
         if let target = exhibit.libraryID, let start = items.firstIndex(where: { $0.id == target }) {
             let pages = items.map { kept in
@@ -667,16 +668,15 @@ final class ImageStudioViewController: UIViewController {
                     file: FileReference(
                         path: kept.id, mime: kept.kind?.mime ?? "image/png",
                         url: client.viewURL(kept)?.absoluteString ?? "", filename: kept.filename),
-                    localData: library.originalPath(of: kept).flatMap {
+                    localData: shelf.originalPath(of: kept).flatMap {
                         FileManager.default.contents(atPath: $0)
                     })
             }
-            let library = self.library
             return ImageViewerViewController(
                 items: pages, startIndex: start, backend: nil, from: nil
             ) { page in
-                guard let kept = await library.item(named: page.id) else { return nil }
-                return await library.original(of: kept)
+                guard let kept = await shelf.item(named: page.id) else { return nil }
+                return await shelf.original(of: kept)
             }
         }
         let pages = slot.pictures.map { made in
