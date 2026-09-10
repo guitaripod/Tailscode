@@ -387,3 +387,82 @@ final class HomeVideoChips: UIView {
         return button
     }
 }
+
+/// The image lane's own furniture: the two decisions a picture is made from, worn as chips under
+/// the box so a render is composed without leaving the keyboard — what is attached, when something
+/// is, and the road into the studio at the end of the row. The values are the slot's own, and a
+/// press is the same walk the studio answers, so the composer and the surface can never disagree
+/// about what the next picture is made from.
+@MainActor
+final class HomeImageChips: UIView {
+    var onWalk: ((ImageGenField) -> Void)?
+    var onEngine: ((ImageGenEngine) -> Void)?
+    var onAspect: ((ImageGenAspect) -> Void)?
+    var onOpen: (() -> Void)?
+
+    private let scrollView = UIScrollView()
+    private let row = UIStackView()
+    private var applied: String?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.contentInset = UIEdgeInsets(
+            top: 0, left: Theme.Spacing.l, bottom: 0, right: Theme.Spacing.l)
+        addSubview(scrollView)
+
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = Theme.Spacing.xs
+        row.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.addSubview(row)
+
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            row.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            row.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            scrollView.heightAnchor.constraint(equalTo: row.heightAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Redrawn only when a value actually changed: a scroll view rebuilt under a finger forgets
+    /// where it was, and this is reapplied on every change the studio announces.
+    func update(slot: ImageGenSlot) {
+        let identity = QuickAskLane.imageChips.map { "\($0.rawValue)=\(slot.value(of: $0))" }
+            .joined(separator: "|") + "|\(slot.reference?.chip ?? "-")|\(slot.isBusy)"
+        guard identity != applied else { return }
+        applied = identity
+        row.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for field in QuickAskLane.imageChips {
+            let chip = ImageChip.button(symbol: field.symbol, title: slot.value(of: field))
+            chip.isEnabled = !slot.isBusy
+            chip.accessibilityLabel = "\(field.label), \(slot.value(of: field))"
+            chip.addAction(
+                UIAction { [weak self] _ in self?.onWalk?(field) }, for: .touchUpInside)
+            chip.menu = ImageChip.menu(
+                for: field, slot: slot,
+                onEngine: { [weak self] engine in self?.onEngine?(engine) },
+                onAspect: { [weak self] aspect in self?.onAspect?(aspect) })
+            row.addArrangedSubview(chip)
+        }
+        if let reference = slot.reference {
+            let held = ImageChip.button(symbol: "photo.fill", title: reference.chip)
+            held.accessibilityLabel = ImageGenWords.referenceHint(reference)
+            held.isUserInteractionEnabled = false
+            row.addArrangedSubview(held)
+        }
+        let open = ImageChip.button(
+            symbol: "slider.horizontal.3", title: ImageGenSurface.title)
+        open.addAction(UIAction { [weak self] _ in self?.onOpen?() }, for: .touchUpInside)
+        open.accessibilityLabel = ImageGenSurface.title
+        row.addArrangedSubview(open)
+    }
+}

@@ -169,7 +169,7 @@ public struct ImageGenClient: Sendable {
                 prompt: prompt, mode: mode, aspect: aspect, seed: seed,
                 referencePath: referencePath)
         case .fast:
-            graph = try Self.kleinGraph(prompt: prompt, aspect: aspect, seed: seed)
+            graph = Self.kleinGraph(prompt: prompt, aspect: aspect, seed: seed)
         }
         let body: [String: Any] = ["prompt": graph, "client_id": "tailscode"]
         guard let url = URL(string: endpoint.address + "/prompt") else {
@@ -179,9 +179,6 @@ public struct ImageGenClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        // A socket-activated server is woken by this very request and answers nothing for the
-        // seconds its boot takes. Retrying inside the wake window is what makes the first
-        // render of the morning work instead of failing.
         let (data, response): (Data, URLResponse) = try await Self.wakingPost(
             request, session: session)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -196,6 +193,53 @@ public struct ImageGenClient: Sendable {
             let id = object["prompt_id"] as? String
         else { throw ImageGenFailure.invalid("ComfyUI answered without a prompt id") }
         return ImageGenRequest(id: id)
+    }
+
+    /// Puts a picture in the machine's own input directory and hands back the name the graph
+    /// must call it by. The reference a person attaches is a file on the device they attached it
+    /// from — a phone's photo library has no path the renderer could ever open — so the bytes
+    /// travel and the name comes back.
+    public func upload(fileAt path: String) async throws -> String {
+        guard let data = FileManager.default.contents(atPath: path) else {
+            throw ImageGenFailure.invalid(Localized.text("The reference picture could not be read"))
+        }
+        return try await upload(data, named: (path as NSString).lastPathComponent)
+    }
+
+    public func upload(_ data: Data, named name: String) async throws -> String {
+        guard let url = URL(string: endpoint.address + "/upload/image") else {
+            throw ImageGenFailure.invalid("bad endpoint address")
+        }
+        let boundary = "tailscode-" + UUID().uuidString
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Self.multipart(data, named: name, boundary: boundary)
+        let (answer, response) = try await Self.wakingPost(request, session: session)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+            let object = try? JSONSerialization.jsonObject(with: answer) as? [String: Any],
+            let stored = object["name"] as? String
+        else {
+            throw ImageGenFailure.refused(
+                Localized.text("ComfyUI would not take the reference picture"))
+        }
+        let subfolder = object["subfolder"] as? String ?? ""
+        return subfolder.isEmpty ? stored : subfolder + "/" + stored
+    }
+
+    private static func multipart(_ data: Data, named name: String, boundary: String) -> Data {
+        var body = Data()
+        func write(_ text: String) { body.append(Data(text.utf8)) }
+        write("--\(boundary)\r\n")
+        write("Content-Disposition: form-data; name=\"image\"; filename=\"\(name)\"\r\n")
+        write("Content-Type: application/octet-stream\r\n\r\n")
+        body.append(data)
+        write("\r\n--\(boundary)\r\n")
+        write("Content-Disposition: form-data; name=\"overwrite\"\r\n\r\n")
+        write("true\r\n")
+        write("--\(boundary)--\r\n")
+        return body
     }
 
     /// Polls a queued run once. Returns nil while it still runs; `.success` when a picture is
@@ -273,8 +317,6 @@ public struct ImageGenClient: Sendable {
     private static func escaped(_ text: String) -> String {
         text.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? text
     }
-
-    // MARK: - Graphs
 
     /// Qwen-Image-Edit-2511 as the store runs it: fp8mixed transformer, the VL text encoder,
     /// one shared VAE. With no reference latent the same graph paints from words alone.

@@ -345,9 +345,7 @@ final class DrawPane: @unchecked Sendable {
     /// so this is a clock rather than a bar — a percentage nobody measured is a lie with a
     /// progress indicator on it.
     private func elapsedLine() -> String {
-        guard let started = studio.startedAt else { return slot.busyLine }
-        let seconds = Int(Date().timeIntervalSince(started).rounded())
-        return "\(slot.busyLine) · \(seconds)s"
+        slot.waitingLine(since: studio.startedAt)
     }
 
     /// One second is the whole resolution a wait like this needs, and the clock stops the moment
@@ -638,12 +636,3 @@ private extension UnsafeMutablePointer where Pointee == GtkWidget {
     }
 }
 
-extension ImageGenSlot {
-    var busyLine: String {
-        if case .painting(_, let engine, let mode) = phase {
-            let verb = mode == .edit ? Localized.text("editing") : Localized.text("painting")
-            return Localized.text("%@ · %@", engine.label, verb)
-        }
-        return ""
-    }
-}

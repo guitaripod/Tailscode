@@ -20,7 +20,9 @@ struct GalleryImage: Hashable, Sendable {
 /// modal.
 final class ImageViewerViewController: UIViewController {
     private let items: [GalleryImage]
-    private let backend: any CodingAgentBackend
+    /// The server the pictures are fetched from, where they came from one. A picture this device
+    /// made itself is already on disk, so the studio opens the same viewer with nothing behind it.
+    private let backend: (any CodingAgentBackend)?
     private let sourceView: UIView?
     private let sourceIndex: Int
     private var index: Int
@@ -43,7 +45,7 @@ final class ImageViewerViewController: UIViewController {
     private var pagesWithText: Set<Int> = []
 
     init(
-        items: [GalleryImage], startIndex: Int, backend: any CodingAgentBackend,
+        items: [GalleryImage], startIndex: Int, backend: (any CodingAgentBackend)?,
         from sourceView: UIView?
     ) {
         self.items = items
@@ -607,7 +609,7 @@ final class ImagePageCell: UICollectionViewCell {
         onLoaded = nil
     }
 
-    func configure(_ item: GalleryImage, backend: any CodingAgentBackend, liveText: Bool) {
+    func configure(_ item: GalleryImage, backend: (any CodingAgentBackend)?, liveText: Bool) {
         liveTextRequested = liveText
         if let cached = AttachmentImageStore.shared.cached(item.file) {
             show(cached, data: AttachmentImageStore.shared.cachedData(item.file) ?? item.localData)
@@ -616,6 +618,11 @@ final class ImagePageCell: UICollectionViewCell {
         if let local = item.localData, let decoded = UIImage(data: local) {
             AttachmentImageStore.shared.store(decoded, for: item.file, data: local)
             show(decoded, data: local)
+            return
+        }
+        guard let backend else {
+            failure.text = String(localized: "Couldn't load \(item.filename)")
+            failure.isHidden = false
             return
         }
         spinner.working(true, spoken: String(localized: "Loading the picture"))

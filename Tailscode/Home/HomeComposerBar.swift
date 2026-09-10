@@ -314,10 +314,13 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         addGestureRecognizer(pan)
     }
 
-    /// The lanes this client draws. A picture is a lane wherever a machine can paint and a
-    /// client has a surface to make one in; the phone has no image studio yet, so the walk stays
-    /// three wide and the switch never offers a door that opens on nothing.
-    static var offeredLanes: [QuickAskLane] { QuickAskLane.offered(imaging: false) }
+    /// The lanes this client draws. A picture is a lane wherever this device knows a machine that
+    /// can paint — which is not a setting and never was — so the walk is four wide the moment a
+    /// renderer is known and three when none is, and the switch never offers a door that opens on
+    /// nothing.
+    static var offeredLanes: [QuickAskLane] {
+        QuickAskLane.offered(imaging: ImageGenDoor.current().isOpen)
+    }
 
     private func laneTapped() {
         setLane(lane.advanced(by: 1, among: Self.offeredLanes), animated: true)
@@ -591,16 +594,16 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         textView.reloadInputViews()
     }
 
-    /// The send control wears the lane: the video lane spends minutes of another machine's card,
-    /// so its button is the forge's own face and its name is Render — a wrong-lane send has to be
-    /// impossible to miss before the press, not after it.
+    /// The send control wears the lane: a lane that spends another machine's card wears that
+    /// lane's own face and is named Render — a wrong-lane send has to be impossible to miss before
+    /// the press, not after it.
     private func updateSendButton() {
         let hasText = !trimmed.isEmpty || carriesAttachments
         var config = sendButton.configuration ?? .filled()
         config.image = isSending
             ? nil
             : UIImage(
-                systemName: lane == .video ? lane.symbol : "arrow.up",
+                systemName: lane.needsRenderer ? lane.symbol : "arrow.up",
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
         config.baseBackgroundColor =
             hasText || isSending ? Theme.Color.accent : Theme.Color.separator

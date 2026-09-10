@@ -22,6 +22,7 @@ final class HomeViewController: UIViewController {
     private let commandPalette = SlashCommandPalette()
     private let suggestions = HomeAskSuggestions()
     private let videoChips = HomeVideoChips()
+    private let imageChips = HomeImageChips()
     private let attachmentStrip = HomeAttachmentStrip()
     private let failureCard = HomeComposerFailureCard()
     /// Everything that floats between the board and the box, in the order a hand reaches for it:
@@ -50,6 +51,8 @@ final class HomeViewController: UIViewController {
     private lazy var settingsItem = UIBarButtonItem(customView: settingsButton)
     private let videoButton = VideoMarkButton()
     private lazy var videoItem = UIBarButtonItem(customView: videoButton)
+    private let imageButton = ImageMarkButton()
+    private lazy var imageItem = UIBarButtonItem(customView: imageButton)
     private let orbView = PresenceOrbView()
     private var orbTarget: SessionEntry?
     private var quotas: [UsageQuota] = []
@@ -106,7 +109,9 @@ final class HomeViewController: UIViewController {
         view.backgroundColor = Theme.Color.groupedBackground
         settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
         videoButton.addTarget(self, action: #selector(openVideo), for: .touchUpInside)
+        imageButton.addTarget(self, action: #selector(openImage), for: .touchUpInside)
         updateVideoMark()
+        updateImageMark()
         updateLeftBarItems()
         updateComposeButton()
         configureCollectionView()
@@ -146,6 +151,36 @@ final class HomeViewController: UIViewController {
                     try? await Task.sleep(for: .seconds(3))
                     self?.presentQuickAsk()
                     self?.seedAskForVerification()
+                }
+            }
+            if let host = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_IMAGE"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    guard let self else { return }
+                    if case .endpoint(let endpoint) = ImageGenEndpoint.read(host) {
+                        ImageGenStore.remember(endpoint)
+                    }
+                    ImageStudio.shared.adoptDoor()
+                    self.updateImageMark()
+                    let words = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_PROMPT"]
+                    if ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_LANE"] != nil {
+                        self.setLane(.image, animated: false)
+                        self.composerBar.setText(words ?? "")
+                        return
+                    }
+                    self.presentImage()
+                    guard let words else { return }
+                    for line in words.split(separator: "|") {
+                        if ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_EDIT"] != nil,
+                            let made = ImageStudio.shared.slot.onStage
+                        {
+                            ImageStudio.shared.hold(ImageGenReference(path: made.path))
+                        }
+                        ImageStudio.shared.submit(prompt: String(line))
+                        while ImageStudio.shared.isPainting {
+                            try? await Task.sleep(for: .seconds(1))
+                        }
+                    }
                 }
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_VIDEOLANE"] != nil {
@@ -439,6 +474,12 @@ final class HomeViewController: UIViewController {
             self, selector: #selector(updateVideoMark),
             name: ForgeRunner.didChange, object: nil)
         for name: Notification.Name in [
+            ImageStudio.didChange, ImageGenStore.didChange, ForgeStore.didChange,
+        ] {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(updateImageMark), name: name, object: nil)
+        }
+        for name: Notification.Name in [
             UIApplication.didEnterBackgroundNotification,
             UIApplication.willTerminateNotification,
         ] {
@@ -580,7 +621,7 @@ final class HomeViewController: UIViewController {
     private func updateComposeButton() {
         let servers = viewModel.servers
         let state = servers.map { "\($0.id)|\($0.name)|\($0.backend.rawValue)" }
-            .joined(separator: "\u{1}")
+            .joined(separator: "\u{1}") + "\u{1}image=\(ImageGenDoor.current().isOpen)"
         guard state != appliedComposeButtonState else { return }
         appliedComposeButtonState = state
         let compose = UIImage(systemName: "square.and.pencil")
@@ -604,7 +645,10 @@ final class HomeViewController: UIViewController {
                 })
         }
         composeItem.accessibilityLabel = String(localized: "New chat")
-        navigationItem.rightBarButtonItems = [composeItem, videoItem, delegateItem(for: servers)]
+        var items = [composeItem, videoItem]
+        if ImageGenDoor.current().isOpen { items.append(imageItem) }
+        items.append(delegateItem(for: servers))
+        navigationItem.rightBarButtonItems = items
     }
 
     /// The dispatcher's door on Home: one server opens its board outright, more than one asks which
@@ -1438,19 +1482,22 @@ final class HomeViewController: UIViewController {
         let previous = askLane
         askLane = lane
         composerBar.setLane(lane, animated: animated)
-        if previous == .video { composerBar.clearText() }
-        if lane == .video {
+        if previous == .video || previous == .image { composerBar.clearText() }
+        if lane == .video || lane == .image {
             if let scope = composerDraftScope {
                 DraftStore.record(composerBar.rawText, for: scope)
             }
             composerDraftScope = nil
-            composerBar.setText(ForgeRunner.shared.board.recipe.prompt)
+            composerBar.setText(
+                lane == .video
+                    ? ForgeRunner.shared.board.recipe.prompt
+                    : ImageStudio.shared.slot.promptDraft)
         }
         dismissFailure()
         appliedComposerState = nil
         updateComposer()
         updateSuggestions()
-        updateCommandPalette(for: lane == .video ? "" : composerBar.currentText)
+        updateCommandPalette(for: lane.needsRenderer ? "" : composerBar.currentText)
     }
 
     /// A render is minutes long and happens on another machine, so the mark on the way in says
@@ -1489,6 +1536,44 @@ final class HomeViewController: UIViewController {
         let forge = UINavigationController(rootViewController: VideoForgeViewController())
         forge.navigationBar.prefersLargeTitles = true
         host.present(forge, animated: true)
+    }
+
+    /// The mark beside the video one, wearing whether a picture is being made. The lane and this
+    /// control appear and leave together, because both are the same fact about this device: a
+    /// machine that can paint is known, or it is not.
+    @objc private func updateImageMark() {
+        let door = ImageGenDoor.current()
+        imageButton.apply(painting: ImageStudio.shared.isPainting, door: door)
+        if (navigationItem.rightBarButtonItems?.contains(imageItem) ?? false) != door.isOpen {
+            updateComposeButton()
+        }
+        guard askLane == .image else { return }
+        guard door.isOpen else {
+            setLane(.chat, animated: true)
+            return
+        }
+        appliedComposerState = nil
+        updateComposer()
+    }
+
+    @objc func openImage() {
+        Theme.Haptics.tap()
+        presentImage()
+    }
+
+    /// A picture is a task you start, watch and collect — the forge's own argument, about the
+    /// other thing that machine does — so the studio opens over whatever is on screen and closes
+    /// back to it. Closing never stops the render: the job lives in `ImageStudio`, above every
+    /// surface that draws it.
+    func presentImage() {
+        let host: UIViewController = navigationController ?? self
+        guard host.presentedViewController == nil else {
+            host.dismiss(animated: true) { [weak self] in self?.presentImage() }
+            return
+        }
+        let studio = UINavigationController(rootViewController: ImageStudioViewController())
+        studio.navigationBar.prefersLargeTitles = true
+        host.present(studio, animated: true)
     }
 
     func pushUsage() {
@@ -1595,7 +1680,8 @@ final class HomeViewController: UIViewController {
         suggestions.isHidden = true
         attachmentStrip.isHidden = true
         videoChips.isHidden = true
-        [failureCard, suggestions, videoChips, attachmentStrip].forEach(
+        imageChips.isHidden = true
+        [failureCard, suggestions, videoChips, imageChips, attachmentStrip].forEach(
             accessories.addArrangedSubview)
         videoChips.onPick = { [weak self] field, id in
             ForgeRunner.shared.pick(field, id: id)
@@ -1604,6 +1690,22 @@ final class HomeViewController: UIViewController {
         videoChips.onOpen = { [weak self] in
             Theme.Haptics.tap()
             self?.presentVideo()
+        }
+        imageChips.onWalk = { field in
+            Theme.Haptics.selection()
+            ImageStudio.shared.advance(field)
+        }
+        imageChips.onEngine = { engine in
+            Theme.Haptics.selection()
+            ImageStudio.shared.choose(engine: engine)
+        }
+        imageChips.onAspect = { aspect in
+            Theme.Haptics.selection()
+            ImageStudio.shared.choose(aspect: aspect)
+        }
+        imageChips.onOpen = { [weak self] in
+            Theme.Haptics.tap()
+            self?.presentImage()
         }
         view.addSubview(accessories)
         NSLayoutConstraint.activate([
@@ -1897,6 +1999,11 @@ extension HomeViewController: HomeComposerBarDelegate {
             updateSuggestions()
             return
         }
+        if askLane == .image {
+            ImageStudio.shared.rememberDraft(text)
+            updateSuggestions()
+            return
+        }
         updateCommandPalette(for: composerBar.currentText)
         updateSuggestions()
         enhancement.updateInput(composerBar.currentText)
@@ -2157,9 +2264,13 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// flicker shut mid-choice. Both menus resolve their contents when opened,
     /// so skipping the rebuild can't serve a stale list.
     private func updateComposer() {
-        composerBar.isHidden = viewModel.servers.isEmpty && askLane != .video
+        composerBar.isHidden = viewModel.servers.isEmpty && !askLane.needsRenderer
         if askLane == .video {
             updateVideoComposer()
+            return
+        }
+        if askLane == .image {
+            updateImageComposer()
             return
         }
         guard let aim = composerAim else {
@@ -2214,6 +2325,66 @@ extension HomeViewController: HomeComposerBarDelegate {
         videoChips.update(board: board)
         updateSuggestions()
         view.setNeedsLayout()
+    }
+
+    /// The image lane's chrome: the destination chip names the machine that will paint — and what
+    /// it last said about itself, since a renderer that was asleep or missing model files is worth
+    /// knowing before the send rather than after — the model chip has nothing to say, the paperclip
+    /// is not offered, and the two decisions ride as chips under the box.
+    private func updateImageComposer() {
+        let studio = ImageStudio.shared
+        let door = studio.door
+        composerBar.setModel(title: nil, menu: nil)
+        composerBar.showsAttach = false
+        composerBar.ultracodeEffort = nil
+        let title = door.machine ?? ImageGenSurface.title
+        let tone = door.tone
+        let state = ["image", title, "\(tone?.rawValue ?? "-")"].joined(separator: "|")
+        if state != appliedComposerState {
+            appliedComposerState = state
+            let icon = UIImage(
+                systemName: tone == nil
+                    ? "desktopcomputer" : "desktopcomputer.trianglebadge.exclamationmark",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
+                .withTintColor(
+                    tone == .attention ? Theme.Color.warning : Theme.Color.accent,
+                    renderingMode: .alwaysOriginal)
+            composerBar.setContext(icon: icon, title: title, menu: imageTargetMenu())
+        }
+        imageChips.update(slot: studio.slot)
+        updateSuggestions()
+        view.setNeedsLayout()
+    }
+
+    private func imageTargetMenu() -> UIMenu {
+        UIMenu(
+            subtitle: ImageGenDoor.current().line,
+            children: [
+                UIAction(
+                    title: ImageGenSurface.title,
+                    image: UIImage(systemName: ImageGenEntryPoint.symbol)
+                ) { [weak self] _ in self?.presentImage() },
+                UIAction(
+                    title: ForgeSetup.title, image: UIImage(systemName: "desktopcomputer")
+                ) { [weak self] _ in self?.presentRendererSetup() },
+            ])
+    }
+
+    /// Sending from the image lane starts the render and opens the studio over it, so the first
+    /// seconds of waiting are watched rather than guessed at — and everything that happens to the
+    /// picture afterwards is one screen rather than a hunt. A render already out is never
+    /// cancelled by a send: the surface simply opens on it.
+    private func paintSend(_ text: String) {
+        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return }
+        let studio = ImageStudio.shared
+        studio.rememberDraft(words)
+        if !studio.isPainting {
+            Theme.Haptics.send()
+            studio.submit(prompt: words)
+        }
+        view.endEditing(true)
+        presentImage()
     }
 
     private func videoTargetMenu() -> UIMenu {
@@ -2621,6 +2792,7 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// strip until the create succeeds, so a dead server loses nothing.
     private func composerSend(_ text: String) {
         if askLane == .video { return renderSend(text) }
+        if askLane == .image { return paintSend(text) }
         guard let aim = composerAim,
             QuickAskComposition.canSend(text: text, attachments: attachments.count)
         else { return }
@@ -2693,6 +2865,7 @@ extension HomeViewController {
 
     func updateSuggestions() {
         setAccessory(videoChips, visible: askLane == .video && !composerBar.isHidden)
+        setAccessory(imageChips, visible: askLane == .image && !composerBar.isHidden)
         guard wantsSuggestions else { return setAccessory(suggestions, visible: false) }
         if let aim = composerAim {
             suggestions.update(

@@ -473,6 +473,27 @@ public struct ImageGenSlot: Sendable, Equatable {
     }
 }
 
+extension ImageGenSlot {
+    /// What the stage says instead of a picture while one is being made: which editor is at work
+    /// and which of the two things it is doing.
+    public var busyLine: String {
+        if case .painting(_, let engine, let mode) = phase {
+            let verb = mode == .edit ? Localized.text("editing") : Localized.text("painting")
+            return Localized.text("%@ · %@", engine.label, verb)
+        }
+        return ""
+    }
+
+    /// The same line with the wait on the end of it. ComfyUI's queue reports done or failed and
+    /// nothing in between, so the only honest reading is how long this has been going — and one
+    /// second is the whole resolution a wait like this needs.
+    public func waitingLine(since started: Date?, now: Date = Date()) -> String {
+        guard let started else { return busyLine }
+        let seconds = Int(now.timeIntervalSince(started).rounded())
+        return Localized.text("%@ · %@s", busyLine, "\(max(0, seconds))")
+    }
+}
+
 extension String {
     /// Cut for a strip that must stay one line, on a word boundary where there is one.
     public func ellipsized(to limit: Int) -> String {
