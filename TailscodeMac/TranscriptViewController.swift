@@ -657,7 +657,7 @@ final class TranscriptViewController: NSViewController {
                     let messages =
                         state.messages.count > tail
                         ? Array(state.messages.suffix(tail)) : state.messages
-                    let rows = self.rowBuilder.rows(for: messages)
+                    let rows = self.rowBuilder.rows(for: messages, turnOpen: state.status == .running)
                     self.apply(state: state, rows: rows)
                 }
                 guard !Task.isCancelled, self != nil else { return }
@@ -2362,7 +2362,7 @@ final class TranscriptViewController: NSViewController {
         let tail = rowTailMessages
         let messages =
             state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
-        apply(state: state, rows: rowBuilder.rows(for: messages))
+        apply(state: state, rows: rowBuilder.rows(for: messages, turnOpen: state.status == .running))
     }
 
     /// An empty pane asks which server rather than captioning itself. The chooser owns the

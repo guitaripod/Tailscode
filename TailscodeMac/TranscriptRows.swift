@@ -95,8 +95,9 @@ extension TranscriptRow {
 /// actually changed are re-folded.
 @MainActor
 final class TranscriptRowBuilder {
-    private var cache: [String: (message: ChatMessage, promptID: String?, rows: [TranscriptRow])] =
-        [:]
+    private var cache:
+        [String: (message: ChatMessage, promptID: String?, sealed: Bool, rows: [TranscriptRow])] =
+            [:]
 
     /// Forgets every memoised row — the rendering baked into them (fonts, markdown) is stale
     /// after a type-scale change.
@@ -108,19 +109,24 @@ final class TranscriptRowBuilder {
     /// with the fold and is part of what a memoised row was folded from: the same assistant message
     /// under a different question is a different card, and reusing the earlier one would offer the
     /// wrong words to send again.
-    func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
+    func rows(for messages: [ChatMessage], turnOpen: Bool = false) -> [TranscriptRow] {
         var all: [TranscriptRow] = []
-        var next: [String: (message: ChatMessage, promptID: String?, rows: [TranscriptRow])] = [:]
+        var next: [String: (message: ChatMessage, promptID: String?, sealed: Bool, rows: [TranscriptRow])] = [:]
         next.reserveCapacity(messages.count)
+        let writing = messages.last?.id
         var prompt: ChatMessage?
         for message in messages {
             let rows: [TranscriptRow]
-            if let hit = cache[message.id], hit.message == message, hit.promptID == prompt?.id {
+            let sealed = MessageSegment.isSealed(
+                streaming: message.isStreaming, isNewest: message.id == writing, turnOpen: turnOpen)
+            if let hit = cache[message.id], hit.message == message, hit.promptID == prompt?.id,
+                hit.sealed == sealed
+            {
                 rows = hit.rows
             } else {
-                rows = TranscriptRow.rows(for: message, prompt: prompt)
+                rows = TranscriptRow.rows(for: message, prompt: prompt, sealed: sealed)
             }
-            next[message.id] = (message, prompt?.id, rows)
+            next[message.id] = (message, prompt?.id, sealed, rows)
             if message.role == .user { prompt = message }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
@@ -237,7 +243,13 @@ struct TranscriptRow: Hashable {
     }
 
     @MainActor
-    static func rows(for message: ChatMessage, prompt: ChatMessage? = nil) -> [TranscriptRow] {
+    /// - Parameter sealed: whether this message's text is finished, decided by the caller because
+    ///   only the caller can see the conversation (`MessageSegment.isSealed`). Nil falls back to
+    ///   what the record says about itself, which is all a caller with no state has.
+    static func rows(
+        for message: ChatMessage, prompt: ChatMessage? = nil, sealed: Bool? = nil
+    ) -> [TranscriptRow] {
+        let sealed = sealed ?? !message.isStreaming
         var rows: [TranscriptRow] = []
         for part in message.parts {
             let key = "\(message.id):\(part.id)"
@@ -256,7 +268,7 @@ struct TranscriptRow: Hashable {
                     }
                     continue
                 }
-                let segments = MessageSegment.split(stripped, sealed: !message.isStreaming)
+                let segments = MessageSegment.split(stripped, sealed: sealed)
                 for (index, segment) in segments.enumerated() {
                     switch segment {
                     case .prose(let prose):

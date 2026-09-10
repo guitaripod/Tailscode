@@ -5,9 +5,13 @@ import UIKit
 
 /// Builds transcript rows from messages — pure mapping, no view ownership.
 enum ChatRowBuilder {
+    /// - Parameter turnOpen: whether the conversation is mid-turn — needed because a backend that
+    ///   stamps nothing on the record itself (the Claude bridge) leaves every message reading
+    ///   `isStreaming == false`, whether the turn that wrote it is still open or not. Only the
+    ///   conversation knows that (`MessageSegment.isSealed`).
     static func makeRows(
         from messages: [ChatMessage], agents: ChatViewController.SubagentPlacement,
-        runs: [String: WorkflowRun] = [:]
+        runs: [String: WorkflowRun] = [:], turnOpen: Bool = false
     ) -> [ChatRow] {
         var rows: [ChatRow] = []
         var lastDate: Date?
@@ -23,6 +27,7 @@ enum ChatRowBuilder {
         }
         let board = TaskBoard.fold(boardCalls)
         let boardCallID = board.isEmpty ? nil : Self.boardAnchor(boardCalls)
+        let writing = messages.last?.id
         var lastPrompt: ChatMessage?
         for message in messages {
             guard seenMessageIDs.insert(message.id).inserted else { continue }
@@ -140,10 +145,13 @@ enum ChatRowBuilder {
                                     content: .text(remainder)))
                         }
                     } else {
+                        let sealed = MessageSegment.isSealed(
+                            streaming: message.isStreaming, isNewest: message.id == writing,
+                            turnOpen: turnOpen)
                         rows.append(
                             contentsOf: Self.segmentRows(
                                 text, id: id, messageID: message.id, role: message.role,
-                                sealed: !message.isStreaming))
+                                sealed: sealed))
                     }
                 case .file(let file):
                     flushActivity()

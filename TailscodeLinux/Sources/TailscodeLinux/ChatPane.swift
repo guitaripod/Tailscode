@@ -1072,7 +1072,7 @@ final class ChatPane: @unchecked Sendable {
                     let messages = state.messages.count > tail
                         ? Array(state.messages.suffix(tail)) : state.messages
                     let started = Date()
-                    let rows = self.rowBuilder.rows(for: messages)
+                    let rows = self.rowBuilder.rows(for: messages, turnOpen: state.status == .running)
                     if tracing {
                         let ms = Int(Date().timeIntervalSince(started) * 1000)
                         FileHandle.standardOutput.write(
@@ -4666,7 +4666,7 @@ final class ChatPane: @unchecked Sendable {
             guard let self else { return }
             let messages =
                 state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
-            let rows = self.rowBuilder.rows(for: messages)
+            let rows = self.rowBuilder.rows(for: messages, turnOpen: state.status == .running)
             Gtk.onMain { [weak self] in
                 guard let self, self.sessionID == sessionID else { return }
                 self.apply(state: state, rows: rows)
@@ -4734,7 +4734,7 @@ final class ChatPane: @unchecked Sendable {
                     partialAnswer: "I have moved the first two toggles across and"),
             queued: mode == "queued" ? ["then do the same for the sidebar"] : [],
             resumedAt: mode == "resumed" ? now : nil)
-        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
     }
 
     static let tableDemoAnswer = """
@@ -4798,7 +4798,7 @@ final class ChatPane: @unchecked Sendable {
             createdAt: now)
         let state = ConversationState(
             messages: [asked, reply], status: .idle, hasLoadedTranscript: true)
-        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
     }
 
     private func driverTableStreamStep(
@@ -4807,13 +4807,15 @@ final class ChatPane: @unchecked Sendable {
         let text = Self.tableDemoAnswer.split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init).prefix(upto).joined(separator: "\n")
         let done = upto == total
+        // The Claude bridge's own shape, which is the one that broke: nothing is stamped on the
+        // record, and the only thing that says the answer is still being written is the status.
         let reply = ChatMessage(
             id: "demo-tstream-answer", role: .assistant, agentType: .claudeCode,
             parts: [MessagePart(id: "a", kind: .text(text))],
-            createdAt: now, isStreaming: !done)
+            createdAt: now)
         let state = ConversationState(
             messages: [asked, reply], status: done ? .idle : .running, hasLoadedTranscript: true)
-        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
     }
 
     /// The table demo written out a row at a time, which is what the draft card and the wash are
@@ -4891,7 +4893,7 @@ final class ChatPane: @unchecked Sendable {
         default:
             state.messages = [before, seam, after]
         }
-        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
     }
 
     /// Seeds the composer for the headless driver, through the same paths a keystroke takes.
@@ -4923,7 +4925,7 @@ final class ChatPane: @unchecked Sendable {
                 resumesAt: now.addingTimeInterval(fires), trustedReset: true, trigger: .refused,
                 attempt: mode == "again" ? 2 : 0, plannedAt: now))
         startResumeClock()
-        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
         reportResumeState()
     }
 
@@ -4995,7 +4997,7 @@ final class ChatPane: @unchecked Sendable {
         state.messages = [prompt, launch]
         state.hasLoadedTranscript = true
         state.status = .idle
-        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
         context.expanded.set("demo-launch:p", open: true)
         refreshWorkflowRuns()
         replaceRows { if case .workflow = $0.kind { return true } else { return false } }

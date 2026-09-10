@@ -2193,7 +2193,8 @@ final class ChatViewController: UIViewController {
         updateWorkflowTicker()
         let rows = ChatRowBuilder.makeRows(
             from: state.messages, agents: subagentPlacement(for: state.messages),
-            runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }))
+            runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }),
+            turnOpen: state.status == .running)
         let previous = rowsByID
         let uniqueRows = Self.dedupeRows(rows)
         rowsByID = Dictionary(uniqueKeysWithValues: uniqueRows.map { ($0.id, $0) })

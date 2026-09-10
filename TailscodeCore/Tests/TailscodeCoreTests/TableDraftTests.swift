@@ -12,6 +12,16 @@ struct TableDraftTests {
         #expect(!TableDraft.isGrowing(segment: 1, of: 2, sealed: true))
     }
 
+    @Test("A backend that stamps nothing still has a turn that is open")
+    func sealing() {
+        // opencode: the record answers for itself.
+        #expect(!MessageSegment.isSealed(streaming: true, isNewest: false, turnOpen: false))
+        // The Claude bridge: the record says nothing, so the conversation answers.
+        #expect(!MessageSegment.isSealed(streaming: false, isNewest: true, turnOpen: true))
+        #expect(MessageSegment.isSealed(streaming: false, isNewest: true, turnOpen: false))
+        #expect(MessageSegment.isSealed(streaming: false, isNewest: false, turnOpen: true))
+    }
+
     @Test("The card counts what landed and claims nothing before that")
     func words() {
         let empty = MarkdownTable.scan(["| a | b |", "|---|---|"], from: 0)!.table

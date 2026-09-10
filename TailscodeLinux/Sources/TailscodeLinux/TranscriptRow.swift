@@ -140,10 +140,13 @@ final class TranscriptContext: @unchecked Sendable {
 /// palette's colors baked in.
 final class TranscriptRowBuilder: @unchecked Sendable {
     private let lock = NSLock()
-    private var cache: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]
+    private var cache: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
     private var paletteName = ""
 
-    func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
+    /// - Parameter turnOpen: whether the conversation is mid-turn. The newest message of an open
+    ///   turn is still being written even on a backend that stamps nothing on the record itself
+    ///   (`MessageSegment.isSealed`), which is every message the Claude bridge serves.
+    func rows(for messages: [ChatMessage], turnOpen: Bool = false) -> [TranscriptRow] {
         lock.lock()
         defer { lock.unlock() }
         let palette = MatrixTheme.palette.name
@@ -152,20 +155,26 @@ final class TranscriptRowBuilder: @unchecked Sendable {
             paletteName = palette
         }
         var all: [TranscriptRow] = []
-        var next: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]
+        var next: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
         next.reserveCapacity(messages.count)
         let writing = messages.last?.id
         var prompt: ChatMessage?
         for message in messages {
             let rows: [TranscriptRow]
-            if let hit = cache[message.id], hit.message == message {
+            // The seal is part of what the rows are, so it is part of what the cache remembers:
+            // the message that stops being written is byte-identical to the one that was.
+            let sealed = MessageSegment.isSealed(
+                streaming: message.isStreaming, isNewest: message.id == writing,
+                turnOpen: turnOpen)
+            if let hit = cache[message.id], hit.message == message, hit.sealed == sealed {
                 rows = hit.rows
             } else {
                 rows = TranscriptRow.rows(
-                    for: message, prompt: prompt, cacheMarkup: message.id != writing)
+                    for: message, prompt: prompt, cacheMarkup: message.id != writing,
+                    sealed: sealed)
             }
             if message.role == .user { prompt = message }
-            next[message.id] = (message, rows)
+            next[message.id] = (message, sealed, rows)
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
                 all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
@@ -289,9 +298,14 @@ struct TranscriptRow: Hashable {
     ///   message a turn is currently writing into is a different string on every arrival, so
     ///   remembering its markup fills the memo with a thousand prefixes of one answer and evicts
     ///   the settled segments the memo exists for.
+    /// - Parameter sealed: whether this message's text is finished, decided by the caller because
+    ///   only the caller can see the conversation (`MessageSegment.isSealed`). Nil falls back to
+    ///   what the record says about itself, which is all a caller with no state has.
     static func rows(
-        for message: ChatMessage, prompt: ChatMessage? = nil, cacheMarkup: Bool = true
+        for message: ChatMessage, prompt: ChatMessage? = nil, cacheMarkup: Bool = true,
+        sealed: Bool? = nil
     ) -> [TranscriptRow] {
+        let sealed = sealed ?? !message.isStreaming
         var rows: [TranscriptRow] = []
         for part in message.parts {
             let key = "\(message.id):\(part.id)"
@@ -310,7 +324,7 @@ struct TranscriptRow: Hashable {
                     }
                     continue
                 }
-                let segments = MessageSegment.split(stripped, sealed: !message.isStreaming)
+                let segments = MessageSegment.split(stripped, sealed: sealed)
                 for (index, segment) in segments.enumerated() {
                     switch segment {
                     case .prose(let prose):
@@ -330,7 +344,7 @@ struct TranscriptRow: Hashable {
                                 kind: .codeBlock(language: language, body: body)))
                     case .table(let table):
                         let growing = TableDraft.isGrowing(
-                            segment: index, of: segments.count, sealed: !message.isStreaming)
+                            segment: index, of: segments.count, sealed: sealed)
                         rows.append(
                             TranscriptRow(
                                 key: "\(key):s\(index)",

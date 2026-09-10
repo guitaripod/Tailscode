@@ -16,6 +16,21 @@ public enum MessageSegment: Hashable, Sendable {
     ///   to read the rows already there. So while unsealed a trailing pipe row is simply not
     ///   offered yet: it lands whole on the next arrival, which is a table growing a row at a time
     ///   rather than a table rearranging itself under the writing.
+    /// Whether a message's text is finished — the one fact `split(sealed:)` and `TableDraft` both
+    /// turn on, and one that two backends answer two entirely different ways.
+    ///
+    /// opencode stamps every record it has not completed, so `ChatMessage.isStreaming` is the whole
+    /// answer there. The Claude bridge stamps nothing: its transcript is a file that grows, every
+    /// message read out of it looks finished, and the only thing that knows a turn is open is the
+    /// conversation. Asking the record alone therefore sealed *every* message on that backend —
+    /// which quietly switched off both rules that depend on this: the half-typed row was never held
+    /// back, and a table being written was never a draft, so it was measured again on every arrival
+    /// and the whole window stuttered in time with the writing. So the newest message of a turn
+    /// that has not ended is open too, whatever the record says about itself.
+    public static func isSealed(streaming: Bool, isNewest: Bool, turnOpen: Bool) -> Bool {
+        !(streaming || (isNewest && turnOpen))
+    }
+
     public static func split(_ text: String, sealed: Bool = true) -> [MessageSegment] {
         var segments: [MessageSegment] = []
         var prose: [String] = []

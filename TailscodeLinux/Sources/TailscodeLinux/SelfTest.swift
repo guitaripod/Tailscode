@@ -53,6 +53,8 @@ public enum SelfTest {
             report("table: \(checks) widths measure the height they draw")
             let arrival = try checkTableArrival()
             report("table arrival: \(arrival) a draft holds its rows and the wash lands")
+            let sealing = try checkTableSealingOnBridgeShape()
+            report("table sealing: \(sealing) a bridge message with no isStreaming stamp still drafts")
         } catch {
             report("table: \(error)")
             failures += 1
@@ -1444,7 +1446,52 @@ public enum SelfTest {
         return checks + 2
     }
 
-    /// A table being written costs no measurement, and the table that replaces it arrives on light.
+    /// The regression this whole mechanism exists to prevent: a backend that stamps nothing on the
+    /// record itself. The Claude bridge's transcript is a file that grows, so every `ChatMessage`
+    /// read out of it has `isStreaming == false` whether the turn that wrote it is still open or
+    /// not — only the conversation knows that. Asking the message alone therefore sealed every
+    /// table from that backend on arrival, which switched the draft off silently and put every
+    /// stutter this file exists to remove straight back in the window.
+    private static func checkTableSealingOnBridgeShape() throws -> Int {
+        let table = MarkdownTable(
+            header: ["Band", "BSSID", "Sig"],
+            alignments: [.leading, .leading, .leading],
+            rows: [["2.4", "`92:30:66:5E:BF:4D`", "94"]])
+        let text = "Scanning.\n\n\(table.markdown)"
+        let message = ChatMessage(
+            id: "bridge-shape", role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "a", kind: .text(text))], createdAt: Date())
+        guard !message.isStreaming else {
+            throw SelfTestFailure("the fixture no longer matches the bridge's own shape")
+        }
+        let builder = TranscriptRowBuilder()
+        let open = builder.rows(for: [message], turnOpen: true)
+        guard open.contains(where: {
+            if case .tableDraft = $0.kind { return true }
+            return false
+        }) else {
+            throw SelfTestFailure(
+                "a Claude-bridge message with no isStreaming stamp was not drafted while its turn "
+                    + "is open — the exact regression this file exists to catch")
+        }
+        guard !open.contains(where: {
+            if case .table = $0.kind { return true }
+            return false
+        }) else {
+            throw SelfTestFailure("the same table is drawn whole while its turn is still open")
+        }
+
+        let closed = builder.rows(for: [message], turnOpen: false)
+        guard closed.contains(where: {
+            if case .table = $0.kind { return true }
+            return false
+        }) else {
+            throw SelfTestFailure("the same message never draws its table once the turn ends")
+        }
+        return 2
+    }
+
+        /// A table being written costs no measurement, and the table that replaces it arrives on light.
     ///
     /// Both halves are invisible in a screenshot — a draft card and a finished table are two
     /// different widgets, and a wash is a value that has already landed by the time anything is
