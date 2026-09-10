@@ -23,6 +23,11 @@ final class HomeViewController: UIViewController {
     private let suggestions = HomeAskSuggestions()
     private let videoChips = HomeVideoChips()
     private let imageChips = HomeImageChips()
+    /// The composer's reference chip reaches the same five doors the studio's does, presented
+    /// from this screen; "From the Library" opens the studio, where the whole shelf is.
+    private lazy var imageIntake = ImageReferenceIntake(presenter: self, studio: ImageStudio.shared) {
+        [weak self] in self?.presentImage()
+    }
     private let attachmentStrip = HomeAttachmentStrip()
     private let failureCard = HomeComposerFailureCard()
     /// Everything that floats between the board and the box, in the order a hand reaches for it:
@@ -161,6 +166,11 @@ final class HomeViewController: UIViewController {
                         ImageGenStore.remember(endpoint)
                     }
                     ImageStudio.shared.adoptDoor()
+                    if let engine = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_ENGINE"]
+                        .flatMap(ImageGenEngine.init(rawValue:))
+                    {
+                        ImageStudio.shared.choose(engine: engine)
+                    }
                     self.updateImageMark()
                     let words = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_PROMPT"]
                     if ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_LANE"] != nil {
@@ -168,13 +178,27 @@ final class HomeViewController: UIViewController {
                         self.composerBar.setText(words ?? "")
                         return
                     }
+                    if ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_MISSING"] != nil {
+                        try? await Task.sleep(for: .seconds(5))
+                        ImageGenStore.record(
+                            ImageGenSighting(
+                                host: ImageStudio.shared.endpoint.displayHost, reachable: true,
+                                missingModels: ImageGenEngine.fast.files.map(\.path)))
+                    }
                     self.presentImage()
                     guard let words else { return }
                     for line in words.split(separator: "|") {
-                        if ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_EDIT"] != nil,
-                            let made = ImageStudio.shared.slot.onStage
-                        {
-                            ImageStudio.shared.hold(ImageGenReference(path: made.path))
+                        if ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_EDIT"] != nil {
+                            try? await Task.sleep(for: .seconds(3))
+                            switch ImageStudio.shared.exhibit {
+                            case .made(let made):
+                                ImageStudio.shared.hold(
+                                    ImageGenReference(path: made.path, kept: made.kept))
+                            case .kept(let kept):
+                                ImageStudio.shared.hold(kept: kept)
+                            case nil:
+                                break
+                            }
                         }
                         ImageStudio.shared.submit(prompt: String(line))
                         while ImageStudio.shared.isPainting {
@@ -2351,7 +2375,9 @@ extension HomeViewController: HomeComposerBarDelegate {
                     renderingMode: .alwaysOriginal)
             composerBar.setContext(icon: icon, title: title, menu: imageTargetMenu())
         }
-        imageChips.update(slot: studio.slot)
+        imageChips.update(
+            slot: studio.slot, sighting: studio.sighting,
+            referenceMenu: imageIntake.menu(holding: studio.slot.reference))
         updateSuggestions()
         view.setNeedsLayout()
     }
@@ -2365,9 +2391,20 @@ extension HomeViewController: HomeComposerBarDelegate {
                     image: UIImage(systemName: ImageGenEntryPoint.symbol)
                 ) { [weak self] _ in self?.presentImage() },
                 UIAction(
+                    title: ImageGenMachineWords.title,
+                    image: UIImage(systemName: "info.circle")
+                ) { [weak self] _ in self?.presentImageMachine() },
+                UIAction(
                     title: ForgeSetup.title, image: UIImage(systemName: "desktopcomputer")
                 ) { [weak self] _ in self?.presentRendererSetup() },
             ])
+    }
+
+    private func presentImageMachine() {
+        Theme.Haptics.tap()
+        let nav = UINavigationController(rootViewController: ImageMachineViewController())
+        nav.navigationBar.prefersLargeTitles = true
+        present(nav, animated: true)
     }
 
     /// Sending from the image lane starts the render and opens the studio over it, so the first

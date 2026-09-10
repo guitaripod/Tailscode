@@ -434,31 +434,55 @@ final class HomeImageChips: UIView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     /// Redrawn only when a value actually changed: a scroll view rebuilt under a finger forgets
-    /// where it was, and this is reapplied on every change the studio announces.
-    func update(slot: ImageGenSlot) {
+    /// where it was, and this is reapplied on every change the studio announces. The aspect chip
+    /// stands down while a reference is held, because an edit takes its size from the picture; the
+    /// reference chip opens the same sources and the same replace-or-remove the studio's does.
+    func update(slot: ImageGenSlot, sighting: ImageGenSighting?, referenceMenu: UIMenu) {
         let identity = QuickAskLane.imageChips.map { "\($0.rawValue)=\(slot.value(of: $0))" }
-            .joined(separator: "|") + "|\(slot.reference?.chip ?? "-")|\(slot.isBusy)"
+            .joined(separator: "|")
+            + "|\(slot.reference?.chip ?? "-")|\(slot.isBusy)|\(slot.aspectApplies)|\(sighting?.readyEngines.map(\.rawValue).joined() ?? "?")|\(referenceMenu.children.count)"
         guard identity != applied else { return }
         applied = identity
         row.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for field in QuickAskLane.imageChips {
-            let chip = ImageChip.button(symbol: field.symbol, title: slot.value(of: field))
+            if field == .aspect, !slot.aspectApplies {
+                let resting = ImageChip.button(
+                    symbol: field.symbol, title: ImageGenWords.aspectFollowsReference)
+                resting.isEnabled = false
+                resting.accessibilityLabel = ImageGenWords.aspectFollowsReference
+                row.addArrangedSubview(resting)
+                continue
+            }
+            let unavailable = field == .engine && slot.engineAvailable(given: sighting) == false
+            let chip = ImageChip.button(
+                symbol: unavailable ? "exclamationmark.triangle" : field.symbol,
+                title: slot.value(of: field))
             chip.isEnabled = !slot.isBusy
+            if unavailable { chip.tintColor = Theme.Color.warning }
             chip.accessibilityLabel = "\(field.label), \(slot.value(of: field))"
             chip.addAction(
                 UIAction { [weak self] _ in self?.onWalk?(field) }, for: .touchUpInside)
-            chip.menu = ImageChip.menu(
-                for: field, slot: slot,
-                onEngine: { [weak self] engine in self?.onEngine?(engine) },
-                onAspect: { [weak self] aspect in self?.onAspect?(aspect) })
+            switch field {
+            case .engine:
+                chip.menu = ImageChip.engineMenu(slot: slot, sighting: sighting) { [weak self] engine in
+                    self?.onEngine?(engine)
+                }
+            case .aspect:
+                chip.menu = ImageChip.aspectMenu(slot: slot) { [weak self] aspect in
+                    self?.onAspect?(aspect)
+                }
+            }
             row.addArrangedSubview(chip)
         }
-        if let reference = slot.reference {
-            let held = ImageChip.button(symbol: "photo.fill", title: reference.chip)
-            held.accessibilityLabel = ImageGenWords.referenceHint(reference)
-            held.isUserInteractionEnabled = false
-            row.addArrangedSubview(held)
-        }
+        let held = ImageChip.button(
+            symbol: slot.reference == nil ? "photo.badge.plus" : "photo.fill",
+            title: slot.reference?.chip ?? ImageGenWords.attachTitle)
+        held.accessibilityLabel = slot.reference.map(ImageGenWords.referenceHint)
+            ?? ImageGenWords.attachTitle
+        held.isEnabled = !slot.isBusy
+        held.menu = referenceMenu
+        held.showsMenuAsPrimaryAction = true
+        row.addArrangedSubview(held)
         let open = ImageChip.button(
             symbol: "slider.horizontal.3", title: ImageGenSurface.title)
         open.addAction(UIAction { [weak self] _ in self?.onOpen?() }, for: .touchUpInside)

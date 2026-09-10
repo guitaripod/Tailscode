@@ -201,6 +201,9 @@ enum ParityManifest {
         case .imageLane:
             return .gap(
                 "Core carries the lane, the door and every word, and the pills row already walks lanes — but the Mac has no pane that paints (imageGenSlot is a gap here too), so PillsRow.offeredLanes answers three and the lane is never drawn")
+        case .imageLibrary:
+            return .gap(
+                "Core reads the machine's listing, the file heads and the caches for every client, but the Mac has no image studio to hang a shelf in (imageLane is a gap here), so nothing on this desk opens the gallery")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("onChatDropped")
         case .clickToActivate: return .implemented("pressLanded")

@@ -13,7 +13,18 @@ public enum ImageGenStore {
     static let engineKey = "tailscode.image.engine"
     static let aspectKey = "tailscode.image.aspect"
     static let healthKey = "tailscode.image.health"
+    static let clientKey = "tailscode.image.client"
     public static let didChange = Notification.Name("tailscode.image.didChange")
+
+    /// This device's name on the machine's socket, minted once. ComfyUI addresses a render's
+    /// progress to the client id that queued it and keeps one socket per id, so a name shared
+    /// between two devices would hand one device's frames to the other.
+    public static func clientID() -> String {
+        if let held = defaults.string(forKey: clientKey), !held.isEmpty { return held }
+        let minted = "tailscode-" + UUID().uuidString.lowercased()
+        defaults.set(minted, forKey: clientKey)
+        return minted
+    }
 
     /// The address this device was told to make pictures on, which is not the same question as
     /// the one ``ImageGenDoor`` answers: a machine inherited from the video renderer is never
@@ -76,21 +87,52 @@ public struct ImageGenSighting: Sendable, Equatable, Codable {
     public let reachable: Bool
     public let missingModels: [String]
     public let at: Date
+    public var version: String?
+    /// What the machine had on its queue when it was looked at — somebody else's render in flight
+    /// is worth knowing before adding one behind it.
+    public var running: Int?
 
-    public init(host: String, reachable: Bool, missingModels: [String] = [], at: Date = Date()) {
+    public init(
+        host: String, reachable: Bool, missingModels: [String] = [], at: Date = Date(),
+        version: String? = nil, running: Int? = nil
+    ) {
         self.host = host
         self.reachable = reachable
         self.missingModels = missingModels
         self.at = at
+        self.version = version
+        self.running = running
     }
 
     public init(endpoint: ImageGenEndpoint, health: ImageGenHealth, at: Date = Date()) {
         self.init(
             host: endpoint.displayHost, reachable: health.reachable,
-            missingModels: health.missingModels, at: at)
+            missingModels: health.missingModels, at: at, version: health.version,
+            running: health.running)
     }
 
     public var ready: Bool { reachable && missingModels.isEmpty }
+
+    /// Whether one engine has every file it needs. A machine dressed for Klein and not for Qwen
+    /// paints fast pictures today, and is offered as such rather than refused whole.
+    public func available(_ engine: ImageGenEngine) -> Bool {
+        reachable && missing(for: engine).isEmpty
+    }
+
+    public func missing(for engine: ImageGenEngine) -> [ImageGenModelFile] {
+        let gone = Set(missingModels.map { ($0 as NSString).lastPathComponent })
+        return engine.files.filter { gone.contains($0.name) }
+    }
+
+    /// Whether a file is on the machine, as far as the last look could tell. Nil for a machine
+    /// that was not answering, because absence was not observed.
+    public func holds(_ file: ImageGenModelFile) -> Bool? {
+        guard reachable else { return nil }
+        return !missingModels.contains { ($0 as NSString).lastPathComponent == file.name }
+    }
+
+    /// The engines the machine can run right now, in the order they are offered.
+    public var readyEngines: [ImageGenEngine] { ImageGenEngine.allCases.filter(available) }
 }
 
 /// Whether this device has anywhere to send a picture, and what the lane that offers it should
@@ -162,6 +204,13 @@ public struct ImageGenDoor: Sendable, Equatable {
         if sighting.ready { return nil }
         if !sighting.reachable {
             return Localized.text("%@ was not answering when this was last checked", endpoint.shortName)
+        }
+        let ready = sighting.readyEngines
+        if ready.count == 1, let engine = ready.first {
+            let other = ImageGenEngine.allCases.first { $0 != engine } ?? engine
+            return Localized.text(
+                "%@ can paint with %@ only — %@ model files are missing", endpoint.shortName,
+                engine.label, other.label)
         }
         return Localized.text(
             "%@ is answering, but %@ model files are missing", endpoint.shortName,
@@ -248,6 +297,23 @@ public enum ImageGenDoorCheck {
         expect(
             ImageGenDoor.resolve(filed: nil, forge: arch, sighting: halfDressed).line != nil,
             "and the missing files are counted out loud")
+        expect(
+            !halfDressed.available(.quality) && halfDressed.available(.fast),
+            "a machine missing one Qwen file still paints with Klein")
+        expect(
+            halfDressed.readyEngines == [.fast],
+            "and the engines it can run are listed rather than the whole machine refused")
+        expect(
+            ImageGenDoor.resolve(filed: nil, forge: arch, sighting: halfDressed).line?
+                .contains(ImageGenEngine.fast.label) == true,
+            "the lane names the engine that still works")
+        expect(
+            halfDressed.holds(ImageGenModelFile.all[2]) == false
+                && halfDressed.holds(ImageGenModelFile.all[0]) == true,
+            "each file answers present or missing by name")
+        expect(
+            asleep.holds(ImageGenModelFile.all[0]) == nil,
+            "and a machine that was not answering says nothing about its files")
 
         let elsewhere = ImageGenSighting(host: "studio:9000", reachable: false)
         expect(
@@ -271,6 +337,50 @@ public enum ImageGenDoorCheck {
             "the send control says it spends another machine's card")
         expect(QuickAskLane.image.needsRenderer, "and the lane knows it needs one")
         expect(!QuickAskLane.ask.needsRenderer, "while the ones that only need words do not")
+
+        slot.hold(ImageGenReference(path: "/tmp/ref.png"))
+        expect(!slot.aspectApplies, "an edit takes its size from the reference, so the aspect chip stands down")
+        expect(slot.mode == .edit, "and holding a picture is the whole of asking for an edit")
+        slot.hold(nil)
+        expect(slot.aspectApplies, "letting go brings the aspect back")
+
+        let listing = ImageGenLibraryReading.items(fromListing: [
+            "tailscode_00071_.png [output]", "clip_00001_.mp4 [output]", "notes.txt [output]",
+            "edit/tailscode_00002_.png [output]", "photo.JPG [output]",
+        ] as [String])
+        expect(
+            listing.map(\.id) == ["tailscode_00071_.png", "edit/tailscode_00002_.png", "photo.JPG"],
+            "the machine's listing keeps its order, keeps only pictures, and keeps a subfolder")
+        expect(
+            listing[1].annotatedName == "edit/tailscode_00002_.png [output]",
+            "a kept picture is addressed in the machine's own directory")
+        expect(
+            ImageGenLibraryReading.total(fromContentRange: "bytes 0-65535/1158316", contentLength: "65536")
+                == 1_158_316,
+            "a ranged answer names the whole file")
+        expect(
+            ImageGenLibraryReading.date(fromHTTP: "Mon, 07 Sep 2026 16:51:03 GMT") != nil,
+            "and the file's own date is read off the header")
+        expect(
+            ImageGenAction.offered(kept: true, hasWords: false, sharing: true, tapOpens: true)
+                == [.save, .share, .copy, .reference],
+            "a kept picture with no words is neither rolled again nor discarded")
+        expect(
+            ImageGenAction.offered(kept: false, hasWords: true, sharing: false, tapOpens: false)
+                == ImageGenAction.forPicture,
+            "and a desk's own picture gets the whole row it always did")
+        expect(
+            ImageGenProgress(stage: .painting, step: 3, steps: 30).line.contains("3")
+                && ImageGenProgress(stage: .painting, step: 3, steps: 30).bar == 0.1,
+            "the sampler's step is said in words and drawn as a bar")
+        expect(
+            ImageGenProgress(stage: .loading).bar == nil,
+            "and nothing draws a bar before there is a count")
+        expect(
+            ImageGenProgress.stage(forNodeClass: "KSampler") == .painting
+                && ImageGenProgress.stage(forNodeClass: "VAEDecode") == .decoding
+                && ImageGenProgress.stage(forNodeClass: "SomethingNew") == nil,
+            "a node's class names its stage, and a stranger names none")
 
         return failures
     }

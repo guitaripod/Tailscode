@@ -122,6 +122,7 @@ enum ParityManifest {
         case .browserSlot: return .implemented("WebPane")
         case .imageGenSlot: return .implemented("DrawPane")
         case .imageLane: return .implemented("presentImageStudio")
+        case .imageLibrary: return .implemented("DrawLibrary")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("acceptChatDrops")
         case .clickToActivate: return .implemented("onPressCapture")

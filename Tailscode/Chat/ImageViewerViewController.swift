@@ -44,15 +44,23 @@ final class ImageViewerViewController: UIViewController {
     private var liveTextOn = false
     private var pagesWithText: Set<Int> = []
 
+    /// Where a page's bytes come from when neither the item nor a backend has them: the image
+    /// studio's shelf, which fetches from the machine that keeps the picture as each page is
+    /// reached rather than downloading the whole shelf to open one.
+    typealias Fetch = @Sendable (GalleryImage) async -> Data?
+
+    private let fetch: Fetch?
+
     init(
         items: [GalleryImage], startIndex: Int, backend: (any CodingAgentBackend)?,
-        from sourceView: UIView?
+        from sourceView: UIView?, fetch: Fetch? = nil
     ) {
         self.items = items
         self.index = max(0, min(startIndex, items.count - 1))
         self.sourceIndex = self.index
         self.backend = backend
         self.sourceView = sourceView
+        self.fetch = fetch
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .horizontal
         layout.minimumLineSpacing = 0
@@ -477,7 +485,7 @@ extension ImageViewerViewController: UICollectionViewDataSource {
             guard indexPath.item == self.index else { return }
             self.updateChromeContent()
         }
-        cell.configure(items[indexPath.item], backend: backend, liveText: liveTextOn)
+        cell.configure(items[indexPath.item], backend: backend, fetch: fetch, liveText: liveTextOn)
         return cell
     }
 }
@@ -609,7 +617,10 @@ final class ImagePageCell: UICollectionViewCell {
         onLoaded = nil
     }
 
-    func configure(_ item: GalleryImage, backend: (any CodingAgentBackend)?, liveText: Bool) {
+    func configure(
+        _ item: GalleryImage, backend: (any CodingAgentBackend)?,
+        fetch: ImageViewerViewController.Fetch? = nil, liveText: Bool
+    ) {
         liveTextRequested = liveText
         if let cached = AttachmentImageStore.shared.cached(item.file) {
             show(cached, data: AttachmentImageStore.shared.cachedData(item.file) ?? item.localData)
@@ -618,6 +629,23 @@ final class ImagePageCell: UICollectionViewCell {
         if let local = item.localData, let decoded = UIImage(data: local) {
             AttachmentImageStore.shared.store(decoded, for: item.file, data: local)
             show(decoded, data: local)
+            return
+        }
+        if let fetch {
+            spinner.working(true, spoken: String(localized: "Loading the picture"))
+            let token = self.token
+            Task { [weak self] in
+                let bytes = await fetch(item)
+                guard let self, self.token == token else { return }
+                self.spinner.working(false)
+                guard let bytes, let decoded = UIImage(data: bytes) else {
+                    self.failure.text = String(localized: "Couldn't load \(item.filename)")
+                    self.failure.isHidden = false
+                    return
+                }
+                AttachmentImageStore.shared.store(decoded, for: item.file, data: bytes)
+                self.show(decoded, data: bytes)
+            }
             return
         }
         guard let backend else {

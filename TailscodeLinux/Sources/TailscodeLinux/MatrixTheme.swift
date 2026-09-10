@@ -849,6 +849,15 @@ enum MatrixTheme {
         }
         .draw-thumb-on { border-color: \(accent); }
         .draw-tile-zoomed { background-color: \(canvas); }
+        .draw-shelf { margin-top: 4px; }
+        .draw-shelf-heading { color: \(text); \(t(.panelDetail)) }
+        .draw-shelf-grid { margin-top: 2px; }
+        .draw-progress-bar {
+            min-height: 4px;
+            margin-top: 2px;
+        }
+        .draw-progress-bar trough { background-color: alpha(\(text), 0.10); }
+        .draw-progress-bar progress { background-color: \(accent); }
         .video-notice {
             color: \(textDim);
             background-color: alpha(\(accent), 0.10);

@@ -35,6 +35,26 @@ public struct ImageGenEndpoint: Sendable, Equatable, Codable {
 
     public var displayHost: String { "\(host):\(port)" }
 
+    /// A route on the machine, with its query escaped once here rather than by hand at every call.
+    public func url(_ path: String, query: [String: String] = [:]) -> URL? {
+        var parts = URLComponents(string: address)
+        parts?.path = path.hasPrefix("/") ? path : "/" + path
+        if !query.isEmpty {
+            parts?.queryItems = query.sorted { $0.key < $1.key }
+                .map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        return parts?.url
+    }
+
+    /// The same socket the forge follows a render on, for this client's own frames.
+    public func socketURL(clientID: String) -> URL? {
+        var parts = URLComponents(string: address)
+        parts?.scheme = "ws"
+        parts?.path = "/ws"
+        parts?.queryItems = [URLQueryItem(name: "clientId", value: clientID)]
+        return parts?.url
+    }
+
     /// The machine, not the address — a MagicDNS name is a hostname plus a tailnet plus a TLD,
     /// and the first label is what the tailnet calls the box.
     public var shortName: String {
@@ -101,6 +121,59 @@ public enum ImageGenEngine: String, Codable, Sendable, CaseIterable {
         case .quality: return Localized.text("Qwen")
         case .fast: return Localized.text("Klein")
         }
+    }
+
+    /// What each engine is for, said once so a chip's menu and a machine sheet agree.
+    public var detail: String {
+        switch self {
+        case .quality: return Localized.text("Qwen Image Edit · 30 steps · edits and paints")
+        case .fast: return Localized.text("FLUX.2 Klein · 4 steps · seconds, not a minute")
+        }
+    }
+
+    /// The files this engine cannot run without. A machine is checked file by file, and an engine
+    /// whose files are all there is offered even when the other's are not.
+    public var files: [ImageGenModelFile] {
+        ImageGenModelFile.all.filter { $0.engine == self }
+    }
+}
+
+/// One model file the store must hold, and what it is in words a person recognises. The paths
+/// are ComfyUI's own — a directory and a file name — because that is how the machine names them
+/// when it reports what it has.
+public struct ImageGenModelFile: Sendable, Equatable, Hashable, Codable, Identifiable {
+    public let path: String
+    public let role: String
+    public let engine: ImageGenEngine
+
+    public var id: String { path }
+
+    public var name: String { (path as NSString).lastPathComponent }
+
+    public var directory: String { (path as NSString).deletingLastPathComponent }
+
+    public static let all: [ImageGenModelFile] = [
+        ImageGenModelFile(
+            path: "diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
+            role: Localized.text("Qwen diffusion model"), engine: .quality),
+        ImageGenModelFile(
+            path: "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+            role: Localized.text("Qwen text encoder"), engine: .quality),
+        ImageGenModelFile(
+            path: "vae/qwen_image_vae.safetensors", role: Localized.text("Qwen VAE"),
+            engine: .quality),
+        ImageGenModelFile(
+            path: "diffusion_models/flux-2-klein-4b.safetensors",
+            role: Localized.text("Klein diffusion model"), engine: .fast),
+        ImageGenModelFile(
+            path: "text_encoders/qwen_3_4b.safetensors", role: Localized.text("Klein text encoder"),
+            engine: .fast),
+        ImageGenModelFile(
+            path: "vae/flux2-vae.safetensors", role: Localized.text("Klein VAE"), engine: .fast),
+    ]
+
+    public static func named(_ path: String) -> ImageGenModelFile? {
+        all.first { $0.path == path || $0.name == (path as NSString).lastPathComponent }
     }
 }
 
@@ -192,12 +265,21 @@ public enum ImageGenMode: String, Codable, Sendable, CaseIterable {
 /// so this value is the mode: attach and the next render starts from it, remove and it does not.
 public struct ImageGenReference: Sendable, Equatable, Codable {
     public let path: String
+    /// Set when the picture is one the machine already keeps: the graph then names the file in
+    /// place and nothing is uploaded, and the chip draws the gallery's own thumbnail of it.
+    public let kept: ImageGenLibraryItem?
 
-    public init(path: String) {
+    public init(path: String, kept: ImageGenLibraryItem? = nil) {
         self.path = path
+        self.kept = kept
     }
 
-    public var name: String { (path as NSString).lastPathComponent }
+    public var name: String { kept?.filename ?? (path as NSString).lastPathComponent }
+
+    /// What the graph's `LoadImage` is given: a name the machine can open. A kept picture is
+    /// addressed in its own directory; anything else has to be put there first and is named by
+    /// whoever did the putting.
+    public var machineName: String? { kept?.annotatedName }
 
     /// What the chip under the prompt says it is holding, short enough to sit beside the words.
     public var chip: String {
@@ -218,10 +300,14 @@ public struct ImageGenPicture: Sendable, Equatable, Codable {
     public let seconds: Double
     public let seed: UInt64
     public let madeAt: Date
+    /// What the machine called the file it wrote, so the picture can be found again in the
+    /// machine's own gallery — a render made here is the newest thing in it.
+    public var remoteName: String?
 
     public init(
         path: String, prompt: String, engine: ImageGenEngine, mode: ImageGenMode,
-        aspect: ImageGenAspect, seconds: Double, seed: UInt64, madeAt: Date = Date()
+        aspect: ImageGenAspect, seconds: Double, seed: UInt64, madeAt: Date = Date(),
+        remoteName: String? = nil
     ) {
         self.path = path
         self.prompt = prompt
@@ -231,9 +317,12 @@ public struct ImageGenPicture: Sendable, Equatable, Codable {
         self.seconds = seconds
         self.seed = seed
         self.madeAt = madeAt
+        self.remoteName = remoteName
     }
 
     public var name: String { (path as NSString).lastPathComponent }
+
+    public var kept: ImageGenLibraryItem? { remoteName.map { ImageGenLibraryItem(filename: $0) } }
 }
 
 /// What a keystroke means inside a draw slot, shared so both desktops answer the same keys and
@@ -307,6 +396,14 @@ public struct ImageGenHealth: Sendable, Equatable {
     public let reachable: Bool
     public let missingModels: [String]
     public let version: String?
+    public let running: Int?
+
+    public init(reachable: Bool, missingModels: [String], version: String?, running: Int? = nil) {
+        self.reachable = reachable
+        self.missingModels = missingModels
+        self.version = version
+        self.running = running
+    }
 
     public static func unknown() -> ImageGenHealth {
         ImageGenHealth(reachable: false, missingModels: [], version: nil)
@@ -358,6 +455,11 @@ public struct ImageGenSlot: Sendable, Equatable {
     /// that does not is a generate. Nobody is ever asked which.
     public var mode: ImageGenMode { reference == nil ? .generate : .edit }
 
+    /// Whether the aspect chip means anything right now. An edit takes its size from the picture
+    /// it starts from — both editors scale the reference and paint at that size — so while one is
+    /// held the chip is a setting with no effect, and a chip with no effect is not shown as one.
+    public var aspectApplies: Bool { reference == nil }
+
     /// The picture the stage is showing: the one chosen, else the newest there is.
     public var onStage: ImageGenPicture? {
         if let selected, let match = pictures.first(where: { $0.path == selected }) { return match }
@@ -393,6 +495,13 @@ public struct ImageGenSlot: Sendable, Equatable {
         case .generate: return Localized.text("Words to paint from")
         case .edit: return Localized.text("What to change, and what to keep")
         }
+    }
+
+    /// Whether the machine, as last seen, can run the engine chosen. Nil when nobody has looked:
+    /// a machine nobody has asked is not refused, it is tried.
+    public func engineAvailable(given sighting: ImageGenSighting?) -> Bool? {
+        guard let sighting, sighting.reachable else { return nil }
+        return sighting.available(engine)
     }
 
     /// One line for the identity strip: what this slot is right now.
@@ -484,13 +593,100 @@ extension ImageGenSlot {
         return ""
     }
 
-    /// The same line with the wait on the end of it. ComfyUI's queue reports done or failed and
-    /// nothing in between, so the only honest reading is how long this has been going — and one
+    /// The same line with the wait on the end of it: what the machine says it is doing when it has
+    /// said, else which editor is at work, and how long this has been going either way — one
     /// second is the whole resolution a wait like this needs.
-    public func waitingLine(since started: Date?, now: Date = Date()) -> String {
-        guard let started else { return busyLine }
+    public func waitingLine(
+        since started: Date?, progress: ImageGenProgress? = nil, now: Date = Date()
+    ) -> String {
+        let lead = progress?.line ?? busyLine
+        guard let started else { return lead }
         let seconds = Int(now.timeIntervalSince(started).rounded())
-        return Localized.text("%@ · %@s", busyLine, "\(max(0, seconds))")
+        return Localized.text("%@ · %@s", lead, "\(max(0, seconds))")
+    }
+}
+
+/// What the machine is doing to a render right now, read off its own socket rather than guessed.
+/// ComfyUI announces each node as it starts and the sampler's step as it goes; a client that only
+/// polled history saw done or nothing. The words are Core's so every desk narrates the same wait.
+public struct ImageGenProgress: Sendable, Equatable {
+    public enum Stage: Sendable, Equatable {
+        /// Accepted and waiting its turn behind this many other renders.
+        case queued(ahead: Int)
+        case sendingReference
+        case loading
+        case reading
+        case encoding
+        case painting
+        case decoding
+        case saving
+    }
+
+    public var stage: Stage
+    public var step: Int?
+    public var steps: Int?
+    /// How far through the whole graph, counted in nodes — the honest bar, because the sampler's
+    /// step counter is one node's business.
+    public var fraction: Double?
+
+    public init(stage: Stage, step: Int? = nil, steps: Int? = nil, fraction: Double? = nil) {
+        self.stage = stage
+        self.step = step
+        self.steps = steps
+        self.fraction = fraction
+    }
+
+    /// Which stage a graph node belongs to, from its class. A class this table has never heard of
+    /// leaves the stage where it was rather than inventing one.
+    public static func stage(forNodeClass type: String) -> Stage? {
+        switch type {
+        case "UNETLoader", "CLIPLoader", "VAELoader", "CheckpointLoaderSimple",
+            "ModelSamplingAuraFlow", "CFGNorm", "UnetLoaderGGUF":
+            return .loading
+        case "LoadImage", "FluxKontextImageScale", "ImageScaleToTotalPixels", "GetImageSize",
+            "VAEEncode":
+            return .reading
+        case "CLIPTextEncode", "TextEncodeQwenImageEditPlus", "ConditioningZeroOut",
+            "ReferenceLatent", "FluxKontextMultiReferenceLatentMethod", "EmptySD3LatentImage",
+            "EmptyFlux2LatentImage", "Flux2Scheduler", "CFGGuider", "RandomNoise",
+            "KSamplerSelect":
+            return .encoding
+        case "KSampler", "KSamplerAdvanced", "SamplerCustomAdvanced", "SamplerCustom":
+            return .painting
+        case "VAEDecode": return .decoding
+        case "SaveImage", "PreviewImage": return .saving
+        default: return nil
+        }
+    }
+
+    public var line: String {
+        switch stage {
+        case .queued(let ahead):
+            if ahead <= 0 { return Localized.text("Waiting for the machine") }
+            return ahead == 1
+                ? Localized.text("Behind 1 other render")
+                : Localized.text("Behind %@ other renders", "\(ahead)")
+        case .sendingReference: return Localized.text("Sending the reference")
+        case .loading: return Localized.text("Loading the model")
+        case .reading: return Localized.text("Reading the reference")
+        case .encoding: return Localized.text("Reading the words")
+        case .painting:
+            if let step, let steps, steps > 0 {
+                return Localized.text("Painting · step %@ of %@", "\(min(step, steps))", "\(steps)")
+            }
+            return Localized.text("Painting")
+        case .decoding: return Localized.text("Decoding the picture")
+        case .saving: return Localized.text("Saving")
+        }
+    }
+
+    /// A bar is drawn only once there is a count to draw it from; before that the wait is words and
+    /// a clock, never a bar sitting at zero.
+    public var bar: Double? {
+        if case .painting = stage, let step, let steps, steps > 0 {
+            return min(1, max(0, Double(step) / Double(steps)))
+        }
+        return nil
     }
 }
 
@@ -511,6 +707,7 @@ extension String {
 /// first, then the ones that make another, then the one that throws it away.
 public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
     case save
+    case share
     case copy
     case open
     case again
@@ -520,6 +717,7 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
     public var title: String {
         switch self {
         case .save: return Localized.text("Save…")
+        case .share: return Localized.text("Share")
         case .copy: return Localized.text("Copy")
         case .open: return Localized.text("Open")
         case .again: return Localized.text("Again")
@@ -528,9 +726,20 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
         }
     }
 
+    /// The same verb on a phone, where saving means the photo library and the sheet says where
+    /// else a picture can go.
+    public var phoneTitle: String {
+        switch self {
+        case .save: return Localized.text("Save")
+        case .reference: return Localized.text("Edit this")
+        default: return title
+        }
+    }
+
     public var symbol: String {
         switch self {
         case .save: return "square.and.arrow.down"
+        case .share: return "square.and.arrow.up"
         case .copy: return "doc.on.doc"
         case .open: return "arrow.up.left.and.arrow.down.right"
         case .again: return "arrow.triangle.2.circlepath"
@@ -542,6 +751,7 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
     public var glyph: String {
         switch self {
         case .save: return "↓"
+        case .share: return "↗"
         case .copy: return "⧉"
         case .open: return "⤢"
         case .again: return "↻"
@@ -555,6 +765,7 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
     public var hint: String {
         switch self {
         case .save: return Localized.text("Write the picture somewhere of your own")
+        case .share: return Localized.text("Hand the picture to another app or person")
         case .copy: return Localized.text("Put the picture on the clipboard")
         case .open: return Localized.text("See it at full size")
         case .again: return Localized.text("Same words, another roll of the dice")
@@ -567,8 +778,58 @@ public enum ImageGenAction: String, Sendable, Equatable, CaseIterable {
     /// under a hand reaching for the ones beside it.
     public var isDestructive: Bool { self == .discard }
 
-    /// Everything worth offering for a picture on the stage.
-    public static var forPicture: [ImageGenAction] { allCases }
+    /// Everything worth offering for a picture made this session on a desk with no share sheet.
+    public static var forPicture: [ImageGenAction] {
+        allCases.filter { $0 != .share }
+    }
+
+    /// What a picture can be made to do, decided by what it is and where it is shown. A picture
+    /// the machine keeps has no words to roll again unless its file recorded them, and cannot be
+    /// discarded from a folder this app does not own; a phone shares through a sheet and opens by a
+    /// tap, so neither is a button in its bar.
+    public static func offered(
+        kept: Bool, hasWords: Bool, sharing: Bool, tapOpens: Bool
+    ) -> [ImageGenAction] {
+        var actions: [ImageGenAction] = [.save]
+        if sharing { actions.append(.share) }
+        actions.append(.copy)
+        if !tapOpens { actions.append(.open) }
+        if hasWords { actions.append(.again) }
+        actions.append(.reference)
+        if !kept { actions.append(.discard) }
+        return actions
+    }
+}
+
+/// Where a reference can come from, in the order a hand reaches: the pictures already on the
+/// device, the camera, the file system, whatever was last copied, and the machine's own gallery.
+/// A client offers the ones its platform has.
+public enum ImageGenReferenceSource: String, Sendable, Equatable, CaseIterable {
+    case photos
+    case camera
+    case files
+    case clipboard
+    case library
+
+    public var title: String {
+        switch self {
+        case .photos: return Localized.text("Photo Library")
+        case .camera: return Localized.text("Take a Photo")
+        case .files: return Localized.text("Choose a File")
+        case .clipboard: return Localized.text("Paste")
+        case .library: return Localized.text("From the Library")
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .photos: return "photo.on.rectangle"
+        case .camera: return "camera"
+        case .files: return "folder"
+        case .clipboard: return "doc.on.clipboard"
+        case .library: return "photo.stack"
+        }
+    }
 }
 
 /// What a picture cost and what made it, said as facts rather than as a caption. The words are
@@ -594,6 +855,38 @@ public enum ImageGenFacts {
 
     /// The words that made it, which is the one thing worth reading before the facts.
     public static func caption(for picture: ImageGenPicture) -> String { picture.prompt }
+
+    /// The same two lines for a picture the machine keeps, read from its file rather than from a
+    /// render this device remembers: what is known is said and what is not is left out, so a
+    /// foreign file reads as its size and its day rather than as a row of zeros.
+    public static func caption(for facts: ImageGenLibraryFacts?) -> String {
+        guard let words = facts?.recipe?.prompt?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !words.isEmpty
+        else { return ImageGenLibraryWords.noWords }
+        return words
+    }
+
+    public static func line(for facts: ImageGenLibraryFacts?, now: Date = Date()) -> String {
+        guard let facts else { return "" }
+        var parts: [String] = []
+        if let engine = facts.recipe?.engine {
+            parts.append(engine.short)
+        } else if let model = facts.recipe?.model {
+            parts.append((model as NSString).deletingPathExtension)
+        }
+        if let dimensions = facts.dimensions { parts.append(dimensions) }
+        if let steps = facts.recipe?.steps { parts.append(Localized.text("%@ steps", "\(steps)")) }
+        if let seed = facts.recipe?.seed { parts.append(seedMark(seed)) }
+        if let date = facts.modifiedAt { parts.append(ImageGenLibraryWords.day(date, now: now)) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// A file's size in the unit a person reads it in.
+    public static func size(_ bytes: Int) -> String {
+        if bytes < 1024 { return "\(bytes) B" }
+        if bytes < 1_048_576 { return String(format: "%.0f KB", Double(bytes) / 1024) }
+        return String(format: "%.1f MB", Double(bytes) / 1_048_576)
+    }
 
     /// A name to offer the desktop's save dialog: the words, made into a filename, so a folder of
     /// these reads as what they are rather than as a row of timestamps.
@@ -654,4 +947,95 @@ public enum ImageGenWords {
     }
 
     public static var discardNotice: String { Localized.text("Picture let go of") }
+
+    /// Why the aspect chip is not offered while a reference is held.
+    public static var aspectFollowsReference: String {
+        Localized.text("Size follows the reference")
+    }
+
+    public static var replaceReference: String { Localized.text("Replace…") }
+
+    public static var removeReference: String { Localized.text("Remove") }
+
+    /// The engine chip's own note when the machine, as last seen, lacks that engine's files.
+    public static func engineUnavailable(_ engine: ImageGenEngine, missing: Int) -> String {
+        missing == 1
+            ? Localized.text("%@ is missing 1 of its model files", engine.label)
+            : Localized.text("%@ is missing %@ of its model files", engine.label, "\(missing)")
+    }
+
+    /// What the render button says when it cannot honestly start: the engine's files are not on
+    /// the machine, said before a queue error would have said it worse.
+    public static func cannotRender(engine: ImageGenEngine, machine: String) -> String {
+        Localized.text(
+            "%@ is not set up for %@ — its model files are missing. Choose the other engine or add the files.",
+            machine, engine.label)
+    }
+
+    public static var stoppedNotice: String { Localized.text("Stopped") }
+
+    /// The picture on the stage is one the machine kept rather than one made here: said once, under
+    /// the facts, so a reader knows the words came from the file.
+    public static var keptNote: String { ImageGenLibraryWords.fromLibraryHint }
+
+    public static var stageEmptyKept: String {
+        Localized.text("Pick a picture below, or describe a new one.")
+    }
+}
+
+/// The machine sheet: everything the picture machine has said about itself, on one surface, with
+/// the two things a person does there — look again, and point somewhere else. Every word is here so
+/// a phone and a desk describe the same machine the same way.
+public enum ImageGenMachineWords {
+    public static var title: String { Localized.text("Machine") }
+
+    public static var addressLabel: String { Localized.text("Address") }
+
+    public static var versionLabel: String { Localized.text("ComfyUI") }
+
+    public static var checkedLabel: String { Localized.text("Last checked") }
+
+    public static var queueLabel: String { Localized.text("Queue") }
+
+    public static var modelsTitle: String { Localized.text("Model files") }
+
+    public static var checkAgain: String { Localized.text("Check again") }
+
+    public static var checking: String { Localized.text("Checking…") }
+
+    public static var change: String { Localized.text("Change machine…") }
+
+    public static var neverChecked: String { Localized.text("Not checked yet") }
+
+    public static var inherited: String {
+        Localized.text("Shared with the video renderer — one ComfyUI holds both sets of models.")
+    }
+
+    public static func queue(running: Int) -> String {
+        switch running {
+        case 0: return Localized.text("Idle")
+        case 1: return Localized.text("1 render running")
+        default: return Localized.text("%@ renders running", "\(running)")
+        }
+    }
+
+    public static var present: String { Localized.text("Present") }
+
+    public static var missing: String { Localized.text("Missing") }
+
+    public static var unknown: String { Localized.text("Unknown") }
+
+    /// One sentence for the whole machine, which is what a header wears.
+    public static func summary(_ sighting: ImageGenSighting?) -> String {
+        guard let sighting else { return neverChecked }
+        guard sighting.reachable else { return Localized.text("Not answering when last checked") }
+        let ready = ImageGenEngine.allCases.filter(sighting.available)
+        switch ready.count {
+        case ImageGenEngine.allCases.count: return Localized.text("Ready · both engines")
+        case 0: return Localized.text("Answering, but no engine has all its files")
+        default:
+            return Localized.text(
+                "Ready for %@ only", ready.map(\.label).joined(separator: ", "))
+        }
+    }
 }
