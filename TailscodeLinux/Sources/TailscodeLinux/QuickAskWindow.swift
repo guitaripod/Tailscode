@@ -446,7 +446,8 @@ final class QuickAskWindow: @unchecked Sendable {
         let server = targetServer
         ModelChooserWindow.present(
             sources: ModelFleet.sources(profiles: servers, current: server.id),
-            selected: QuickAskDefaults.model(forProfileID: server.id), parent: window
+            selected: QuickAskDefaults.model(forProfileID: server.id), parent: window,
+            onRefresh: { [weak self] in self?.refreshModelCatalog(for: server) }
         ) { [weak self] pick in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
@@ -457,6 +458,21 @@ final class QuickAskWindow: @unchecked Sendable {
                 self.refreshTarget()
                 FileHandle.standardOutput.write(
                     Data("ASK model=\(self.targetServer.name)\n".utf8))
+            }
+        }
+    }
+
+    /// A press in the open chooser: this window draws the catalog out of the fleet's cache, which
+    /// is only ever as new as the last time something asked that machine. Asking it again is the
+    /// one road to a model the server picked up since.
+    private func refreshModelCatalog(for server: ConnectionProfile) {
+        Task { [weak self] in
+            guard let backend = await ServerDirectory.shared.backend(for: server) else { return }
+            _ = await ModelCatalogWatch.refreshOnce(profileID: server.id, backend: backend)
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                ModelChooserWindow.updateOpen(
+                    sources: ModelFleet.sources(profiles: self.servers, current: server.id))
             }
         }
     }
