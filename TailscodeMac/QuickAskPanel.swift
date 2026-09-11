@@ -27,20 +27,20 @@ import TailscodeCore
 /// catalog, minus the commands that read a transcript the mint has yet to write, ranked and walked
 /// the way the chat's box ranks and walks it — and what is typed leaves as the decision
 /// `QuickAskSend` made rather than as the word it was typed as.
+///
+/// Model and effort are one decision here as they are in the chat's box, so the aim's second
+/// half is the composer's own dial: one `DialPill` wearing the model's word and the level's heat,
+/// the wheel over it and ⌃⌥↑↓ stepping the level without opening anything, and a press or ⌥M/⌥E
+/// opening `ModelDialPopover` — the shortlist beside the ladder — over the quick ask's own memory
+/// rather than the server's.
 @MainActor
 final class QuickAskPanel: NSPanel {
-    @objc final class PickBox: NSObject {
-        let pick: ModelPick
-        init(pick: ModelPick) { self.pick = pick }
-    }
-
     private(set) static weak var frontmost: QuickAskPanel?
 
     private let editor = PromptEditor(
         placeholder: Localized.text("Ask anything — no project, no setup"))
     private let aimStrip: QuickAskAimStrip
-    private let modelButton = NSButton()
-    private let effortButton = NSPopUpButton()
+    private let dialPill = DialPill()
     private let attachButton = NSButton()
     private let chips = AttachmentChips()
     private let status = NSTextField(wrappingLabelWithString: "")
@@ -59,6 +59,8 @@ final class QuickAskPanel: NSPanel {
     private var keyMonitor: Any?
     private var resizeScheduled = false
     private var modelSheet: ModelChooserSheet?
+    private var dialPopover: ModelDialPopover?
+    private var dialClosedAt: Date?
     private var catalogWatch: Task<Void, Never>?
     private var commandFetch: Task<Void, Never>?
     private let onAsk:
@@ -128,14 +130,10 @@ final class QuickAskPanel: NSPanel {
             self.editor.focus()
         }
 
-        modelButton.bezelStyle = .rounded
-        modelButton.controlSize = .small
-        modelButton.target = self
-        modelButton.action = #selector(chooseModel)
-
-        effortButton.controlSize = .small
-        effortButton.target = self
-        effortButton.action = #selector(effortChanged)
+        dialPill.onPress = { [weak self] in self?.openModelDial() }
+        dialPill.onStep = { [weak self] delta in self?.stepEffort(by: delta) }
+        dialPill.toolTip = Localized.text(
+            "The model the question runs on and how hard it thinks — scroll to step the effort")
 
         attachButton.bezelStyle = .rounded
         attachButton.controlSize = .small
@@ -161,7 +159,7 @@ final class QuickAskPanel: NSPanel {
         completion.hasProject = false
         completion.onPick = { [weak self] command in self?.accept(command) }
 
-        let aim = NSStackView(views: [modelButton, effortButton, attachButton])
+        let aim = NSStackView(views: [dialPill, attachButton])
         aim.orientation = .horizontal
         aim.spacing = 8
         let column = QuickAskDropView(views: [
@@ -195,6 +193,7 @@ final class QuickAskPanel: NSPanel {
         DraftStore.flush()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+        dialPopover?.close()
         commandFetch?.cancel()
         catalogWatch?.cancel()
         super.close()
@@ -214,15 +213,22 @@ final class QuickAskPanel: NSPanel {
     /// before, the way the Linux window spends the key: a question has no use for a tab character
     /// and the field is the only thing on the panel worth focusing, so the key is free to be the
     /// fastest way from one machine to the next.
+    ///
+    /// The dial's chords are the panel's own rather than the registry's, because the panel is
+    /// not the window the registry serves: ⌃⌥↑↓ step the level the way the composer's do, and
+    /// ⌥M or ⌥E — the key the effort menu used to answer to — open the dial. While the dial is
+    /// open its keys arrive at the popover's own window, so nothing here sees them.
     private func installMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self, !self.asking else { return event }
             let flags = event.modifierFlags
             let control = flags.contains(.control)
             let shift = flags.contains(.shift)
+            let option = flags.contains(.option)
             let isReturn = event.keyCode == 36 || event.keyCode == 76
             if self.completion.isShowing, self.handleCompletionKey(event) { return nil }
-            if event.keyCode == 48, !control, !flags.contains(.command), !flags.contains(.option) {
+            if self.handleDialKey(event) { return nil }
+            if event.keyCode == 48, !control, !flags.contains(.command), !option {
                 self.cycleServer(by: shift ? -1 : 1)
                 return nil
             }
@@ -247,6 +253,31 @@ final class QuickAskPanel: NSPanel {
             }
             return event
         }
+    }
+
+    /// ⌃⌥↑ hotter, ⌃⌥↓ colder, ⌥M or ⌥E the dial. A ⌘ chord is the menu bar's and a bare arrow
+    /// the field's, so both modifiers are demanded of the arrows and exactly option of the letters.
+    private func handleDialKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard !flags.contains(.command) else { return false }
+        let modifiers = flags.subtracting([.shift, .capsLock, .numericPad, .function])
+        if modifiers == [.control, .option] {
+            switch event.keyCode {
+            case 126:
+                stepEffort(by: 1)
+                return true
+            case 125:
+                stepEffort(by: -1)
+                return true
+            default:
+                return false
+            }
+        }
+        guard modifiers == [.option], let letter = event.charactersIgnoringModifiers?.lowercased(),
+            letter == "m" || letter == "e"
+        else { return false }
+        chooseModel()
+        return true
     }
 
     private func applyVim(_ key: VimKey) {
@@ -444,7 +475,6 @@ final class QuickAskPanel: NSPanel {
     }
 
     private var aimedServerID: String?
-    private var modelMenu: NSMenu?
 
     private var targetServer: ConnectionProfile {
         servers.first { $0.id == aimedServerID } ?? servers[0]
@@ -494,64 +524,81 @@ final class QuickAskPanel: NSPanel {
         refreshStarterVisibility()
     }
 
-    /// The whole catalog, from the fleet's own cache — a machine's models are a fact about that
-    /// machine, so the chooser can name what another server runs without this ask ever having
-    /// talked to it, and a pick landing there re-aims the question rather than moving a chat. The
-    /// sheet is watched, not snapshot: a server that is restarting reads as restarting rather than
-    /// as a machine with no models, and the list lands on the open sheet when it is back.
-    @objc private func chooseModel() {
-        popModelMenu()
+    /// The ⌥M entry: the dial opened on its own pill.
+    private func chooseModel() {
+        openModelDial()
     }
 
-    /// What will answer, at menu length: the server's own default, your stars, what you reached
-    /// for, the local floor — the same list the composer's pill shows — and the road to the full
-    /// directory when none of the shortlist is the answer.
-    private func popModelMenu() {
-        let server = targetServer
-        let selected = QuickAskDefaults.model(forProfileID: server.id)
-        let menu = NSMenu()
-        let auto = NSMenuItem(
-            title: Localized.text("Server default"), action: #selector(modelMenuItemPicked(_:)),
-            keyEquivalent: "")
-        auto.state = selected == nil ? .on : .off
-        auto.target = self
-        menu.addItem(auto)
-        menu.addItem(.separator())
-        let sources = chooserSources(for: server)
-        for candidate in ModelChooser.shortlist(sources: sources, selected: selected, limit: 8) {
-            let star = candidate.offers.contains { ModelFavoritesStore.isFavorite($0.selection) }
-                ? "★ " : ""
-            let item = NSMenuItem(
-                title: (selected == candidate.selection ? "✓ " : "") + star + candidate.name,
-                action: #selector(modelMenuItemPicked(_:)), keyEquivalent: "")
-            item.state = candidate.isElsewhere ? .off : (selected == candidate.selection ? .on : .off)
-            item.toolTip =
-                candidate.isElsewhere
-                ? Localized.text("on %@ — the ask moves there", candidate.serverName)
-                : candidate.primary.providerName
-            item.representedObject = PickBox(
-                pick: ModelPick(
-                    profileID: candidate.profileID, selection: candidate.selection,
-                    isElsewhere: candidate.isElsewhere,
-                    serverName: candidate.serverName, modelName: candidate.name))
-            item.target = self
-            menu.addItem(item)
+    /// The dial over the quick ask's own memory: the shortlist is the fleet's, from every server's
+    /// own cache — a machine's models are a fact about that machine, so the column can name what
+    /// another server runs without this ask ever having talked to it, and a pick landing there
+    /// re-aims the question rather than moving a chat. A level is live and keeps the dial open; a
+    /// model is committed by the press and closes it, the way the composer's does. Pressing the
+    /// pill while the dial is open closes it, the way a menu does — and a transient popover has
+    /// already closed itself on the press that reaches the pill, so a press inside a breath of
+    /// that close is the same press.
+    private func openModelDial() {
+        guard !asking else { return }
+        if let dialPopover, dialPopover.isShown {
+            dialPopover.close()
+            return
         }
-        menu.addItem(.separator())
-        let all = NSMenuItem(
-            title: Localized.text("All models…"), action: #selector(openModelDirectoryNow),
-            keyEquivalent: "")
-        all.target = self
-        menu.addItem(all)
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: modelButton.bounds.maxY + 4), in: modelButton)
+        if let dialClosedAt, Date().timeIntervalSince(dialClosedAt) < 0.3 { return }
+        dialPopover = ModelDialPopover.present(
+            from: dialPill, state: dialState(),
+            onEffort: { [weak self] level in
+                guard let self else { return }
+                QuickAskDefaults.recordEffort(level, forProfileID: self.targetServer.id)
+                self.refreshAim()
+            },
+            onPick: { [weak self] pick in self?.takePick(pick) },
+            onOpenCatalog: { [weak self] in self?.openModelDirectoryNow() },
+            onStarred: { [weak self] selection in
+                ModelFavoritesStore.toggle(selection)
+                self?.refreshAim()
+            },
+            onClosed: { [weak self] in
+                self?.dialPopover = nil
+                self?.dialClosedAt = Date()
+                self?.editor.focus()
+            })
     }
 
-    @objc private func modelMenuItemPicked(_ sender: NSMenuItem) {
-        guard let box = sender.representedObject as? PickBox else { return }
-        QuickAskDefaults.adopt(box.pick)
-        aim(at: box.pick.profileID)
+    /// The server's own default is a real answer on the machine already aimed at, and it is
+    /// filed there rather than adopted: `adopt` re-aims at the pick's server, which for a default
+    /// picked here is the server the question is already on.
+    private func takePick(_ pick: ModelPick) {
+        if pick.selection == nil, !pick.isElsewhere {
+            QuickAskDefaults.recordModel(nil, forProfileID: targetServer.id)
+        } else {
+            QuickAskDefaults.adopt(pick)
+            aim(at: pick.profileID)
+        }
         refreshAim()
         editor.focus()
+    }
+
+    private func dialState() -> ModelDialState {
+        let server = targetServer
+        return ModelDialState(
+            sources: chooserSources(for: server),
+            selected: QuickAskDefaults.model(forProfileID: server.id),
+            effort: QuickAskDefaults.effort(forProfileID: server.id), options: effortOptions(),
+            modelWord: modelWord(for: server), quotas: [])
+    }
+
+    /// One notch of the wheel or one ⌃⌥ arrow: the next stop cold-to-hot from the level the dial
+    /// shows, pinned at both ends. Nothing opens; the pill is the whole answer.
+    private func stepEffort(by delta: Int) {
+        guard !asking else { return }
+        let server = targetServer
+        let options = effortOptions()
+        guard ModelEffort.isOffered(options: options) else { return }
+        let current = QuickAskDefaults.effort(forProfileID: server.id)
+        let next = ModelDial.step(current, by: delta, options: options)
+        guard next != current else { return }
+        QuickAskDefaults.recordEffort(next, forProfileID: server.id)
+        refreshAim()
     }
 
     /// The catalog is asked once per aim, in the background: a server that has never been
@@ -573,7 +620,7 @@ final class QuickAskPanel: NSPanel {
         }
     }
 
-    @objc private func openModelDirectoryNow() {
+    private func openModelDirectoryNow() {
         let server = targetServer
         catalogWatch?.cancel()
         catalogWatch = Task { [weak self] in
@@ -617,7 +664,7 @@ final class QuickAskPanel: NSPanel {
     /// How hard the machine is asked to think, which is half of what a question costs and the
     /// other half of the aim: the levels are the picked model's own where the catalog names them
     /// and the agent's otherwise, and a pick is the quick ask's own memory on that server rather
-    /// than the machine's — the same bargain the model button strikes.
+    /// than the machine's — the same bargain the dial's model half strikes.
     private func effortOptions() -> [String] {
         let server = targetServer
         let agent = ServerDirectory.shared.backend(for: server)?.reasoningEffortOptions ?? []
@@ -626,21 +673,30 @@ final class QuickAskPanel: NSPanel {
             selection: QuickAskDefaults.model(forProfileID: server.id), agentOptions: agent)
     }
 
+    /// The pill's second half, and the open dial with it: the level the aim remembers against
+    /// what the picked model takes, drawn as heat rather than named in a menu.
     private func refreshEffort() {
         let server = targetServer
         let options = effortOptions()
         dropUnofferedEffort(on: server.id, options: options)
-        effortButton.isHidden = !ModelEffort.isOffered(options: options)
-        effortButton.removeAllItems()
-        effortButton.addItem(withTitle: Localized.text("Server default"))
-        for option in options {
-            let isPower = option == Ultracode.effortLevel
-            effortButton.addItem(withTitle: isPower ? "\(option) ✦" : option)
-            if isPower { effortButton.lastItem?.toolTip = Ultracode.menuSubtitle }
-        }
-        let chosen = QuickAskDefaults.effort(forProfileID: server.id)
-        let index = chosen.flatMap { options.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
-        effortButton.selectItem(at: min(index, effortButton.numberOfItems - 1))
+        let picked = QuickAskDefaults.model(forProfileID: server.id)
+        dialPill.setFace(
+            ModelDial.face(
+                modelWord: modelWord(for: server),
+                effort: QuickAskDefaults.effort(forProfileID: server.id), options: options),
+            modelTint: picked.flatMap { ModelBadge.chip(model: $0.modelID, effort: nil) }
+                .map(MacTheme.Color.modelIdentity))
+        if let dialPopover, dialPopover.isShown { dialPopover.update(state: dialState()) }
+    }
+
+    /// The word the pill wears for the model: the pick's own, the server's memory where the
+    /// catalog has been read, and "Model…" only while nothing is picked and nobody has asked the
+    /// catalog yet — a blank word would read as a machine with no models.
+    private func modelWord(for server: ConnectionProfile) -> String {
+        let picked = QuickAskDefaults.model(forProfileID: server.id)
+        return picked == nil && ModelCatalogStore.cached(server.id).isEmpty
+            ? Localized.text("Model…")
+            : ModelBadge.label(model: picked, effort: nil)
     }
 
     /// A model whose levels are its own can make the level already picked unrunnable. The aim
@@ -651,15 +707,6 @@ final class QuickAskPanel: NSPanel {
             !options.contains(chosen)
         else { return }
         QuickAskDefaults.recordEffort(nil, forProfileID: profileID)
-    }
-
-    @objc private func effortChanged() {
-        let options = effortOptions()
-        let index = effortButton.indexOfSelectedItem - 1
-        let level = options.indices.contains(index) ? options[index] : nil
-        QuickAskDefaults.recordEffort(level, forProfileID: targetServer.id)
-        refreshAim()
-        editor.focus()
     }
 
     /// What the aim can be handed, re-read whenever either half of it moves. A picture already in
@@ -676,20 +723,12 @@ final class QuickAskPanel: NSPanel {
         return ModelAbilities.resolve(supportsAttachments: true, model: capabilities)
     }
 
-    /// The strip and the button name what the question will actually run on, and the line under
+    /// The strip and the dial name what the question will actually run on, and the line under
     /// them says how to send — with one server that line also names the machine, which the hidden
     /// strip no longer can.
     private func refreshAim() {
         let server = targetServer
         aimStrip.select(id: server.id)
-        let picked = QuickAskDefaults.model(forProfileID: server.id)
-        let starred = picked.map(ModelFavoritesStore.isFavorite) ?? false
-        modelButton.title =
-            (starred ? "★ " : "")
-            + (picked == nil && ModelCatalogStore.cached(server.id).isEmpty
-                ? Localized.text("Model…")
-                : ModelBadge.label(model: picked, effort: nil))
-        modelButton.isHidden = false
         watchCatalog()
         refreshEffort()
         let able = abilities
@@ -903,8 +942,8 @@ final class QuickAskPanel: NSPanel {
         dismissCompletion()
         editor.isEditable = false
         aimStrip.isEnabled = false
-        modelButton.isEnabled = false
-        effortButton.isEnabled = false
+        dialPopover?.close()
+        dialPill.isEnabled = false
         attachButton.isEnabled = false
         refreshStarterVisibility()
         setStatus(QuickAskComposition.waitingTitle(server: server.name))
@@ -919,8 +958,7 @@ final class QuickAskPanel: NSPanel {
             self.asking = false
             self.editor.isEditable = true
             self.aimStrip.isEnabled = true
-            self.modelButton.isEnabled = true
-            self.effortButton.isEnabled = true
+            self.dialPill.isEnabled = true
             self.attachButton.isEnabled = true
             self.setStatus("\(failure.title) — \(failure.detail)")
             self.refreshStarterVisibility()

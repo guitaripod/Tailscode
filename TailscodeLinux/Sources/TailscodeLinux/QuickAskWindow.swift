@@ -10,9 +10,10 @@ import TailscodeCore
 /// conversation with no project directory on the server named in the chip, and the window stays
 /// up only long enough for that server to answer, so a failed mint keeps the question in hand
 /// rather than swallowing it. The aim is both halves and both are the quick ask's own: tab or a
-/// click moves the machine, `alt+m` or the model chip opens the catalog, `alt+e` or the effort
-/// chip says how hard it is asked to think, and `QuickAskDefaults` remembers all three per server
-/// beside the composer's memory rather than inside it.
+/// click moves the machine, and the same dial the chat's composer wears — `alt+m`, `alt+e` or a
+/// press — names the model and how hard it is asked to think, the wheel over it stepping the
+/// level, and `QuickAskDefaults` remembers all three per server beside the composer's memory
+/// rather than inside it.
 ///
 /// Owing no form is not the same as being able to do nothing. `alt+a` attaches a file and
 /// `alt+v` takes the clipboard's picture, offered only where the aim can read them; the empty
@@ -48,8 +49,7 @@ final class QuickAskWindow: @unchecked Sendable {
     private let target: UnsafeMutablePointer<GtkWidget>
     private let aimStrip: UnsafeMutablePointer<GtkWidget>
     private var aimToggles: [UnsafeMutablePointer<GtkWidget>] = []
-    private let model: UnsafeMutablePointer<GtkWidget>
-    private let effort: UnsafeMutablePointer<GtkWidget>
+    private let dial: DialPill
     private let attach: UnsafeMutablePointer<GtkWidget>
     private let send: UnsafeMutablePointer<GtkWidget>
     private let chips: UnsafeMutablePointer<GtkWidget>
@@ -120,11 +120,24 @@ final class QuickAskWindow: @unchecked Sendable {
         target = Gtk.menuButton("", css: ["flat", "ask-chip"]) {
             QuickAskWindow.open?.serverRows() ?? []
         }
-        model = Gtk.menuButton("", css: ["flat", "ask-chip"]) {
-            QuickAskWindow.open?.modelRows() ?? []
-        }
-        effort = Gtk.menuButton("", css: ["flat", "ask-chip"]) {
-            QuickAskWindow.open?.effortRows() ?? []
+        dial = DialPill(
+            css: ["flat", "ask-dial"],
+            dial: ModelDialPopover(
+                makeState: {
+                    QuickAskWindow.open?.dialState()
+                        ?? ModelDialState(
+                            sources: [], selected: nil, effort: nil, options: [], modelWord: "")
+                },
+                onPick: { pick in Gtk.onMain { QuickAskWindow.open?.pick(pick) } },
+                onEffort: { level in
+                    Gtk.onMain {
+                        guard let open = QuickAskWindow.open else { return }
+                        open.setEffort(level, on: open.targetServer.id, refocus: false)
+                    }
+                },
+                onOpenCatalog: { Gtk.onMain { QuickAskWindow.open?.chooseModel() } })
+        ) { delta in
+            QuickAskWindow.open?.stepEffort(by: delta)
         }
         attach = Gtk.button("📎", css: ["flat", "ask-chip"]) {
             Gtk.onMain { QuickAskWindow.open?.pickAttachments() }
@@ -148,8 +161,7 @@ final class QuickAskWindow: @unchecked Sendable {
         adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), title)
         adw_header_bar_pack_start(op(UnsafeMutableRawPointer(header)), target)
         adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), attach)
-        adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), effort)
-        adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), model)
+        adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), dial.button)
         gtk_window_set_titlebar(ptr(window), header)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
@@ -245,16 +257,19 @@ final class QuickAskWindow: @unchecked Sendable {
                 return true
             }
             if isReturn { return false }
-            guard state & KeyChord.altMask != 0 else { return false }
-            if keyval == UInt32(UnicodeScalar("m").value) {
-                Gtk.onMain { [weak self] in self?.chooseModel() }
+            if control, state & KeyChord.altMask != 0, keyval == Keymap.up {
+                Gtk.onMain { [weak self] in self?.stepEffort(by: 1) }
                 return true
             }
-            if keyval == UInt32(UnicodeScalar("e").value) {
-                Gtk.onMain { [weak self] in
-                    guard let self, gtk_widget_get_visible(self.effort) != 0 else { return }
-                    gtk_menu_button_popup(op(self.effort))
-                }
+            if control, state & KeyChord.altMask != 0, keyval == Keymap.down {
+                Gtk.onMain { [weak self] in self?.stepEffort(by: -1) }
+                return true
+            }
+            guard state & KeyChord.altMask != 0 else { return false }
+            if keyval == UInt32(UnicodeScalar("m").value)
+                || keyval == UInt32(UnicodeScalar("e").value)
+            {
+                Gtk.onMain { [weak self] in self?.dial.open() }
                 return true
             }
             if keyval == UInt32(UnicodeScalar("a").value) {
@@ -505,55 +520,57 @@ final class QuickAskWindow: @unchecked Sendable {
         }
     }
 
-    /// What will answer, at menu length: the server's own default, your stars, what you reached
-    /// for, the local floor — the same list the composer's pill shows — and the road to the full
-    /// directory when none of the shortlist is the answer.
-    private func modelRows() -> [(title: String, detail: String?, action: @Sendable () -> Void)] {
-        guard !asking else { return [] }
+    /// The dial as it would open now: the fleet with the aimed machine first, the quick ask's own
+    /// model and level on that machine, and the levels that model takes.
+    private func dialState() -> ModelDialState {
         let server = targetServer
-        let selected = QuickAskDefaults.model(forProfileID: server.id)
-        var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = [
-            (
-                (selected == nil ? "✓ " : "") + Localized.text("Server default"),
-                Localized.text("Let the machine decide"),
-                { Gtk.onMain { QuickAskWindow.open?.pick(ModelPick(
-                    profileID: server.id, selection: nil, isElsewhere: false,
-                    serverName: server.name, modelName: "")) } }
-            )
-        ]
-        let sources = ModelFleet.sources(profiles: servers, current: server.id)
-        for candidate in ModelChooser.shortlist(sources: sources, selected: selected, limit: 8) {
-            let star = candidate.offers.contains {
-                ModelFavoritesStore.isFavorite($0.selection)
-            } ? "★ " : ""
-            let aimed = !candidate.isElsewhere && candidate.carries(selected)
-            rows.append(
-                (
-                    (aimed ? "✓ " : "") + star + candidate.name,
-                    candidate.isElsewhere
-                        ? Localized.text("on %@ — the ask moves there", candidate.serverName)
-                        : candidate.primary.providerName,
-                    {
-                        let chosen = ModelPick(
-                            profileID: candidate.profileID, selection: candidate.selection,
-                            isElsewhere: candidate.isElsewhere,
-                            serverName: candidate.serverName, modelName: candidate.name)
-                        Gtk.onMain { QuickAskWindow.open?.pick(chosen) }
-                    }
-                ))
-        }
-        rows.append(
-            (
-                Localized.text("All models…"), Localized.text("Search every server's catalog"),
-                { Gtk.onMain { QuickAskWindow.open?.chooseModel() } }
-            ))
-        return rows
+        return ModelDialState(
+            sources: ModelFleet.sources(profiles: servers, current: server.id),
+            selected: QuickAskDefaults.model(forProfileID: server.id),
+            effort: QuickAskDefaults.effort(forProfileID: server.id), options: effortOptions(),
+            modelWord: modelWord())
     }
 
+    /// One notch of the wheel or one chord: the level moves one stop along the aimed model's own
+    /// ladder, pinned at the ends, and the dial shows where it landed.
+    private func stepEffort(by delta: Int) {
+        guard !asking else { return }
+        let server = targetServer
+        let options = effortOptions()
+        guard ModelEffort.isOffered(options: options) else { return }
+        let current = ModelEffort.surviving(
+            QuickAskDefaults.effort(forProfileID: server.id), options: options)
+        let next = ModelDial.step(current, by: delta, options: options)
+        guard next != current else { return }
+        setEffort(next, on: server.id, refocus: false)
+    }
+
+    private func modelWord() -> String {
+        let server = targetServer
+        let picked = QuickAskDefaults.model(forProfileID: server.id)
+        return picked == nil && ModelCatalogStore.cached(server.id).isEmpty
+            ? Localized.text("Model…") : ModelBadge.label(model: picked, effort: nil)
+    }
+
+    private func modelTintClass() -> String? {
+        let server = targetServer
+        guard let picked = QuickAskDefaults.model(forProfileID: server.id),
+            let chip = ModelBadge.chip(model: picked.modelID, effort: nil)
+        else { return nil }
+        return ModelTint.identityClass(family: chip.family, name: chip.name)
+    }
+
+    /// A row from the dial: the server's own choice is filed against the aimed machine, a model
+    /// against the machine that runs it — which re-aims the question there when that is not the
+    /// machine already aimed at.
     private func pick(_ pick: ModelPick) {
-        QuickAskDefaults.adopt(pick)
-        if let index = servers.firstIndex(where: { $0.id == pick.profileID }) {
-            retarget(to: index)
+        if pick.selection == nil, !pick.isElsewhere {
+            QuickAskDefaults.recordModel(nil, forProfileID: targetServer.id)
+        } else {
+            QuickAskDefaults.adopt(pick)
+            if let index = servers.firstIndex(where: { $0.id == pick.profileID }) {
+                retarget(to: index)
+            }
         }
         refreshTarget()
         editor.focus()
@@ -586,19 +603,13 @@ final class QuickAskWindow: @unchecked Sendable {
         gtk_menu_button_set_label(op(target), server.name + " · " + ServerLabel.agent(server.backend))
         adw_window_title_set_subtitle(
             op(UnsafeMutableRawPointer(title)), Self.subtitle())
-        let picked = QuickAskDefaults.model(forProfileID: server.id)
-        gtk_menu_button_set_label(
-            op(model),
-            picked == nil && ModelCatalogStore.cached(server.id).isEmpty
-                ? Localized.text("Model…")
-                : ModelBadge.label(model: picked, effort: nil))
         let levels = effortOptions()
         dropUnofferedEffort(on: server.id, options: levels)
-        gtk_menu_button_set_label(
-            op(effort),
-            ModelEffort.label(
-                QuickAskDefaults.effort(forProfileID: server.id), options: levels))
-        gtk_widget_set_visible(effort, ModelEffort.isOffered(options: levels) ? 1 : 0)
+        dial.render(
+            ModelDial.face(
+                modelWord: modelWord(), effort: QuickAskDefaults.effort(forProfileID: server.id),
+                options: levels),
+            modelTint: modelTintClass())
         refreshAura()
         let able = abilities
         gtk_widget_set_visible(attach, able.attachments ? 1 : 0)
@@ -671,25 +682,12 @@ final class QuickAskWindow: @unchecked Sendable {
         QuickAskDefaults.recordEffort(nil, forProfileID: profileID)
     }
 
-    private func effortRows() -> [(String, String?, @Sendable () -> Void)] {
-        let server = targetServer
-        var rows: [(String, String?, @Sendable () -> Void)] = [
-            (Localized.text("Server default"), Localized.text("Let the machine decide"),
-             { Gtk.onMain { QuickAskWindow.open?.setEffort(nil, on: server.id) } })
-        ]
-        for option in effortOptions() {
-            let power = option == Ultracode.effortLevel
-            rows.append(
-                (power ? "\(option) ✦" : option, power ? Ultracode.menuSubtitle : nil,
-                 { Gtk.onMain { QuickAskWindow.open?.setEffort(option, on: server.id) } }))
-        }
-        return rows
-    }
-
-    private func setEffort(_ level: String?, on profileID: String) {
+    /// A level set from the open dial leaves the focus where it is — the dial stays up for the
+    /// next nudge — while a level set any other way hands the caret back to the question.
+    private func setEffort(_ level: String?, on profileID: String, refocus: Bool = true) {
         QuickAskDefaults.recordEffort(level, forProfileID: profileID)
         refreshTarget()
-        editor.focus()
+        if refocus { editor.focus() }
         AppLog.write(.ui, "ASK effort=\(level ?? "server")")
     }
 

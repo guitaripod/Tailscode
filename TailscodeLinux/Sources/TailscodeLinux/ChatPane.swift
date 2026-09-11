@@ -83,13 +83,7 @@ final class ChatPane: @unchecked Sendable {
     var entryView: UnsafeMutablePointer<GtkWidget> { editor.textView }
     private let sendButton = gtk_button_new_with_label("Send")!
     private let stopButton = gtk_button_new_with_label("⏹")!
-    private var dialButton: UnsafeMutablePointer<GtkWidget>?
-    private var dial: ModelDialPopover?
-    private let dialDot = Gtk.label("●", css: "dial-dot", selectable: false)
-    private let dialModelLabel = Gtk.label("", css: "dial-model", selectable: false)
-    private let dialSeparator = Gtk.label("·", css: "dial-sep", selectable: false)
-    private let dialEffortLabel = Gtk.label("", css: "dial-effort", selectable: false)
-    private let dialMeterSlot = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+    private var dial: DialPill?
     private var commandButton: UnsafeMutablePointer<GtkWidget>?
     private let destinationLabel = Gtk.label("", css: "row-detail", selectable: false)
     private(set) var transcriptScroller: UnsafeMutablePointer<GtkWidget>?
@@ -540,23 +534,6 @@ final class ChatPane: @unchecked Sendable {
     /// dot, the model's word, the level's word in its own heat, and a five-bar meter that says
     /// the tier before the word does. The wheel over it steps the level without opening anything.
     private func makeDialPill() -> UnsafeMutablePointer<GtkWidget> {
-        let button = gtk_menu_button_new()!
-        Gtk.addClass(button, "dial-pill")
-        gtk_menu_button_set_can_shrink(op(button), 1)
-        gtk_widget_set_tooltip_text(button, Localized.text("Model and effort · wheel to step the level"))
-        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        for widget in [dialDot, dialModelLabel, dialSeparator, dialEffortLabel] {
-            gtk_widget_set_valign(widget, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(line), widget)
-        }
-        gtk_label_set_max_width_chars(op(dialModelLabel), 22)
-        for widget in [dialSeparator, dialEffortLabel, dialMeterSlot] {
-            gtk_widget_set_visible(widget, 0)
-        }
-        Gtk.addClass(dialMeterSlot, "dial-meter-slot")
-        gtk_widget_set_valign(dialMeterSlot, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(line), dialMeterSlot)
-        gtk_menu_button_set_child(op(button), line)
         let popover = ModelDialPopover(
             makeState: { [weak self] in
                 self?.dialState()
@@ -579,15 +556,11 @@ final class ChatPane: @unchecked Sendable {
             onOpenCatalog: { [weak self] in
                 Gtk.onMain { [weak self] in self?.openModelChooser() }
             })
-        dial = popover
-        gtk_menu_button_set_popover(op(button), popover.popover)
-        Gtk.onScroll(button) { [weak self] dy in
-            guard dy != 0 else { return false }
-            Gtk.onMain { [weak self] in self?.stepEffort(by: dy < 0 ? 1 : -1) }
-            return true
+        let pill = DialPill(dial: popover) { [weak self] delta in
+            self?.stepEffort(by: delta)
         }
-        dialButton = button
-        return button
+        dial = pill
+        return pill.button
     }
 
     /// The dial as it would open right now: this pane's fleet, pick, level and the levels the
@@ -610,7 +583,7 @@ final class ChatPane: @unchecked Sendable {
     }
 
     func openModelDial() {
-        if let dialButton { gtk_menu_button_popup(op(dialButton)) }
+        dial?.open()
     }
 
     /// Opening or closing a row is a reading gesture: the person's eyes are on the header they
@@ -3061,53 +3034,8 @@ final class ChatPane: @unchecked Sendable {
         setNotice(ModelAbilities.dropped(refused.count))
     }
 
-    /// The pill wears the same colours the list chips do — the family's hue on the dot, the
-    /// tier's heat on the level and its bars — swapped as one class out of the set, so a change
-    /// of model repaints the pill it already has. The power's word is set letter by letter from
-    /// the shared rainbow and its bars each take a stop of it.
     private func renderDial(_ face: DialFace) {
-        guard let dialButton else { return }
-        gtk_widget_set_tooltip_text(
-            dialButton, face.spoken + " · " + Localized.text("wheel to step the level"))
-        applyTintClass(to: dialDot, from: modelTintClasses, chosen: modelTintClass())
-        gtk_label_set_text(op(dialModelLabel), face.modelWord)
-        gtk_widget_set_visible(dialSeparator, face.showsMeter ? 1 : 0)
-        gtk_widget_set_visible(dialEffortLabel, face.showsMeter ? 1 : 0)
-        gtk_widget_set_visible(dialMeterSlot, face.showsMeter ? 1 : 0)
-        applyTintClass(
-            to: dialEffortLabel, from: effortTintClasses + ["dial-effort-server"],
-            chosen: face.isServer
-                ? "dial-effort-server" : face.effortWord.flatMap(ModelTint.effortClass))
-        if face.isPower, let word = face.effortWord {
-            gtk_label_set_markup(op(dialEffortLabel), ModelDialPopover.rainbowMarkup(word))
-        } else {
-            gtk_label_set_text(op(dialEffortLabel), face.effortWord ?? "")
-        }
-        Gtk.removeChildren(of: dialMeterSlot)
-        gtk_box_append(
-            ptr(dialMeterSlot),
-            ModelDialPopover.meter(
-                heat: face.heat, tint: face.effortWord.flatMap(ModelTint.effortClass),
-                rainbow: face.isPower))
-        for cls in ["dial-pill-power", "dial-pill-server"] { gtk_widget_remove_css_class(dialButton, cls) }
-        if face.isPower { gtk_widget_add_css_class(dialButton, "dial-pill-power") }
-        if face.isServer { gtk_widget_add_css_class(dialButton, "dial-pill-server") }
-    }
-
-    private func applyTintClass(
-        to button: UnsafeMutablePointer<GtkWidget>, from all: [String], chosen: String?
-    ) {
-        for cls in all where cls != chosen { gtk_widget_remove_css_class(button, cls) }
-        if let chosen { gtk_widget_add_css_class(button, chosen) }
-    }
-
-    private var modelTintClasses: [String] {
-        ModelTint.Family.allCases.map(ModelTint.cssClass) + (0..<12).map { "model-hue-\($0)" }
-            + ["model-plain"]
-    }
-
-    private var effortTintClasses: [String] {
-        ModelTint.effortTiers.map { "effort-\($0)" } + ["effort-ultracode"]
+        dial?.render(face, modelTint: modelTintClass())
     }
 
     private func modelTintClass() -> String? {

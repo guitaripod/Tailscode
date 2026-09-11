@@ -540,6 +540,19 @@ enum MatrixTheme {
             border: 1px solid alpha(\(textDim), 0.28);
         }
         .ask-chip:hover { color: \(accent); border-color: alpha(\(accent), 0.7); }
+        headerbar menubutton.ask-dial > button {
+            padding: 1px 9px 1px 8px;
+            border-radius: 999px;
+            border: 1px solid alpha(\(textDim), 0.28);
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+        }
+        headerbar menubutton.ask-dial > button:hover { border-color: \(accent); }
+        headerbar menubutton.ask-dial.dial-pill-power > button {
+            background-image: \(rainbowWash(0.16));
+            border-color: alpha(\(text), 0.3);
+        }
         .ask-aim-segment {
             \(t(.chip))
             color: \(textDim);
