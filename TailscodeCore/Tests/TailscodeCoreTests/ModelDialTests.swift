@@ -26,17 +26,19 @@ struct ModelDialTests {
         #expect(ModelDial.heat("shallow", options: ["shallow", "deep"]) == 3)
     }
 
-    @Test("A step is pinned at both ends and starts from the server's stop")
+    @Test("A step is pinned at both ends: the coldest level is the floor, never the server")
     func step() {
         #expect(ModelDial.step("high", by: 1, options: claude) == "xhigh")
         #expect(ModelDial.step("high", by: -1, options: claude) == "medium")
-        #expect(ModelDial.step("low", by: -1, options: claude) == nil)
+        #expect(ModelDial.step("low", by: -1, options: claude) == "low")
+        #expect(ModelDial.step("low", by: -3, options: claude) == "low")
         #expect(ModelDial.step(nil, by: -1, options: claude) == nil)
         #expect(ModelDial.step(nil, by: 1, options: claude) == "low")
         #expect(ModelDial.step("ultracode", by: 1, options: claude) == "ultracode")
         #expect(ModelDial.step("max", by: 1, options: claude) == "ultracode")
         #expect(ModelDial.step("high", by: 1, options: []) == nil)
         #expect(ModelDial.step("xhigh", by: 1, options: ["low", "high"]) == "low")
+        #expect(ModelDial.step("xhigh", by: -1, options: ["low", "high"]) == nil)
     }
 
     @Test("The rungs read top down with the power first and the server last")

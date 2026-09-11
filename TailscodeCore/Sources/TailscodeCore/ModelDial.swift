@@ -103,20 +103,21 @@ public enum ModelDial {
         return ordered
     }
 
-    /// Every stop the dial can rest on, the server first: what `step` walks.
-    public static func stops(options: [String]) -> [String?] {
-        [nil] + ascending(options: options).map { Optional($0) }
-    }
-
-    /// One notch of the wheel or one arrow. Pinned at both ends rather than wrapped — a wheel
-    /// that flips from max back to the server's choice is a wheel that cannot be trusted at
-    /// speed. A level the model does not take steps from the server's own stop.
+    /// One notch of the wheel or one arrow, along the model's own levels only. Pinned at both
+    /// ends rather than wrapped — a wheel that flips from max back to low is a wheel that cannot
+    /// be trusted at speed — and the coldest level is the floor: the server deciding is a stop the
+    /// ladder offers by its own rung and its own digit, never one a wheel falls through to, since
+    /// a hand scrolling down means "as little as it takes" and not "you choose". From the
+    /// server's stop a step up lands on the coldest level and a step down stays put; a level the
+    /// model does not take steps from the server's stop.
     public static func step(_ level: String?, by delta: Int, options: [String]) -> String? {
-        let stops = stops(options: options)
-        guard stops.count > 1 else { return nil }
-        let current = stops.firstIndex { $0 == level } ?? 0
-        let next = max(0, min(stops.count - 1, current + delta))
-        return stops[next]
+        let levels = ascending(options: options)
+        guard !levels.isEmpty else { return nil }
+        guard let level, let current = levels.firstIndex(of: level) else {
+            return delta > 0 ? levels[0] : nil
+        }
+        let next = max(0, min(levels.count - 1, current + delta))
+        return levels[next]
     }
 
     /// Bars lit for a level, out of `EffortMeter.bars`. A known tier lights its rank so "high"
