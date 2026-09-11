@@ -69,6 +69,12 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.43" date="2026-09-11">
+      <description>
+        <p>Tables no longer lose their last row. A table was measured before it was in the window, so its columns came out narrower than the text drawn into them; cells wrapped where no fold was planned and the table ran past the bottom of its own card. It is now measured once it is on screen, and every cell&#x27;s height is counted at the width it actually gets.</p>
+        <p>An answer no longer appears twice when it finishes. On the Claude bridge the server could hand a finished reply back under a second name, and the app showed both copies until its next refresh — which was also the flash that sometimes ran through the whole chat at the end of a turn. The app now recognises a reply it already holds and keeps a single copy, and claude-bridge 1.8.1 fixes it at the source.</p>
+      </description>
+    </release>
     <release version="1.42" date="2026-09-11">
       <description>
         <p>The image studio has the machine&#x27;s own shelf. Every picture ComfyUI keeps in its output folder — made from this desk, a phone, or the machine&#x27;s own browser — is listed newest first under the stage, and its words, seed, steps and model are read out of the file itself, so a picture somebody else made still says what made it. Click a tile to put it on the stage with its caption and facts, roll its words again, or start the next render from it without a byte travelling; a shelf read while the machine is asleep is the last one it gave, marked with when. A render is followed on ComfyUI&#x27;s own socket — loading the model, reading the reference, painting step 12 of 30, decoding, saving — with a bar drawn from the sampler&#x27;s real count, and Stop takes the render off the machine&#x27;s queue rather than only ceasing to watch. Klein now genuinely edits from a reference; the fast engine used to paint from words alone while the button said Edit.</p>
