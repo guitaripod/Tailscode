@@ -29,6 +29,12 @@ GtkListItemFactory *tailscode_make_factory(
 void tailscode_connect_key(
     GtkWidget *widget, gboolean (*handler)(guint keyval, guint state, void *), void *data);
 
+/// A scroll controller on `widget` forwarding each wheel notch's vertical delta to Swift, in the
+/// capture phase so a pill inside a scrolling row still sees the wheel first. Returning true stops
+/// the scroll from reaching whatever is underneath.
+void tailscode_connect_scroll(
+    GtkWidget *widget, gboolean (*handler)(double dy, void *), void *data);
+
 /// Whether the widget that currently has focus inside `root` is one that takes text.
 gboolean tailscode_focus_is_editable(GtkWidget *root);
 

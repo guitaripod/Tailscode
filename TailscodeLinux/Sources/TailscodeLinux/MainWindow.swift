@@ -3269,6 +3269,9 @@ final class MainWindow: @unchecked Sendable {
         case .toggleFiles: return false
         case .toggleTerminal: togglePane(.terminal)
         case .commandPalette: activePane.popupCommandPalette()
+        case .effortHotter: activePane.stepEffort(by: 1)
+        case .effortColder: activePane.stepEffort(by: -1)
+        case .modelDial: activePane.openModelDial()
         case .archiveSelected:
             if let entry = activePane.entry { toggleArchived(entry) }
         case .toggleArchiveView: setArchiveShown(!showingArchive)

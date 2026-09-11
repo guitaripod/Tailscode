@@ -69,7 +69,8 @@ enum MacShot {
 
     /// `--open <surface>` — which window to put in front of the picture. The main window is what a
     /// launch already draws; everything else in this app is a sheet, a panel or a popover somebody
-    /// has to reach, and a screen nobody can reach is a screen nobody checks.
+    /// has to reach, and a screen nobody can reach is a screen nobody checks. A popover's window is
+    /// a child the ordered list leaves out, so the newest window outside that list is the one drawn.
     static var surface: String? {
         let arguments = CommandLine.arguments
         guard let index = arguments.firstIndex(of: "--open"), index + 1 < arguments.count else {
@@ -170,10 +171,13 @@ enum MacShot {
 
     private static func capture(to path: String) {
         let ordered = NSApp.orderedWindows.filter { $0.isVisible && $0.contentView != nil }
+        let floating = NSApp.windows.filter {
+            $0.isVisible && $0.contentView != nil && !ordered.contains($0)
+        }
         let front =
             surface == nil
             ? NSApp.keyWindow ?? NSApp.mainWindow ?? ordered.first
-            : ordered.first(where: { $0 !== NSApp.mainWindow }) ?? ordered.first
+            : floating.last ?? ordered.first(where: { $0 !== NSApp.mainWindow }) ?? ordered.first
         guard let window = front,
             let view = window.contentView,
             let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)

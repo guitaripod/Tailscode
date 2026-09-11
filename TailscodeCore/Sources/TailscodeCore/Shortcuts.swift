@@ -310,6 +310,18 @@ public enum ShortcutRegistry {
             id: "composer.send", title: Localized.text("Send"), category: .composer,
             action: .send, contexts: [.insert], defaults: ["ctrl+enter"]),
         .init(
+            id: "composer.effortHotter", title: Localized.text("More effort on the next send"),
+            category: .composer, action: .effortHotter, contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+up"]),
+        .init(
+            id: "composer.effortColder", title: Localized.text("Less effort on the next send"),
+            category: .composer, action: .effortColder, contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+down"]),
+        .init(
+            id: "composer.modelDial", title: Localized.text("Model and effort"),
+            category: .composer, action: .modelDial, contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+m"]),
+        .init(
             id: "mode.leave", title: Localized.text("Back to normal mode"), category: .composer,
             action: .leaveInsert, contexts: [.normal, .insert], defaults: ["escape"]),
         .init(
@@ -680,6 +692,9 @@ public enum KeyAction: Equatable, Sendable {
     case zoomSplit
     case equalizeSplits
     case exchangeSplit
+    case effortHotter
+    case effortColder
+    case modelDial
 }
 
 /// The canonical key-code space is GDK's, spelled out rather than imported: on Linux the numbers

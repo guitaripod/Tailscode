@@ -756,6 +756,92 @@ enum MatrixTheme {
         .pill-row button.stop-pill:hover { color: \(palette.onAccent); background-color: \(danger); }
         popover contents { background-color: \(canvasRaised); border: 1px solid \(rule); }
 
+        .pill-row menubutton.dial-pill > button {
+            padding: 1px 9px 1px 8px;
+            color: \(text);
+            border-color: alpha(\(textDim), 0.45);
+        }
+        .pill-row menubutton.dial-pill > button:hover { border-color: \(accent); }
+        .pill-row menubutton.dial-pill > button arrow { margin-left: 2px; }
+        .pill-row menubutton.dial-pill.dial-pill-power > button {
+            background-image: \(rainbowWash(0.16));
+            border-color: alpha(\(text), 0.3);
+        }
+        .dial-dot { \(t(.hint)) color: \(textDim); }
+        .dial-model { \(t(.chip)) color: \(text); }
+        .dial-sep { color: \(textDim); opacity: 0.5; }
+        .dial-effort { \(t(.chip)) font-weight: 700; color: \(textDim); }
+        .dial-effort.dial-effort-server { font-weight: 400; opacity: 0.8; }
+        .dial-meter { margin-left: 2px; }
+        .dial-bar {
+            min-width: 4px;
+            min-height: 10px;
+            border-radius: 1px;
+            background-color: alpha(\(textDim), 0.22);
+        }
+        .dial-bar-lit { background-color: \(textDim); }
+        .dial-pop contents { padding: 0; border-radius: 10px; }
+        .dial-search {
+            \(t(.composer))
+            min-height: 0;
+            padding: 3px 8px;
+            border: 1px solid \(rule);
+            border-radius: 6px;
+            background-color: \(canvas);
+            color: \(text);
+        }
+        .dial-search:focus-within { border-color: \(accent); }
+        .dial-divider { background-color: \(rule); min-width: 1px; }
+        .dial-section { \(t(.sectionLabel)) color: \(textDim); opacity: 0.75; }
+        .dial-headline { \(t(.hint)) color: \(textDim); }
+        .dial-pop button.dial-row, .dial-pop button.dial-rung {
+            padding: 0;
+            min-height: 0;
+            border: 1px solid transparent;
+            border-radius: 7px;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+            outline: none;
+        }
+        .dial-pop button.dial-row:hover, .dial-pop button.dial-rung:hover {
+            border-color: alpha(\(textDim), 0.4);
+        }
+        .dial-pop button.dial-row-cursor, .dial-pop button.dial-row-cursor:hover {
+            background-color: alpha(\(accentDim), 0.14);
+            border-color: alpha(\(accentDim), 0.45);
+        }
+        .dial-row-here .dial-title { font-weight: 700; color: \(text); }
+        .dial-row-door .dial-title { color: \(accentDim); }
+        .dial-star { \(t(.hint)) color: \(textDim); opacity: 0.5; }
+        .dial-star-on { color: \(warn); opacity: 1; }
+        .dial-title { \(t(.rowTitle)) color: \(text); }
+        .dial-detail { \(t(.rowDetail)) color: \(textDim); }
+        .dial-wall { \(t(.rowDetail)) color: \(danger); }
+        .dial-chip {
+            \(t(.badge))
+            color: \(textDim);
+            border: 1px solid \(rule);
+            border-radius: 4px;
+            padding: 0 4px;
+        }
+        .dial-chip-local { color: \(special); border-color: alpha(\(special), 0.5); }
+        .dial-rung-key { \(t(.hint)) color: \(textDim); opacity: 0.6; }
+        .dial-rung-title { \(t(.rowTitle)) font-weight: 700; color: \(textDim); }
+        .dial-rung-caption { \(t(.rowDetail)) color: \(textDim); opacity: 0.8; }
+        .dial-rung-server .dial-rung-title { font-weight: 500; }
+        .dial-pop button.dial-rung-current, .dial-pop button.dial-rung-current:hover {
+            border-color: alpha(\(textDim), 0.6);
+            background-color: alpha(\(textDim), 0.12);
+        }
+        .dial-pop button.dial-rung.effort-ultracode { background-image: \(rainbowWash(0.10)); }
+        .dial-pop button.dial-rung.effort-ultracode.dial-rung-current {
+            background-image: \(rainbowWash(0.22));
+            border-color: alpha(\(text), 0.35);
+        }
+        .dial-hint { \(t(.hint)) color: \(textDim); opacity: 0.7; }
+        \(dialTintCSS(for: palette))
+
         .chip {
             \(t(.chip))
             min-height: 0;
@@ -1202,6 +1288,28 @@ enum MatrixTheme {
         lines.append(
             ".pill-row menubutton.effort-ultracode > button:hover "
                 + "{ background-image: \(rainbowWash(0.34)); }")
+        return lines.joined(separator: "\n        ")
+    }
+
+    /// The dial's heat, one class per tier from the shared catalog: the level's word, the lit
+    /// bars, a rung's title and the wash behind the rung it lights. The rainbow bars each take
+    /// one stop of the shared rainbow so the power's meter is the aura in five pieces.
+    private static func dialTintCSS(for palette: Palette) -> String {
+        var lines: [String] = []
+        for tier in ModelTint.effortTiers {
+            guard let hex = ModelTint.effortHex(tier, in: palette) else { continue }
+            lines.append(".dial-effort.effort-\(tier) { color: \(hex); }")
+            lines.append(".dial-bar-lit.effort-\(tier) { background-color: \(hex); }")
+            lines.append(".dial-rung.effort-\(tier) .dial-rung-title { color: \(hex); }")
+            lines.append(
+                ".dial-pop button.dial-rung.effort-\(tier).dial-rung-current { "
+                    + "background-color: alpha(\(hex), 0.14); border-color: alpha(\(hex), 0.55); }")
+        }
+        for (index, hex) in ModelTint.rainbow(letters: EffortMeter.bars, onCanvas: palette.canvas)
+            .enumerated()
+        {
+            lines.append(".dial-bar-rainbow-\(index) { background-color: \(hex); }")
+        }
         return lines.joined(separator: "\n        ")
     }
 

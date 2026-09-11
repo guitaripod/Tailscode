@@ -2,8 +2,8 @@ import AppKit
 import TailscodeCore
 
 /// The line under the prompt box that says where the next prompt goes and how: vim mode,
-/// destination, model, effort, the command palette, attachments, and stop. The CLI's status
-/// line, made clickable — every pill pops the menu that changes what it names.
+/// destination, the model-and-effort dial, the command palette, attachments, and stop. The
+/// CLI's status line, made clickable — every pill opens the surface that changes what it names.
 @MainActor
 final class PillsRow: NSView {
     struct MenuRow {
@@ -26,8 +26,10 @@ final class PillsRow: NSView {
     /// A lane was pressed. Chat is the pane this row already sits in, so only the other two leave.
     var onLane: ((QuickAskLane) -> Void)?
 
-    var modelRows: (() -> [MenuRow])?
-    var effortRows: (() -> [MenuRow])?
+    /// The dial was pressed: the composer opens the model-and-effort popover on it.
+    var onDial: (() -> Void)?
+    /// The wheel turned over the closed dial, one notch: +1 hotter, -1 colder.
+    var onDialStep: ((Int) -> Void)?
     var commandRows: (() -> [MenuRow])?
     var attachRows: (() -> [MenuRow])?
     var onStop: (() -> Void)?
@@ -42,15 +44,12 @@ final class PillsRow: NSView {
     private let vimBadge = NSTextField(labelWithString: "")
     private let vimBadgeWrap = NSView()
     private let destinationLabel = NSTextField(labelWithString: "")
-    private let modelPill: MenuPill
-    private let effortPill: MenuPill
+    private let dialPill = DialPill()
     private let commandPill: MenuPill
     private let attachButton: MenuPill
     private let stopButton: RowKit.ActionButton
 
     init() {
-        modelPill = MenuPill(title: Localized.text("model"))
-        effortPill = MenuPill(title: Localized.text("effort"))
         commandPill = MenuPill(title: "/")
         attachButton = MenuPill(title: "")
         stopButton = RowKit.ActionButton(title: "") {}
@@ -79,10 +78,10 @@ final class PillsRow: NSView {
         destinationLabel.setContentCompressionResistancePriority(
             .defaultLow, for: .horizontal)
 
-        modelPill.rows = { [weak self] in self?.modelRows?() ?? [] }
-        modelPill.toolTip = Localized.text("The model the next prompt runs on")
-        effortPill.rows = { [weak self] in self?.effortRows?() ?? [] }
-        effortPill.toolTip = Localized.text("How hard the model thinks")
+        dialPill.onPress = { [weak self] in self?.onDial?() }
+        dialPill.onStep = { [weak self] delta in self?.onDialStep?(delta) }
+        dialPill.toolTip = Localized.text(
+            "The model the next prompt runs on and how hard it thinks — scroll to step the effort")
         commandPill.rows = { [weak self] in self?.commandRows?() ?? [] }
         commandPill.toolTip = Localized.text("Slash commands")
 
@@ -103,10 +102,9 @@ final class PillsRow: NSView {
         stopButton.action = #selector(stopTapped)
         stopButton.translatesAutoresizingMaskIntoConstraints = false
 
-        for pill in [modelPill, effortPill, commandPill] {
-            pill.setContentCompressionResistancePriority(.init(251), for: .horizontal)
-            pill.cell?.lineBreakMode = .byTruncatingTail
-        }
+        dialPill.setContentCompressionResistancePriority(.init(251), for: .horizontal)
+        commandPill.setContentCompressionResistancePriority(.init(251), for: .horizontal)
+        commandPill.cell?.lineBreakMode = .byTruncatingTail
         attachButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         stopButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
@@ -120,7 +118,7 @@ final class PillsRow: NSView {
         }
 
         let row = NSStackView(views: [
-            vimBadgeWrap, destinationLabel, modelPill, effortPill, commandPill,
+            vimBadgeWrap, destinationLabel, dialPill, commandPill,
             RowKit.spacer(),
             laneControl, attachButton, stopButton,
         ])
@@ -149,9 +147,10 @@ final class PillsRow: NSView {
     func restyle() {
         vimBadge.font = MacTheme.Ramp.font(.badge)
         destinationLabel.font = MacTheme.Ramp.font(.panelFootnote)
-        for pill in [modelPill, effortPill, commandPill, attachButton] {
+        for pill in [commandPill, attachButton] {
             pill.font = MacTheme.Ramp.font(.panelFootnote)
         }
+        dialPill.restyle()
         stopButton.contentTintColor = MacTheme.Color.danger
     }
 
@@ -192,45 +191,15 @@ final class PillsRow: NSView {
         destinationLabel.stringValue = text
     }
 
-    func setModelTitle(_ text: String) {
-        modelPill.title = text
+    /// The dial wears what the composer already knows — the model's word, the level a send would
+    /// carry and its heat — and the family's hue on the dot; nil hands the dot back to the
+    /// toolkit's own tint.
+    func setFace(_ face: DialFace, modelTint: NSColor?) {
+        dialPill.setFace(face, modelTint: modelTint)
     }
 
-    /// Nil hides the pill outright: a model with no effort levels has no effort control, and a
-    /// pill reading "no effort control" spent a permanent slot in the chrome explaining the
-    /// absence of something nobody asked for.
-    func setEffortTitle(_ text: String?) {
-        effortPill.isHidden = text == nil
-        effortPill.title = text ?? ""
-    }
-
-    /// The pills wear the same colours the list chips do — the family's hue on the model, the
-    /// tier's heat on the effort — and nil hands the pill back to the toolkit's own tint.
-    func setModelTint(_ color: NSColor?) {
-        modelPill.contentTintColor = color
-    }
-
-    func setEffortTint(_ color: NSColor?) {
-        effortPill.contentTintColor = color
-    }
-
-    /// Ultracode is a power, not a level, so its pill does not take a heat: the word itself is
-    /// set letter by letter from the shared rainbow, the same stops the aura travels.
-    func setEffortRainbow(_ word: String) {
-        let font = effortPill.font ?? MacTheme.Ramp.font(.panelFootnote)
-        let text = NSMutableAttributedString()
-        for (index, letter) in word.enumerated() {
-            text.append(
-                NSAttributedString(
-                    string: String(letter),
-                    attributes: [
-                        .font: font,
-                        .foregroundColor: MacTheme.Color.modelRainbowLetter(
-                            index, of: word.count),
-                    ]))
-        }
-        effortPill.attributedTitle = text
-    }
+    /// The view a popover anchors to.
+    var dialAnchor: NSView { dialPill }
 
     func setAttachShown(_ shown: Bool) {
         attachButton.isHidden = !shown
@@ -246,6 +215,222 @@ final class PillsRow: NSView {
 
     @objc private func stopTapped() {
         onStop?()
+    }
+}
+
+/// The one pill for model and effort: a tinted dot, the model's word, the effort word in its
+/// tier's colour and the five-bar meter. A wheel over it steps the effort one notch per click,
+/// because which machine and how hard are one decision and the second half of it should not
+/// need a menu.
+@MainActor
+final class DialPill: NSButton {
+    var onPress: (() -> Void)?
+    var onStep: ((Int) -> Void)?
+
+    private let dot = NSTextField(labelWithString: "●")
+    private let modelLabel = NSTextField(labelWithString: "")
+    private let separator = NSTextField(labelWithString: "·")
+    private let effortLabel = NSTextField(labelWithString: "")
+    private let meter = EffortMeterView()
+    private let content = NSStackView()
+    private var face: DialFace?
+    private var modelTint: NSColor?
+    /// Wheel travel since the last notch. A precise trackpad reports in points and a notched
+    /// mouse in lines, so the threshold is one line or eight points, whichever the device sends.
+    private var travel: CGFloat = 0
+    private static let notch: CGFloat = 8
+
+    init() {
+        super.init(frame: .zero)
+        title = ""
+        bezelStyle = .rounded
+        controlSize = .small
+        target = self
+        action = #selector(pressed)
+        translatesAutoresizingMaskIntoConstraints = false
+        setAccessibilityRole(.button)
+
+        for label in [dot, modelLabel, separator, effortLabel] {
+            label.lineBreakMode = .byTruncatingTail
+            label.setContentCompressionResistancePriority(.required, for: .horizontal)
+            label.setContentHuggingPriority(.required, for: .horizontal)
+        }
+        modelLabel.setContentCompressionResistancePriority(.init(260), for: .horizontal)
+        content.orientation = .horizontal
+        content.alignment = .centerY
+        content.spacing = 4
+        content.setViews([dot, modelLabel, separator, effortLabel, meter], in: .center)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -9),
+            content.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        restyle()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        let inner = content.fittingSize
+        return NSSize(width: inner.width + 18, height: super.intrinsicContentSize.height)
+    }
+
+    /// The labels inside are ornament: a press anywhere on the pill is a press on the pill.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(convert(point, from: superview)) ? self : nil
+    }
+
+    func restyle() {
+        let font = MacTheme.Ramp.font(.panelFootnote)
+        for label in [dot, modelLabel, separator] { label.font = font }
+        effortLabel.font = MacTheme.Ramp.font(.pill)
+        separator.textColor = MacTheme.Color.tertiaryLabel
+        if let face { setFace(face, modelTint: modelTint) }
+    }
+
+    func setFace(_ face: DialFace, modelTint: NSColor?) {
+        self.face = face
+        self.modelTint = modelTint
+        dot.textColor = modelTint ?? MacTheme.Color.secondaryLabel
+        modelLabel.stringValue = face.modelWord
+        modelLabel.textColor = MacTheme.Color.label
+        separator.isHidden = !face.showsMeter
+        effortLabel.isHidden = !face.showsMeter
+        meter.isHidden = !face.showsMeter
+        setAccessibilityLabel(face.spoken)
+        guard let word = face.effortWord else {
+            invalidateIntrinsicContentSize()
+            return
+        }
+        if face.isPower {
+            effortLabel.attributedStringValue = DialPill.rainbow(word, font: effortLabel.font)
+            meter.set(lit: face.heat, tint: nil, rainbow: true, cold: false)
+        } else if face.isServer {
+            effortLabel.attributedStringValue = NSAttributedString(
+                string: word,
+                attributes: [
+                    .font: MacTheme.Ramp.font(.panelFootnote),
+                    .foregroundColor: MacTheme.Color.tertiaryLabel,
+                ])
+            meter.set(lit: 0, tint: nil, rainbow: false, cold: true)
+        } else {
+            let tint = MacTheme.Color.modelEffort(word) ?? MacTheme.Color.secondaryLabel
+            effortLabel.attributedStringValue = NSAttributedString(
+                string: word, attributes: [.font: effortLabel.font as Any, .foregroundColor: tint])
+            meter.set(lit: face.heat, tint: tint, rainbow: false, cold: false)
+        }
+        invalidateIntrinsicContentSize()
+    }
+
+    /// Ultracode is a power, not a level, so its word takes no heat: it is set letter by letter
+    /// from the shared rainbow, the same stops the aura travels.
+    static func rainbow(_ word: String, font: NSFont?) -> NSAttributedString {
+        let font = font ?? MacTheme.Ramp.font(.pill)
+        let text = NSMutableAttributedString()
+        for (index, letter) in word.enumerated() {
+            text.append(
+                NSAttributedString(
+                    string: String(letter),
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: MacTheme.Color.modelRainbowLetter(index, of: word.count),
+                    ]))
+        }
+        return text
+    }
+
+    /// Up is hotter. The travel is accumulated rather than acted on per event, so a trackpad's
+    /// stream of tiny deltas steps once per finger-width and a mouse's notches step once each,
+    /// and a pill with no meter leaves the wheel to whatever is behind it.
+    override func scrollWheel(with event: NSEvent) {
+        guard face?.showsMeter == true else {
+            super.scrollWheel(with: event)
+            return
+        }
+        guard event.hasPreciseScrollingDeltas else {
+            let delta = event.scrollingDeltaY
+            if delta != 0 { onStep?(delta > 0 ? 1 : -1) }
+            return
+        }
+        if event.phase == .began { travel = 0 }
+        guard event.momentumPhase == [] else { return }
+        travel += event.scrollingDeltaY
+        while travel >= DialPill.notch {
+            travel -= DialPill.notch
+            onStep?(1)
+        }
+        while travel <= -DialPill.notch {
+            travel += DialPill.notch
+            onStep?(-1)
+        }
+    }
+
+    @objc private func pressed() {
+        onPress?()
+    }
+}
+
+/// The five bars every effort surface draws, as bars rather than glyphs so they take a tint
+/// and keep their proportions at every type scale: lit bars in the tier's colour, the rest at a
+/// fifth of the label's ink, the power in the rainbow, the server's choice all cold.
+@MainActor
+final class EffortMeterView: NSView {
+    private var lit = 0
+    private var tint: NSColor?
+    private var rainbow = false
+    private var cold = false
+    private let barWidth: CGFloat = 4
+    private let gap: CGFloat = 2
+    private let barHeight: CGFloat = 10
+
+    init() {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        setAccessibilityElement(false)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        let scale = MacTheme.UIScale.factor
+        let bars = CGFloat(EffortMeter.bars)
+        return NSSize(
+            width: (bars * barWidth + (bars - 1) * gap) * scale, height: barHeight * scale)
+    }
+
+    func set(lit: Int, tint: NSColor?, rainbow: Bool, cold: Bool) {
+        self.lit = lit
+        self.tint = tint
+        self.rainbow = rainbow
+        self.cold = cold
+        invalidateIntrinsicContentSize()
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let scale = MacTheme.UIScale.factor
+        let width = barWidth * scale
+        let height = barHeight * scale
+        let step = (barWidth + gap) * scale
+        let y = (bounds.height - height) / 2
+        let base = tint ?? MacTheme.Color.secondaryLabel
+        let unlit = MacTheme.Color.label.withAlphaComponent(cold ? 0.16 : 0.2)
+        for index in 0..<EffortMeter.bars {
+            let rect = NSRect(x: CGFloat(index) * step, y: y, width: width, height: height)
+            let path = NSBezierPath(roundedRect: rect, xRadius: 1 * scale, yRadius: 1 * scale)
+            let colour: NSColor =
+                index < lit
+                ? (rainbow ? MacTheme.Color.modelRainbowLetter(index, of: EffortMeter.bars) : base)
+                : unlit
+            colour.setFill()
+            path.fill()
+        }
     }
 }
 

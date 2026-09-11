@@ -80,6 +80,7 @@ enum ParityManifest {
         case .drafts: return .implemented("draftScope")
         case .sendQueue: return .implemented("editQueued")
         case .modelEffortPicker: return .implemented("modelBarButton")
+        case .modelEffortDial: return .notApplicable("a phone has no wheel to step a level with and no chord to open a dial from; the composer bar keeps model and effort as two taps that open the same shared chooser and effort list")
         case .unifiedModelChooser: return .implemented("ModelPickerViewController")
         case .modelEffortDisplay: return .implemented("displayedModel")
         case .modelCapabilitySurfacing: return .implemented("refreshAttachmentGating")

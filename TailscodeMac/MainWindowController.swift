@@ -394,6 +394,12 @@ final class MainWindowController: NSWindowController {
             transcript.composer.sendNow()
         case .commandPalette:
             transcript.composer.openCommandPalette()
+        case .effortHotter:
+            transcript.composer.stepEffort(by: 1)
+        case .effortColder:
+            transcript.composer.stepEffort(by: -1)
+        case .modelDial:
+            transcript.composer.openModelDial()
         case .zoomIn:
             MacTheme.UIScale.step(0.1)
             applyUIScale()
@@ -560,6 +566,7 @@ final class MainWindowController: NSWindowController {
         case "commands": transcript.presentCommandCatalog()
         case "chooser": presentChooser(in: transcript)
         case "models": transcript.composer.openDemoModelChooser()
+        case "dial": transcript.composer.openDemoModelDial(popover: parts.count < 2)
         case "spend": presentSpend(for: transcript)
         case "git": presentGit(for: transcript)
         case "forge", "video":
@@ -581,7 +588,7 @@ final class MainWindowController: NSWindowController {
             FileHandle.standardError.write(
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, analytics, newchat, "
-                        + "quickask, cheatsheet, commands, chooser, models, spend, git, "
+                        + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
                         + "forge[:state], renderer, delegate\n").utf8))
         }
     }

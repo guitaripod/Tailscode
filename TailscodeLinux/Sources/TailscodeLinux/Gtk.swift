@@ -229,6 +229,28 @@ enum Gtk {
         tailscode_connect_key(widget, callback, box)
     }
 
+    /// Wheel notches on a widget: the sign of each notch, in the capture phase. Returning true
+    /// keeps the notch from scrolling whatever the widget sits in.
+    static func onScroll(
+        _ widget: UnsafeMutablePointer<GtkWidget>,
+        _ handler: @escaping @Sendable (Double) -> Bool
+    ) {
+        _ = releaseInstalled
+        let box = Unmanaged.passRetained(ScrollBox(handler)).toOpaque()
+        let callback: @convention(c) (Double, UnsafeMutableRawPointer?) -> gboolean = {
+            dy, raw in
+            guard let raw else { return 0 }
+            let box = Unmanaged<ScrollBox>.fromOpaque(raw).takeUnretainedValue()
+            return box.handler(dy) ? 1 : 0
+        }
+        tailscode_connect_scroll(widget, callback, box)
+    }
+
+    final class ScrollBox: @unchecked Sendable {
+        let handler: @Sendable (Double) -> Bool
+        init(_ handler: @escaping @Sendable (Double) -> Bool) { self.handler = handler }
+    }
+
     final class KeyBox: @unchecked Sendable {
         let handler: @Sendable (UInt32, UInt32) -> Bool
         init(_ handler: @escaping @Sendable (UInt32, UInt32) -> Bool) { self.handler = handler }

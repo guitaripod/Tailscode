@@ -66,6 +66,11 @@ final class ComposerView: NSView {
     private var chosenModel: ModelSelection?
     private var chosenEffort: String?
     private var modelSheet: ModelChooserSheet?
+    private var dialPopover: ModelDialPopover?
+    /// When the dial last closed. A transient popover closes on the mouse-down that lands on its
+    /// own pill, and the pill's action then arrives on the mouse-up — so a press meant to close
+    /// the dial would reopen it, and the moment of the close is what tells the two apart.
+    private var dialClosedAt: Date?
     private var catalogWatch: Task<Void, Never>?
 
     /// What a prompt sent outside the text box should travel with — the same model and effort
@@ -420,8 +425,8 @@ final class ComposerView: NSView {
     }
 
     private func wirePills() {
-        pills.modelRows = { [weak self] in self?.modelMenuRows() ?? [] }
-        pills.effortRows = { [weak self] in self?.effortMenuRows() ?? [] }
+        pills.onDial = { [weak self] in self?.openModelDial() }
+        pills.onDialStep = { [weak self] delta in self?.stepEffort(by: delta) }
         pills.commandRows = { [weak self] in self?.commandMenuRows() ?? [] }
         pills.attachRows = { [weak self] in self?.attachMenuRows() ?? [] }
         pills.onStop = { [weak self] in self?.onStop?() }
@@ -470,19 +475,14 @@ final class ComposerView: NSView {
             entry?.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent },
         ].compactMap { $0 }.joined(separator: " · ")
         pills.setDestination(destination)
-        pills.setModelTitle(modelPillText())
-        let effortWord = effortPillText()
-        pills.setEffortTitle(effortWord)
+        let face = ModelDial.face(
+            modelWord: modelPillText(), effort: displayedEffort(), options: effortOptions())
         let activeModel = activeModelID
-        pills.setModelTint(
-            activeModel.flatMap { ModelBadge.chip(model: $0, effort: nil) }
+        pills.setFace(
+            face,
+            modelTint: activeModel.flatMap { ModelBadge.chip(model: $0, effort: nil) }
                 .map(MacTheme.Color.modelIdentity))
-        if let effortWord, effortWord.lowercased() == Ultracode.effortLevel {
-            pills.setEffortTint(nil)
-            pills.setEffortRainbow(effortWord)
-        } else {
-            pills.setEffortTint(effortWord.flatMap(MacTheme.Color.modelEffort))
-        }
+        if let dialPopover, dialPopover.isShown { dialPopover.update(state: dialState()) }
         pills.setAttachShown(abilities.attachments)
         dropUnsendableAttachments()
         updateVimUI()
@@ -518,18 +518,17 @@ final class ComposerView: NSView {
         return nil
     }
 
-    /// What the effort pill says, or nil where the model takes no effort at all.
-    private func effortPillText() -> String? {
+    /// The level the dial shows and the wheel steps from: the pick, else the session's own
+    /// record, else what the last answer ran at — each surviving what the model takes — or nil,
+    /// which the dial draws as the server deciding.
+    private func displayedEffort() -> String? {
         let options = effortOptions()
         guard !options.isEmpty else { return nil }
         if let kept = ModelEffort.surviving(chosenEffort, options: options) { return kept }
         if let stored = ModelEffort.surviving(entry?.session.reasoningEffort, options: options) {
             return stored
         }
-        if let observed = ModelEffort.surviving(observedEffort(), options: options) {
-            return observed
-        }
-        return ModelEffort.label(nil, options: options)
+        return ModelEffort.surviving(observedEffort(), options: options)
     }
 
     private func observedEffort() -> String? {
@@ -581,59 +580,6 @@ final class ComposerView: NSView {
             profiles: ServerDirectory.shared.profiles, current: entry?.profileID,
             currentModels: models, backend: backend?.agentType, allowsServerDefault: true,
             reachable: entry.flatMap { reachableByProfile[$0.profileID] })
-    }
-
-    /// The pill offers what this person actually works with — the shared shortlist over the whole
-    /// fleet, this machine's picks first — and hands the rest to the chooser, the only surface that
-    /// can hold a catalog of two hundred and still be read. The two are the same list at two lengths.
-    private func modelMenuRows() -> [PillsRow.MenuRow] {
-        let sources = modelSources()
-        let quotas = quotasForModels?() ?? []
-        guard !models.isEmpty || sources.count > 1 else {
-            let reading =
-                ModelChooser(
-                    models: [], selected: nil,
-                    isReachable: entry.map { reachableByProfile[$0.profileID] ?? nil } ?? nil)
-                .serverReading ?? Localized.text("This server lists no models")
-            return [PillsRow.MenuRow(reading)]
-        }
-        var rows = [
-            PillsRow.MenuRow(
-                Localized.text("Server default"), checked: chosenModel == nil
-            ) { [weak self] in
-                self?.setModel(nil)
-            }
-        ]
-        for candidate in ModelChooser.shortlist(sources: sources, selected: chosenModel) {
-            let selection = candidate.selection
-            let pinned = ModelFavoritesStore.isFavorite(selection)
-            var parts: [String] = []
-            if candidate.isElsewhere { parts.append(candidate.serverName) }
-            parts.append(candidate.providerNames.joined(separator: " · "))
-            let subtitle = parts.joined(separator: " · ")
-            let wall = ModelChooser.wall(for: candidate, quotas: quotas)
-            rows.append(
-                PillsRow.MenuRow(
-                    (pinned ? "★ " : "") + candidate.name,
-                    subtitle: wall.map { "\(QuotaSurface.rowNote($0)) · \(subtitle)" } ?? subtitle,
-                    checked: candidate.carries(chosenModel)
-                ) { [weak self] in
-                    self?.handleModelPick(
-                        ModelPick(
-                            profileID: candidate.profileID, selection: selection,
-                            isElsewhere: candidate.isElsewhere, serverName: candidate.serverName,
-                            modelName: candidate.name))
-                })
-        }
-        rows.append(
-            PillsRow.MenuRow(
-                Localized.text("All models…"),
-                subtitle: ModelChooser(sources: sources, selected: chosenModel, quotas: quotas)
-                    .summary
-            ) { [weak self] in
-                self?.openModelChooser()
-            })
-        return rows
     }
 
     private func openModelChooser() {
@@ -693,30 +639,61 @@ final class ComposerView: NSView {
         onModelChanged?()
     }
 
-    private func effortMenuRows() -> [PillsRow.MenuRow] {
+    /// One notch of the wheel or one ⌃⌥ arrow: the next stop cold-to-hot from the level the dial
+    /// shows, pinned at both ends. Nothing opens; the pill is the whole answer.
+    func stepEffort(by delta: Int) {
         let options = effortOptions()
-        guard !options.isEmpty else {
-            return [PillsRow.MenuRow(Localized.text("This model has no effort control"))]
+        guard ModelEffort.isOffered(options: options) else { return }
+        let next = ModelDial.step(displayedEffort(), by: delta, options: options)
+        guard next != displayedEffort() else { return }
+        setEffort(next)
+    }
+
+    /// The dial opened on its own pill. Pressing it while open closes it, the way a menu does.
+    func openModelDial() {
+        if let dialPopover, dialPopover.isShown {
+            dialPopover.close()
+            return
         }
-        var rows = [
-            PillsRow.MenuRow(
-                Localized.text("Server default"), checked: chosenEffort == nil
-            ) { [weak self] in
-                self?.setEffort(nil)
-            }
-        ]
-        for option in options {
-            let isPower = option == Ultracode.effortLevel
-            rows.append(
-                PillsRow.MenuRow(
-                    isPower ? "\(option) ✦" : option,
-                    subtitle: isPower ? Ultracode.menuSubtitle : nil,
-                    checked: chosenEffort == option
-                ) { [weak self] in
-                    self?.setEffort(option)
-                })
-        }
-        return rows
+        if let dialClosedAt, Date().timeIntervalSince(dialClosedAt) < 0.3 { return }
+        dialPopover = ModelDialPopover.present(
+            from: pills.dialAnchor, state: dialState(),
+            onEffort: { [weak self] level in self?.setEffort(level) },
+            onPick: { [weak self] pick in self?.handleModelPick(pick) },
+            onOpenCatalog: { [weak self] in self?.openModelChooser() },
+            onStarred: { selection in ModelFavoritesStore.toggle(selection) },
+            onClosed: { [weak self] in
+                self?.dialPopover = nil
+                self?.dialClosedAt = Date()
+            })
+    }
+
+    /// The dial over the fixture fleet the chooser demo uses, so the popover can be drawn and
+    /// measured on a desk with no servers on it — `--open dial` from the command line, or
+    /// `--open dial:pill` for the closed pill alone.
+    func openDemoModelDial(popover: Bool) {
+        let options = ["low", "medium", "high", "xhigh", "max", Ultracode.effortLevel]
+        let word = "Opus"
+        pills.setFace(
+            ModelDial.face(modelWord: word, effort: "high", options: options),
+            modelTint: ModelBadge.chip(model: ModelChooserDemo.selected.modelID, effort: nil)
+                .map(MacTheme.Color.modelIdentity))
+        guard popover else { return }
+        let state = ModelDialState(
+            sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,
+            effort: "high", options: options, modelWord: word, quotas: [],
+            recents: ModelChooserDemo.recents)
+        dialPopover = ModelDialPopover.present(
+            from: pills.dialAnchor, state: state,
+            onEffort: { _ in }, onPick: { _ in }, onOpenCatalog: {}, onStarred: { _ in },
+            onClosed: { [weak self] in self?.dialPopover = nil })
+    }
+
+    private func dialState() -> ModelDialState {
+        ModelDialState(
+            sources: modelSources(), selected: chosenModel, effort: displayedEffort(),
+            options: effortOptions(), modelWord: modelPillText(),
+            quotas: quotasForModels?() ?? [])
     }
 
     private func setEffort(_ level: String?) {

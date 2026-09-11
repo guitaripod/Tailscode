@@ -131,6 +131,41 @@ void tailscode_connect_key(
     gtk_widget_add_controller(widget, controller);
 }
 
+typedef struct {
+    gboolean (*handler)(double, void *);
+    void *data;
+} TailscodeScroll;
+
+static gboolean tailscode_scroll_trampoline(
+    GtkEventControllerScroll *controller, double dx, double dy, gpointer raw) {
+    (void)controller;
+    (void)dx;
+    TailscodeScroll *box = raw;
+    return box->handler(dy, box->data);
+}
+
+static void tailscode_scroll_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodeScroll *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
+void tailscode_connect_scroll(
+    GtkWidget *widget, gboolean (*handler)(double dy, void *), void *data) {
+    TailscodeScroll *box = g_new0(TailscodeScroll, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkEventController *controller = gtk_event_controller_scroll_new(
+        GTK_EVENT_CONTROLLER_SCROLL_VERTICAL | GTK_EVENT_CONTROLLER_SCROLL_DISCRETE);
+    gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_CAPTURE);
+    g_signal_connect_data(
+        controller, "scroll", G_CALLBACK(tailscode_scroll_trampoline), box,
+        tailscode_scroll_destroy, 0);
+    gtk_widget_add_controller(widget, controller);
+}
+
 gboolean tailscode_focus_is_editable(GtkWidget *root) {
     GtkRoot *window = gtk_widget_get_root(root);
     if (!window) return FALSE;

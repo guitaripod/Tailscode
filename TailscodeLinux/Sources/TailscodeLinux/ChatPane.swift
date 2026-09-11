@@ -83,8 +83,13 @@ final class ChatPane: @unchecked Sendable {
     var entryView: UnsafeMutablePointer<GtkWidget> { editor.textView }
     private let sendButton = gtk_button_new_with_label("Send")!
     private let stopButton = gtk_button_new_with_label("⏹")!
-    private var modelButton: UnsafeMutablePointer<GtkWidget>?
-    private var effortButton: UnsafeMutablePointer<GtkWidget>?
+    private var dialButton: UnsafeMutablePointer<GtkWidget>?
+    private var dial: ModelDialPopover?
+    private let dialDot = Gtk.label("●", css: "dial-dot", selectable: false)
+    private let dialModelLabel = Gtk.label("", css: "dial-model", selectable: false)
+    private let dialSeparator = Gtk.label("·", css: "dial-sep", selectable: false)
+    private let dialEffortLabel = Gtk.label("", css: "dial-effort", selectable: false)
+    private let dialMeterSlot = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
     private var commandButton: UnsafeMutablePointer<GtkWidget>?
     private let destinationLabel = Gtk.label("", css: "row-detail", selectable: false)
     private(set) var transcriptScroller: UnsafeMutablePointer<GtkWidget>?
@@ -490,17 +495,7 @@ final class ChatPane: @unchecked Sendable {
         gtk_box_append(ptr(row), vimBadge)
         gtk_box_append(ptr(row), destinationLabel)
 
-        let model = Gtk.menuButton(Localized.text("model")) { [weak self] in
-            self?.modelRows() ?? []
-        }
-        modelButton = model
-        gtk_box_append(ptr(row), model)
-
-        let effort = Gtk.menuButton(Localized.text("effort")) { [weak self] in
-            self?.effortRows() ?? []
-        }
-        effortButton = effort
-        gtk_box_append(ptr(row), effort)
+        gtk_box_append(ptr(row), makeDialPill())
 
         let palette = Gtk.menuButton("/") { [weak self] in
             self?.commandRows() ?? []
@@ -539,6 +534,83 @@ final class ChatPane: @unchecked Sendable {
         }
         gtk_box_append(ptr(row), stopButton)
         return row
+    }
+
+    /// One pill for the model and the effort, because on a desk they are one decision: a tinted
+    /// dot, the model's word, the level's word in its own heat, and a five-bar meter that says
+    /// the tier before the word does. The wheel over it steps the level without opening anything.
+    private func makeDialPill() -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_menu_button_new()!
+        Gtk.addClass(button, "dial-pill")
+        gtk_menu_button_set_can_shrink(op(button), 1)
+        gtk_widget_set_tooltip_text(button, Localized.text("Model and effort · wheel to step the level"))
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        for widget in [dialDot, dialModelLabel, dialSeparator, dialEffortLabel] {
+            gtk_widget_set_valign(widget, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(line), widget)
+        }
+        gtk_label_set_max_width_chars(op(dialModelLabel), 22)
+        for widget in [dialSeparator, dialEffortLabel, dialMeterSlot] {
+            gtk_widget_set_visible(widget, 0)
+        }
+        Gtk.addClass(dialMeterSlot, "dial-meter-slot")
+        gtk_widget_set_valign(dialMeterSlot, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(line), dialMeterSlot)
+        gtk_menu_button_set_child(op(button), line)
+        let popover = ModelDialPopover(
+            makeState: { [weak self] in
+                self?.dialState()
+                    ?? ModelDialState(
+                        sources: [], selected: nil, effort: nil, options: [], modelWord: "")
+            },
+            onPick: { [weak self] pick in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    if pick.selection == nil, !pick.isElsewhere {
+                        self.setChosenModel(nil)
+                    } else {
+                        self.apply(pick)
+                    }
+                }
+            },
+            onEffort: { [weak self] level in
+                Gtk.onMain { [weak self] in self?.setChosenEffort(level) }
+            },
+            onOpenCatalog: { [weak self] in
+                Gtk.onMain { [weak self] in self?.openModelChooser() }
+            })
+        dial = popover
+        gtk_menu_button_set_popover(op(button), popover.popover)
+        Gtk.onScroll(button) { [weak self] dy in
+            guard dy != 0 else { return false }
+            Gtk.onMain { [weak self] in self?.stepEffort(by: dy < 0 ? 1 : -1) }
+            return true
+        }
+        dialButton = button
+        return button
+    }
+
+    /// The dial as it would open right now: this pane's fleet, pick, level and the levels the
+    /// model takes, read fresh so a wheel notch or a pick since the last open is what it shows.
+    private func dialState() -> ModelDialState {
+        ModelDialState(
+            sources: modelSources(), selected: chosenModel ?? activeSelection,
+            effort: resolvedEffort(), options: effortOptions(), modelWord: modelPillText(),
+            quotas: modelQuotas())
+    }
+
+    /// One notch of the wheel or one chord from the editor: the level moves one stop along the
+    /// model's own ladder, pinned at the ends, and the pill shows where it landed.
+    func stepEffort(by delta: Int) {
+        let options = effortOptions()
+        guard ModelEffort.isOffered(options: options) else { return }
+        let next = ModelDial.step(resolvedEffort(), by: delta, options: options)
+        guard next != resolvedEffort() else { return }
+        setChosenEffort(next)
+    }
+
+    func openModelDial() {
+        if let dialButton { gtk_menu_button_popup(op(dialButton)) }
     }
 
     /// Opening or closing a row is a reading gesture: the person's eyes are on the header they
@@ -2959,30 +3031,18 @@ final class ChatPane: @unchecked Sendable {
             entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) },
             entry?.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent },
         ].compactMap { $0 }.joined(separator: " · ")
-        let model = modelPillText()
-        let effort = effortPillText() ?? ""
+        let face = ModelDial.face(
+            modelWord: modelPillText(), effort: resolvedEffort(), options: effortOptions())
         let tint = modelTintClass() ?? ""
-        let effortTint = effortPillText().flatMap(ModelTint.effortClass) ?? ""
         let signature =
-            "\(destination)|\(model)|\(effort)|\(tint)|\(effortTint)|\(abilities.attachments)"
+            "\(destination)|\(face.modelWord)|\(face.effortWord ?? "")|\(face.heat)|\(face.isPower)|\(tint)|\(abilities.attachments)"
         guard signature != lastPillsSignature else {
             dropUnsendableAttachments()
             return
         }
         lastPillsSignature = signature
         gtk_label_set_text(op(destinationLabel), destination)
-
-        if let modelButton {
-            gtk_menu_button_set_label(op(modelButton), model)
-            applyTintClass(to: modelButton, from: modelTintClasses, chosen: modelTintClass())
-        }
-        if let effortButton {
-            let word = effortPillText()
-            gtk_widget_set_visible(effortButton, word == nil ? 0 : 1)
-            gtk_menu_button_set_label(op(effortButton), word ?? "")
-            applyTintClass(
-                to: effortButton, from: effortTintClasses, chosen: word.flatMap(ModelTint.effortClass))
-        }
+        renderDial(face)
         if let attachButton {
             gtk_widget_set_visible(attachButton, abilities.attachments ? 1 : 0)
         }
@@ -3001,9 +3061,39 @@ final class ChatPane: @unchecked Sendable {
         setNotice(ModelAbilities.dropped(refused.count))
     }
 
-    /// The composer's two pills wear the same colours the list chips do — the family's hue on the
-    /// model, the tier's heat on the effort — swapped as one class out of the set, so a change of
-    /// model repaints the pill it already has.
+    /// The pill wears the same colours the list chips do — the family's hue on the dot, the
+    /// tier's heat on the level and its bars — swapped as one class out of the set, so a change
+    /// of model repaints the pill it already has. The power's word is set letter by letter from
+    /// the shared rainbow and its bars each take a stop of it.
+    private func renderDial(_ face: DialFace) {
+        guard let dialButton else { return }
+        gtk_widget_set_tooltip_text(
+            dialButton, face.spoken + " · " + Localized.text("wheel to step the level"))
+        applyTintClass(to: dialDot, from: modelTintClasses, chosen: modelTintClass())
+        gtk_label_set_text(op(dialModelLabel), face.modelWord)
+        gtk_widget_set_visible(dialSeparator, face.showsMeter ? 1 : 0)
+        gtk_widget_set_visible(dialEffortLabel, face.showsMeter ? 1 : 0)
+        gtk_widget_set_visible(dialMeterSlot, face.showsMeter ? 1 : 0)
+        applyTintClass(
+            to: dialEffortLabel, from: effortTintClasses + ["dial-effort-server"],
+            chosen: face.isServer
+                ? "dial-effort-server" : face.effortWord.flatMap(ModelTint.effortClass))
+        if face.isPower, let word = face.effortWord {
+            gtk_label_set_markup(op(dialEffortLabel), ModelDialPopover.rainbowMarkup(word))
+        } else {
+            gtk_label_set_text(op(dialEffortLabel), face.effortWord ?? "")
+        }
+        Gtk.removeChildren(of: dialMeterSlot)
+        gtk_box_append(
+            ptr(dialMeterSlot),
+            ModelDialPopover.meter(
+                heat: face.heat, tint: face.effortWord.flatMap(ModelTint.effortClass),
+                rainbow: face.isPower))
+        for cls in ["dial-pill-power", "dial-pill-server"] { gtk_widget_remove_css_class(dialButton, cls) }
+        if face.isPower { gtk_widget_add_css_class(dialButton, "dial-pill-power") }
+        if face.isServer { gtk_widget_add_css_class(dialButton, "dial-pill-server") }
+    }
+
     private func applyTintClass(
         to button: UnsafeMutablePointer<GtkWidget>, from all: [String], chosen: String?
     ) {
@@ -3060,20 +3150,17 @@ final class ChatPane: @unchecked Sendable {
         return nil
     }
 
-    /// What the effort pill says, or nil where the model takes no effort at all — a pill reading
-    /// "no effort control" spent a permanent slot in the chrome explaining the absence of a control
-    /// nobody asked for, and on a catalog where most models have no levels it was the usual state.
-    private func effortPillText() -> String? {
+    /// The level a send from here would carry, or nil for the server deciding: the pick, else
+    /// the session's own record, else what the last answer ran at — each surviving what the
+    /// model actually takes, so a stranded level is the server's choice rather than a word.
+    private func resolvedEffort() -> String? {
         let options = effortOptions()
         guard !options.isEmpty else { return nil }
         if let kept = ModelEffort.surviving(chosenEffort, options: options) { return kept }
         if let stored = ModelEffort.surviving(entry?.session.reasoningEffort, options: options) {
             return stored
         }
-        if let observed = ModelEffort.surviving(observedEffort(), options: options) {
-            return observed
-        }
-        return ModelEffort.label(nil, options: options)
+        return ModelEffort.surviving(observedEffort(), options: options)
     }
 
     private func observedEffort() -> String? {
@@ -3103,52 +3190,6 @@ final class ChatPane: @unchecked Sendable {
             models: models,
             selection: chosenModel
                 ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) })
-    }
-
-    /// The pill offers what this person actually works with — the shared shortlist, over every
-    /// server this app is connected to — and hands the rest to the chooser, which is the only
-    /// surface that can hold a catalog of two hundred and still be read. The two are the same list
-    /// at two lengths.
-    private func modelRows() -> [(String, String?, @Sendable () -> Void)] {
-        guard !models.isEmpty else {
-            return [(Localized.text("This server lists no models"), nil, {})]
-        }
-        var rows: [(String, String?, @Sendable () -> Void)] = [
-            (Localized.text("Server default"), nil, { [weak self] in
-                Gtk.onMain { [weak self] in
-                    self?.setChosenModel(nil)
-                }
-            })
-        ]
-        let sources = modelSources()
-        let quotas = modelQuotas()
-        let starred = Set(ModelFavoritesStore.all().map(\.rawValue))
-        for candidate in ModelChooser.shortlist(
-            sources: sources, selected: chosenModel, limit: 8)
-        {
-            let providers = candidate.providerNames.joined(separator: " · ")
-            let wall = ModelChooser.wall(for: candidate, quotas: quotas)
-            let star = starred.contains(candidate.selection.rawValue) ? "★ " : ""
-            let pick = ModelPick(
-                profileID: candidate.profileID, selection: candidate.selection,
-                isElsewhere: candidate.isElsewhere, serverName: candidate.serverName,
-                modelName: candidate.name)
-            rows.append(
-                (star + candidate.name,
-                 wall.map { "\(QuotaSurface.rowNote($0)) · \(providers)" } ?? providers,
-                 { [weak self] in
-                     Gtk.onMain { [weak self] in
-                         self?.apply(pick)
-                     }
-                 }))
-        }
-        rows.append(
-            (Localized.text("All models…"),
-             ModelChooser(models: models, selected: chosenModel, quotas: quotas).summary,
-             { [weak self] in
-                 Gtk.onMain { [weak self] in self?.openModelChooser() }
-              }))
-        return rows
     }
 
     private func openModelChooser() {
@@ -3231,32 +3272,6 @@ final class ChatPane: @unchecked Sendable {
         }
         refreshPills()
         updateStatus()
-    }
-
-    private func effortRows() -> [(String, String?, @Sendable () -> Void)] {
-        let options = effortOptions()
-        guard !options.isEmpty else {
-            return [(Localized.text("This model has no effort control"), nil, {})]
-        }
-        var rows: [(String, String?, @Sendable () -> Void)] = [
-            (Localized.text("Server default"), nil, { [weak self] in
-                Gtk.onMain { [weak self] in
-                    self?.setChosenEffort(nil)
-                }
-            })
-        ]
-        for option in options {
-            let isPower = option == Ultracode.effortLevel
-            rows.append(
-                (isPower ? "\(option) ✦" : option,
-                 isPower ? Ultracode.menuSubtitle : nil,
-                 { [weak self] in
-                     Gtk.onMain { [weak self] in
-                         self?.setChosenEffort(option)
-                     }
-                 }))
-        }
-        return rows
     }
 
     private func setChosenEffort(_ level: String?) {
