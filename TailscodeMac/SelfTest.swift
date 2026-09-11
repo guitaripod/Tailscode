@@ -666,9 +666,27 @@ enum SelfTest {
                 "\(word) sets the pill to \(measured) where \(first.0) set it to \(first.1)")
         }
         try expect(first.1 > 0, "the pill has no width at all")
+        let embers = ["minimal", "low", "medium", "high"]
+        let emberWidths = embers.map { level -> (String, CGFloat) in
+            pill.setFace(
+                ModelDial.face(modelWord: "opus", effort: level, options: embers), modelTint: nil)
+            pill.layoutSubtreeIfNeeded()
+            return (level, pill.fittingSize.width)
+        }
+        guard let ember = emberWidths.first else { throw SelfTestFailure("no ember to measure") }
+        for (word, measured) in emberWidths {
+            try expect(
+                abs(measured - ember.1) < 0.5,
+                "\(word) sets the pill to \(measured) where \(ember.0) set it to \(ember.1)")
+        }
+        let minimal = ModelDial.face(modelWord: "opus", effort: "minimal", options: embers)
+        try expect(minimal.isEmber, "minimal is not read as an ember")
+        try expect(minimal.heat == 1, "minimal lights \(minimal.heat) bars rather than one")
+        let low = ModelDial.face(modelWord: "opus", effort: "low", options: embers)
+        try expect(!low.isEmber, "low is read as an ember")
         let mute = ModelDial.face(modelWord: "opus", effort: nil, options: [])
         try expect(!mute.showsMeter, "a model with no levels still shows a meter")
-        return widths.count
+        return widths.count + emberWidths.count
     }
 
     /// The paced reveal, checked where it can actually go wrong on this toolkit: every prefix the

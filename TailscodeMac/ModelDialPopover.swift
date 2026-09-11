@@ -618,7 +618,8 @@ private final class DialRungView: NSView {
         let meter = EffortMeterView()
         meter.set(
             lit: rung.heat, tint: rung.isServer ? nil : tint, rainbow: rung.isPower,
-            cold: rung.isServer, glow: rung.level.map { EffortHeat.style($0).glow } ?? 0)
+            cold: rung.isServer, glow: rung.level.map { EffortHeat.style($0).glow } ?? 0,
+            ember: rung.isEmber)
 
         let line = NSStackView(views: [key, words, meter])
         line.orientation = .horizontal

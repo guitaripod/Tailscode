@@ -346,7 +346,7 @@ final class DialPill: NSButton {
                     word, pointSize: effortWord.pointSize, colour: tint))
             meter.set(
                 lit: face.heat, tint: tint, rainbow: false, cold: false,
-                glow: EffortHeat.style(word).glow)
+                glow: EffortHeat.style(word).glow, ember: face.isEmber)
         }
         syncShimmer()
         invalidateIntrinsicContentSize()
@@ -552,7 +552,9 @@ final class EffortWordView: NSView {
 /// The five bars every effort surface draws, as bars rather than glyphs so they take a tint
 /// and keep their proportions at every type scale: rising left to right, lit bars in the tier's
 /// colour under the tier's own glow, the rest a shadow of the label's ink, the power's each a
-/// stop of the rainbow, the server's choice all cold.
+/// stop of the rainbow, the server's choice all cold, and a level under low one ember: its one
+/// bar hollow, a stroke of the tier's colour around no fill, so minimal reads as less than one
+/// bar against low's solid first.
 @MainActor
 final class EffortMeterView: NSView {
     static let glowInset: CGFloat = 4
@@ -561,7 +563,10 @@ final class EffortMeterView: NSView {
     private var tint: NSColor?
     private var rainbow = false
     private var cold = false
+    private var ember = false
     private var glow: CGFloat = 0
+    private static let emberAlpha: CGFloat = 0.9
+    private static let emberStroke: CGFloat = 1
     private let barWidth: CGFloat = 4
     private let gap: CGFloat = 2
     private static let heights: [CGFloat] = [6, 8, 10, 12, 14]
@@ -587,13 +592,17 @@ final class EffortMeterView: NSView {
 
     /// `glow` is the tier's own blur (`EffortHeat.style`), handed in with the tint rather than
     /// read back from the count, because a level the catalog does not rank lights bars by its
-    /// position and not by a name.
-    func set(lit: Int, tint: NSColor?, rainbow: Bool, cold: Bool, glow: CGFloat) {
+    /// position and not by a name. `ember` hollows every lit bar and drops its glow, which is
+    /// how a level below low keeps its one bar without being mistaken for low's.
+    func set(
+        lit: Int, tint: NSColor?, rainbow: Bool, cold: Bool, glow: CGFloat, ember: Bool = false
+    ) {
         self.lit = lit
         self.tint = tint
         self.rainbow = rainbow
         self.cold = cold
-        self.glow = rainbow ? 6 : glow
+        self.ember = ember
+        self.glow = ember ? 0 : (rainbow ? 6 : glow)
         invalidateIntrinsicContentSize()
         needsDisplay = true
     }
@@ -617,6 +626,16 @@ final class EffortMeterView: NSView {
             }
             let colour =
                 rainbow ? MacTheme.Color.modelRainbowLetter(index, of: EffortMeter.bars) : base
+            if ember {
+                let inset = Self.emberStroke / 2
+                let outline = NSBezierPath(
+                    roundedRect: rect.insetBy(dx: inset, dy: inset),
+                    xRadius: 1 * scale, yRadius: 1 * scale)
+                outline.lineWidth = Self.emberStroke
+                colour.withAlphaComponent(Self.emberAlpha).setStroke()
+                outline.stroke()
+                continue
+            }
             NSGraphicsContext.saveGraphicsState()
             if glow > 0 {
                 let shadow = NSShadow()
