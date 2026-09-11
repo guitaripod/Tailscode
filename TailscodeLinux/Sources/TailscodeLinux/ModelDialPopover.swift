@@ -318,7 +318,7 @@ final class ModelDialPopover: @unchecked Sendable {
         if !rung.isServer {
             let meter = Self.meter(
                 heat: rung.heat, tint: rung.level.flatMap(ModelTint.effortClass),
-                rainbow: rung.isPower)
+                rainbow: rung.isPower, ember: rung.isEmber)
             gtk_widget_set_valign(meter, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), meter)
         }
@@ -348,8 +348,11 @@ final class ModelDialPopover: @unchecked Sendable {
     }
 
     /// Five bars, lit to the heat: the same meter the pill wears, so what the ladder promises and
-    /// what the pill then shows are one drawing.
-    static func meter(heat: Int, tint: String?, rainbow: Bool) -> UnsafeMutablePointer<GtkWidget> {
+    /// what the pill then shows are one drawing. An ember lights its bar dimly, which is how a
+    /// level under low is told from low itself.
+    static func meter(
+        heat: Int, tint: String?, rainbow: Bool, ember: Bool = false
+    ) -> UnsafeMutablePointer<GtkWidget> {
         let meter = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
         Gtk.addClass(meter, "dial-meter")
         for index in 0..<EffortMeter.bars {
@@ -358,6 +361,7 @@ final class ModelDialPopover: @unchecked Sendable {
             Gtk.addClass(bar, "dial-bar-\(index)")
             if index < heat {
                 Gtk.addClass(bar, "dial-bar-lit")
+                if ember { Gtk.addClass(bar, "dial-bar-ember") }
                 if rainbow {
                     Gtk.addClass(bar, "dial-bar-rainbow-\(index)")
                 } else if let tint {

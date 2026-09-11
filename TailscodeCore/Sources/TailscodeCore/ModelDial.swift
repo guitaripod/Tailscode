@@ -16,17 +16,24 @@ public struct EffortRung: Sendable, Hashable, Identifiable {
     /// Bars lit out of `EffortMeter.bars`. A power lights every bar.
     public let heat: Int
     public let isPower: Bool
+    /// True for a level below low — minimal, none — whose one bar is an ember rather than a
+    /// flame: lit, but dimly, so the floor under low still has a face of its own.
+    public let isEmber: Bool
 
     public var id: String { level ?? "·server" }
     public var isServer: Bool { level == nil }
 
-    public init(level: String?, title: String, caption: String, key: Int, heat: Int, isPower: Bool) {
+    public init(
+        level: String?, title: String, caption: String, key: Int, heat: Int, isPower: Bool,
+        isEmber: Bool = false
+    ) {
         self.level = level
         self.title = title
         self.caption = caption
         self.key = key
         self.heat = heat
         self.isPower = isPower
+        self.isEmber = isEmber
     }
 }
 
@@ -49,6 +56,8 @@ public struct DialFace: Sendable, Equatable {
     public let isPower: Bool
     public let isServer: Bool
     public let spoken: String
+    /// The level sits below low: its one bar is drawn as an ember, dim rather than lit.
+    public let isEmber: Bool
     /// Every word the effort slot may show for this model, so a client can size the slot once to
     /// the widest of them: a pill that grows and shrinks as the wheel turns is a pill that jumps
     /// under the pointer, and the words to the right of it with it.
@@ -56,7 +65,7 @@ public struct DialFace: Sendable, Equatable {
 
     public init(
         modelWord: String, effortWord: String?, heat: Int, isPower: Bool, isServer: Bool,
-        spoken: String, slotWords: [String] = []
+        spoken: String, slotWords: [String] = [], isEmber: Bool = false
     ) {
         self.modelWord = modelWord
         self.effortWord = effortWord
@@ -65,6 +74,7 @@ public struct DialFace: Sendable, Equatable {
         self.isServer = isServer
         self.spoken = spoken
         self.slotWords = slotWords
+        self.isEmber = isEmber
     }
 
     /// The widest word the slot may hold, in characters — what a monospace client sizes with.
@@ -83,10 +93,12 @@ public struct DialFace: Sendable, Equatable {
 /// met keeps the catalog's order after them; ultracode is a power rather than a level and sits
 /// above everything, lighting every bar.
 public enum ModelDial {
-    /// Cold to hot. Synonyms share a rung: minimal and none are low's slate, thinking is medium's.
+    /// Cold to hot. Minimal and none sit under low at rank zero — a level of their own, not a
+    /// synonym for low — and thinking is medium's.
     public static func rank(_ level: String) -> Int? {
         switch level.lowercased() {
-        case "minimal", "none", "low": return 1
+        case "minimal", "none": return 0
+        case "low": return 1
         case "medium", "thinking": return 2
         case "high": return 3
         case "xhigh": return 4
@@ -129,16 +141,23 @@ public enum ModelDial {
     }
 
     /// Bars lit for a level, out of `EffortMeter.bars`. A known tier lights its rank so "high"
-    /// is three bars on every model; a level the table has not met is placed by where it sits
-    /// among the model's own levels; the power lights every bar; the server lights none.
+    /// is three bars on every model; the levels under low light one bar as an ember (`isEmber`);
+    /// a level the table has not met is placed by where it sits among the model's own levels;
+    /// the power lights every bar; the server lights none.
     public static func heat(_ level: String?, options: [String]) -> Int {
         guard let level else { return 0 }
         if isPower(level) { return EffortMeter.bars }
-        if let known = rank(level) { return min(EffortMeter.bars, known) }
+        if let known = rank(level) { return max(1, min(EffortMeter.bars, known)) }
         let ordered = ascending(options: options).filter { !isPower($0) }
         guard let index = ordered.firstIndex(of: level), !ordered.isEmpty else { return 1 }
         let position = Double(index + 1) / Double(ordered.count)
         return max(1, Int((position * Double(EffortMeter.bars)).rounded()))
+    }
+
+    /// Whether a level's one bar is an ember: below low, lit but dim.
+    public static func isEmber(_ level: String?) -> Bool {
+        guard let level else { return false }
+        return rank(level) == 0
     }
 
     /// What a level means, in a sentence short enough to sit under its word. The power keeps
@@ -147,7 +166,8 @@ public enum ModelDial {
         guard let level else { return Localized.text("no level sent") }
         if isPower(level) { return Ultracode.menuSubtitle }
         switch level.lowercased() {
-        case "minimal", "none": return Localized.text("no thinking at all")
+        case "none": return Localized.text("no thinking at all")
+        case "minimal": return Localized.text("the least it can think")
         case "low": return Localized.text("answers, not thinking")
         case "medium", "thinking": return Localized.text("everyday edits and reads")
         case "high": return Localized.text("thinks it through")
@@ -167,7 +187,8 @@ public enum ModelDial {
                 EffortRung(
                     level: level, title: isPower(level) ? Ultracode.menuTitle.lowercased() : level,
                     caption: caption(level), key: index + 1,
-                    heat: heat(level, options: options), isPower: isPower(level)))
+                    heat: heat(level, options: options), isPower: isPower(level),
+                    isEmber: isEmber(level)))
         }
         rungs.append(
             EffortRung(
@@ -218,7 +239,7 @@ public enum ModelDial {
         return DialFace(
             modelWord: modelWord, effortWord: word ?? Localized.text("server"),
             heat: heat(level, options: options), isPower: isPower(level), isServer: level == nil,
-            spoken: spoken, slotWords: slotWords(options: options))
+            spoken: spoken, slotWords: slotWords(options: options), isEmber: isEmber(level))
     }
 
     /// Every word the pill's effort slot can show for these levels, the server's included.

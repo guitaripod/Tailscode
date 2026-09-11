@@ -85,7 +85,8 @@ final class DialPill: @unchecked Sendable {
         Gtk.removeChildren(of: meterSlot)
         gtk_box_append(
             ptr(meterSlot),
-            ModelDialPopover.meter(heat: face.heat, tint: effortTint, rainbow: face.isPower))
+            ModelDialPopover.meter(
+                heat: face.heat, tint: effortTint, rainbow: face.isPower, ember: face.isEmber))
         for cls in ["dial-pill-power", "dial-pill-server"] {
             gtk_widget_remove_css_class(button, cls)
         }

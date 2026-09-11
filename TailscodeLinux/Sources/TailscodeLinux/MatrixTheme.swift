@@ -803,6 +803,11 @@ enum MatrixTheme {
         .dial-bar-3 { min-height: 12px; }
         .dial-bar-4 { min-height: 14px; }
         .dial-bar-lit { background-color: \(textDim); }
+        .dial-bar-lit.dial-bar-ember {
+            background-color: transparent;
+            border: 1px solid alpha(\(textDim), 0.9);
+            box-shadow: none;
+        }
         .dial-pop contents { padding: 0; border-radius: 10px; }
         .dial-search {
             \(t(.composer))
@@ -1325,6 +1330,9 @@ enum MatrixTheme {
             lines.append(
                 ".dial-bar-lit.effort-\(tier) { background-color: \(hex); "
                     + "box-shadow: 0 0 \(tierGlow(tier))px alpha(\(hex), 0.7); }")
+            lines.append(
+                ".dial-bar-lit.dial-bar-ember.effort-\(tier) { background-color: transparent; "
+                    + "border: 1px solid alpha(\(hex), 0.9); box-shadow: none; }")
             lines.append(".dial-rung.effort-\(tier) .dial-rung-title { color: \(hex); }")
             lines.append(
                 ".dial-pop button.dial-rung.effort-\(tier).dial-rung-current { "

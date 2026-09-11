@@ -23,6 +23,14 @@ struct ModelDialTests {
         #expect(ModelDial.heat("ultracode", options: claude) == EffortMeter.bars)
         #expect(ModelDial.heat(nil, options: claude) == 0)
         #expect(ModelDial.heat("thinking", options: ["none", "thinking"]) == 2)
+        #expect(ModelDial.heat("minimal", options: ["minimal", "low"]) == 1)
+        #expect(ModelDial.isEmber("minimal") && ModelDial.isEmber("none") && !ModelDial.isEmber("low"))
+        #expect(ModelDial.ascending(options: ["low", "minimal", "high"]) == ["minimal", "low", "high"])
+        let gpt = ModelDial.rungs(options: ["minimal", "low", "medium", "high"])
+        #expect(gpt.map(\.level) == ["high", "medium", "low", "minimal", nil])
+        #expect(gpt[3].isEmber && gpt[3].heat == 1 && !gpt[2].isEmber)
+        #expect(ModelDial.step("low", by: -1, options: ["minimal", "low", "high"]) == "minimal")
+        #expect(ModelDial.face(modelWord: "GPT", effort: "minimal", options: ["minimal", "low"]).isEmber)
         #expect(ModelDial.heat("shallow", options: ["shallow", "deep"]) == 3)
     }
 
