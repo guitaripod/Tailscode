@@ -596,7 +596,7 @@ private final class DialRungView: NSView {
         let title = NSTextField(labelWithString: "")
         if rung.isPower {
             title.attributedStringValue = DialPill.rainbow(
-                rung.title, font: MacTheme.Ramp.font(.rowTitleStrong))
+                rung.title, pointSize: MacTheme.Ramp.font(.rowTitleStrong).pointSize)
         } else {
             title.stringValue = rung.title
             title.font = MacTheme.Ramp.font(rung.isServer ? .rowTitle : .rowTitleStrong)
@@ -618,7 +618,7 @@ private final class DialRungView: NSView {
         let meter = EffortMeterView()
         meter.set(
             lit: rung.heat, tint: rung.isServer ? nil : tint, rainbow: rung.isPower,
-            cold: rung.isServer)
+            cold: rung.isServer, glow: rung.level.map { EffortHeat.style($0).glow } ?? 0)
 
         let line = NSStackView(views: [key, words, meter])
         line.orientation = .horizontal

@@ -46,6 +46,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkDialPill()
+            report("dial pill: \(checks) levels hold the pill's width")
+        } catch {
+            report("dial pill: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkTheme()
             report("theme: \(checks) palettes reach AppKit and keep their meanings")
         } catch {
@@ -631,6 +639,36 @@ enum SelfTest {
             "the wave leads with an accent the tokens do not know")
         checks += 1
         return checks
+    }
+
+    /// The dial's one promise a headless check can hold it to: the pill is as wide for every level
+    /// a model offers — the server's choice, the coldest word, the heaviest, the power — so the
+    /// wheel stepping through them moves nothing to the pill's right, and a face that shows no
+    /// meter is the only one allowed to be narrower.
+    private static func checkDialPill() throws -> Int {
+        func expect(_ condition: Bool, _ label: String) throws {
+            if !condition { throw SelfTestFailure(label) }
+        }
+        let options = ["low", "medium", "high", "xhigh", "max", Ultracode.effortLevel]
+        let pill = DialPill()
+        func width(at level: String?) -> CGFloat {
+            pill.setFace(
+                ModelDial.face(modelWord: "opus", effort: level, options: options),
+                modelTint: nil)
+            pill.layoutSubtreeIfNeeded()
+            return pill.fittingSize.width
+        }
+        let widths = ([nil] + options.map(Optional.some)).map { ($0 ?? "server", width(at: $0)) }
+        guard let first = widths.first else { throw SelfTestFailure("no faces to measure") }
+        for (word, measured) in widths {
+            try expect(
+                abs(measured - first.1) < 0.5,
+                "\(word) sets the pill to \(measured) where \(first.0) set it to \(first.1)")
+        }
+        try expect(first.1 > 0, "the pill has no width at all")
+        let mute = ModelDial.face(modelWord: "opus", effort: nil, options: [])
+        try expect(!mute.showsMeter, "a model with no levels still shows a meter")
+        return widths.count
     }
 
     /// The paced reveal, checked where it can actually go wrong on this toolkit: every prefix the

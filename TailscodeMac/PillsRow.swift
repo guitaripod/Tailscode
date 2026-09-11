@@ -230,7 +230,7 @@ final class DialPill: NSButton {
     private let dot = NSTextField(labelWithString: "●")
     private let modelLabel = NSTextField(labelWithString: "")
     private let separator = NSTextField(labelWithString: "·")
-    private let effortLabel = NSTextField(labelWithString: "")
+    private let effortWord = EffortWordView()
     private let meter = EffortMeterView()
     private let content = NSStackView()
     private var face: DialFace?
@@ -239,6 +239,12 @@ final class DialPill: NSButton {
     /// mouse in lines, so the threshold is one line or eight points, whichever the device sends.
     private var travel: CGFloat = 0
     private static let notch: CGFloat = 8
+    /// The power's rainbow travels along its word one stop every ninety milliseconds, on a timer
+    /// over the main run loop rather than a chained dispatch, and it runs only while the pill wears
+    /// the power, is in a window, and the desk has not asked for less motion.
+    private var shimmer: Timer?
+    private var shimmerPhase = 0
+    private static let shimmerStep: TimeInterval = 0.09
 
     init() {
         super.init(frame: .zero)
@@ -250,7 +256,7 @@ final class DialPill: NSButton {
         translatesAutoresizingMaskIntoConstraints = false
         setAccessibilityRole(.button)
 
-        for label in [dot, modelLabel, separator, effortLabel] {
+        for label in [dot, modelLabel, separator] {
             label.lineBreakMode = .byTruncatingTail
             label.setContentCompressionResistancePriority(.required, for: .horizontal)
             label.setContentHuggingPriority(.required, for: .horizontal)
@@ -259,14 +265,19 @@ final class DialPill: NSButton {
         content.orientation = .horizontal
         content.alignment = .centerY
         content.spacing = 4
-        content.setViews([dot, modelLabel, separator, effortLabel, meter], in: .center)
+        content.setViews([dot, modelLabel, separator, effortWord, meter], in: .center)
+        content.setCustomSpacing(0, after: effortWord)
         content.translatesAutoresizingMaskIntoConstraints = false
         addSubview(content)
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9),
-            content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -9),
+            content.trailingAnchor.constraint(
+                equalTo: trailingAnchor, constant: -(9 - EffortMeterView.glowInset)),
             content.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(motionPreferenceChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         restyle()
     }
 
@@ -275,7 +286,9 @@ final class DialPill: NSButton {
 
     override var intrinsicContentSize: NSSize {
         let inner = content.fittingSize
-        return NSSize(width: inner.width + 18, height: super.intrinsicContentSize.height)
+        return NSSize(
+            width: inner.width + 18 - EffortMeterView.glowInset,
+            height: super.intrinsicContentSize.height)
     }
 
     /// The labels inside are ornament: a press anywhere on the pill is a press on the pill.
@@ -283,10 +296,17 @@ final class DialPill: NSButton {
         bounds.contains(convert(point, from: superview)) ? self : nil
     }
 
+    /// A clock that ticks for a pill nobody can see is a clock for nothing: the shimmer follows
+    /// the window in and out.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        syncShimmer()
+    }
+
     func restyle() {
         let font = MacTheme.Ramp.font(.panelFootnote)
         for label in [dot, modelLabel, separator] { label.font = font }
-        effortLabel.font = MacTheme.Ramp.font(.pill)
+        effortWord.pointSize = MacTheme.Ramp.font(.pill).pointSize
         separator.textColor = MacTheme.Color.tertiaryLabel
         if let face { setFace(face, modelTint: modelTint) }
     }
@@ -298,48 +318,95 @@ final class DialPill: NSButton {
         modelLabel.stringValue = face.modelWord
         modelLabel.textColor = MacTheme.Color.label
         separator.isHidden = !face.showsMeter
-        effortLabel.isHidden = !face.showsMeter
+        effortWord.isHidden = !face.showsMeter
         meter.isHidden = !face.showsMeter
         setAccessibilityLabel(face.spoken)
         guard let word = face.effortWord else {
+            stopShimmer()
             invalidateIntrinsicContentSize()
             return
         }
+        effortWord.slot(face.slotWords.isEmpty ? [word] : face.slotWords)
         if face.isPower {
-            effortLabel.attributedStringValue = DialPill.rainbow(word, font: effortLabel.font)
-            meter.set(lit: face.heat, tint: nil, rainbow: true, cold: false)
+            shimmerPhase = 0
+            effortWord.text = DialPill.rainbow(word, pointSize: effortWord.pointSize)
+            meter.set(lit: face.heat, tint: nil, rainbow: true, cold: false, glow: 6)
         } else if face.isServer {
-            effortLabel.attributedStringValue = NSAttributedString(
+            effortWord.text = NSAttributedString(
                 string: word,
-                attributes: [
-                    .font: MacTheme.Ramp.font(.panelFootnote),
-                    .foregroundColor: MacTheme.Color.tertiaryLabel,
-                ])
-            meter.set(lit: 0, tint: nil, rainbow: false, cold: true)
+                attributes: EffortHeat.attributes(
+                    EffortHeat.Style(weight: .regular, glow: 0), pointSize: effortWord.pointSize,
+                    colour: MacTheme.Color.tertiaryLabel))
+            meter.set(lit: 0, tint: nil, rainbow: false, cold: true, glow: 0)
         } else {
             let tint = MacTheme.Color.modelEffort(word) ?? MacTheme.Color.secondaryLabel
-            effortLabel.attributedStringValue = NSAttributedString(
-                string: word, attributes: [.font: effortLabel.font as Any, .foregroundColor: tint])
-            meter.set(lit: face.heat, tint: tint, rainbow: false, cold: false)
+            effortWord.text = NSAttributedString(
+                string: word,
+                attributes: EffortHeat.attributes(
+                    word, pointSize: effortWord.pointSize, colour: tint))
+            meter.set(
+                lit: face.heat, tint: tint, rainbow: false, cold: false,
+                glow: EffortHeat.style(word).glow)
         }
+        syncShimmer()
         invalidateIntrinsicContentSize()
+        needsDisplay = true
     }
 
     /// Ultracode is a power, not a level, so its word takes no heat: it is set letter by letter
-    /// from the shared rainbow, the same stops the aura travels.
-    static func rainbow(_ word: String, font: NSFont?) -> NSAttributedString {
-        let font = font ?? MacTheme.Ramp.font(.pill)
+    /// from the shared rainbow, the same stops the aura travels, shifted by `phase` stops so the
+    /// rainbow can move along the word without one glyph moving.
+    static func rainbow(_ word: String, pointSize: CGFloat, phase: Int = 0) -> NSAttributedString {
         let text = NSMutableAttributedString()
+        let count = word.count
+        let attributes = EffortHeat.attributes(
+            Ultracode.effortLevel, pointSize: pointSize, colour: MacTheme.Color.label)
         for (index, letter) in word.enumerated() {
-            text.append(
-                NSAttributedString(
-                    string: String(letter),
-                    attributes: [
-                        .font: font,
-                        .foregroundColor: MacTheme.Color.modelRainbowLetter(index, of: word.count),
-                    ]))
+            var lettered = attributes
+            lettered[.foregroundColor] = MacTheme.Color.modelRainbowLetter(
+                ((index + phase) % count + count) % count, of: count)
+            text.append(NSAttributedString(string: String(letter), attributes: lettered))
         }
         return text
+    }
+
+    private func syncShimmer() {
+        guard let face, face.isPower, window != nil, EffortHeat.motionAllowed else {
+            stopShimmer()
+            return
+        }
+        guard shimmer == nil else { return }
+        let timer = Timer(timeInterval: DialPill.shimmerStep, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.shimmerTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        shimmer = timer
+    }
+
+    private func stopShimmer() {
+        shimmer?.invalidate()
+        shimmer = nil
+        if let face, face.isPower, let word = face.effortWord, shimmerPhase != 0 {
+            shimmerPhase = 0
+            effortWord.text = DialPill.rainbow(word, pointSize: effortWord.pointSize)
+        }
+    }
+
+    /// The phase is read off the clock rather than counted, so a tick the run loop swallowed
+    /// costs a step and not the rhythm; the string is rewritten only when the step changes.
+    private func shimmerTick() {
+        guard let face, face.isPower, let word = face.effortWord, !word.isEmpty else {
+            stopShimmer()
+            return
+        }
+        let phase = Int(Date.timeIntervalSinceReferenceDate / DialPill.shimmerStep) % word.count
+        guard phase != shimmerPhase else { return }
+        shimmerPhase = phase
+        effortWord.text = DialPill.rainbow(word, pointSize: effortWord.pointSize, phase: phase)
+    }
+
+    @objc private func motionPreferenceChanged() {
+        syncShimmer()
     }
 
     /// Up is hotter. The travel is accumulated rather than acted on per event, so a trackpad's
@@ -373,18 +440,131 @@ final class DialPill: NSButton {
     }
 }
 
+/// How hot a level is set: the word's weight climbs with the tier, and from high up its bars
+/// glow in the tier's own colour — so a tier is told by weight and light and not only by hue.
+/// The word itself never glows, because a blur under type smears it. Anything the catalog does
+/// not rank reads as low.
+enum EffortHeat {
+    struct Style {
+        let weight: NSFont.Weight
+        let glow: CGFloat
+    }
+
+    static func style(_ word: String) -> Style {
+        if ModelDial.isPower(word) { return Style(weight: .heavy, glow: 6) }
+        switch word.lowercased() {
+        case "medium", "thinking": return Style(weight: .semibold, glow: 0)
+        case "high": return Style(weight: .bold, glow: 2)
+        case "xhigh": return Style(weight: .heavy, glow: 4)
+        case "max": return Style(weight: .heavy, glow: 6)
+        default: return Style(weight: .regular, glow: 0)
+        }
+    }
+
+    /// The heaviest ink any word in a slot can wear, which is what the slot is measured with.
+    static let widest = Style(weight: .heavy, glow: 0)
+
+    static func attributes(
+        _ word: String, pointSize: CGFloat, colour: NSColor
+    ) -> [NSAttributedString.Key: Any] {
+        attributes(style(word), pointSize: pointSize, colour: colour)
+    }
+
+    static func attributes(
+        _ style: Style, pointSize: CGFloat, colour: NSColor
+    ) -> [NSAttributedString.Key: Any] {
+        [
+            .font: NSFont.monospacedSystemFont(ofSize: pointSize, weight: style.weight),
+            .foregroundColor: colour,
+        ]
+    }
+
+    static var motionAllowed: Bool {
+        !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+}
+
+/// The effort word's slot: as wide as the widest word the model's levels can put in it, measured
+/// once per set of words in the heaviest ink any of them wears, and left-aligned in that width, so
+/// the pill and everything right of it hold still while the wheel turns. It draws the string
+/// itself rather than through a text field so the width is the string's own measure and not a
+/// cell's guess at padding.
+@MainActor
+final class EffortWordView: NSView {
+    var text = NSAttributedString() {
+        didSet { needsDisplay = true }
+    }
+
+    var pointSize: CGFloat = 11 {
+        didSet {
+            guard pointSize != oldValue else { return }
+            measured = nil
+            invalidateIntrinsicContentSize()
+        }
+    }
+
+    private var words: [String] = []
+    private var measured: NSSize?
+
+    init() {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        setAccessibilityElement(false)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func slot(_ words: [String]) {
+        guard words != self.words else { return }
+        self.words = words
+        measured = nil
+        invalidateIntrinsicContentSize()
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let size = measured ?? measure()
+        return NSSize(width: ceil(size.width), height: ceil(size.height))
+    }
+
+    private func measure() -> NSSize {
+        let attributes = EffortHeat.attributes(
+            EffortHeat.widest, pointSize: pointSize, colour: MacTheme.Color.label)
+        let sizes = words.map { NSAttributedString(string: $0, attributes: attributes).size() }
+        let font = attributes[.font] as? NSFont
+        let lineHeight = font.map { $0.ascender - $0.descender + $0.leading } ?? pointSize * 1.3
+        let size = NSSize(
+            width: sizes.map(\.width).max() ?? 0,
+            height: max(lineHeight, sizes.map(\.height).max() ?? 0))
+        measured = size
+        return size
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let size = text.size()
+        let origin = NSPoint(x: 0, y: (bounds.height - size.height) / 2)
+        text.draw(at: origin)
+    }
+}
+
 /// The five bars every effort surface draws, as bars rather than glyphs so they take a tint
-/// and keep their proportions at every type scale: lit bars in the tier's colour, the rest at a
-/// fifth of the label's ink, the power in the rainbow, the server's choice all cold.
+/// and keep their proportions at every type scale: rising left to right, lit bars in the tier's
+/// colour under the tier's own glow, the rest a shadow of the label's ink, the power's each a
+/// stop of the rainbow, the server's choice all cold.
 @MainActor
 final class EffortMeterView: NSView {
+    static let glowInset: CGFloat = 4
+    private static let verticalInset: CGFloat = 6
     private var lit = 0
     private var tint: NSColor?
     private var rainbow = false
     private var cold = false
+    private var glow: CGFloat = 0
     private let barWidth: CGFloat = 4
     private let gap: CGFloat = 2
-    private let barHeight: CGFloat = 10
+    private static let heights: [CGFloat] = [6, 8, 10, 12, 14]
 
     init() {
         super.init(frame: .zero)
@@ -401,14 +581,19 @@ final class EffortMeterView: NSView {
         let scale = MacTheme.UIScale.factor
         let bars = CGFloat(EffortMeter.bars)
         return NSSize(
-            width: (bars * barWidth + (bars - 1) * gap) * scale, height: barHeight * scale)
+            width: (bars * barWidth + (bars - 1) * gap) * scale + Self.glowInset * 2,
+            height: (Self.heights.last ?? 14) * scale + Self.verticalInset * 2)
     }
 
-    func set(lit: Int, tint: NSColor?, rainbow: Bool, cold: Bool) {
+    /// `glow` is the tier's own blur (`EffortHeat.style`), handed in with the tint rather than
+    /// read back from the count, because a level the catalog does not rank lights bars by its
+    /// position and not by a name.
+    func set(lit: Int, tint: NSColor?, rainbow: Bool, cold: Bool, glow: CGFloat) {
         self.lit = lit
         self.tint = tint
         self.rainbow = rainbow
         self.cold = cold
+        self.glow = rainbow ? 6 : glow
         invalidateIntrinsicContentSize()
         needsDisplay = true
     }
@@ -416,20 +601,33 @@ final class EffortMeterView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let scale = MacTheme.UIScale.factor
         let width = barWidth * scale
-        let height = barHeight * scale
         let step = (barWidth + gap) * scale
-        let y = (bounds.height - height) / 2
+        let floor = Self.verticalInset
         let base = tint ?? MacTheme.Color.secondaryLabel
-        let unlit = MacTheme.Color.label.withAlphaComponent(cold ? 0.16 : 0.2)
+        let unlit = MacTheme.Color.label.withAlphaComponent(cold ? 0.14 : 0.18)
         for index in 0..<EffortMeter.bars {
-            let rect = NSRect(x: CGFloat(index) * step, y: y, width: width, height: height)
+            let height = Self.heights[min(index, Self.heights.count - 1)] * scale
+            let rect = NSRect(
+                x: Self.glowInset + CGFloat(index) * step, y: floor, width: width, height: height)
             let path = NSBezierPath(roundedRect: rect, xRadius: 1 * scale, yRadius: 1 * scale)
-            let colour: NSColor =
-                index < lit
-                ? (rainbow ? MacTheme.Color.modelRainbowLetter(index, of: EffortMeter.bars) : base)
-                : unlit
+            guard index < lit else {
+                unlit.setFill()
+                path.fill()
+                continue
+            }
+            let colour =
+                rainbow ? MacTheme.Color.modelRainbowLetter(index, of: EffortMeter.bars) : base
+            NSGraphicsContext.saveGraphicsState()
+            if glow > 0 {
+                let shadow = NSShadow()
+                shadow.shadowBlurRadius = glow
+                shadow.shadowOffset = .zero
+                shadow.shadowColor = colour.withAlphaComponent(0.55)
+                shadow.set()
+            }
             colour.setFill()
             path.fill()
+            NSGraphicsContext.restoreGraphicsState()
         }
     }
 }
