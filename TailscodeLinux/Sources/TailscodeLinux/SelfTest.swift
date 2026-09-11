@@ -53,6 +53,8 @@ public enum SelfTest {
             report("table: \(checks) widths measure the height they draw")
             let arrival = try checkTableArrival()
             report("table arrival: \(arrival) a draft holds its rows and the wash lands")
+            let fits = try checkTableFitsItsCard()
+            report("table fit: \(fits) a realized table draws every row inside its card")
             let sealing = try checkTableSealingOnBridgeShape()
             report("table sealing: \(sealing) a bridge message with no isStreaming stamp still drafts")
         } catch {
@@ -1444,6 +1446,77 @@ public enum SelfTest {
             checks += 1
         }
         return checks + 2
+    }
+
+    /// A table realized in a real window, laid out by GTK and fitted to its pane by the deferred
+    /// reflow, draws its last row inside its own card. Measuring an unrooted widget proves nothing
+    /// about this: the clipping lives between the scroller asking its child for a height at one
+    /// width and the child being handed another, which only a real allocation shows.
+    private static func checkTableFitsItsCard() throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        // The app's own sheet, because a row's air and a header's tracking are CSS, and a table
+        // measured without them is a table no one ever sees.
+        MatrixTheme.install()
+        let source = [
+            "| Phase | Items | gpt-oss 120B (215 tok/s), medium | gpt-oss 120B, high | Qwen 27B (146 tok/s), medium | Qwen 27B, xhigh |",
+            "|---|---|---|---|---|---|",
+            "| Speed | 27 + long prompts | 12 min | 12 min | 15 min | 15 min |",
+            "| Needle | 60 | 4 min | 5 min | 7 min | 9 min |",
+            "| MMLU-Pro | 420 | 8 min | 14 min | 15 min | 27 min |",
+            "| AIME 2025 | 120 | 15 min | 27 min | 30 min | 54 min |",
+            "| Tool calls | 60 | 1 min | 1 min | 1 min | 2 min |",
+            "| LiveCodeBench | 101 + grading | 40 min | 70 min | 75 min | 130 min |",
+            "| **Total** | | **~1.3 h** | **~2.2 h** | **~2.4 h** | **~4 h** |",
+        ]
+        guard let table = MarkdownTable.scan(source, from: 0)?.table else {
+            throw SelfTestFailure("the probe table does not parse")
+        }
+        var checks = 0
+        for width in [Int32(1480), 1100, 820, 600] {
+            let window = gtk_window_new()!
+            gtk_window_set_default_size(ptr(UnsafeMutableRawPointer(window)), width, 900)
+            let scroller = gtk_scrolled_window_new()!
+            gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+            let canvas = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+            Gtk.addClass(canvas, "transcript")
+            let row = TranscriptRow.table(table, key: "selftest-fit-\(width)")
+            gtk_box_append(ptr(canvas), row)
+            gtk_box_append(ptr(canvas), Gtk.label("after the table", css: "agent-text"))
+            gtk_scrolled_window_set_child(op(scroller), canvas)
+            gtk_window_set_child(ptr(UnsafeMutableRawPointer(window)), scroller)
+            gtk_window_present(ptr(UnsafeMutableRawPointer(window)))
+            let until = Date().addingTimeInterval(1.2)
+            while Date() < until {
+                while g_main_context_iteration(nil, 0) != 0 {}
+                usleep(4000)
+            }
+            defer { gtk_window_destroy(ptr(UnsafeMutableRawPointer(window))) }
+            guard let inner = gtk_widget_get_first_child(row),
+                let viewport = gtk_scrolled_window_get_child(op(inner)),
+                let card = gtk_viewport_get_child(op(viewport)),
+                let last = gtk_widget_get_last_child(card)
+            else { throw SelfTestFailure("the realized table lost its shape") }
+            var bounds = graphene_rect_t()
+            _ = gtk_widget_compute_bounds(last, card, &bounds)
+            let bottom = Double(bounds.origin.y + bounds.size.height)
+            let cardHeight = Double(gtk_widget_get_height(card))
+            let rowHeight = Double(gtk_widget_get_height(row))
+            var needed: Int32 = 0
+            var natural: Int32 = 0
+            gtk_widget_measure(
+                card, GTK_ORIENTATION_VERTICAL, gtk_widget_get_width(card), &needed, &natural, nil,
+                nil)
+            // `get_height` is the card's content box and `measure` counts its margin and border,
+            // which the row it sits in holds: the last band against the content, the whole card
+            // against the row.
+            guard bottom <= cardHeight + 0.5, Double(needed) <= rowHeight + 0.5 else {
+                throw SelfTestFailure(
+                    "a \(width)-wide window draws the table's last row to \(bottom) in a card "
+                        + "\(cardHeight) tall (it needs \(needed)) — the bottom is cut off")
+            }
+            checks += 1
+        }
+        return checks
     }
 
     /// The regression this whole mechanism exists to prevent: a backend that stamps nothing on the

@@ -202,8 +202,7 @@ enum TableView {
         let fold = Fold(
             key: key, table: table, columns: columns, fade: fade,
             viewport: gtk_scrolled_window_get_hadjustment(op(scroller)))
-        fold.measure()
-        fold.apply(fitting: Fold.opening)
+        fold.settle(when: card)
         if let adjustment = fold.viewport {
             Gtk.onNotify(UnsafeMutableRawPointer(adjustment), property: "page-size") { [weak fold] in
                 fold?.scheduleReflow()
@@ -364,6 +363,30 @@ enum TableView {
             Self.remember(natural, for: key)
         }
 
+        /// Measures and fits the table once it can be measured honestly, and again whenever it is
+        /// realized anew.
+        ///
+        /// A label that is not yet in a window has no ancestors, so its own class is all the style
+        /// it gets: the transcript's face and everything a cell inherits from it are missing, and a
+        /// column measured like that is narrower than the words that land in it. The cells then
+        /// wrapped on their own where the arithmetic had planned no fold, no height was pinned for
+        /// them, and the scroller — which asks its child for a height at the child's natural width —
+        /// was told a height the table only has when nothing wraps. The table drew past the bottom
+        /// of its own card. Realize is the first moment the style is the one that will be painted,
+        /// and it comes before the first allocation, so the first frame is already the right one.
+        func settle(when widget: UnsafeMutablePointer<GtkWidget>) {
+            if gtk_widget_get_root(widget) != nil { settle() }
+            Gtk.connect(UnsafeMutableRawPointer(widget), "realize") { [weak self] in self?.settle() }
+        }
+
+        private func settle() {
+            measure()
+            applied = []
+            fitting = 0
+            let room = viewport.map { gtk_adjustment_get_page_size($0) } ?? 0
+            apply(fitting: room > 1 ? room : Self.opening)
+        }
+
         func apply(fitting available: Double) {
             let room = max(TableLayout.minimumColumn, available - TableStyle.edge * 2)
             let fresh = TableLayout.widths(
@@ -376,17 +399,14 @@ enum TableView {
             applied = widths
             for (column, cells) in columns.enumerated() where column < widths.count {
                 let width = Int32(widths[column].rounded())
-                let folds = widths[column] < natural[column] - 0.5
                 for label in cells {
                     gtk_widget_set_size_request(label, width, -1)
-                    guard folds else { continue }
                     // A size request is a floor, never a ceiling: a wrapping label pinned to 139
                     // points still reports its *natural* width — the whole unbroken string — and
-                    // so still reports one line tall. The box above it believes that, gives the
-                    // table a one-line row, and the second line of the cell is drawn over
-                    // whatever comes next; a table that folded two cells lost its last row
-                    // entirely. So the fold is measured at the width it will actually get, with
-                    // GTK's own height-for-width, and that height is pinned too.
+                    // the scroller holding the table asks for heights at exactly that width, where
+                    // nothing wraps. So every cell's height at the width it will actually be given
+                    // is pinned, folded or not: a cell that wraps where the arithmetic planned no
+                    // fold must still be counted, or the table draws past the bottom of its card.
                     var low: Int32 = 0
                     var tall: Int32 = 0
                     gtk_widget_measure(label, GTK_ORIENTATION_VERTICAL, width, &low, &tall, nil, nil)
