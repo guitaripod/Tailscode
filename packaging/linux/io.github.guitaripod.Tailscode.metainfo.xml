@@ -69,6 +69,12 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.44" date="2026-09-11">
+      <description>
+        <p>Model and effort are one dial. The two menus over the composer — one for the model, one for how hard it thinks — are now a single pill: the model&#x27;s name, the level&#x27;s word and five bars that light with the heat, from a hollow ember for a model&#x27;s lowest level up to a rainbow that travels along the word for ultracode. Rolling the wheel over it or pressing Ctrl+Alt+↑ and Ctrl+Alt+↓ steps the level one notch without opening anything, and the wheel stops at the model&#x27;s lowest level the way it stops at its highest. Click the pill, or press Ctrl+Alt+M, to open the dial: your shortlist and every other machine&#x27;s models on the left, the model&#x27;s own ladder on the right. Arrows walk the models and Enter takes one, ← and → and the digits set the level the moment they land, a typed name searches the whole fleet, and the full catalog is one row further down. The pill keeps its width whatever level it says, so nothing shifts under the pointer as you step.</p>
+        <p>The quick ask wears the same dial for the machine the question is aimed at: Ctrl+Alt+↑↓ steps the level, Alt+M or Alt+E opens the shortlist, and picking a model on another machine aims the question there.</p>
+      </description>
+    </release>
     <release version="1.43" date="2026-09-11">
       <description>
         <p>Tables no longer lose their last row. A table was measured before it was in the window, so its columns came out narrower than the text drawn into them; cells wrapped where no fold was planned and the table ran past the bottom of its own card. It is now measured once it is on screen, and every cell&#x27;s height is counted at the width it actually gets.</p>
