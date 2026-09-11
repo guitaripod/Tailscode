@@ -73,6 +73,9 @@ struct ModelDialTests {
         #expect(none.effortWord == nil)
         let power = ModelDial.face(modelWord: "Fable", effort: "ultracode", options: claude)
         #expect(power.isPower && power.heat == EffortMeter.bars)
+        #expect(high.slotWidth == "ultracode".count, "the slot is sized to the widest word once")
+        #expect(high.slotWords.contains("server"))
+        #expect(none.slotWidth == 0)
     }
 
     private func state(effort: String? = "high", query: String = "") -> ModelDialState {

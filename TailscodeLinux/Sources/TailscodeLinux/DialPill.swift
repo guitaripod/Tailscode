@@ -16,6 +16,11 @@ final class DialPill: @unchecked Sendable {
     private let separator = Gtk.label("·", css: "dial-sep", selectable: false)
     private let effortLabel = Gtk.label("", css: "dial-effort", selectable: false)
     private let meterSlot = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+    /// The power's word is lit letter by letter from the rainbow, and the rainbow travels along
+    /// it on the frame clock — the one level that is a power rather than a heat is the one that
+    /// moves, on the same clock and under the same reduced-motion answer as the aura.
+    private var shimmerPhase = -1
+    private var powerWord: String?
 
     init(
         css: [String] = [], dial: ModelDialPopover, onStep: @escaping @Sendable (Int) -> Void
@@ -31,6 +36,7 @@ final class DialPill: @unchecked Sendable {
             gtk_box_append(ptr(line), widget)
         }
         gtk_label_set_max_width_chars(op(modelLabel), 22)
+        gtk_label_set_xalign(op(effortLabel), 0)
         for widget in [separator, effortLabel, meterSlot] { gtk_widget_set_visible(widget, 0) }
         Gtk.addClass(meterSlot, "dial-meter-slot")
         gtk_widget_set_valign(meterSlot, GTK_ALIGN_CENTER)
@@ -60,13 +66,20 @@ final class DialPill: @unchecked Sendable {
         for widget in [separator, effortLabel, meterSlot] {
             gtk_widget_set_visible(widget, face.showsMeter ? 1 : 0)
         }
+        gtk_label_set_width_chars(op(effortLabel), Int32(face.slotWidth))
         let effortTint = face.effortWord.flatMap(ModelTint.effortClass)
         Self.swapClass(
             on: effortLabel, among: Self.effortTintClasses + ["dial-effort-server"],
             chosen: face.isServer ? "dial-effort-server" : effortTint)
         if face.isPower, let word = face.effortWord {
+            powerWord = word
+            shimmerPhase = -1
             gtk_label_set_markup(op(effortLabel), ModelDialPopover.rainbowMarkup(word))
+            startShimmer()
         } else {
+            powerWord = nil
+            shimmerMotion?.lift()
+            shimmerMotion = nil
             gtk_label_set_text(op(effortLabel), face.effortWord ?? "")
         }
         Gtk.removeChildren(of: meterSlot)
@@ -79,6 +92,24 @@ final class DialPill: @unchecked Sendable {
         if face.isPower { gtk_widget_add_css_class(button, "dial-pill-power") }
         if face.isServer { gtk_widget_add_css_class(button, "dial-pill-server") }
     }
+
+    /// One step of the rainbow every ninety milliseconds, read off the monotonic clock rather
+    /// than counted, so a dropped frame costs a frame and not the rhythm; the markup is rewritten
+    /// only when the step actually changes, which keeps a pill that is merely on screen cheap.
+    private func startShimmer() {
+        let motion = RepeatingMotion(holding: false) { [weak self] in
+            guard let self, let word = self.powerWord else { return }
+            let phase = Int(g_get_monotonic_time() / 90_000) % max(1, word.count)
+            guard phase != self.shimmerPhase else { return }
+            self.shimmerPhase = phase
+            gtk_label_set_markup(
+                op(self.effortLabel), ModelDialPopover.rainbowMarkup(word, phase: phase))
+        }
+        shimmerMotion = motion
+        motion.lay(on: effortLabel, meaning: .working)
+    }
+
+    private var shimmerMotion: RepeatingMotion?
 
     static let modelTintClasses: [String] =
         ModelTint.Family.allCases.map(ModelTint.cssClass) + (0..<12).map { "model-hue-\($0)" }

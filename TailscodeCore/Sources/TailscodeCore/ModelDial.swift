@@ -49,10 +49,14 @@ public struct DialFace: Sendable, Equatable {
     public let isPower: Bool
     public let isServer: Bool
     public let spoken: String
+    /// Every word the effort slot may show for this model, so a client can size the slot once to
+    /// the widest of them: a pill that grows and shrinks as the wheel turns is a pill that jumps
+    /// under the pointer, and the words to the right of it with it.
+    public let slotWords: [String]
 
     public init(
         modelWord: String, effortWord: String?, heat: Int, isPower: Bool, isServer: Bool,
-        spoken: String
+        spoken: String, slotWords: [String] = []
     ) {
         self.modelWord = modelWord
         self.effortWord = effortWord
@@ -60,7 +64,11 @@ public struct DialFace: Sendable, Equatable {
         self.isPower = isPower
         self.isServer = isServer
         self.spoken = spoken
+        self.slotWords = slotWords
     }
+
+    /// The widest word the slot may hold, in characters — what a monospace client sizes with.
+    public var slotWidth: Int { slotWords.map(\.count).max() ?? 0 }
 
     public var showsMeter: Bool { effortWord != nil }
 }
@@ -210,7 +218,13 @@ public enum ModelDial {
         return DialFace(
             modelWord: modelWord, effortWord: word ?? Localized.text("server"),
             heat: heat(level, options: options), isPower: isPower(level), isServer: level == nil,
-            spoken: spoken)
+            spoken: spoken, slotWords: slotWords(options: options))
+    }
+
+    /// Every word the pill's effort slot can show for these levels, the server's included.
+    public static func slotWords(options: [String]) -> [String] {
+        ascending(options: options).map { isPower($0) ? Ultracode.menuTitle.lowercased() : $0 }
+            + [Localized.text("server")]
     }
 
     /// The footer under the popover: every key it answers, in the order a hand finds them.

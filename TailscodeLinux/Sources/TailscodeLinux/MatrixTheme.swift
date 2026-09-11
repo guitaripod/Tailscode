@@ -784,14 +784,24 @@ enum MatrixTheme {
         .dial-model { \(t(.chip)) color: \(text); }
         .dial-sep { color: \(textDim); opacity: 0.5; }
         .dial-effort { \(t(.chip)) font-weight: 700; color: \(textDim); }
-        .dial-effort.dial-effort-server { font-weight: 400; opacity: 0.8; }
+        .dial-effort.dial-effort-server { font-weight: 400; opacity: 0.7; }
+        .dial-effort.effort-low { font-weight: 400; }
+        .dial-effort.effort-medium { font-weight: 600; }
+        .dial-effort.effort-high { font-weight: 700; }
+        .dial-effort.effort-xhigh { font-weight: 800; }
+        .dial-effort.effort-max { font-weight: 800; letter-spacing: 0.04em; }
+        .dial-effort.effort-ultracode { font-weight: 800; letter-spacing: 0.05em; }
         .dial-meter { margin-left: 2px; }
         .dial-bar {
             min-width: 4px;
-            min-height: 10px;
             border-radius: 1px;
-            background-color: alpha(\(textDim), 0.22);
+            background-color: alpha(\(textDim), 0.18);
         }
+        .dial-bar-0 { min-height: 6px; }
+        .dial-bar-1 { min-height: 8px; }
+        .dial-bar-2 { min-height: 10px; }
+        .dial-bar-3 { min-height: 12px; }
+        .dial-bar-4 { min-height: 14px; }
         .dial-bar-lit { background-color: \(textDim); }
         .dial-pop contents { padding: 0; border-radius: 10px; }
         .dial-search {
@@ -1312,7 +1322,13 @@ enum MatrixTheme {
         for tier in ModelTint.effortTiers {
             guard let hex = ModelTint.effortHex(tier, in: palette) else { continue }
             lines.append(".dial-effort.effort-\(tier) { color: \(hex); }")
-            lines.append(".dial-bar-lit.effort-\(tier) { background-color: \(hex); }")
+            lines.append(
+                ".dial-bar-lit.effort-\(tier) { background-color: \(hex); "
+                    + "box-shadow: 0 0 \(tierGlow(tier))px alpha(\(hex), 0.7); }")
+            if tierGlow(tier) > 0 {
+                lines.append(
+                    ".dial-effort.effort-\(tier) { text-shadow: 0 0 \(tierGlow(tier) + 2)px alpha(\(hex), 0.55); }")
+            }
             lines.append(".dial-rung.effort-\(tier) .dial-rung-title { color: \(hex); }")
             lines.append(
                 ".dial-pop button.dial-rung.effort-\(tier).dial-rung-current { "
@@ -1321,9 +1337,24 @@ enum MatrixTheme {
         for (index, hex) in ModelTint.rainbow(letters: EffortMeter.bars, onCanvas: palette.canvas)
             .enumerated()
         {
-            lines.append(".dial-bar-rainbow-\(index) { background-color: \(hex); }")
+            lines.append(
+                ".dial-bar-rainbow-\(index) { background-color: \(hex); "
+                    + "box-shadow: 0 0 6px alpha(\(hex), 0.85); }")
         }
+        lines.append(
+            ".dial-effort.effort-ultracode { text-shadow: 0 0 8px alpha(\(palette.text), 0.45); }")
         return lines.joined(separator: "\n        ")
+    }
+
+    /// How far a tier's light spills: the cool tiers sit flat, the hot ones glow, and the glow
+    /// grows with the heat so the levels are told apart at a glance rather than by reading.
+    private static func tierGlow(_ tier: String) -> Int {
+        switch tier {
+        case "high": return 2
+        case "xhigh": return 4
+        case "max": return 6
+        default: return 0
+        }
     }
 
     /// The shared rainbow as a low-alpha wash a word stays readable on: the same stops the aura

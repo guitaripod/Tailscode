@@ -355,6 +355,7 @@ final class ModelDialPopover: @unchecked Sendable {
         for index in 0..<EffortMeter.bars {
             let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             Gtk.addClass(bar, "dial-bar")
+            Gtk.addClass(bar, "dial-bar-\(index)")
             if index < heat {
                 Gtk.addClass(bar, "dial-bar-lit")
                 if rainbow {
@@ -368,9 +369,14 @@ final class ModelDialPopover: @unchecked Sendable {
         return meter
     }
 
-    /// The power's word, one letter per rainbow stop, held to the canvas's contrast floor.
-    static func rainbowMarkup(_ word: String) -> String {
-        let colours = ModelTint.rainbow(letters: word.count, onCanvas: MatrixTheme.palette.canvas)
+    /// The power's word, one letter per rainbow stop, held to the canvas's contrast floor;
+    /// `phase` rotates the stops along the word so the rainbow can travel.
+    static func rainbowMarkup(_ word: String, phase: Int = 0) -> String {
+        var colours = ModelTint.rainbow(letters: word.count, onCanvas: MatrixTheme.palette.canvas)
+        if !colours.isEmpty {
+            let shift = ((phase % colours.count) + colours.count) % colours.count
+            colours = Array(colours[shift...] + colours[..<shift])
+        }
         return zip(word, colours).map { letter, hex in
             "<span foreground=\"\(hex)\">\(PangoMarkdown.escape(String(letter)))</span>"
         }.joined()
