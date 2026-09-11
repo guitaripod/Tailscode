@@ -789,8 +789,8 @@ enum MatrixTheme {
         .dial-effort.effort-medium { font-weight: 600; }
         .dial-effort.effort-high { font-weight: 700; }
         .dial-effort.effort-xhigh { font-weight: 800; }
-        .dial-effort.effort-max { font-weight: 800; letter-spacing: 0.04em; }
-        .dial-effort.effort-ultracode { font-weight: 800; letter-spacing: 0.05em; }
+        .dial-effort.effort-max { font-weight: 800; }
+        .dial-effort.effort-ultracode { font-weight: 800; }
         .dial-meter { margin-left: 2px; }
         .dial-bar {
             min-width: 4px;
@@ -1325,10 +1325,6 @@ enum MatrixTheme {
             lines.append(
                 ".dial-bar-lit.effort-\(tier) { background-color: \(hex); "
                     + "box-shadow: 0 0 \(tierGlow(tier))px alpha(\(hex), 0.7); }")
-            if tierGlow(tier) > 0 {
-                lines.append(
-                    ".dial-effort.effort-\(tier) { text-shadow: 0 0 \(tierGlow(tier) + 2)px alpha(\(hex), 0.55); }")
-            }
             lines.append(".dial-rung.effort-\(tier) .dial-rung-title { color: \(hex); }")
             lines.append(
                 ".dial-pop button.dial-rung.effort-\(tier).dial-rung-current { "
@@ -1341,13 +1337,12 @@ enum MatrixTheme {
                 ".dial-bar-rainbow-\(index) { background-color: \(hex); "
                     + "box-shadow: 0 0 6px alpha(\(hex), 0.85); }")
         }
-        lines.append(
-            ".dial-effort.effort-ultracode { text-shadow: 0 0 8px alpha(\(palette.text), 0.45); }")
         return lines.joined(separator: "\n        ")
     }
 
-    /// How far a tier's light spills: the cool tiers sit flat, the hot ones glow, and the glow
-    /// grows with the heat so the levels are told apart at a glance rather than by reading.
+    /// How far a tier's bars spill their light: the cool tiers sit flat, the hot ones glow, and
+    /// the glow grows with the heat so the levels are told apart at a glance rather than by
+    /// reading. The word itself stays sharp — a glow under type is a smear, not a signal.
     private static func tierGlow(_ tier: String) -> Int {
         switch tier {
         case "high": return 2
