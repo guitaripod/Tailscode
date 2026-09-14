@@ -96,6 +96,9 @@ struct ChatListTests {
         let back = ChatArchiveRule.word(filed: false, title: "mbench", unfinished: false)
         #expect(back.contains("mbench"))
         #expect(!back.lowercased().contains("archived"))
+
+        #expect(ChatArchiveRule.door(count: 36).contains("36"), "a door states what is behind it")
+        #expect(!ChatArchiveRule.doorSubtitle.isEmpty)
     }
 
     @Test("A listing that reports a turn open is live")

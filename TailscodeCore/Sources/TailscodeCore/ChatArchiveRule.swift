@@ -28,6 +28,16 @@ public enum ChatArchiveRule {
         !isUnfinished(presence: presence, session: session)
     }
 
+    /// The door into the archive, named with what is behind it. A count is the whole argument for
+    /// opening it — nobody goes looking for an archive to find out whether it is empty — so a
+    /// client offers this only while the listing actually holds something filed.
+    public static func door(count: Int) -> String {
+        Localized.text("Archived chats (%@)", "\(count)")
+    }
+
+    public static let doorSubtitle = Localized.text(
+        "Chats filed away on this machine — nothing was deleted")
+
     /// What the list says the moment a chat is filed or brought back, because on a desktop this is
     /// one keystroke and a row leaving the list without a word reads as a lost conversation. A
     /// chat filed while it is still working says so too: it stays listed, and an archive that

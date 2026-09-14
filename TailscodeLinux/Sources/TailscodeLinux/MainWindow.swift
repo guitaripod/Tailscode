@@ -818,7 +818,15 @@ final class MainWindow: @unchecked Sendable {
                 let delegate: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in self?.presentDelegate() }
                 }
-                return [
+                let archive: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in self?.setArchiveShown(true) }
+                }
+                var rows: [(String, String, @Sendable () -> Void)] = []
+                if let filed = self?.archivedCount(), filed > 0 {
+                    rows.append(
+                        (ChatArchiveRule.door(count: filed), ChatArchiveRule.doorSubtitle, archive))
+                }
+                return rows + [
                     (ForgeEntryPoint.menuTitle,
                      ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil), forge),
                     (DelegateEntryPoint.menuTitle, DelegateEntryPoint.subtitle, delegate),
@@ -1608,7 +1616,16 @@ final class MainWindow: @unchecked Sendable {
         appendArchiveFooter(archivedTotal)
     }
 
-    /// The archive's one entry point: a quiet count at the foot of the list.
+    /// How many of the chats this window is listing are filed away, which is what the door is
+    /// allowed to claim: the store outlives the sessions in it, so a key left behind by a chat no
+    /// server has any more must not be counted as something there is to go and look at.
+    private func archivedCount() -> Int {
+        let filed = ArchivedChatStore.all()
+        return entries.count { filed.contains(ArchivedChatStore.key($0.profileID, $0.session.id)) }
+    }
+
+    /// A door at the foot of the list, and another in the menu, because the foot of a list three
+    /// hundred chats long is not a place anybody arrives at.
     private func appendArchiveFooter(_ archivedTotal: Int) {
         guard !showingArchive, archivedTotal > 0 else { return }
         let button = Gtk.button(
