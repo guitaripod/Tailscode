@@ -935,6 +935,7 @@ final class MainWindowController: NSWindowController {
             return active
         }
         sidebar.presenceSource = { [weak self] in self?.observedPresence() ?? [:] }
+        sidebar.announce = { [weak self] line in self?.toast(line) }
         splitPanes.makePane = { [weak self] in
             self?.makePane() ?? TranscriptViewController()
         }

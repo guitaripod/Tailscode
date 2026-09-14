@@ -51,6 +51,53 @@ struct ChatListTests {
             presence: presence)
     }
 
+    @Test("The archive may not hide a conversation that is still going")
+    func archiveKeepsUnfinishedChats() {
+        let filed = row(entry(active: false, carrying: BackgroundWork(tasks: 2, task: "mbench")))
+        #expect(filed.isUnfinished)
+        #expect(!filed.mayBeFiledAway, "background work will speak again on its own")
+
+        let turn = row(entry(active: true))
+        #expect(turn.isUnfinished)
+        let asked = row(entry(active: true), presence: .awaitingApproval)
+        #expect(asked.isUnfinished)
+
+        let over = row(entry(active: false))
+        #expect(over.mayBeFiledAway)
+        let failed = row(entry(active: false), presence: .failed)
+        #expect(failed.mayBeFiledAway, "a turn that ended in an error has ended")
+
+        let unreachable = row(
+            entry(active: false, carrying: BackgroundWork(tasks: 1)), unreachable: true)
+        #expect(unreachable.state == .offline)
+        #expect(
+            unreachable.isUnfinished,
+            "a server that missed a listing cannot make the archive swallow what was working")
+    }
+
+    @Test("The same reading is available before a row is built")
+    func unfinishedFromPresenceAndSession() {
+        let working = entry(active: false, carrying: BackgroundWork(tasks: 1)).session
+        #expect(ChatArchiveRule.isUnfinished(presence: .unobserved, session: working))
+        #expect(!ChatArchiveRule.mayHide(presence: .unobserved, session: working))
+        let quiet = entry(active: false).session
+        #expect(ChatArchiveRule.mayHide(presence: .unobserved, session: quiet))
+        #expect(!ChatArchiveRule.mayHide(presence: .running(nil), session: quiet))
+    }
+
+    @Test("Filing a chat says what happened, and says when it stays listed")
+    func archiveSaysWhatItDid() {
+        let away = ChatArchiveRule.word(filed: true, title: "mbench", unfinished: false)
+        #expect(away.contains("mbench"))
+        #expect(away.contains("archive"))
+        let kept = ChatArchiveRule.word(filed: true, title: "mbench", unfinished: true)
+        #expect(kept != away, "a chat that stays listed cannot be announced as filed away")
+        #expect(kept.contains("working"))
+        let back = ChatArchiveRule.word(filed: false, title: "mbench", unfinished: false)
+        #expect(back.contains("mbench"))
+        #expect(!back.lowercased().contains("archived"))
+    }
+
     @Test("A listing that reports a turn open is live")
     func listingLiveness() {
         #expect(row(entry(active: true)).state == .live)

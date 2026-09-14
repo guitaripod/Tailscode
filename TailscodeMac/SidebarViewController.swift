@@ -51,6 +51,9 @@ final class SidebarViewController: NSViewController {
     /// open on the server and never reports a turn that stopped to ask something, so the chat a
     /// person is talking in right now leads LIVE NOW from here rather than from the next sweep.
     var presenceSource: (() -> [String: SessionPresence])?
+    /// Says one line in the window's own toast. Filing a chat away is one keystroke, so the list
+    /// tells the person what it just did rather than letting a row leave without a word.
+    var announce: ((String) -> Void)?
 
     private(set) var showingArchive = false
 
@@ -377,8 +380,13 @@ final class SidebarViewController: NSViewController {
     }
 
     func toggleArchived(_ entry: SessionEntry) {
-        ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+        let filed = ArchivedChatStore.toggle(
+            profileID: entry.profileID, sessionID: entry.session.id)
         render()
+        let row = SessionRowModel(
+            entry: entry, unreachable: false, unread: false, saved: false,
+            presence: (presenceSource?() ?? lastPresence)[ChatSelection.key(entry)] ?? .unobserved)
+        announce?(ChatArchiveRule.word(filed: filed, title: row.title, unfinished: row.isUnfinished))
     }
 
     func togglePinned(_ entry: SessionEntry) {
@@ -662,9 +670,7 @@ final class SidebarViewController: NSViewController {
                 || $0.detail.lowercased().contains(needle)
                 || ($0.snippet?.lowercased().contains(needle) ?? false)
         }
-        let active = matching.filter {
-            !isArchived($0) || $0.state == .live || $0.state == .awaitingApproval
-        }
+        let active = matching.filter { !isArchived($0) || $0.isUnfinished }
         let grouped: [(String, [SessionRowModel])] =
             showingArchive
             ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }

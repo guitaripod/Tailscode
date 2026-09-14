@@ -337,6 +337,13 @@ final class MainWindow: @unchecked Sendable {
                     }
                     FileHandle.standardOutput.write(
                         Data("OPENTAB \(self.splitHost.paneCount)\n".utf8))
+                case "archive":
+                    if let entry = self.activePane.entry {
+                        let word = self.toggleArchived(entry)
+                        let listed = self.visibleEntries.contains { $0.session.id == entry.session.id }
+                        FileHandle.standardOutput.write(
+                            Data("ARCHIVE listed=\(listed) \(word)\n".utf8))
+                    }
                 case "sections":
                     let described = self.visible.map { "\($0.state):\($0.title)" }
                         .joined(separator: " | ")
@@ -1441,9 +1448,7 @@ final class MainWindow: @unchecked Sendable {
                 || $0.detail.lowercased().contains(needle)
                 || ($0.snippet?.lowercased().contains(needle) ?? false)
         }
-        let active = matching.filter {
-            !isArchived($0) || $0.state == .live || $0.state == .awaitingApproval
-        }
+        let active = matching.filter { !isArchived($0) || $0.isUnfinished }
         let grouped: [(String, [SessionRowModel])] =
             showingArchive
             ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
@@ -1992,10 +1997,22 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    private func toggleArchived(_ entry: SessionEntry) {
-        ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+    /// Filing a chat away, and saying so: this is one keystroke, and a row that leaves the list
+    /// without a word reads as a conversation the app lost rather than one it put away.
+    @discardableResult
+    private func toggleArchived(_ entry: SessionEntry) -> String {
+        let filed = ArchivedChatStore.toggle(
+            profileID: entry.profileID, sessionID: entry.session.id)
         SettingsFile.capture()
         renderSidebar()
+        let row = SessionRowModel(
+            entry: entry, unreachable: false, unread: false, saved: false,
+            presence: observedPresence()[SessionPinStore.key(entry.profileID, entry.session.id)]
+                ?? .unobserved)
+        let word = ChatArchiveRule.word(
+            filed: filed, title: row.title, unfinished: row.isUnfinished)
+        toast(word)
+        return word
     }
 
     private func setArchiveShown(_ shown: Bool) {

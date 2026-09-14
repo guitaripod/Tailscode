@@ -875,13 +875,11 @@ final class SessionListViewController: UIViewController {
 
     /// Whether the row would land in LIVE NOW, asked the same way `groupIntoSections` asks it, so
     /// the Live chip's count and the section's contents can never disagree. Never re-reads
-    /// liveness off the listing alone once this device is watching the turn itself.
+    /// liveness off the listing alone once this device is watching the turn itself. It is the
+    /// same reading the archive is held to (`ChatArchiveRule`), because a conversation that is
+    /// still going may not be hidden by either one.
     private func isLive(_ entry: SessionEntry) -> Bool {
-        switch presence(for: entry) {
-        case .running, .awaitingApproval, .background: return true
-        case .failed, .unobserved, .unsettled:
-            return entry.session.isWorking || entry.session.backgroundWork != nil
-        }
+        ChatArchiveRule.isUnfinished(presence: presence(for: entry), session: entry.session)
     }
 
     /// What the chips choose among: the listing with the board's scope already applied, so a

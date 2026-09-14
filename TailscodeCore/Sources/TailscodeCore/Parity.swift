@@ -276,7 +276,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .archivedChats, area: "chat list", title: "Device-local archive",
             spec:
-                "Archiving hides a session from the main list without touching the server (ArchivedChatStore); an archived view lists, restores, and explains them."),
+                "Archiving hides a session from the main list without touching the server (ArchivedChatStore); an archived view lists, restores, and explains them. It files what is over, and never hides what is still going: a turn running, a question waiting, or work the process is carrying between turns keeps the row in the list whatever the archive says (ChatArchiveRule — one reading for all three clients, taken from what was last observed rather than from the offline mark, so a server that missed a listing cannot make the archive swallow a chat that was working). The archive is device-local, so a chat hidden while it works is a chat this machine lost and every other machine still shows. Filing one says so (ChatArchiveRule.word), because on a desktop it is a single keystroke and a row that leaves the list without a word reads as a lost conversation — including when the chat stays listed because it is still working."),
         CapabilityDefinition(
             id: .deleteSession, area: "chat list", title: "Delete with optimistic removal",
             spec:
