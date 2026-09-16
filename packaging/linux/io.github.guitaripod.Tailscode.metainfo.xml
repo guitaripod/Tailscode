@@ -69,6 +69,14 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.46" date="2026-09-16">
+      <description>
+        <p>Effort levels are the model&#x27;s own on Oh My Pi. A chat on an omp server was offered Claude Code&#x27;s ladder, ultracode included, whenever the app could not find its model in the catalog — and it could not find any model reached through a gateway, because the server named it door first while the catalog keeps the door and the id apart. The app now finds the model either way, a model the catalog has never heard of gets omp&#x27;s own levels from minimal to max, and a model that takes no level shows none instead of the last model&#x27;s "low".</p>
+        <p>The archive files what is over and may not hide what is still going. A chat working in the background could be archived and vanish from the sidebar while the phone still listed it; a running turn, a waiting question or background work now keeps the row in the list whatever the archive says, and filing a chat says so.</p>
+        <p>The archive has a door you can find: its count is the first row of the ⚙ menu, saying nothing was deleted, instead of a button at the foot of a list nobody scrolls to. Shift+E still opens it, and the footer stays for whoever reaches the bottom.</p>
+        <p>A chat started in the omp terminal is named after its first prompt and says which model it runs the moment it appears in the list, without anyone opening it first; omp-bridge 0.5.5 fixes that at the source.</p>
+      </description>
+    </release>
     <release version="1.44" date="2026-09-11">
       <description>
         <p>Model and effort are one dial. The two menus over the composer — one for the model, one for how hard it thinks — are now a single pill: the model&#x27;s name, the level&#x27;s word and five bars that light with the heat, from a hollow ember for a model&#x27;s lowest level up to a rainbow that travels along the word for ultracode. Rolling the wheel over it or pressing Ctrl+Alt+↑ and Ctrl+Alt+↓ steps the level one notch without opening anything, and the wheel stops at the model&#x27;s lowest level the way it stops at its highest. Click the pill, or press Ctrl+Alt+M, to open the dial: your shortlist and every other machine&#x27;s models on the left, the model&#x27;s own ladder on the right. Arrows walk the models and Enter takes one, ← and → and the digits set the level the moment they land, a typed name searches the whole fleet, and the full catalog is one row further down. The pill keeps its width whatever level it says, so nothing shifts under the pointer as you step.</p>
