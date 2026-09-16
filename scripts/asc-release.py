@@ -17,10 +17,16 @@ Every version is set to release automatically once Apple approves it. Manual rel
 approved build sitting there until somebody presses a button — is `--manual-release` and nothing
 else.
 
+A version already waiting for review is left alone unless `--replace` says otherwise: then the
+open submission is withdrawn, the version is watched until Apple hands it back, and the new build
+goes on in the old one's place with the notes rewritten and a fresh submission made. Withdrawing
+loses the queue position, which is why it is never done by default.
+
 Usage: python3 scripts/asc-release.py <marketing-version> <build-number>
        python3 scripts/asc-release.py 1.9 25 --no-submit
        python3 scripts/asc-release.py 1.26 119 --platform=macos   # the Mac train, notes from "<version>-macos"
        python3 scripts/asc-release.py 1.39 137 --manual-release   # hold it for a hand
+       python3 scripts/asc-release.py 1.45 150 --replace          # swap the build under a version in review
 """
 import json
 import os
@@ -219,6 +225,53 @@ def ensure_game_center(version_id: str) -> None:
     print("game center declared for this version")
 
 
+IN_REVIEW_STATES = {"WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_DEVELOPER_RELEASE"}
+EDITABLE_STATES = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED", "INVALID_BINARY"}
+
+
+def version_state(version_id: str) -> str:
+    attributes = asc.get(f"/v1/appStoreVersions/{version_id}").get("data", {}).get("attributes", {})
+    return attributes.get("appVersionState") or attributes.get("appStoreState") or ""
+
+
+def open_submission() -> dict | None:
+    for row in asc.get(
+        f"/v1/apps/{APP}/reviewSubmissions", **{"limit": "10", "filter[platform]": PLATFORM}
+    ).get("data", []):
+        if row["attributes"].get("state") in {"READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW"}:
+            return row
+    return None
+
+
+def withdraw_from_review(version_id: str, marketing: str) -> None:
+    """Pulls a version back out of Apple's queue so its build can be replaced.
+
+    A submission that has been sent is cancelled; one merely assembled and never sent is simply
+    reused later. Either way the version is watched until it reads as editable again, because the
+    cancel returns before Apple has let go, and a build attached in that window is refused."""
+    submission = open_submission()
+    if submission and submission["attributes"].get("state") != "READY_FOR_REVIEW":
+        asc.patch(
+            f"/v1/reviewSubmissions/{submission['id']}",
+            {
+                "data": {
+                    "type": "reviewSubmissions",
+                    "id": submission["id"],
+                    "attributes": {"canceled": True},
+                }
+            },
+        )
+        print(f"withdrew {marketing} from review ({submission['attributes'].get('state')})")
+    for _ in range(40):
+        state = version_state(version_id)
+        if state in EDITABLE_STATES:
+            print(f"{marketing} is editable again ({state})")
+            return
+        print(f"  {marketing} still {state} …")
+        time.sleep(15)
+    die(f"{marketing} never came back out of review")
+
+
 def wait_for_build(number: str) -> dict:
     """A build is attachable only once processing says VALID, which lags the
     upload by minutes. Poll rather than guess."""
@@ -250,6 +303,11 @@ def main() -> None:
 
     version = version_record(marketing)
     version_id = version["id"]
+    state = version_state(version_id)
+    if state in IN_REVIEW_STATES:
+        if "--replace" not in sys.argv:
+            die(f"{marketing} is {state}; pass --replace to withdraw it and put build {number} on it")
+        withdraw_from_review(version_id, marketing)
     write_notes(version_id, marketing)
 
     build = wait_for_build(number)
@@ -267,17 +325,11 @@ def main() -> None:
     if not submit:
         return
 
-    open_submission = None
-    for row in asc.get(
-        f"/v1/apps/{APP}/reviewSubmissions", **{"limit": "10", "filter[platform]": PLATFORM}
-    ).get("data", []):
-        if row["attributes"].get("state") in {"READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW"}:
-            open_submission = row
-            break
-    if open_submission and open_submission["attributes"]["state"] != "READY_FOR_REVIEW":
-        print(f"already {open_submission['attributes']['state']} — nothing to submit")
+    pending = open_submission()
+    if pending and pending["attributes"]["state"] != "READY_FOR_REVIEW":
+        print(f"already {pending['attributes']['state']} — nothing to submit")
         return
-    submission = open_submission or asc.post(
+    submission = pending or asc.post(
         "/v1/reviewSubmissions",
         {
             "data": {
