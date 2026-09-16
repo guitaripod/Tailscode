@@ -1,0 +1,67 @@
+{
+  "iphone": [
+    {
+      "master": "01-live",
+      "slug": "01-agents-anywhere",
+      "headline": "Claude Code\n폰에서",
+      "subline": "opencode, Oh My Pi도 tailnet에서."
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve-remote",
+      "headline": "위험한 명령을\n어디서나 승인",
+      "subline": "한 번 허용, 항상 허용, 거부 — 턴 도중에도."
+    },
+    {
+      "master": "07-home",
+      "slug": "03-one-board",
+      "headline": "모든 머신을\n보드 하나에",
+      "subline": "라이브 턴, 프로젝트, 안읽음 — 이미 정리됨."
+    },
+    {
+      "master": "04-question",
+      "slug": "04-answer-blockers",
+      "headline": "필요할 때\n에이전트가 물어요",
+      "subline": "에이전트의 질문에 탭 한 번으로 답하세요."
+    },
+    {
+      "master": "02-work",
+      "slug": "05-real-work",
+      "headline": "diff도 명령도\n인라인으로",
+      "subline": "도구 호출이 실제 출력과 함께 펼쳐져요."
+    },
+    {
+      "master": "05-subagents",
+      "slug": "06-agent-fanout",
+      "headline": "펼쳐진 에이전트\n한눈에 보기",
+      "subline": "서브에이전트는 자신을 만든 턴 안에 도킹돼요."
+    },
+    {
+      "master": "12-git",
+      "slug": "07-repo-truth",
+      "headline": "믿기 전에\n저장소부터 확인",
+      "subline": "브랜치, 스테이지됨, 변경됨 — 머신에서 그대로."
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-month-in-numbers",
+      "headline": "이번 달을\n숫자로 보기",
+      "subline": "모든 턴에 가격을, 모든 머신을 합산."
+    },
+    {
+      "master": "11-compaction",
+      "slug": "09-compaction-seam",
+      "headline": "압축은 이음새,\n미스터리 아니에요",
+      "subline": "무엇을 남겼고, 무엇을 위해 비웠는지."
+    },
+    {
+      "master": "setup",
+      "slug": "10-verified-setup",
+      "headline": "검증된\n세 단계로 설정",
+      "subline": "내 tailnet, 내 머신, 클라우드는 없이."
+    }
+  ],
+  "ipad_headline_swap": {
+    "폰에서": "iPad에서"
+  }
+}

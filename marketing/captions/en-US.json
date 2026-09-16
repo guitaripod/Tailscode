@@ -1,0 +1,15 @@
+{
+  "iphone": [
+    {"master": "01-live", "slug": "01-agents-anywhere", "headline": "Claude Code,\nfrom your phone", "subline": "opencode and Oh My Pi too — live over your own tailnet."},
+    {"master": "03-approval", "slug": "02-approve-remote", "headline": "Approve the risky\ncommand from anywhere", "subline": "Allow once, always, or deny — mid-turn."},
+    {"master": "07-home", "slug": "03-one-board", "headline": "Every machine,\none board", "subline": "Live turns, projects, and unread — already triaged."},
+    {"master": "04-question", "slug": "04-answer-blockers", "headline": "When it needs you,\nit asks", "subline": "Answer the agent's question with a tap."},
+    {"master": "02-work", "slug": "05-real-work", "headline": "Every diff, every\ncommand, inline", "subline": "Tool calls unfold with their real output."},
+    {"master": "05-subagents", "slug": "06-agent-fanout", "headline": "A fan-out of agents,\nat a glance", "subline": "Subagents dock inside the turn that spawned them."},
+    {"master": "12-git", "slug": "07-repo-truth", "headline": "Read the repo\nbefore you trust it", "subline": "Branch, staged, changed — straight from the machine."},
+    {"master": "08-usage", "slug": "08-month-in-numbers", "headline": "The month\nin numbers", "subline": "Every turn priced, every machine counted."},
+    {"master": "11-compaction", "slug": "09-compaction-seam", "headline": "Compaction is a seam,\nnot a mystery", "subline": "What was kept, and what it made room for."},
+    {"master": "setup", "slug": "10-verified-setup", "headline": "Three steps,\neach one verified", "subline": "Your tailnet, your machines, no cloud between."}
+  ],
+  "ipad_headline_swap": {"from your phone": "on your iPad"}
+}

@@ -1,0 +1,67 @@
+{
+  "iphone": [
+    {
+      "master": "01-live",
+      "slug": "01-agents-anywhere",
+      "headline": "Claude Code,\nvom iPhone aus",
+      "subline": "opencode und Oh My Pi auch — live über dein eigenes Tailnet."
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve-remote",
+      "headline": "Riskanter Befehl,\nFreigabe unterwegs",
+      "subline": "Einmal, immer oder nie erlauben — mitten im Zug."
+    },
+    {
+      "master": "07-home",
+      "slug": "03-one-board",
+      "headline": "Jede Maschine,\nein Board",
+      "subline": "Live-Züge, Projekte und Ungelesenes — schon sortiert."
+    },
+    {
+      "master": "04-question",
+      "slug": "04-answer-blockers",
+      "headline": "Wenn nötig,\nfragt der Agent",
+      "subline": "Beantworte die Frage des Agenten mit einem Tipp."
+    },
+    {
+      "master": "02-work",
+      "slug": "05-real-work",
+      "headline": "Jeder Diff, jeder\nBefehl, inline",
+      "subline": "Tool-Aufrufe entfalten sich mit echter Ausgabe."
+    },
+    {
+      "master": "05-subagents",
+      "slug": "06-agent-fanout",
+      "headline": "Ein Schwarm Agenten\nauf einen Blick",
+      "subline": "Subagenten docken im Zug an, der sie gestartet hat."
+    },
+    {
+      "master": "12-git",
+      "slug": "07-repo-truth",
+      "headline": "Lies das Repo,\nbevor du vertraust",
+      "subline": "Branch, staged, geändert — direkt von der Maschine."
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-month-in-numbers",
+      "headline": "Der Monat\nin Zahlen",
+      "subline": "Jeder Zug bepreist, jede Maschine gezählt."
+    },
+    {
+      "master": "11-compaction",
+      "slug": "09-compaction-seam",
+      "headline": "Komprimierung ist\neine Naht",
+      "subline": "Was blieb, und wofür es Platz machte."
+    },
+    {
+      "master": "setup",
+      "slug": "10-verified-setup",
+      "headline": "Drei Schritte,\njeder geprüft",
+      "subline": "Dein Tailnet, deine Maschinen, keine Cloud dazwischen."
+    }
+  ],
+  "ipad_headline_swap": {
+    "vom iPhone aus": "vom iPad aus"
+  }
+}

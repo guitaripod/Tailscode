@@ -8,12 +8,14 @@
 #   scripts/shots.sh                 # all shots (iPhone masters)
 #   scripts/shots.sh --ipad          # the same set on a 13" iPad
 #   scripts/shots.sh 07-home 08-usage
+#   TAILSCODE_SHOT_LOCALE=de-DE scripts/shots.sh   # the app in German, to marketing/appstore/l10n/de-DE/iphone
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE=com.guitaripod.tailscode
 DEVICE_NAME=TailscodeShots
 DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max
+LOCALE="${TAILSCODE_SHOT_LOCALE:-en-US}"
 OUT="$ROOT/marketing/appstore/iphone"
 if [ "${1:-}" = "--ipad" ]; then
   shift
@@ -21,6 +23,28 @@ if [ "${1:-}" = "--ipad" ]; then
   DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB
   OUT="$ROOT/marketing/appstore/ipad"
 fi
+if [ "$LOCALE" != "en-US" ]; then
+  OUT="$ROOT/marketing/appstore/l10n/$LOCALE/$( [ "$DEVICE_NAME" = TailscodeShotsPad ] && echo ipad || echo iphone )"
+fi
+
+# The store locale's language and region, as the launch arguments simctl hands the app.
+# The demo content is scripted in English; this switches the chrome the captions sit over.
+language_args() {
+  case "$1" in
+    en-US) echo "" ;;
+    de-DE) echo "-AppleLanguages (de) -AppleLocale de_DE" ;;
+    es-ES) echo "-AppleLanguages (es) -AppleLocale es_ES" ;;
+    fr-FR) echo "-AppleLanguages (fr) -AppleLocale fr_FR" ;;
+    it) echo "-AppleLanguages (it) -AppleLocale it_IT" ;;
+    pt-BR) echo "-AppleLanguages (pt-BR) -AppleLocale pt_BR" ;;
+    ja) echo "-AppleLanguages (ja) -AppleLocale ja_JP" ;;
+    ko) echo "-AppleLanguages (ko) -AppleLocale ko_KR" ;;
+    zh-Hans) echo "-AppleLanguages (zh-Hans) -AppleLocale zh_CN" ;;
+    zh-Hant) echo "-AppleLanguages (zh-Hant) -AppleLocale zh_TW" ;;
+    *) echo "unknown locale $1" >&2; exit 1 ;;
+  esac
+}
+LANGUAGE_ARGS="$(language_args "$LOCALE")"
 
 # name | launch args | env (space separated KEY=VALUE) | seconds to settle
 # "welcome" and "setup" run against a fresh install with no demo backend: they are
@@ -83,7 +107,7 @@ capture() {
   xcrun simctl terminate "$device" "$BUNDLE" >/dev/null 2>&1 || true
   local prefixed=(FOO=bar)
   for pair in $envs; do prefixed+=("SIMCTL_CHILD_${pair}"); done
-  env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args >/dev/null
+  env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
   sleep "$delay"
   xcrun simctl io "$device" screenshot "$OUT/$name.png" >/dev/null 2>&1
   echo "  $name.png"

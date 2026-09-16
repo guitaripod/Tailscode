@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Push the localized store listing — subtitle, keywords, promotional text, description — to
-every locale on every version that is still editable — docs/asc-listing-l10n.json for the iPhone
+"""Push the localized store listing — name, subtitle, keywords, promotional text, description — to
+every locale on every version that is still editable, creating a locale the store does not have yet — docs/asc-listing-l10n.json for the iPhone
 train, docs/asc-listing-l10n-macos.json for the Mac's, which sells a window rather than a Lock Screen.
 
 The subtitle lives on the app info (shared by every version and platform); keywords, promo and
@@ -58,25 +58,41 @@ def push(books, marketing):
     info = next((i for i in infos if i["attributes"].get("appStoreState") in EDITABLE), None)
     if info is None:
         die("no editable app info — the subtitle is locked until a version is reopened")
-    for loc in asc.get(f"/v1/appInfos/{info['id']}/appInfoLocalizations")["data"]:
-        locale = loc["attributes"]["locale"]
-        entry = book.get(locale)
-        if not entry:
-            continue
-        asc.patch(f"/v1/appInfoLocalizations/{loc['id']}", {"data": {
-            "type": "appInfoLocalizations", "id": loc["id"],
-            "attributes": {"subtitle": entry["subtitle"]}}})
-        back = asc.get(f"/v1/appInfoLocalizations/{loc['id']}")["data"]["attributes"]["subtitle"]
-        if back != entry["subtitle"]:
-            die(f"subtitle {locale} did not stick: {back!r}")
-        print(f"subtitle {locale}: {back}")
+    existing = {loc["attributes"]["locale"]: loc
+                for loc in asc.get(f"/v1/appInfos/{info['id']}/appInfoLocalizations")["data"]}
+    for locale, entry in book.items():
+        attrs = {"subtitle": entry["subtitle"]}
+        if entry.get("name"):
+            attrs["name"] = entry["name"]
+        loc = existing.get(locale)
+        if loc is None:
+            loc = asc.post("/v1/appInfoLocalizations", {"data": {
+                "type": "appInfoLocalizations", "attributes": {"locale": locale, **attrs},
+                "relationships": {"appInfo": {"data": {"type": "appInfos", "id": info["id"]}}}}})["data"]
+            print(f"app info {locale}: created")
+        else:
+            asc.patch(f"/v1/appInfoLocalizations/{loc['id']}", {"data": {
+                "type": "appInfoLocalizations", "id": loc["id"], "attributes": attrs}})
+        back = asc.get(f"/v1/appInfoLocalizations/{loc['id']}")["data"]["attributes"]
+        for key, wanted in attrs.items():
+            if back.get(key) != wanted:
+                die(f"{key} {locale} did not stick: {back.get(key)!r}")
+        print(f"app info {locale}: {back.get('name')} · {back['subtitle']}")
+    urls = json.load(open(os.path.join(ROOT, "docs/asc-metadata.json")))
     for ver in wait_editable(marketing):
         platform = ver["attributes"]["platform"]
-        for loc in asc.get(f"/v1/appStoreVersions/{ver['id']}/appStoreVersionLocalizations")["data"]:
-            locale = loc["attributes"]["locale"]
-            entry = books[platform].get(locale)
-            if not entry:
-                continue
+        present = {loc["attributes"]["locale"]: loc
+                   for loc in asc.get(f"/v1/appStoreVersions/{ver['id']}/appStoreVersionLocalizations")["data"]}
+        for locale, entry in books[platform].items():
+            loc = present.get(locale)
+            if loc is None:
+                loc = asc.post("/v1/appStoreVersionLocalizations", {"data": {
+                    "type": "appStoreVersionLocalizations",
+                    "attributes": {"locale": locale, "description": entry["description"],
+                                   "keywords": entry["keywords"], "promotionalText": entry["promo"],
+                                   "supportUrl": urls["supportUrl"], "marketingUrl": urls["marketingUrl"]},
+                    "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": ver["id"]}}}}})["data"]
+                print(f"{platform} {locale}: created")
             attrs = {"keywords": entry["keywords"], "promotionalText": entry["promo"],
                      "description": entry["description"]}
             asc.patch(f"/v1/appStoreVersionLocalizations/{loc['id']}", {"data": {

@@ -1,0 +1,67 @@
+{
+  "iphone": [
+    {
+      "master": "01-live",
+      "slug": "01-agents-anywhere",
+      "headline": "Claude Code,\ndesde tu móvil",
+      "subline": "opencode y Oh My Pi también — en vivo por tu propio tailnet."
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve-remote",
+      "headline": "Comando arriesgado,\naprobado en remoto",
+      "subline": "Permite una vez, siempre, o deniega — en pleno turno."
+    },
+    {
+      "master": "07-home",
+      "slug": "03-one-board",
+      "headline": "Cada máquina,\nun solo tablero",
+      "subline": "Turnos en vivo, proyectos y sin leer — ya organizados."
+    },
+    {
+      "master": "04-question",
+      "slug": "04-answer-blockers",
+      "headline": "Cuando te necesita,\npregunta",
+      "subline": "Responde la pregunta del agente con un toque."
+    },
+    {
+      "master": "02-work",
+      "slug": "05-real-work",
+      "headline": "Cada diff, cada\ncomando, en línea",
+      "subline": "Las herramientas se despliegan con su salida real."
+    },
+    {
+      "master": "05-subagents",
+      "slug": "06-agent-fanout",
+      "headline": "Varios agentes,\nde un vistazo",
+      "subline": "Los subagentes se acoplan al turno que los creó."
+    },
+    {
+      "master": "12-git",
+      "slug": "07-repo-truth",
+      "headline": "Lee el repo\nantes de confiar",
+      "subline": "Rama, staged, modificado — directo de la máquina."
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-month-in-numbers",
+      "headline": "El mes\nen números",
+      "subline": "Cada turno con precio, cada máquina contada."
+    },
+    {
+      "master": "11-compaction",
+      "slug": "09-compaction-seam",
+      "headline": "La compactación\nes una costura",
+      "subline": "Lo que conservó, y para qué hizo espacio."
+    },
+    {
+      "master": "setup",
+      "slug": "10-verified-setup",
+      "headline": "Tres pasos,\ncada uno verificado",
+      "subline": "Tu tailnet, tus máquinas, sin nube de por medio."
+    }
+  ],
+  "ipad_headline_swap": {
+    "desde tu móvil": "en tu iPad"
+  }
+}

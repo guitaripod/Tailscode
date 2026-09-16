@@ -155,6 +155,7 @@ enum ParityManifest {
         case .proUnlock: return .implemented("ProStore")
         case .supporterInvitation: return .implemented("SupporterCell")
         case .reviewPrompt: return .implemented("ReviewPromptCoordinator")
+        case .rateAndShare: return .implemented("AppStoreLinks")
         case .videoForge: return .implemented("VideoForgeViewController")
         case .forgeEntry: return .implemented("presentVideo")
         case .forgeSetup: return .implemented("ForgeSetupViewController")

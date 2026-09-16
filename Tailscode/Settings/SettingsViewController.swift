@@ -195,6 +195,8 @@ final class SettingsViewController: UIViewController {
         case privacy
         case support
         case licenses
+        case rate
+        case share
     }
 
     private static let privacyURL = "https://midgarcorp.cc/tailscode/privacy"
@@ -290,8 +292,19 @@ final class SettingsViewController: UIViewController {
             case "updates":
                 navigationController?.pushViewController(
                     UpdateCenterViewController(), animated: false)
+            case "about":
+                scrollToAbout()
             default:
                 break
+            }
+        }
+
+        /// Puts the About section on screen for a screenshot, which sits below a full page of
+        /// settings nobody can scroll to from a launch argument.
+        private func scrollToAbout() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, let path = self.dataSource.indexPath(for: .version) else { return }
+                self.collectionView.scrollToItem(at: path, at: .top, animated: false)
             }
         }
     #endif
@@ -716,6 +729,16 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: "lifepreserver")
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
+        case .rate:
+            content.text = String(localized: "Rate Tailscode")
+            content.image = UIImage(systemName: "star")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
+            cell.accessories = [.disclosureIndicator()]
+        case .share:
+            content.text = String(localized: "Share Tailscode")
+            content.image = UIImage(systemName: "square.and.arrow.up")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
+            cell.accessories = [.disclosureIndicator()]
         case .licenses:
             content.text = String(localized: "Acknowledgements")
             content.image = UIImage(systemName: "doc.text")
@@ -905,7 +928,7 @@ final class SettingsViewController: UIViewController {
             (.appearance, [.appearance, .toggle(.presenceOrb)]),
             (.pro, [.pro]),
             (.diagnostics, [.viewLogs, .testAll, .copyDiagnostics, .emailDiagnostics]),
-            (.about, [.version, .source, .privacy, .support, .licenses]),
+            (.about, [.version, .rate, .share, .source, .privacy, .support, .licenses]),
         ]
     }
 
@@ -1066,6 +1089,10 @@ final class SettingsViewController: UIViewController {
                 localized: "source code github open source gpl", comment: "search keywords")
         case .privacy: return String(localized: "privacy policy data", comment: "search keywords")
         case .support: return String(localized: "support help contact", comment: "search keywords")
+        case .rate:
+            return String(localized: "rate review app store stars", comment: "search keywords")
+        case .share:
+            return String(localized: "share tell a friend link", comment: "search keywords")
         case .licenses:
             return String(
                 localized: "acknowledgements licenses third party open source",
@@ -1187,6 +1214,18 @@ final class SettingsViewController: UIViewController {
         present(SFSafariViewController(url: url), animated: true)
     }
 
+    /// Hands the store listing to the share sheet, anchored on the row that asked for it so the
+    /// iPad's popover has somewhere to point.
+    private func shareApp(from indexPath: IndexPath) {
+        let sheet = UIActivityViewController(activityItems: AppStoreLinks.shareItems, applicationActivities: nil)
+        if let popover = sheet.popoverPresentationController {
+            let anchor: UIView = collectionView.cellForItem(at: indexPath) ?? collectionView
+            popover.sourceView = anchor
+            popover.sourceRect = anchor.bounds
+        }
+        present(sheet, animated: true)
+    }
+
     @objc private func done() {
         dismiss(animated: true) { [onFinish] in onFinish?() }
     }
@@ -1284,6 +1323,12 @@ extension SettingsViewController: UICollectionViewDelegate {
             open(Self.privacyURL)
         case .support:
             open(Self.supportURL)
+        case .rate:
+            Theme.Haptics.tap()
+            UIApplication.shared.open(AppStoreLinks.writeReview)
+        case .share:
+            Theme.Haptics.tap()
+            shareApp(from: indexPath)
         case .licenses:
             navigationController?.pushViewController(LicensesViewController(), animated: true)
         case .keyboardShortcuts:

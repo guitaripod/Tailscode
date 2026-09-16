@@ -1,0 +1,67 @@
+{
+  "iphone": [
+    {
+      "master": "01-live",
+      "slug": "01-agents-anywhere",
+      "headline": "Claude Code,\ndepuis votre iPhone",
+      "subline": "opencode et Oh My Pi aussi — en direct sur votre tailnet."
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve-remote",
+      "headline": "Commande risquée,\napprouvée à distance",
+      "subline": "Autorisez une fois, toujours, ou refusez — en plein tour."
+    },
+    {
+      "master": "07-home",
+      "slug": "03-one-board",
+      "headline": "Chaque machine,\nun seul tableau",
+      "subline": "Tours en direct, projets et non lus — déjà triés."
+    },
+    {
+      "master": "04-question",
+      "slug": "04-answer-blockers",
+      "headline": "Quand il a besoin\nde vous, il demande",
+      "subline": "Répondez à la question de l'agent d'un geste."
+    },
+    {
+      "master": "02-work",
+      "slug": "05-real-work",
+      "headline": "Chaque diff, chaque\ncommande, en ligne",
+      "subline": "Les outils se déploient avec leur vraie sortie."
+    },
+    {
+      "master": "05-subagents",
+      "slug": "06-agent-fanout",
+      "headline": "Une nuée d'agents,\nen un coup d'œil",
+      "subline": "Les sous-agents s'accrochent au tour qui les a lancés."
+    },
+    {
+      "master": "12-git",
+      "slug": "07-repo-truth",
+      "headline": "Lisez le dépôt\navant d'y croire",
+      "subline": "Branche, indexé, modifié — droit depuis la machine."
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-month-in-numbers",
+      "headline": "Le mois\nen chiffres",
+      "subline": "Chaque tour chiffré, chaque machine comptée."
+    },
+    {
+      "master": "11-compaction",
+      "slug": "09-compaction-seam",
+      "headline": "La compaction,\nune couture",
+      "subline": "Ce qu'elle a gardé, et la place que ça a fait."
+    },
+    {
+      "master": "setup",
+      "slug": "10-verified-setup",
+      "headline": "Trois étapes,\nchacune vérifiée",
+      "subline": "Votre tailnet, vos machines, aucun cloud entre les deux."
+    }
+  ],
+  "ipad_headline_swap": {
+    "depuis votre iPhone": "sur votre iPad"
+  }
+}

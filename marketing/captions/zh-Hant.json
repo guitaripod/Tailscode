@@ -1,0 +1,67 @@
+{
+  "iphone": [
+    {
+      "master": "01-live",
+      "slug": "01-agents-anywhere",
+      "headline": "Claude Code\n在手機上",
+      "subline": "opencode、Oh My Pi也在tailnet上運行。"
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve-remote",
+      "headline": "有風險的指令\n隨時隨地核准",
+      "subline": "允許一次、永遠允許，或拒絕——輪次進行中也行。"
+    },
+    {
+      "master": "07-home",
+      "slug": "03-one-board",
+      "headline": "每台機器\n一塊面板",
+      "subline": "即時輪次、專案、未讀——早已分類好。"
+    },
+    {
+      "master": "04-question",
+      "slug": "04-answer-blockers",
+      "headline": "需要你時\n它會開口問",
+      "subline": "輕點一下，回答智慧體的問題。"
+    },
+    {
+      "master": "02-work",
+      "slug": "05-real-work",
+      "headline": "每處 diff\n每條指令，內嵌",
+      "subline": "工具呼叫展開，附帶真實輸出。"
+    },
+    {
+      "master": "05-subagents",
+      "slug": "06-agent-fanout",
+      "headline": "智慧體展開\n一眼看盡",
+      "subline": "子智慧體停靠在產生它的那一輪裡。"
+    },
+    {
+      "master": "12-git",
+      "slug": "07-repo-truth",
+      "headline": "信任改動前\n先讀懂儲存庫",
+      "subline": "分支、已暫存、已修改——直接來自那台機器。"
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-month-in-numbers",
+      "headline": "這個月\n都在數字裡",
+      "subline": "每一輪都標價，每台機器都計入。"
+    },
+    {
+      "master": "11-compaction",
+      "slug": "09-compaction-seam",
+      "headline": "壓縮是接縫\n不是謎團",
+      "subline": "它留下了什麼，又騰出了什麼空間。"
+    },
+    {
+      "master": "setup",
+      "slug": "10-verified-setup",
+      "headline": "三個步驟\n每步都驗證",
+      "subline": "你的 tailnet，你的機器，中間沒有雲。"
+    }
+  ],
+  "ipad_headline_swap": {
+    "在手機上": "在iPad上"
+  }
+}

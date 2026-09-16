@@ -1,0 +1,67 @@
+{
+  "iphone": [
+    {
+      "master": "01-live",
+      "slug": "01-agents-anywhere",
+      "headline": "Claude Code,\ndal tuo iPhone",
+      "subline": "opencode e Oh My Pi pure — live sul tuo tailnet."
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve-remote",
+      "headline": "Comando rischioso,\napprovato a distanza",
+      "subline": "Consenti una volta, sempre, o nega — a metà turno."
+    },
+    {
+      "master": "07-home",
+      "slug": "03-one-board",
+      "headline": "Ogni macchina,\nuna sola board",
+      "subline": "Turni live, progetti e non letti — già in ordine."
+    },
+    {
+      "master": "04-question",
+      "slug": "04-answer-blockers",
+      "headline": "Quando ha bisogno\ndi te, chiede",
+      "subline": "Rispondi alla domanda dell'agente con un tocco."
+    },
+    {
+      "master": "02-work",
+      "slug": "05-real-work",
+      "headline": "Ogni diff, ogni\ncomando, in linea",
+      "subline": "Le chiamate agli strumenti si aprono con l'output reale."
+    },
+    {
+      "master": "05-subagents",
+      "slug": "06-agent-fanout",
+      "headline": "Agenti a sciame,\nin un colpo d'occhio",
+      "subline": "I subagenti si agganciano al turno che li ha lanciati."
+    },
+    {
+      "master": "12-git",
+      "slug": "07-repo-truth",
+      "headline": "Leggi il repo\nprima di fidarti",
+      "subline": "Branch, staged, modificato — dritto dalla macchina."
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-month-in-numbers",
+      "headline": "Il mese\nin numeri",
+      "subline": "Ogni turno prezzato, ogni macchina contata."
+    },
+    {
+      "master": "11-compaction",
+      "slug": "09-compaction-seam",
+      "headline": "La compattazione\nè una cucitura",
+      "subline": "Cosa ha tenuto, e per cosa ha fatto spazio."
+    },
+    {
+      "master": "setup",
+      "slug": "10-verified-setup",
+      "headline": "Tre passaggi,\nognuno verificato",
+      "subline": "Il tuo tailnet, le tue macchine, nessun cloud in mezzo."
+    }
+  ],
+  "ipad_headline_swap": {
+    "dal tuo iPhone": "sul tuo iPad"
+  }
+}

@@ -182,6 +182,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case delegateNextSteps
     case delegateSetup
     case delegateNotices
+    case rateAndShare
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -818,6 +819,10 @@ public enum CapabilityRegistry {
             id: .autoResume, area: "chat", title: "A window that closed opens by itself",
             spec:
                 "A message a spent quota stopped is held and sent again the moment the provider\u{2019}s window resets, without anybody being at the machine \u{2014} the same for a Claude Code chat and an opencode one, because the whole decision is Core\u{2019}s and neither server is asked to do anything it cannot. AutoResume is that decision and it is arithmetic on a time the provider stated, never a hopeful timer: the fire moment is the reset plus AutoResume.grace, a wall that states no reset (a prepaid balance opens when somebody pays, not on a clock) is refused in words rather than guessed at, and a reset past AutoResume.horizon is declined because holding a message written now to send it on Friday is not a convenience. What may be resumed is exactly what was never answered \u{2014} a send this device is still holding, or a turn that reached the server and produced nothing at all (ChatMessage.isAnswerless, via AutoResume.mayAskAgain); a turn that had begun writing is never asked again by a clock at any attempt count, because half an answer is a thing a person reads before deciding what comes next. At the fire moment the gauges are re-read rather than trusted (AutoResume.recheck): a wall that lifted sends, a wall still standing with a newer reset re-plans onto it, and one with nothing new to say falls onto a bounded backoff \u{2014} four tries, then it stops and says so, with the words still on the row. Every plan is written to ResumeStore with the message whole, so a phone killed at midnight still knows at eight what it was holding and why; a plan whose moment passed while nothing was running goes stale rather than firing late, and is reported (ResumeReading.missed) rather than sent into a conversation that has moved on. The wait obeys the activity doctrine \u{2014} it is settled, so it holds perfectly still and only its countdown moves \u{2014} and every word is ResumeReading\u{2019}s: the row\u{2019}s caption, the band\u{2019}s short form, the notification, the one way out (\u{201C}Don\u{2019}t wait\u{201D}), the setting\u{2019}s own title, and a sentence for each of the five reasons nothing is being waited for. A client owes the clock, the row and the setting; it decides nothing."),
+        CapabilityDefinition(
+            id: .rateAndShare, area: "settings", title: "The store is one row away, on purpose",
+            spec:
+                "The review prompt asks only when value just landed and carries no written word, so a person who wants to say something — or to hand the app to a colleague — needs a door they open themselves. Settings ▸ About carries two rows: Rate opens the store's own review form for this app, and Share hands the store listing to the platform's share sheet beside one sentence saying what the app is (AppStoreLinks), so the message is never a bare link. Neither row counts toward or resets the review policy: they are doors, not asks. A platform with no store has no such door and says so rather than showing a dead row."),
     ]
 
     public static func definition(for id: AppCapability) -> CapabilityDefinition {

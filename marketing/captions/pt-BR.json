@@ -1,0 +1,67 @@
+{
+  "iphone": [
+    {
+      "master": "01-live",
+      "slug": "01-agents-anywhere",
+      "headline": "Claude Code,\ndo seu iPhone",
+      "subline": "opencode e Oh My Pi também — ao vivo na sua tailnet."
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve-remote",
+      "headline": "Comando arriscado,\naprovado a distância",
+      "subline": "Permita uma vez, sempre, ou negue — no meio do turno."
+    },
+    {
+      "master": "07-home",
+      "slug": "03-one-board",
+      "headline": "Cada máquina,\num só painel",
+      "subline": "Turnos ao vivo, projetos e não lidos — já organizados."
+    },
+    {
+      "master": "04-question",
+      "slug": "04-answer-blockers",
+      "headline": "Quando precisa\nde você, pergunta",
+      "subline": "Responda à pergunta do agente com um toque."
+    },
+    {
+      "master": "02-work",
+      "slug": "05-real-work",
+      "headline": "Cada diff, cada\ncomando, em linha",
+      "subline": "As chamadas de ferramentas mostram a saída real."
+    },
+    {
+      "master": "05-subagents",
+      "slug": "06-agent-fanout",
+      "headline": "Um enxame de\nagentes, num relance",
+      "subline": "Subagentes se encaixam no turno que os criou."
+    },
+    {
+      "master": "12-git",
+      "slug": "07-repo-truth",
+      "headline": "Leia o repositório\nantes de confiar",
+      "subline": "Branch, staged, modificado — direto da máquina."
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-month-in-numbers",
+      "headline": "O mês\nem números",
+      "subline": "Cada turno precificado, cada máquina contada."
+    },
+    {
+      "master": "11-compaction",
+      "slug": "09-compaction-seam",
+      "headline": "A compactação\né uma costura",
+      "subline": "O que manteve, e o espaço que abriu."
+    },
+    {
+      "master": "setup",
+      "slug": "10-verified-setup",
+      "headline": "Três passos,\ncada um verificado",
+      "subline": "Sua tailnet, suas máquinas, sem nuvem no meio."
+    }
+  ],
+  "ipad_headline_swap": {
+    "do seu iPhone": "no seu iPad"
+  }
+}
