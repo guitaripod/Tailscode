@@ -69,6 +69,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.47" date="2026-09-16">
+      <description>
+        <p>A chat whose agent left a command running that will never finish no longer sits in LIVE NOW as BACKGROUND for the rest of the day. The bridge now reads every background shell against the machine and ends one that has shown no CPU time and no output for ten minutes past the budget the model gave it, saying so in the chat. A row carrying work says how long the machine has been at it, work the server found stuck reads STALLED, and Stop background work in the row&#x27;s menu ends the work yourself, with the server&#x27;s reason when it cannot.</p>
+      </description>
+    </release>
     <release version="1.46" date="2026-09-16">
       <description>
         <p>Effort levels are the model&#x27;s own on Oh My Pi. A chat on an omp server was offered Claude Code&#x27;s ladder, ultracode included, whenever the app could not find its model in the catalog — and it could not find any model reached through a gateway, because the server named it door first while the catalog keeps the door and the id apart. The app now finds the model either way, a model the catalog has never heard of gets omp&#x27;s own levels from minimal to max, and a model that takes no level shows none instead of the last model&#x27;s "low".</p>
