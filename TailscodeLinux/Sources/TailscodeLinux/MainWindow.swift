@@ -337,6 +337,14 @@ final class MainWindow: @unchecked Sendable {
                     }
                     FileHandle.standardOutput.write(
                         Data("OPENTAB \(self.splitHost.paneCount)\n".utf8))
+                case "stopwork":
+                    if let entry = self.activePane.entry, let backend = self.activePane.backend {
+                        self.stopBackgroundWork(entry, on: backend) { word in
+                            FileHandle.standardOutput.write(Data("STOPWORK \(word)\n".utf8))
+                        }
+                    } else {
+                        FileHandle.standardOutput.write(Data("STOPWORK no chat is open\n".utf8))
+                    }
                 case "archive":
                     if let entry = self.activePane.entry {
                         let word = self.toggleArchived(entry)
@@ -2017,6 +2025,26 @@ final class MainWindow: @unchecked Sendable {
     /// Filing a chat away, and saying so: this is one keystroke, and a row that leaves the list
     /// without a word reads as a conversation the app lost rather than one it put away.
     @discardableResult
+    /// Ends the work the chat's process is carrying between turns. The server says why when it
+    /// cannot, and that sentence is the toast — and what the driver prints, so the whole path is
+    /// provable headlessly.
+    private func stopBackgroundWork(
+        _ entry: SessionEntry, on backend: any CodingAgentBackend,
+        report: (@Sendable (String) -> Void)? = nil
+    ) {
+        Task { [weak self] in
+            let word: String
+            do {
+                try await backend.stopBackgroundWork(sessionID: entry.session.id)
+                word = Localized.text("Stopped the background work.")
+            } catch {
+                word = error.localizedDescription
+            }
+            Gtk.onMain { [weak self] in self?.toast(word) }
+            report?(word)
+        }
+    }
+
     private func toggleArchived(_ entry: SessionEntry) -> String {
         let filed = ArchivedChatStore.toggle(
             profileID: entry.profileID, sessionID: entry.session.id)
@@ -3085,6 +3113,14 @@ final class MainWindow: @unchecked Sendable {
                  ? Localized.text("Back into the chat list")
                  : Localized.text("Out of the list, kept on the server"),
              { [weak self] in Gtk.onMain { [weak self] in self?.toggleArchived(entry) } }))
+        if row.state.carriesBackgroundWork, let backend, backend.capabilities.supportsBackgroundStop {
+            rows.append(
+                (Localized.text("Stop background work"),
+                 Localized.text("End the command the agent left running on the machine"),
+                 { [weak self] in
+                     Gtk.onMain { [weak self] in self?.stopBackgroundWork(entry, on: backend) }
+                 }))
+        }
         let pinned = SessionPinStore.contains(
             profileID: entry.profileID, sessionID: entry.session.id)
         rows.append(

@@ -42,6 +42,41 @@ struct ChatListTests {
         #expect(gone.state == .offline, "a server that stopped answering cannot vouch for its work")
     }
 
+    /// A row carrying work says how long the machine has been at it, and work the server found
+    /// stuck wears STALLED — attention rather than life — while staying with the live rows.
+    @Test("Carried work says its age, and stuck work says so")
+    func carriedWorkSaysItsAgeAndStall() {
+        let began = Date().addingTimeInterval(-3 * 3600)
+        let aged = row(
+            entry(active: false, carrying: BackgroundWork(tasks: 1, task: "grep -rl x", since: began)))
+        #expect(aged.state == .background(tasks: 1))
+        #expect(aged.snippet == "grep -rl x · for 3h")
+
+        let stuck = row(
+            entry(
+                active: false,
+                carrying: BackgroundWork(tasks: 1, task: "grep -rl x", since: began, stalled: true)))
+        #expect(stuck.state == .stalled(tasks: 1))
+        #expect(stuck.state.isInFlight)
+        #expect(stuck.state.carriesBackgroundWork)
+        #expect(stuck.state.pill?.text == "STALLED")
+        #expect(stuck.state.activity == .stalled(tasks: 1))
+        #expect(stuck.state.icon.tone == .attention)
+        #expect(stuck.state.icon.motion == .still)
+        #expect(stuck.snippet == "grep -rl x · for 3h")
+        #expect(groupIntoSections([stuck]).first?.0 == .live)
+
+        let watched = row(
+            entry(active: false, carrying: BackgroundWork(tasks: 1)), presence: .stalled(tasks: 1))
+        #expect(watched.state == .stalled(tasks: 1))
+
+        let turn = row(entry(active: true, carrying: BackgroundWork(tasks: 1, stalled: true)))
+        #expect(turn.state == .live, "an open turn is the louder fact")
+
+        let several = row(entry(active: false, carrying: BackgroundWork(tasks: 2, since: began)))
+        #expect(several.snippet == "for 3h")
+    }
+
     private func row(
         _ entry: SessionEntry, unreachable: Bool = false, saved: Bool = false,
         presence: SessionPresence = .unobserved

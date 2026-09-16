@@ -1266,6 +1266,13 @@ enum SelfTest {
                 && SessionRowState.background(tasks: 1).isInFlight
                 && ActivityKind.inBackground(tasks: 1).icon.motion.isAnimated,
             "work a process carries between turns reads as work, sits with the live rows, and breathes")
+        try expect(
+            SessionRowState.stalled(tasks: 1).activity == .stalled(tasks: 1)
+                && SessionRowState.stalled(tasks: 1).isInFlight
+                && SessionRowState.stalled(tasks: 1).carriesBackgroundWork
+                && ActivityKind.stalled(tasks: 1).icon.tone == .attention
+                && !ActivityKind.stalled(tasks: 1).icon.motion.isAnimated,
+            "work the server found stuck stays with the live rows, wears attention, and holds still")
         return checks
     }
 

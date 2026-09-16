@@ -13,6 +13,9 @@ final class SessionActivity {
         case idle, running, awaitingApproval
         /// No turn is open here, and the conversation's process is still working on the machine.
         case background(tasks: Int)
+        /// No turn is open here, the process still holds the chat, and the server has found the
+        /// work stuck.
+        case stalled(tasks: Int)
     }
 
     static let didChange = Notification.Name("SessionActivity.didChange")
@@ -94,7 +97,7 @@ final class SessionActivity {
     ) {
         guard let status = Self.status(for: presence) else { return }
         switch status {
-        case .running, .awaitingApproval, .background:
+        case .running, .awaitingApproval, .background, .stalled:
             retained[sessionID] = keepAlive
         case .idle:
             retained[sessionID] = nil
@@ -134,6 +137,7 @@ final class SessionActivity {
         case .running: return .running
         case .awaitingApproval: return .awaitingApproval
         case .background(let tasks): return .background(tasks: tasks)
+        case .stalled(let tasks): return .stalled(tasks: tasks)
         case .failed, .unobserved: return .idle
         }
     }

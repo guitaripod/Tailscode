@@ -325,6 +325,13 @@ public enum ActivityKind: Sendable, Equatable {
     /// agent speaks again on its own when the work ends — so it breathes like work, because it is,
     /// and never reads as a conversation that finished.
     case inBackground(tasks: Int)
+    /// Work between turns the machine has found stuck: a shell past the budget the model gave it
+    /// that has spent no CPU time and written nothing for a whole window. Still in flight — the
+    /// process is resident and the row stays with the live ones — but it is not going to speak
+    /// again on its own, so it wears attention rather than life and holds still rather than
+    /// breathing. The server ends such shells itself unless told not to; a person can end one from
+    /// any client.
+    case stalled(tasks: Int)
     case compacting
     case needsApproval
     case needsAnswer
@@ -339,8 +346,8 @@ public enum ActivityKind: Sendable, Equatable {
     /// state has one, because a count of zero is not a state anybody sees.
     public static let everyState: [ActivityKind] = [
         .working, .thinking, .writing, .usingTool(name: "Bash", kind: .shell),
-        .delegating(active: 3), .inBackground(tasks: 1), .compacting, .needsApproval,
-        .needsAnswer, .queued(2), .connecting, .reconnecting, .failed, .offline,
+        .delegating(active: 3), .inBackground(tasks: 1), .stalled(tasks: 1), .compacting,
+        .needsApproval, .needsAnswer, .queued(2), .connecting, .reconnecting, .failed, .offline,
     ]
 
     public var icon: ActivityIcon {
@@ -360,6 +367,9 @@ public enum ActivityKind: Sendable, Equatable {
             return ActivityIcon(symbol: "person.2", glyph: "▸", tone: .live, motion: .working)
         case .inBackground:
             return ActivityIcon(symbol: "timer", glyph: "◔", tone: .live, motion: .working)
+        case .stalled:
+            return ActivityIcon(
+                symbol: "exclamationmark.circle", glyph: "◔", tone: .attention, motion: .still)
         case .compacting:
             return ActivityIcon(
                 symbol: "rectangle.compress.vertical", glyph: "◐", cycle: ActivityIcon.sweepCycle,
@@ -403,6 +413,10 @@ public enum ActivityKind: Sendable, Equatable {
             return tasks == 1
                 ? Localized.text("Background task")
                 : Localized.text("%@ background tasks", "\(tasks)")
+        case .stalled(let tasks):
+            return tasks == 1
+                ? Localized.text("Stuck background task")
+                : Localized.text("%@ stuck background tasks", "\(tasks)")
         case .compacting: return Localized.text("Compacting")
         case .needsApproval: return Localized.text("Needs you")
         case .needsAnswer: return Localized.text("Needs an answer")
@@ -426,6 +440,7 @@ public enum ActivityKind: Sendable, Equatable {
         case .usingTool(let name, _): return name
         case .delegating: return Localized.text("agents")
         case .inBackground(let tasks): return Localized.text("%@ in background", "\(tasks)")
+        case .stalled(let tasks): return Localized.text("%@ stuck", "\(tasks)")
         case .compacting: return Localized.text("compacting")
         case .needsApproval: return Localized.text("y / a / n")
         case .needsAnswer: return Localized.text("answer")
@@ -453,6 +468,13 @@ public enum ActivityKind: Sendable, Equatable {
                 : Localized.text(
                     "%@ background tasks are running on the machine; the agent continues when they finish",
                     "\(tasks)")
+        case .stalled(let tasks):
+            return tasks == 1
+                ? Localized.text(
+                    "A background task is stuck on the machine: nothing has moved for a long time. Stop it, or wait")
+                : Localized.text(
+                    "%@ background tasks are stuck on the machine: nothing has moved for a long time. Stop them, or wait",
+                    "\(tasks)")
         case .compacting: return Localized.text("Compacting the conversation")
         case .needsApproval: return Localized.text("Waiting for your approval")
         case .needsAnswer: return Localized.text("Waiting for your answer")
@@ -469,8 +491,8 @@ public enum ActivityKind: Sendable, Equatable {
     /// but nothing is running in either.
     public var isInFlight: Bool {
         switch self {
-        case .working, .thinking, .writing, .usingTool, .delegating, .inBackground, .compacting,
-            .needsApproval, .needsAnswer:
+        case .working, .thinking, .writing, .usingTool, .delegating, .inBackground, .stalled,
+            .compacting, .needsApproval, .needsAnswer:
             return true
         case .queued, .connecting, .reconnecting, .failed, .offline:
             return false

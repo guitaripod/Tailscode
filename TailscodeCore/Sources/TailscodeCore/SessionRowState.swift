@@ -15,6 +15,11 @@ public enum SessionRowState: Equatable, Sendable {
     /// command it started and stepped back from. It will speak again on its own, so the row stays
     /// with the live ones rather than falling in with everything that finished.
     case background(tasks: Int)
+    /// No turn is open, the process is still resident, and the machine has found its work stuck:
+    /// a shell past its budget with nothing moving for a whole window. It stays with the live
+    /// rows — the process is holding the conversation — but it will not speak again on its own,
+    /// and the row says so rather than promising a finish that is not coming.
+    case stalled(tasks: Int)
     /// Listed, reachable, nothing running.
     case idle
     /// Its server did not answer the last listing; what is shown is remembered, not observed.
@@ -27,6 +32,7 @@ public enum SessionRowState: Equatable, Sendable {
         case .awaitingApproval: return (Localized.text("NEEDS YOU"), "pill-needs")
         case .live: return (Localized.text("LIVE"), "pill-live")
         case .background: return (Localized.text("BACKGROUND"), "pill-live")
+        case .stalled: return (Localized.text("STALLED"), "pill-needs")
         case .failed: return (Localized.text("FAILED"), "pill-error")
         case .offline: return (Localized.text("OFFLINE"), "pill-offline")
         case .idle: return nil
@@ -42,9 +48,19 @@ public enum SessionRowState: Equatable, Sendable {
         case .awaitingApproval: return .needsApproval
         case .live: return .working
         case .background(let tasks): return .inBackground(tasks: tasks)
+        case .stalled(let tasks): return .stalled(tasks: tasks)
         case .failed: return .failed
         case .offline: return .offline
         case .idle: return nil
+        }
+    }
+
+    /// Whether the row's process is carrying work between turns — the state a person can end
+    /// from the list, stuck or not.
+    public var carriesBackgroundWork: Bool {
+        switch self {
+        case .background, .stalled: return true
+        case .live, .awaitingApproval, .idle, .offline, .failed: return false
         }
     }
 
@@ -62,7 +78,7 @@ public enum SessionRowState: Equatable, Sendable {
     /// conversation whose process is still working between turns: it is going to speak again.
     public var isInFlight: Bool {
         switch self {
-        case .live, .awaitingApproval, .background: return true
+        case .live, .awaitingApproval, .background, .stalled: return true
         case .idle, .offline, .failed: return false
         }
     }
@@ -88,12 +104,15 @@ public enum SessionPresence: Sendable, Equatable {
     case awaitingApproval
     /// No turn is open here, and the agent's process is still carrying work for the conversation.
     case background(tasks: Int)
+    /// No turn is open here, the process is still carrying work, and the server has found that
+    /// work stuck.
+    case stalled(tasks: Int)
     /// The last turn this device watched ended in a failure.
     case failed
 
     public var isInFlight: Bool {
         switch self {
-        case .running, .awaitingApproval, .background: return true
+        case .running, .awaitingApproval, .background, .stalled: return true
         case .unobserved, .unsettled, .failed: return false
         }
     }
@@ -107,7 +126,7 @@ public enum SessionPresence: Sendable, Equatable {
         case .unsettled: return 0
         case .unobserved: return 1
         case .failed: return 2
-        case .background: return 3
+        case .background, .stalled: return 3
         case .running: return 4
         case .awaitingApproval: return 5
         }
@@ -127,7 +146,9 @@ public enum SessionPresence: Sendable, Equatable {
         if state.status == .running || state.compaction?.isRunning == true {
             return .running(step)
         }
-        if let work = state.backgroundWork { return .background(tasks: work.tasks) }
+        if let work = state.backgroundWork {
+            return work.stalled ? .stalled(tasks: work.tasks) : .background(tasks: work.tasks)
+        }
         return .unobserved
     }
 }
@@ -187,8 +208,20 @@ public struct SessionRowModel: Equatable, Sendable {
         default:
             self.snippet =
                 entry.session.isWorking
-                ? entry.session.agentTask : entry.session.backgroundWork?.task
+                ? entry.session.agentTask
+                : Self.backgroundSnippet(entry.session.backgroundWork, state: state)
         }
+    }
+
+    /// The line under a row carrying work: the task in the agent's own words, and how long the
+    /// machine has been at it. The age is the part a reader needs — a build a minute old and a
+    /// shell that has sat there since morning wear the same pill, and only the clock tells them
+    /// apart. A server too old to say when it began gets the words alone.
+    static func backgroundSnippet(_ work: BackgroundWork?, state: SessionRowState) -> String? {
+        guard state.carriesBackgroundWork, let work else { return nil }
+        let running: String? = work.since.map { Localized.text("for %@", Self.age(of: $0)) }
+        let words: [String] = [work.task, running].compactMap { $0 }
+        return words.isEmpty ? nil : words.joined(separator: " · ")
     }
 
     /// The row's second line, split into the weights a client draws it at and stripped of
@@ -218,12 +251,15 @@ public struct SessionRowModel: Equatable, Sendable {
         case .awaitingApproval: return .awaitingApproval
         case .running: return .live
         case .background(let tasks): return .background(tasks: tasks)
+        case .stalled(let tasks): return .stalled(tasks: tasks)
         case .failed where !unreachable: return .failed
         case .failed, .unobserved, .unsettled: break
         }
         if unreachable { return .offline }
         if entry.session.isWorking { return .live }
-        if let work = entry.session.backgroundWork { return .background(tasks: work.tasks) }
+        if let work = entry.session.backgroundWork {
+            return work.stalled ? .stalled(tasks: work.tasks) : .background(tasks: work.tasks)
+        }
         return .idle
     }
 

@@ -2459,6 +2459,12 @@ public enum SelfTest {
             SessionRowState.background(tasks: 1).isInFlight,
             ActivityKind.inBackground(tasks: 1).icon.motion.isAnimated
         else { throw SelfTestFailure("work carried between turns does not read as work") }
+        guard SessionRowState.stalled(tasks: 1).activity == .stalled(tasks: 1),
+            SessionRowState.stalled(tasks: 1).isInFlight,
+            SessionRowState.stalled(tasks: 1).carriesBackgroundWork,
+            ActivityKind.stalled(tasks: 1).icon.tone == .attention,
+            !ActivityKind.stalled(tasks: 1).icon.motion.isAnimated
+        else { throw SelfTestFailure("work the server found stuck does not read as stuck") }
     }
 
     /// Every motion in this client that never ends on its own, proved to ask the desk again rather

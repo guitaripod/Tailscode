@@ -13,6 +13,7 @@ enum ParityManifest {
         case .sessionRowStatus: return .implemented("observedPresence")
         case .activityIconography: return .implemented("ActivityPulse")
         case .backgroundWork: return .implemented("inBackground")
+        case .backgroundStop: return .implemented("stopBackgroundWork")
         case .bulkSelection: return .implemented("SidebarSelectionBar")
         case .bulkRangeSelection: return .implemented("rangeSelect")
         case .bulkSplit: return .implemented("openMarkedSplit")

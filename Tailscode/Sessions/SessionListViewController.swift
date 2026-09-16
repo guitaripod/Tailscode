@@ -375,6 +375,19 @@ final class SessionListViewController: UIViewController {
             archive.image = UIImage(systemName: isArchived ? "tray.and.arrow.up" : "archivebox")
             archive.backgroundColor = Theme.Color.secondaryLabel
             actions.append(archive)
+            if let row = self.rowModels[ChatSelection.key(entry)], row.state.carriesBackgroundWork,
+                self.viewModel.supportsBackgroundStop(entry)
+            {
+                let stop = UIContextualAction(
+                    style: .normal, title: String(localized: "Stop work")
+                ) { [weak self] _, _, done in
+                    self?.stopBackgroundWork(entry)
+                    done(true)
+                }
+                stop.image = UIImage(systemName: "stop.circle")
+                stop.backgroundColor = Theme.Color.warning
+                actions.append(stop)
+            }
             guard !actions.isEmpty else { return nil }
             let config = UISwipeActionsConfiguration(actions: actions)
             config.performsFirstActionWithFullSwipe = false
@@ -759,6 +772,7 @@ final class SessionListViewController: UIViewController {
         case .awaitingApproval: parts.append(String(localized: "Awaiting approval"))
         case .live: parts.append(String(localized: "Agent running"))
         case .background(let tasks): parts.append(ActivityKind.inBackground(tasks: tasks).spoken)
+        case .stalled(let tasks): parts.append(ActivityKind.stalled(tasks: tasks).spoken)
         case .failed: parts.append(String(localized: "Last turn failed"))
         case .offline: parts.append(String(localized: "Server unreachable"))
         case .idle: break
@@ -919,6 +933,7 @@ final class SessionListViewController: UIViewController {
         case .running: return .running(SessionActivity.shared.liveDetail(for: entry.session.id))
         case .awaitingApproval: return .awaitingApproval
         case .background(let tasks): return .background(tasks: tasks)
+        case .stalled(let tasks): return .stalled(tasks: tasks)
         case .idle: return .unobserved
         }
     }
@@ -1031,6 +1046,14 @@ final class SessionListViewController: UIViewController {
     private func toggleArchived(_ entry: SessionEntry) {
         Theme.Haptics.tap()
         ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+    }
+
+    /// Ends the work the chat's process is carrying between turns — the command the agent left
+    /// running that is never going to finish. The server says why when it cannot, and that
+    /// sentence is what the person sees.
+    private func stopBackgroundWork(_ entry: SessionEntry) {
+        Theme.Haptics.warning()
+        Task { [weak self] in await self?.viewModel.stopBackgroundWork(entry) }
     }
 
     private func togglePinned(_ entry: SessionEntry) {

@@ -107,6 +107,36 @@ struct ActivityTests {
         #expect(ledger.presence(for: "k") == .background(tasks: 1), "a failure may not overwrite work still open")
     }
 
+    @Test("Stuck work has a face of its own, and the pane reads it the way the row does")
+    func stalledWorkHasAFace() {
+        let kind = ActivityKind.stalled(tasks: 1)
+        #expect(kind.icon.tone == .attention)
+        #expect(kind.icon.motion == .still)
+        #expect(kind.isInFlight)
+        #expect(!kind.wantsYou)
+        #expect(kind.title != ActivityKind.inBackground(tasks: 1).title)
+        #expect(kind.spoken != ActivityKind.stalled(tasks: 2).spoken)
+        #expect(ActivityKind.everyState.contains(kind))
+
+        var state = ConversationState(status: .idle, connection: .live, hasLoadedTranscript: true)
+        state.backgroundWork = BackgroundWork(tasks: 1, task: "grep", stalled: true)
+        let stuck = StatusFacts.from(state: state, agents: [], usage: nil, attachments: 0)
+        guard case .stalled(let tasks) = stuck.phase else {
+            Issue.record("stuck work reads as \(stuck.phase)")
+            return
+        }
+        #expect(tasks == 1)
+        #expect(stuck.activity == kind)
+        #expect(stuck.segments.first?.text == "◔ 1 stuck")
+        #expect(SessionPresence.reading(state, step: nil) == .stalled(tasks: 1))
+        #expect(SessionPresence.stalled(tasks: 1).isInFlight)
+        #expect(SessionPresence.stalled(tasks: 1).rank == SessionPresence.background(tasks: 1).rank)
+
+        var ledger = PresenceLedger()
+        ledger.record(.stalled(tasks: 1), for: "k")
+        #expect(ledger.presence(for: "k") == .stalled(tasks: 1))
+    }
+
     @Test("Work breathes, attention knocks twice, and everything settled holds still")
     func motionCarriesTheMeaning() {
         #expect(ActivityKind.working.icon.motion == .working)

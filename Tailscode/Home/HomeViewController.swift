@@ -944,7 +944,7 @@ final class HomeViewController: UIViewController {
     private func presence(for entry: SessionEntry) -> LiveCard.Presence {
         switch SessionActivity.shared.status(for: entry.session.id) {
         case .awaitingApproval: return .needsInput
-        case .running, .background: return .working
+        case .running, .background, .stalled: return .working
         case .idle: return hasLoadedOnce ? .working : .syncing
         }
     }
@@ -1819,9 +1819,12 @@ final class HomeViewController: UIViewController {
             case .awaitingApproval: return .needsApproval
             case .running: return .working
             case .background(let tasks): return .inBackground(tasks: tasks)
+            case .stalled(let tasks): return .stalled(tasks: tasks)
             case .idle:
                 if isLive(entry) { return .working }
-                return entry.session.backgroundWork.map { .inBackground(tasks: $0.tasks) }
+                return entry.session.backgroundWork.map {
+                    $0.stalled ? .stalled(tasks: $0.tasks) : .inBackground(tasks: $0.tasks)
+                }
             }
         }
         kinds += viewModel.unreachable.map { _ in ActivityKind.offline }

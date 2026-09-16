@@ -1367,6 +1367,13 @@ extension SidebarViewController: NSMenuDelegate {
                     ? Localized.text("Back into the chat list")
                     : Localized.text("Out of the list, kept on the server"),
                 action: #selector(menuToggleArchived)))
+        if model.state.carriesBackgroundWork, menuBackend?.capabilities.supportsBackgroundStop == true {
+            menu.addItem(
+                menuItem(
+                    Localized.text("Stop background work"),
+                    subtitle: Localized.text("End the command the agent left running on the machine"),
+                    action: #selector(menuStopBackgroundWork)))
+        }
         let pinned = SessionPinStore.contains(
             profileID: entry.profileID, sessionID: entry.session.id)
         menu.addItem(
@@ -1505,6 +1512,24 @@ extension SidebarViewController: NSMenuDelegate {
     @objc private func menuToggleArchived() {
         guard let model = menuModel else { return }
         toggleArchived(model.entry)
+    }
+
+    /// Ends the work the chat's process is carrying between turns. The server says why when it
+    /// cannot, and that sentence is the notice.
+    @objc private func menuStopBackgroundWork() {
+        guard let model = menuModel, let backend = menuBackend else { return }
+        stopBackgroundWork(model.entry, on: backend)
+    }
+
+    private func stopBackgroundWork(_ entry: SessionEntry, on backend: any CodingAgentBackend) {
+        Task { [weak self] in
+            do {
+                try await backend.stopBackgroundWork(sessionID: entry.session.id)
+                self?.onNotice?(Localized.text("Stopped the background work."))
+            } catch {
+                self?.onNotice?(error.localizedDescription)
+            }
+        }
     }
 
     @objc private func menuTogglePinned() {

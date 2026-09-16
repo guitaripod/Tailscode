@@ -137,6 +137,22 @@ final class SessionListViewModel {
         backend(for: entry)?.capabilities.supportsForking ?? false
     }
 
+    func supportsBackgroundStop(_ entry: SessionEntry) -> Bool {
+        backend(for: entry)?.capabilities.supportsBackgroundStop ?? false
+    }
+
+    /// Ends the background work a chat's process is carrying, then lists again so the row
+    /// settles on what the server now says rather than on what this device last heard.
+    func stopBackgroundWork(_ entry: SessionEntry) async {
+        guard let backend = backend(for: entry) else { return }
+        do {
+            try await backend.stopBackgroundWork(sessionID: entry.session.id)
+            await load()
+        } catch {
+            onError?(Self.readable(error))
+        }
+    }
+
     /// Forks server-side and returns the copy as a listable entry, so the caller can open it
     /// the same way a tapped row opens.
     func fork(_ entry: SessionEntry) async -> SessionEntry? {

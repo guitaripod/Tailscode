@@ -121,7 +121,7 @@ public struct SplitTabRow: Equatable, Sendable {
         switch state {
         case .awaitingApproval: return 5
         case .live: return 4
-        case .background: return 3
+        case .background, .stalled: return 3
         case .failed: return 2
         case .offline: return 1
         case .idle: return 0
