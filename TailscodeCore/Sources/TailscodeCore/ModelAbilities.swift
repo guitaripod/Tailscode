@@ -131,6 +131,16 @@ public enum ModelEffort {
         models.first {
             $0.providerID == selection.providerID && $0.id == selection.modelID
         } ?? models.first { $0.id == selection.modelID }
+            ?? doorFirst(selection.modelID, in: models)
+    }
+
+    /// A model id that still carries its door — "openrouter/stealth/union-alpha", the way an
+    /// older omp bridge or a session record written by one names a model — found under the
+    /// provider and id the catalog keeps apart. Without this the levels of every omp model reached
+    /// through a gateway were the agent's fallback rather than the model's own.
+    private static func doorFirst(_ modelID: String, in models: [ModelInfo]) -> ModelInfo? {
+        guard let parsed = ModelSelection(string: modelID) else { return nil }
+        return models.first { $0.providerID == parsed.providerID && $0.id == parsed.modelID }
     }
 
     /// The levels for a model named only by its id — what a chat holds once the server's session
@@ -140,9 +150,9 @@ public enum ModelEffort {
     public static func options(
         models: [ModelInfo], modelID: String?, agentOptions: [String]
     ) -> [String] {
-        guard let modelID, let model = models.first(where: { $0.id == modelID }) else {
-            return agentOptions
-        }
+        guard let modelID,
+            let model = models.first(where: { $0.id == modelID }) ?? doorFirst(modelID, in: models)
+        else { return agentOptions }
         guard let variants = model.variants else { return agentOptions }
         return runworthy(variants, on: model.providerID)
     }

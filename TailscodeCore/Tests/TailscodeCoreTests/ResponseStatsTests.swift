@@ -263,6 +263,26 @@ struct ModelEffortTests {
         #expect(ModelEffort.label(nil, options: options) == "server effort")
     }
 
+    @Test("A model named door first is found under the door and id the catalog keeps apart")
+    func doorFirstNameFindsTheModel() {
+        let gateway = ModelInfo(
+            id: "stealth/union-alpha", name: "Union Alpha", providerID: "openrouter",
+            variants: ["low", "high"])
+        let agent = ["minimal", "low", "medium", "high", "xhigh", "max"]
+        #expect(
+            ModelEffort.options(
+                models: [gateway], modelID: "openrouter/stealth/union-alpha", agentOptions: agent)
+                == ["low", "high"])
+        let recorded = ModelSelection(providerID: "server", modelID: "openrouter/stealth/union-alpha")
+        #expect(
+            ModelEffort.options(models: [gateway], selection: recorded, agentOptions: agent)
+                == ["low", "high"])
+        #expect(
+            ModelEffort.options(
+                models: [gateway], modelID: "openrouter/stealth/nobody", agentOptions: agent)
+                == agent)
+    }
+
     @Test("A level the new model cannot run is handed back to the machine")
     func levelSurvivesOnlyWhereItCanRun() {
         #expect(ModelEffort.surviving("max", options: ["low", "high"]) == nil)

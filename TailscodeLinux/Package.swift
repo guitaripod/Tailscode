@@ -115,8 +115,9 @@ enum Kit {
     /// the capabilities; 0.26.0 carries `BackgroundWork` — the work an agent's process holds
     /// between turns — on the session, the revision, the transcript and the conversation state;
     /// 0.27.0 reads the stored profile list an entry at a time, so one server whose backend a
-    /// build has no case for costs only itself rather than every server on the machine.
-    static let version = Version(0, 27, 2)
+    /// build has no case for costs only itself rather than every server on the machine. 0.28.0
+    /// splits an omp model name into its door and id and gives omp its own fallback ladder.
+    static let version = Version(0, 28, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
