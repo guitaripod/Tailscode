@@ -7,19 +7,17 @@ the primary locale for any set a locale does not carry, so the iPad is uploaded
 for en-US only and es-MX borrows the es-ES panels; en-GB and en-AU carry nothing
 and show the en-US set. The Mac set (panels/mac) goes on the MAC_OS version.
 
-Everything goes through `asc screenshots upload`, which fans out over a
-<dir>/<locale>/<platform>/*.png tree: this script only stages that tree (as
-copies under a scratch directory — asc refuses symlinks) and then verifies every set on the store
-reads COMPLETE with the expected count.
+Every localization is uploaded on its own through `asc screenshots upload
+--version-localization`, so one locale's timeout cannot take the rest down
+(asc's app-scoped fan-out stops at the first failure, and refuses symlinks);
+each set is then read back and must hold the expected count, all COMPLETE.
 
-Usage: python3 scripts/asc-screenshots.py <marketing-version> [--platform=ios|macos] [--dry-run]
+Usage: python3 scripts/asc-screenshots.py <marketing-version> [--platform=ios|macos] [--only=iphone|ipad] [--skip-existing]
 """
 import json
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PANELS = os.path.join(ROOT, "marketing/appstore/panels")
@@ -62,21 +60,37 @@ def source_dir(locale, platform):
     return path if os.path.isdir(path) else None
 
 
-def stage(locales, platform):
-    """Builds the <dir>/<locale>/<platform> tree asc fans out over, returning (dir, {locale: count})."""
-    root = tempfile.mkdtemp(prefix="tailscode-shots-")
-    counts = {}
-    for locale in locales:
-        source = source_dir(locale, platform)
-        if source is None:
-            continue
-        target = os.path.join(root, locale, platform)
-        os.makedirs(target)
-        files = sorted(f for f in os.listdir(source) if f.endswith(".png"))
-        for name in files:
-            shutil.copyfile(os.path.join(source, name), os.path.join(target, name))
-        counts[locale] = len(files)
-    return root, counts
+DEVICE = {"iphone": "IPHONE_67", "ipad": "IPAD_PRO_3GEN_129", "mac": "DESKTOP"}
+
+
+def upload(locale, loc_id, source, platform, replace):
+    """One localization, one set. A `--replace` run that dies on asc's checksum-settlement
+    timeout (the asset itself lands COMPLETE a moment later) is retried once with
+    `--skip-existing`, which picks up exactly the files that never went."""
+    flags = ["--replace", "--confirm"] if replace else ["--skip-existing"]
+    for attempt, extra in enumerate((flags, ["--skip-existing"])):
+        if attempt:
+            drop_unsettled(locale, loc_id)
+        cmd = ["asc", "screenshots", "upload", "--version-localization", loc_id, "--path", source,
+               "--device-type", DEVICE[platform], *extra]
+        print(f"  {locale} {platform}: {' '.join(extra)}", flush=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            return True
+        print(f"    attempt {attempt + 1} failed: {(result.stderr or result.stdout)[-300:].strip()}", flush=True)
+    return False
+
+
+def drop_unsettled(locale, loc_id):
+    """The asset a timeout left behind sits in UPLOAD_COMPLETE with a checksum asc will not match,
+    so the retry would count it against the ten-screenshot cap and refuse; delete it first."""
+    for group in asc("screenshots", "list", "--version-localization", loc_id).get("sets", []):
+        for shot in group.get("screenshots", []):
+            state = (shot["attributes"].get("assetDeliveryState") or {}).get("state")
+            if state != "COMPLETE":
+                subprocess.run(["asc", "screenshots", "delete", "--id", shot["id"], "--confirm"],
+                               capture_output=True, text=True)
+                print(f"    {locale}: dropped {shot['attributes'].get('fileName')} ({state})", flush=True)
 
 
 def verify(localizations, display_type, counts):
@@ -100,30 +114,30 @@ def verify(localizations, display_type, counts):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if len(args) != 1:
-        sys.exit("usage: asc-screenshots.py <marketing-version> [--platform=ios|macos] [--dry-run]")
+        sys.exit("usage: asc-screenshots.py <marketing-version> [--platform=ios|macos] [--only=iphone|ipad] [--skip-existing]")
     marketing = args[0]
     platform = "macos" if "--platform=macos" in sys.argv else "ios"
-    dry = "--dry-run" in sys.argv
+    only = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--only=")), None)
+    replace = "--skip-existing" not in sys.argv
     version = version_id(marketing, platform)
     localizations = locales_on(version)
-    print(f"{platform} {marketing} ({version}): {', '.join(sorted(localizations))}")
+    print(f"{platform} {marketing} ({version}): {', '.join(sorted(localizations))}", flush=True)
+    failed = []
     for folder, display_type in SETS[platform]:
-        root, counts = stage(sorted(localizations), folder)
-        print(f"== {display_type}: {counts}")
-        cmd = ["asc", "screenshots", "upload", "--app", APP, "--version-id", version, "--path", root,
-               "--device-type", display_type, "--replace", "--confirm"]
-        if dry:
-            cmd.append("--dry-run")
-        print("   " + " ".join(cmd))
-        result = subprocess.run(cmd)
-        shutil.rmtree(root)
-        if result.returncode != 0:
-            sys.exit(f"upload failed for {display_type}")
-        if dry:
+        if only and folder != only:
             continue
-        bad = verify(localizations, display_type, counts)
-        if bad:
-            sys.exit("!! " + "\n!! ".join(bad))
+        counts = {}
+        for locale, loc_id in sorted(localizations.items()):
+            source = source_dir(locale, folder)
+            if source is None:
+                continue
+            counts[locale] = len([f for f in os.listdir(source) if f.endswith(".png")])
+            if not upload(locale, loc_id, source, folder, replace):
+                failed.append(f"{locale} {display_type}")
+        failed += verify(localizations, display_type, counts)
+    if failed:
+        sys.exit("!! " + "\n!! ".join(failed))
+    print("all sets verified", flush=True)
 
 
 if __name__ == "__main__":

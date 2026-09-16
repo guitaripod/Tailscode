@@ -60,8 +60,9 @@ def push(books, marketing):
         die("no editable app info — the subtitle is locked until a version is reopened")
     existing = {loc["attributes"]["locale"]: loc
                 for loc in asc.get(f"/v1/appInfos/{info['id']}/appInfoLocalizations")["data"]}
+    urls = json.load(open(os.path.join(ROOT, "docs/asc-metadata.json")))
     for locale, entry in book.items():
-        attrs = {"subtitle": entry["subtitle"]}
+        attrs = {"subtitle": entry["subtitle"], "privacyPolicyUrl": urls["privacyPolicyUrl"]}
         if entry.get("name"):
             attrs["name"] = entry["name"]
         loc = existing.get(locale)
@@ -78,7 +79,6 @@ def push(books, marketing):
             if back.get(key) != wanted:
                 die(f"{key} {locale} did not stick: {back.get(key)!r}")
         print(f"app info {locale}: {back.get('name')} · {back['subtitle']}")
-    urls = json.load(open(os.path.join(ROOT, "docs/asc-metadata.json")))
     for ver in wait_editable(marketing):
         platform = ver["attributes"]["platform"]
         present = {loc["attributes"]["locale"]: loc
