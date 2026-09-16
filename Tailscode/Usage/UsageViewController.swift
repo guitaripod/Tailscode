@@ -67,7 +67,7 @@ final class UsageViewController: UIViewController {
     private lazy var emptyStateView = EmptyStateView(
         symbol: "gauge.with.dots.needle.67percent",
         title: String(localized: "Not connected"),
-        message: String(localized: "Connect to a Claude Code or opencode server to see usage."))
+        message: String(localized: "Connect to a Claude Code, opencode or Oh My Pi server to see usage."))
 
     override func viewDidLoad() {
         super.viewDidLoad()

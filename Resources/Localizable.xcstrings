@@ -1170,67 +1170,67 @@
         }
       }
     },
-    "%@ is reachable, but not an opencode or claude-bridge server.": {
+    "%@ is reachable, but not an opencode, claude-bridge, or omp-bridge server.": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@ ist erreichbar, aber kein opencode- oder claude-bridge-Server."
+            "value": "%1$@ ist erreichbar, aber kein opencode-, claude-bridge- oder omp-bridge-Server."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ is reachable, but not an opencode or claude-bridge server."
+            "value": "%@ is reachable, but not an opencode, claude-bridge, or omp-bridge server."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se puede acceder a %1$@, pero no es un servidor de opencode ni de claude-bridge."
+            "value": "Se puede acceder a %1$@, pero no es un servidor de opencode, de claude-bridge ni de omp-bridge."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@ est joignable, mais ce n’est pas un serveur opencode ou claude-bridge."
+            "value": "%1$@ est joignable, mais ce n’est pas un serveur opencode, claude-bridge ou omp-bridge."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@ è raggiungibile, ma non è un server opencode o claude-bridge."
+            "value": "%1$@ è raggiungibile, ma non è un server opencode, claude-bridge o omp-bridge."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@ には到達できますが、opencode または claude-bridge のサーバではありません。"
+            "value": "%1$@ には到達できますが、opencode、claude-bridge または omp-bridge のサーバではありません。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@에 연결할 수 있지만 opencode 또는 claude-bridge 서버가 아닙니다."
+            "value": "%1$@에 연결할 수 있지만 opencode, claude-bridge 또는 omp-bridge 서버가 아닙니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@ está acessível, mas não é um servidor opencode ou claude-bridge."
+            "value": "%1$@ está acessível, mas não é um servidor opencode, claude-bridge ou omp-bridge."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "可以访问 %1$@，但它不是 opencode 或 claude-bridge 服务器。"
+            "value": "可以访问 %1$@，但它不是 opencode、claude-bridge 或 omp-bridge 服务器。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "可以連線到 %1$@，但它不是 opencode 或 claude-bridge 伺服器。"
+            "value": "可以連線到 %1$@，但它不是 opencode、claude-bridge 或 omp-bridge 伺服器。"
           }
         }
       }
@@ -12818,67 +12818,67 @@
         }
       }
     },
-    "Connect to a Claude Code or opencode server to see usage.": {
+    "Connect to a Claude Code, opencode or Oh My Pi server to see usage.": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verbinde dich mit einem Claude-Code- oder opencode-Server, um die Nutzung zu sehen."
+            "value": "Verbinde dich mit einem Claude-Code-, opencode- oder Oh-My-Pi-Server, um die Nutzung zu sehen."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connect to a Claude Code or opencode server to see usage."
+            "value": "Connect to a Claude Code, opencode or Oh My Pi server to see usage."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conéctate a un servidor de Claude Code u opencode para ver el uso."
+            "value": "Conéctate a un servidor de Claude Code, opencode u Oh My Pi para ver el uso."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connectez-vous à un serveur Claude Code ou opencode pour voir l’usage."
+            "value": "Connectez-vous à un serveur Claude Code, opencode ou Oh My Pi pour voir l’usage."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connettiti a un server Claude Code o opencode per vedere l’utilizzo."
+            "value": "Connettiti a un server Claude Code, opencode o Oh My Pi per vedere l’utilizzo."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用状況を見るには Claude Code または opencode のサーバに接続してください。"
+            "value": "使用状況を見るには Claude Code、opencode または Oh My Pi のサーバに接続してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "사용량을 보려면 Claude Code 또는 opencode 서버에 연결하세요."
+            "value": "사용량을 보려면 Claude Code, opencode 또는 Oh My Pi 서버에 연결하세요."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conecte-se a um servidor Claude Code ou opencode para ver o uso."
+            "value": "Conecte-se a um servidor Claude Code, opencode ou Oh My Pi para ver o uso."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "连接 Claude Code 或 opencode 服务器以查看用量。"
+            "value": "连接 Claude Code、opencode 或 Oh My Pi 服务器以查看用量。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "連線 Claude Code 或 opencode 伺服器以查看用量。"
+            "value": "連線 Claude Code、opencode 或 Oh My Pi 伺服器以查看用量。"
           }
         }
       }
@@ -24971,67 +24971,67 @@
         }
       }
     },
-    "Needs a computer on that tailnet running opencode or Claude Code.": {
+    "Needs a computer on that tailnet running opencode, Claude Code, or Oh My Pi.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Needs a computer on that tailnet running opencode or Claude Code."
+            "value": "Needs a computer on that tailnet running opencode, Claude Code, or Oh My Pi."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Erfordert einen Rechner im Tailnet, auf dem opencode oder Claude Code läuft."
+            "value": "Erfordert einen Rechner im Tailnet, auf dem Claude Code, opencode oder Oh My Pi läuft."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Necesita un ordenador en esa tailnet que ejecute opencode o Claude Code."
+            "value": "Necesita un ordenador en esa tailnet que ejecute Claude Code, opencode u Oh My Pi."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nécessite un ordinateur sur ce tailnet exécutant opencode ou Claude Code."
+            "value": "Nécessite un ordinateur sur ce tailnet exécutant Claude Code, opencode ou Oh My Pi."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Richiede un computer su quel tailnet che esegua opencode o Claude Code."
+            "value": "Richiede un computer su quel tailnet che esegua Claude Code, opencode o Oh My Pi."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "その tailnet 上に opencode か Claude Code を動かすコンピュータが必要です。"
+            "value": "その tailnet 上に Claude Code か opencode、または Oh My Pi を動かすコンピュータが必要です。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "해당 tailnet에서 opencode 또는 Claude Code를 실행하는 컴퓨터가 필요합니다."
+            "value": "해당 tailnet에서 Claude Code, opencode 또는 Oh My Pi를 실행하는 컴퓨터가 필요합니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Requer um computador nessa tailnet rodando opencode ou Claude Code."
+            "value": "Requer um computador nessa tailnet rodando Claude Code, opencode ou Oh My Pi."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "需要该 tailnet 上有一台电脑在运行 opencode 或 Claude Code。"
+            "value": "需要该 tailnet 上有一台电脑在运行 Claude Code、opencode 或 Oh My Pi。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "需要該 tailnet 上有一台電腦執行 opencode 或 Claude Code。"
+            "value": "需要該 tailnet 上有一台電腦執行 Claude Code、opencode 或 Oh My Pi。"
           }
         }
       }
@@ -26401,67 +26401,67 @@
         }
       }
     },
-    "No opencode or Claude Code servers found.\nMake sure the servers are running and listening on ports 4096/4098.": {
+    "No opencode, Claude Code, or Oh My Pi servers found.\nMake sure the servers are running and listening on ports 4096/4098/4099.": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keine opencode- oder Claude-Code-Server gefunden.\nStelle sicher, dass die Server laufen und auf Port 4096/4098 lauschen."
+            "value": "Keine opencode-, Claude-Code- oder Oh-My-Pi-Server gefunden.\nStelle sicher, dass die Server laufen und auf Port 4096/4098/4099 lauschen."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No opencode or Claude Code servers found.\nMake sure the servers are running and listening on ports 4096/4098."
+            "value": "No opencode, Claude Code, or Oh My Pi servers found.\nMake sure the servers are running and listening on ports 4096/4098/4099."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "No se encontraron servidores de opencode ni Claude Code.\nAsegúrate de que los servidores estén activos y escuchando en los puertos 4096/4098."
+            "value": "No se encontraron servidores de opencode, Claude Code ni Oh My Pi.\nAsegúrate de que los servidores estén activos y escuchando en los puertos 4096/4098/4099."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun serveur opencode ou Claude Code trouvé.\nVérifiez que les serveurs tournent et écoutent sur les ports 4096/4098."
+            "value": "Aucun serveur opencode, Claude Code ou Oh My Pi trouvé.\nVérifiez que les serveurs tournent et écoutent sur les ports 4096/4098/4099."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nessun server opencode o Claude Code trovato.\nAssicurati che i server siano in esecuzione e in ascolto sulle porte 4096/4098."
+            "value": "Nessun server opencode, Claude Code o Oh My Pi trovato.\nAssicurati che i server siano in esecuzione e in ascolto sulle porte 4096/4098/4099."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "opencode または Claude Code のサーバが見つかりません。\nサーバが起動し、ポート 4096/4098 で待ち受けているか確認してください。"
+            "value": "opencode、Claude Code または Oh My Pi のサーバが見つかりません。\nサーバが起動し、ポート 4096/4098/4099 で待ち受けているか確認してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "opencode 또는 Claude Code 서버를 찾지 못했습니다.\n서버가 실행 중이며 4096/4098 포트에서 대기하는지 확인하세요."
+            "value": "opencode, Claude Code 또는 Oh My Pi 서버를 찾지 못했습니다.\n서버가 실행 중이며 4096/4098/4099 포트에서 대기하는지 확인하세요."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nenhum servidor opencode ou Claude Code encontrado.\nVerifique se os servidores estão rodando e escutando nas portas 4096/4098."
+            "value": "Nenhum servidor opencode, Claude Code ou Oh My Pi encontrado.\nVerifique se os servidores estão rodando e escutando nas portas 4096/4098/4099."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "未找到 opencode 或 Claude Code 服务器。\n请确认服务器正在运行并监听 4096/4098 端口。"
+            "value": "未找到 opencode、Claude Code 或 Oh My Pi 服务器。\n请确认服务器正在运行并监听 4096/4098/4099 端口。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "找不到 opencode 或 Claude Code 伺服器。\n請確認伺服器正在執行並監聽 4096/4098 連接埠。"
+            "value": "找不到 opencode、Claude Code 或 Oh My Pi 伺服器。\n請確認伺服器正在執行並監聽 4096/4098/4099 連接埠。"
           }
         }
       }
@@ -32382,67 +32382,67 @@
         }
       }
     },
-    "Reachable, but not an opencode or claude-bridge server.": {
+    "Reachable, but not an opencode, claude-bridge, or omp-bridge server.": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Erreichbar, aber kein opencode- oder claude-bridge-Server."
+            "value": "Erreichbar, aber kein opencode-, claude-bridge- oder omp-bridge-Server."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reachable, but not an opencode or claude-bridge server."
+            "value": "Reachable, but not an opencode, claude-bridge, or omp-bridge server."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Accesible, pero no es un servidor de opencode ni de claude-bridge."
+            "value": "Accesible, pero no es un servidor de opencode, de claude-bridge ni de omp-bridge."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Joignable, mais ce n’est pas un serveur opencode ou claude-bridge."
+            "value": "Joignable, mais ce n’est pas un serveur opencode, claude-bridge ou omp-bridge."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Raggiungibile, ma non è un server opencode o claude-bridge."
+            "value": "Raggiungibile, ma non è un server opencode, claude-bridge o omp-bridge."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "到達できますが、opencode または claude-bridge のサーバではありません。"
+            "value": "到達できますが、opencode、claude-bridge または omp-bridge のサーバではありません。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "연결은 되지만 opencode 또는 claude-bridge 서버가 아닙니다."
+            "value": "연결은 되지만 opencode, claude-bridge 또는 omp-bridge 서버가 아닙니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Acessível, mas não é um servidor opencode ou claude-bridge."
+            "value": "Acessível, mas não é um servidor opencode, claude-bridge ou omp-bridge."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "可以访问，但不是 opencode 或 claude-bridge 服务器。"
+            "value": "可以访问，但不是 opencode、claude-bridge 或 omp-bridge 服务器。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "可以連線，但不是 opencode 或 claude-bridge 伺服器。"
+            "value": "可以連線，但不是 opencode、claude-bridge 或 omp-bridge 伺服器。"
           }
         }
       }
@@ -39472,67 +39472,67 @@
         }
       }
     },
-    "Something is listening on %@, but it isn't opencode or claude-bridge. opencode serves port 4096, claude-bridge port 4098.": {
+    "Something is listening on %@, but it isn't an agent this app knows. opencode serves 4096, claude-bridge 4098, omp-bridge 4099.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Something is listening on %@, but it isn't opencode or claude-bridge. opencode serves port 4096, claude-bridge port 4098."
+            "value": "Something is listening on %@, but it isn't an agent this app knows. opencode serves 4096, claude-bridge 4098, omp-bridge 4099."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Auf %@ lauscht etwas, aber es ist nicht opencode oder claude-bridge. opencode läuft auf Port 4096, claude-bridge auf Port 4098."
+            "value": "Auf %@ lauscht etwas, aber es ist kein Agent, den diese App kennt. opencode läuft auf Port 4096, claude-bridge auf 4098, omp-bridge auf 4099."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Algo escucha en %@, pero no es opencode ni claude-bridge. opencode usa el puerto 4096 y claude-bridge el 4098."
+            "value": "Algo escucha en %@, pero no es un agente que esta app conozca. opencode usa el puerto 4096, claude-bridge el 4098 y omp-bridge el 4099."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quelque chose écoute sur %@, mais ce n’est pas opencode ni claude-bridge. opencode expose le port 4096, claude-bridge le port 4098."
+            "value": "Quelque chose écoute sur %@, mais ce n’est pas un agent que cette app connaît. opencode expose le port 4096, claude-bridge le 4098, omp-bridge le 4099."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Qualcosa è in ascolto su %@, ma non è opencode né claude-bridge. opencode usa la porta 4096, claude-bridge la 4098."
+            "value": "Qualcosa è in ascolto su %@, ma non è un agente che questa app conosca. opencode usa la porta 4096, claude-bridge la 4098, omp-bridge la 4099."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ で何かが待ち受けていますが、opencode でも claude-bridge でもありません。opencode はポート 4096、claude-bridge はポート 4098 を使います。"
+            "value": "%@ で何かが待ち受けていますが、このアプリが知っているエージェントではありません。opencode はポート 4096、claude-bridge は 4098、omp-bridge は 4099 を使います。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@에서 무언가 대기 중이지만 opencode도 claude-bridge도 아닙니다. opencode는 4096 포트, claude-bridge는 4098 포트를 사용합니다."
+            "value": "%@에서 무언가 대기 중이지만 이 앱이 아는 에이전트가 아닙니다. opencode는 4096, claude-bridge는 4098, omp-bridge는 4099 포트를 사용합니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Algo está escutando em %@, mas não é o opencode nem o claude-bridge. O opencode serve na porta 4096; o claude-bridge, na 4098."
+            "value": "Algo está escutando em %@, mas não é um agente que este app conheça. O opencode serve na porta 4096; o claude-bridge, na 4098; o omp-bridge, na 4099."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 上有程序在监听，但它不是 opencode 或 claude-bridge。opencode 使用 4096 端口，claude-bridge 使用 4098 端口。"
+            "value": "%@ 上有程序在监听，但它不是这个应用认识的智能体。opencode 使用 4096 端口，claude-bridge 使用 4098，omp-bridge 使用 4099。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 上有東西在監聽，但不是 opencode 或 claude-bridge。opencode 使用 4096 連接埠，claude-bridge 使用 4098。"
+            "value": "%@ 上有東西在監聽，但不是這個 App 認識的代理。opencode 使用 4096 連接埠，claude-bridge 使用 4098，omp-bridge 使用 4099。"
           }
         }
       }
@@ -41422,67 +41422,67 @@
         }
       }
     },
-    "Tailscale is up, so the agent processes are the likely problem. Check that opencode or claude-bridge is still running.": {
+    "Tailscale is up, so the agent processes are the likely problem. Check that opencode, claude-bridge, or omp-bridge is still running.": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscale läuft, also liegt es wahrscheinlich an den Agent-Prozessen. Prüfe, ob opencode oder claude-bridge noch läuft."
+            "value": "Tailscale läuft, also liegt es wahrscheinlich an den Agent-Prozessen. Prüfe, ob opencode, claude-bridge oder omp-bridge noch läuft."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscale is up, so the agent processes are the likely problem. Check that opencode or claude-bridge is still running."
+            "value": "Tailscale is up, so the agent processes are the likely problem. Check that opencode, claude-bridge, or omp-bridge is still running."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscale funciona, así que el problema seguramente esté en los procesos del agente. Comprueba que opencode o claude-bridge sigan en marcha."
+            "value": "Tailscale funciona, así que el problema seguramente esté en los procesos del agente. Comprueba que opencode, claude-bridge u omp-bridge sigan en marcha."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscale fonctionne : le problème vient probablement des processus de l’agent. Vérifiez qu’opencode ou claude-bridge tourne toujours."
+            "value": "Tailscale fonctionne : le problème vient probablement des processus de l’agent. Vérifiez qu’opencode, claude-bridge ou omp-bridge tourne toujours."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscale è attivo, quindi il problema è probabilmente nei processi dell’agente. Verifica che opencode o claude-bridge siano ancora in esecuzione."
+            "value": "Tailscale è attivo, quindi il problema è probabilmente nei processi dell’agente. Verifica che opencode, claude-bridge o omp-bridge siano ancora in esecuzione."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscale は稼働しているので、原因はエージェントのプロセスの可能性が高いです。opencode または claude-bridge がまだ動いているか確認してください。"
+            "value": "Tailscale は稼働しているので、原因はエージェントのプロセスの可能性が高いです。opencode、claude-bridge または omp-bridge がまだ動いているか確認してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscale는 정상이므로 에이전트 프로세스가 원인일 가능성이 큽니다. opencode 또는 claude-bridge가 아직 실행 중인지 확인하세요."
+            "value": "Tailscale는 정상이므로 에이전트 프로세스가 원인일 가능성이 큽니다. opencode, claude-bridge 또는 omp-bridge가 아직 실행 중인지 확인하세요."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O Tailscale está no ar, então o problema provavelmente está nos processos do agente. Verifique se o opencode ou o claude-bridge ainda estão rodando."
+            "value": "O Tailscale está no ar, então o problema provavelmente está nos processos do agente. Verifique se o opencode, o claude-bridge ou o omp-bridge ainda estão rodando."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscale 正常，问题很可能出在智能体进程上。请检查 opencode 或 claude-bridge 是否仍在运行。"
+            "value": "Tailscale 正常，问题很可能出在智能体进程上。请检查 opencode、claude-bridge 或 omp-bridge 是否仍在运行。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscale 正常，問題很可能出在代理程式上。請檢查 opencode 或 claude-bridge 是否仍在執行。"
+            "value": "Tailscale 正常，問題很可能出在代理程式上。請檢查 opencode、claude-bridge 或 omp-bridge 是否仍在執行。"
           }
         }
       }
@@ -43697,132 +43697,132 @@
         }
       }
     },
-    "The port is open and something is on it, yet it didn't respond as opencode or claude-bridge. Check the port — 4096 for opencode, 4098 for claude-bridge.": {
+    "The port is open and something is on it, yet it didn't respond as a known agent. Check the port — 4096 opencode, 4098 claude-bridge, 4099 omp-bridge.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The port is open and something is on it, yet it didn't respond as opencode or claude-bridge. Check the port — 4096 for opencode, 4098 for claude-bridge."
+            "value": "The port is open and something is on it, yet it didn't respond as a known agent. Check the port — 4096 opencode, 4098 claude-bridge, 4099 omp-bridge."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Port ist offen und etwas liegt darauf, doch es hat nicht als opencode oder claude-bridge geantwortet. Prüfe den Port – 4096 für opencode, 4098 für claude-bridge."
+            "value": "Der Port ist offen und etwas liegt darauf, doch es hat nicht als bekannter Agent geantwortet. Prüfe den Port – 4096 opencode, 4098 claude-bridge, 4099 omp-bridge."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El puerto está abierto y hay algo en él, pero no respondió como opencode ni como claude-bridge. Comprueba el puerto: 4096 para opencode, 4098 para claude-bridge."
+            "value": "El puerto está abierto y hay algo en él, pero no respondió como un agente conocido. Comprueba el puerto: 4096 opencode, 4098 claude-bridge, 4099 omp-bridge."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le port est ouvert et quelque chose s’y trouve, mais il n’a pas répondu comme opencode ou claude-bridge. Vérifiez le port — 4096 pour opencode, 4098 pour claude-bridge."
+            "value": "Le port est ouvert et quelque chose s’y trouve, mais il n’a pas répondu comme un agent connu. Vérifiez le port — 4096 opencode, 4098 claude-bridge, 4099 omp-bridge."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "La porta è aperta e c’è qualcosa in ascolto, ma non ha risposto come opencode o claude-bridge. Controlla la porta — 4096 per opencode, 4098 per claude-bridge."
+            "value": "La porta è aperta e c’è qualcosa in ascolto, ma non ha risposto come un agente conosciuto. Controlla la porta — 4096 opencode, 4098 claude-bridge, 4099 omp-bridge."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ポートは開いていて何かが動いていますが、opencode でも claude-bridge でもない応答でした。ポートを確認してください。opencode は 4096、claude-bridge は 4098 です。"
+            "value": "ポートは開いていて何かが動いていますが、既知のエージェントとしての応答ではありませんでした。ポートを確認してください。4096 が opencode、4098 が claude-bridge、4099 が omp-bridge です。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "포트가 열려 있고 무언가 사용 중이지만, opencode나 claude-bridge로 응답하지는 않았습니다. 포트를 확인하세요 — opencode는 4096, claude-bridge는 4098입니다."
+            "value": "포트가 열려 있고 무언가 사용 중이지만, 알려진 에이전트로 응답하지는 않았습니다. 포트를 확인하세요 — 4096 opencode, 4098 claude-bridge, 4099 omp-bridge."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "A porta está aberta e há algo nela, mas não respondeu como opencode nem como claude-bridge. Verifique a porta — 4096 para o opencode, 4098 para o claude-bridge."
+            "value": "A porta está aberta e há algo nela, mas não respondeu como um agente conhecido. Verifique a porta — 4096 opencode, 4098 claude-bridge, 4099 omp-bridge."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "端口是开放的，上面也有程序，但它没有以 opencode 或 claude-bridge 的方式响应。请检查端口 — opencode 是 4096，claude-bridge 是 4098。"
+            "value": "端口是开放的，上面也有程序，但它没有以已知智能体的方式响应。请检查端口 — 4096 opencode，4098 claude-bridge，4099 omp-bridge。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "連接埠是開的，上面也有東西，但它的回應不像 opencode 或 claude-bridge。請檢查連接埠 — opencode 是 4096，claude-bridge 是 4098。"
+            "value": "連接埠是開的，上面也有東西，但它的回應不像已知的代理。請檢查連接埠 — 4096 opencode，4098 claude-bridge，4099 omp-bridge。"
           }
         }
       }
     },
-    "The server answered, so the address is right. claude-bridge wants the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one.": {
+    "The server answered, so the address is right. claude-bridge and omp-bridge want the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The server answered, so the address is right. claude-bridge wants the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one."
+            "value": "The server answered, so the address is right. claude-bridge and omp-bridge want the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Server hat geantwortet, die Adresse stimmt also. claude-bridge will das Passwort, das du als BRIDGE_PASSWORD übergeben hast; opencode braucht keins, außer du hast eins gesetzt."
+            "value": "Der Server hat geantwortet, die Adresse stimmt also. claude-bridge und omp-bridge wollen das Passwort, das du als BRIDGE_PASSWORD übergeben hast; opencode braucht keins, außer du hast eins gesetzt."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El servidor respondió, así que la dirección es correcta. claude-bridge pide la contraseña que pasaste como BRIDGE_PASSWORD; opencode no necesita ninguna salvo que la hayas configurado."
+            "value": "El servidor respondió, así que la dirección es correcta. claude-bridge y omp-bridge piden la contraseña que pasaste como BRIDGE_PASSWORD; opencode no necesita ninguna salvo que la hayas configurado."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le serveur a répondu, donc l’adresse est bonne. claude-bridge attend le mot de passe passé dans BRIDGE_PASSWORD ; opencode n’en a pas besoin, sauf si vous en avez défini un."
+            "value": "Le serveur a répondu, donc l’adresse est bonne. claude-bridge et omp-bridge attendent le mot de passe passé dans BRIDGE_PASSWORD ; opencode n’en a pas besoin, sauf si vous en avez défini un."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il server ha risposto, quindi l’indirizzo è corretto. claude-bridge vuole la password che hai passato come BRIDGE_PASSWORD; opencode non ne richiede nessuna, a meno che tu non l’abbia impostata."
+            "value": "Il server ha risposto, quindi l’indirizzo è corretto. claude-bridge e omp-bridge vogliono la password che hai passato come BRIDGE_PASSWORD; opencode non ne richiede nessuna, a meno che tu non l’abbia impostata."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "サーバが応答したので、アドレスは正しいです。claude-bridge には BRIDGE_PASSWORD に渡したパスワードが必要です。opencode は自分で設定していなければ不要です。"
+            "value": "サーバが応答したので、アドレスは正しいです。claude-bridge と omp-bridge には BRIDGE_PASSWORD に渡したパスワードが必要です。opencode は自分で設定していなければ不要です。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "서버가 응답했으므로 주소는 맞습니다. claude-bridge는 BRIDGE_PASSWORD로 전달한 암호를 요구하고, opencode는 따로 설정하지 않았다면 암호가 필요 없습니다."
+            "value": "서버가 응답했으므로 주소는 맞습니다. claude-bridge와 omp-bridge는 BRIDGE_PASSWORD로 전달한 암호를 요구하고, opencode는 따로 설정하지 않았다면 암호가 필요 없습니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O servidor respondeu, então o endereço está certo. O claude-bridge quer a senha que você passou em BRIDGE_PASSWORD; o opencode não precisa de nenhuma, a menos que você defina uma."
+            "value": "O servidor respondeu, então o endereço está certo. O claude-bridge e o omp-bridge querem a senha que você passou em BRIDGE_PASSWORD; o opencode não precisa de nenhuma, a menos que você defina uma."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "服务器有响应，说明地址没错。claude-bridge 需要你通过 BRIDGE_PASSWORD 传入的密码；opencode 除非你设置过，否则不需要密码。"
+            "value": "服务器有响应，说明地址没错。claude-bridge 和 omp-bridge 需要你通过 BRIDGE_PASSWORD 传入的密码；opencode 除非你设置过，否则不需要密码。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "伺服器有回應，所以位址是對的。claude-bridge 需要你以 BRIDGE_PASSWORD 傳入的密碼；opencode 除非你自己設定，否則不需要密碼。"
+            "value": "伺服器有回應，所以位址是對的。claude-bridge 和 omp-bridge 需要你以 BRIDGE_PASSWORD 傳入的密碼；opencode 除非你自己設定，否則不需要密碼。"
           }
         }
       }
@@ -47008,6 +47008,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "請在電腦上輸入這行，不是在這台手機上。"
+          }
+        }
+      }
+    },
+    "Type this on the computer, not on this phone. omp-bridge serves your oh-my-pi agent on port 4099 and installs a service that survives reboots.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type this on the computer, not on this phone. omp-bridge serves your oh-my-pi agent on port 4099 and installs a service that survives reboots."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tippe das auf dem Rechner ein, nicht auf diesem iPhone. omp-bridge stellt deinen oh-my-pi-Agenten auf Port 4099 bereit und installiert einen Dienst, der Neustarts übersteht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escribe esto en el ordenador, no en este teléfono. omp-bridge sirve tu agente de oh-my-pi en el puerto 4099 e instala un servicio que sobrevive a los reinicios."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tapez ceci sur l’ordinateur, pas sur ce téléphone. omp-bridge expose votre agent oh-my-pi sur le port 4099 et installe un service qui survit aux redémarrages."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digita questo comando sul computer, non su questo telefono. omp-bridge espone il tuo agente oh-my-pi sulla porta 4099 e installa un servizio che sopravvive ai riavvii."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これはこの iPhone ではなくコンピュータで入力します。omp-bridge はポート 4099 であなたの oh-my-pi エージェントを公開し、再起動しても動き続けるサービスをインストールします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 휴대폰이 아니라 컴퓨터에서 입력하세요. omp-bridge는 4099 포트에서 당신의 oh-my-pi 에이전트를 제공하고, 재부팅 후에도 유지되는 서비스를 설치합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite isto no computador, não neste telefone. O omp-bridge serve seu agente oh-my-pi na porta 4099 e instala um serviço que sobrevive a reinicializações."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在电脑上输入，而不是在这台手机上。omp-bridge 会在 4099 端口提供你的 oh-my-pi 智能体，并安装一个能在重启后继续运行的服务。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請在電腦上輸入這行，不是在這台手機上。omp-bridge 會在 4099 連接埠提供你的 oh-my-pi 代理，並安裝一個能在重開機後繼續運作的服務。"
           }
         }
       }
@@ -51367,6 +51432,71 @@
         }
       }
     },
+    "Your own oh-my-pi agent, through omp-bridge.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your own oh-my-pi agent, through omp-bridge."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein eigener oh-my-pi-Agent, über omp-bridge."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu propio agente de oh-my-pi, a través de omp-bridge."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre propre agent oh-my-pi, via omp-bridge."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo agente oh-my-pi, tramite omp-bridge."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge 経由で、あなた自身の oh-my-pi エージェントを使います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "당신의 oh-my-pi 에이전트를 omp-bridge를 통해 사용합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu próprio agente oh-my-pi, via omp-bridge."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过 omp-bridge 使用你自己的 oh-my-pi 智能体。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你自己的 oh-my-pi 代理，透過 omp-bridge。"
+          }
+        }
+      }
+    },
     "acknowledgements licenses third party open source": {
       "comment": "search keywords",
       "extractionState": "manual",
@@ -51695,6 +51825,71 @@
         }
       }
     },
+    "omp-bridge always needs a password — the one in the command above.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge always needs a password — the one in the command above."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge braucht immer ein Passwort – das aus dem Befehl oben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge siempre necesita una contraseña: la del comando de arriba."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge exige toujours un mot de passe — celui de la commande ci-dessus."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge richiede sempre una password — quella nel comando qui sopra."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge には必ずパスワードが必要です。上のコマンドで指定したものです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge에는 항상 암호가 필요합니다 — 위 명령에 있는 그 암호입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O omp-bridge sempre precisa de uma senha — a do comando acima."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge 始终需要密码 — 就是上面命令中的那个。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge 一律需要密碼 — 就是上面命令中的那一組。"
+          }
+        }
+      }
+    },
     "claude-bridge fronts your logged-in Claude Code CLI. Build it once, then run it with a password.": {
       "extractionState": "manual",
       "localizations": {
@@ -51821,6 +52016,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "GitHub 上的 claude-bridge"
+          }
+        }
+      }
+    },
+    "omp-bridge on GitHub": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge auf GitHub"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge on GitHub"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge en GitHub"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge sur GitHub"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge su GitHub"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub の omp-bridge"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub의 omp-bridge"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "omp-bridge no GitHub"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub 上的 omp-bridge"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub 上的 omp-bridge"
           }
         }
       }
@@ -55479,67 +55739,392 @@
         }
       }
     },
-    "Tailscode — Claude Code and opencode from your phone, over your own tailnet.": {
+    "Tailscode — Claude Code, opencode and Oh My Pi from your phone, over your own tailnet.": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode – Claude Code und opencode vom iPhone aus, über dein eigenes Tailnet."
+            "value": "Tailscode – Claude Code, opencode und Oh My Pi vom iPhone aus, über dein eigenes Tailnet."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode — Claude Code and opencode from your phone, over your own tailnet."
+            "value": "Tailscode — Claude Code, opencode and Oh My Pi from your phone, over your own tailnet."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode: Claude Code y opencode desde tu teléfono, por tu propia tailnet."
+            "value": "Tailscode: Claude Code, opencode y Oh My Pi desde tu teléfono, por tu propia tailnet."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode — Claude Code et opencode depuis votre téléphone, via votre propre tailnet."
+            "value": "Tailscode — Claude Code, opencode et Oh My Pi depuis votre téléphone, via votre propre tailnet."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode — Claude Code e opencode dal telefono, sul tuo tailnet."
+            "value": "Tailscode — Claude Code, opencode e Oh My Pi dal telefono, sul tuo tailnet."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode — iPhone から、自分の tailnet 上で使う Claude Code と opencode。"
+            "value": "Tailscode — iPhone から、自分の tailnet 上で使う Claude Code、opencode と Oh My Pi。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode — 당신만의 tailnet을 통해 휴대폰에서 쓰는 Claude Code와 opencode."
+            "value": "Tailscode — 당신만의 tailnet을 통해 휴대폰에서 쓰는 Claude Code, opencode와 Oh My Pi."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode — Claude Code e opencode pelo seu telefone, pela sua própria tailnet."
+            "value": "Tailscode — Claude Code, opencode e Oh My Pi pelo seu telefone, pela sua própria tailnet."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode — 从你的手机使用 Claude Code 和 opencode，在你自己的 tailnet 上。"
+            "value": "Tailscode — 从你的手机使用 Claude Code、opencode 和 Oh My Pi，在你自己的 tailnet 上。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode — 從你的手機使用 Claude Code 和 opencode，在你自己的 tailnet 上。"
+            "value": "Tailscode — 從你的手機使用 Claude Code、opencode 和 Oh My Pi，在你自己的 tailnet 上。"
+          }
+        }
+      }
+    },
+    "Oh My Pi": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi"
+          }
+        }
+      }
+    },
+    "Oh My Pi server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh-My-Pi-Server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servidor Oh My Pi"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveur Oh My Pi"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server Oh My Pi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi サーバ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi 서버"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servidor Oh My Pi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi 服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi 伺服器"
+          }
+        }
+      }
+    },
+    "opencode server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode-Server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servidor opencode"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveur opencode"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server opencode"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode サーバ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 서버"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servidor opencode"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 伺服器"
+          }
+        }
+      }
+    },
+    "Claude Code server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude-Code-Server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servidor Claude Code"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveur Claude Code"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server Claude Code"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code サーバ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code 서버"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servidor Claude Code"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code 服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code 伺服器"
+          }
+        }
+      }
+    },
+    "Oh My Pi lists the providers its own configuration reaches. A model missing here is missing from that machine's setup.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi lists the providers its own configuration reaches. A model missing here is missing from that machine's setup."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi zeigt die Anbieter, die seine eigene Konfiguration erreicht. Ein Modell, das hier fehlt, fehlt in der Einrichtung dieses Rechners."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi muestra los proveedores a los que llega su propia configuración. Un modelo que falte aquí falta en la configuración de esa máquina."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi liste les fournisseurs que sa propre configuration atteint. Un modèle absent ici est absent de la configuration de cette machine."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi elenca i provider raggiunti dalla sua configurazione. Un modello assente qui è assente dalla configurazione di quella macchina."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi は自身の設定から到達できるプロバイダを一覧します。ここにないモデルは、そのマシンの設定にないということです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi는 자체 설정이 닿는 제공자를 나열합니다. 여기에 없는 모델은 그 컴퓨터의 설정에 없는 것입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Oh My Pi lista os provedores que a própria configuração dele alcança. Um modelo que falta aqui falta na configuração daquela máquina."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi 列出其自身配置能触达的提供方。这里缺少的模型，是那台电脑的配置里没有。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh My Pi 會列出其自身設定能觸及的提供者。這裡沒有的模型，就是那台電腦的設定裡沒有。"
           }
         }
       }

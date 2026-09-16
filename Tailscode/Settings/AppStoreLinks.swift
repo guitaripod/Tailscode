@@ -11,7 +11,7 @@ enum AppStoreLinks {
     /// The line beside the link in the share sheet, so the message is not a bare URL.
     static var sharePitch: String {
         String(
-            localized: "Tailscode — Claude Code and opencode from your phone, over your own tailnet.",
+            localized: "Tailscode — Claude Code, opencode and Oh My Pi from your phone, over your own tailnet.",
             comment: "Text beside the App Store link in the share sheet")
     }
 

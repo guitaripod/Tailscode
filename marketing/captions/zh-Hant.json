@@ -3,8 +3,8 @@
     {
       "master": "01-live",
       "slug": "01-agents-anywhere",
-      "headline": "Claude Code\n在手機上",
-      "subline": "opencode、Oh My Pi也在tailnet上運行。"
+      "headline": "Claude Code, opencode,\nOh My Pi——在手機上",
+      "subline": "每一輪都即時在你手中，走你自己的 tailnet。"
     },
     {
       "master": "03-approval",

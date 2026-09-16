@@ -3,8 +3,8 @@
     {
       "master": "01-live",
       "slug": "01-agents-anywhere",
-      "headline": "Claude Code,\ndepuis votre iPhone",
-      "subline": "opencode et Oh My Pi aussi — en direct sur votre tailnet."
+      "headline": "Claude Code, opencode,\nOh My Pi — sur votre iPhone",
+      "subline": "Chaque tour en direct dans votre main, sur votre tailnet."
     },
     {
       "master": "03-approval",
@@ -62,6 +62,6 @@
     }
   ],
   "ipad_headline_swap": {
-    "depuis votre iPhone": "sur votre iPad"
+    "sur votre iPhone": "sur votre iPad"
   }
 }

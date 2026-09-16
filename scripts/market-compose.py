@@ -50,7 +50,7 @@ SUBLINE_INK = (154, 163, 178)
 BORDER = (255, 255, 255, 30)
 
 MAC = [
-    ("01-conversation", "01-native-on-mac", "Claude Code & opencode, native on the Mac", "Drive the agents on your own machines from a real window — over your own tailnet, no browser tab, no relay."),
+    ("01-conversation", "01-native-on-mac", "Claude Code, opencode & Oh My Pi, native on the Mac", "Drive the agents on your own machines from a real window — over your own tailnet, no browser tab, no relay."),
     ("02-split", "02-two-machines", "Two machines, side by side", "Split the window and point the new pane at any server's conversations."),
     ("03-git", "03-repo-truth", "The repo, read — never operated", "Branch, staged, changed, and the real diffs, from the machine that owns them."),
     ("04-analytics", "04-month-in-numbers", "The month in numbers", "Every transcript priced turn by turn, merged across every server."),
