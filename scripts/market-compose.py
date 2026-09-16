@@ -263,6 +263,10 @@ def emit(label, source_dir, folder, manifest, compose):
         out = os.path.join(folder, slug + ".png")
         panel.save(out, optimize=True)
         print(f"  {label}/{slug}.png")
+    for stale in sorted(set(os.listdir(folder)) - {slug + ".png" for _, slug, _, _ in manifest}):
+        if stale.endswith(".png"):
+            os.remove(os.path.join(folder, stale))
+            print(f"  {label}/{stale} removed (not in the manifest)")
 
 
 def emit_locale(locale, platform):

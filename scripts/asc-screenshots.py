@@ -8,8 +8,8 @@ for en-US only and es-MX borrows the es-ES panels; en-GB and en-AU carry nothing
 and show the en-US set. The Mac set (panels/mac) goes on the MAC_OS version.
 
 Everything goes through `asc screenshots upload`, which fans out over a
-<dir>/<locale>/<platform>/*.png tree: this script only stages that tree (with
-symlinks, under a scratch directory) and then verifies every set on the store
+<dir>/<locale>/<platform>/*.png tree: this script only stages that tree (as
+copies under a scratch directory — asc refuses symlinks) and then verifies every set on the store
 reads COMPLETE with the expected count.
 
 Usage: python3 scripts/asc-screenshots.py <marketing-version> [--platform=ios|macos] [--dry-run]
@@ -71,9 +71,11 @@ def stage(locales, platform):
         if source is None:
             continue
         target = os.path.join(root, locale, platform)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        os.symlink(source, target)
-        counts[locale] = len([f for f in os.listdir(source) if f.endswith(".png")])
+        os.makedirs(target)
+        files = sorted(f for f in os.listdir(source) if f.endswith(".png"))
+        for name in files:
+            shutil.copyfile(os.path.join(source, name), os.path.join(target, name))
+        counts[locale] = len(files)
     return root, counts
 
 
