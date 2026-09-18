@@ -5,14 +5,14 @@
 Those clients drive remote coding agents — [opencode](https://opencode.ai) on port 4096, **Claude Code** via [claude-bridge](https://github.com/guitaripod/claude-bridge) on port 4098, and **Oh My Pi** via [omp-bridge](https://github.com/guitaripod/omp-bridge) on port 4099 — running on machines you own. The app talks to them point-to-point over your own [Tailscale](https://tailscale.com) tailnet. No relay, no account, no vendor backend: there is no server of ours in the path, because there is no server of ours. The transport's security is Tailscale's WireGuard, not something Tailscode implements.
 
 <p align="center">
-  <a href="https://apps.apple.com/app/tailscode/id6791660932"><b>iPhone &amp; Mac — App Store</b></a> ·
+  <a href="https://apps.apple.com/app/tailscode/id6791660932"><b>iPhone, iPad &amp; Mac — App Store</b></a> ·
   <a href="https://aur.archlinux.org/packages/tailscode"><b>Linux — AUR</b></a> ·
   <a href="https://github.com/guitaripod/Tailscode/releases"><b>Linux — release tarball</b></a> ·
   <a href="https://midgarcorp.cc/tailscode">midgarcorp.cc/tailscode</a> ·
   <a href="LICENSE">GPL-3.0</a>
 </p>
 
-Latest releases: **iPhone 1.23** · **macOS 1.22** · **Linux 1.24** (the 1.24 iPhone and Mac builds are in App Review). The apps are free; a one-time **$14.99 Pro** non-consumable unlocks unlimited servers and concurrent Live Activities on both iPhone and Mac. iPhone only — there is no iPad build.
+Latest releases: **iPhone 1.45** · **macOS 1.45** · **Linux 1.47**. The apps are free; a one-time **$14.99 Pro** non-consumable unlocks unlimited servers and concurrent Live Activities on both iPhone and Mac. Universal since 1.26 — iPad gets its own readable-column layout and multiple scenes, not a stretched phone screen.
 
 Built on [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit), a GPL-3.0 Swift package that unifies both backends behind one conversation engine. The clients are polished shells; the engine is reusable.
 
@@ -36,7 +36,7 @@ Coding agents run long turns on machines that aren't in front of you. The phone 
 
 Most cross-platform claims are a promise. This one is a switch statement.
 
-`TailscodeCore/Sources/TailscodeCore/Parity.swift` declares `AppCapability` — **150 cases**, one per user-facing capability — plus a registry entry per case describing the capability in toolkit-free prose, so a port is judged against semantics rather than a screenshot.
+`TailscodeCore/Sources/TailscodeCore/Parity.swift` declares `AppCapability` — **157 cases**, one per user-facing capability — plus a registry entry per case describing the capability in toolkit-free prose, so a port is judged against semantics rather than a screenshot.
 
 Each client ships a manifest that switches over `AppCapability` **exhaustively, with no `default`**:
 
@@ -64,7 +64,7 @@ capability                 iOS         linux       mac         mac-store
 ----------                 ---         -----       ---         ---------
 sessionSections            ok          ok          ok          ok
 ...
-434/488 implemented, 12 partial, 12 gaps, 30 n/a
+523/592 implemented, 14 partial, 18 gaps, 37 n/a
 PARITY_OK
 ```
 
@@ -73,7 +73,8 @@ The interesting answers:
 - **What a phone has nowhere to put** — the desktop tiling family (`splitPanes`, `terminalPane`, `browserSlot`, `videoSlot`, `vimComposer`, `summonAnywhere`, `newPaneChooser`, …) is `.notApplicable` on iOS, and Linux opts out of the Apple-owned surfaces (`hapticFeedback`, `usageWidgets`, `homeQuickActions`, `gameCenter`).
 - **The Mac's halves differ** — the store copy loses what the sandbox forbids (tailnet discovery, the watch-sites board) and gains what only the store can do (Game Center authentication, installing the app itself). The ad-hoc copy has no Game Center entitlement and cannot rebuild the `.app` it is running out of, so its update centre hands over the build command instead.
 - **`auroraStream` is the one thing iOS alone has** — the GPU-written streaming answer. Linux would need to take the drawing away from Pango, and the Mac would need a glyph mapper against `NSLayoutManager`; both desks use the settled renderer until then, losing no meaning.
-- `linkEmbeds` and `reviewPrompt` are desktop gaps with the work named: preview cards for transcript links, and a Mac review-prompt coordinator riding the same turn-completion signal iOS hooks.
+- `linkEmbeds` is a desktop gap with the work named: preview cards for transcript links, which the iOS `LinkEmbedCell` already carries.
+- **The Mac has no image studio, on either distribution** — `imageGenSlot`, `imageLane` and `imageLibrary` are `.gap` for both the ad-hoc and store builds alike, not just the sandboxed one. Linux is the only desktop with an actual paint pane; iOS gets a modal studio; the Mac gets neither yet.
 
 Be clear about what this buys: exhaustiveness forces **disclosure**, not implementation. `.gap("later")` compiles. What the gate guarantees is that no capability can quietly exist on one platform while the others say nothing, and that every exception is a paragraph somebody had to write and defend.
 
@@ -91,6 +92,7 @@ Be clear about what this buys: exhaustiveness forces **disclosure**, not impleme
 - **Subagents render in place** — a spawned agent expands as a card at its own tool call; a wide fan-out collapses behind one row. A **task board** folds the agent's todo calls into one live checklist, and a **workflow card** shows a multi-agent run as phases with live agent rows.
 - **Pictures the agent looked at** — every tool result that handed the model an image docks as an image bubble; tapping opens a paged gallery over every picture in the conversation, zoomable to 1:1, exporting the server's original bytes.
 - **Compaction is a seam you can read** — `/compact` opens a preflight (it is irreversible and takes minutes) and lands as a divider showing what was traded for what, with the full summary behind it in a reader.
+- **`/design` opens a mock-up board, not a guess** — a preflight asks what to design, where it is now and what to respect; the agent writes self-contained HTML mocks the client renders full-bleed in its own web engine (`WKWebView` / WebKitGTK), with three follow-ups — change this one, one more, build this — and nothing written to your device.
 - **Diffs wear their language** — edit-tool calls and git patches get add/remove line washes with the code's own syntax colouring on top.
 - **A turn that produced nothing says so**, and an interrupted one is marked as interrupted rather than left looking finished. A finished answer can report what it took: duration, tokens, throughput.
 - Find in transcript, jump-to-message, fork a conversation, save a full local snapshot that still opens when the server is gone, per-session **drafts** persisted per keystroke.
@@ -98,10 +100,15 @@ Be clear about what this buys: exhaustiveness forces **disclosure**, not impleme
 - Attachments: photos, files, and a clipboard that's read for what it is — copied files become chips, a picture becomes a chip, an overlong paste becomes a file, only words insert at the caret.
 - **Prompt enhance** (iPhone) — hold Send to rewrite a rough prompt on-device with Apple's Foundation Models. Requires iOS 26; nothing leaves the phone.
 
+**Image and video generation**
+- **The forge: describe a clip, watch it render.** A third composer lane beside chat and quick ask, wired to any tailnet machine running ComfyUI: type a prompt, pick frame size, length and one of two LTX-2.5 transformers, send, and a modal opens over your work with real progress — queue position, which of the two render passes is running, model load — rather than a blind wait. A capped per-device history keeps every prompt and seed, playable again or reused as a new draft. Implemented on iOS, Mac and Linux alike.
+- **The studio: paint or edit with a reference.** The same composer carries an image lane — Qwen for quality edits-and-paints, Klein for four-step fast renders — with a reference photo from five sources (library, camera, file, clipboard, the machine's own gallery) to edit instead of generate from scratch, narrated step by step over ComfyUI's own socket. A library reads ComfyUI's own output folder, so every device sees the same shelf with no re-upload. **The Mac has no image studio yet, on either distribution** — Linux has an actual paint pane, iOS a modal studio, the Mac neither.
+
 **Models and money**
 - **One model chooser over every server** — every provider's models in family sections, searchable, duplicate offers folded into one row with alternates, capabilities on the row, recents. The catalog is watched live, so models added by a server restart appear without relaunching.
 - **Model identity tint** — every model family wears an authored hue and every effort level its heat, on chat rows, composer chips and effort controls. **Ultracode wears a rainbow.**
 - **Quota walls, scoped** — exhaustion is a clear state with a one-shot alert and a chrome notice scoped to the chat's own provider; spent models draw dimmed-but-pickable in the chooser.
+- **A quota board that holds still** — one card per provider, reordered by hand, by name, or tightest-window-first, with a per-provider hide that never silences that provider's own in-chat exhaustion wall, and an optional hero gauge for whichever window account-wide is closest to empty.
 - **Session spend** — the chat's chrome carries what the whole conversation has cost, and touching it opens the account: per-turn bars, the four token tiers, per-model shares, the five priciest turns. Priced from the CLI's own transcript, **always marked an estimate**.
 - **Usage analytics** — the month in numbers, merged across every connected server: daily bars, the week's rhythm, the day's clock, models, projects, tools, what caching saved, records, insights. A DeepSeek prepaid **balance** is read as money, not a bar.
 - **Game Center trophies** (Apple clients) — the same ledger scored against a trophy catalog with achievements and leaderboards; sign-in is lazy and never a wall.
@@ -137,7 +144,7 @@ Be clear about what this buys: exhaustiveness forces **disclosure**, not impleme
 
 **Desktop workspace** (Linux and Mac)
 - **Tiling splits** with vim-grade pane verbs, zoom, an even grid for a marked set of chats, and drag-a-chat-into-a-pane with a live preview. An empty pane asks which server, then which chat. The layout — including what a browser or video slot was showing — survives restarts.
-- Panes beyond chat: a **terminal**, a **file tree**, a **browser slot** (the platform's own engine, claiming only browser chords), and a **video slot** (libmpv on Linux, AVKit on Mac) whose empty state is a board of what's live on your followed channels.
+- Panes beyond chat: a **terminal**, a **file tree**, a **browser slot** (the platform's own engine, claiming only browser chords), and a **video slot** (libmpv on Linux, AVKit on Mac) for a channel, a link or a stream. Its empty state is a board of what's live on your followed channels — an optional device-flow Twitch/YouTube sign-in (no password, tokens kept device-local) turns that into your actual follows rather than just a search box. The Mac App Store build has neither the pane nor the sign-in: sandboxing leaves no route for either.
 - **Where you press is what you're working in** — clicks route from the window itself, so focus follows intent without stealing the press's meaning.
 - Rebindable **shortcut registry** with contexts, sequences, conflict reporting, and a cheatsheet derived from the effective bindings.
 
@@ -160,19 +167,20 @@ Be clear about what this buys: exhaustiveness forces **disclosure**, not impleme
 
 | Client | Toolkit | Floor | Source |
 |---|---|---|---|
-| **iPhone** | UIKit, programmatic. No SwiftUI in the app target (only in the widgets, which WidgetKit requires) | iOS 18; Liquid Glass and prompt enhance need iOS 26 | `Tailscode/` |
+| **iPhone / iPad** | UIKit, programmatic. No SwiftUI in the app target (only in the widgets, which WidgetKit requires) | iOS 18; Liquid Glass and prompt enhance need iOS 26 | `Tailscode/` |
 | **macOS** | AppKit. Carbon for the global hotkey, WebKit, GameKit, MetalKit | macOS 26 | `TailscodeMac/` |
 | **Linux** | GTK4 + libadwaita through C shims. VTE, libmpv and WebKitGTK compiled in only if their headers exist | GTK 4.12 / libadwaita 1.4 | `TailscodeLinux/` |
 | **Shared core** | Foundation only. Zero UIKit, AppKit, GTK or SwiftUI imports | Swift 6 language mode | `TailscodeCore/` |
 
-The shared core carries 61 test files with **860 `@Test` functions** (swift-testing) — themes and the type ramp fail the build rather than drift. There is no UI test target on any client: the desktops prove their renderings end to end under `--selftest` (both suites include the parity check), and the iPhone client's exhaustiveness gates its compilation instead.
+The shared core carries 79 test files with **1,059 `@Test` functions** (swift-testing) — themes and the type ramp fail the build rather than drift. There is no UI test target on any client: the desktops prove their renderings end to end under `--selftest` (both suites include the parity check), and the iPhone client's exhaustiveness gates its compilation instead.
 
 ## Requirements
 
-- **iPhone** — iOS 18+. iPhone only (`TARGETED_DEVICE_FAMILY 1`); there is no iPad build.
+- **iPhone and iPad** — iOS 18+, universal (`TARGETED_DEVICE_FAMILY 1,2`). iPad gets readable-column lists, multiple scenes and a hardware-keyboard menu, not a stretched phone screen.
 - **macOS** — 26+.
 - **Linux** — **GTK 4.12+ and libadwaita 1.4+**. Ubuntu 24.04, Debian 13, Fedora 40 and Arch all clear it; **Ubuntu 22.04 and Debian 12 do not**. Optional VTE, mpv and WebKitGTK add the terminal, video and browser panes.
 - **Tailscale** on this device and on the machine the agent runs on. Tailscode does not ship a transport of its own and does no relaying; if the two machines cannot see each other on the tailnet, there is nothing to fall back to.
+- Optional: a machine on that tailnet running **ComfyUI** (port 8188) unlocks the image and video generation lanes — one box serves both, and it's the only optional server here, not a fourth kind of agent.
 - A machine on that tailnet running one of:
   - `opencode serve` (port 4096) — one command sets it up as a service and keeps its model list current, which a long-lived opencode server does not do on its own:
 
@@ -200,7 +208,7 @@ That replaces `/Applications/Tailscode.app`. Ad-hoc signing is why this copy can
 
 ### Linux
 
-**Arch** — [tailscode](https://aur.archlinux.org/packages/tailscode) builds the current release from the `v1.24` tag; [tailscode-git](https://aur.archlinux.org/packages/tailscode-git) tracks master:
+**Arch** — [tailscode](https://aur.archlinux.org/packages/tailscode) builds the current release from the `v1.47` tag; [tailscode-git](https://aur.archlinux.org/packages/tailscode-git) tracks master:
 
 ```bash
 paru -S tailscode        # or yay, or: git clone the AUR package and makepkg -si
@@ -209,7 +217,7 @@ paru -S tailscode        # or yay, or: git clone the AUR package and makepkg -si
 **Everyone else** — the release tarball from [GitHub releases](https://github.com/guitaripod/Tailscode/releases). It is one static-stdlib binary plus its desktop entry, icons, man page and completions, built in CI on `ubuntu-24.04` under `swift:6.2-noble`; the job fails if the binary needs anything newer than `GLIBC_2.39`, or if the VTE/mpv/WebKit headers are missing, so a release never silently drops a pane. **x86_64 only** — no aarch64 build is published.
 
 ```bash
-tar xf tailscode-1.24-linux-x86_64.tar.gz -C ~/.local --strip-components=2
+tar xf tailscode-1.47-linux-x86_64.tar.gz -C ~/.local --strip-components=2
 ```
 
 `--strip-components=2`, not 1: the archive members are `./usr/bin/tailscode`, so stripping one level lands the binary at `~/.local/usr/bin`.
@@ -270,9 +278,11 @@ The manifests use CodingAgentKit from a sibling checkout when there is one and f
 ```
 TailscodeCore/       Shared, toolkit-free: parity registry, themes + typography, cascade
                      streaming, activity + presence, spend + analytics + trophies, git,
-                     model fleet + quotas, splits + pane targets, slash + shortcuts,
-                     quick ask + summon, update ledger, stores, demo world
-  Tests/             61 files, 860 @Test functions (swift-testing)
+                     model fleet + quotas + quota board, splits + pane targets, slash +
+                     shortcuts, quick ask + summon, image + video generation (forge),
+                     design board, media watch (Twitch/YouTube), update ledger, stores,
+                     demo world
+  Tests/             79 files, 1,059 @Test functions (swift-testing)
 Tailscode/           iPhone UIKit client — connection, chat, home board, usage, settings,
                      Live Activity + widgets, push
 TailscodeMac/        AppKit client — tiling, Liquid Glass, Metal presence orb, SelfTest
@@ -284,7 +294,7 @@ packaging/           Flatpak manifest, Arch PKGBUILDs, desktop entry, icons, met
 scripts/             Parity gate, packaging, dev loops, App Store Connect, film rig
 ```
 
-All networking, streaming and state live in [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit) (resolved from its published tag, 0.20.0 at the time of writing); the app renders `ConversationState` and forwards intent. If a capability is missing, it's added to the Kit — the app stays thin.
+All networking, streaming and state live in [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit) (resolved from its published tag, 0.29.0 at the time of writing); the app renders `ConversationState` and forwards intent. If a capability is missing, it's added to the Kit — the app stays thin.
 
 ## Related projects
 
