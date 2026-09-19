@@ -40,7 +40,10 @@ enum ParityManifest {
         case .markdownRendering: return .implemented("TextBubbleCell")
         case .tableRendering: return .implemented("TableCell")
         case .transcriptLinks: return .implemented("dataDetectorTypes")
-        case .syntaxHighlighting: return .implemented("CodeBlockCell.highlightedCode")
+        case .syntaxHighlighting:
+            return .partial(
+                "CodeBlockCell.highlightedCode",
+                missing: "a long tool output is cut at the ceiling with no button to open it")
         case .streamingGrowth: return .implemented("reconfigureItems")
         case .streamCascade: return .implemented("CascadeDriver")
         case .toolRows: return .implemented("ToolStepRenderer")

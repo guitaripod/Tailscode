@@ -265,6 +265,12 @@ enum MatrixTheme {
             color: \(text);
             \(t(.code))
         }
+        .code-gutter { \(t(.code)) color: \(textDim); opacity: 0.7; padding-right: 12px; }
+        .code-scroll, .code-scroll > viewport { background: none; }
+        .code-scroll scrollbar { margin-top: 4px; }
+        .code-fold { color: \(info); \(t(.codeAction)) padding: 2px 0; min-height: 0; }
+        .code-fold:hover { color: \(accent); }
+        .code-copy:hover { color: \(accent); }
         .diff-add { color: \(accent); \(t(.diff)) }
         .diff-remove { color: \(danger); \(t(.diff)) }
         .diff-line { \(t(.diff)) }

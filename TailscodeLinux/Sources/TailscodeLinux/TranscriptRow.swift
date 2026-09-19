@@ -600,7 +600,7 @@ struct TranscriptRow: Hashable {
         case .agentProse(_, let markup):
             return Gtk.markupLabel(markup, css: "agent-text")
         case .codeBlock(let language, let body):
-            return Self.codeBlock(language: language, body: body, context: context)
+            return Self.codeBlock(language: language, body: body, key: key, context: context)
         case .table(let table):
             return Self.table(table, key: key)
         case .tableDraft(let draft):
@@ -669,7 +669,9 @@ struct TranscriptRow: Hashable {
                     gtk_box_append(ptr(column), Gtk.markupLabel(markup, css: "agent-text"))
                 }
             case .code(let language, let body):
-                gtk_box_append(ptr(column), codeBlock(language: language, body: body, context: nil))
+                gtk_box_append(
+                    ptr(column),
+                    codeBlock(language: language, body: body, key: "\(key):s\(index)", context: nil))
             case .table(let table):
                 gtk_box_append(ptr(column), Self.table(table, key: "\(key):s\(index)"))
             }
@@ -704,10 +706,13 @@ struct TranscriptRow: Hashable {
         return chunks
     }
 
+    /// A fenced block: the language and a copy in the header, a gutter of line numbers, the code
+    /// scrolling sideways and never down, and under a long one a button naming the lines behind
+    /// it. Opening grows the block in the page, so the transcript's own scroll carries it.
     private static func codeBlock(
-        language: String?, body: String, context: TranscriptContext?
+        language: String?, body: String, key: String, context: TranscriptContext?
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
         Gtk.addClass(column, "code-block")
 
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
@@ -716,33 +721,80 @@ struct TranscriptRow: Hashable {
             selectable: false)
         gtk_widget_set_hexpand(tag, 1)
         gtk_box_append(ptr(header), tag)
-        let bytes = body
-        let toast = context?.toast
-        gtk_box_append(
-            ptr(header),
-            Gtk.button(Localized.text("copy"), css: ["flat", "code-copy"]) {
-                Gtk.copyToClipboard(bytes)
-                toast?(Localized.text("Code copied"))
-            })
+        gtk_box_append(ptr(header), copyButton(body, toast: context?.toast))
         gtk_box_append(ptr(column), header)
 
+        let foldKey = "\(key)#code"
+        let state = FoldState(opened: context?.isExpanded(foldKey) ?? false)
+        let fold = TranscriptBlocks.fold(body, expanded: state.opened)
+
+        let gutter = Gtk.label(TranscriptBlocks.lineNumbers(fold), css: "code-gutter", selectable: false)
+        gtk_label_set_xalign(op(gutter), 1)
+        gtk_widget_set_valign(gutter, GTK_ALIGN_START)
+        gtk_widget_set_visible(gutter, fold.totalLines > 1 ? 1 : 0)
         let text = Gtk.markupLabel(
-            PangoSyntax.render(body, language: language, palette: MatrixTheme.palette),
+            PangoSyntax.render(fold.shown, language: language, palette: MatrixTheme.palette),
             css: "code-body", wrap: false)
+        gtk_widget_set_valign(text, GTK_ALIGN_START)
         let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC)
-        gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER)
         gtk_scrolled_window_set_propagate_natural_width(op(scroller), 0)
-        // A block short enough to read whole is drawn whole; only a long one is held to a
-        // screenful, and that height is stated rather than inferred.
-        if !TranscriptBlocks.fitsInline(body) {
-            let height = Int32(TranscriptBlocks.cappedHeight)
-            gtk_scrolled_window_set_min_content_height(op(scroller), height)
-            gtk_scrolled_window_set_max_content_height(op(scroller), height)
-        }
         gtk_scrolled_window_set_child(op(scroller), text)
-        gtk_box_append(ptr(column), scroller)
+        gtk_widget_set_hexpand(scroller, 1)
+        Gtk.addClass(scroller, "code-scroll")
+        let lines = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_box_append(ptr(lines), gutter)
+        gtk_box_append(ptr(lines), scroller)
+        gtk_box_append(ptr(column), lines)
+
+        guard let title = fold.toggleLabel else { return column }
+        let gutterBits = UInt(bitPattern: gutter)
+        let textBits = UInt(bitPattern: text)
+        let toggleSlot = Gtk.Slot()
+        let onToggle = context?.onToggle
+        let toggle = Gtk.button(title, css: ["flat", "code-fold"]) {
+            state.opened.toggle()
+            onToggle?(foldKey, state.opened)
+            let fold = TranscriptBlocks.fold(body, expanded: state.opened)
+            guard let gutter = UnsafeMutablePointer<GtkWidget>(bitPattern: gutterBits),
+                let text = UnsafeMutablePointer<GtkWidget>(bitPattern: textBits),
+                let toggle = UnsafeMutablePointer<GtkWidget>(bitPattern: toggleSlot.bits)
+            else { return }
+            gtk_label_set_text(op(gutter), TranscriptBlocks.lineNumbers(fold))
+            gtk_label_set_markup(
+                op(text),
+                PangoSyntax.render(fold.shown, language: language, palette: MatrixTheme.palette))
+            gtk_button_set_label(ptr(toggle), fold.toggleLabel)
+        }
+        toggleSlot.bits = UInt(bitPattern: toggle)
+        gtk_widget_set_halign(toggle, GTK_ALIGN_START)
+        gtk_box_append(ptr(column), toggle)
         return column
+    }
+
+    final class FoldState: @unchecked Sendable {
+        var opened: Bool
+        init(opened: Bool) { self.opened = opened }
+    }
+
+    /// The copy button of a block: the bytes go to the clipboard exactly, and the button says
+    /// so for a moment where the pointer already is, beside the toast.
+    static func copyButton(_ bytes: String, toast: (@Sendable (String) -> Void)?)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let slot = Gtk.Slot()
+        let button = Gtk.button(Localized.text("copy"), css: ["flat", "code-copy"]) {
+            Gtk.copyToClipboard(bytes)
+            toast?(Localized.text("Code copied"))
+            guard let button = UnsafeMutablePointer<GtkWidget>(bitPattern: slot.bits) else { return }
+            gtk_button_set_label(ptr(button), Localized.text("copied"))
+            Gtk.after(1500) {
+                guard let button = UnsafeMutablePointer<GtkWidget>(bitPattern: slot.bits) else { return }
+                gtk_button_set_label(ptr(button), Localized.text("copy"))
+            }
+        }
+        slot.bits = UInt(bitPattern: button)
+        return button
     }
 
     static func reasoning(_ text: String, key: String, context: TranscriptContext)

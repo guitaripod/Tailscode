@@ -267,15 +267,12 @@ enum ToolRowView {
         }
 
         if let output = displayableOutput(call, summary), !output.isEmpty {
-            let label = RowKit.attributedLabel(
-                MacMarkdown.plainWithLinks(
-                    output, font: MacTheme.Ramp.font(.toolOutput),
-                    color: MacTheme.Color.secondaryLabel))
             column.addArrangedSubview(
-                TranscriptBlocks.fitsInline(output)
-                    ? label
-                    : RowKit.heightCappedScroll(
-                        around: label, max: TranscriptBlocks.cappedHeight))
+                RowKit.foldedOutput(output) { shown in
+                    MacMarkdown.plainWithLinks(
+                        shown, font: MacTheme.Ramp.font(.toolOutput),
+                        color: MacTheme.Color.secondaryLabel)
+                })
             let full = fullOutput(call, summary)
             if let full, full.count > output.count {
                 column.addArrangedSubview(

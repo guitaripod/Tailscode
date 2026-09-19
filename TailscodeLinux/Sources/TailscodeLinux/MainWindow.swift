@@ -282,6 +282,8 @@ final class MainWindow: @unchecked Sendable {
                     self.activePane.driverTableStreamDemo()
                 case "tabledemo":
                     self.activePane.driverTableDemo()
+                case "codedemo":
+                    self.activePane.driverCodeDemo()
                 case "cutoffdemo":
                     self.activePane.driverInterruptedDemo(
                         argument.isEmpty ? "busy" : argument)

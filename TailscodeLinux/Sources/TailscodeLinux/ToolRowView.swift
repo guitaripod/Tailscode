@@ -230,27 +230,32 @@ enum ToolRowView {
         call.status == .error ? call.sanitizedOutput : summary.displayOutput
     }
 
-    /// What a tool said, given room to be read.
-    ///
-    /// A short output is a label in the column and nothing else — it wraps, it grows, and it is
-    /// there. Only a long one goes inside a scroller, and that scroller is told its exact height
-    /// rather than asked to work one out: `propagate-natural-height` measures a wrapping label at
-    /// its *unwrapped* width, which for any real command output is one very long line, so the box
-    /// collapsed to a couple of lines with a scrollbar beside it. Fixing the height is the whole
-    /// fix; the reader gets a screenful and scrolls inside it.
+    /// What a tool said, given room to be read: a wrapping label, whole when it is short, and
+    /// under a long one the button that shows the rest — never a scroller inside the transcript.
     private static func outputBlock(_ output: String) -> UnsafeMutablePointer<GtkWidget> {
-        let label = Gtk.markupLabel(
-            PangoMarkdown.plainWithLinks(output, accent: MatrixTheme.palette.accent),
-            css: "tool-output")
+        let accent = MatrixTheme.palette.accent
+        let state = TranscriptRow.FoldState(opened: false)
+        let fold = TranscriptBlocks.fold(output, expanded: false)
+        let label = Gtk.markupLabel(PangoMarkdown.plainWithLinks(fold.shown, accent: accent), css: "tool-output")
         gtk_label_set_xalign(op(label), 0)
-        guard !TranscriptBlocks.fitsInline(output) else { return label }
-        let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-        let height = Int32(TranscriptBlocks.cappedHeight)
-        gtk_scrolled_window_set_min_content_height(op(scroller), height)
-        gtk_scrolled_window_set_max_content_height(op(scroller), height)
-        gtk_scrolled_window_set_child(op(scroller), label)
-        return scroller
+        guard let title = fold.toggleLabel else { return label }
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        gtk_box_append(ptr(column), label)
+        let labelBits = UInt(bitPattern: label)
+        let slot = Gtk.Slot()
+        let toggle = Gtk.button(title, css: ["flat", "code-fold"]) {
+            state.opened.toggle()
+            let fold = TranscriptBlocks.fold(output, expanded: state.opened)
+            guard let label = UnsafeMutablePointer<GtkWidget>(bitPattern: labelBits),
+                let toggle = UnsafeMutablePointer<GtkWidget>(bitPattern: slot.bits)
+            else { return }
+            gtk_label_set_markup(op(label), PangoMarkdown.plainWithLinks(fold.shown, accent: accent))
+            gtk_button_set_label(ptr(toggle), fold.toggleLabel)
+        }
+        slot.bits = UInt(bitPattern: toggle)
+        gtk_widget_set_halign(toggle, GTK_ALIGN_START)
+        gtk_box_append(ptr(column), toggle)
+        return column
     }
 
     private static func displayableOutput(_ call: ToolCall, _ summary: ToolCallSummary) -> String? {

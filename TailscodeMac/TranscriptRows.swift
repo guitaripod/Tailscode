@@ -489,7 +489,7 @@ struct TranscriptRow: Hashable {
         case .agentProse(_, let rendered):
             return RowKit.attributedLabel(rendered)
         case .codeBlock(let language, let body):
-            return Self.codeBlock(language: language, body: body, context: context)
+            return Self.codeBlock(language: language, body: body, key: key, context: context)
         case .table(let table):
             return Self.table(table, key: key)
         case .tableDraft(let draft):
@@ -569,7 +569,7 @@ struct TranscriptRow: Hashable {
                 }
             case .code(let language, let body):
                 column.addArrangedSubview(
-                    codeBlock(language: language, body: body, context: context))
+                    codeBlock(language: language, body: body, key: "\(key):s\(index)", context: context))
             case .table(let table):
                 column.addArrangedSubview(Self.table(table, key: "\(key):s\(index)"))
             }
@@ -605,12 +605,15 @@ struct TranscriptRow: Hashable {
         return chunks
     }
 
+    /// A fenced block: the language and a copy in the header, a gutter of line numbers, the code
+    /// scrolling sideways and never down, and under a long one a button naming the lines behind
+    /// it. Opening grows the block in the page, so the transcript's own scroll carries it.
     @MainActor
     private static func codeBlock(
-        language: String?, body: String, context: TranscriptContext?
+        language: String?, body: String, key: String, context: TranscriptContext?
     ) -> NSView {
         let column = FillingStack()
-        column.spacing = 2
+        column.spacing = MacTheme.Spacing.xs
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.s, left: MacTheme.Spacing.s, bottom: MacTheme.Spacing.s,
             right: MacTheme.Spacing.s)
@@ -627,19 +630,33 @@ struct TranscriptRow: Hashable {
             color: MacTheme.Color.tertiaryLabel)
         header.addArrangedSubview(tag)
         header.addArrangedSubview(RowKit.spacer())
-        let toast = context?.toast
-        let copy = RowKit.linkButton(Localized.text("copy")) {
-            RowKit.copyToClipboard(body)
-            toast?(Localized.text("Code copied"))
-        }
-        copy.font = MacTheme.Ramp.font(.codeAction)
-        header.addArrangedSubview(copy)
+        header.addArrangedSubview(RowKit.copyButton(body, toast: context?.toast))
         column.addArrangedSubview(header)
 
-        let text = RowKit.code(body, language: language)
-        let scrolled = RowKit.codeScroll(
-            around: text, cap: TranscriptBlocks.fitsInline(body) ? nil : TranscriptBlocks.cappedHeight)
-        column.addArrangedSubview(scrolled)
+        let foldKey = "\(key)#code"
+        var opened = context?.isExpanded(foldKey) ?? false
+        var lines = RowKit.codeLines(body, language: language, expanded: opened)
+        column.addArrangedSubview(lines)
+
+        guard let title = TranscriptBlocks.fold(body, expanded: opened).toggleLabel else {
+            return column
+        }
+        let onToggle = context?.onToggle
+        let host = RowKit.Weak(column)
+        let button = RowKit.Weak<NSButton>(nil)
+        let toggle = RowKit.linkButton(title) {
+            opened.toggle()
+            onToggle?(foldKey, opened)
+            guard let column = host.value else { return }
+            let fresh = RowKit.codeLines(body, language: language, expanded: opened)
+            column.removeArrangedSubview(lines)
+            column.insertArrangedSubview(fresh, at: 1)
+            lines = fresh
+            button.value?.title = TranscriptBlocks.fold(body, expanded: opened).toggleLabel ?? ""
+        }
+        button.value = toggle
+        toggle.font = MacTheme.Ramp.font(.codeAction)
+        column.addArrangedSubview(toggle)
         return column
     }
 
@@ -1201,13 +1218,14 @@ enum RowKit {
         return result
     }
 
-    /// The pane a code block lives in: as tall as the code up to an optional cap, as wide as the
-    /// column, and scrolling in whichever direction the code actually overflows.
-    static func codeScroll(around content: NSView, cap: CGFloat?) -> NSView {
+    /// The pane a code block lives in: exactly as tall as the code, as wide as the column, and
+    /// scrolling sideways when a line runs past it — never down, because a scroller inside the
+    /// transcript's scroller is two gestures fighting over one wheel.
+    static func codeScroll(around content: NSView) -> NSView {
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasHorizontalScroller = true
-        scroll.hasVerticalScroller = cap != nil
+        scroll.hasVerticalScroller = false
         scroll.autohidesScrollers = true
         scroll.scrollerStyle = .overlay
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -1219,36 +1237,85 @@ enum RowKit {
             content.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
             content.topAnchor.constraint(equalTo: clip.topAnchor),
             content.trailingAnchor.constraint(greaterThanOrEqualTo: clip.trailingAnchor),
+            scroll.heightAnchor.constraint(equalTo: content.heightAnchor),
         ])
-        if let cap { scroll.heightAnchor.constraint(lessThanOrEqualToConstant: cap).isActive = true }
-        let fit = scroll.heightAnchor.constraint(equalTo: content.heightAnchor)
-        fit.priority = .defaultHigh
-        fit.isActive = true
         return scroll
     }
 
-    /// Output boxes stop growing at a cap and scroll inside themselves, so one chatty tool cannot
-    /// push the conversation off the screen.
-    static func heightCappedScroll(around content: NSView, max cap: CGFloat) -> NSView {
-        let scroll = NSScrollView()
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.scrollerStyle = .overlay
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        let clip = FlippedClip()
-        clip.drawsBackground = false
-        scroll.contentView = clip
-        scroll.documentView = content
-        NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
-            content.topAnchor.constraint(equalTo: clip.topAnchor),
-        ])
-        scroll.heightAnchor.constraint(lessThanOrEqualToConstant: cap).isActive = true
-        let fit = scroll.heightAnchor.constraint(equalTo: content.heightAnchor)
-        fit.priority = .defaultHigh
-        fit.isActive = true
-        return scroll
+    /// The lines a block shows right now — a gutter of numbers beside the code, both set in the
+    /// same face so a row of one is a row of the other — folded or whole as the reader decided.
+    static func codeLines(_ body: String, language: String?, expanded: Bool) -> NSView {
+        let fold = TranscriptBlocks.fold(body, expanded: expanded)
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .top
+        row.spacing = MacTheme.Spacing.s
+        row.translatesAutoresizingMaskIntoConstraints = false
+        if fold.totalLines > 1 {
+            let gutter = label(
+                TranscriptBlocks.lineNumbers(fold), font: MacTheme.Ramp.font(.code),
+                color: MacTheme.Color.tertiaryLabel)
+            gutter.alignment = .right
+            gutter.maximumNumberOfLines = 0
+            gutter.setContentCompressionResistancePriority(.required, for: .horizontal)
+            gutter.setContentHuggingPriority(.required, for: .horizontal)
+            row.addArrangedSubview(gutter)
+        }
+        let scroll = codeScroll(around: code(fold.shown, language: language))
+        scroll.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        row.addArrangedSubview(scroll)
+        return row
+    }
+
+    /// The copy button of a block: the bytes go to the pasteboard exactly, and the button says
+    /// so for a moment where the pointer already is, beside the toast.
+    static func copyButton(_ bytes: String, toast: ((String) -> Void)?) -> NSButton {
+        let ref = Weak<NSButton>(nil)
+        let button = linkButton(Localized.text("copy")) {
+            copyToClipboard(bytes)
+            toast?(Localized.text("Code copied"))
+            ref.value?.title = Localized.text("copied")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                ref.value?.title = Localized.text("copy")
+            }
+        }
+        ref.value = button
+        button.font = MacTheme.Ramp.font(.codeAction)
+        return button
+    }
+
+    /// A weak hand on a view for a closure the view itself owns, so a button that retitles
+    /// itself does not keep itself alive.
+    final class Weak<T: AnyObject> {
+        weak var value: T?
+        init(_ value: T?) { self.value = value }
+    }
+
+    /// A tool's output, given room to be read: whole when it is short, its first lines and a
+    /// button naming the rest when it is long — never a box that scrolls inside the transcript.
+    static func foldedOutput(_ output: String, render: @escaping (String) -> NSAttributedString)
+        -> NSView
+    {
+        var opened = false
+        let fold = TranscriptBlocks.fold(output, expanded: false)
+        let field = attributedLabel(render(fold.shown))
+        guard let title = fold.toggleLabel else { return field }
+        let column = FillingStack()
+        column.spacing = MacTheme.Spacing.xs
+        column.translatesAutoresizingMaskIntoConstraints = false
+        column.addArrangedSubview(field)
+        let shown = Weak(field)
+        let button = Weak<NSButton>(nil)
+        let toggle = linkButton(title) {
+            opened.toggle()
+            let fold = TranscriptBlocks.fold(output, expanded: opened)
+            shown.value?.attributedStringValue = render(fold.shown)
+            button.value?.title = fold.toggleLabel ?? ""
+        }
+        button.value = toggle
+        toggle.font = MacTheme.Ramp.font(.codeAction)
+        column.addArrangedSubview(toggle)
+        return column
     }
 
     static func copyToClipboard(_ text: String) {

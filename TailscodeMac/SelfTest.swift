@@ -515,7 +515,7 @@ enum SelfTest {
 
         let narrow: CGFloat = 120
         let wide = RowKit.code(String(repeating: "x", count: 400), language: "swift")
-        let scroll = RowKit.codeScroll(around: wide, cap: nil)
+        let scroll = RowKit.codeScroll(around: wide)
         let host = NSView(frame: NSRect(x: 0, y: 0, width: narrow, height: 400))
         host.addSubview(scroll)
         NSLayoutConstraint.activate([

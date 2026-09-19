@@ -4801,6 +4801,51 @@ final class ChatPane: @unchecked Sendable {
         apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
     }
 
+    /// A conversation of code blocks for the harness: a two-line command, a one-liner, a block
+    /// long enough to fold, and a line wide enough to scroll sideways.
+    func driverCodeDemo() {
+        let now = Date()
+        let asked = ChatMessage(
+            id: "demo-code-prompt", role: .user, agentType: .claudeCode,
+            parts: [MessagePart(id: "t", kind: .text("just tell me what to do"))],
+            createdAt: now.addingTimeInterval(-120))
+        let long = (1...40).map { "step_\($0)() { echo \"stage \($0) of forty\"; }" }.joined(separator: "\n")
+        let answer = """
+            On the mac (a real terminal, not through me):
+
+            ```
+            asc web auth login --apple-id you@example.com --public-provider-id <your team id>
+            asc web auth status
+            asc web auth export --output-file ~/asc-web-session.json
+            ```
+
+            Then from Arch:
+
+            ```bash
+            scp mac:~/asc-web-session.json /tmp/ && asc web auth import --input /tmp/asc-web-session.json && asc web auth status && echo "this line is deliberately long enough to run past the pane so the sideways scroll shows itself"
+            ```
+
+            One-liner:
+
+            ```sh
+            systemctl --user restart claude-bridge
+            ```
+
+            And the whole script, which is long enough to fold:
+
+            ```bash
+            \(long)
+            ```
+            """
+        let reply = ChatMessage(
+            id: "demo-code-answer", role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "a", kind: .text(answer))],
+            createdAt: now)
+        let state = ConversationState(
+            messages: [asked, reply], status: .idle, hasLoadedTranscript: true)
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+    }
+
     private func driverTableStreamStep(
         _ upto: Int, of total: Int, asked: ChatMessage, now: Date
     ) {
