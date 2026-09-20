@@ -69,6 +69,12 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.49" date="2026-09-21">
+      <description>
+        <p>The image studio is laid out for a desk: the brief down the left with room for a paragraph — the two engines as cards that say what each is for, the six shapes drawn as the shapes they are, size and detail as segments, the seed and the cutout as switches — the picture in the middle with the machine&#x27;s own progress narrated over it and the words and verbs under it, and every picture the machine keeps down the right as rows that carry the thumbnail, the words and the facts. An edit keeps the picture it works from on the stage, dimmed, until the result replaces it. The studio, the forge, a design board, the gallery and the delegate desk open the size of the screen, and on KDE they open centred.</p>
+        <p>Open in browser opens the browser again: a launch goes through GTK&#x27;s own launcher with this window&#x27;s display, so an app restarted from a script with no display of its own no longer starts a browser nobody sees. On the proprietary NVIDIA driver WebKit&#x27;s web process paints on the CPU, which is what stops it dying under every design mock, and a page whose process dies anyway is reloaded once. A build made without WebKitGTK names the package to install for the machine&#x27;s own package manager and the script that rebuilds, rather than a missing engine; a build made after the engine was installed actually links it.</p>
+      </description>
+    </release>
     <release version="1.48" date="2026-09-20">
       <description>
         <p>The image studio asks the model for everything it can actually do. Shape and size are two decisions now: six frames from square to ultra-wide, three sizes up to Qwen-Image-2.1&#x27;s native 2K, both standing down during an edit because an edit takes its frame from the picture it starts from. One render can work from several references, addressed in the words as &lt;image1&gt; and &lt;image2&gt;, and each one is let go of by the number the prompt calls it. Cutout paints on transparency, Detail trades minutes for steadiness, Avoid keeps things out and says that it costs time, and the seed rolls or holds with one press.</p>
