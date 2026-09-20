@@ -44,7 +44,11 @@ final class ImageWindow: @unchecked Sendable {
 
     private let window: UnsafeMutablePointer<GtkWidget>
     private let pane: DrawPane
-    private let dismissNote: UnsafeMutablePointer<GtkWidget>
+    /// The header's own title widget: the subtitle is where a notice lands and where the
+    /// closing-keeps-rendering promise is made while a render is out. A bar under the studio
+    /// for one label and a Done button that only repeated the window's own close was a row of
+    /// chrome the picture paid for.
+    private let title: UnsafeMutablePointer<GtkWidget>
     private var studioObserver: NSObjectProtocol?
 
     private init(parent: UnsafeMutablePointer<GtkWidget>?) {
@@ -61,21 +65,13 @@ final class ImageWindow: @unchecked Sendable {
         }
 
         let header = adw_header_bar_new()!
-        adw_header_bar_set_title_widget(
-            op(UnsafeMutableRawPointer(header)),
-            adw_window_title_new(ImageGenSurface.title, Self.subtitle))
+        title = adw_window_title_new(ImageGenSurface.title, Self.subtitle)!
+        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), title)
         gtk_window_set_titlebar(ptr(window), header)
 
         pane = DrawPane(studio: .shared, fills: true)
         pane.wireChips()
-        dismissNote = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
-        gtk_label_set_max_width_chars(op(dismissNote), 58)
-        gtk_widget_set_hexpand(dismissNote, 1)
-
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        gtk_box_append(ptr(column), pane.root)
-        gtk_box_append(ptr(column), footer())
-        gtk_window_set_child(ptr(window), column)
+        gtk_window_set_child(ptr(window), pane.root)
 
         pane.onNotice = { [weak self] text in
             Gtk.onMain { [weak self] in self?.say(text) }
@@ -83,7 +79,7 @@ final class ImageWindow: @unchecked Sendable {
         studioObserver = NotificationCenter.default.addObserver(
             forName: ImageStudio.didChange, object: nil, queue: nil
         ) { [weak self] _ in
-            Gtk.onMain { [weak self] in self?.drawFooter() }
+            Gtk.onMain { [weak self] in self?.drawSubtitle() }
         }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
@@ -93,7 +89,7 @@ final class ImageWindow: @unchecked Sendable {
             guard let self else { return }
             Self.destroyed(self)
         }
-        drawFooter()
+        drawSubtitle()
         gtk_window_present(ptr(window))
         pane.focusPrompt()
     }
@@ -106,38 +102,22 @@ final class ImageWindow: @unchecked Sendable {
         return door.line ?? ImageGenSurface.subtitle
     }
 
-    /// The way out, and the one sentence that has to sit beside it: closing over a render leaves
-    /// the render running. The window's own close button says the same thing by doing it, so the
-    /// note is what makes the promise legible before the press rather than after it.
-    private func footer() -> UnsafeMutablePointer<GtkWidget> {
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
-        Gtk.margins(row, top: 4, bottom: 12, leading: 14, trailing: 14)
-        gtk_widget_set_valign(dismissNote, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(row), dismissNote)
-        let done = Gtk.button(ImageGenSurface.dismissTitle, css: ["suggested-action", "pill"]) {
-            [weak self] in
-            Gtk.onMain { [weak self] in self?.close() }
-        }
-        gtk_widget_set_valign(done, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(row), done)
-        return row
-    }
-
-    /// A file written or a picture copied is worth one line, said where the work happened rather
-    /// than as a dialog somebody has to dismiss. It clears itself, because a notice that outstays
-    /// its news becomes chrome.
+    /// A file written or a picture copied is worth one line, said in the header rather than as a
+    /// dialog somebody has to dismiss. It clears itself, because a notice that outstays its news
+    /// becomes chrome.
     private func say(_ text: String) {
-        gtk_label_set_text(op(dismissNote), text)
-        gtk_widget_set_visible(dismissNote, 1)
+        adw_window_title_set_subtitle(op(UnsafeMutableRawPointer(title)), text)
         Gtk.after(4000) { [weak self] in
-            Gtk.onMain { [weak self] in self?.drawFooter() }
+            Gtk.onMain { [weak self] in self?.drawSubtitle() }
         }
     }
 
-    private func drawFooter() {
+    /// The machine under the title — or, while a render is out, the promise that closing this
+    /// window leaves it running, made where the close button is rather than in a bar of its own.
+    private func drawSubtitle() {
         let note = ImageGenSurface.dismissNote(painting: ImageStudio.shared.isPainting)
-        gtk_label_set_text(op(dismissNote), note ?? "")
-        gtk_widget_set_visible(dismissNote, note == nil ? 0 : 1)
+        adw_window_title_set_subtitle(
+            op(UnsafeMutableRawPointer(title)), note ?? Self.subtitle)
     }
 
     /// The studio's keys first, then the window's one key. A prompt being typed keeps everything
