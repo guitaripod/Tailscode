@@ -245,7 +245,10 @@ cmd_shot() {
     require_running
     local out=${1:-/tmp/tailscode-linux.png}
     harness_env
-    "${HARNESS_ENV[@]}" import -display "$DEV_DISPLAY" -window root "$out"
+    # xwd rather than ImageMagick's import: import reads the root through XGetImage on a visual
+    # it guesses, and on this Xvfb it answers an all-black 1-bit image while xwd, which asks the
+    # server for the root's own visual, hands back the pixels every time.
+    "${HARNESS_ENV[@]}" sh -c 'xwd -display "$1" -root -silent | magick xwd:- "$2"' _ "$DEV_DISPLAY" "$out"
     local want got
     want=${GEOMETRY%x*}
     got=$(identify -format '%wx%h' "$out" 2>/dev/null || echo unreadable)
