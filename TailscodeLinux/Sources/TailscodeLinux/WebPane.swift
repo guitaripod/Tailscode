@@ -18,6 +18,7 @@ final class WebPane: @unchecked Sendable {
     private let headingLabel: UnsafeMutablePointer<GtkWidget>
     private let hintLabel: UnsafeMutablePointer<GtkWidget>
     private let reasonLabel: UnsafeMutablePointer<GtkWidget>
+    private var recoveredOnce = false
     private var callbackBox: UnsafeMutableRawPointer?
 
     var onChange: (@Sendable () -> Void)?
@@ -182,10 +183,26 @@ final class WebPane: @unchecked Sendable {
             slot.canGoForward = payload.hasSuffix("1")
         case "error":
             slot.failed(payload.isEmpty ? Localized.text("That page would not open") : payload)
+        case "terminated":
+            recoverFromTermination()
         default:
             return
         }
         render()
+    }
+
+    /// The page's own process died under it — a renderer crash or the kernel taking a memory hog —
+    /// so the page it held is gone and the widget shows nothing. It is loaded again, once: a page
+    /// that kills its process on every load would otherwise be reloaded forever, so the second
+    /// death is reported and left.
+    private func recoverFromTermination() {
+        guard let web, let url = slot.currentURL, !url.isEmpty else { return }
+        guard !recoveredOnce else {
+            slot.failed(Localized.text("The page's process died twice; it will not be reloaded again"))
+            return
+        }
+        recoveredOnce = true
+        tailscode_web_load(web, url)
     }
 
     private func render() {

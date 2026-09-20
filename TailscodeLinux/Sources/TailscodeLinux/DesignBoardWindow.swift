@@ -30,6 +30,8 @@ final class DesignBoardWindow: @unchecked Sendable {
     private var webWidget: UnsafeMutablePointer<GtkWidget>?
     private var loading = Set<String>()
     private var shown: String?
+    private var recoveredOnce = false
+    private var callbackBox: UnsafeMutableRawPointer?
     private let hasEngine = tailscode_web_available() != 0
 
     static func present(
@@ -371,14 +373,24 @@ final class DesignBoardWindow: @unchecked Sendable {
     private func ensureView() -> Bool {
         if web != nil { return true }
         guard hasEngine else { return false }
-        guard let made = tailscode_web_new({ _, _, _ in }, nil),
+        let box = Box(window: self)
+        let raw = Unmanaged.passRetained(box).toOpaque()
+        guard
+            let made = tailscode_web_new(
+                { user, kind, _ in
+                    guard let user, let kind, String(cString: kind) == "terminated" else { return }
+                    let box = Unmanaged<Box>.fromOpaque(user).takeUnretainedValue()
+                    Gtk.onMain { box.window?.recoverFromTermination() }
+                }, raw),
             let widget = tailscode_web_widget(made)
         else {
+            Unmanaged<Box>.fromOpaque(raw).release()
             state.failed(Localized.text("The web view would not start."))
             renderFrame()
             return false
         }
         web = made
+        callbackBox = raw
         Gtk.removeChildren(of: frame)
         gtk_widget_set_hexpand(widget, 1)
         gtk_widget_set_vexpand(widget, 1)
@@ -387,12 +399,34 @@ final class DesignBoardWindow: @unchecked Sendable {
         return true
     }
 
+    /// The mock's own process died under it, so the artboard on screen is blank: it is loaded
+    /// again once, and a second death is reported rather than retried forever.
+    private func recoverFromTermination() {
+        guard web != nil else { return }
+        guard !recoveredOnce else {
+            notice(Localized.text("The mock's web process died twice; open it in the browser instead."))
+            return
+        }
+        recoveredOnce = true
+        shown = nil
+        renderFrame()
+    }
+
+    private final class Box {
+        weak var window: DesignBoardWindow?
+        init(window: DesignBoardWindow) { self.window = window }
+    }
+
     private func dropWeb() {
         guard let web else { return }
         tailscode_web_free(web)
         self.web = nil
         webWidget = nil
         shown = nil
+        if let callbackBox {
+            Unmanaged<Box>.fromOpaque(callbackBox).release()
+            self.callbackBox = nil
+        }
     }
 
     private func askImplement() {

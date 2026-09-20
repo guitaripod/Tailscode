@@ -12,7 +12,7 @@ import Foundation
 enum FeatureWindow {
     /// The margin left on every side, so the surface reads as a window over the work rather than
     /// as the app having gone full screen.
-    static let inset: Int32 = 40
+    static let inset: Int32 = 80
 
     /// The size to open at, on the screen the widget is on, and never below the floor a surface
     /// names for itself — a monitor smaller than the floor gets the floor and the window manager

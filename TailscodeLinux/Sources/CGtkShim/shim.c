@@ -2270,8 +2270,39 @@ static void tailscode_web_load_changed(
     }
 }
 
+/// WebKitGTK's Skia GPU worker dies inside NVIDIA's EGL when it tears down — a SIGSEGV in
+/// libnvidia-eglcore under __call_tls_dtors on the SkiaGPUWorker thread, every time a page is
+/// let go of — which takes the whole web process and the page with it. The proprietary driver is
+/// the only one that does it, so on a machine running it the web process paints on the CPU
+/// instead, before the first process is ever spawned; a person who has set the variable
+/// themselves is left alone.
+static void tailscode_web_prepare_process(void) {
+    static gboolean prepared = FALSE;
+    if (prepared) return;
+    prepared = TRUE;
+    if (g_getenv("WEBKIT_SKIA_ENABLE_CPU_RENDERING") != NULL) return;
+    if (g_file_test("/proc/driver/nvidia/version", G_FILE_TEST_EXISTS)) {
+        g_setenv("WEBKIT_SKIA_ENABLE_CPU_RENDERING", "1", FALSE);
+    }
+}
+
+/// The web process died under the page. The page is gone with it, so whoever owns the view is
+/// told and reloads what it was showing rather than leaving a blank pane.
+static gboolean tailscode_web_terminated(
+    WebKitWebView *view, WebKitWebProcessTerminationReason reason, gpointer raw) {
+    (void)view;
+    TailscodeWeb *web = raw;
+    if (web == NULL || web->disposed || web->event == NULL) return TRUE;
+    const char *why = reason == WEBKIT_WEB_PROCESS_CRASHED ? "crashed"
+        : reason == WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT ? "memory"
+        : "terminated";
+    web->event(web->user, "terminated", why);
+    return TRUE;
+}
+
 TailscodeWeb *tailscode_web_new(
     void (*event)(void *user, const char *kind, const char *text), void *user) {
+    tailscode_web_prepare_process();
     TailscodeWeb *web = g_new0(TailscodeWeb, 1);
     web->event = event;
     web->user = user;
@@ -2298,6 +2329,8 @@ TailscodeWeb *tailscode_web_new(
         G_CALLBACK(tailscode_web_notify_progress), web);
     g_signal_connect(web->view, "load-failed", G_CALLBACK(tailscode_web_failed), web);
     g_signal_connect(web->view, "load-changed", G_CALLBACK(tailscode_web_load_changed), web);
+    g_signal_connect(
+        web->view, "web-process-terminated", G_CALLBACK(tailscode_web_terminated), web);
     return web;
 }
 
