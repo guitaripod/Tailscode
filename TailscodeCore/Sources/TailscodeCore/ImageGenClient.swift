@@ -429,8 +429,9 @@ public struct ImageGenClient: Sendable {
         return data
     }
 
-    /// Qwen-Image-Edit-2511 as the store runs it: fp8mixed transformer, the VL text encoder,
-    /// one shared VAE. With no reference latent the same graph paints from words alone.
+    /// Qwen-Image-2.1 as the store runs it: the int8 transformer, the Qwen3-VL text encoder and
+    /// the 2.1 VAE. One node encodes both prompts and, in an edit, hands back the latent cut to
+    /// the reference's own shape; with no reference the same graph paints from words alone.
     static func qwenGraph(
         prompt: String, mode: ImageGenMode, aspect: ImageGenAspect, seed: UInt64,
         referencePath: String?
@@ -439,30 +440,15 @@ public struct ImageGenClient: Sendable {
         let negative = ""
         var graph: [String: Any] = [
             "12": ["class_type": "UNETLoader", "inputs": [
-                "unet_name": "qwen_image_edit_2511_fp8mixed.safetensors",
+                "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
                 "weight_dtype": "default",
             ]],
             "61": ["class_type": "CLIPLoader", "inputs": [
-                "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+                "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
                 "type": "qwen_image", "device": "default",
             ]],
             "10": ["class_type": "VAELoader", "inputs": [
-                "vae_name": "qwen_image_vae.safetensors",
-            ]],
-            "90": ["class_type": "ModelSamplingAuraFlow", "inputs": [
-                "model": ["12", 0], "shift": 3.1,
-            ]],
-            "64": ["class_type": "CFGNorm", "inputs": [
-                "model": ["90", 0], "strength": 1.0, "set_cfg_norm": false,
-            ]],
-            "66": ["class_type": "EmptySD3LatentImage", "inputs": [
-                "width": size.width, "height": size.height, "batch_size": 1,
-            ]],
-            "65": ["class_type": "KSampler", "inputs": [
-                "model": ["64", 0], "positive": ["70", 0], "negative": ["71", 0],
-                "latent_image": ["66", 0], "seed": Int(clamping: seed),
-                "steps": 30, "cfg": 1.0, "sampler_name": "euler",
-                "scheduler": "simple", "denoise": 1.0,
+                "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
             ]],
             "8": ["class_type": "VAEDecode", "inputs": [
                 "samples": ["65", 0], "vae": ["10", 0],
@@ -471,42 +457,44 @@ public struct ImageGenClient: Sendable {
                 "images": ["8", 0], "filename_prefix": "tailscode",
             ]],
         ]
+        var model: [Any] = ["12", 0]
+        var latent: [Any] = ["66", 0]
+        var encode: [String: Any] = [
+            "clip": ["61", 0], "prompt": prompt, "negative_prompt": negative,
+            "resolution": Self.referenceResolution,
+        ]
         if mode == .edit, let referencePath {
             graph["81"] = ["class_type": "LoadImage", "inputs": ["image": referencePath]]
-            graph["88"] = ["class_type": "FluxKontextImageScale", "inputs": [
-                "image": ["81", 0],
+            encode["vae"] = ["10", 0]
+            encode[Self.firstReferenceSlot] = ["81", 0]
+            graph["64"] = ["class_type": "QwenImage21Cache", "inputs": [
+                "model": ["12", 0], "device": "auto", "dtype": "default",
             ]]
-            graph["68"] = ["class_type": "TextEncodeQwenImageEditPlus", "inputs": [
-                "clip": ["61", 0], "vae": ["10", 0], "prompt": prompt, "image1": ["88", 0],
-            ]]
-            graph["69"] = ["class_type": "TextEncodeQwenImageEditPlus", "inputs": [
-                "clip": ["61", 0], "vae": ["10", 0], "prompt": negative, "image1": ["88", 0],
-            ]]
-            graph["75"] = ["class_type": "VAEEncode", "inputs": [
-                "pixels": ["88", 0], "vae": ["10", 0],
-            ]]
-            graph["65"] = ["class_type": "KSampler", "inputs": [
-                "model": ["64", 0], "positive": ["70", 0], "negative": ["71", 0],
-                "latent_image": ["75", 0], "seed": Int(clamping: seed),
-                "steps": 30, "cfg": 1.0, "sampler_name": "euler",
-                "scheduler": "simple", "denoise": 1.0,
-            ]]
+            model = ["64", 0]
+            latent = ["68", 2]
         } else {
-            graph["68"] = ["class_type": "CLIPTextEncode", "inputs": [
-                "clip": ["61", 0], "text": prompt,
-            ]]
-            graph["69"] = ["class_type": "CLIPTextEncode", "inputs": [
-                "clip": ["61", 0], "text": negative,
+            graph["66"] = ["class_type": "EmptyLatentImage", "inputs": [
+                "width": size.width, "height": size.height, "batch_size": 1,
             ]]
         }
-        graph["70"] = ["class_type": "FluxKontextMultiReferenceLatentMethod", "inputs": [
-            "conditioning": ["68", 0], "reference_latents_method": "index_timestep_zero",
-        ]]
-        graph["71"] = ["class_type": "FluxKontextMultiReferenceLatentMethod", "inputs": [
-            "conditioning": ["69", 0], "reference_latents_method": "index_timestep_zero",
+        graph["68"] = ["class_type": "TextEncodeQwenImage21", "inputs": encode]
+        graph["65"] = ["class_type": "KSampler", "inputs": [
+            "model": model, "positive": ["68", 0], "negative": ["68", 1],
+            "latent_image": latent, "seed": Int(clamping: seed),
+            "steps": 25, "cfg": 1.0, "sampler_name": "euler",
+            "scheduler": "simple", "denoise": 1.0,
         ]]
         return graph
     }
+
+    /// The encoder's reference slots grow as a graph wires them, and the queue names a grown slot
+    /// by its path rather than its own id. One reference is all the studio sends.
+    private static let firstReferenceSlot = "images.image_1"
+
+    /// The pixel budget an edit's reference is resized to before it is encoded, which the output
+    /// then follows in aspect rather than the chip's. The encoder wants the number whether or not
+    /// a reference is wired, so a painting from words carries it too and ignores it.
+    private static let referenceResolution = 1024
 
     private static func kleinLoaders() -> [String: Any] {
         [

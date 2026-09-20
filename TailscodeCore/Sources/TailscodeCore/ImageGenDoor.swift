@@ -290,7 +290,7 @@ public enum ImageGenDoorCheck {
 
         let halfDressed = ImageGenSighting(
             host: inherited.endpoint?.displayHost ?? "", reachable: true,
-            missingModels: ["vae/qwen_image_vae.safetensors"])
+            missingModels: ["vae/qwen_image_2.1_vae_bf16.safetensors"])
         expect(
             ImageGenDoor.resolve(filed: nil, forge: arch, sighting: halfDressed).tone == .attention,
             "a machine that is up and missing model files is the reader's to act on")

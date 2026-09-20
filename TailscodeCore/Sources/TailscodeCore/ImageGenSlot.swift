@@ -126,7 +126,7 @@ public enum ImageGenEngine: String, Codable, Sendable, CaseIterable {
     /// What each engine is for, said once so a chip's menu and a machine sheet agree.
     public var detail: String {
         switch self {
-        case .quality: return Localized.text("Qwen Image Edit · 30 steps · edits and paints")
+        case .quality: return Localized.text("Qwen Image 2.1 · 25 steps · edits and paints")
         case .fast: return Localized.text("FLUX.2 Klein · 4 steps · seconds, not a minute")
         }
     }
@@ -154,13 +154,13 @@ public struct ImageGenModelFile: Sendable, Equatable, Hashable, Codable, Identif
 
     public static let all: [ImageGenModelFile] = [
         ImageGenModelFile(
-            path: "diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
+            path: "diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
             role: Localized.text("Qwen diffusion model"), engine: .quality),
         ImageGenModelFile(
-            path: "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+            path: "text_encoders/qwen3vl_8b_int8_convrot.safetensors",
             role: Localized.text("Qwen text encoder"), engine: .quality),
         ImageGenModelFile(
-            path: "vae/qwen_image_vae.safetensors", role: Localized.text("Qwen VAE"),
+            path: "vae/qwen_image_2.1_vae_bf16.safetensors", role: Localized.text("Qwen VAE"),
             engine: .quality),
         ImageGenModelFile(
             path: "diffusion_models/flux-2-klein-4b.safetensors",
@@ -651,15 +651,15 @@ public struct ImageGenProgress: Sendable, Equatable {
     public static func stage(forNodeClass type: String) -> Stage? {
         switch type {
         case "UNETLoader", "CLIPLoader", "VAELoader", "CheckpointLoaderSimple",
-            "ModelSamplingAuraFlow", "CFGNorm", "UnetLoaderGGUF":
+            "ModelSamplingAuraFlow", "CFGNorm", "UnetLoaderGGUF", "QwenImage21Cache":
             return .loading
         case "LoadImage", "FluxKontextImageScale", "ImageScaleToTotalPixels", "GetImageSize",
             "VAEEncode":
             return .reading
-        case "CLIPTextEncode", "TextEncodeQwenImageEditPlus", "ConditioningZeroOut",
-            "ReferenceLatent", "FluxKontextMultiReferenceLatentMethod", "EmptySD3LatentImage",
-            "EmptyFlux2LatentImage", "Flux2Scheduler", "CFGGuider", "RandomNoise",
-            "KSamplerSelect":
+        case "CLIPTextEncode", "TextEncodeQwenImageEditPlus", "TextEncodeQwenImage21",
+            "ConditioningZeroOut", "ReferenceLatent", "FluxKontextMultiReferenceLatentMethod",
+            "EmptySD3LatentImage", "EmptyLatentImage", "EmptyFlux2LatentImage", "Flux2Scheduler",
+            "CFGGuider", "RandomNoise", "KSamplerSelect":
             return .encoding
         case "KSampler", "KSamplerAdvanced", "SamplerCustomAdvanced", "SamplerCustom":
             return .painting

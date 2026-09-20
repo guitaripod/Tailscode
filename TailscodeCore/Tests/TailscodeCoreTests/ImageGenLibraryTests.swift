@@ -4,7 +4,8 @@ import Testing
 @testable import TailscodeCore
 
 /// The gallery's readers, pinned against the shapes the machine actually produces: the listing
-/// route's lines, a PNG head as ComfyUI writes it, and the three graphs the store has verified.
+/// route's lines, a PNG head as ComfyUI writes it, and the graphs the store has verified — the
+/// two this app builds today and the older ones whose pictures are still in people's galleries.
 struct ImageGenLibraryTests {
     private static let qwenTextGraph = """
         {"9":{"class_type":"SaveImage","inputs":{"images":["8",0],"filename_prefix":"tailscode"}},
@@ -60,6 +61,18 @@ struct ImageGenLibraryTests {
          "75":{"class_type":"VAEEncode","inputs":{"pixels":["88",0],"vae":["10",0]}},
          "8":{"class_type":"VAEDecode","inputs":{"samples":["65",0],"vae":["10",0]}},
          "9":{"class_type":"SaveImage","inputs":{"images":["8",0],"filename_prefix":"edit_qwen"}}}
+        """
+
+    private static let qwen21EditGraph = """
+        {"81":{"class_type":"LoadImage","inputs":{"image":"launch.png"}},
+         "12":{"class_type":"UNETLoader","inputs":{"unet_name":"qwen_image_2.1_int8_convrot.safetensors","weight_dtype":"default"}},
+         "61":{"class_type":"CLIPLoader","inputs":{"clip_name":"qwen3vl_8b_int8_convrot.safetensors","type":"qwen_image","device":"default"}},
+         "10":{"class_type":"VAELoader","inputs":{"vae_name":"qwen_image_2.1_vae_bf16.safetensors"}},
+         "68":{"class_type":"TextEncodeQwenImage21","inputs":{"clip":["61",0],"vae":["10",0],"prompt":"make the sky bright orange","negative_prompt":"blurry","resolution":1024,"images.image_1":["81",0]}},
+         "64":{"class_type":"QwenImage21Cache","inputs":{"model":["12",0],"device":"auto","dtype":"default"}},
+         "65":{"class_type":"KSampler","inputs":{"model":["64",0],"positive":["68",0],"negative":["68",1],"latent_image":["68",2],"seed":2252231596,"steps":25,"cfg":1.0,"sampler_name":"euler","scheduler":"simple","denoise":1.0}},
+         "8":{"class_type":"VAEDecode","inputs":{"samples":["65",0],"vae":["10",0]}},
+         "9":{"class_type":"SaveImage","inputs":{"images":["8",0],"filename_prefix":"tailscode"}}}
         """
 
     private static func graph(_ text: String) -> [String: Any] {
@@ -159,6 +172,19 @@ struct ImageGenLibraryTests {
         #expect(recipe.model == "qwen_image_edit_2511_fp8mixed.safetensors")
     }
 
+    /// One node hands back both prompts, so the reader must tell them apart by the wire's slot
+    /// rather than by which node it lands on.
+    @Test func qwen21EditRecipeTellsThePromptsApart() throws {
+        let recipe = try #require(ComfyRecipe.read(graph: Self.graph(Self.qwen21EditGraph)))
+        #expect(recipe.prompt == "make the sky bright orange")
+        #expect(recipe.negative == "blurry")
+        #expect(recipe.steps == 25)
+        #expect(recipe.mode == .edit)
+        #expect(recipe.reference == "launch.png")
+        #expect(recipe.model == "qwen_image_2.1_int8_convrot.safetensors")
+        #expect(recipe.engine == .quality, "a 2.1 file is still the quality engine")
+    }
+
     @Test func foreignGraphIsAPictureWithNoWords() {
         #expect(ComfyRecipe.read(graph: [:]) == nil)
         let odd = ComfyRecipe.read(graph: ["1": ["class_type": "SaveImage", "inputs": [:]]])
@@ -199,7 +225,16 @@ struct ImageGenLibraryTests {
         let qwen = ImageGenClient.graph(
             prompt: "sky", engine: .quality, mode: .edit, aspect: .square, seed: 3,
             referenceName: "ref.png")
-        #expect(ComfyRecipe.read(graph: qwen)?.prompt == "sky")
+        let edited = try #require(ComfyRecipe.read(graph: qwen))
+        #expect(edited.prompt == "sky" && edited.mode == .edit && edited.engine == .quality)
+        #expect(edited.width == nil, "an edit takes its size from the reference, not the chip")
+
+        let qwenPaint = ImageGenClient.graph(
+            prompt: "dusk", engine: .quality, mode: .generate, aspect: .portrait, seed: 5,
+            referenceName: nil)
+        let painted21 = try #require(ComfyRecipe.read(graph: qwenPaint))
+        #expect(painted21.prompt == "dusk" && painted21.mode == .generate)
+        #expect(painted21.width == 896 && painted21.height == 1280)
     }
 
     @Test func queuePlaceIsReadOffTheMachinesQueue() {

@@ -191,9 +191,16 @@ public struct ComfyRecipe: Sendable, Equatable, Hashable, Codable {
     }
 
     private static func link(_ value: Any?) -> String? {
+        wire(value)?.id
+    }
+
+    /// A wire as the graph draws it: the node it leaves and which of that node's outputs it
+    /// leaves by. The slot matters where one node hands back both prompts.
+    private static func wire(_ value: Any?) -> (id: String, slot: Int)? {
         guard let pair = value as? [Any], pair.count == 2 else { return nil }
-        if let id = pair[0] as? String { return id }
-        if let number = pair[0] as? NSNumber { return number.stringValue }
+        let slot = (pair[1] as? NSNumber)?.intValue ?? 0
+        if let id = pair[0] as? String { return (id, slot) }
+        if let number = pair[0] as? NSNumber { return (number.stringValue, slot) }
         return nil
     }
 
@@ -226,34 +233,39 @@ public struct ComfyRecipe: Sendable, Equatable, Hashable, Codable {
     private static func conditioning(
         of sampler: (type: String, inputs: [String: Any]),
         in nodes: [String: (type: String, inputs: [String: Any])]
-    ) -> (String?, String?) {
-        if let positive = link(sampler.inputs["positive"]) {
-            return (positive, link(sampler.inputs["negative"]))
+    ) -> ((id: String, slot: Int)?, (id: String, slot: Int)?) {
+        if let positive = wire(sampler.inputs["positive"]) {
+            return (positive, wire(sampler.inputs["negative"]))
         }
         guard let guider = link(sampler.inputs["guider"]), let node = nodes[guider] else {
             return (nil, nil)
         }
-        if let positive = link(node.inputs["positive"]) {
-            return (positive, link(node.inputs["negative"]))
+        if let positive = wire(node.inputs["positive"]) {
+            return (positive, wire(node.inputs["negative"]))
         }
-        return (link(node.inputs["conditioning"]), nil)
+        return (wire(node.inputs["conditioning"]), nil)
     }
 
     /// Walks a conditioning wire back to the words on it: through every node that merely wraps
-    /// conditioning until one holds a `text` or `prompt` string. Bounded, because a graph is a
-    /// thing somebody drew and a cycle in it must not hang a gallery.
+    /// conditioning until one holds a `text` or `prompt` string. A node that hands back both
+    /// prompts is read by the slot the wire left, so the negative is not the positive again.
+    /// Bounded, because a graph is a thing somebody drew and a cycle in it must not hang a gallery.
     private static func words(
-        from start: String, in nodes: [String: (type: String, inputs: [String: Any])]
+        from start: (id: String, slot: Int),
+        in nodes: [String: (type: String, inputs: [String: Any])]
     ) -> String? {
-        var current = start
+        var current = start.id
+        var slot = start.slot
         for _ in 0..<16 {
             guard let node = nodes[current] else { return nil }
+            if slot == 1, let text = node.inputs["negative_prompt"] as? String { return text }
             if let text = node.inputs["text"] as? String { return text }
             if let text = node.inputs["prompt"] as? String { return text }
             let next = ["conditioning", "positive", "clip_l", "t5xxl"].lazy
-                .compactMap { link(node.inputs[$0]) }.first
+                .compactMap { wire(node.inputs[$0]) }.first
             guard let next else { return nil }
-            current = next
+            current = next.id
+            slot = next.slot
         }
         return nil
     }
