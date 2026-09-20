@@ -96,7 +96,7 @@ final class DelegateWindow: @unchecked Sendable {
     private init(parent: UnsafeMutablePointer<GtkWidget>?, host: String?) {
         window = gtk_window_new()!
         gtk_window_set_modal(ptr(window), 1)
-        gtk_window_set_default_size(ptr(window), 920, Self.height(near: parent))
+        FeatureWindow.fill(window, near: parent, minimumWidth: 640, minimumHeight: 480)
         gtk_widget_set_size_request(window, 640, 480)
         if let parent, let root = gtk_widget_get_root(parent) {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
@@ -557,14 +557,5 @@ final class DelegateWindow: @unchecked Sendable {
 
     private static func describe(_ error: Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? String(describing: error)
-    }
-
-    /// As tall as the surface asks for, and never taller than the display it opens on — the board
-    /// carries a picker, a status line, every tier and every run, which is a tall window by design.
-    private static func height(near widget: UnsafeMutablePointer<GtkWidget>?) -> Int32 {
-        let asked: Int32 = 780
-        let available = Int32(tailscode_monitor_workarea_height(widget))
-        guard available > 0 else { return asked }
-        return max(520, min(asked, Int32(Double(available) * 0.9)))
     }
 }

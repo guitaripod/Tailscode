@@ -41,9 +41,9 @@ final class ForgeWindow: @unchecked Sendable {
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), ForgeSurface.title)
         gtk_window_set_modal(ptr(window), 1)
-        gtk_window_set_default_size(
-            ptr(window), Int32(ForgeSurface.preferredWidth),
-            Self.height(near: parent))
+        FeatureWindow.fill(
+            window, near: parent, minimumWidth: Int32(ForgeSurface.minimumWidth),
+            minimumHeight: Int32(ForgeSurface.minimumHeight))
         gtk_widget_set_size_request(
             window, Int32(ForgeSurface.minimumWidth), Int32(ForgeSurface.minimumHeight))
         if let parent, let root = gtk_widget_get_root(parent) {
@@ -148,16 +148,5 @@ final class ForgeWindow: @unchecked Sendable {
 
     func handleChord(_ chord: KeyChord) -> Bool {
         pane.handleChord(chord)
-    }
-
-    /// As tall as the surface asks for, and never taller than the display it opens on. The modal
-    /// carries the renderer, the render, seven settings and the first clips, which is a tall window
-    /// by design — and a tall window whose bottom falls off a laptop screen is one whose way out is
-    /// somewhere below the fold.
-    private static func height(near widget: UnsafeMutablePointer<GtkWidget>?) -> Int32 {
-        let asked = Int32(ForgeSurface.preferredHeight)
-        let available = Int32(tailscode_monitor_workarea_height(widget))
-        guard available > 0 else { return asked }
-        return max(Int32(ForgeSurface.minimumHeight), min(asked, Int32(Double(available) * 0.9)))
     }
 }

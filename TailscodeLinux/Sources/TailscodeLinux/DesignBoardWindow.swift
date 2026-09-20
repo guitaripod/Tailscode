@@ -71,13 +71,9 @@ final class DesignBoardWindow: @unchecked Sendable {
     }
 
     private func presentWindow(parent: UnsafeMutablePointer<GtkWidget>?) {
-        let hostWidth = parent.map { gtk_widget_get_width($0) } ?? 0
-        let hostHeight = parent.map { gtk_widget_get_height($0) } ?? 0
-        let width = max(1040, hostWidth - 100)
-        let height = max(720, hostHeight - 80)
         let window = gtk_window_new()!
         gtk_window_set_title(ptr(window), state.title)
-        gtk_window_set_default_size(ptr(window), width, height)
+        FeatureWindow.fill(window, near: parent, minimumWidth: 1040, minimumHeight: 720)
         if let parent, let root = gtk_widget_get_root(parent) {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
         }

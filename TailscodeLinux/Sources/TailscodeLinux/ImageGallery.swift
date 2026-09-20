@@ -69,12 +69,9 @@ final class ImageGallery: @unchecked Sendable {
     }
 
     private func presentWindow(parent: UnsafeMutablePointer<GtkWidget>?) {
-        let hostWidth = parent.map { gtk_widget_get_width($0) } ?? 0
-        let hostHeight = parent.map { gtk_widget_get_height($0) } ?? 0
-        let width = max(960, hostWidth - 120)
-        let height = max(700, hostHeight - 100)
-        let (window, content) = Dialogs.window(title: "", parent: parent, width: width)
-        gtk_window_set_default_size(ptr(window), width, height)
+        let size = FeatureWindow.size(near: parent, minimumWidth: 960, minimumHeight: 700)
+        let (window, content) = Dialogs.window(title: "", parent: parent, width: size.width)
+        gtk_window_set_default_size(ptr(window), size.width, size.height)
         self.window = window
 
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)

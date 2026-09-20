@@ -2813,6 +2813,43 @@ unsigned char *tailscode_analytics_card_png(
     return g_byte_array_free(array, FALSE);
 }
 
+static GdkMonitor *tailscode_monitor_near(GtkWidget *near, gboolean *owned) {
+    GdkDisplay *display = NULL;
+    GdkMonitor *monitor = NULL;
+    *owned = FALSE;
+    if (near != NULL) {
+        GtkRoot *root = gtk_widget_get_root(near);
+        if (root != NULL) {
+            GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(root));
+            if (surface != NULL) {
+                display = gdk_surface_get_display(surface);
+                monitor = gdk_display_get_monitor_at_surface(display, surface);
+            }
+        }
+    }
+    if (monitor != NULL) return monitor;
+    display = display != NULL ? display : gdk_display_get_default();
+    if (display == NULL) return NULL;
+    GListModel *monitors = gdk_display_get_monitors(display);
+    if (monitors == NULL || g_list_model_get_n_items(monitors) == 0) return NULL;
+    monitor = GDK_MONITOR(g_list_model_get_item(monitors, 0));
+    *owned = monitor != NULL;
+    return monitor;
+}
+
+void tailscode_monitor_size(GtkWidget *near, int *width, int *height) {
+    *width = 0;
+    *height = 0;
+    gboolean owned = FALSE;
+    GdkMonitor *monitor = tailscode_monitor_near(near, &owned);
+    if (monitor == NULL) return;
+    GdkRectangle area;
+    gdk_monitor_get_geometry(monitor, &area);
+    if (owned) g_object_unref(monitor);
+    *width = area.width;
+    *height = area.height;
+}
+
 int tailscode_monitor_workarea_height(GtkWidget *near) {
     GdkDisplay *display = NULL;
     GdkMonitor *monitor = NULL;

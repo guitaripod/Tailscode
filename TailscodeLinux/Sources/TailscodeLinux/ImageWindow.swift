@@ -51,8 +51,9 @@ final class ImageWindow: @unchecked Sendable {
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), ImageGenSurface.title)
         gtk_window_set_modal(ptr(window), 0)
-        gtk_window_set_default_size(
-            ptr(window), Int32(ImageGenSurface.preferredWidth), Self.height(near: parent))
+        FeatureWindow.fill(
+            window, near: parent, minimumWidth: Int32(ImageGenSurface.minimumWidth),
+            minimumHeight: Int32(ImageGenSurface.minimumHeight))
         gtk_widget_set_size_request(
             window, Int32(ImageGenSurface.minimumWidth), Int32(ImageGenSurface.minimumHeight))
         if let parent, let root = gtk_widget_get_root(parent) {
@@ -183,12 +184,4 @@ final class ImageWindow: @unchecked Sendable {
     func driverType(_ text: String) { pane.driverType(text) }
 
     func driverSubmit() { pane.driverSubmit() }
-
-    private static func height(near widget: UnsafeMutablePointer<GtkWidget>?) -> Int32 {
-        let asked = Int32(ImageGenSurface.preferredHeight)
-        let available = Int32(tailscode_monitor_workarea_height(widget))
-        guard available > 0 else { return asked }
-        return max(
-            Int32(ImageGenSurface.minimumHeight), min(asked, Int32(Double(available) * 0.9)))
-    }
 }

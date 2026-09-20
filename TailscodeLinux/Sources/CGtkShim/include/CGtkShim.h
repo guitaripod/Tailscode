@@ -410,6 +410,10 @@ void tailscode_web_free(TailscodeWeb *web);
 /// Callers use it to bound how tall they may grow; nothing here decides that for them.
 int tailscode_monitor_workarea_height(GtkWidget *near);
 
+/// The logical size of the monitor the widget's window is on — the first monitor when it is on
+/// none yet — so a surface that wants the whole screen can ask for it before it is mapped.
+void tailscode_monitor_size(GtkWidget *near, int *width, int *height);
+
 /// Whether the shift modifier is held on the widget's display's keyboard, read at signal time so a
 /// click handler that gets no event (a button's "clicked") can still tell a plain mark from a
 /// range mark. A keyboard activation — Enter or Space — reads the same state, which is what it is:
