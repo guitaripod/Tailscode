@@ -1093,6 +1093,80 @@ enum MatrixTheme {
         }
         .draw-progress-bar trough { background-color: alpha(\(text), 0.10); }
         .draw-progress-bar progress { background-color: \(accent); }
+        .draw-brief-scroller { border-right: 1px solid \(rule); background-color: \(canvasRaised); }
+        .draw-brief { background-color: \(canvasRaised); }
+        .draw-lbl { color: \(textDim); \(t(.sectionLabel)) }
+        .draw-textarea {
+            background-color: \(canvas);
+            border: 1px solid \(rule);
+            border-radius: 12px;
+        }
+        .draw-textarea:focus-within { border-color: alpha(\(accent), 0.55); }
+        .draw-textarea textview, .draw-textarea text {
+            background: transparent;
+            color: \(text);
+            \(t(.composer))
+        }
+        .draw-count { color: \(textDim); \(t(.hint)) }
+        .draw-link {
+            color: \(accent);
+            background: none;
+            border: none;
+            box-shadow: none;
+            padding: 0 2px;
+            \(t(.hint))
+        }
+        .draw-link:hover { text-decoration-line: underline; }
+        .draw-link.draw-chip-on { color: \(text); }
+        .draw-opt, .draw-shape, .draw-seg-item {
+            background-color: \(canvas);
+            background-image: none;
+            color: \(text);
+            border: 1px solid \(rule);
+            box-shadow: none;
+        }
+        .draw-opt { border-radius: 10px; padding: 8px 10px; }
+        .draw-shape { border-radius: 8px; padding: 6px 2px; min-height: 40px; }
+        .draw-opt:hover, .draw-shape:hover, .draw-seg-item:hover { border-color: alpha(\(accent), 0.45); }
+        .draw-opt.draw-chip-on, .draw-shape.draw-chip-on, .draw-seg-item.draw-chip-on {
+            border-color: alpha(\(accent), 0.60);
+            background-color: alpha(\(accent), 0.14);
+        }
+        .draw-opt:disabled, .draw-shape:disabled, .draw-seg-item:disabled { opacity: 0.45; }
+        .draw-opt-title { color: \(text); \(t(.panelDetail)) }
+        .draw-opt-detail { color: \(textDim); \(t(.hint)) }
+        .draw-shape-glyph { border: 1.5px solid \(textDim); border-radius: 2px; }
+        .draw-shape.draw-chip-on .draw-shape-glyph { border-color: \(text); }
+        .draw-shape-label { color: \(textDim); \(t(.badge)) }
+        .draw-shape.draw-chip-on .draw-shape-label { color: \(text); }
+        .draw-seg { border-radius: 8px; }
+        .draw-seg-item { border-radius: 0; padding: 6px 4px; margin-left: -1px; color: \(textDim); }
+        .draw-seg-item:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; margin-left: 0; }
+        .draw-seg-item:last-child { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+        .draw-seg-item.draw-chip-on { color: \(text); }
+        .draw-toggle-title { color: \(text); \(t(.panelDetail)) }
+        .draw-toggle-detail { color: \(textDim); \(t(.hint)) }
+        .draw-keys { color: \(textDim); \(t(.hint)) opacity: 0.8; }
+        .draw-go-wide { border-radius: 12px; padding: 12px; }
+        .draw-progress-block { }
+        .draw-clock { color: \(textDim); \(t(.statusLine)) font-variant-numeric: tabular-nums; }
+        .draw-caption-lead { color: \(text); \(t(.panelDetail)) opacity: 1; }
+        .draw-shelf-column { border-left: 1px solid \(rule); background-color: \(canvasRaised); }
+        .draw-row {
+            padding: 5px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            background: none;
+            box-shadow: none;
+        }
+        .draw-row:hover { border-color: alpha(\(accent), 0.35); }
+        .draw-row-on { border-color: \(accent); background-color: alpha(\(accent), 0.12); }
+        .draw-row:disabled { opacity: 1; }
+        .draw-row-thumb { border-radius: 7px; }
+        .draw-row-thumb-busy { border: 1px dashed \(rule); border-radius: 7px; }
+        .draw-row-words { color: \(text); \(t(.hint)) }
+        .draw-row-words-busy { color: \(textDim); \(t(.hint)) }
+        .draw-row-facts { color: \(textDim); \(t(.badge)) font-variant-numeric: tabular-nums; }
         .video-notice {
             color: \(textDim);
             background-color: alpha(\(accent), 0.10);

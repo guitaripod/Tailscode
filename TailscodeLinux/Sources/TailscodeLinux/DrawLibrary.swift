@@ -160,7 +160,24 @@ final class DrawLibrary: @unchecked Sendable {
         }
     }
 
+    /// News is batched rather than shouted: a listing of a hundred pictures decodes a hundred
+    /// thumbnails and reads a hundred file heads, and a surface told about each one redrew a
+    /// hundred times on the main loop at a priority above the frame clock, so nothing was painted
+    /// until the last one landed. One announcement per short beat carries everything that
+    /// arrived in it.
+    private var announcePending = false
+
     private func announce() {
-        NotificationCenter.default.post(name: Self.didChange, object: self)
+        guard !announcePending else { return }
+        announcePending = true
+        Gtk.after(Self.announceBeat) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.announcePending = false
+                NotificationCenter.default.post(name: Self.didChange, object: self)
+            }
+        }
     }
+
+    private static let announceBeat: UInt32 = 80
 }

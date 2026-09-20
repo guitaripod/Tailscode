@@ -73,6 +73,29 @@ final class DrawPane: @unchecked Sendable {
     private let shelfScroller = gtk_scrolled_window_new()!
 
     private let fills: Bool
+
+    /// The studio's own controls — the ask laid out as a form down the left, the shelf as a list
+    /// down the right. Built only when `fills`; a slot in the grid keeps its chips.
+    private let promptView = gtk_text_view_new()!
+    private let countLabel = Gtk.label("", css: "draw-count", selectable: false)
+    private let briefColumn = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 12)
+    private let stageColumn = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let shelfColumn = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let progressRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+    private let clockLabel = Gtk.label("", css: "draw-clock", selectable: false)
+    private let underRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+    private let shelfList = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+    private var engineCards: [ImageGenEngine: UnsafeMutablePointer<GtkWidget>] = [:]
+    private var aspectButtons: [ImageGenAspect: UnsafeMutablePointer<GtkWidget>] = [:]
+    private var sizeButtons: [ImageGenSize: UnsafeMutablePointer<GtkWidget>] = [:]
+    private var detailButtons: [ImageGenDetail: UnsafeMutablePointer<GtkWidget>] = [:]
+    private let seedSwitch = gtk_switch_new()!
+    private let seedDetailLabel = Gtk.label("", css: "draw-toggle-detail", wrap: true, selectable: false)
+    private let cutoutSwitch = gtk_switch_new()!
+    /// A switch being told what the slot holds must not be heard as the person flipping it.
+    private var syncingSwitches = false
+    private let keysLabel = Gtk.label("", css: "draw-keys", wrap: true, selectable: false)
+
     /// Whether the picture has the whole surface. A studio that is itself a modal may not open a
     /// window over itself — a modal transient for a modal takes the pointer away from the desktop
     /// on X11 — so full size happens here, in the room this surface already has.
@@ -234,7 +257,31 @@ final class DrawPane: @unchecked Sendable {
     /// keystroke does rather than a private one that could drift from it.
     func driverType(_ text: String) {
         focusPrompt()
-        gtk_editable_set_text(op(entry), text)
+        promptText = text
+    }
+
+    /// The words, wherever this surface keeps them: a one-line entry in a slot, a paragraph's
+    /// worth of text view in the studio.
+    private var promptText: String {
+        get {
+            if fills {
+                let buffer = gtk_text_view_get_buffer(ptr(promptView))
+                var start = GtkTextIter()
+                var end = GtkTextIter()
+                gtk_text_buffer_get_bounds(buffer, &start, &end)
+                guard let raw = gtk_text_buffer_get_text(buffer, &start, &end, 0) else { return "" }
+                defer { g_free(raw) }
+                return String(cString: raw)
+            }
+            return gtk_editable_get_text(op(entry)).map { String(cString: $0) } ?? ""
+        }
+        set {
+            if fills {
+                gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(promptView)), newValue, -1)
+            } else {
+                gtk_editable_set_text(op(entry), newValue)
+            }
+        }
     }
 
     func driverSubmit() {
@@ -248,7 +295,7 @@ final class DrawPane: @unchecked Sendable {
     }
 
     func focusPrompt() {
-        gtk_widget_grab_focus(entry)
+        gtk_widget_grab_focus(fills ? promptView : entry)
     }
 
     func setOnChange(_ handler: @escaping @Sendable () -> Void) {
@@ -276,6 +323,10 @@ final class DrawPane: @unchecked Sendable {
         Gtk.addClass(root, "draw-pane")
         gtk_widget_set_hexpand(root, 1)
         gtk_widget_set_vexpand(root, 1)
+        if fills {
+            buildStudio()
+            return
+        }
 
         Gtk.addClass(askBox, "draw-ask")
         Gtk.margins(askBox, top: 12, bottom: 12, leading: 18, trailing: 18)
@@ -429,11 +480,12 @@ final class DrawPane: @unchecked Sendable {
         mark(seedChip, on: slot.seed.isHeld)
         gtk_widget_set_sensitive(avoidEntry, slot.negativeApplies ? 1 : 0)
         gtk_widget_set_visible(moreRow, showsMore ? 1 : 0)
-        gtk_widget_set_visible(avoidEntry, showsMore ? 1 : 0)
+        gtk_widget_set_visible(avoidEntry, fills || showsMore ? 1 : 0)
         gtk_button_set_label(
             ptr(moreChip), showsMore ? ImageGenWords.lessTitle : ImageGenWords.moreTitle)
         mark(moreChip, on: showsMore)
         refreshEnhance()
+        refreshStudioControls()
 
         let references = slot.references
         if references.isEmpty {
@@ -498,8 +550,7 @@ final class DrawPane: @unchecked Sendable {
             return
         }
         guard !studio.enhancing else { return }
-        let typed = gtk_editable_get_text(op(entry)).map { String(cString: $0) } ?? ""
-        let brief = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let brief = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !brief.isEmpty else {
             focusPrompt()
             return
@@ -567,7 +618,8 @@ final class DrawPane: @unchecked Sendable {
     /// while the words are thin and goes when they are not.
     private func refreshHint() {
         Gtk.removeChildren(of: hintBox)
-        let typed = gtk_editable_get_text(op(entry)).map { String(cString: $0) } ?? ""
+        let typed = promptText
+        refreshCount(typed)
         guard !slot.isBusy, ImageGenBrief.isThin(typed) else {
             gtk_widget_set_visible(hintBox, 0)
             return
@@ -629,17 +681,32 @@ final class DrawPane: @unchecked Sendable {
     /// Words land in the composer with the caret at their end and nothing is sent. A surface
     /// that sent something the person did not type would be a surface nobody trusts twice.
     private func fill(_ text: String) {
-        gtk_editable_set_text(op(entry), text)
-        gtk_editable_set_position(op(entry), -1)
+        promptText = text
+        if fills {
+            let buffer = gtk_text_view_get_buffer(ptr(promptView))
+            var end = GtkTextIter()
+            gtk_text_buffer_get_end_iter(buffer, &end)
+            gtk_text_buffer_place_cursor(buffer, &end)
+        } else {
+            gtk_editable_set_position(op(entry), -1)
+        }
         focusPrompt()
         refreshHint()
+    }
+
+    /// What the words weigh, under them, so a thin brief is a number before it is a warning.
+    private func refreshCount(_ typed: String) {
+        guard fills else { return }
+        let words = ImageGenBrief.words(in: typed.trimmingCharacters(in: .whitespacesAndNewlines))
+        gtk_label_set_text(
+            op(countLabel), ImageGenStudioWords.countLine(words: words, engine: slot.engine))
     }
 
     private func refreshNotice() {
         let text = fills ? ImageGenNotice.costLine : ImageGenNotice.splitCostLine
         gtk_label_set_text(op(noticeLabel), text)
         let unspent = slot.pictures.isEmpty && !slot.isBusy && studio.keptStage == nil
-        gtk_widget_set_visible(noticeLabel, unspent ? 1 : 0)
+        gtk_widget_set_visible(noticeLabel, unspent && !fills ? 1 : 0)
     }
 
     private func refreshStatus() {
@@ -659,10 +726,12 @@ final class DrawPane: @unchecked Sendable {
                 mode == .edit ? Localized.text("Editing with %@", engine.label)
                 : Localized.text("Painting with %@", engine.label)
             gtk_label_set_text(
-                op(statusLabel), "\(verb) — \(prompt.ellipsized(to: 72))")
+                op(statusLabel),
+                fills ? (studio.progress?.line ?? verb) : "\(verb) — \(prompt.ellipsized(to: 72))")
             gtk_widget_set_visible(statusLabel, 1)
             gtk_label_set_text(op(progressLabel), elapsedLine())
-            gtk_widget_set_visible(progressLabel, 1)
+            gtk_widget_set_visible(progressLabel, fills ? 0 : 1)
+            refreshClock()
             refreshProgressBar()
             startTicking()
         case .failed(_, let reason):
@@ -693,10 +762,19 @@ final class DrawPane: @unchecked Sendable {
         let key = stageTextureKey
         let hasBits = key.flatMap { textures[$0] }.map { $0 != 0 } ?? false
         if slot.isBusy || !hasBits { zoomed = false }
-        for widget in [
-            captionLabel, factsLabel, keptHintLabel, actionRow, shelfBox, chipRow, promptRow,
-        ] {
-            gtk_widget_set_visible(widget, zoomed ? 0 : 1)
+        if fills {
+            for widget in [briefColumn, shelfColumn, underRow] {
+                gtk_widget_set_visible(widget, zoomed ? 0 : 1)
+            }
+            if let scroller = gtk_widget_get_parent(briefColumn) {
+                gtk_widget_set_visible(scroller, zoomed ? 0 : 1)
+            }
+        } else {
+            for widget in [
+                captionLabel, factsLabel, keptHintLabel, actionRow, shelfBox, chipRow, promptRow,
+            ] {
+                gtk_widget_set_visible(widget, zoomed ? 0 : 1)
+            }
         }
         if zoomed {
             for widget in [hintBox, referenceStrip, moreRow, avoidEntry] {
@@ -709,7 +787,15 @@ final class DrawPane: @unchecked Sendable {
         gtk_label_set_text(op(zoomHint), ImageGenWords.zoomHint)
         gtk_widget_set_visible(zoomHint, zoomed ? 1 : 0)
 
-        if slot.isBusy {
+        let previous = fills && slot.isBusy ? slot.pictures.first : nil
+        if slot.isBusy, let previous, let bits = textures[previous.path], bits != 0,
+            let widget = Gtk.pictureWidget(bits: bits)
+        {
+            gtk_widget_set_vexpand(widget, 1)
+            gtk_widget_set_hexpand(widget, 1)
+            gtk_widget_set_opacity(widget, 0.45)
+            gtk_box_append(ptr(stagePicture), widget)
+        } else if slot.isBusy {
             stagePicture.appendWorking(room: fills)
         } else if let key, let bits = textures[key], bits != 0,
             let widget = Gtk.pictureWidget(bits: bits)
@@ -736,6 +822,19 @@ final class DrawPane: @unchecked Sendable {
         }
 
         guard !zoomed else { return }
+        if fills, slot.isBusy, case .painting(let prompt, let engine, _) = slot.phase {
+            gtk_label_set_text(op(captionLabel), prompt)
+            gtk_widget_set_visible(captionLabel, 1)
+            let shape = "\(engine.short) · \(slot.aspect.short) \(slot.aspect.ratioLabel) · \(slot.aspect.label(slot.size)) · \(slot.detail.steps) " + Localized.text("steps")
+            gtk_label_set_text(
+                op(factsLabel),
+                previous == nil ? shape : "\(shape) · \(ImageGenStudioWords.previousShownNote)")
+            gtk_widget_set_visible(factsLabel, 1)
+            gtk_widget_set_visible(keptHintLabel, 0)
+            refreshActions()
+            refreshShelf()
+            return
+        }
         let showFacts = stageAvailable && !slot.isBusy
         gtk_label_set_text(op(factsLabel), showFacts ? stageFactsLine : "")
         gtk_widget_set_visible(factsLabel, showFacts ? 1 : 0)
@@ -771,10 +870,25 @@ final class DrawPane: @unchecked Sendable {
                     return
                 }
                 gtk_label_set_text(op(self.progressLabel), self.elapsedLine())
+                if self.fills, let line = self.studio.progress?.line {
+                    gtk_label_set_text(op(self.statusLabel), line)
+                }
+                self.refreshClock()
                 self.refreshProgressBar()
                 self.tick()
             }
         }
+    }
+
+    /// The studio's clock: how long, and how many renders are queued ahead when the machine has
+    /// said so. Lives at the right end of the progress row, opposite the machine's own words.
+    private func refreshClock() {
+        guard fills else { return }
+        var ahead: Int?
+        if let progress = studio.progress, case .queued(let count) = progress.stage { ahead = count }
+        gtk_label_set_text(
+            op(clockLabel), ImageGenStudioWords.clockLine(since: studio.startedAt, ahead: ahead))
+        gtk_widget_set_visible(clockLabel, slot.isBusy ? 1 : 0)
     }
 
     /// Whether Escape has something of this surface's own to close before it closes the surface.
@@ -868,6 +982,10 @@ final class DrawPane: @unchecked Sendable {
     /// Every picture the machine keeps, newest first — the words never say the shelf is empty or
     /// unsupported by leaving it blank.
     private func refreshShelf() {
+        if fills {
+            refreshShelfRows()
+            return
+        }
         let library = studio.library
         gtk_label_set_text(
             op(shelfHeadingLabel), ImageGenLibraryWords.heading(machine: studio.endpoint.shortName))
@@ -1093,9 +1211,9 @@ final class DrawPane: @unchecked Sendable {
     }
 
     func submit() {
-        guard let raw = gtk_editable_get_text(op(entry)) else { return }
-        studio.submit(prompt: String(cString: raw))
-        gtk_editable_set_text(op(entry), "")
+        let words = promptText
+        studio.submit(prompt: words)
+        if !fills { promptText = "" }
         render()
     }
 
@@ -1148,6 +1266,493 @@ final class DrawPane: @unchecked Sendable {
         }
         guard let picture = slot.onStage else { return }
         DrawViewer.present(picture: picture, textureBits: bits, parent: hostWindow)
+    }
+
+
+    /// The studio: the ask as a form down the left with room for a paragraph, the picture in the
+    /// middle with its progress drawn over it and its words and verbs under it, and the machine's
+    /// shelf down the right as rows that carry the words and the facts rather than only squares.
+    private func buildStudio() {
+        let columns = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_widget_set_hexpand(columns, 1)
+        gtk_widget_set_vexpand(columns, 1)
+        gtk_box_append(ptr(columns), buildBrief())
+        gtk_box_append(ptr(columns), buildStageColumn())
+        gtk_box_append(ptr(columns), buildShelfColumn())
+        gtk_box_append(ptr(root), columns)
+    }
+
+    private func sectionLabel(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label(text, css: "draw-lbl", selectable: false)
+        gtk_widget_set_margin_bottom(label, 4)
+        return label
+    }
+
+    private func section(_ title: String, _ body: UnsafeMutablePointer<GtkWidget>)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        gtk_box_append(ptr(column), sectionLabel(title))
+        gtk_box_append(ptr(column), body)
+        return column
+    }
+
+    private func buildBrief() -> UnsafeMutablePointer<GtkWidget> {
+        Gtk.addClass(briefColumn, "draw-brief")
+        Gtk.margins(briefColumn, 14)
+        gtk_widget_set_vexpand(briefColumn, 1)
+
+        let frame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(frame, "draw-textarea")
+        gtk_text_view_set_wrap_mode(ptr(promptView), GTK_WRAP_WORD_CHAR)
+        gtk_text_view_set_accepts_tab(ptr(promptView), 0)
+        gtk_text_view_set_top_margin(ptr(promptView), 10)
+        gtk_text_view_set_bottom_margin(ptr(promptView), 10)
+        gtk_text_view_set_left_margin(ptr(promptView), 12)
+        gtk_text_view_set_right_margin(ptr(promptView), 12)
+        gtk_widget_set_size_request(promptView, -1, 120)
+        gtk_widget_set_tooltip_text(promptView, ImageGenNotice.emptyBody)
+        gtk_box_append(ptr(frame), promptView)
+        Gtk.connect(UnsafeMutableRawPointer(gtk_text_view_get_buffer(ptr(promptView))!), "changed") {
+            [weak self] in
+            Gtk.onMain { [weak self] in self?.refreshHint() }
+        }
+        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        gtk_box_append(ptr(words), frame)
+        let countRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_widget_set_hexpand(countLabel, 1)
+        gtk_box_append(ptr(countRow), countLabel)
+        Gtk.addClass(enhanceChip, "draw-link")
+        gtk_widget_remove_css_class(enhanceChip, "draw-chip")
+        gtk_box_append(ptr(countRow), enhanceChip)
+        gtk_box_append(ptr(words), countRow)
+        gtk_box_append(ptr(words), hintBox)
+        gtk_box_append(ptr(briefColumn), section(ImageGenStudioWords.wordsTitle, words))
+
+        gtk_entry_set_placeholder_text(ptr(avoidEntry), ImageGenWords.avoidPlaceholder)
+        Gtk.addClass(avoidEntry, "draw-avoid")
+        gtk_widget_set_hexpand(avoidEntry, 1)
+        gtk_box_append(ptr(briefColumn), section(ImageGenStudioWords.avoidTitle, avoidEntry))
+
+        let engines = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        gtk_box_set_homogeneous(ptr(engines), 1)
+        for engine in ImageGenEngine.allCases {
+            let card = gtk_button_new()!
+            Gtk.addClass(card, "draw-opt")
+            let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+            let name = Gtk.label(engine.label, css: "draw-opt-title", selectable: false)
+            let detail = Gtk.label(engine.detail, css: "draw-opt-detail", wrap: true, selectable: false)
+            gtk_label_set_xalign(op(name), 0)
+            gtk_label_set_xalign(op(detail), 0)
+            gtk_box_append(ptr(lines), name)
+            gtk_box_append(ptr(lines), detail)
+            gtk_button_set_child(ptr(card), lines)
+            Gtk.connect(UnsafeMutableRawPointer(card), "clicked") { [weak self] in
+                Gtk.onMain { [weak self] in self?.studio.choose(engine: engine) }
+            }
+            engineCards[engine] = card
+            gtk_box_append(ptr(engines), card)
+        }
+        gtk_box_append(ptr(briefColumn), section(ImageGenStudioWords.engineTitle, engines))
+
+        let shapes = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        gtk_box_set_homogeneous(ptr(shapes), 1)
+        for aspect in ImageGenAspect.allCases {
+            let button = gtk_button_new()!
+            Gtk.addClass(button, "draw-shape")
+            let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
+            gtk_widget_set_halign(lines, GTK_ALIGN_CENTER)
+            let glyph = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            Gtk.addClass(glyph, "draw-shape-glyph")
+            let ratio = aspect.ratio
+            let longest: Double = 20
+            let wide = ratio.width >= ratio.height
+            let short = longest * Double(wide ? ratio.height : ratio.width)
+                / Double(wide ? ratio.width : ratio.height)
+            gtk_widget_set_size_request(
+                glyph, Int32(wide ? longest : max(8, short)), Int32(wide ? max(8, short) : longest))
+            gtk_widget_set_halign(glyph, GTK_ALIGN_CENTER)
+            gtk_widget_set_valign(glyph, GTK_ALIGN_END)
+            gtk_widget_set_vexpand(glyph, 1)
+            let name = Gtk.label(aspect.ratioLabel, css: "draw-shape-label", selectable: false)
+            gtk_widget_set_halign(name, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(lines), glyph)
+            gtk_box_append(ptr(lines), name)
+            gtk_button_set_child(ptr(button), lines)
+            gtk_widget_set_tooltip_text(button, aspect.short)
+            Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
+                Gtk.onMain { [weak self] in self?.studio.choose(aspect: aspect) }
+            }
+            aspectButtons[aspect] = button
+            gtk_box_append(ptr(shapes), button)
+        }
+        gtk_box_append(ptr(briefColumn), section(ImageGenStudioWords.shapeTitle, shapes))
+
+        let pair = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_set_homogeneous(ptr(pair), 1)
+        let sizes = segment()
+        for size in ImageGenSize.allCases {
+            let button = Gtk.button(size.short, css: ["draw-seg-item"]) { [weak self] in
+                Gtk.onMain { [weak self] in self?.studio.choose(size: size) }
+            }
+            gtk_widget_set_tooltip_text(button, size.detail)
+            gtk_widget_set_hexpand(button, 1)
+            sizeButtons[size] = button
+            gtk_box_append(ptr(sizes), button)
+        }
+        gtk_box_append(ptr(pair), section(ImageGenStudioWords.sizeTitle, sizes))
+        let details = segment()
+        for detail in ImageGenDetail.allCases {
+            let button = Gtk.button("\(detail.steps)", css: ["draw-seg-item"]) { [weak self] in
+                Gtk.onMain { [weak self] in self?.studio.choose(detail: detail) }
+            }
+            gtk_widget_set_tooltip_text(button, detail.detail)
+            gtk_widget_set_hexpand(button, 1)
+            detailButtons[detail] = button
+            gtk_box_append(ptr(details), button)
+        }
+        gtk_box_append(ptr(pair), section(ImageGenStudioWords.detailTitle, details))
+        gtk_box_append(ptr(briefColumn), pair)
+
+        let toggles = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        gtk_box_append(
+            ptr(toggles),
+            toggleRow(ImageGenStudioWords.holdSeedTitle, detail: seedDetailLabel, control: seedSwitch))
+        let cutoutDetail = Gtk.label(
+            ImageGenStudioWords.cutoutDetail, css: "draw-toggle-detail", wrap: true, selectable: false)
+        gtk_box_append(
+            ptr(toggles),
+            toggleRow(ImageGenWords.cutoutTitle, detail: cutoutDetail, control: cutoutSwitch))
+        Gtk.onNotify(UnsafeMutableRawPointer(seedSwitch), property: "active") { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, !self.syncingSwitches else { return }
+                let wants = gtk_switch_get_active(op(self.seedSwitch)) != 0
+                if wants != self.slot.seed.isHeld { self.studio.toggleSeedHold() }
+            }
+        }
+        Gtk.onNotify(UnsafeMutableRawPointer(cutoutSwitch), property: "active") { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, !self.syncingSwitches else { return }
+                let wants = gtk_switch_get_active(op(self.cutoutSwitch)) != 0
+                if wants != self.slot.cutout { self.studio.setCutout(wants) }
+            }
+        }
+        gtk_box_append(ptr(briefColumn), toggles)
+
+        let references = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        gtk_widget_set_halign(referenceStrip, GTK_ALIGN_START)
+        gtk_box_append(ptr(references), referenceStrip)
+        gtk_widget_set_halign(referenceChip, GTK_ALIGN_START)
+        gtk_box_append(ptr(references), referenceChip)
+        gtk_box_append(
+            ptr(briefColumn), section(ImageGenStudioWords.referencesTitle, references))
+
+        let spacer = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        gtk_widget_set_vexpand(spacer, 1)
+        gtk_box_append(ptr(briefColumn), spacer)
+        Gtk.addClass(renderButton, "draw-go-wide")
+        gtk_widget_set_hexpand(renderButton, 1)
+        gtk_box_append(ptr(briefColumn), renderButton)
+        gtk_label_set_text(op(keysLabel), ImageGenStudioWords.keysLine)
+        gtk_label_set_justify(op(keysLabel), GTK_JUSTIFY_CENTER)
+        gtk_label_set_xalign(op(keysLabel), 0.5)
+        gtk_box_append(ptr(briefColumn), keysLabel)
+
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_child(op(scroller), briefColumn)
+        gtk_widget_set_size_request(scroller, 330, -1)
+        Gtk.addClass(scroller, "draw-brief-scroller")
+        return scroller
+    }
+
+    private func segment() -> UnsafeMutablePointer<GtkWidget> {
+        let box = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(box, "draw-seg")
+        gtk_box_set_homogeneous(ptr(box), 1)
+        return box
+    }
+
+    private func toggleRow(
+        _ title: String, detail: UnsafeMutablePointer<GtkWidget>,
+        control: UnsafeMutablePointer<GtkWidget>
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+        gtk_widget_set_hexpand(lines, 1)
+        let name = Gtk.label(title, css: "draw-toggle-title", selectable: false)
+        gtk_box_append(ptr(lines), name)
+        gtk_label_set_xalign(op(detail), 0)
+        gtk_box_append(ptr(lines), detail)
+        gtk_box_append(ptr(row), lines)
+        gtk_widget_set_valign(control, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(row), control)
+        return row
+    }
+
+    private func buildStageColumn() -> UnsafeMutablePointer<GtkWidget> {
+        gtk_widget_set_hexpand(stageColumn, 1)
+        gtk_widget_set_vexpand(stageColumn, 1)
+
+        let overlay = gtk_overlay_new()!
+        gtk_widget_set_vexpand(overlay, 1)
+        gtk_widget_set_hexpand(overlay, 1)
+        Gtk.margins(stagePicture, 24)
+        gtk_widget_set_vexpand(stagePicture, 1)
+        gtk_widget_set_hexpand(stagePicture, 1)
+        Gtk.addClass(stagePicture, "draw-stage-room")
+        gtk_overlay_set_child(op(overlay), stagePicture)
+
+        let progress = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 5)
+        Gtk.addClass(progress, "draw-progress-block")
+        Gtk.margins(progress, top: 0, bottom: 14, leading: 24, trailing: 24)
+        gtk_widget_set_valign(progress, GTK_ALIGN_END)
+        gtk_widget_set_hexpand(progress, 1)
+        gtk_widget_set_hexpand(statusLabel, 1)
+        gtk_label_set_xalign(op(statusLabel), 0)
+        gtk_label_set_ellipsize(op(statusLabel), PANGO_ELLIPSIZE_END)
+        gtk_label_set_xalign(op(clockLabel), 1)
+        gtk_box_append(ptr(progressRow), statusLabel)
+        gtk_box_append(ptr(progressRow), clockLabel)
+        gtk_box_append(ptr(progress), progressRow)
+        Gtk.addClass(progressBar, "draw-progress-bar")
+        gtk_box_append(ptr(progress), progressBar)
+        gtk_widget_set_can_target(progress, 0)
+        gtk_overlay_add_overlay(op(overlay), progress)
+        gtk_widget_set_visible(progressLabel, 0)
+        gtk_box_append(ptr(stageColumn), overlay)
+        gtk_box_append(ptr(stageColumn), zoomHint)
+
+        gtk_box_append(ptr(stageColumn), Gtk.hairline())
+        Gtk.margins(underRow, top: 10, bottom: 14, leading: 24, trailing: 24)
+        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_widget_set_hexpand(words, 1)
+        gtk_label_set_xalign(op(captionLabel), 0)
+        gtk_label_set_wrap(op(captionLabel), 0)
+        gtk_label_set_ellipsize(op(captionLabel), PANGO_ELLIPSIZE_END)
+        Gtk.addClass(captionLabel, "draw-caption-lead")
+        gtk_label_set_xalign(op(factsLabel), 0)
+        gtk_label_set_xalign(op(keptHintLabel), 0)
+        gtk_box_append(ptr(words), captionLabel)
+        gtk_box_append(ptr(words), factsLabel)
+        gtk_box_append(ptr(words), keptHintLabel)
+        gtk_box_append(ptr(underRow), words)
+        Gtk.addClass(actionRow, "draw-actions")
+        gtk_widget_set_valign(actionRow, GTK_ALIGN_START)
+        gtk_box_append(ptr(underRow), actionRow)
+        gtk_box_append(ptr(stageColumn), underRow)
+        return stageColumn
+    }
+
+    private func buildShelfColumn() -> UnsafeMutablePointer<GtkWidget> {
+        Gtk.addClass(shelfColumn, "draw-shelf-column")
+        gtk_widget_set_size_request(shelfColumn, 300, -1)
+        gtk_widget_set_vexpand(shelfColumn, 1)
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.margins(header, top: 12, bottom: 8, leading: 12, trailing: 12)
+        Gtk.addClass(shelfHeadingLabel, "draw-shelf-heading")
+        gtk_box_append(ptr(header), shelfHeadingLabel)
+        gtk_box_append(ptr(header), shelfCountLabel)
+        let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_widget_set_hexpand(spacer, 1)
+        gtk_box_append(ptr(header), spacer)
+        gtk_box_append(ptr(header), shelfRefreshButton)
+        gtk_box_append(ptr(shelfColumn), header)
+        gtk_label_set_xalign(op(shelfStatusLabel), 0)
+        gtk_label_set_max_width_chars(op(shelfStatusLabel), 36)
+        Gtk.margins(shelfStatusLabel, top: 0, bottom: 8, leading: 12, trailing: 12)
+        gtk_box_append(ptr(shelfColumn), shelfStatusLabel)
+        Gtk.margins(shelfList, top: 0, bottom: 12, leading: 12, trailing: 12)
+        gtk_scrolled_window_set_policy(op(shelfScroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_child(op(shelfScroller), shelfList)
+        gtk_widget_set_vexpand(shelfScroller, 1)
+        gtk_box_append(ptr(shelfColumn), shelfScroller)
+        return shelfColumn
+    }
+
+    /// The form's own controls told what the slot holds, so every decision reads the same on
+    /// the card, the segment and the switch as it does on a chip.
+    private func refreshStudioControls() {
+        guard fills else { return }
+        for (engine, card) in engineCards { mark(card, on: engine == slot.engine) }
+        for (aspect, button) in aspectButtons {
+            mark(button, on: aspect == slot.aspect)
+            gtk_widget_set_sensitive(button, slot.applies(.aspect) ? 1 : 0)
+        }
+        for (size, button) in sizeButtons {
+            mark(button, on: size == slot.size)
+            gtk_widget_set_sensitive(button, slot.applies(.size) ? 1 : 0)
+        }
+        for (detail, button) in detailButtons {
+            mark(button, on: detail == slot.detail)
+            gtk_widget_set_sensitive(button, slot.applies(.detail) ? 1 : 0)
+        }
+        syncingSwitches = true
+        gtk_switch_set_active(op(seedSwitch), slot.seed.isHeld ? 1 : 0)
+        gtk_switch_set_active(op(cutoutSwitch), slot.cutout && slot.cutoutApplies ? 1 : 0)
+        syncingSwitches = false
+        gtk_widget_set_sensitive(cutoutSwitch, slot.cutoutApplies ? 1 : 0)
+        gtk_label_set_text(op(seedDetailLabel), ImageGenStudioWords.holdSeedDetail(seed: slot.seed))
+        gtk_widget_set_tooltip_text(
+            seedSwitch, slot.seed.isHeld ? ImageGenWords.seedHeldHint : ImageGenWords.seedRollsHint)
+        gtk_widget_set_tooltip_text(cutoutSwitch, ImageGenWords.cutoutHint)
+        refreshCount(promptText)
+    }
+
+    /// One row on the shelf, kept between refreshes: the library announces every thumbnail it
+    /// decodes and every file head it reads, and a shelf that rebuilt a hundred rows on each of
+    /// those announcements spent the main loop on widgets and never reached a frame. A row is
+    /// built once per listing and told what changed.
+    private struct ShelfRow {
+        let button: UnsafeMutablePointer<GtkWidget>
+        let thumbSlot: UnsafeMutablePointer<GtkWidget>
+        let words: UnsafeMutablePointer<GtkWidget>
+        let facts: UnsafeMutablePointer<GtkWidget>
+        var hasPicture: Bool
+    }
+
+    private var shelfRows: [String: ShelfRow] = [:]
+    private var shelfOrder: [String] = []
+    private var inFlightRow: ShelfRow?
+
+    /// The shelf as rows: the thumbnail, the words that made the picture, and its facts — with
+    /// the render in flight as the first row, since that is where it will land.
+    private func refreshShelfRows() {
+        let library = studio.library
+        gtk_label_set_text(
+            op(shelfHeadingLabel), ImageGenLibraryWords.heading(machine: studio.endpoint.shortName))
+        refreshInFlightRow()
+
+        if let failure = library.failure, library.items.isEmpty {
+            clearShelfRows()
+            gtk_label_set_text(op(shelfCountLabel), "")
+            gtk_label_set_text(op(shelfStatusLabel), failure.reason(machine: studio.endpoint.shortName))
+            gtk_widget_set_visible(shelfStatusLabel, 1)
+            return
+        }
+        if library.items.isEmpty {
+            clearShelfRows()
+            gtk_label_set_text(op(shelfCountLabel), "")
+            gtk_label_set_text(
+                op(shelfStatusLabel),
+                library.loading
+                    ? ImageGenLibraryWords.loading
+                    : "\(ImageGenLibraryWords.emptyTitle)\n\(ImageGenLibraryWords.emptyBody)")
+            gtk_widget_set_visible(shelfStatusLabel, 1)
+            return
+        }
+        gtk_label_set_text(
+            op(shelfCountLabel),
+            ImageGenLibraryWords.line(count: library.items.count, staleSince: library.staleSince))
+        gtk_widget_set_visible(shelfStatusLabel, 0)
+
+        let ids = library.items.map(\.id)
+        if ids != shelfOrder {
+            clearShelfRows()
+            for item in library.items {
+                let row = makeShelfRow(busy: false) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.studio.showKept(item) }
+                }
+                shelfRows[item.id] = row
+                gtk_box_append(ptr(shelfList), row.button)
+            }
+            shelfOrder = ids
+        }
+        let onStageID = onStageLibraryID
+        for item in library.items {
+            guard var row = shelfRows[item.id] else { continue }
+            library.describe(item)
+            let facts = library.facts[item.id]
+            setLabel(row.words, ImageGenFacts.caption(for: facts))
+            setLabel(row.facts, ImageGenFacts.line(for: facts))
+            if !row.hasPicture, let bits = library.textures[item.id], bits != 0,
+                let picture = Gtk.pictureWidget(bits: bits)
+            {
+                gtk_picture_set_content_fit(op(picture), GTK_CONTENT_FIT_COVER)
+                gtk_widget_remove_css_class(picture, "draw-picture")
+                Gtk.addClass(picture, "draw-row-thumb")
+                gtk_widget_set_size_request(picture, 64, 64)
+                Gtk.removeChildren(of: row.thumbSlot)
+                gtk_widget_remove_css_class(row.thumbSlot, "draw-tile-empty")
+                gtk_box_append(ptr(row.thumbSlot), picture)
+                row.hasPicture = true
+                shelfRows[item.id] = row
+            }
+            if item.id == onStageID {
+                Gtk.addClass(row.button, "draw-row-on")
+            } else {
+                gtk_widget_remove_css_class(row.button, "draw-row-on")
+            }
+        }
+    }
+
+    private func setLabel(_ label: UnsafeMutablePointer<GtkWidget>, _ text: String) {
+        let current = gtk_label_get_text(op(label)).map { String(cString: $0) } ?? ""
+        if current != text { gtk_label_set_text(op(label), text) }
+    }
+
+    private func clearShelfRows() {
+        for (_, row) in shelfRows { gtk_box_remove(ptr(shelfList), row.button) }
+        shelfRows = [:]
+        shelfOrder = []
+    }
+
+    /// The render in flight is the first row while it runs and nothing once it lands, because
+    /// by then it is the newest picture in the listing.
+    private func refreshInFlightRow() {
+        guard slot.isBusy, case .painting(let prompt, let engine, _) = slot.phase else {
+            if let row = inFlightRow {
+                gtk_box_remove(ptr(shelfList), row.button)
+                inFlightRow = nil
+            }
+            return
+        }
+        if inFlightRow == nil {
+            let row = makeShelfRow(busy: true, onClick: nil)
+            gtk_box_prepend(ptr(shelfList), row.button)
+            inFlightRow = row
+        }
+        guard let row = inFlightRow else { return }
+        setLabel(row.words, studio.progress?.line ?? prompt)
+        setLabel(
+            row.facts,
+            ImageGenStudioWords.inFlightFacts(
+                engine: engine, aspect: slot.aspect, since: studio.startedAt))
+    }
+
+    private func makeShelfRow(busy: Bool, onClick: (@Sendable () -> Void)?) -> ShelfRow {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "draw-row")
+        if busy { Gtk.addClass(button, "draw-row-busy") }
+        gtk_widget_set_focusable(button, 0)
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        let thumbSlot = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(thumbSlot, busy ? "draw-row-thumb-busy" : "draw-tile-empty")
+        Gtk.addClass(thumbSlot, "draw-row-thumb")
+        gtk_widget_set_size_request(thumbSlot, 64, 64)
+        gtk_widget_set_valign(thumbSlot, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(row), thumbSlot)
+        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
+        gtk_widget_set_hexpand(lines, 1)
+        gtk_widget_set_valign(lines, GTK_ALIGN_CENTER)
+        let words = Gtk.label(
+            "", css: busy ? "draw-row-words-busy" : "draw-row-words", wrap: true, selectable: false)
+        gtk_label_set_lines(op(words), 2)
+        gtk_label_set_ellipsize(op(words), PANGO_ELLIPSIZE_END)
+        gtk_label_set_max_width_chars(op(words), 28)
+        let facts = Gtk.label("", css: "draw-row-facts", selectable: false)
+        gtk_label_set_ellipsize(op(facts), PANGO_ELLIPSIZE_END)
+        gtk_label_set_max_width_chars(op(facts), 28)
+        gtk_box_append(ptr(lines), words)
+        gtk_box_append(ptr(lines), facts)
+        gtk_box_append(ptr(row), lines)
+        gtk_button_set_child(ptr(button), row)
+        if let onClick {
+            Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
+        } else {
+            gtk_widget_set_sensitive(button, 0)
+        }
+        return ShelfRow(button: button, thumbSlot: thumbSlot, words: words, facts: facts, hasPicture: false)
     }
 
     var hostWindow: UnsafeMutablePointer<GtkWidget>? {

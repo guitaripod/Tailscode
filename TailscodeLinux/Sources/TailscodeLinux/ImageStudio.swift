@@ -54,11 +54,13 @@ final class ImageStudio: @unchecked Sendable {
 
     /// A listing that lands, a thumbnail that decodes or a file's facts that come back are all
     /// the library's own news — forwarded as this studio's, so every surface already watching
-    /// ``ImageStudio/didChange`` redraws the shelf without watching a second notification.
+    /// ``ImageStudio/didChange`` redraws the shelf without watching a second notification. Only
+    /// this studio's own library: a slot in the grid and the modal each hold one for the same
+    /// machine, and a studio that listened to both redrew twice for every thumbnail.
     private func observeLibrary() {
         if let libraryObserver { NotificationCenter.default.removeObserver(libraryObserver) }
         libraryObserver = NotificationCenter.default.addObserver(
-            forName: DrawLibrary.didChange, object: nil, queue: nil
+            forName: DrawLibrary.didChange, object: library, queue: nil
         ) { [weak self] _ in
             self?.announce()
         }
