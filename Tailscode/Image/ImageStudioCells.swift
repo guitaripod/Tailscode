@@ -728,14 +728,66 @@ enum ImageChip {
 
     @MainActor
     static func aspectMenu(slot: ImageGenSlot, onAspect: @escaping (ImageGenAspect) -> Void) -> UIMenu {
-        UIMenu(
+        let size = slot.size
+        return UIMenu(
             title: ImageGenField.aspect.label,
             children: ImageGenAspect.allCases.map { aspect in
                 UIAction(
-                    title: aspect.short, subtitle: aspect.label,
+                    title: "\(aspect.glyph)  \(aspect.short) · \(aspect.ratioLabel)",
+                    subtitle: aspect.label(size),
                     state: aspect == slot.aspect ? .on : .off
                 ) { _ in onAspect(aspect) }
             })
+    }
+
+    /// How many pixels the shape is filled with, and what each rung costs — the middle one is
+    /// what the model paints natively and the top one is its real 2K, not an upscale.
+    @MainActor
+    static func sizeMenu(slot: ImageGenSlot, onSize: @escaping (ImageGenSize) -> Void) -> UIMenu {
+        let aspect = slot.aspect
+        return UIMenu(
+            title: ImageGenField.size.label,
+            children: ImageGenSize.allCases.map { size in
+                UIAction(
+                    title: "\(size.title) · \(aspect.label(size))", subtitle: size.detail,
+                    state: size == slot.size ? .on : .off
+                ) { _ in onSize(size) }
+            })
+    }
+
+    @MainActor
+    static func detailMenu(slot: ImageGenSlot, onDetail: @escaping (ImageGenDetail) -> Void) -> UIMenu {
+        UIMenu(
+            title: ImageGenField.detail.label,
+            children: ImageGenDetail.allCases.map { detail in
+                UIAction(
+                    title: detail.short, subtitle: detail.detail,
+                    state: detail == slot.detail ? .on : .off
+                ) { _ in onDetail(detail) }
+            })
+    }
+
+    /// The craft, as six rules that cannot be pressed and four briefs that can: pressing one
+    /// fills the composer and sends nothing.
+    @MainActor
+    static func craftMenu(onExample: @escaping (ImageGenBrief.Example) -> Void) -> UIMenu {
+        let rules = ImageGenBrief.rules.map { rule in
+            let action = UIAction(title: rule.title, subtitle: rule.detail) { _ in }
+            action.attributes = .disabled
+            return action
+        }
+        let examples = ImageGenBrief.examples.map { example in
+            UIAction(
+                title: example.title, subtitle: example.detail,
+                image: UIImage(systemName: "text.badge.plus")
+            ) { _ in onExample(example) }
+        }
+        return UIMenu(
+            title: ImageGenBrief.craftTitle,
+            children: [
+                UIMenu(title: "", options: .displayInline, children: examples),
+                UIMenu(title: "", options: .displayInline, children: rules),
+            ])
     }
 
     /// The sources a reference can come from on this device, as menu rows.

@@ -177,34 +177,56 @@ public struct ImageGenModelFile: Sendable, Equatable, Hashable, Codable, Identif
     }
 }
 
-/// Aspect the picture is drawn at, as pixel dimensions. A chip, not a free box: the sampler
-/// wants multiples of 64, and every choice a person actually makes is one of four.
+/// The shape of the frame, as a ratio rather than a pair of pixel counts: how big it comes out
+/// is ``ImageGenSize``'s business, and holding the two apart is what lets the same six shapes be
+/// asked for at 1 MP while words are being tried and at native 2K once they are right.
 public enum ImageGenAspect: String, Codable, Sendable, CaseIterable {
     case square
     case landscape
     case portrait
+    case screen
+    case tall
     case wide
 
-    public var pixels: (width: Int, height: Int) {
+    public var ratio: (width: Int, height: Int) {
         switch self {
-        case .square: return (1024, 1024)
-        case .landscape: return (1280, 896)
-        case .portrait: return (896, 1280)
-        case .wide: return (1536, 640)
+        case .square: return (1, 1)
+        case .landscape: return (3, 2)
+        case .portrait: return (2, 3)
+        case .screen: return (16, 9)
+        case .tall: return (9, 16)
+        case .wide: return (21, 9)
         }
     }
 
-    public var label: String {
-        let size = pixels
-        return "\(size.width)×\(size.height)"
-    }
+    public var ratioLabel: String { "\(ratio.width):\(ratio.height)" }
+
+    /// The frame at the size the model was trained for, which is what a caller with no opinion
+    /// about size should get.
+    public var pixels: (width: Int, height: Int) { pixels(.standard) }
+
+    public var label: String { ratioLabel }
 
     public var short: String {
         switch self {
         case .square: return Localized.text("Square")
         case .landscape: return Localized.text("Landscape")
         case .portrait: return Localized.text("Portrait")
+        case .screen: return Localized.text("Screen")
+        case .tall: return Localized.text("Tall")
         case .wide: return Localized.text("Wide")
+        }
+    }
+
+    /// One glyph per shape, so a row of them reads as shapes rather than as six words.
+    public var glyph: String {
+        switch self {
+        case .square: return "▢"
+        case .landscape: return "▭"
+        case .portrait: return "▯"
+        case .screen: return "▬"
+        case .tall: return "▮"
+        case .wide: return "▁"
         }
     }
 }
@@ -219,11 +241,15 @@ public enum ImageGenAspect: String, Codable, Sendable, CaseIterable {
 public enum ImageGenField: String, Sendable, Equatable, CaseIterable {
     case engine
     case aspect
+    case size
+    case detail
 
     public var label: String {
         switch self {
         case .engine: return Localized.text("Engine")
         case .aspect: return Localized.text("Aspect")
+        case .size: return Localized.text("Size")
+        case .detail: return Localized.text("Detail")
         }
     }
 
@@ -232,6 +258,8 @@ public enum ImageGenField: String, Sendable, Equatable, CaseIterable {
         switch self {
         case .engine: return "cpu"
         case .aspect: return "aspectratio"
+        case .size: return "arrow.up.left.and.arrow.down.right"
+        case .detail: return "slider.horizontal.3"
         }
     }
 
@@ -239,6 +267,8 @@ public enum ImageGenField: String, Sendable, Equatable, CaseIterable {
         switch self {
         case .engine: return "%"
         case .aspect: return "#"
+        case .size: return "+"
+        case .detail: return "="
         }
     }
 
@@ -297,8 +327,13 @@ public struct ImageGenPicture: Sendable, Equatable, Codable {
     public let engine: ImageGenEngine
     public let mode: ImageGenMode
     public let aspect: ImageGenAspect
+    /// The pixel budget it was painted at, so the fact line can say the frame rather than the
+    /// shape. Older records carry none and read as the size the model paints natively.
+    public var size: ImageGenSize
     public let seconds: Double
     public let seed: UInt64
+    /// How long the sampler ran, when this app was the one that asked.
+    public var steps: Int?
     public let madeAt: Date
     /// What the machine called the file it wrote, so the picture can be found again in the
     /// machine's own gallery — a render made here is the newest thing in it.
@@ -306,16 +341,18 @@ public struct ImageGenPicture: Sendable, Equatable, Codable {
 
     public init(
         path: String, prompt: String, engine: ImageGenEngine, mode: ImageGenMode,
-        aspect: ImageGenAspect, seconds: Double, seed: UInt64, madeAt: Date = Date(),
-        remoteName: String? = nil
+        aspect: ImageGenAspect, size: ImageGenSize = .standard, seconds: Double, seed: UInt64,
+        steps: Int? = nil, madeAt: Date = Date(), remoteName: String? = nil
     ) {
         self.path = path
         self.prompt = prompt
         self.engine = engine
         self.mode = mode
         self.aspect = aspect
+        self.size = size
         self.seconds = seconds
         self.seed = seed
+        self.steps = steps
         self.madeAt = madeAt
         self.remoteName = remoteName
     }
@@ -332,6 +369,10 @@ public enum ImageGenCommand: Sendable, Equatable {
     case stop
     case engine
     case aspect
+    case size
+    case detail
+    case cutout
+    case seed
     case reference
     case save
     case copy
@@ -347,6 +388,10 @@ public enum ImageGenCommand: Sendable, Equatable {
             switch letter {
             case "e": return .engine
             case "a": return .aspect
+            case "u": return .size
+            case "d": return .detail
+            case "k": return .cutout
+            case "j": return .seed
             case "r": return .reference
             case "s": return .save
             case "c": return .copy
@@ -426,8 +471,20 @@ public struct ImageGenSlot: Sendable, Equatable {
     public var phase: Phase
     public var engine: ImageGenEngine
     public var aspect: ImageGenAspect
-    /// The picture the next render starts from, if there is one. Whether this is nil is the mode.
-    public var reference: ImageGenReference?
+    /// How many pixels the shape is filled with, held apart from the shape itself.
+    public var size: ImageGenSize
+    /// How long the sampler runs, where the engine reads it at all.
+    public var detail: ImageGenDetail
+    /// What the render must keep out of the picture. Empty is the ordinary case, and an empty
+    /// list is why guidance stays at 1.0 and a render stays fast.
+    public var negative: String
+    /// Whether the next render rolls a number or reuses the one being held.
+    public var seed: ImageGenSeed
+    /// Whether the picture comes back on transparency rather than on a background.
+    public var cutout: Bool
+    /// The pictures the next render works from, in the order the words address them. Empty is a
+    /// painting from words; one or more is an edit, and nobody is ever asked which.
+    public var references: [ImageGenReference]
     /// The picture on the stage. Nil means the newest, which is what a fresh render becomes —
     /// so a person comparing an older one against new words keeps looking at the one they chose
     /// until they choose another.
@@ -441,24 +498,69 @@ public struct ImageGenSlot: Sendable, Equatable {
 
     public init(
         endpoint: ImageGenEndpoint, engine: ImageGenEngine = .quality,
-        aspect: ImageGenAspect = .square
+        aspect: ImageGenAspect = .square, size: ImageGenSize = .standard,
+        detail: ImageGenDetail = .standard
     ) {
         self.endpoint = endpoint
         self.phase = .asking
         self.engine = engine
         self.aspect = aspect
+        self.size = size
+        self.detail = detail
+        self.negative = ""
+        self.seed = ImageGenSeed()
+        self.cutout = false
+        self.references = []
         self.promptDraft = ""
         self.pictures = []
     }
 
+    /// The single picture the older surfaces know about: the first of the references, which is
+    /// the one the words call `<image1>`.
+    public var reference: ImageGenReference? {
+        get { references.first }
+        set { references = newValue.map { [$0] } ?? [] }
+    }
+
+    /// How many pictures one render may work from. The encoder grows a slot per reference and
+    /// the model was trained up to sixteen; beyond that the graph would be lying.
+    public static let referenceLimit = 16
+
     /// Read rather than chosen: a render that has a picture to work from is an edit, and one
     /// that does not is a generate. Nobody is ever asked which.
-    public var mode: ImageGenMode { reference == nil ? .generate : .edit }
+    public var mode: ImageGenMode { references.isEmpty ? .generate : .edit }
 
     /// Whether the aspect chip means anything right now. An edit takes its size from the picture
     /// it starts from — both editors scale the reference and paint at that size — so while one is
     /// held the chip is a setting with no effect, and a chip with no effect is not shown as one.
-    public var aspectApplies: Bool { reference == nil }
+    public var aspectApplies: Bool { references.isEmpty }
+
+    /// Whether a decision means anything given what else is chosen, so a surface can offer only
+    /// the chips that would change the next picture and never a dead one.
+    public func applies(_ field: ImageGenField) -> Bool {
+        switch field {
+        case .engine: return true
+        case .aspect, .size: return aspectApplies
+        case .detail: return engine == .quality
+        }
+    }
+
+    /// Whether painting on transparency is on the table: only the quality engine has a VAE that
+    /// keeps an alpha channel.
+    public var cutoutApplies: Bool { engine == .quality }
+
+    /// Whether an avoid list would be read. Guidance rises to make it count, which the fast
+    /// engine's four distilled steps cannot afford.
+    public var negativeApplies: Bool { engine == .quality }
+
+    /// Everything the next render is, gathered in one place so a client hands the runner a
+    /// recipe rather than eight arguments it has to keep in step by hand.
+    public func recipe(prompt: String, seed: UInt64) -> ImageGenRecipe {
+        ImageGenRecipe(
+            prompt: prompt, negative: negative, engine: engine, mode: mode, aspect: aspect,
+            size: size, detail: detail, seed: seed,
+            references: references.compactMap { $0.machineName ?? $0.name }, cutout: cutout)
+    }
 
     /// The picture the stage is showing: the one chosen, else the newest there is.
     public var onStage: ImageGenPicture? {
@@ -523,6 +625,8 @@ public struct ImageGenSlot: Sendable, Equatable {
         switch field {
         case .engine: return engine.short
         case .aspect: return aspect.short
+        case .size: return size.short
+        case .detail: return detail.short
         }
     }
 
@@ -531,6 +635,8 @@ public struct ImageGenSlot: Sendable, Equatable {
         switch field {
         case .engine: engine = Self.next(engine)
         case .aspect: aspect = Self.next(aspect)
+        case .size: size = Self.next(size)
+        case .detail: detail = Self.next(detail)
         }
     }
 
@@ -542,9 +648,32 @@ public struct ImageGenSlot: Sendable, Equatable {
 
     public mutating func setEngine(_ engine: ImageGenEngine) { self.engine = engine }
     public mutating func setAspect(_ aspect: ImageGenAspect) { self.aspect = aspect }
+    public mutating func setSize(_ size: ImageGenSize) { self.size = size }
+    public mutating func setDetail(_ detail: ImageGenDetail) { self.detail = detail }
+    public mutating func setNegative(_ words: String) { self.negative = words }
+    public mutating func setCutout(_ on: Bool) { self.cutout = on }
+
+    /// Adds one more picture for the render to work from, up to what the encoder can hold. The
+    /// same picture twice is one picture: a slot that already has it moves nothing.
+    public mutating func attach(_ reference: ImageGenReference) {
+        guard references.count < Self.referenceLimit else { return }
+        guard !references.contains(where: { $0.path == reference.path }) else { return }
+        references.append(reference)
+    }
+
+    public mutating func release(_ path: String) {
+        references.removeAll { $0.path == path }
+    }
+
+    public mutating func releaseAllReferences() { references = [] }
     /// Attaches or lets go of the picture the next render works from, which is also how the mode
     /// is set — there is no third thing to keep in step.
     public mutating func hold(_ reference: ImageGenReference?) { self.reference = reference }
+
+    /// Holds the seed the last render used, so the next one changes only what the words changed.
+    public mutating func holdSeed() { seed.hold() }
+
+    public mutating func releaseSeed() { seed.release() }
 
     /// Puts one of the pictures already made on the stage. A path this slot never made is
     /// ignored rather than blanking the stage.
@@ -585,7 +714,7 @@ public struct ImageGenSlot: Sendable, Equatable {
     /// flight is left exactly as it is — this clears a stage, it does not stop a machine.
     public mutating func clearStage() {
         selected = nil
-        reference = nil
+        references = []
         promptDraft = ""
         if case .painting = phase { return }
         phase = .asking
@@ -857,8 +986,10 @@ public enum ImageGenFacts {
             picture.seconds < 10
             ? String(format: "%.1f s", picture.seconds)
             : "\(Int(picture.seconds.rounded())) s"
-        return [picture.engine.short, picture.aspect.label, seconds, seedMark(picture.seed)]
-            .joined(separator: " · ")
+        var parts = [picture.engine.short, picture.aspect.label(picture.size), seconds]
+        if let steps = picture.steps { parts.append(Localized.text("%@ steps", "\(steps)")) }
+        parts.append(seedMark(picture.seed))
+        return parts.joined(separator: " · ")
     }
 
     /// A seed is twenty digits and a fact line is one line. What a person does with a seed is
@@ -928,6 +1059,74 @@ public enum ImageGenWords {
     public static var stopTitle: String { Localized.text("Stop") }
 
     public static var attachTitle: String { Localized.text("Add a reference") }
+
+    public static var attachHint: String {
+        Localized.text("Start the render from a picture instead of from words alone")
+    }
+
+    /// Once one picture is held, the chip is about the next one rather than about the idea.
+    public static var attachMoreTitle: String { Localized.text("Add another") }
+
+    public static var attachMoreHint: String {
+        Localized.text("The words address them in order: <image1>, <image2>, and so on")
+    }
+
+    public static func attachedCount(_ count: Int) -> String {
+        Localized.text("%@ references", "\(count)")
+    }
+
+    public static func referenceSlot(_ index: Int) -> String { "<image\(index)>" }
+
+    public static func releaseHint(_ name: String) -> String {
+        Localized.text("Let go of %@", name)
+    }
+
+    public static var addressHint: String {
+        Localized.text("Name them in the words: <image1>, <image2>")
+    }
+
+    /// The second row of decisions, which stays shut for the people who never need it.
+    public static var moreTitle: String { Localized.text("More") }
+
+    public static var lessTitle: String { Localized.text("Less") }
+
+    public static var cutoutTitle: String { Localized.text("Cutout") }
+
+    public static var cutoutHint: String {
+        Localized.text("Paint on transparency rather than on a background")
+    }
+
+    public static var seedHeldHint: String {
+        Localized.text("Held — change a word and only that word changes. Press to roll again")
+    }
+
+    public static var seedRollsHint: String {
+        Localized.text("Every render rolls a new number. Press to hold the last one")
+    }
+
+    public static var avoidTitle: String { Localized.text("Avoid") }
+
+    public static var avoidHint: String {
+        Localized.text(
+            "Words the render keeps out. It raises guidance to make them count, so the picture "
+                + "takes longer.")
+    }
+
+    public static var applyTitle: String { Localized.text("Apply") }
+
+    public static var cancelTitle: String { Localized.text("Cancel") }
+
+    public static var avoidPlaceholder: String {
+        Localized.text("Avoid… (raises guidance, so the render takes longer)")
+    }
+
+    public static var scaffoldTitle: String { Localized.text("Use a frame") }
+
+    public static var scaffoldHint: String {
+        Localized.text("Fills the box with the shape to complete. Nothing is sent")
+    }
+
+    public static var examplePrefix: String { Localized.text("Example ·") }
 
     /// What the attached picture's chip promises when it is let go of.
     public static var detachHint: String { Localized.text("Render from words alone again") }

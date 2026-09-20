@@ -398,6 +398,8 @@ final class HomeImageChips: UIView {
     var onWalk: ((ImageGenField) -> Void)?
     var onEngine: ((ImageGenEngine) -> Void)?
     var onAspect: ((ImageGenAspect) -> Void)?
+    var onSize: ((ImageGenSize) -> Void)?
+    var onDetail: ((ImageGenDetail) -> Void)?
     var onOpen: (() -> Void)?
 
     private let scrollView = UIScrollView()
@@ -440,11 +442,14 @@ final class HomeImageChips: UIView {
     func update(slot: ImageGenSlot, sighting: ImageGenSighting?, referenceMenu: UIMenu) {
         let identity = QuickAskLane.imageChips.map { "\($0.rawValue)=\(slot.value(of: $0))" }
             .joined(separator: "|")
-            + "|\(slot.reference?.chip ?? "-")|\(slot.isBusy)|\(slot.aspectApplies)|\(sighting?.readyEngines.map(\.rawValue).joined() ?? "?")|\(referenceMenu.children.count)"
+            + "|\(slot.references.map(\.chip).joined(separator: ","))|\(slot.isBusy)"
+            + "|\(slot.aspectApplies)|\(sighting?.readyEngines.map(\.rawValue).joined() ?? "?")"
+            + "|\(referenceMenu.children.count)"
         guard identity != applied else { return }
         applied = identity
         row.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for field in QuickAskLane.imageChips {
+            guard slot.applies(field) || field == .aspect else { continue }
             if field == .aspect, !slot.aspectApplies {
                 let resting = ImageChip.button(
                     symbol: field.symbol, title: ImageGenWords.aspectFollowsReference)
@@ -471,13 +476,27 @@ final class HomeImageChips: UIView {
                 chip.menu = ImageChip.aspectMenu(slot: slot) { [weak self] aspect in
                     self?.onAspect?(aspect)
                 }
+            case .size:
+                chip.menu = ImageChip.sizeMenu(slot: slot) { [weak self] size in
+                    self?.onSize?(size)
+                }
+            case .detail:
+                chip.menu = ImageChip.detailMenu(slot: slot) { [weak self] detail in
+                    self?.onDetail?(detail)
+                }
             }
             row.addArrangedSubview(chip)
         }
+        let count = slot.references.count
+        let heldTitle: String
+        switch count {
+        case 0: heldTitle = ImageGenWords.attachTitle
+        case 1: heldTitle = slot.references[0].chip
+        default: heldTitle = ImageGenWords.attachedCount(count)
+        }
         let held = ImageChip.button(
-            symbol: slot.reference == nil ? "photo.badge.plus" : "photo.fill",
-            title: slot.reference?.chip ?? ImageGenWords.attachTitle)
-        held.accessibilityLabel = slot.reference.map(ImageGenWords.referenceHint)
+            symbol: count == 0 ? "photo.badge.plus" : "photo.fill", title: heldTitle)
+        held.accessibilityLabel = slot.references.first.map(ImageGenWords.referenceHint)
             ?? ImageGenWords.attachTitle
         held.isEnabled = !slot.isBusy
         held.menu = referenceMenu

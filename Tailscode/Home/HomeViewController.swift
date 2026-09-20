@@ -1727,6 +1727,14 @@ final class HomeViewController: UIViewController {
             Theme.Haptics.selection()
             ImageStudio.shared.choose(aspect: aspect)
         }
+        imageChips.onSize = { size in
+            Theme.Haptics.selection()
+            ImageStudio.shared.choose(size: size)
+        }
+        imageChips.onDetail = { detail in
+            Theme.Haptics.selection()
+            ImageStudio.shared.choose(detail: detail)
+        }
         imageChips.onOpen = { [weak self] in
             Theme.Haptics.tap()
             self?.presentImage()
@@ -2380,7 +2388,7 @@ extension HomeViewController: HomeComposerBarDelegate {
         }
         imageChips.update(
             slot: studio.slot, sighting: studio.sighting,
-            referenceMenu: imageIntake.menu(holding: studio.slot.reference))
+            referenceMenu: imageIntake.menu(references: studio.slot.references))
         updateSuggestions()
         view.setNeedsLayout()
     }

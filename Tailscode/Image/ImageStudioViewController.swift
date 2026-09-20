@@ -538,13 +538,160 @@ final class ImageStudioViewController: UIViewController {
         let sighting = studio.sighting
         let identity = ImageGenField.allCases.map { "\($0.rawValue)=\(slot.value(of: $0))" }
             .joined(separator: "|")
-            + "|\(slot.reference?.chip ?? "-")|\(slot.isBusy)|\(slot.aspectApplies)|\(sighting?.readyEngines.map(\.rawValue).joined() ?? "?")|\(intake.available.count)"
+            + "|\(slot.references.map(\.chip).joined(separator: ","))|\(slot.isBusy)"
+            + "|\(slot.aspectApplies)|\(sighting?.readyEngines.map(\.rawValue).joined() ?? "?")"
+            + "|\(intake.available.count)|\(slot.cutout)|\(slot.seed.chip)|\(slot.negative)"
+            + "|\(briefIsThin)"
         guard identity != appliedChips else { return }
         appliedChips = identity
         chipRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
         chipRow.addArrangedSubview(engineChip(sighting: sighting))
         chipRow.addArrangedSubview(aspectChip())
+        if slot.applies(.size) { chipRow.addArrangedSubview(sizeChip()) }
+        if slot.applies(.detail) { chipRow.addArrangedSubview(detailChip()) }
+        if slot.cutoutApplies { chipRow.addArrangedSubview(cutoutChip()) }
+        chipRow.addArrangedSubview(seedChip())
+        if slot.negativeApplies { chipRow.addArrangedSubview(avoidChip()) }
+        chipRow.addArrangedSubview(craftChip())
         chipRow.addArrangedSubview(referenceChip())
+    }
+
+    /// Whether the words in the box are thin enough that the model would invent most of the
+    /// frame. The craft chip wears the answer rather than a banner taking the composer's room.
+    private var briefIsThin: Bool {
+        ImageGenBrief.isThin(promptView.text ?? "")
+    }
+
+    private func sizeChip() -> UIButton {
+        let button = ImageChip.button(
+            symbol: ImageGenField.size.symbol, title: slot.value(of: .size))
+        button.isEnabled = !slot.isBusy
+        button.accessibilityLabel = "\(ImageGenField.size.label), \(slot.aspect.label(slot.size))"
+        button.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.selection()
+                self?.studio.advance(.size)
+            }, for: .touchUpInside)
+        button.menu = ImageChip.sizeMenu(slot: slot) { [weak self] size in
+            Theme.Haptics.selection()
+            self?.studio.choose(size: size)
+        }
+        return button
+    }
+
+    private func detailChip() -> UIButton {
+        let button = ImageChip.button(
+            symbol: ImageGenField.detail.symbol, title: slot.value(of: .detail))
+        button.isEnabled = !slot.isBusy
+        button.accessibilityLabel = "\(ImageGenField.detail.label), \(slot.detail.detail)"
+        button.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.selection()
+                self?.studio.advance(.detail)
+            }, for: .touchUpInside)
+        button.menu = ImageChip.detailMenu(slot: slot) { [weak self] detail in
+            Theme.Haptics.selection()
+            self?.studio.choose(detail: detail)
+        }
+        return button
+    }
+
+    /// Painting on transparency rather than on a background: a switch worn as a chip, because it
+    /// changes the next picture and opens nothing.
+    private func cutoutChip() -> UIButton {
+        let button = ImageChip.button(
+            symbol: slot.cutout ? "checkmark.square.fill" : "square.on.square.dashed",
+            title: ImageGenWords.cutoutTitle)
+        button.isEnabled = !slot.isBusy
+        if slot.cutout { button.tintColor = Theme.Color.accent }
+        button.accessibilityLabel = ImageGenWords.cutoutTitle
+        button.accessibilityValue = ImageGenWords.cutoutHint
+        button.addAction(
+            UIAction { [weak self] _ in
+                guard let self else { return }
+                Theme.Haptics.selection()
+                self.studio.setCutout(!self.slot.cutout)
+            }, for: .touchUpInside)
+        return button
+    }
+
+    /// The number the noise starts from: rolling by default, held when a person has one they
+    /// want to change a single word against.
+    private func seedChip() -> UIButton {
+        let button = ImageChip.button(
+            symbol: slot.seed.isHeld ? "lock.fill" : "die.face.5", title: slot.seed.chip)
+        button.isEnabled = !slot.isBusy && (slot.seed.isHeld || slot.seed.last != nil)
+        if slot.seed.isHeld { button.tintColor = Theme.Color.accent }
+        button.accessibilityLabel = slot.seed.chip
+        button.accessibilityHint = slot.seed.isHeld
+            ? ImageGenWords.seedHeldHint : ImageGenWords.seedRollsHint
+        button.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.selection()
+                self?.studio.toggleSeedHold()
+            }, for: .touchUpInside)
+        return button
+    }
+
+    /// What the render must keep out. It costs a second pass, which is why the chip says so and
+    /// why an empty avoid list is the ordinary case.
+    private func avoidChip() -> UIButton {
+        let holding = !slot.negative.trimmed().isEmpty
+        let button = ImageChip.button(
+            symbol: holding ? "nosign" : "nosign",
+            title: holding ? slot.negative.ellipsized(to: 18) : ImageGenWords.avoidTitle)
+        button.isEnabled = !slot.isBusy
+        if holding { button.tintColor = Theme.Color.warning }
+        button.accessibilityLabel = ImageGenWords.avoidTitle
+        button.accessibilityValue = holding ? slot.negative : nil
+        button.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.tap()
+                self?.presentAvoid()
+            }, for: .touchUpInside)
+        return button
+    }
+
+    /// The craft, one press away, and lit when the words in the box are thin enough to need it.
+    private func craftChip() -> UIButton {
+        let thin = briefIsThin
+        let button = ImageChip.button(
+            symbol: thin ? "lightbulb.fill" : "lightbulb", title: ImageGenBrief.craftTitle)
+        if thin { button.tintColor = Theme.Color.warning }
+        button.accessibilityLabel = ImageGenBrief.craftTitle
+        button.accessibilityHint = thin ? ImageGenBrief.thinBody : nil
+        button.menu = ImageChip.craftMenu { [weak self] example in
+            guard let self else { return }
+            Theme.Haptics.tap()
+            self.studio.choose(aspect: example.aspect)
+            self.setPrompt(example.prompt)
+            self.studio.rememberDraft(example.prompt)
+            self.updateChips()
+        }
+        button.showsMenuAsPrimaryAction = true
+        return button
+    }
+
+    /// A small box for the avoid list, because a phone has nowhere to keep a second field open
+    /// under the composer without taking the picture's room.
+    private func presentAvoid() {
+        let alert = UIAlertController(
+            title: ImageGenWords.avoidTitle, message: ImageGenWords.avoidHint,
+            preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = self.slot.negative
+            field.placeholder = ImageGenWords.avoidPlaceholder
+            field.autocapitalizationType = .none
+            field.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: ImageGenWords.cancelTitle, style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: ImageGenWords.applyTitle, style: .default) { [weak self] _ in
+                let words = alert.textFields?.first?.text ?? ""
+                self?.studio.setNegative(words)
+                self?.updateChips()
+            })
+        present(alert, animated: true)
     }
 
     private func engineChip(sighting: ImageGenSighting?) -> UIButton {
@@ -601,7 +748,7 @@ final class ImageStudioViewController: UIViewController {
     /// it holds one or it does not, wears the picture it holds, and opens the sources — or replace
     /// and remove — as a menu, because the doors are five and a phone has no tooltip to name them.
     private func referenceChip() -> UIButton {
-        let holding = slot.reference
+        let holding = slot.references.last
         let thumb = holding.flatMap { reference -> UIImage? in
             if let kept = reference.kept, let tile = library.cachedThumbnail(of: kept) { return tile }
             guard let data = FileManager.default.contents(atPath: reference.path),
@@ -609,13 +756,19 @@ final class ImageStudioViewController: UIViewController {
             else { return nil }
             return image.preparingThumbnail(of: CGSize(width: 60, height: 60)) ?? image
         }
+        let count = slot.references.count
+        let title: String
+        switch count {
+        case 0: title = ImageGenWords.attachTitle
+        case 1: title = holding?.chip ?? ImageGenWords.attachTitle
+        default: title = ImageGenWords.attachedCount(count)
+        }
         let button = ImageChip.button(
-            symbol: holding == nil ? "photo.badge.plus" : "photo.fill",
-            title: holding?.chip ?? ImageGenWords.attachTitle, image: thumb)
+            symbol: count == 0 ? "photo.badge.plus" : "photo.fill", title: title, image: thumb)
         button.isEnabled = !slot.isBusy
         button.accessibilityLabel = holding.map(ImageGenWords.referenceHint) ?? ImageGenWords.attachTitle
-        button.accessibilityHint = holding == nil ? nil : ImageGenWords.detachHint
-        button.menu = intake.menu(holding: holding)
+        button.accessibilityHint = count == 0 ? nil : ImageGenWords.attachMoreHint
+        button.menu = intake.menu(references: slot.references)
         button.showsMenuAsPrimaryAction = true
         return button
     }

@@ -95,14 +95,76 @@ final class ImageStudio: @unchecked Sendable {
 
     func advance(_ field: ImageGenField) {
         slot.advance(field)
-        ImageGenStore.remember(engine: slot.engine, aspect: slot.aspect)
+        rememberChoices()
         announce()
+    }
+
+    /// Sets one decision outright rather than walking to it, which is what a menu row means.
+    func choose(engine: ImageGenEngine) {
+        slot.setEngine(engine)
+        rememberChoices()
+        announce()
+    }
+
+    func choose(aspect: ImageGenAspect) {
+        slot.setAspect(aspect)
+        rememberChoices()
+        announce()
+    }
+
+    func choose(size: ImageGenSize) {
+        slot.setSize(size)
+        rememberChoices()
+        announce()
+    }
+
+    func choose(detail: ImageGenDetail) {
+        slot.setDetail(detail)
+        rememberChoices()
+        announce()
+    }
+
+    func setNegative(_ words: String) {
+        slot.setNegative(words)
+        announce()
+    }
+
+    func setCutout(_ on: Bool) {
+        slot.setCutout(on)
+        announce()
+    }
+
+    /// Holds the seed the last render rolled, or lets it roll again. Holding is how a person
+    /// changes one word and sees only that word change.
+    func toggleSeedHold() {
+        if slot.seed.isHeld {
+            slot.releaseSeed()
+        } else {
+            slot.holdSeed()
+        }
+        announce()
+    }
+
+    private func rememberChoices() {
+        ImageGenStore.remember(engine: slot.engine, aspect: slot.aspect)
+        ImageGenStore.remember(size: slot.size, detail: slot.detail)
     }
 
     /// Attaches or lets go of the picture the next render works from. Nothing else decides the
     /// mode, so this one call is the whole gesture.
     func hold(_ reference: ImageGenReference?) {
         slot.hold(reference)
+        announce()
+    }
+
+    /// Adds one more picture for the next render to work from, up to what the encoder holds.
+    func attach(_ reference: ImageGenReference) {
+        slot.attach(reference)
+        announce()
+    }
+
+    func release(_ path: String) {
+        slot.release(path)
         announce()
     }
 
@@ -216,16 +278,13 @@ final class ImageStudio: @unchecked Sendable {
         slot.begin(prompt: text)
         startedAt = Date()
         progress = nil
-        let engine = slot.engine
-        let mode = slot.mode
-        let aspect = slot.aspect
-        let reference = slot.reference?.path
-        let fresh = ImageGenRunner(
-            endpoint: slot.endpoint, prompt: text, engine: engine, mode: mode, aspect: aspect)
+        let recipe = slot.recipe(prompt: text, seed: slot.seed.next())
+        let references = slot.references
+        let fresh = ImageGenRunner(endpoint: slot.endpoint, recipe: recipe)
         runner = fresh
         announce()
         fresh.run(
-            prompt: text, engine: engine, mode: mode, aspect: aspect, referencePath: reference,
+            references: references,
             progress: { [weak self] progress in
                 Gtk.onMain { [weak self] in
                     guard let self, fresh === self.runner else { return }
@@ -246,8 +305,8 @@ final class ImageStudio: @unchecked Sendable {
             let path = ImageGenFiles.write(data, engine: runner.engine)
             let picture = ImageGenPicture(
                 path: path, prompt: runner.prompt, engine: runner.engine, mode: runner.mode,
-                aspect: runner.aspect, seconds: seconds, seed: runner.seed,
-                remoteName: remoteName)
+                aspect: runner.aspect, size: runner.recipe?.size ?? .standard, seconds: seconds,
+                seed: runner.seed, steps: runner.recipe?.steps, remoteName: remoteName)
             slot.finish(picture)
             decode(picture.path, data: data)
             library.refresh()

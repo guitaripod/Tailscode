@@ -24,6 +24,9 @@ public final class ImageGenRunner: @unchecked Sendable {
     public let mode: ImageGenMode
     public let aspect: ImageGenAspect
     public let seed: UInt64
+    /// The whole of what was asked for, when the caller had a whole recipe to give. The older
+    /// surfaces hand over four values and no recipe, and get the defaults for the rest.
+    public let recipe: ImageGenRecipe?
     private let client: ImageGenClient
     private var task: Task<Void, Never>?
     private let held = HeldSocket()
@@ -38,7 +41,83 @@ public final class ImageGenRunner: @unchecked Sendable {
         self.engine = engine
         self.mode = mode
         self.aspect = aspect
+        self.recipe = nil
         seed = UInt64.random(in: 1...UInt64(Int64.max))
+    }
+
+    /// The whole ask in one value: the words, the avoid list, the shape and size, the sampler's
+    /// length, the seed the slot rolled or is holding, and every picture it works from.
+    public init(endpoint: ImageGenEndpoint, recipe: ImageGenRecipe) {
+        client = ImageGenClient(endpoint: endpoint)
+        self.prompt = recipe.prompt
+        self.engine = recipe.engine
+        self.mode = recipe.mode
+        self.aspect = recipe.aspect
+        self.recipe = recipe
+        self.seed = recipe.seed
+    }
+
+    /// Runs the recipe this runner was built with. Every reference is put on the machine first,
+    /// in order, so the words can address them as `<image1>`, `<image2>` and so on; a picture the
+    /// machine already keeps is named where it is and nothing travels.
+    public func run(
+        references: [ImageGenReference], progress: (@Sendable (ImageGenProgress) -> Void)? = nil,
+        _ done: @escaping @Sendable (Outcome) -> Void
+    ) {
+        guard let recipe else {
+            done(.failure(Localized.text("Nothing to render")))
+            return
+        }
+        let started = Date()
+        task = Task.detached { [client, held, ticket] in
+            do {
+                if references.contains(where: { $0.machineName == nil }) {
+                    progress?(ImageGenProgress(stage: .sendingReference))
+                }
+                var handed: [String] = []
+                for reference in references {
+                    if let name = try await Self.hand(reference, to: client) { handed.append(name) }
+                }
+                var wanted = recipe
+                wanted.references = handed
+                let socket = Self.open(client: client, held: held)
+                let request = try await client.queue(ImageGenClient.graph(wanted))
+                ticket.request = request
+                progress?(ImageGenProgress(stage: .queued(ahead: 0)))
+                let verdict = SocketVerdict()
+                let listener = Task.detached {
+                    await Self.listen(
+                        socket, for: request, verdict: verdict, progress: progress)
+                }
+                defer {
+                    listener.cancel()
+                    held.close()
+                }
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: verdict.settled ? 400_000_000 : 1_500_000_000)
+                    guard !Task.isCancelled else { return }
+                    if let outcome = await client.poll(request) {
+                        switch outcome {
+                        case .success:
+                            let (data, name) = try await client.fetch(request: request)
+                            done(
+                                .picture(
+                                    data, seconds: Date().timeIntervalSince(started),
+                                    remoteName: name))
+                        case .failure(let failure):
+                            done(.failure(failure.reason))
+                        }
+                        return
+                    }
+                }
+            } catch let failure as ImageGenFailure {
+                guard !Task.isCancelled else { return }
+                done(.failure(failure.reason))
+            } catch {
+                guard !Task.isCancelled else { return }
+                done(.failure(Localized.text("ComfyUI is not answering")))
+            }
+        }
     }
 
     /// Stops following the render and takes it off the machine: deleted from the queue if it has

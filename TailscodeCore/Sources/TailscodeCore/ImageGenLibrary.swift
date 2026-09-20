@@ -79,8 +79,8 @@ public struct ImageGenLibraryFacts: Sendable, Equatable, Hashable, Codable {
         guard let width, let height, width > 0, height > 0 else { return nil }
         let ratio = Double(width) / Double(height)
         return ImageGenAspect.allCases.min {
-            abs(log(Double($0.pixels.width) / Double($0.pixels.height)) - log(ratio))
-                < abs(log(Double($1.pixels.width) / Double($1.pixels.height)) - log(ratio))
+            abs(log(Double($0.ratio.width) / Double($0.ratio.height)) - log(ratio))
+                < abs(log(Double($1.ratio.width) / Double($1.ratio.height)) - log(ratio))
         }
     }
 

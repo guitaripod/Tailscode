@@ -220,7 +220,8 @@ struct ImageGenLibraryTests {
             prompt: "lake", engine: .fast, mode: .generate, aspect: .wide, seed: 9,
             referenceName: nil)
         let painted = try #require(ComfyRecipe.read(graph: paint))
-        #expect(painted.mode == .generate && painted.width == 1536)
+        #expect(painted.mode == .generate)
+        #expect(painted.width == ImageGenAspect.wide.pixels(.quick).width)
 
         let qwen = ImageGenClient.graph(
             prompt: "sky", engine: .quality, mode: .edit, aspect: .square, seed: 3,
@@ -234,7 +235,8 @@ struct ImageGenLibraryTests {
             referenceName: nil)
         let painted21 = try #require(ComfyRecipe.read(graph: qwenPaint))
         #expect(painted21.prompt == "dusk" && painted21.mode == .generate)
-        #expect(painted21.width == 896 && painted21.height == 1280)
+        let wanted = ImageGenAspect.portrait.pixels(.quick)
+        #expect(painted21.width == wanted.width && painted21.height == wanted.height)
     }
 
     @Test func queuePlaceIsReadOffTheMachinesQueue() {

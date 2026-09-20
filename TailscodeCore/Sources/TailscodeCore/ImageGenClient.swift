@@ -143,20 +143,28 @@ public struct ImageGenClient: Sendable {
     }
 
     /// The graph for one ask, built once so the runner can queue it and read its nodes back.
+    public static func graph(_ recipe: ImageGenRecipe) -> [String: Any] {
+        switch recipe.engine {
+        case .quality:
+            return qwenGraph(recipe)
+        case .fast:
+            if recipe.mode == .edit, let first = recipe.references.first {
+                return kleinEditGraph(recipe, referencePath: first)
+            }
+            return kleinGraph(recipe)
+        }
+    }
+
+    /// The older shape of the same call, for the surfaces that ask for one picture from one
+    /// reference and have no opinion about anything else.
     public static func graph(
         prompt: String, engine: ImageGenEngine, mode: ImageGenMode, aspect: ImageGenAspect,
         seed: UInt64, referenceName: String?
     ) -> [String: Any] {
-        switch engine {
-        case .quality:
-            return qwenGraph(
-                prompt: prompt, mode: mode, aspect: aspect, seed: seed, referencePath: referenceName)
-        case .fast:
-            if mode == .edit, let referenceName {
-                return kleinEditGraph(prompt: prompt, seed: seed, referencePath: referenceName)
-            }
-            return kleinGraph(prompt: prompt, aspect: aspect, seed: seed)
-        }
+        graph(
+            ImageGenRecipe(
+                prompt: prompt, engine: engine, mode: mode, aspect: aspect, size: .quick,
+                seed: seed, references: [referenceName].compactMap { $0 }))
     }
 
     /// Queues one render. The graph is built for the engine and mode; the seed is the caller's
@@ -169,6 +177,12 @@ public struct ImageGenClient: Sendable {
             Self.graph(
                 prompt: prompt, engine: engine, mode: mode, aspect: aspect, seed: seed,
                 referenceName: referencePath))
+    }
+
+    /// Queues one render from the whole recipe: the words, the avoid list, the shape and size,
+    /// the sampler's length, every reference and the seed.
+    public func queue(_ recipe: ImageGenRecipe) async throws -> ImageGenRequest {
+        try await queue(Self.graph(recipe))
     }
 
     public func queue(_ graph: [String: Any]) async throws -> ImageGenRequest {
@@ -431,13 +445,9 @@ public struct ImageGenClient: Sendable {
 
     /// Qwen-Image-2.1 as the store runs it: the int8 transformer, the Qwen3-VL text encoder and
     /// the 2.1 VAE. One node encodes both prompts and, in an edit, hands back the latent cut to
-    /// the reference's own shape; with no reference the same graph paints from words alone.
-    static func qwenGraph(
-        prompt: String, mode: ImageGenMode, aspect: ImageGenAspect, seed: UInt64,
-        referencePath: String?
-    ) -> [String: Any] {
-        let size = aspect.pixels
-        let negative = ""
+    /// the first reference\'s own shape; with no reference the same graph paints from words alone.
+    static func qwenGraph(_ recipe: ImageGenRecipe) -> [String: Any] {
+        let size = recipe.pixels
         var graph: [String: Any] = [
             "12": ["class_type": "UNETLoader", "inputs": [
                 "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
@@ -460,13 +470,18 @@ public struct ImageGenClient: Sendable {
         var model: [Any] = ["12", 0]
         var latent: [Any] = ["66", 0]
         var encode: [String: Any] = [
-            "clip": ["61", 0], "prompt": prompt, "negative_prompt": negative,
+            "clip": ["61", 0], "prompt": recipe.words, "negative_prompt": recipe.avoids,
             "resolution": Self.referenceResolution,
         ]
-        if mode == .edit, let referencePath {
-            graph["81"] = ["class_type": "LoadImage", "inputs": ["image": referencePath]]
+        if recipe.mode == .edit, !recipe.references.isEmpty {
             encode["vae"] = ["10", 0]
-            encode[Self.firstReferenceSlot] = ["81", 0]
+            for (index, reference) in recipe.references.prefix(ImageGenSlot.referenceLimit)
+                .enumerated()
+            {
+                let node = "\(Self.firstReferenceNode + index)"
+                graph[node] = ["class_type": "LoadImage", "inputs": ["image": reference]]
+                encode["images.image_\(index + 1)"] = [node, 0]
+            }
             graph["64"] = ["class_type": "QwenImage21Cache", "inputs": [
                 "model": ["12", 0], "device": "auto", "dtype": "default",
             ]]
@@ -480,16 +495,16 @@ public struct ImageGenClient: Sendable {
         graph["68"] = ["class_type": "TextEncodeQwenImage21", "inputs": encode]
         graph["65"] = ["class_type": "KSampler", "inputs": [
             "model": model, "positive": ["68", 0], "negative": ["68", 1],
-            "latent_image": latent, "seed": Int(clamping: seed),
-            "steps": 25, "cfg": 1.0, "sampler_name": "euler",
+            "latent_image": latent, "seed": Int(clamping: recipe.seed),
+            "steps": recipe.steps, "cfg": recipe.guidance, "sampler_name": "euler",
             "scheduler": "simple", "denoise": 1.0,
         ]]
         return graph
     }
 
-    /// The encoder's reference slots grow as a graph wires them, and the queue names a grown slot
-    /// by its path rather than its own id. One reference is all the studio sends.
-    private static let firstReferenceSlot = "images.image_1"
+    /// Where the reference loaders start. Each one after the first takes the next id, so a graph
+    /// with four pictures in it reads in the order the words address them.
+    private static let firstReferenceNode = 81
 
     /// The pixel budget an edit's reference is resized to before it is encoded, which the output
     /// then follows in aspect rather than the chip's. The encoder wants the number whether or not
@@ -517,10 +532,10 @@ public struct ImageGenClient: Sendable {
 
     /// FLUX.2 Klein 4B distilled: four steps, the graph the store verified, driven from an
     /// empty latent so the fast lane paints from words alone.
-    static func kleinGraph(prompt: String, aspect: ImageGenAspect, seed: UInt64)
-        -> [String: Any]
-    {
-        let size = aspect.pixels
+    static func kleinGraph(_ recipe: ImageGenRecipe) -> [String: Any] {
+        let size = recipe.pixels
+        let prompt = recipe.words
+        let seed = recipe.seed
         var graph = kleinLoaders()
         graph["66"] = ["class_type": "EmptyFlux2LatentImage", "inputs": [
             "width": size.width, "height": size.height, "batch_size": 1,
@@ -558,9 +573,9 @@ public struct ImageGenClient: Sendable {
     /// megapixel on a 64-pixel grid, its size becomes the canvas, and its encoded latent rides
     /// both conditionings as the reference. The fast lane used to ignore the reference and paint
     /// from words alone while the button said Edit.
-    static func kleinEditGraph(prompt: String, seed: UInt64, referencePath: String)
-        -> [String: Any]
-    {
+    static func kleinEditGraph(_ recipe: ImageGenRecipe, referencePath: String) -> [String: Any] {
+        let prompt = recipe.words
+        let seed = recipe.seed
         var graph = kleinLoaders()
         graph["81"] = ["class_type": "LoadImage", "inputs": ["image": referencePath]]
         graph["80"] = ["class_type": "ImageScaleToTotalPixels", "inputs": [

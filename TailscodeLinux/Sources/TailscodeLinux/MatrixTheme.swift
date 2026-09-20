@@ -918,23 +918,70 @@ enum MatrixTheme {
             border-color: alpha(\(accent), 0.55);
             box-shadow: 0 0 0 1px alpha(\(accent), 0.35) inset;
         }
-        .draw-chip {
+        .draw-avoid {
+            background-color: alpha(\(danger), 0.06);
+            color: \(text);
+            border: 1px solid alpha(\(danger), 0.28);
+            border-radius: 10px;
+            padding: 7px 12px;
+            \(t(.hint))
+        }
+        .draw-avoid:focus {
+            border-color: alpha(\(danger), 0.55);
+            box-shadow: 0 0 0 1px alpha(\(danger), 0.28) inset;
+        }
+        .draw-chip, .draw-chip > button {
+            background-image: linear-gradient(to bottom, alpha(\(text), 0.07), alpha(\(text), 0.02));
             background-color: \(canvasRaised);
             color: \(textDim);
             border: 1px solid \(rule);
             border-radius: 999px;
-            padding: 3px 12px;
+            padding: 4px 13px;
+            box-shadow: 0 1px 0 alpha(\(text), 0.06) inset, 0 1px 2px alpha(#000000, 0.22);
+            transition: 120ms ease-out;
             \(t(.hint))
         }
-        .draw-chip:hover { color: \(text); border-color: alpha(\(accent), 0.45); }
+        menubutton.draw-chip { padding: 0; background-image: none; box-shadow: none; border: none; }
+        .draw-chip > button {
+            box-shadow: 0 1px 0 alpha(\(text), 0.06) inset, 0 1px 2px alpha(#000000, 0.22);
+            border: 1px solid \(rule);
+            padding: 4px 13px;
+            border-radius: 999px;
+        }
+        .draw-chip:hover, .draw-chip > button:hover {
+            color: \(text);
+            border-color: alpha(\(accent), 0.50);
+            background-image: linear-gradient(to bottom, alpha(\(accent), 0.16), alpha(\(accent), 0.06));
+        }
+        .draw-chip:active, .draw-chip > button:active {
+            box-shadow: 0 1px 3px alpha(#000000, 0.30) inset;
+            background-image: linear-gradient(to bottom, alpha(\(accent), 0.22), alpha(\(accent), 0.10));
+        }
+        .draw-chip:focus-visible, .draw-chip > button:focus-visible {
+            outline: 2px solid alpha(\(accent), 0.55);
+            outline-offset: 1px;
+        }
+        .draw-chip:disabled, .draw-chip > button:disabled {
+            opacity: 0.45;
+            box-shadow: none;
+        }
+        .draw-chip-on, .draw-chip-on > button {
+            color: \(text);
+            border-color: alpha(\(accent), 0.60);
+            background-image: linear-gradient(to bottom, alpha(\(accent), 0.30), alpha(\(accent), 0.14));
+            box-shadow: 0 1px 0 alpha(\(text), 0.10) inset, 0 1px 3px alpha(#000000, 0.26);
+        }
+        .draw-chip-lead { color: alpha(\(text), 0.55); }
         .draw-chips { margin-top: 2px; }
+        .draw-chips-more { margin-top: 4px; }
+        .draw-section { color: \(textDim); \(t(.badge)) opacity: 0.75; margin-top: 6px; }
         .draw-picture { min-height: 170px; min-width: 240px; }
         .draw-status { color: \(text); \(t(.panelDetail)) }
         .draw-progress { color: \(accent); \(t(.statusLine)) }
         .draw-working {
-            background-color: alpha(\(text), 0.05);
-            border: 1px solid \(rule);
-            border-radius: 10px;
+            background-image: linear-gradient(to bottom, alpha(\(accent), 0.10), alpha(\(text), 0.04));
+            border: 1px solid alpha(\(accent), 0.28);
+            border-radius: 12px;
         }
         .draw-tile { padding: 0; border-radius: 10px; background: none; border: none; }
         .draw-tile:hover { background-color: alpha(\(text), 0.04); }
@@ -943,23 +990,90 @@ enum MatrixTheme {
             border-radius: 10px;
         }
         .draw-caption { color: \(textDim); \(t(.hint)) opacity: 0.85; }
-        .draw-chip-on {
-            color: \(text);
-            border-color: alpha(\(accent), 0.55);
-            background-color: alpha(\(accent), 0.14);
-        }
         .draw-stage-room { min-height: 180px; }
         .draw-facts { color: \(textDim); \(t(.badge)) }
-        .draw-actions { margin-top: 2px; }
+        .draw-actions { margin-top: 4px; }
         .draw-action {
             color: \(textDim);
-            border-radius: 8px;
-            padding: 3px 10px;
+            background-color: alpha(\(text), 0.04);
+            border: 1px solid alpha(\(text), 0.10);
+            border-radius: 9px;
+            padding: 4px 11px;
+            transition: 120ms ease-out;
             \(t(.hint))
         }
-        .draw-action:hover { color: \(text); background-color: alpha(\(text), 0.07); }
-        .draw-action.danger { color: \(danger); }
-        .draw-action.danger:hover { background-color: alpha(\(danger), 0.14); }
+        .draw-action:hover {
+            color: \(text);
+            background-color: alpha(\(text), 0.10);
+            border-color: alpha(\(accent), 0.42);
+        }
+        .draw-action:active { background-color: alpha(\(text), 0.16); }
+        .draw-action:focus-visible { outline: 2px solid alpha(\(accent), 0.50); outline-offset: 1px; }
+        .draw-action.danger { color: \(danger); border-color: alpha(\(danger), 0.24); }
+        .draw-action.danger:hover {
+            background-color: alpha(\(danger), 0.16);
+            border-color: alpha(\(danger), 0.55);
+        }
+        .draw-go {
+            background-image: linear-gradient(to bottom, alpha(\(accent), 0.95), alpha(\(accent), 0.72));
+            color: \(canvas);
+            border: 1px solid alpha(\(accent), 0.85);
+            border-radius: 999px;
+            padding: 8px 20px;
+            box-shadow: 0 1px 0 alpha(#ffffff, 0.22) inset, 0 2px 6px alpha(#000000, 0.30);
+            transition: 120ms ease-out;
+            \(t(.panelDetail))
+        }
+        .draw-go:hover {
+            background-image: linear-gradient(to bottom, \(accent), alpha(\(accent), 0.82));
+            box-shadow: 0 1px 0 alpha(#ffffff, 0.28) inset, 0 3px 10px alpha(\(accent), 0.35);
+        }
+        .draw-go:active { box-shadow: 0 2px 5px alpha(#000000, 0.35) inset; }
+        .draw-go:disabled { opacity: 0.45; box-shadow: none; }
+        .draw-go.stopping {
+            background-image: linear-gradient(to bottom, alpha(\(danger), 0.92), alpha(\(danger), 0.70));
+            border-color: alpha(\(danger), 0.85);
+        }
+        .draw-hint {
+            background-image: linear-gradient(to bottom, alpha(\(accent), 0.14), alpha(\(accent), 0.06));
+            border: 1px solid alpha(\(accent), 0.34);
+            border-radius: 12px;
+            padding: 9px 12px;
+            margin-top: 4px;
+        }
+        .draw-hint-title { color: \(text); \(t(.panelDetail)) }
+        .draw-hint-body { color: \(textDim); \(t(.hint)) }
+        .draw-example {
+            background-image: linear-gradient(to bottom, alpha(\(text), 0.06), alpha(\(text), 0.02));
+            border: 1px solid \(rule);
+            border-radius: 12px;
+            padding: 10px 12px;
+            transition: 120ms ease-out;
+        }
+        .draw-example:hover {
+            border-color: alpha(\(accent), 0.50);
+            background-image: linear-gradient(to bottom, alpha(\(accent), 0.14), alpha(\(accent), 0.05));
+        }
+        .draw-example-title { color: \(text); \(t(.panelDetail)) }
+        .draw-example-detail { color: \(textDim); \(t(.hint)) }
+        .draw-rule-title { color: \(text); \(t(.panelDetail)) }
+        .draw-rule-detail { color: \(textDim); \(t(.hint)) }
+        .draw-ref {
+            padding: 0;
+            border-radius: 10px;
+            border: 1px solid alpha(\(accent), 0.45);
+            background-color: alpha(\(text), 0.05);
+        }
+        .draw-ref:hover { border-color: \(accent); }
+        .draw-ref-drop {
+            border: 1px dashed alpha(\(text), 0.30);
+            border-radius: 10px;
+            color: \(textDim);
+            padding: 6px 12px;
+            background-color: alpha(\(text), 0.03);
+            \(t(.hint))
+        }
+        .draw-ref-drop:hover { border-color: alpha(\(accent), 0.55); color: \(text); }
         .draw-empty-title { color: \(text); \(t(.panelTitle)) }
         .draw-history { color: \(textDim); \(t(.badge)) margin-top: 4px; }
         .draw-thumb {
@@ -967,6 +1081,7 @@ enum MatrixTheme {
             border-radius: 8px;
             border: 1px solid transparent;
         }
+        .draw-thumb:hover { border-color: alpha(\(accent), 0.45); }
         .draw-thumb-on { border-color: \(accent); }
         .draw-tile-zoomed { background-color: \(canvas); }
         .draw-shelf { margin-top: 4px; }

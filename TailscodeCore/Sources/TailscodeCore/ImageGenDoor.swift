@@ -12,6 +12,8 @@ public enum ImageGenStore {
     static let endpointKey = "tailscode.image.endpoint"
     static let engineKey = "tailscode.image.engine"
     static let aspectKey = "tailscode.image.aspect"
+    static let sizeKey = "tailscode.image.size"
+    static let detailKey = "tailscode.image.detail"
     static let healthKey = "tailscode.image.health"
     static let clientKey = "tailscode.image.client"
     public static let didChange = Notification.Name("tailscode.image.didChange")
@@ -56,6 +58,22 @@ public enum ImageGenStore {
     public static func remember(engine: ImageGenEngine, aspect: ImageGenAspect) {
         defaults.set(engine.rawValue, forKey: engineKey)
         defaults.set(aspect.rawValue, forKey: aspectKey)
+        NotificationCenter.default.post(name: didChange, object: nil)
+    }
+
+    /// How big the last render was asked for. A size is a preference the way a shape is: the
+    /// person who works at 2K works at 2K tomorrow too.
+    public static func size() -> ImageGenSize {
+        defaults.string(forKey: sizeKey).flatMap(ImageGenSize.init(rawValue:)) ?? .standard
+    }
+
+    public static func detail() -> ImageGenDetail {
+        defaults.string(forKey: detailKey).flatMap(ImageGenDetail.init(rawValue:)) ?? .standard
+    }
+
+    public static func remember(size: ImageGenSize, detail: ImageGenDetail) {
+        defaults.set(size.rawValue, forKey: sizeKey)
+        defaults.set(detail.rawValue, forKey: detailKey)
         NotificationCenter.default.post(name: didChange, object: nil)
     }
 

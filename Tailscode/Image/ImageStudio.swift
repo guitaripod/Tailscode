@@ -137,8 +137,40 @@ final class ImageStudio {
         remember()
     }
 
+    func choose(size: ImageGenSize) {
+        slot.setSize(size)
+        remember()
+    }
+
+    func choose(detail: ImageGenDetail) {
+        slot.setDetail(detail)
+        remember()
+    }
+
+    func setNegative(_ words: String) {
+        slot.setNegative(words)
+        announce()
+    }
+
+    func setCutout(_ on: Bool) {
+        slot.setCutout(on)
+        announce()
+    }
+
+    /// Holds the seed the last render rolled, or lets it roll again — the gesture behind "change
+    /// one word and see only that word change".
+    func toggleSeedHold() {
+        if slot.seed.isHeld {
+            slot.releaseSeed()
+        } else {
+            slot.holdSeed()
+        }
+        announce()
+    }
+
     private func remember() {
         ImageGenStore.remember(engine: slot.engine, aspect: slot.aspect)
+        ImageGenStore.remember(size: slot.size, detail: slot.detail)
         announce()
     }
 
@@ -149,29 +181,47 @@ final class ImageStudio {
         announce()
     }
 
+    /// One more picture for the next render to work from, up to what the encoder holds. The words
+    /// address them in the order they were added.
+    func attach(_ reference: ImageGenReference) {
+        slot.attach(reference)
+        announce()
+    }
+
+    func release(_ path: String) {
+        slot.release(path)
+        announce()
+    }
+
+    func releaseAllReferences() {
+        slot.releaseAllReferences()
+        announce()
+    }
+
     /// A picture handed in from the photo library, the camera or the clipboard has no path of its
     /// own, so it is given one — the renderer is handed a file wherever it comes from.
     func hold(data: Data, named name: String) {
         guard let path = ImageGenFiles.stage(data, named: name) else { return }
-        hold(ImageGenReference(path: path))
+        attach(ImageGenReference(path: path))
     }
 
     /// A picture the machine keeps becomes the reference by name: the graph opens it where it is
     /// and nothing travels. The path kept beside it is only for the chip's thumbnail.
     func hold(kept item: ImageGenLibraryItem) {
         let path = library.originalPath(of: item) ?? library.thumbnailPath(of: item) ?? ""
-        hold(ImageGenReference(path: path, kept: item))
+        attach(ImageGenReference(path: path, kept: item))
     }
 
     /// Whether the picture on the stage is already what the next render starts from.
     func isReference(_ exhibit: ImageExhibit) -> Bool {
-        guard let reference = slot.reference else { return false }
-        switch exhibit {
-        case .made(let picture):
-            return reference.path == picture.path
-                || (reference.kept != nil && reference.kept?.id == picture.remoteName)
-        case .kept(let item):
-            return reference.kept?.id == item.id
+        slot.references.contains { reference in
+            switch exhibit {
+            case .made(let picture):
+                return reference.path == picture.path
+                    || (reference.kept != nil && reference.kept?.id == picture.remoteName)
+            case .kept(let item):
+                return reference.kept?.id == item.id
+            }
         }
     }
 
@@ -261,17 +311,15 @@ final class ImageStudio {
         startedAt = Date()
         progress = nil
         keptOnStage = nil
-        let fresh = ImageGenRunner(
-            endpoint: slot.endpoint, prompt: text, engine: slot.engine, mode: slot.mode,
-            aspect: slot.aspect)
+        let recipe = slot.recipe(prompt: text, seed: slot.seed.next())
+        let fresh = ImageGenRunner(endpoint: slot.endpoint, recipe: recipe)
         runner = fresh
         announce()
         AppLogger.session.info(
-            "image render queued on \(endpoint.displayHost) engine=\(slot.engine.rawValue) mode=\(slot.mode.rawValue) aspect=\(slot.aspect.rawValue)"
+            "image render queued on \(endpoint.displayHost) engine=\(recipe.engine.rawValue) mode=\(recipe.mode.rawValue) aspect=\(recipe.aspect.rawValue) size=\(recipe.size.rawValue) steps=\(recipe.steps) references=\(recipe.references.count) cutout=\(recipe.cutout)"
         )
         fresh.run(
-            prompt: text, engine: slot.engine, mode: slot.mode, aspect: slot.aspect,
-            reference: slot.reference,
+            references: slot.references,
             progress: { [weak self] report in
                 Task { @MainActor [weak self] in self?.progressed(report, from: fresh) }
             }
@@ -294,7 +342,8 @@ final class ImageStudio {
             let path = ImageGenFiles.write(data, engine: runner.engine)
             let picture = ImageGenPicture(
                 path: path, prompt: runner.prompt, engine: runner.engine, mode: runner.mode,
-                aspect: runner.aspect, seconds: seconds, seed: runner.seed, remoteName: remoteName)
+                aspect: runner.aspect, size: runner.recipe?.size ?? .standard, seconds: seconds,
+                seed: runner.seed, steps: runner.recipe?.steps, remoteName: remoteName)
             slot.finish(picture)
             keptOnStage = nil
             stageCleared = false

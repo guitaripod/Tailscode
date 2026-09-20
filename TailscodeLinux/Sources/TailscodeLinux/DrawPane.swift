@@ -29,10 +29,23 @@ final class DrawPane: @unchecked Sendable {
     private let askBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
     private(set) var entry = gtk_entry_new()!
     private let chipRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+    private let moreRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
     private let engineChip: UnsafeMutablePointer<GtkWidget>
     private let aspectChip: UnsafeMutablePointer<GtkWidget>
+    private let sizeChip: UnsafeMutablePointer<GtkWidget>
+    private let detailChip: UnsafeMutablePointer<GtkWidget>
+    private let cutoutChip: UnsafeMutablePointer<GtkWidget>
+    private let seedChip: UnsafeMutablePointer<GtkWidget>
+    private let moreChip: UnsafeMutablePointer<GtkWidget>
     private let referenceChip: UnsafeMutablePointer<GtkWidget>
     private let renderButton: UnsafeMutablePointer<GtkWidget>
+    /// The pictures the next render works from, shown as what they are rather than as a count.
+    private let referenceStrip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+    private let avoidEntry = gtk_entry_new()!
+    private let hintBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+    /// Whether the second row of decisions is open. A person who works with an avoid list keeps
+    /// it open; everyone else never sees it.
+    private var showsMore = false
     private let promptRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let stagePicture = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let factsLabel = Gtk.label("", css: "draw-facts", selectable: true)
@@ -73,10 +86,46 @@ final class DrawPane: @unchecked Sendable {
     init(studio: ImageStudio, fills: Bool = false) {
         self.studio = studio
         self.fills = fills
-        engineChip = Gtk.button("", css: ["draw-chip"], onClick: {})
-        aspectChip = Gtk.button("", css: ["draw-chip"], onClick: {})
+        let held = studio
+        engineChip = Gtk.menuButton("", css: ["draw-chip"]) {
+            ImageGenEngine.allCases.map { engine in
+                (
+                    title: engine.label, detail: engine.detail,
+                    action: { @Sendable in Gtk.onMain { held.choose(engine: engine) } }
+                )
+            }
+        }
+        aspectChip = Gtk.menuButton("", css: ["draw-chip"]) {
+            ImageGenAspect.allCases.map { aspect in
+                (
+                    title: "\(aspect.glyph)  \(aspect.short) · \(aspect.ratioLabel)",
+                    detail: aspect.label(held.slot.size),
+                    action: { @Sendable in Gtk.onMain { held.choose(aspect: aspect) } }
+                )
+            }
+        }
+        sizeChip = Gtk.menuButton("", css: ["draw-chip"]) {
+            ImageGenSize.allCases.map { size in
+                (
+                    title: "\(size.title) · \(held.slot.aspect.label(size))",
+                    detail: size.detail,
+                    action: { @Sendable in Gtk.onMain { held.choose(size: size) } }
+                )
+            }
+        }
+        detailChip = Gtk.menuButton("", css: ["draw-chip"]) {
+            ImageGenDetail.allCases.map { detail in
+                (
+                    title: detail.short, detail: detail.detail,
+                    action: { @Sendable in Gtk.onMain { held.choose(detail: detail) } }
+                )
+            }
+        }
+        cutoutChip = Gtk.button("", css: ["draw-chip"], onClick: {})
+        seedChip = Gtk.button("", css: ["draw-chip"], onClick: {})
+        moreChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         referenceChip = Gtk.button("", css: ["draw-chip"], onClick: {})
-        renderButton = Gtk.button("", css: ["suggested-action", "pill"], onClick: {})
+        renderButton = Gtk.button("", css: ["draw-go"], onClick: {})
         buildRoot()
         render()
         refreshNotice()
@@ -95,14 +144,24 @@ final class DrawPane: @unchecked Sendable {
     /// Wires the chips once the pane exists — a closure over `self` cannot be built until every
     /// stored property is initialized, so the actions attach here rather than in `init`.
     func wireChips() {
-        Gtk.connect(UnsafeMutableRawPointer(engineChip), "clicked") { [weak self] in
-            self?.cycleEngine()
+        Gtk.connect(UnsafeMutableRawPointer(cutoutChip), "clicked") { [weak self] in
+            guard let self else { return }
+            self.studio.setCutout(!self.slot.cutout)
         }
-        Gtk.connect(UnsafeMutableRawPointer(aspectChip), "clicked") { [weak self] in
-            self?.cycleAspect()
+        Gtk.connect(UnsafeMutableRawPointer(seedChip), "clicked") { [weak self] in
+            self?.studio.toggleSeedHold()
+        }
+        Gtk.connect(UnsafeMutableRawPointer(moreChip), "clicked") { [weak self] in
+            guard let self else { return }
+            self.showsMore.toggle()
+            self.render()
         }
         Gtk.connect(UnsafeMutableRawPointer(referenceChip), "clicked") { [weak self] in
             self?.referencePressed()
+        }
+        Gtk.connect(UnsafeMutableRawPointer(avoidEntry), "changed") { [weak self] in
+            guard let self, let raw = gtk_editable_get_text(op(self.avoidEntry)) else { return }
+            self.studio.setNegative(String(cString: raw))
         }
         Gtk.connect(UnsafeMutableRawPointer(renderButton), "clicked") { [weak self] in
             self?.renderPressed()
@@ -172,6 +231,9 @@ final class DrawPane: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(entry), "activate") { [weak self] in
             self?.submit()
         }
+        Gtk.connect(UnsafeMutableRawPointer(entry), "changed") { [weak self] in
+            self?.refreshHint()
+        }
         Gtk.addClass(chipRow, "draw-chips")
         gtk_widget_set_halign(chipRow, GTK_ALIGN_START)
         gtk_widget_set_hexpand(chipRow, 1)
@@ -193,10 +255,20 @@ final class DrawPane: @unchecked Sendable {
         gtk_label_set_xalign(op(keptHintLabel), 0)
         Gtk.addClass(actionRow, "draw-actions")
 
-        for chip in [engineChip, aspectChip, referenceChip] {
+        for chip in [engineChip, aspectChip, sizeChip, referenceChip, moreChip] {
             gtk_widget_set_halign(chip, GTK_ALIGN_START)
             gtk_box_append(ptr(chipRow), chip)
         }
+        Gtk.addClass(moreRow, "draw-chips-more")
+        gtk_widget_set_halign(moreRow, GTK_ALIGN_START)
+        for chip in [detailChip, cutoutChip, seedChip] {
+            gtk_widget_set_halign(chip, GTK_ALIGN_START)
+            gtk_box_append(ptr(moreRow), chip)
+        }
+        gtk_entry_set_placeholder_text(ptr(avoidEntry), ImageGenWords.avoidPlaceholder)
+        Gtk.addClass(avoidEntry, "draw-avoid")
+        gtk_widget_set_hexpand(avoidEntry, 1)
+        gtk_widget_set_halign(referenceStrip, GTK_ALIGN_START)
 
         gtk_widget_set_hexpand(entry, 1)
         gtk_widget_set_valign(renderButton, GTK_ALIGN_CENTER)
@@ -215,7 +287,11 @@ final class DrawPane: @unchecked Sendable {
         gtk_box_append(ptr(askBox), statusLabel)
         gtk_box_append(ptr(askBox), progressLabel)
         gtk_box_append(ptr(askBox), progressBar)
+        gtk_box_append(ptr(askBox), hintBox)
+        gtk_box_append(ptr(askBox), referenceStrip)
         gtk_box_append(ptr(askBox), chipRow)
+        gtk_box_append(ptr(askBox), moreRow)
+        gtk_box_append(ptr(askBox), avoidEntry)
         gtk_box_append(ptr(askBox), promptRow)
         gtk_box_append(ptr(askBox), noticeLabel)
         gtk_box_append(ptr(root), askBox)
@@ -268,28 +344,164 @@ final class DrawPane: @unchecked Sendable {
         }
     }
 
+    /// Every decision the next render is made of, worn where the hands already are. A chip that
+    /// would change nothing is disabled rather than removed, so the row never moves under the
+    /// pointer: an edit takes its frame from the picture it starts from, and the fast engine
+    /// reads neither the sampler length nor the alpha channel.
     private func refreshChips() {
-        gtk_button_set_label(ptr(engineChip), slot.engine.label)
-        gtk_button_set_label(ptr(aspectChip), slot.aspect.label)
-        if let reference = slot.reference {
-            gtk_button_set_label(ptr(referenceChip), "\(reference.chip)  ✕")
-            gtk_widget_set_tooltip_text(referenceChip, ImageGenWords.detachHint)
-            Gtk.addClass(referenceChip, "draw-chip-on")
-        } else {
+        gtk_menu_button_set_label(op(engineChip), slot.engine.label)
+        gtk_widget_set_tooltip_text(engineChip, slot.engine.detail)
+        gtk_menu_button_set_label(op(aspectChip), "\(slot.aspect.glyph)  \(slot.aspect.ratioLabel)")
+        gtk_widget_set_tooltip_text(aspectChip, slot.aspect.short)
+        gtk_menu_button_set_label(op(sizeChip), slot.size.short)
+        gtk_widget_set_tooltip_text(sizeChip, slot.aspect.label(slot.size))
+        gtk_widget_set_sensitive(aspectChip, slot.applies(.aspect) ? 1 : 0)
+        gtk_widget_set_sensitive(sizeChip, slot.applies(.size) ? 1 : 0)
+
+        gtk_menu_button_set_label(op(detailChip), slot.detail.short)
+        gtk_widget_set_tooltip_text(detailChip, slot.detail.detail)
+        gtk_widget_set_sensitive(detailChip, slot.applies(.detail) ? 1 : 0)
+        gtk_button_set_label(ptr(cutoutChip), ImageGenWords.cutoutTitle)
+        gtk_widget_set_tooltip_text(cutoutChip, ImageGenWords.cutoutHint)
+        gtk_widget_set_sensitive(cutoutChip, slot.cutoutApplies ? 1 : 0)
+        mark(cutoutChip, on: slot.cutout && slot.cutoutApplies)
+        gtk_button_set_label(ptr(seedChip), slot.seed.chip)
+        gtk_widget_set_tooltip_text(
+            seedChip, slot.seed.isHeld ? ImageGenWords.seedHeldHint : ImageGenWords.seedRollsHint)
+        mark(seedChip, on: slot.seed.isHeld)
+        gtk_widget_set_sensitive(avoidEntry, slot.negativeApplies ? 1 : 0)
+        gtk_widget_set_visible(moreRow, showsMore ? 1 : 0)
+        gtk_widget_set_visible(avoidEntry, showsMore ? 1 : 0)
+        gtk_button_set_label(
+            ptr(moreChip), showsMore ? ImageGenWords.lessTitle : ImageGenWords.moreTitle)
+        mark(moreChip, on: showsMore)
+
+        let references = slot.references
+        if references.isEmpty {
             gtk_button_set_label(ptr(referenceChip), ImageGenWords.attachTitle)
-            gtk_widget_set_tooltip_text(referenceChip, ImageGenWords.attachTitle)
+            gtk_widget_set_tooltip_text(referenceChip, ImageGenWords.attachHint)
             gtk_widget_remove_css_class(referenceChip, "draw-chip-on")
+        } else {
+            gtk_button_set_label(
+                ptr(referenceChip),
+                references.count == 1
+                    ? ImageGenWords.attachMoreTitle
+                    : ImageGenWords.attachedCount(references.count))
+            gtk_widget_set_tooltip_text(referenceChip, ImageGenWords.attachMoreHint)
+            Gtk.addClass(referenceChip, "draw-chip-on")
         }
+        gtk_widget_set_sensitive(
+            referenceChip, references.count < ImageGenSlot.referenceLimit ? 1 : 0)
+        refreshReferences()
+
         gtk_button_set_label(
             ptr(renderButton),
             slot.isBusy ? ImageGenWords.stopTitle : ImageGenWords.renderTitle(mode: slot.mode))
         if slot.isBusy {
-            Gtk.addClass(renderButton, "destructive-action")
-            gtk_widget_remove_css_class(renderButton, "suggested-action")
+            Gtk.addClass(renderButton, "stopping")
         } else {
-            Gtk.addClass(renderButton, "suggested-action")
-            gtk_widget_remove_css_class(renderButton, "destructive-action")
+            gtk_widget_remove_css_class(renderButton, "stopping")
         }
+        refreshHint()
+    }
+
+    private func mark(_ chip: UnsafeMutablePointer<GtkWidget>, on: Bool) {
+        if on {
+            Gtk.addClass(chip, "draw-chip-on")
+        } else {
+            gtk_widget_remove_css_class(chip, "draw-chip-on")
+        }
+    }
+
+    /// Each picture the render works from, in the order the words address them, with the number
+    /// the prompt would call it and a way to let go of exactly that one.
+    private func refreshReferences() {
+        Gtk.removeChildren(of: referenceStrip)
+        let references = slot.references
+        gtk_widget_set_visible(referenceStrip, references.isEmpty ? 0 : 1)
+        guard !references.isEmpty else { return }
+        for (index, reference) in references.enumerated() {
+            let tile = Gtk.button(
+                "\(ImageGenWords.referenceSlot(index + 1))  ✕", css: ["draw-ref-drop"]
+            ) { [weak self] in
+                Gtk.onMain { [weak self] in
+                    self?.studio.release(reference.path)
+                    self?.resetPlaceholder()
+                }
+            }
+            gtk_widget_set_tooltip_text(tile, ImageGenWords.releaseHint(reference.name))
+            gtk_box_append(ptr(referenceStrip), tile)
+        }
+        if references.count > 1 {
+            let note = Gtk.label(ImageGenWords.addressHint, css: "draw-hint-body", selectable: false)
+            gtk_box_append(ptr(referenceStrip), note)
+        }
+    }
+
+    /// The one nudge this surface gives: a brief thin enough that the model will invent most of
+    /// the frame gets told so, with the two ways out beside it. It is never a block — it appears
+    /// while the words are thin and goes when they are not.
+    private func refreshHint() {
+        Gtk.removeChildren(of: hintBox)
+        let typed = gtk_editable_get_text(op(entry)).map { String(cString: $0) } ?? ""
+        guard !slot.isBusy, ImageGenBrief.isThin(typed) else {
+            gtk_widget_set_visible(hintBox, 0)
+            return
+        }
+        gtk_widget_set_visible(hintBox, 1)
+        Gtk.addClass(hintBox, "draw-hint")
+        gtk_box_append(
+            ptr(hintBox), Gtk.label(ImageGenBrief.thinTitle, css: "draw-hint-title", selectable: false))
+        let body = Gtk.label(ImageGenBrief.thinBody, css: "draw-hint-body", wrap: true, selectable: false)
+        gtk_label_set_xalign(op(body), 0)
+        gtk_label_set_max_width_chars(op(body), 64)
+        gtk_box_append(ptr(hintBox), body)
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let frame = Gtk.button(ImageGenWords.scaffoldTitle, css: ["draw-action"]) { [weak self] in
+            Gtk.onMain { [weak self] in self?.fill(ImageGenBrief.scaffold) }
+        }
+        gtk_widget_set_tooltip_text(frame, ImageGenWords.scaffoldHint)
+        gtk_box_append(ptr(row), frame)
+        gtk_box_append(ptr(row), craftButton())
+        gtk_box_append(ptr(hintBox), row)
+    }
+
+    /// The craft, as six rules and four worked briefs. Opening one fills the composer rather
+    /// than sending it: what the person types is theirs, always.
+    private func craftButton() -> UnsafeMutablePointer<GtkWidget> {
+        let pane = Weak(self)
+        return Gtk.menuButton(ImageGenBrief.craftTitle, css: ["draw-action"]) {
+            var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = []
+            for rule in ImageGenBrief.rules {
+                rows.append((title: rule.title, detail: rule.detail, action: {}))
+            }
+            for example in ImageGenBrief.examples {
+                let prompt = example.prompt
+                let aspect = example.aspect
+                rows.append(
+                    (
+                        title: "\(ImageGenWords.examplePrefix) \(example.title)",
+                        detail: example.detail,
+                        action: {
+                            Gtk.onMain {
+                                guard let pane = pane.value else { return }
+                                pane.studio.choose(aspect: aspect)
+                                pane.fill(prompt)
+                            }
+                        }
+                    ))
+            }
+            return rows
+        }
+    }
+
+    /// Words land in the composer with the caret at their end and nothing is sent. A surface
+    /// that sent something the person did not type would be a surface nobody trusts twice.
+    private func fill(_ text: String) {
+        gtk_editable_set_text(op(entry), text)
+        gtk_editable_set_position(op(entry), -1)
+        focusPrompt()
+        refreshHint()
     }
 
     private func refreshNotice() {
@@ -350,9 +562,15 @@ final class DrawPane: @unchecked Sendable {
         let key = stageTextureKey
         let hasBits = key.flatMap { textures[$0] }.map { $0 != 0 } ?? false
         if slot.isBusy || !hasBits { zoomed = false }
-        for widget in [captionLabel, factsLabel, keptHintLabel, actionRow, shelfBox, chipRow, promptRow]
-        {
+        for widget in [
+            captionLabel, factsLabel, keptHintLabel, actionRow, shelfBox, chipRow, promptRow,
+            hintBox, referenceStrip,
+        ] {
             gtk_widget_set_visible(widget, zoomed ? 0 : 1)
+        }
+        if zoomed {
+            gtk_widget_set_visible(moreRow, 0)
+            gtk_widget_set_visible(avoidEntry, 0)
         }
         gtk_label_set_text(op(zoomHint), ImageGenWords.zoomHint)
         gtk_widget_set_visible(zoomHint, zoomed ? 1 : 0)
@@ -380,7 +598,7 @@ final class DrawPane: @unchecked Sendable {
         } else if studio.keptStage != nil {
             stagePicture.appendWorking(room: fills)
         } else {
-            stagePicture.appendEmpty(room: fills)
+            appendEmptyStage()
         }
 
         guard !zoomed else { return }
@@ -584,6 +802,52 @@ final class DrawPane: @unchecked Sendable {
         return button
     }
 
+    /// An empty studio makes its case and then hands over something to press: four briefs that
+    /// are known to come back right, which fill the composer rather than sending anything.
+    private func appendEmptyStage() {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        gtk_widget_set_valign(column, GTK_ALIGN_CENTER)
+        gtk_widget_set_halign(column, GTK_ALIGN_CENTER)
+        gtk_widget_set_vexpand(column, 1)
+        let title = Gtk.label(ImageGenWords.emptyTitle, css: "draw-empty-title", selectable: false)
+        let body = Gtk.label(ImageGenWords.emptyBody, css: "dim", wrap: true, selectable: false)
+        gtk_label_set_max_width_chars(op(body), 52)
+        gtk_label_set_justify(op(body), GTK_JUSTIFY_CENTER)
+        gtk_box_append(ptr(column), title)
+        gtk_box_append(ptr(column), body)
+
+        let grid = gtk_flow_box_new()!
+        gtk_flow_box_set_selection_mode(op(grid), GTK_SELECTION_NONE)
+        gtk_flow_box_set_max_children_per_line(op(grid), fills ? 2 : 1)
+        gtk_flow_box_set_row_spacing(op(grid), 6)
+        gtk_flow_box_set_column_spacing(op(grid), 6)
+        gtk_widget_set_halign(grid, GTK_ALIGN_CENTER)
+        for example in ImageGenBrief.examples {
+            let prompt = example.prompt
+            let aspect = example.aspect
+            let card = gtk_button_new()!
+            Gtk.addClass(card, "draw-example")
+            let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+            let name = Gtk.label(example.title, css: "draw-example-title", selectable: false)
+            gtk_label_set_xalign(op(name), 0)
+            let detail = Gtk.label(example.detail, css: "draw-example-detail", selectable: false)
+            gtk_label_set_xalign(op(detail), 0)
+            gtk_box_append(ptr(lines), name)
+            gtk_box_append(ptr(lines), detail)
+            gtk_button_set_child(ptr(card), lines)
+            gtk_widget_set_tooltip_text(card, ImageGenWords.scaffoldHint)
+            Gtk.connect(UnsafeMutableRawPointer(card), "clicked") { [weak self] in
+                Gtk.onMain { [weak self] in
+                    self?.studio.choose(aspect: aspect)
+                    self?.fill(prompt)
+                }
+            }
+            gtk_flow_box_insert(op(grid), card, -1)
+        }
+        gtk_box_append(ptr(column), grid)
+        gtk_box_append(ptr(stagePicture), column)
+    }
+
     private func cycleEngine() {
         studio.advance(.engine)
         render()
@@ -594,15 +858,11 @@ final class DrawPane: @unchecked Sendable {
         render()
     }
 
-    /// One control, two meanings, and which one is on the chip: nothing attached opens the
-    /// picker, something attached lets go of it. A settings chip never opened a file dialog and
-    /// this one is not a settings chip.
+    /// Always the same meaning: hand the render one more picture to work from. Letting go of one
+    /// lives on the tile that shows it, because with several attached a single chip could not say
+    /// which one it would drop.
     private func referencePressed() {
-        if slot.reference != nil {
-            studio.hold(nil)
-            resetPlaceholder()
-            return
-        }
+        guard slot.references.count < ImageGenSlot.referenceLimit else { return }
         offerReference()
     }
 
@@ -621,6 +881,10 @@ final class DrawPane: @unchecked Sendable {
         case .stop: studio.stop()
         case .engine: cycleEngine()
         case .aspect: cycleAspect()
+        case .size: studio.advance(.size)
+        case .detail: studio.advance(.detail)
+        case .cutout: studio.setCutout(!slot.cutout)
+        case .seed: studio.toggleSeedHold()
         case .reference: referencePressed()
         case .again: performAgain()
         case .save: perform(.save)
@@ -681,9 +945,9 @@ final class DrawPane: @unchecked Sendable {
             performAgain()
         case .reference:
             if let kept = studio.keptStage {
-                studio.hold(ImageGenReference(path: path, kept: kept.item))
+                studio.attach(ImageGenReference(path: path, kept: kept.item))
             } else {
-                studio.hold(ImageGenReference(path: path))
+                studio.attach(ImageGenReference(path: path))
             }
             resetPlaceholder()
             focusPrompt()
@@ -704,18 +968,23 @@ final class DrawPane: @unchecked Sendable {
     /// The prompt says what it will do with what is attached, so the mode is legible in the one
     /// place a person is already looking.
     private func resetPlaceholder() {
-        let text =
-            slot.reference.map { Localized.text("What to change in %@…", $0.name) }
-            ?? ImageGenNotice.emptyBody
+        let text: String
+        switch slot.references.count {
+        case 0: text = ImageGenNotice.emptyBody
+        case 1: text = Localized.text("What to change in %@…", slot.references[0].name)
+        default: text = ImageGenWords.addressHint
+        }
         gtk_entry_set_placeholder_text(ptr(entry), text)
     }
 
+    /// Several at once: a person picking three pictures for one edit picks them in one gesture,
+    /// and the order they picked is the order the words address them in.
     private func offerReference() {
         Gtk.openFiles(parent: hostWindow) { [weak self] paths in
-            guard let self, let path = paths.first else { return }
+            guard let self, !paths.isEmpty else { return }
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                self.studio.hold(ImageGenReference(path: path))
+                for path in paths { self.studio.attach(ImageGenReference(path: path)) }
                 self.resetPlaceholder()
                 self.focusPrompt()
             }
@@ -750,6 +1019,16 @@ final class DrawPane: @unchecked Sendable {
     var hostWindow: UnsafeMutablePointer<GtkWidget>? {
         guard let root = gtk_widget_get_root(ptr(root)) else { return nil }
         return UnsafeMutablePointer(root)
+    }
+}
+
+/// A weak hold on a view, so a popover built once can reach the pane that owns it without
+/// keeping it alive or tripping the sendability checker on a captured `self`.
+final class Weak<Value: AnyObject>: @unchecked Sendable {
+    weak var value: Value?
+
+    init(_ value: Value?) {
+        self.value = value
     }
 }
 
