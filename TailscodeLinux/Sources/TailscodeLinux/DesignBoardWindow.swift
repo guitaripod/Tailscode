@@ -332,6 +332,22 @@ final class DesignBoardWindow: @unchecked Sendable {
                 }
                 gtk_widget_set_halign(open, GTK_ALIGN_CENTER)
                 gtk_box_append(ptr(column), open)
+                let remedy = Gtk.label(
+                    MissingEngine.webKit.remedy, css: "seam-footnote", wrap: true,
+                    selectable: true)
+                gtk_label_set_max_width_chars(op(remedy), 64)
+                gtk_label_set_justify(op(remedy), GTK_JUSTIFY_CENTER)
+                gtk_widget_set_margin_top(remedy, 16)
+                gtk_box_append(ptr(column), remedy)
+                let copy = Gtk.button(Localized.text("Copy the command"), css: ["flat"]) {
+                    [self] in
+                    Gtk.onMain { [self] in
+                        Gtk.copyToClipboard(MissingEngine.webKit.command)
+                        self.notice(Localized.text("Copied. Run it in a terminal, then reopen Tailscode."))
+                    }
+                }
+                gtk_widget_set_halign(copy, GTK_ALIGN_CENTER)
+                gtk_box_append(ptr(column), copy)
                 gtk_box_append(ptr(frame), column)
                 if state.page(for: artboard) == nil { readArtboard(artboard) }
                 return

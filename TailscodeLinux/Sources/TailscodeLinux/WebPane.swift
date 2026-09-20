@@ -26,7 +26,7 @@ final class WebPane: @unchecked Sendable {
         slot = WebSlot(target: target)
         headingLabel = Gtk.label(Localized.text("Browse"), css: "video-heading", selectable: false)
         hintLabel = Gtk.label(slot.hint, css: "dim", selectable: false)
-        reasonLabel = Gtk.label("", css: "dim", selectable: false)
+        reasonLabel = Gtk.label("", css: "dim", wrap: true, selectable: true)
         buildRoot()
         if let target { point(at: target) } else { render() }
     }
@@ -82,7 +82,9 @@ final class WebPane: @unchecked Sendable {
     func point(at target: WebTarget) {
         slot.point(at: target)
         guard tailscode_web_available() != 0 else {
-            slot.failed(Localized.text("This build has no WebKitGTK, so a slot cannot browse"))
+            slot.failed(
+                Localized.text("This build has no WebKitGTK, so a slot cannot browse.")
+                    + "\n" + MissingEngine.webKit.remedy)
             render()
             return
         }
