@@ -155,7 +155,10 @@ final class MainWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.retheme() }
             }
         }
-        Task.detached { DesktopIntegration.ensureInstalled() }
+        Task.detached {
+            DesktopIntegration.ensureInstalled()
+            KWinPlacement.ensure()
+        }
         observeMissedActivity()
 
         Trace.stamp("present begin")
