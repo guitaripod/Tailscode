@@ -2431,8 +2431,17 @@ public enum SelfTest {
     /// has to move differently, and anything settled has to hold perfectly still — stillness is
     /// how a reader tells a stopped turn from a slow one. Asserted here rather than left to the
     /// eye, because a glyph that quietly stops breathing looks exactly like a session that ended.
+    /// Work that is open moves — except work the server has found stuck, which is open (the process
+    /// still holds the chat) and holds still on purpose, because stillness is how a reader tells
+    /// a stopped task from a slow one.
     private static func checkActivityMotion() throws {
         for kind in ActivityKind.everyState where kind.isInFlight {
+            if case .stalled = kind {
+                guard !kind.icon.motion.isAnimated else {
+                    throw SelfTestFailure("\(kind) is stuck and moves anyway")
+                }
+                continue
+            }
             guard kind.icon.motion.isAnimated else {
                 throw SelfTestFailure("\(kind) is in flight and holds still")
             }
