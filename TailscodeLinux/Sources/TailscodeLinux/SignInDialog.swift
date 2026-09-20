@@ -103,10 +103,9 @@ enum SignInDialog {
         gtk_window_present(ptr(window))
     }
 
-    static func openInBrowser(_ url: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-open")
-        process.arguments = [url]
-        try? process.run()
+    /// The desktop's own browser, asked through GTK's launcher so it is handed this app's display
+    /// rather than whatever environment this process happened to be restarted with.
+    static func openInBrowser(_ url: String, from anchor: UnsafeMutablePointer<GtkWidget>? = nil) {
+        tailscode_open_uri(anchor ?? mainWindow?.windowWidget, url)
     }
 }

@@ -388,6 +388,30 @@ void tailscode_label_open_links(GtkWidget *label) {
     g_signal_connect(label, "activate-link", G_CALLBACK(tailscode_label_link_activated), NULL);
 }
 
+void tailscode_open_uri(GtkWidget *anchor, const char *uri) {
+    if (uri == NULL || *uri == '\0') { return; }
+    tailscode_export_display_env();
+    GtkWindow *parent = NULL;
+    if (anchor != NULL) {
+        GtkRoot *root = gtk_widget_get_root(anchor);
+        parent = GTK_IS_WINDOW(root) ? GTK_WINDOW(root) : NULL;
+    }
+    GtkUriLauncher *launcher = gtk_uri_launcher_new(uri);
+    gtk_uri_launcher_launch(launcher, parent, NULL, NULL, NULL);
+    g_object_unref(launcher);
+}
+
+void tailscode_export_display_env(void) {
+    const char *x11 = g_getenv("DISPLAY");
+    const char *wayland = g_getenv("WAYLAND_DISPLAY");
+    if ((x11 != NULL && *x11 != '\0') || (wayland != NULL && *wayland != '\0')) { return; }
+    GdkDisplay *display = gdk_display_get_default();
+    if (display == NULL) { return; }
+    const char *name = gdk_display_get_name(display);
+    if (name == NULL || *name == '\0') { return; }
+    g_setenv(name[0] == ':' ? "DISPLAY" : "WAYLAND_DISPLAY", name, FALSE);
+}
+
 int tailscode_texture_width(GdkTexture *texture) {
     return gdk_texture_get_width(texture);
 }

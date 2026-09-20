@@ -73,6 +73,16 @@ GtkWidget *tailscode_picture_for_texture(GdkTexture *texture);
 /// the launch also needs the toplevel as its parent so the portal knows who asked.
 void tailscode_label_open_links(GtkWidget *label);
 
+/// Opens a link or a file in whatever the desktop uses for it, through GTK's own launcher rather
+/// than an `xdg-open` child: the launcher hands the browser the display this window is on, where a
+/// bare child inherits only this process's environment — and a process restarted by a script
+/// with no DISPLAY of its own has nothing to hand over, so the browser started and died unseen.
+void tailscode_open_uri(GtkWidget *anchor, const char *uri);
+
+/// Puts the display GTK actually connected to into this process's environment when nothing
+/// there names one, so every child — a browser, a helper, a script — inherits a screen.
+void tailscode_export_display_env(void);
+
 /// The texture's pixel size, for captioning a picture with what it actually is.
 int tailscode_texture_width(GdkTexture *texture);
 int tailscode_texture_height(GdkTexture *texture);

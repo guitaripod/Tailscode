@@ -436,10 +436,7 @@ final class DesignBoardWindow: @unchecked Sendable {
             notice(Localized.text("That mock could not be handed to a browser."))
             return
         }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-open")
-        process.arguments = [file.path]
-        try? process.run()
+        SignInDialog.openInBrowser(file.absoluteString, from: window)
     }
 
     /// A follow-up leaves through the composer like every other send, and the board closes behind

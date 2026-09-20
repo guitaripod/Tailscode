@@ -112,6 +112,7 @@ nonisolated(unsafe) let app = adw_application_new(DesktopIntegration.appID, GApp
 nonisolated(unsafe) var wantsAsk = Arguments.contains("--ask")
 
 Gtk.connect(UnsafeMutableRawPointer(app), "activate") {
+    tailscode_export_display_env()
     if let existing = mainWindow {
         existing.raise()
     } else {
