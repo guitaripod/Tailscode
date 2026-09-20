@@ -42,9 +42,24 @@ final class ImageStudio: @unchecked Sendable {
     private(set) var startedAt: Date?
     private var libraryObserver: NSObjectProtocol?
 
+    /// A machine named for a headless run — `TAILSCODE_IMAGE_ENDPOINT` — so the harness can point
+    /// the studio at a stand-in ComfyUI for screenshots and selftests without touching what the
+    /// person has filed. Debug builds only; the installed app answers to the door alone.
+    static var pinnedEndpoint: ImageGenEndpoint? {
+        #if DEBUG
+            guard let raw = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_ENDPOINT"],
+                !raw.isEmpty
+            else { return nil }
+            return ImageGenEndpoint(address: raw)
+        #else
+            return nil
+        #endif
+    }
+
     init(endpoint: ImageGenEndpoint?) {
         let resolved =
-            endpoint ?? ImageGenDoor.current().endpoint ?? ImageGenEndpoint(host: "127.0.0.1")
+            endpoint ?? Self.pinnedEndpoint ?? ImageGenDoor.current().endpoint
+            ?? ImageGenEndpoint(host: "127.0.0.1")
         slot = ImageGenSlot(endpoint: resolved)
         slot.setEngine(ImageGenStore.engine())
         slot.setAspect(ImageGenStore.aspect())
@@ -78,6 +93,7 @@ final class ImageStudio: @unchecked Sendable {
     /// Points the studio at the machine the door resolves to, unless a render is in flight — a
     /// picture is fetched from the machine that queued it, so moving mid-render loses it.
     func adoptDoor() {
+        guard Self.pinnedEndpoint == nil else { return }
         guard !isPainting, let endpoint = ImageGenDoor.current().endpoint else { return }
         guard endpoint != slot.endpoint else { return }
         point(at: endpoint)

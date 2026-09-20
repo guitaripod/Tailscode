@@ -621,7 +621,7 @@ final class DrawPane: @unchecked Sendable {
         Gtk.removeChildren(of: hintBox)
         let typed = promptText
         refreshCount(typed)
-        guard !slot.isBusy, ImageGenBrief.isThin(typed) else {
+        guard !slot.isBusy, slot.mode != .edit, ImageGenBrief.isThin(typed) else {
             gtk_widget_set_visible(hintBox, 0)
             return
         }
@@ -717,11 +717,13 @@ final class DrawPane: @unchecked Sendable {
             gtk_widget_set_visible(statusLabel, 0)
             gtk_widget_set_visible(progressLabel, 0)
             gtk_widget_set_visible(progressBar, 0)
+            refreshClock()
         case .composing:
             gtk_label_set_text(op(statusLabel), "")
             gtk_widget_set_visible(statusLabel, 0)
             gtk_widget_set_visible(progressLabel, 0)
             gtk_widget_set_visible(progressBar, 0)
+            refreshClock()
         case .painting(let prompt, let engine, let mode):
             let verb =
                 mode == .edit ? Localized.text("Editing with %@", engine.label)
@@ -740,6 +742,7 @@ final class DrawPane: @unchecked Sendable {
             gtk_widget_set_visible(statusLabel, 1)
             gtk_widget_set_visible(progressLabel, 0)
             gtk_widget_set_visible(progressBar, 0)
+            refreshClock()
         }
     }
 
@@ -790,8 +793,9 @@ final class DrawPane: @unchecked Sendable {
         gtk_label_set_text(op(zoomHint), ImageGenWords.zoomHint)
         gtk_widget_set_visible(zoomHint, zoomed ? 1 : 0)
 
-        let previous = fills && slot.isBusy ? slot.pictures.first : nil
-        if slot.isBusy, let previous, let bits = textures[previous.path], bits != 0,
+        let previousKey = fills && slot.isBusy ? underwayKey : nil
+        if slot.isBusy, let previousKey,
+            let bits = textures[previousKey] ?? studio.library.textures[previousKey], bits != 0,
             let widget = Gtk.pictureWidget(bits: bits)
         {
             gtk_widget_set_vexpand(widget, 1)
@@ -825,14 +829,21 @@ final class DrawPane: @unchecked Sendable {
         }
 
         guard !zoomed else { return }
-        if fills, slot.isBusy, case .painting(let prompt, let engine, _) = slot.phase {
+        if fills, slot.isBusy, case .painting(let prompt, let engine, let mode) = slot.phase {
             gtk_widget_set_visible(underRow, 1)
             gtk_label_set_text(op(captionLabel), prompt)
             gtk_widget_set_visible(captionLabel, 1)
-            let shape = "\(engine.short) · \(slot.aspect.short) \(slot.aspect.ratioLabel) · \(slot.aspect.label(slot.size)) · \(slot.detail.steps) " + Localized.text("steps")
+            let steps = Localized.text(
+                "%@ steps", "\(slot.recipe(prompt: prompt, seed: slot.seed.last ?? 0).steps)")
+            let shape =
+                mode == .edit
+                ? "\(engine.short) · \(ImageGenMode.edit.label) · \(steps)"
+                : "\(engine.short) · \(slot.aspect.short) \(slot.aspect.ratioLabel) · \(slot.aspect.label(slot.size)) · \(steps)"
+            let note =
+                mode == .edit
+                ? ImageGenStudioWords.editingShownNote : ImageGenStudioWords.previousShownNote
             gtk_label_set_text(
-                op(factsLabel),
-                previous == nil ? shape : "\(shape) · \(ImageGenStudioWords.previousShownNote)")
+                op(factsLabel), previousKey == nil ? shape : "\(shape) · \(note)")
             gtk_widget_set_visible(factsLabel, 1)
             gtk_widget_set_visible(keptHintLabel, 0)
             refreshActions()
@@ -903,6 +914,16 @@ final class DrawPane: @unchecked Sendable {
         guard zoomed else { return }
         zoomed = false
         render()
+    }
+
+    /// What stays on the stage, dimmed, while a render is out: the picture being edited when
+    /// there is one — the result replaces it — else the last picture this session made.
+    private var underwayKey: String? {
+        if slot.mode == .edit, let reference = slot.references.first {
+            let key = reference.kept?.id ?? reference.path
+            if let bits = textures[key] ?? studio.library.textures[key], bits != 0 { return key }
+        }
+        return slot.pictures.first?.path
     }
 
     /// The key into ``ImageStudio/textures`` for whatever is on the stage right now: a library
@@ -1747,7 +1768,8 @@ final class DrawPane: @unchecked Sendable {
         setLabel(
             row.facts,
             ImageGenStudioWords.inFlightFacts(
-                engine: engine, aspect: slot.aspect, since: studio.startedAt))
+                engine: engine, aspect: slot.mode == .edit ? nil : slot.aspect,
+                since: studio.startedAt))
     }
 
     /// A picture cropped to a square, whatever its shape: a GtkPicture asks for the width its

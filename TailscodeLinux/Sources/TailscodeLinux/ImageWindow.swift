@@ -101,6 +101,7 @@ final class ImageWindow: @unchecked Sendable {
     /// The machine under the title, so the surface names where the work happens before anybody
     /// asks — and says the door's own sentence when there is something to say about it.
     private static var subtitle: String {
+        guard ImageStudio.pinnedEndpoint == nil else { return ImageGenSurface.subtitle }
         let door = ImageGenDoor.current()
         return door.line ?? ImageGenSurface.subtitle
     }

@@ -61,6 +61,11 @@ public enum ImageGenStudioWords {
         Localized.text("previous render shown until this one lands")
     }
 
+    /// The picture being edited stays on the stage, dimmed, until the result replaces it.
+    public static var editingShownNote: String {
+        Localized.text("the picture being edited is shown until the result lands")
+    }
+
     /// The empty stage, in a studio whose words are beside it rather than under it.
     public static var emptyBody: String {
         Localized.text("Describe a picture on the left. It is painted on the machine with the card.")
@@ -71,10 +76,10 @@ public enum ImageGenStudioWords {
     }
 
     /// The render in flight, as a row on the shelf beside the pictures it will join.
-    public static func inFlightFacts(engine: ImageGenEngine, aspect: ImageGenAspect, since: Date?)
+    public static func inFlightFacts(engine: ImageGenEngine, aspect: ImageGenAspect?, since: Date?)
         -> String
     {
-        var parts = [engine.short, aspect.ratioLabel]
+        var parts = [engine.short, aspect?.ratioLabel ?? ImageGenMode.edit.label]
         let clock = clockLine(since: since, ahead: nil)
         if !clock.isEmpty { parts.append(clock) }
         return parts.joined(separator: " · ")
