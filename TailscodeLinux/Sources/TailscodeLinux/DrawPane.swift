@@ -83,7 +83,7 @@ final class DrawPane: @unchecked Sendable {
     private let shelfColumn = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let progressRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let clockLabel = Gtk.label("", css: "draw-clock", selectable: false)
-    private let underRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+    private let underRow = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     private let shelfList = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
     private var engineCards: [ImageGenEngine: UnsafeMutablePointer<GtkWidget>] = [:]
     private var aspectButtons: [ImageGenAspect: UnsafeMutablePointer<GtkWidget>] = [:]
@@ -413,6 +413,7 @@ final class DrawPane: @unchecked Sendable {
         Gtk.addClass(shelfBox, "draw-shelf")
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.addClass(shelfHeadingLabel, "draw-shelf-heading")
+        gtk_label_set_ellipsize(op(shelfCountLabel), PANGO_ELLIPSIZE_END)
         gtk_box_append(ptr(header), shelfHeadingLabel)
         gtk_box_append(ptr(header), shelfCountLabel)
         let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
@@ -766,8 +767,10 @@ final class DrawPane: @unchecked Sendable {
             for widget in [briefColumn, shelfColumn, underRow] {
                 gtk_widget_set_visible(widget, zoomed ? 0 : 1)
             }
-            if let scroller = gtk_widget_get_parent(briefColumn) {
-                gtk_widget_set_visible(scroller, zoomed ? 0 : 1)
+            if let scroller = gtk_widget_get_parent(briefColumn),
+                let column = gtk_widget_get_parent(scroller)
+            {
+                gtk_widget_set_visible(column, zoomed ? 0 : 1)
             }
         } else {
             for widget in [
@@ -823,6 +826,7 @@ final class DrawPane: @unchecked Sendable {
 
         guard !zoomed else { return }
         if fills, slot.isBusy, case .painting(let prompt, let engine, _) = slot.phase {
+            gtk_widget_set_visible(underRow, 1)
             gtk_label_set_text(op(captionLabel), prompt)
             gtk_widget_set_visible(captionLabel, 1)
             let shape = "\(engine.short) · \(slot.aspect.short) \(slot.aspect.ratioLabel) · \(slot.aspect.label(slot.size)) · \(slot.detail.steps) " + Localized.text("steps")
@@ -836,6 +840,7 @@ final class DrawPane: @unchecked Sendable {
             return
         }
         let showFacts = stageAvailable && !slot.isBusy
+        if fills { gtk_widget_set_visible(underRow, showFacts ? 1 : 0) }
         gtk_label_set_text(op(factsLabel), showFacts ? stageFactsLine : "")
         gtk_widget_set_visible(factsLabel, showFacts ? 1 : 0)
         gtk_label_set_text(op(captionLabel), showFacts ? stageCaption : "")
@@ -1062,7 +1067,9 @@ final class DrawPane: @unchecked Sendable {
         gtk_widget_set_halign(column, GTK_ALIGN_CENTER)
         gtk_widget_set_vexpand(column, 1)
         let title = Gtk.label(ImageGenWords.emptyTitle, css: "draw-empty-title", selectable: false)
-        let body = Gtk.label(ImageGenWords.emptyBody, css: "dim", wrap: true, selectable: false)
+        let body = Gtk.label(
+            fills ? ImageGenStudioWords.emptyBody : ImageGenWords.emptyBody, css: "dim", wrap: true,
+            selectable: false)
         gtk_label_set_max_width_chars(op(body), 52)
         gtk_label_set_justify(op(body), GTK_JUSTIFY_CENTER)
         gtk_box_append(ptr(column), title)
@@ -1373,8 +1380,10 @@ final class DrawPane: @unchecked Sendable {
                 glyph, Int32(wide ? longest : max(8, short)), Int32(wide ? max(8, short) : longest))
             gtk_widget_set_halign(glyph, GTK_ALIGN_CENTER)
             gtk_widget_set_valign(glyph, GTK_ALIGN_END)
-            gtk_widget_set_vexpand(glyph, 1)
+            gtk_widget_set_size_request(button, -1, 46)
+            gtk_widget_set_valign(lines, GTK_ALIGN_END)
             let name = Gtk.label(aspect.ratioLabel, css: "draw-shape-label", selectable: false)
+            gtk_label_set_ellipsize(op(name), PANGO_ELLIPSIZE_NONE)
             gtk_widget_set_halign(name, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(lines), glyph)
             gtk_box_append(ptr(lines), name)
@@ -1447,24 +1456,37 @@ final class DrawPane: @unchecked Sendable {
         gtk_box_append(
             ptr(briefColumn), section(ImageGenStudioWords.referencesTitle, references))
 
-        let spacer = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        gtk_widget_set_vexpand(spacer, 1)
-        gtk_box_append(ptr(briefColumn), spacer)
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_EXTERNAL, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_child(op(scroller), briefColumn)
+        gtk_widget_set_vexpand(scroller, 1)
+
+        let footer = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        Gtk.margins(footer, top: 10, bottom: 12, leading: 14, trailing: 14)
         Gtk.addClass(renderButton, "draw-go-wide")
         gtk_widget_set_hexpand(renderButton, 1)
-        gtk_box_append(ptr(briefColumn), renderButton)
+        gtk_box_append(ptr(footer), renderButton)
         gtk_label_set_text(op(keysLabel), ImageGenStudioWords.keysLine)
         gtk_label_set_justify(op(keysLabel), GTK_JUSTIFY_CENTER)
         gtk_label_set_xalign(op(keysLabel), 0.5)
-        gtk_box_append(ptr(briefColumn), keysLabel)
+        gtk_box_append(ptr(footer), keysLabel)
 
-        let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-        gtk_scrolled_window_set_child(op(scroller), briefColumn)
-        gtk_widget_set_size_request(scroller, 330, -1)
-        Gtk.addClass(scroller, "draw-brief-scroller")
-        return scroller
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(column, "draw-brief-scroller")
+        gtk_widget_set_size_request(column, Self.briefWidth, -1)
+        gtk_widget_set_hexpand(column, 0)
+        gtk_widget_set_vexpand(column, 1)
+        gtk_box_append(ptr(column), scroller)
+        gtk_box_append(ptr(column), Gtk.hairline())
+        gtk_box_append(ptr(column), footer)
+        return column
     }
+
+    /// The two side columns are a fixed width and the stage takes the rest: a form column
+    /// that grew with its longest label and a shelf that grew with its longest prompt left
+    /// the picture the narrowest thing on a wide screen.
+    private static let briefWidth: Int32 = 340
+    private static let shelfWidth: Int32 = 320
 
     private func segment() -> UnsafeMutablePointer<GtkWidget> {
         let box = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
@@ -1528,17 +1550,26 @@ final class DrawPane: @unchecked Sendable {
         let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_widget_set_hexpand(words, 1)
         gtk_label_set_xalign(op(captionLabel), 0)
-        gtk_label_set_wrap(op(captionLabel), 0)
+        gtk_label_set_wrap(op(captionLabel), 1)
+        gtk_label_set_lines(op(captionLabel), 2)
         gtk_label_set_ellipsize(op(captionLabel), PANGO_ELLIPSIZE_END)
+        gtk_label_set_max_width_chars(op(captionLabel), 72)
         Gtk.addClass(captionLabel, "draw-caption-lead")
         gtk_label_set_xalign(op(factsLabel), 0)
+        gtk_label_set_ellipsize(op(factsLabel), PANGO_ELLIPSIZE_END)
+        gtk_label_set_max_width_chars(op(factsLabel), 72)
         gtk_label_set_xalign(op(keptHintLabel), 0)
+        gtk_label_set_wrap(op(keptHintLabel), 0)
+        gtk_label_set_ellipsize(op(keptHintLabel), PANGO_ELLIPSIZE_END)
+        gtk_label_set_max_width_chars(op(keptHintLabel), 72)
+        gtk_widget_remove_css_class(keptHintLabel, "dim")
+        Gtk.addClass(keptHintLabel, "draw-facts")
         gtk_box_append(ptr(words), captionLabel)
         gtk_box_append(ptr(words), factsLabel)
         gtk_box_append(ptr(words), keptHintLabel)
         gtk_box_append(ptr(underRow), words)
         Gtk.addClass(actionRow, "draw-actions")
-        gtk_widget_set_valign(actionRow, GTK_ALIGN_START)
+        gtk_widget_set_halign(actionRow, GTK_ALIGN_START)
         gtk_box_append(ptr(underRow), actionRow)
         gtk_box_append(ptr(stageColumn), underRow)
         return stageColumn
@@ -1546,7 +1577,8 @@ final class DrawPane: @unchecked Sendable {
 
     private func buildShelfColumn() -> UnsafeMutablePointer<GtkWidget> {
         Gtk.addClass(shelfColumn, "draw-shelf-column")
-        gtk_widget_set_size_request(shelfColumn, 300, -1)
+        gtk_widget_set_size_request(shelfColumn, Self.shelfWidth, -1)
+        gtk_widget_set_hexpand(shelfColumn, 0)
         gtk_widget_set_vexpand(shelfColumn, 1)
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.margins(header, top: 12, bottom: 8, leading: 12, trailing: 12)
@@ -1563,7 +1595,7 @@ final class DrawPane: @unchecked Sendable {
         Gtk.margins(shelfStatusLabel, top: 0, bottom: 8, leading: 12, trailing: 12)
         gtk_box_append(ptr(shelfColumn), shelfStatusLabel)
         Gtk.margins(shelfList, top: 0, bottom: 12, leading: 12, trailing: 12)
-        gtk_scrolled_window_set_policy(op(shelfScroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_policy(op(shelfScroller), GTK_POLICY_EXTERNAL, GTK_POLICY_AUTOMATIC)
         gtk_scrolled_window_set_child(op(shelfScroller), shelfList)
         gtk_widget_set_vexpand(shelfScroller, 1)
         gtk_box_append(ptr(shelfColumn), shelfScroller)
@@ -1670,11 +1702,9 @@ final class DrawPane: @unchecked Sendable {
             {
                 gtk_picture_set_content_fit(op(picture), GTK_CONTENT_FIT_COVER)
                 gtk_widget_remove_css_class(picture, "draw-picture")
-                Gtk.addClass(picture, "draw-row-thumb")
-                gtk_widget_set_size_request(picture, 64, 64)
                 Gtk.removeChildren(of: row.thumbSlot)
                 gtk_widget_remove_css_class(row.thumbSlot, "draw-tile-empty")
-                gtk_box_append(ptr(row.thumbSlot), picture)
+                gtk_box_append(ptr(row.thumbSlot), Self.squareThumb(picture))
                 row.hasPicture = true
                 shelfRows[item.id] = row
             }
@@ -1720,6 +1750,25 @@ final class DrawPane: @unchecked Sendable {
                 engine: engine, aspect: slot.aspect, since: studio.startedAt))
     }
 
+    /// A picture cropped to a square, whatever its shape: a GtkPicture asks for the width its
+    /// paintable has and a box grants it, so a wide render took twice the room of a tall one and
+    /// the rows never lined up. A viewport with no scrolling allocates exactly its own size.
+    private static let thumbSide: Int32 = 64
+
+    private static func squareThumb(_ picture: UnsafeMutablePointer<GtkWidget>)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let frame = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(frame), GTK_POLICY_EXTERNAL, GTK_POLICY_EXTERNAL)
+        gtk_scrolled_window_set_child(op(frame), picture)
+        gtk_widget_set_size_request(frame, thumbSide, thumbSide)
+        gtk_widget_set_hexpand(frame, 0)
+        gtk_widget_set_vexpand(frame, 0)
+        gtk_widget_set_overflow(frame, GTK_OVERFLOW_HIDDEN)
+        Gtk.addClass(frame, "draw-row-thumb")
+        return frame
+    }
+
     private func makeShelfRow(busy: Bool, onClick: (@Sendable () -> Void)?) -> ShelfRow {
         let button = gtk_button_new()!
         Gtk.addClass(button, "draw-row")
@@ -1729,7 +1778,7 @@ final class DrawPane: @unchecked Sendable {
         let thumbSlot = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(thumbSlot, busy ? "draw-row-thumb-busy" : "draw-tile-empty")
         Gtk.addClass(thumbSlot, "draw-row-thumb")
-        gtk_widget_set_size_request(thumbSlot, 64, 64)
+        gtk_widget_set_size_request(thumbSlot, Self.thumbSide, Self.thumbSide)
         gtk_widget_set_valign(thumbSlot, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(row), thumbSlot)
         let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)

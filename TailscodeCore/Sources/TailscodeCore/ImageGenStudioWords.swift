@@ -61,6 +61,11 @@ public enum ImageGenStudioWords {
         Localized.text("previous render shown until this one lands")
     }
 
+    /// The empty stage, in a studio whose words are beside it rather than under it.
+    public static var emptyBody: String {
+        Localized.text("Describe a picture on the left. It is painted on the machine with the card.")
+    }
+
     public static var keysLine: String {
         Localized.text("Return renders · Esc closes · ⌘E ⌘A ⌘U ⌘D ⌘K ⌘J ⌘R")
     }

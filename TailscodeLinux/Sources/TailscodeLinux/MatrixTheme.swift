@@ -1126,7 +1126,7 @@ enum MatrixTheme {
             box-shadow: none;
         }
         .draw-opt { border-radius: 10px; padding: 8px 10px; }
-        .draw-shape { border-radius: 8px; padding: 6px 2px; min-height: 40px; }
+        .draw-shape { border-radius: 8px; padding: 4px 2px; }
         .draw-opt:hover, .draw-shape:hover, .draw-seg-item:hover { border-color: alpha(\(accent), 0.45); }
         .draw-opt.draw-chip-on, .draw-shape.draw-chip-on, .draw-seg-item.draw-chip-on {
             border-color: alpha(\(accent), 0.60);
@@ -1163,6 +1163,8 @@ enum MatrixTheme {
         .draw-row-on { border-color: \(accent); background-color: alpha(\(accent), 0.12); }
         .draw-row:disabled { opacity: 1; }
         .draw-row-thumb { border-radius: 7px; }
+        .draw-row-thumb picture { border-radius: 7px; }
+        scrolledwindow.draw-row-thumb { background: none; border: none; }
         .draw-row-thumb-busy { border: 1px dashed \(rule); border-radius: 7px; }
         .draw-row-words { color: \(text); \(t(.hint)) }
         .draw-row-words-busy { color: \(textDim); \(t(.hint)) }

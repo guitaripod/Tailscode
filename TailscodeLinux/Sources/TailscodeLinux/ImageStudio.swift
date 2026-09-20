@@ -56,13 +56,18 @@ final class ImageStudio: @unchecked Sendable {
     /// the library's own news — forwarded as this studio's, so every surface already watching
     /// ``ImageStudio/didChange`` redraws the shelf without watching a second notification. Only
     /// this studio's own library: a slot in the grid and the modal each hold one for the same
-    /// machine, and a studio that listened to both redrew twice for every thumbnail.
+    /// machine, and a studio that listened to both redrew twice for every thumbnail. The match is
+    /// made by hand rather than through the observer's `object:` filter, which on this Foundation
+    /// never matches a sender that is not an NSObject and so silently delivered nothing.
     private func observeLibrary() {
         if let libraryObserver { NotificationCenter.default.removeObserver(libraryObserver) }
         libraryObserver = NotificationCenter.default.addObserver(
-            forName: DrawLibrary.didChange, object: library, queue: nil
-        ) { [weak self] _ in
-            self?.announce()
+            forName: DrawLibrary.didChange, object: nil, queue: nil
+        ) { [weak self] note in
+            guard let self, let sender = note.object as AnyObject?, sender === self.library else {
+                return
+            }
+            self.announce()
         }
     }
 
