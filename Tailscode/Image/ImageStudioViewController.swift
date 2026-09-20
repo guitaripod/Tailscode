@@ -47,6 +47,8 @@ final class ImageStudioViewController: UIViewController {
     private let renderButton = UIButton(type: .system)
     private var promptHeight: NSLayoutConstraint!
     private var appliedChips: String?
+    /// The words as they were before a rewrite, kept for exactly one undo.
+    private var beforeEnhance: String?
     private var intake: ImageReferenceIntake!
     private var wasPainting = false
     private var loadingOriginal: String?
@@ -541,7 +543,8 @@ final class ImageStudioViewController: UIViewController {
             + "|\(slot.references.map(\.chip).joined(separator: ","))|\(slot.isBusy)"
             + "|\(slot.aspectApplies)|\(sighting?.readyEngines.map(\.rawValue).joined() ?? "?")"
             + "|\(intake.available.count)|\(slot.cutout)|\(slot.seed.chip)|\(slot.negative)"
-            + "|\(briefIsThin)"
+            + "|\(briefIsThin)|\(studio.enhancing)|\(beforeEnhance != nil)"
+            + "|\(studio.helper?.chip ?? "-")|\(studio.helper?.enabled == true)"
         guard identity != appliedChips else { return }
         appliedChips = identity
         chipRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -552,6 +555,7 @@ final class ImageStudioViewController: UIViewController {
         if slot.cutoutApplies { chipRow.addArrangedSubview(cutoutChip()) }
         chipRow.addArrangedSubview(seedChip())
         if slot.negativeApplies { chipRow.addArrangedSubview(avoidChip()) }
+        chipRow.addArrangedSubview(enhanceChip())
         chipRow.addArrangedSubview(craftChip())
         chipRow.addArrangedSubview(referenceChip())
     }
@@ -650,6 +654,116 @@ final class ImageStudioViewController: UIViewController {
                 self?.presentAvoid()
             }, for: .touchUpInside)
         return button
+    }
+
+    /// The one chip that writes words rather than choosing a value: a small model on the machine
+    /// that paints, asked to turn a thin brief into the paragraph this image model was trained
+    /// behind. Pressing again gives back the sentence the person actually typed.
+    private func enhanceChip() -> UIButton {
+        let undoing = beforeEnhance != nil
+        let busy = studio.enhancing
+        let title = busy
+            ? ImageGenWords.enhancingTitle
+            : (undoing ? ImageGenWords.undoTitle : ImageGenWords.enhanceTitle)
+        let button = ImageChip.button(
+            symbol: busy ? "hourglass" : (undoing ? "arrow.uturn.backward" : "wand.and.stars"),
+            title: title)
+        button.isEnabled = !slot.isBusy && !busy
+        if busy || undoing { button.tintColor = Theme.Color.accent }
+        button.accessibilityLabel = title
+        button.accessibilityHint = studio.helper.map(ImageGenWords.enhanceHint)
+            ?? ImageGenWords.enhanceLookingHint
+        button.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.tap()
+                self?.enhancePressed()
+            }, for: .touchUpInside)
+        button.menu = helperMenu()
+        return button
+    }
+
+    /// Which machine and which model, filled from a real answer rather than a guess about ports.
+    private func helperMenu() -> UIMenu {
+        let current = studio.helper
+        let models = UIDeferredMenuElement.uncached { [weak self] complete in
+            guard let self else {
+                complete([])
+                return
+            }
+            self.studio.helperModels { names in
+                let address = self.studio.helper?.address
+                let rows = names.prefix(12).map { name in
+                    UIAction(
+                        title: name, subtitle: address,
+                        state: name == self.studio.helper?.model ? .on : .off
+                    ) { [weak self] _ in
+                        guard let self, let address = self.studio.helper?.address else { return }
+                        self.studio.setHelper(ImageGenHelper(address: address, model: name))
+                        self.updateChips()
+                    }
+                }
+                complete(
+                    rows.isEmpty
+                        ? [
+                            UIAction(
+                                title: ImageGenWords.enhanceMissing,
+                                attributes: .disabled
+                            ) { _ in }
+                        ] : Array(rows))
+            }
+        }
+        var children: [UIMenuElement] = [UIMenu(title: "", options: .displayInline, children: [models])]
+        if let current {
+            children.append(
+                UIAction(
+                    title: current.enabled
+                        ? ImageGenWords.helperOffTitle : ImageGenWords.enhanceTitle,
+                    subtitle: current.enabled ? ImageGenWords.helperOffHint : current.displayHost,
+                    image: UIImage(systemName: current.enabled ? "wand.and.stars.inverse" : "wand.and.stars")
+                ) { [weak self] _ in
+                    guard let self else { return }
+                    var flipped = current
+                    flipped.enabled.toggle()
+                    self.studio.setHelper(flipped)
+                    self.updateChips()
+                })
+        }
+        return UIMenu(title: ImageGenWords.helperTitle, children: children)
+    }
+
+    /// Press once to have the brief written out, press again to get your own sentence back.
+    private func enhancePressed() {
+        if let original = beforeEnhance {
+            setPrompt(original)
+            studio.rememberDraft(original)
+            beforeEnhance = nil
+            updateChips()
+            return
+        }
+        let brief = (promptView.text ?? "").trimmed()
+        guard !brief.isEmpty, !studio.enhancing else { return }
+        studio.enhance(brief) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let written):
+                self.beforeEnhance = brief
+                if let aspect = written.1, self.slot.applies(.aspect) {
+                    self.studio.choose(aspect: aspect)
+                }
+                self.setPrompt(written.0)
+                self.studio.rememberDraft(written.0)
+                if let helper = self.studio.helper {
+                    self.notice(ImageGenWords.enhancedNotice(helper))
+                }
+                Theme.Haptics.success()
+            case .failure(let failure):
+                self.notice(
+                    self.studio.helper == nil ? ImageGenWords.enhanceMissing : failure.reason)
+                Theme.Haptics.warning()
+            }
+            self.updateChips()
+        }
+        updateChips()
     }
 
     /// The craft, one press away, and lit when the words in the box are thin enough to need it.

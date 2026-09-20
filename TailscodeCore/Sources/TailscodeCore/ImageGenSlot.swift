@@ -1104,6 +1104,39 @@ public enum ImageGenWords {
         Localized.text("Every render rolls a new number. Press to hold the last one")
     }
 
+    public static var enhanceTitle: String { Localized.text("Enhance") }
+
+    public static var enhancingTitle: String { Localized.text("Enhancing…") }
+
+    /// What the chip promises before it is pressed, said as what it does rather than as magic.
+    public static func enhanceHint(_ helper: ImageGenHelper) -> String {
+        Localized.text("Rewrite the brief with %@ on %@", helper.chip, helper.displayHost)
+    }
+
+    public static var enhanceLookingTitle: String { Localized.text("Find a prompt helper") }
+
+    public static var enhanceLookingHint: String {
+        Localized.text("Looks for Ollama, llama-swap, llama.cpp or LM Studio on the machine")
+    }
+
+    public static var enhanceMissing: String {
+        Localized.text("No prompt helper found. Anything OpenAI-shaped will do")
+    }
+
+    public static func enhancedNotice(_ helper: ImageGenHelper) -> String {
+        Localized.text("Brief rewritten by %@", helper.chip)
+    }
+
+    public static var undoTitle: String { Localized.text("Undo") }
+
+    public static var helperTitle: String { Localized.text("Helper") }
+
+    public static var helperOffTitle: String { Localized.text("Do not rewrite briefs") }
+
+    public static var helperOffHint: String {
+        Localized.text("The studio keeps teaching the shape; it stops writing it")
+    }
+
     public static var avoidTitle: String { Localized.text("Avoid") }
 
     public static var avoidHint: String {

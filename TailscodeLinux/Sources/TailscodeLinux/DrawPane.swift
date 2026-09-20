@@ -37,6 +37,11 @@ final class DrawPane: @unchecked Sendable {
     private let cutoutChip: UnsafeMutablePointer<GtkWidget>
     private let seedChip: UnsafeMutablePointer<GtkWidget>
     private let moreChip: UnsafeMutablePointer<GtkWidget>
+    private let enhanceChip: UnsafeMutablePointer<GtkWidget>
+    private let helperChip: UnsafeMutablePointer<GtkWidget>
+    /// The words as they were before a rewrite, kept for exactly one undo — a helper that
+    /// misread the brief must never cost the sentence a person actually wrote.
+    private var beforeEnhance: String?
     private let referenceChip: UnsafeMutablePointer<GtkWidget>
     private let renderButton: UnsafeMutablePointer<GtkWidget>
     /// The pictures the next render works from, shown as what they are rather than as a count.
@@ -124,6 +129,50 @@ final class DrawPane: @unchecked Sendable {
         cutoutChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         seedChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         moreChip = Gtk.button("", css: ["draw-chip"], onClick: {})
+        enhanceChip = Gtk.button("", css: ["draw-chip"], onClick: {})
+        let helperHeld = Weak<ImageStudio>(studio)
+        helperChip = Gtk.menuButton("", css: ["draw-chip"]) {
+            guard let studio = helperHeld.value else { return [] }
+            var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = []
+            let current = studio.helper
+            for model in studio.knownHelperModels {
+                let address = studio.knownHelperAddress ?? current?.address ?? ""
+                rows.append(
+                    (
+                        title: model, detail: address.isEmpty ? nil : address,
+                        action: {
+                            Gtk.onMain {
+                                guard !address.isEmpty else { return }
+                                studio.setHelper(ImageGenHelper(address: address, model: model))
+                            }
+                        }
+                    ))
+            }
+            if rows.isEmpty {
+                rows.append(
+                    (
+                        title: ImageGenWords.enhanceLookingTitle,
+                        detail: ImageGenWords.enhanceLookingHint,
+                        action: { Gtk.onMain { studio.lookForHelper() } }
+                    ))
+            }
+            if let current {
+                rows.append(
+                    (
+                        title: current.enabled
+                            ? ImageGenWords.helperOffTitle : ImageGenWords.enhanceTitle,
+                        detail: current.enabled ? ImageGenWords.helperOffHint : nil,
+                        action: {
+                            Gtk.onMain {
+                                var flipped = current
+                                flipped.enabled.toggle()
+                                studio.setHelper(flipped)
+                            }
+                        }
+                    ))
+            }
+            return rows
+        }
         referenceChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         renderButton = Gtk.button("", css: ["draw-go"], onClick: {})
         buildRoot()
@@ -150,6 +199,9 @@ final class DrawPane: @unchecked Sendable {
         }
         Gtk.connect(UnsafeMutableRawPointer(seedChip), "clicked") { [weak self] in
             self?.studio.toggleSeedHold()
+        }
+        Gtk.connect(UnsafeMutableRawPointer(enhanceChip), "clicked") { [weak self] in
+            self?.enhancePressed()
         }
         Gtk.connect(UnsafeMutableRawPointer(moreChip), "clicked") { [weak self] in
             guard let self else { return }
@@ -187,6 +239,12 @@ final class DrawPane: @unchecked Sendable {
 
     func driverSubmit() {
         submit()
+    }
+
+    /// The harness's way in to the one control that writes words, so a headless run exercises the
+    /// same path a press does.
+    func driverEnhance() {
+        enhancePressed()
     }
 
     func focusPrompt() {
@@ -255,13 +313,13 @@ final class DrawPane: @unchecked Sendable {
         gtk_label_set_xalign(op(keptHintLabel), 0)
         Gtk.addClass(actionRow, "draw-actions")
 
-        for chip in [engineChip, aspectChip, sizeChip, referenceChip, moreChip] {
+        for chip in [engineChip, aspectChip, sizeChip, enhanceChip, referenceChip, moreChip] {
             gtk_widget_set_halign(chip, GTK_ALIGN_START)
             gtk_box_append(ptr(chipRow), chip)
         }
         Gtk.addClass(moreRow, "draw-chips-more")
         gtk_widget_set_halign(moreRow, GTK_ALIGN_START)
-        for chip in [detailChip, cutoutChip, seedChip] {
+        for chip in [detailChip, cutoutChip, seedChip, helperChip] {
             gtk_widget_set_halign(chip, GTK_ALIGN_START)
             gtk_box_append(ptr(moreRow), chip)
         }
@@ -375,6 +433,7 @@ final class DrawPane: @unchecked Sendable {
         gtk_button_set_label(
             ptr(moreChip), showsMore ? ImageGenWords.lessTitle : ImageGenWords.moreTitle)
         mark(moreChip, on: showsMore)
+        refreshEnhance()
 
         let references = slot.references
         if references.isEmpty {
@@ -403,6 +462,71 @@ final class DrawPane: @unchecked Sendable {
             gtk_widget_remove_css_class(renderButton, "stopping")
         }
         refreshHint()
+    }
+
+    /// The one control that writes words rather than choosing a value, so it says which model
+    /// will write them and never runs on its own.
+    private func refreshEnhance() {
+        let helper = studio.helper
+        let busy = studio.enhancing
+        gtk_button_set_label(
+            ptr(enhanceChip),
+            busy ? ImageGenWords.enhancingTitle
+                : (beforeEnhance == nil ? ImageGenWords.enhanceTitle : ImageGenWords.undoTitle))
+        gtk_widget_set_tooltip_text(
+            enhanceChip,
+            helper.map(ImageGenWords.enhanceHint) ?? ImageGenWords.enhanceLookingHint)
+        gtk_widget_set_sensitive(enhanceChip, busy || !slot.isBusy ? 1 : 0)
+        mark(enhanceChip, on: busy || beforeEnhance != nil)
+        gtk_menu_button_set_label(
+            op(helperChip),
+            helper.map { "\(ImageGenWords.helperTitle) · \($0.chip)" }
+                ?? ImageGenWords.enhanceLookingTitle)
+        gtk_widget_set_tooltip_text(
+            helperChip, helper.map { $0.displayHost } ?? ImageGenWords.enhanceLookingHint)
+        mark(helperChip, on: helper?.enabled == true)
+    }
+
+    /// Press once to have the brief written out, press again to get your own sentence back. A
+    /// rewrite that lands also takes the shape the helper asked for, unless a person has already
+    /// chosen one by hand this session.
+    private func enhancePressed() {
+        if let original = beforeEnhance {
+            fill(original)
+            beforeEnhance = nil
+            refreshEnhance()
+            return
+        }
+        guard !studio.enhancing else { return }
+        let typed = gtk_editable_get_text(op(entry)).map { String(cString: $0) } ?? ""
+        let brief = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !brief.isEmpty else {
+            focusPrompt()
+            return
+        }
+        let pane = Weak(self)
+        studio.enhance(brief) { result in
+            Gtk.onMain {
+                guard let pane = pane.value else { return }
+                switch result {
+                case .success(let written):
+                    pane.beforeEnhance = brief
+                    if let aspect = written.1, pane.slot.applies(.aspect) {
+                        pane.studio.choose(aspect: aspect)
+                    }
+                    pane.fill(written.0)
+                    if let helper = pane.studio.helper {
+                        pane.onNotice?(ImageGenWords.enhancedNotice(helper))
+                    }
+                case .failure(let failure):
+                    pane.onNotice?(
+                        pane.studio.helper == nil
+                            ? ImageGenWords.enhanceMissing : failure.reason)
+                }
+                pane.refreshEnhance()
+            }
+        }
+        refreshEnhance()
     }
 
     private func mark(_ chip: UnsafeMutablePointer<GtkWidget>, on: Bool) {
@@ -457,6 +581,13 @@ final class DrawPane: @unchecked Sendable {
         gtk_label_set_max_width_chars(op(body), 64)
         gtk_box_append(ptr(hintBox), body)
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        if let helper = studio.helper, helper.enabled {
+            let write = Gtk.button(ImageGenWords.enhanceTitle, css: ["draw-action"]) { [weak self] in
+                Gtk.onMain { [weak self] in self?.enhancePressed() }
+            }
+            gtk_widget_set_tooltip_text(write, ImageGenWords.enhanceHint(helper))
+            gtk_box_append(ptr(row), write)
+        }
         let frame = Gtk.button(ImageGenWords.scaffoldTitle, css: ["draw-action"]) { [weak self] in
             Gtk.onMain { [weak self] in self?.fill(ImageGenBrief.scaffold) }
         }

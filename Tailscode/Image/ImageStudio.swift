@@ -147,6 +147,91 @@ final class ImageStudio {
         remember()
     }
 
+    /// The small model that thickens a thin brief, when this device knows one.
+    var helper: ImageGenHelper? { ImageGenStore.helper() }
+
+    /// Whether a rewrite is out right now. The chip says so and the composer stays the person's
+    /// to edit while it runs.
+    private(set) var enhancing = false
+
+    /// Rewrites the brief with the helper, or finds one first when none is filed. The answer
+    /// carries the paragraph and the shape it asked for; the caller decides what to do with both,
+    /// because the words belong to whoever typed them.
+    func enhance(
+        _ brief: String,
+        completion: @escaping @MainActor @Sendable (
+            Result<(String, ImageGenAspect?), ImageGenEnhancer.Failure>
+        ) -> Void
+    ) {
+        guard !enhancing else { return }
+        enhancing = true
+        announce()
+        let endpoint = slot.endpoint
+        let filed = helper
+        Task.detached { [weak self] in
+            var using = filed
+            if using == nil || using?.enabled == false {
+                if let found = await ImageGenHelperFinder.find(near: endpoint),
+                    let model = ImageGenHelperFinder.preferred(among: found.models)
+                {
+                    using = ImageGenHelper(address: found.address, model: model)
+                }
+            }
+            guard let using, using.enabled else {
+                await MainActor.run { [weak self] in
+                    self?.finishEnhancing()
+                    completion(.failure(.unreachable))
+                }
+                return
+            }
+            ImageGenStore.remember(helper: using)
+            do {
+                let written = try await ImageGenEnhancer(helper: using).enhance(brief)
+                await MainActor.run { [weak self] in
+                    self?.finishEnhancing()
+                    completion(.success(written))
+                }
+            } catch let failure as ImageGenEnhancer.Failure {
+                await MainActor.run { [weak self] in
+                    self?.finishEnhancing()
+                    completion(.failure(failure))
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    self?.finishEnhancing()
+                    completion(.failure(.unreachable))
+                }
+            }
+        }
+    }
+
+    private func finishEnhancing() {
+        enhancing = false
+        announce()
+    }
+
+    /// Which models the helper's machine offers, for the menu that picks one.
+    func helperModels(completion: @escaping @MainActor @Sendable ([String]) -> Void) {
+        let endpoint = slot.endpoint
+        let filed = helper
+        Task.detached {
+            if let filed {
+                let models = await ImageGenHelperFinder.models(at: filed.address)
+                if !models.isEmpty {
+                    await MainActor.run { completion(models) }
+                    return
+                }
+            }
+            let found = await ImageGenHelperFinder.find(near: endpoint)
+            await MainActor.run { completion(found?.models ?? []) }
+        }
+    }
+
+    func setHelper(_ helper: ImageGenHelper?) {
+        ImageGenStore.remember(helper: helper)
+        announce()
+    }
+
     func setNegative(_ words: String) {
         slot.setNegative(words)
         announce()

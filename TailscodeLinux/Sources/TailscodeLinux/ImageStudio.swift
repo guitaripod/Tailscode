@@ -124,6 +124,121 @@ final class ImageStudio: @unchecked Sendable {
         announce()
     }
 
+    /// The small model that thickens a thin brief, when this device knows one.
+    var helper: ImageGenHelper? { ImageGenStore.helper() }
+
+    /// Whether a rewrite is out right now. The chip says so and the composer stays the person's
+    /// to edit while it runs.
+    private(set) var enhancing = false
+
+    /// Rewrites the brief with the helper, or finds one first when none is filed. The answer
+    /// carries the paragraph and the shape it asked for; the caller decides what to do with both,
+    /// because the words belong to whoever typed them.
+    func enhance(
+        _ brief: String,
+        completion: @escaping @Sendable (Result<(String, ImageGenAspect?), ImageGenEnhancer.Failure>) -> Void
+    ) {
+        guard !enhancing else { return }
+        enhancing = true
+        announce()
+        let endpoint = slot.endpoint
+        let filed = helper
+        Task.detached { [weak self] in
+            var using = filed
+            if using == nil || using?.enabled == false {
+                if let found = await ImageGenHelperFinder.find(near: endpoint),
+                    let model = ImageGenHelperFinder.preferred(among: found.models)
+                {
+                    using = ImageGenHelper(address: found.address, model: model)
+                }
+            }
+            guard let using, using.enabled else {
+                Gtk.onMain { [weak self] in
+                    self?.finishEnhancing()
+                    completion(.failure(.unreachable))
+                }
+                return
+            }
+            ImageGenStore.remember(helper: using)
+            do {
+                let written = try await ImageGenEnhancer(helper: using).enhance(brief)
+                Gtk.onMain { [weak self] in
+                    self?.finishEnhancing()
+                    completion(.success(written))
+                }
+            } catch let failure as ImageGenEnhancer.Failure {
+                Gtk.onMain { [weak self] in
+                    self?.finishEnhancing()
+                    completion(.failure(failure))
+                }
+            } catch {
+                Gtk.onMain { [weak self] in
+                    self?.finishEnhancing()
+                    completion(.failure(.unreachable))
+                }
+            }
+        }
+    }
+
+    private func finishEnhancing() {
+        enhancing = false
+        announce()
+    }
+
+    /// What the last look found: the machine that answered and the models it listed, so the
+    /// menu is filled from a real answer rather than from a guess about ports.
+    private(set) var knownHelperAddress: String?
+    private(set) var knownHelperModels: [String] = []
+
+    /// Looks for a helper without rewriting anything, which is what the menu's own row means.
+    func lookForHelper() {
+        let endpoint = slot.endpoint
+        Task.detached { [weak self] in
+            let found = await ImageGenHelperFinder.find(near: endpoint)
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.knownHelperAddress = found?.address
+                self.knownHelperModels = found?.models ?? []
+                if let found, self.helper == nil,
+                    let model = ImageGenHelperFinder.preferred(among: found.models)
+                {
+                    self.setHelper(ImageGenHelper(address: found.address, model: model))
+                }
+                self.announce()
+            }
+        }
+    }
+
+    /// Which models the helper's machine offers, for the menu that picks one.
+    func helperModels(completion: @escaping @Sendable ([String]) -> Void) {
+        let endpoint = slot.endpoint
+        let filed = helper
+        Task.detached { [weak self] in
+            if let filed {
+                let models = await ImageGenHelperFinder.models(at: filed.address)
+                if !models.isEmpty {
+                    Gtk.onMain { [weak self] in
+                        self?.knownHelperAddress = filed.address
+                        self?.knownHelperModels = models
+                        completion(models)
+                    }
+                    return
+                }
+            }
+            let found = await ImageGenHelperFinder.find(near: endpoint)
+            Gtk.onMain { [weak self] in
+                self?.knownHelperAddress = found?.address
+                self?.knownHelperModels = found?.models ?? []
+                completion(found?.models ?? [])
+            }
+        }
+    }
+
+    func setHelper(_ helper: ImageGenHelper?) {
+        ImageGenStore.remember(helper: helper)
+        announce()
+    }
+
     func setNegative(_ words: String) {
         slot.setNegative(words)
         announce()

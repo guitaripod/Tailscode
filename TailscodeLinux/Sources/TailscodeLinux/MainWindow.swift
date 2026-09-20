@@ -546,6 +546,11 @@ final class MainWindow: @unchecked Sendable {
                     } ?? ""
                     FileHandle.standardOutput.write(
                         Data("DRAWTYPE \(typed.isEmpty ? "-" : typed)\n".utf8))
+                case "drawenhance":
+                    self.activePane.draw?.driverEnhance()
+                    FileHandle.standardOutput.write(
+                        Data("DRAWENHANCE \(self.activePane.draw?.studio.helper?.chip ?? "-")\n"
+                            .utf8))
                 case "drawgo":
                     self.activePane.draw?.driverSubmit()
                     FileHandle.standardOutput.write(

@@ -13,6 +13,7 @@ public enum ImageGenStore {
     static let engineKey = "tailscode.image.engine"
     static let aspectKey = "tailscode.image.aspect"
     static let sizeKey = "tailscode.image.size"
+    static let helperKey = "tailscode.image.helper"
     static let detailKey = "tailscode.image.detail"
     static let healthKey = "tailscode.image.health"
     static let clientKey = "tailscode.image.client"
@@ -74,6 +75,24 @@ public enum ImageGenStore {
     public static func remember(size: ImageGenSize, detail: ImageGenDetail) {
         defaults.set(size.rawValue, forKey: sizeKey)
         defaults.set(detail.rawValue, forKey: detailKey)
+        NotificationCenter.default.post(name: didChange, object: nil)
+    }
+
+    /// The small model that thickens a thin brief, and where it answers. Nil until a machine has
+    /// been found or named: the studio works without one, it just teaches instead of writing.
+    public static func helper() -> ImageGenHelper? {
+        guard let data = defaults.data(forKey: helperKey) else { return nil }
+        return try? JSONDecoder().decode(ImageGenHelper.self, from: data)
+    }
+
+    public static func remember(helper: ImageGenHelper?) {
+        guard let helper else {
+            defaults.removeObject(forKey: helperKey)
+            NotificationCenter.default.post(name: didChange, object: nil)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(helper) else { return }
+        defaults.set(data, forKey: helperKey)
         NotificationCenter.default.post(name: didChange, object: nil)
     }
 

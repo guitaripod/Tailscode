@@ -209,6 +209,24 @@ public enum ImageGenBrief {
         ]
     }
 
+    /// The rules a prompt helper writes to: Qwen's own rewriting spec, cut to what fits in one
+    /// system turn. The studio teaches the same six rules in its own words, so what a person
+    /// learns here and what the helper writes are the same shape.
+    public static var expansionSystem: String {
+        """
+        You rewrite a user's image request into one English paragraph describing the finished         image, as if you were looking at it. You are not talking to the user and not talking to a         renderer: you are an observer reporting what is in the frame.
+
+        Open by naming the medium, the style and the subject, in about twenty words. Keep every         string of text, every count, every stated colour and every stated position the request         fixed, and copy quoted text character for character. Place things with eight to fourteen         positional phrases that reach the corners, the edges and the centre, and open about a         third of your sentences on the position itself. Put every piece of legible text in         straight double quotes where it sits, in its own script; call a mark that is not meant to         be read blurred or too small to read rather than inventing letters. Give the lighting its         own sentence: source, direction, quality, and the shadows it leaves. Close with exactly         one sentence on balance, palette, style and mood.
+
+        Run about twenty sentences and four to five hundred words whether the request was three         words or three hundred. Present tense, third person, declarative. Never write "you",         "create" or "make sure", and never use quality boosters such as "8K", "masterpiece" or         "highly detailed". Name colours with a modifier, give materials rather than only nouns,         enumerate rather than summarise, and hedge what is genuinely ambiguous with "appears to         be" or "likely". People get their observable surface and a life stage rather than an age         in years. Everything must hold together physically. The description is always in English,         except text shown inside the image, which stays in its own script.
+
+        Choose the aspect ratio from the subject unless the user gave one: 3:2 for horizontal,         2:3 for vertical, 1:1 for a badge, icon, album cover or centred emblem, 16:9 for a wide         cinematic frame, 9:16 for a phone screen or tall banner, 21:9 for an ultra-wide panorama.         Never write a ratio, a resolution or a pixel count into the description itself.
+
+        Answer with one strictly valid JSON object on a single line and nothing else:
+        {"rewritten_prompt": "<the description>", "wh_ratio": "<e.g. 3:2>"}
+        """
+    }
+
     /// The instruction handed to a model that is asked to expand a thin brief. It is Qwen's own
     /// rewriting rules, cut to what fits in one turn: the shape, the length, the register, and
     /// the one-line JSON that comes back so the ratio can be read off it too.
