@@ -695,13 +695,16 @@ final class DrawPane: @unchecked Sendable {
         if slot.isBusy || !hasBits { zoomed = false }
         for widget in [
             captionLabel, factsLabel, keptHintLabel, actionRow, shelfBox, chipRow, promptRow,
-            hintBox, referenceStrip,
         ] {
             gtk_widget_set_visible(widget, zoomed ? 0 : 1)
         }
         if zoomed {
-            gtk_widget_set_visible(moreRow, 0)
-            gtk_widget_set_visible(avoidEntry, 0)
+            for widget in [hintBox, referenceStrip, moreRow, avoidEntry] {
+                gtk_widget_set_visible(widget, 0)
+            }
+        } else {
+            refreshHint()
+            refreshReferences()
         }
         gtk_label_set_text(op(zoomHint), ImageGenWords.zoomHint)
         gtk_widget_set_visible(zoomHint, zoomed ? 1 : 0)
