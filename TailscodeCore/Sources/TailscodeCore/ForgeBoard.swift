@@ -884,6 +884,7 @@ public enum ForgeWords {
     public static var negativeIgnoredHint: String {
         Localized.text("%@ runs without guidance, so this changes nothing", ForgeModel.label)
     }
+    public static var recentTitle: String { Localized.text("Recent clips") }
     public static var frameUnset: String { Localized.text("The words alone") }
     public static var frameHint: String {
         Localized.text("A picture the clip opens on, or the end of a clip already made")

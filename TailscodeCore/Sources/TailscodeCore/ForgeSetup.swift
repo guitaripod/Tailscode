@@ -832,8 +832,8 @@ public enum ForgeSurface {
     /// room and the controls sit beside it, which is how a studio is read rather than a form.
     public static let preferredWidth: Double = 1080
     public static let preferredHeight: Double = 680
-    public static let minimumWidth: Double = 800
-    public static let minimumHeight: Double = 520
+    public static let minimumWidth: Double = 760
+    public static let minimumHeight: Double = 500
 }
 
 /// How the forge is composed on screen. The board is still the four sections — this is the drawing

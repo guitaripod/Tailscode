@@ -43,7 +43,7 @@ final class ForgeWindow: @unchecked Sendable {
     private init(parent: UnsafeMutablePointer<GtkWidget>?) {
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), ForgeSurface.title)
-        gtk_window_set_modal(ptr(window), 1)
+        gtk_window_set_modal(ptr(window), 0)
         FeatureWindow.fill(
             window, near: parent, minimumWidth: Int32(ForgeSurface.minimumWidth),
             minimumHeight: Int32(ForgeSurface.minimumHeight))
