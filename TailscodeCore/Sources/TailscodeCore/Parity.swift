@@ -114,6 +114,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case serverManagement
     case tailnetDiscovery
     case ompServer
+    case openCodeTwoServer
     case connectDiagnosis
     case serverAccess
     case serverSignIn
@@ -589,6 +590,10 @@ public enum CapabilityRegistry {
             id: .ompServer, area: "servers", title: "Oh My Pi servers",
             spec:
                 "A third server kind alongside opencode and Claude Code: omp-bridge (guitaripod/omp-bridge) drives oh-my-pi over the same wire protocol as claude-bridge, answers /status with agent \"omp\" on port 4099, authenticates as username \"omp\", and serves its own live model catalog at /models. The Kit probes, connects and streams against it unchanged; what each client owes is the road to choose it — a setup card or segment that names Oh My Pi, its icon and label in server rows, and install copy for the bridge."),
+        CapabilityDefinition(
+            id: .openCodeTwoServer, area: "servers", title: "opencode 2 servers",
+            spec:
+                "opencode 2.0 replaced its whole HTTP surface — every route moved under /api, the records changed shape, the events changed name, and a bundled web UI answers every old path with HTML — and a saved server is a saved address rather than a saved API. So the Kit finds the generation out from the machine (OpenCodeBackend asks /api/info, which only a 2.x server answers, then /global/health, which only a 1.x server answers) and speaks whichever it finds through the same backend a profile has always built; a health check asks again, so a server upgraded under a running client is followed onto its new API. The probe recognises both (ConnectionProbe reads /api/info first), and a 2.x server always wants a password — OPENCODE_SERVER_PASSWORD, or the one it printed when it started — which the diagnosis says instead of promising opencode needs none. What each client owes is to reach every opencode through that one door: it builds its backend from the profile (makeBackend) and never names a generation itself."),
         CapabilityDefinition(
             id: .connectDiagnosis, area: "servers", title: "Failed probes name their cause",
             spec:

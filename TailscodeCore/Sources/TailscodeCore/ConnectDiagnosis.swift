@@ -71,7 +71,7 @@ public struct ConnectDiagnosis: Equatable, Sendable {
                 symbol: "lock.trianglebadge.exclamationmark",
                 title: Localized.text("That password was rejected"),
                 detail: Localized.text(
-                    "The server answered, so the address is right. claude-bridge and omp-bridge want the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one."
+                    "The server answered, so the address is right. claude-bridge and omp-bridge want the password you passed as BRIDGE_PASSWORD; opencode 2 always has one — OPENCODE_SERVER_PASSWORD, or the one it printed when it started — and opencode 1 needs none unless you set one."
                 ),
                 fix: .revealPassword,
                 actionTitle: nil)

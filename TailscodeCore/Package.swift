@@ -45,8 +45,9 @@ enum Kit {
     /// the delegate daemon's class and mode policies and its auth mode on the capabilities. 0.27.2
     /// folds an answer a server hands back under a second name into the one already held. 0.28.0
     /// splits an omp model name into its door and id and gives omp its own fallback ladder. 0.29.0
-    /// carries background work's age and stall and the person's own end of it.
-    static let version = Version(0, 29, 0)
+    /// carries background work's age and stall and the person's own end of it. 0.30.0 speaks
+    /// opencode 2 — the backend finds out which generation a server runs and answers in it.
+    static let version = Version(0, 30, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

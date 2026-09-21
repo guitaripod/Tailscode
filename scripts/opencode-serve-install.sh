@@ -13,6 +13,7 @@ set -euo pipefail
 MARKER='# managed by tailscode'
 PORT="${OPENCODE_SERVE_PORT:-4096}"
 PASSWORD="${OPENCODE_SERVER_PASSWORD:-}"
+GENERATED_PASSWORD=""
 BIN_DIR="$HOME/.local/bin"
 ENV_FILE="$HOME/.config/opencode-serve.env"
 RUNNER="$BIN_DIR/opencode-serve-run"
@@ -72,6 +73,20 @@ set_key() {
     printf '%s=%s\n' "$key" "$value" >>"$tmp"
     cat "$tmp" >"$ENV_FILE"
     rm -f "$tmp"
+}
+
+## opencode 2 refuses to run without a password — given none it makes one up and prints it to a
+## log nobody reads, and a server whose password nobody knows is a server no client can reach — so
+## a machine set up here always has one it can be told about. One the machine already has is
+## kept, because a re-run is not a reason to lock every client out.
+ensure_password() {
+    [ -n "$PASSWORD" ] && return
+    if [ -f "$ENV_FILE" ] && grep -q '^OPENCODE_SERVER_PASSWORD=' "$ENV_FILE"; then
+        PASSWORD=$(sed -n 's/^OPENCODE_SERVER_PASSWORD=//p' "$ENV_FILE" | tail -1)
+        [ -n "$PASSWORD" ] && return
+    fi
+    PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -d '/+=\n' | head -c 24)
+    GENERATED_PASSWORD=1
 }
 
 ## What the service actually runs. The signature is written before the server starts because it
@@ -268,6 +283,7 @@ EOF
 
 mkdir -p "$BIN_DIR"
 ensure_opencode
+ensure_password
 write_env
 write_runner
 write_restarter
@@ -305,5 +321,9 @@ if command -v tailscale >/dev/null 2>&1; then
     address=$(tailscale ip -4 2>/dev/null | head -1)
     [ -n "$address" ] && say "Point Tailscode at $address:$PORT"
 fi
-[ -n "$PASSWORD" ] && say "Password: $PASSWORD"
+if [ -n "$GENERATED_PASSWORD" ]; then
+    say "Password: $PASSWORD (made up here because opencode 2 insists on one; kept in $ENV_FILE)"
+elif [ -n "$PASSWORD" ]; then
+    say "Password: $PASSWORD"
+fi
 exit 0

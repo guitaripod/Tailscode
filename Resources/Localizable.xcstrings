@@ -44347,67 +44347,67 @@
         }
       }
     },
-    "The server answered, so the address is right. claude-bridge and omp-bridge want the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one.": {
+    "The server answered, so the address is right. claude-bridge and omp-bridge want the password you passed as BRIDGE_PASSWORD; opencode 2 always has one — OPENCODE_SERVER_PASSWORD, or the one it printed when it started — and opencode 1 needs none unless you set one.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The server answered, so the address is right. claude-bridge and omp-bridge want the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one."
+            "value": "The server answered, so the address is right. claude-bridge and omp-bridge want the password you passed as BRIDGE_PASSWORD; opencode 2 always has one — OPENCODE_SERVER_PASSWORD, or the one it printed when it started — and opencode 1 needs none unless you set one."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Server hat geantwortet, die Adresse stimmt also. claude-bridge und omp-bridge wollen das Passwort, das du als BRIDGE_PASSWORD übergeben hast; opencode braucht keins, außer du hast eins gesetzt."
+            "value": "Der Server hat geantwortet, die Adresse stimmt also. claude-bridge und omp-bridge wollen das Passwort, das du als BRIDGE_PASSWORD übergeben hast; opencode 2 hat immer eins – OPENCODE_SERVER_PASSWORD, oder das, das beim Start ausgegeben wurde – und opencode 1 braucht keins, außer du hast eins gesetzt."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El servidor respondió, así que la dirección es correcta. claude-bridge y omp-bridge piden la contraseña que pasaste como BRIDGE_PASSWORD; opencode no necesita ninguna salvo que la hayas configurado."
+            "value": "El servidor respondió, así que la dirección es correcta. claude-bridge y omp-bridge piden la contraseña que pasaste como BRIDGE_PASSWORD; opencode 2 siempre tiene una: OPENCODE_SERVER_PASSWORD, o la que mostró al iniciarse; y opencode 1 no necesita ninguna salvo que la hayas configurado."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le serveur a répondu, donc l’adresse est bonne. claude-bridge et omp-bridge attendent le mot de passe passé dans BRIDGE_PASSWORD ; opencode n’en a pas besoin, sauf si vous en avez défini un."
+            "value": "Le serveur a répondu, donc l’adresse est bonne. claude-bridge et omp-bridge attendent le mot de passe passé dans BRIDGE_PASSWORD ; opencode 2 en a toujours un : OPENCODE_SERVER_PASSWORD, ou celui qu’il a affiché au démarrage ; et opencode 1 n’en a pas besoin, sauf si vous en avez défini un."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il server ha risposto, quindi l’indirizzo è corretto. claude-bridge e omp-bridge vogliono la password che hai passato come BRIDGE_PASSWORD; opencode non ne richiede nessuna, a meno che tu non l’abbia impostata."
+            "value": "Il server ha risposto, quindi l’indirizzo è corretto. claude-bridge e omp-bridge vogliono la password che hai passato come BRIDGE_PASSWORD; opencode 2 ne ha sempre una: OPENCODE_SERVER_PASSWORD, oppure quella stampata all’avvio; e opencode 1 non ne richiede nessuna, a meno che tu non l’abbia impostata."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "サーバが応答したので、アドレスは正しいです。claude-bridge と omp-bridge には BRIDGE_PASSWORD に渡したパスワードが必要です。opencode は自分で設定していなければ不要です。"
+            "value": "サーバが応答したので、アドレスは正しいです。claude-bridge と omp-bridge には BRIDGE_PASSWORD に渡したパスワードが必要です。opencode 2 には常にパスワードがあります — OPENCODE_SERVER_PASSWORD か、起動時に表示されたものです — opencode 1 は自分で設定していなければ不要です。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "서버가 응답했으므로 주소는 맞습니다. claude-bridge와 omp-bridge는 BRIDGE_PASSWORD로 전달한 암호를 요구하고, opencode는 따로 설정하지 않았다면 암호가 필요 없습니다."
+            "value": "서버가 응답했으므로 주소는 맞습니다. claude-bridge와 omp-bridge는 BRIDGE_PASSWORD로 전달한 암호를 요구하고, opencode 2는 항상 암호가 있습니다 — OPENCODE_SERVER_PASSWORD이거나 시작할 때 출력된 것입니다 — opencode 1은 따로 설정하지 않았다면 암호가 필요 없습니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O servidor respondeu, então o endereço está certo. O claude-bridge e o omp-bridge querem a senha que você passou em BRIDGE_PASSWORD; o opencode não precisa de nenhuma, a menos que você defina uma."
+            "value": "O servidor respondeu, então o endereço está certo. O claude-bridge e o omp-bridge querem a senha que você passou em BRIDGE_PASSWORD; o opencode 2 sempre tem uma — OPENCODE_SERVER_PASSWORD, ou a que ele imprimiu ao iniciar — e o opencode 1 não precisa de nenhuma, a menos que você defina uma."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "服务器有响应，说明地址没错。claude-bridge 和 omp-bridge 需要你通过 BRIDGE_PASSWORD 传入的密码；opencode 除非你设置过，否则不需要密码。"
+            "value": "服务器有响应，说明地址没错。claude-bridge 和 omp-bridge 需要你通过 BRIDGE_PASSWORD 传入的密码；opencode 2 总是有密码——OPENCODE_SERVER_PASSWORD，或者它启动时打印的那个——opencode 1 除非你设置过，否则不需要密码。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "伺服器有回應，所以位址是對的。claude-bridge 和 omp-bridge 需要你以 BRIDGE_PASSWORD 傳入的密碼；opencode 除非你自己設定，否則不需要密碼。"
+            "value": "伺服器有回應，所以位址是對的。claude-bridge 和 omp-bridge 需要你以 BRIDGE_PASSWORD 傳入的密碼；opencode 2 一定有密碼——OPENCODE_SERVER_PASSWORD，或它啟動時印出的那組——opencode 1 除非你自己設定，否則不需要密碼。"
           }
         }
       }

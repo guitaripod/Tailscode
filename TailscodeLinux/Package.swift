@@ -117,8 +117,9 @@ enum Kit {
     /// 0.27.0 reads the stored profile list an entry at a time, so one server whose backend a
     /// build has no case for costs only itself rather than every server on the machine. 0.28.0
     /// splits an omp model name into its door and id and gives omp its own fallback ladder. 0.29.0
-    /// carries background work's age and stall and the person's own end of it.
-    static let version = Version(0, 29, 0)
+    /// carries background work's age and stall and the person's own end of it. 0.30.0 speaks
+    /// opencode 2 — the backend finds out which generation a server runs and answers in it.
+    static let version = Version(0, 30, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

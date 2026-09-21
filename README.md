@@ -2,7 +2,7 @@
 
 **One product, three native clients, parity enforced by the compiler.** Tailscode is an iPhone app (UIKit), a macOS app (AppKit) and a Linux app (GTK4 + libadwaita), built from one shared Swift core — no cross-platform framework, no web view, no lowest common denominator. Every user-facing capability is a case in a registry, and every client has to answer every case before it will compile.
 
-Those clients drive remote coding agents — [opencode](https://opencode.ai) on port 4096, **Claude Code** via [claude-bridge](https://github.com/guitaripod/claude-bridge) on port 4098, and **Oh My Pi** via [omp-bridge](https://github.com/guitaripod/omp-bridge) on port 4099 — running on machines you own. The app talks to them point-to-point over your own [Tailscale](https://tailscale.com) tailnet. No relay, no account, no vendor backend: there is no server of ours in the path, because there is no server of ours. The transport's security is Tailscale's WireGuard, not something Tailscode implements.
+Those clients drive remote coding agents — [opencode](https://opencode.ai) — 1.x and 2.x alike — on port 4096, **Claude Code** via [claude-bridge](https://github.com/guitaripod/claude-bridge) on port 4098, and **Oh My Pi** via [omp-bridge](https://github.com/guitaripod/omp-bridge) on port 4099 — running on machines you own. The app talks to them point-to-point over your own [Tailscale](https://tailscale.com) tailnet. No relay, no account, no vendor backend: there is no server of ours in the path, because there is no server of ours. The transport's security is Tailscale's WireGuard, not something Tailscode implements.
 
 <p align="center">
   <a href="https://apps.apple.com/app/tailscode/id6791660932"><b>iPhone, iPad &amp; Mac — App Store</b></a> ·
@@ -182,7 +182,7 @@ The shared core carries 79 test files with **1,059 `@Test` functions** (swift-te
 - **Tailscale** on this device and on the machine the agent runs on. Tailscode does not ship a transport of its own and does no relaying; if the two machines cannot see each other on the tailnet, there is nothing to fall back to.
 - Optional: a machine on that tailnet running **ComfyUI** (port 8188) unlocks the image and video generation lanes — one box serves both, and it's the only optional server here, not a fourth kind of agent.
 - A machine on that tailnet running one of:
-  - `opencode serve` (port 4096) — one command sets it up as a service and keeps its model list current, which a long-lived opencode server does not do on its own:
+  - `opencode serve` (port 4096), opencode 1.18 or opencode 2 — the app asks the server which API it speaks and talks to either. One command sets it up as a service, gives it the password opencode 2 insists on, and keeps its model list current, which a long-lived opencode server does not do on its own:
 
     ```bash
     curl -fsSL https://raw.githubusercontent.com/guitaripod/Tailscode/master/scripts/opencode-serve-install.sh | bash
@@ -294,7 +294,7 @@ packaging/           Flatpak manifest, Arch PKGBUILDs, desktop entry, icons, met
 scripts/             Parity gate, packaging, dev loops, App Store Connect, film rig
 ```
 
-All networking, streaming and state live in [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit) (resolved from its published tag, 0.29.0 at the time of writing); the app renders `ConversationState` and forwards intent. If a capability is missing, it's added to the Kit — the app stays thin.
+All networking, streaming and state live in [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit) (resolved from its published tag, 0.30.0 at the time of writing); the app renders `ConversationState` and forwards intent. If a capability is missing, it's added to the Kit — the app stays thin.
 
 ## Related projects
 
