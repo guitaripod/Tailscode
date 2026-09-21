@@ -1684,9 +1684,8 @@ final class DrawPane: @unchecked Sendable {
         gtk_text_view_set_bottom_margin(ptr(promptView), 10)
         gtk_text_view_set_left_margin(ptr(promptView), 12)
         gtk_text_view_set_right_margin(ptr(promptView), 12)
-        gtk_widget_set_size_request(promptView, -1, 120)
         gtk_widget_set_tooltip_text(promptView, ImageGenNotice.emptyBody)
-        gtk_box_append(ptr(frame), promptView)
+        gtk_box_append(ptr(frame), Gtk.boundedScroller(promptView, minimum: 120, maximum: 300))
         Gtk.connect(UnsafeMutableRawPointer(gtk_text_view_get_buffer(ptr(promptView))!), "changed") {
             [weak self] in
             Gtk.onMain { [weak self] in self?.refreshHint() }

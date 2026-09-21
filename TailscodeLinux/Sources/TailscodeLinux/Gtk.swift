@@ -262,6 +262,21 @@ enum Gtk {
         tailscode_focus_is_editable(widget) != 0
     }
 
+    /// A text view that grows with what is typed up to a ceiling and scrolls past it, so a long
+    /// paragraph never pushes the window taller than the screen.
+    static func boundedScroller(
+        _ child: UnsafeMutablePointer<GtkWidget>, minimum: Int32, maximum: Int32
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_min_content_height(op(scroller), minimum)
+        gtk_scrolled_window_set_max_content_height(op(scroller), maximum)
+        gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+        gtk_scrolled_window_set_child(op(scroller), child)
+        gtk_widget_set_hexpand(scroller, 1)
+        return scroller
+    }
+
     static func label(_ text: String, css: String? = nil, wrap: Bool = false, selectable: Bool = true)
         -> UnsafeMutablePointer<GtkWidget>
     {

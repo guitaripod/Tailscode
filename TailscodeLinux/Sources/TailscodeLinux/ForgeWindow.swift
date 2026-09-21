@@ -35,7 +35,10 @@ final class ForgeWindow: @unchecked Sendable {
 
     private let window: UnsafeMutablePointer<GtkWidget>
     private let pane: ForgePane
-    private let dismissNote: UnsafeMutablePointer<GtkWidget>
+    /// The header's own title widget: the subtitle is where the closing-keeps-rendering promise
+    /// is made while a render is out. A bar under the studio for one label and a Done button that
+    /// only repeated the window's own close was a row of chrome the stage paid for.
+    private let title: UnsafeMutablePointer<GtkWidget>
 
     private init(parent: UnsafeMutablePointer<GtkWidget>?) {
         window = gtk_window_new()!
@@ -51,23 +54,15 @@ final class ForgeWindow: @unchecked Sendable {
         }
 
         let header = adw_header_bar_new()!
-        adw_header_bar_set_title_widget(
-            op(UnsafeMutableRawPointer(header)),
-            adw_window_title_new(ForgeSurface.title, ForgeSurface.subtitle))
+        title = adw_window_title_new(ForgeSurface.title, ForgeSurface.subtitle)!
+        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), title)
         gtk_window_set_titlebar(ptr(window), header)
 
         pane = ForgePane(parent: window)
-        dismissNote = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
-        gtk_label_set_max_width_chars(op(dismissNote), 58)
-        gtk_widget_set_hexpand(dismissNote, 1)
-
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        gtk_box_append(ptr(column), pane.root)
-        gtk_box_append(ptr(column), footer())
-        gtk_window_set_child(ptr(window), column)
+        gtk_window_set_child(ptr(window), pane.root)
 
         pane.onChange = { [weak self] in
-            Gtk.onMain { [weak self] in self?.drawFooter() }
+            Gtk.onMain { [weak self] in self?.drawSubtitle() }
         }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
@@ -78,32 +73,17 @@ final class ForgeWindow: @unchecked Sendable {
             Self.destroyed(self)
         }
 
-        drawFooter()
+        drawSubtitle()
         gtk_window_present(ptr(window))
         pane.focusPrompt()
     }
 
-    /// The way out, and the one sentence that has to sit beside it: closing over a render leaves
-    /// the render running. The window's own close button says the same thing by doing it, so the
-    /// note is what makes the promise legible before the press rather than after it.
-    private func footer() -> UnsafeMutablePointer<GtkWidget> {
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
-        Gtk.margins(row, top: 4, bottom: 12, leading: 14, trailing: 14)
-        gtk_widget_set_valign(dismissNote, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(row), dismissNote)
-        let done = Gtk.button(ForgeSurface.dismissTitle, css: ["suggested-action", "pill"]) {
-            [weak self] in
-            Gtk.onMain { [weak self] in self?.close() }
-        }
-        gtk_widget_set_valign(done, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(row), done)
-        return row
-    }
-
-    private func drawFooter() {
+    /// The one sentence that has to be legible before the close is pressed: closing over a render
+    /// leaves the render running. It rides the header's subtitle while a render is out and gives
+    /// the line back when none is.
+    private func drawSubtitle() {
         let note = ForgeSurface.dismissNote(rendering: ForgeRunner.shared.isRendering)
-        gtk_label_set_text(op(dismissNote), note ?? "")
-        gtk_widget_set_visible(dismissNote, note == nil ? 0 : 1)
+        adw_window_title_set_subtitle(op(UnsafeMutableRawPointer(title)), note ?? ForgeSurface.subtitle)
     }
 
     /// The board's keys first, then the window's one key. Escape closes only what the board did not

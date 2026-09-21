@@ -212,14 +212,12 @@ final class ForgePane: @unchecked Sendable {
         gtk_text_view_set_bottom_margin(ptr(promptView), 8)
         gtk_text_view_set_left_margin(ptr(promptView), 10)
         gtk_text_view_set_right_margin(ptr(promptView), 10)
-        gtk_widget_set_vexpand(promptView, 1)
-        gtk_widget_set_size_request(promptView, -1, 120)
         Gtk.connect(
             UnsafeMutableRawPointer(gtk_text_view_get_buffer(ptr(promptView))), "changed"
         ) { [weak self] in
             self?.typed()
         }
-        gtk_box_append(ptr(promptFrame), promptView)
+        gtk_box_append(ptr(promptFrame), Gtk.boundedScroller(promptView, minimum: 120, maximum: 260))
         gtk_box_append(ptr(column), promptFrame)
 
         let helperRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
