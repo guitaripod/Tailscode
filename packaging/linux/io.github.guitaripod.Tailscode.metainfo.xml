@@ -69,6 +69,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.50" date="2026-09-21">
+      <description>
+        <p>opencode 2 works. opencode 2.0 rebuilt its whole API — every route moved, every record changed shape, every event was renamed, and a web page answers on every old address — so a 2.0 server used to read as &quot;not an agent server&quot;. Tailscode now asks each opencode server which generation it runs and speaks that one: 1.18 and 2.x both connect, list every project&#x27;s chats in one request, stream answers, tool calls and thoughts as they happen, answer permissions and the new form-style questions, compact, fork and rename, and pick the model, effort and agent per prompt. A server you upgrade under a running app is followed onto its new API without reconnecting. opencode 2 always wants a password — OPENCODE_SERVER_PASSWORD, or the one it prints when it starts — so the connect diagnosis says so instead of promising it needs none, and the one-line setup script now makes a password up when you gave it none and tells you what it is.</p>
+      </description>
+    </release>
     <release version="1.49" date="2026-09-21">
       <description>
         <p>The image studio is laid out for a desk: the brief down the left with room for a paragraph — the two engines as cards that say what each is for, the six shapes drawn as the shapes they are, size and detail as segments, the seed and the cutout as switches — the picture in the middle with the machine&#x27;s own progress narrated over it and the words and verbs under it, and every picture the machine keeps down the right as rows that carry the thumbnail, the words and the facts. An edit keeps the picture it works from on the stage, dimmed, until the result replaces it. The studio, the forge, a design board, the gallery and the delegate desk open the size of the screen, and on KDE they open centred.</p>
