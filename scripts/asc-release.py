@@ -25,6 +25,7 @@ loses the queue position, which is why it is never done by default.
 Usage: python3 scripts/asc-release.py <marketing-version> <build-number>
        python3 scripts/asc-release.py 1.9 25 --no-submit
        python3 scripts/asc-release.py 1.26 119 --platform=macos   # the Mac train, notes from "<version>-macos"
+       python3 scripts/asc-release.py 1.52 155 --rename-from=1.50 # the version queued as 1.50 becomes 1.52 first
        python3 scripts/asc-release.py 1.39 137 --manual-release   # hold it for a hand
        python3 scripts/asc-release.py 1.45 150 --replace          # swap the build under a version in review
 """
@@ -272,6 +273,49 @@ def withdraw_from_review(version_id: str, marketing: str) -> None:
     die(f"{marketing} never came back out of review")
 
 
+def rename_version(old: str, new: str) -> None:
+    """A version queued under one number becomes the next number rather than a second record:
+    App Store Connect allows one version in preparation per platform, so the one already there is
+    withdrawn if it is in review, renamed, and carries on as the new release."""
+    for row in asc.get(
+        f"/v1/apps/{APP}/appStoreVersions", **{"limit": "50", "filter[platform]": PLATFORM}
+    ).get("data", []):
+        if row["attributes"]["versionString"] == new:
+            print(f"version {new} already exists; nothing to rename")
+            return
+    old_row = next(
+        (
+            row
+            for row in asc.get(
+                f"/v1/apps/{APP}/appStoreVersions", **{"limit": "50", "filter[platform]": PLATFORM}
+            ).get("data", [])
+            if row["attributes"]["versionString"] == old
+        ),
+        None,
+    )
+    if old_row is None:
+        die(f"no version {old} to rename")
+    state = version_state(old_row["id"])
+    if state in IN_REVIEW_STATES:
+        withdraw_from_review(old_row["id"], old)
+    elif state not in EDITABLE_STATES:
+        die(f"{old} is {state}; only an editable or queued version can be renamed")
+    asc.patch(
+        f"/v1/appStoreVersions/{old_row['id']}",
+        {
+            "data": {
+                "type": "appStoreVersions",
+                "id": old_row["id"],
+                "attributes": {"versionString": new},
+            }
+        },
+    )
+    check = asc.get(f"/v1/appStoreVersions/{old_row['id']}").get("data", {}).get("attributes", {})
+    if check.get("versionString") != new:
+        die(f"{old} did not become {new} (reads {check.get('versionString')})")
+    print(f"version {old} renamed to {new}")
+
+
 def wait_for_build(number: str) -> dict:
     """A build is attachable only once processing says VALID, which lags the
     upload by minutes. Poll rather than guess."""
@@ -301,6 +345,9 @@ def main() -> None:
     marketing, number = args
     submit = "--no-submit" not in sys.argv
 
+    rename_from = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--rename-from=")), None)
+    if rename_from:
+        rename_version(rename_from, marketing)
     version = version_record(marketing)
     version_id = version["id"]
     state = version_state(version_id)
