@@ -61,9 +61,7 @@ public struct ConnectDiagnosis: Equatable, Sendable {
                 return ConnectDiagnosis(
                     symbol: "lock",
                     title: Localized.text("This server wants a password"),
-                    detail: Localized.text(
-                        "Good news: something is answering at %@. Enter the password it was started with — for claude-bridge that is BRIDGE_PASSWORD.",
-                        address.displayHost),
+                    detail: ServerPasswordRule.refusalDetail(host: address.displayHost),
                     fix: .revealPassword,
                     actionTitle: nil)
             }

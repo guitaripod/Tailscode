@@ -53,6 +53,7 @@ final class ServersWindow: NSWindowController {
     private var watchingTailnet = false
     private let addHeader = MacDialogs.sectionHeader(Localized.text("ADD A SERVER"))
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
+    private let passwordHint = NSTextField(wrappingLabelWithString: ServerPasswordRule.summary)
     private let addressField = NSTextField()
     private let nameField = NSTextField()
     private let passwordField = NSSecureTextField()
@@ -94,6 +95,8 @@ final class ServersWindow: NSWindowController {
         tailnetPill.font = MacTheme.Ramp.font(.panelFootnote)
         statusLabel.font = MacTheme.Ramp.font(.panelFootnote)
         statusLabel.textColor = MacTheme.Color.secondaryLabel
+        passwordHint.font = MacTheme.Ramp.font(.panelFootnote)
+        passwordHint.textColor = MacTheme.Color.secondaryLabel
     }
 
     @available(*, unavailable)
@@ -173,9 +176,10 @@ final class ServersWindow: NSWindowController {
 
         let column = FillingStack(views: [
             listHeader, listColumn, tailnetHeader, tailnetRow, tailnetRemedy, addHeader,
-            addressField, nameField, passwordField, kindRow, statusLabel, actions,
+            addressField, nameField, passwordField, passwordHint, kindRow, statusLabel, actions,
         ])
         column.spacing = MacTheme.Spacing.m
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: passwordField)
         column.setCustomSpacing(MacTheme.Spacing.xl, after: listColumn)
         column.setCustomSpacing(MacTheme.Spacing.xs, after: tailnetRow)
         column.setCustomSpacing(MacTheme.Spacing.xl, after: tailnetRemedy)

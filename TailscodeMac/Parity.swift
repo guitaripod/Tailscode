@@ -126,7 +126,7 @@ enum ParityManifest {
         case .toasts: return .implemented("ToastPresenter")
         case .serverManagement: return .implemented("ServersWindow")
         case .ompServer: return .implemented("ompRadio")
-        case .openCodeTwoServer: return .implemented("makeBackend")
+        case .openCodeTwoServer: return .implemented("ServerPasswordRule")
         case .tailnetDiscovery:
             return .varies(
                 direct: .implemented("DiscoveryPanel"),

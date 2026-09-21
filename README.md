@@ -12,7 +12,7 @@ Those clients drive remote coding agents — [opencode](https://opencode.ai) —
   <a href="LICENSE">GPL-3.0</a>
 </p>
 
-Latest releases: **iPhone 1.47** · **macOS 1.45** · **Linux 1.50**. The apps are free; a one-time **$14.99 Pro** non-consumable unlocks unlimited servers and concurrent Live Activities on both iPhone and Mac. Universal since 1.26 — iPad gets its own readable-column layout and multiple scenes, not a stretched phone screen.
+Latest releases: **iPhone 1.47** · **macOS 1.45** · **Linux 1.51**. The apps are free; a one-time **$14.99 Pro** non-consumable unlocks unlimited servers and concurrent Live Activities on both iPhone and Mac. Universal since 1.26 — iPad gets its own readable-column layout and multiple scenes, not a stretched phone screen.
 
 Built on [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit), a GPL-3.0 Swift package that unifies both backends behind one conversation engine. The clients are polished shells; the engine is reusable.
 
@@ -208,7 +208,7 @@ That replaces `/Applications/Tailscode.app`. Ad-hoc signing is why this copy can
 
 ### Linux
 
-**Arch** — [tailscode](https://aur.archlinux.org/packages/tailscode) builds the current release from the `v1.50` tag; [tailscode-git](https://aur.archlinux.org/packages/tailscode-git) tracks master:
+**Arch** — [tailscode](https://aur.archlinux.org/packages/tailscode) builds the current release from the `v1.51` tag; [tailscode-git](https://aur.archlinux.org/packages/tailscode-git) tracks master:
 
 ```bash
 paru -S tailscode        # or yay, or: git clone the AUR package and makepkg -si
@@ -217,7 +217,7 @@ paru -S tailscode        # or yay, or: git clone the AUR package and makepkg -si
 **Everyone else** — the release tarball from [GitHub releases](https://github.com/guitaripod/Tailscode/releases). It is one static-stdlib binary plus its desktop entry, icons, man page and completions, built in CI on `ubuntu-24.04` under `swift:6.2-noble`; the job fails if the binary needs anything newer than `GLIBC_2.39`, or if the VTE/mpv/WebKit headers are missing, so a release never silently drops a pane. **x86_64 only** — no aarch64 build is published.
 
 ```bash
-tar xf tailscode-1.50-linux-x86_64.tar.gz -C ~/.local --strip-components=2
+tar xf tailscode-1.51-linux-x86_64.tar.gz -C ~/.local --strip-components=2
 ```
 
 `--strip-components=2`, not 1: the archive members are `./usr/bin/tailscode`, so stripping one level lands the binary at `~/.local/usr/bin`.

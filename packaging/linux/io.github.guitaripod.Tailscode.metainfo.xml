@@ -69,6 +69,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.51" date="2026-09-21">
+      <description>
+        <p>Where a password is typed, the rule is said: claude-bridge, omp-bridge and opencode 2 always want one — BRIDGE_PASSWORD, OMP_PASSWORD, OPENCODE_SERVER_PASSWORD or the one opencode printed when it started — and opencode 1 only if you set one. The add-server form shows it under the field instead of a tooltip, and a server that answers and refuses says the same in its own card.</p>
+      </description>
+    </release>
     <release version="1.50" date="2026-09-21">
       <description>
         <p>opencode 2 works. opencode 2.0 rebuilt its whole API — every route moved, every record changed shape, every event was renamed, and a web page answers on every old address — so a 2.0 server used to read as &quot;not an agent server&quot;. Tailscode now asks each opencode server which generation it runs and speaks that one: 1.18 and 2.x both connect, list every project&#x27;s chats in one request, stream answers, tool calls and thoughts as they happen, answer permissions and the new form-style questions, compact, fork and rename, and pick the model, effort and agent per prompt. A server you upgrade under a running app is followed onto its new API without reconnecting. opencode 2 always wants a password — OPENCODE_SERVER_PASSWORD, or the one it prints when it starts — so the connect diagnosis says so instead of promising it needs none, and the one-line setup script now makes a password up when you gave it none and tells you what it is.</p>

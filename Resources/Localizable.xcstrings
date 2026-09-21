@@ -20424,67 +20424,67 @@
         }
       }
     },
-    "Good news: something is answering at %@. Enter the password it was started with — for claude-bridge that is BRIDGE_PASSWORD.": {
+    "Good news: something is answering at %@. Enter the password it was started with — BRIDGE_PASSWORD for claude-bridge and omp-bridge, OPENCODE_SERVER_PASSWORD for opencode 2, or the one opencode printed when it started.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Good news: something is answering at %@. Enter the password it was started with — for claude-bridge that is BRIDGE_PASSWORD."
+            "value": "Good news: something is answering at %@. Enter the password it was started with — BRIDGE_PASSWORD for claude-bridge and omp-bridge, OPENCODE_SERVER_PASSWORD for opencode 2, or the one opencode printed when it started."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gute Nachricht: Unter %@ antwortet etwas. Gib das Passwort ein, mit dem es gestartet wurde – bei claude-bridge ist das BRIDGE_PASSWORD."
+            "value": "Gute Nachricht: Unter %@ antwortet etwas. Gib das Passwort ein, mit dem es gestartet wurde – BRIDGE_PASSWORD bei claude-bridge und omp-bridge, OPENCODE_SERVER_PASSWORD bei opencode 2, oder das Passwort, das opencode beim Start ausgegeben hat."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Buenas noticias: algo responde en %@. Introduce la contraseña con la que se inició: en claude-bridge es BRIDGE_PASSWORD."
+            "value": "Buenas noticias: algo responde en %@. Introduce la contraseña con la que se inició: BRIDGE_PASSWORD en claude-bridge y omp-bridge, OPENCODE_SERVER_PASSWORD en opencode 2, o la que opencode mostró al iniciarse."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bonne nouvelle : quelque chose répond à %@. Saisissez le mot de passe avec lequel il a été démarré — pour claude-bridge, c’est BRIDGE_PASSWORD."
+            "value": "Bonne nouvelle : quelque chose répond à %@. Saisissez le mot de passe avec lequel il a été démarré — BRIDGE_PASSWORD pour claude-bridge et omp-bridge, OPENCODE_SERVER_PASSWORD pour opencode 2, ou celui affiché par opencode à son démarrage."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Buone notizie: qualcosa risponde su %@. Inserisci la password con cui è stato avviato — per claude-bridge è BRIDGE_PASSWORD."
+            "value": "Buone notizie: qualcosa risponde su %@. Inserisci la password con cui è stato avviato — BRIDGE_PASSWORD per claude-bridge e omp-bridge, OPENCODE_SERVER_PASSWORD per opencode 2, oppure quella stampata da opencode all’avvio."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "幸い、%@ で何かが応答しています。起動時に指定したパスワードを入力してください。claude-bridge なら BRIDGE_PASSWORD です。"
+            "value": "幸い、%@ で何かが応答しています。起動時に指定したパスワードを入力してください。claude-bridge と omp-bridge なら BRIDGE_PASSWORD、opencode 2 なら OPENCODE_SERVER_PASSWORD、それ以外は opencode が起動時に表示したパスワードです。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "좋은 소식입니다. %@에서 무언가 응답하고 있습니다. 실행할 때 지정한 암호를 입력하세요 — claude-bridge에서는 BRIDGE_PASSWORD입니다."
+            "value": "좋은 소식입니다. %@에서 무언가 응답하고 있습니다. 실행할 때 지정한 암호를 입력하세요 — claude-bridge와 omp-bridge에서는 BRIDGE_PASSWORD, opencode 2에서는 OPENCODE_SERVER_PASSWORD, 그 외에는 opencode가 시작할 때 출력한 암호입니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Boa notícia: algo está respondendo em %@. Digite a senha com que ele foi iniciado — no claude-bridge, é BRIDGE_PASSWORD."
+            "value": "Boa notícia: algo está respondendo em %@. Digite a senha com que ele foi iniciado — BRIDGE_PASSWORD no claude-bridge e no omp-bridge, OPENCODE_SERVER_PASSWORD no opencode 2, ou a que o opencode exibiu ao iniciar."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "好消息：%@ 上有程序在响应。请输入它启动时使用的密码 — 对 claude-bridge 来说就是 BRIDGE_PASSWORD。"
+            "value": "好消息：%@ 上有程序在响应。请输入它启动时使用的密码 — claude-bridge 和 omp-bridge 是 BRIDGE_PASSWORD，opencode 2 是 OPENCODE_SERVER_PASSWORD，其他情况则是 opencode 启动时打印的密码。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "好消息：%@ 上有東西在回應。請輸入它啟動時使用的密碼 — claude-bridge 就是 BRIDGE_PASSWORD。"
+            "value": "好消息：%@ 上有東西在回應。請輸入它啟動時使用的密碼 — claude-bridge 和 omp-bridge 是 BRIDGE_PASSWORD，opencode 2 是 OPENCODE_SERVER_PASSWORD，其餘情況則是 opencode 啟動時顯示的密碼。"
           }
         }
       }
@@ -56710,6 +56710,136 @@
           "stringUnit": {
             "state": "translated",
             "value": "Oh My Pi 會列出其自身設定能觸及的提供者。這裡沒有的模型，就是那台電腦的設定裡沒有。"
+          }
+        }
+      }
+    },
+    "opencode 2 always needs a password — the one in the command above. opencode 1 needs one only if you set it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 2 braucht immer ein Passwort – das aus dem Befehl oben. opencode 1 braucht eines nur, wenn du eines festgelegt hast."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 2 always needs a password — the one in the command above. opencode 1 needs one only if you set it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 2 siempre necesita una contraseña: la del comando de arriba. opencode 1 solo la necesita si has configurado una."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 2 exige toujours un mot de passe — celui de la commande ci-dessus. opencode 1 n’en a besoin que si vous en avez défini un."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 2 richiede sempre una password — quella nel comando qui sopra. opencode 1 la richiede solo se ne hai impostata una."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 2 には必ずパスワードが必要です。上のコマンドで指定したものです。opencode 1 は設定した場合のみ必要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 2에는 항상 암호가 필요합니다 — 위 명령에 있는 그 암호입니다. opencode 1은 설정한 경우에만 필요합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O opencode 2 sempre precisa de uma senha — a do comando acima. O opencode 1 só precisa se você tiver definido uma."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 2 始终需要密码 — 就是上面命令中的那个。opencode 1 只有在你设置过密码时才需要。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 2 一律需要密碼 — 就是上面命令中的那一組。opencode 1 只有在你設定過密碼時才需要。"
+          }
+        }
+      }
+    },
+    "claude-bridge, omp-bridge and opencode 2 always want one — BRIDGE_PASSWORD, OMP_PASSWORD, OPENCODE_SERVER_PASSWORD or the one opencode printed when it started. opencode 1 only if you set one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge, omp-bridge und opencode 2 wollen immer eins – BRIDGE_PASSWORD, OMP_PASSWORD, OPENCODE_SERVER_PASSWORD oder das, das opencode beim Start ausgegeben hat. opencode 1 nur, wenn du eins gesetzt hast."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge, omp-bridge and opencode 2 always want one — BRIDGE_PASSWORD, OMP_PASSWORD, OPENCODE_SERVER_PASSWORD or the one opencode printed when it started. opencode 1 only if you set one."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge, omp-bridge y opencode 2 siempre piden una: BRIDGE_PASSWORD, OMP_PASSWORD, OPENCODE_SERVER_PASSWORD o la que opencode mostró al iniciarse. opencode 1 solo si has configurado una."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge, omp-bridge et opencode 2 en veulent toujours un — BRIDGE_PASSWORD, OMP_PASSWORD, OPENCODE_SERVER_PASSWORD ou celui affiché par opencode à son démarrage. opencode 1 seulement si vous en avez défini un."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge, omp-bridge e opencode 2 ne vogliono sempre una — BRIDGE_PASSWORD, OMP_PASSWORD, OPENCODE_SERVER_PASSWORD oppure quella stampata da opencode all’avvio. opencode 1 solo se ne hai impostata una."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge、omp-bridge、opencode 2 には常にパスワードが必要です — BRIDGE_PASSWORD、OMP_PASSWORD、OPENCODE_SERVER_PASSWORD、または opencode が起動時に表示したパスワードです。opencode 1 は自分で設定した場合のみ必要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge, omp-bridge, opencode 2는 항상 암호를 요구합니다 — BRIDGE_PASSWORD, OMP_PASSWORD, OPENCODE_SERVER_PASSWORD, 또는 opencode가 시작할 때 출력한 암호입니다. opencode 1은 설정한 경우에만 필요합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge, omp-bridge e opencode 2 sempre querem uma — BRIDGE_PASSWORD, OMP_PASSWORD, OPENCODE_SERVER_PASSWORD ou a que o opencode exibiu ao iniciar. opencode 1 só se você tiver definido uma."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge、omp-bridge 和 opencode 2 始终需要密码 — BRIDGE_PASSWORD、OMP_PASSWORD、OPENCODE_SERVER_PASSWORD，或者 opencode 启动时打印的那个。opencode 1 只有在你设置过时才需要。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge、omp-bridge 和 opencode 2 一律需要密碼 — BRIDGE_PASSWORD、OMP_PASSWORD、OPENCODE_SERVER_PASSWORD，或 opencode 啟動時顯示的那組。opencode 1 只有在你自行設定時才需要。"
           }
         }
       }

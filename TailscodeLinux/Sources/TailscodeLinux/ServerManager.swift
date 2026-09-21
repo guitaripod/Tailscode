@@ -115,13 +115,14 @@ final class ServerManager: @unchecked Sendable {
         adw_preferences_group_add(ptr(group), ptr(name))
 
         let password = Self.passwordRow(title: Localized.text("Password"))
-        gtk_widget_set_tooltip_text(
-            password,
-            Localized.text(
-                "Only if the server asks for one — claude-bridge's BRIDGE_PASSWORD, omp-bridge's OMP_PASSWORD."
-            ))
+        gtk_widget_set_tooltip_text(password, ServerPasswordRule.summary)
         passwordRow = password
         adw_preferences_group_add(ptr(group), ptr(password))
+        let passwordHint = Gtk.label(ServerPasswordRule.summary, css: "dim", wrap: true, selectable: false)
+        gtk_widget_set_margin_top(passwordHint, 6)
+        gtk_widget_set_margin_start(passwordHint, 12)
+        gtk_widget_set_margin_end(passwordHint, 12)
+        adw_preferences_group_add(ptr(group), ptr(passwordHint))
 
         for row in [address, name, password] {
             Gtk.connect(UnsafeMutableRawPointer(row), "entry-activated") { [weak self] in

@@ -429,21 +429,9 @@ final class ServerSetupViewController: UIViewController {
         rebuildCommand(animated: animated)
         agentCard.setDetail(agentDetail(for: backend))
         switch backend {
-        case .openCode:
-            if passwordField.text.isEmpty, authTarget == nil {
-                passwordField.isHidden = true
-                passwordDisclosure.isHidden = false
-                passwordNote.isHidden = true
-            }
-        case .claudeCode:
+        case .openCode, .claudeCode, .omp:
             showPasswordField(focus: false)
-            passwordNote.text = String(
-                localized: "claude-bridge always needs a password — the one in the command above.")
-            passwordNote.isHidden = false
-        case .omp:
-            showPasswordField(focus: false)
-            passwordNote.text = String(
-                localized: "omp-bridge always needs a password — the one in the command above.")
+            passwordNote.text = ServerPasswordRule.line(for: backend)
             passwordNote.isHidden = false
         }
         if !addressField.text.isEmpty { addressChanged() }
