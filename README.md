@@ -1,6 +1,6 @@
 # Tailscode
 
-**Your AI agents, anywhere.** A native remote for [Claude Code](https://github.com/guitaripod/claude-bridge), [Oh My Pi](https://github.com/guitaripod/omp-bridge) and [opencode](https://opencode.ai) running on your own machines: a universal iPhone and iPad app with the turn on your Lock Screen, and open-source desktop clients for Linux and the Mac. Point-to-point over your own [Tailscale](https://tailscale.com) tailnet — no relay, no account, no vendor backend. The transport's security is Tailscale's WireGuard, not something Tailscode implements.
+**Your AI agents, anywhere.** A native remote for [Claude Code](https://github.com/guitaripod/claude-bridge), [Oh My Pi](https://github.com/guitaripod/omp-bridge) and [opencode](https://opencode.ai) running on your own machines: a universal iPhone and iPad app with the turn on your Lock Screen, and open-source desktop clients for Linux and the Mac. Point-to-point over your own [Tailscale](https://tailscale.com) tailnet — no relay, no account, no vendor backend. The transport's security is Tailscale's WireGuard, not something Tailscode implements. Screenshots, the full feature tour and pricing live at [midgarcorp.cc/tailscode](https://midgarcorp.cc/tailscode).
 
 <p align="center">
   <a href="https://apps.apple.com/app/tailscode/id6791660932"><b>iPhone, iPad &amp; Mac — App Store</b></a> ·
@@ -12,21 +12,8 @@
 
 Latest releases: **iPhone 1.47** · **macOS 1.45** · **Linux 1.51**. Free is the whole core with one server; **Pro** is a one-time $14.99 purchase for unlimited servers, concurrent Live Activities and the delegate board.
 
-<p align="center">
-  <img src="docs/readme/both.webp" width="820" alt="One session, two machines: the same ultracode turn on a phone and a desk at once" />
-</p>
 
-<p align="center">
-  <img src="docs/readme/phone-live.webp" width="240" alt="A live turn: the thinking, the code it wrote, the command it's running" />
-  &nbsp;
-  <img src="docs/readme/phone-home.webp" width="240" alt="Every agent and machine on one board, with a composer that starts the next chat" />
-  &nbsp;
-  <img src="docs/readme/phone-code.webp" width="240" alt="Markdown, syntax-highlighted code, and links render inline" />
-</p>
 
-<p align="center">
-  <img src="docs/readme/desk-split.webp" width="820" alt="Two sessions side by side on Linux — subagents fanning out, todos burning down" />
-</p>
 
 ## What it does
 
@@ -41,13 +28,6 @@ Latest releases: **iPhone 1.47** · **macOS 1.45** · **Linux 1.51**. Free is th
 - **Desktops** — tiling splits with vim-grade verbs, a terminal, file tree, browser and video panes, a global chord that summons quick ask from any program, vim in the composer.
 - **Eight themes with two faces each**, one typography ramp, ten languages, Liquid Glass where the platform draws it.
 
-<p align="center">
-  <img src="docs/readme/real-agent.webp" width="240" alt="A real evening: a code review fanning out mid-turn, 35 tools deep, priced live" />
-  &nbsp;
-  <img src="docs/readme/ipad-live.webp" width="300" alt="The same live turn on iPad, given the room a bigger screen has" />
-  &nbsp;
-  <img src="docs/readme/desk-analytics.webp" width="360" alt="The month, priced and drawn: daily bars, the week's rhythm, models" />
-</p>
 
 ## Parity is a build gate
 
