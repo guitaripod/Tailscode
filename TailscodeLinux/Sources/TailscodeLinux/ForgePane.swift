@@ -43,7 +43,6 @@ final class ForgePane: @unchecked Sendable {
     private let statusLine = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
     private let filmHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let rendererHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private let modelHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let frameHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let chipsHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let promptView = gtk_text_view_new()!
@@ -252,8 +251,6 @@ final class ForgePane: @unchecked Sendable {
 
         gtk_widget_set_hexpand(frameHolder, 1)
         gtk_box_append(ptr(column), frameHolder)
-        gtk_widget_set_hexpand(modelHolder, 1)
-        gtk_box_append(ptr(column), modelHolder)
         gtk_widget_set_hexpand(chipsHolder, 1)
         gtk_box_append(ptr(column), chipsHolder)
         gtk_box_append(ptr(column), reasonLabel)
@@ -551,7 +548,7 @@ final class ForgePane: @unchecked Sendable {
             gtk_widget_grab_focus(soundEntry)
         case .frame:
             offerFrame()
-        case .size, .seconds, .fps, .model, .seed:
+        case .size, .seconds, .fps, .seed:
             return
         }
     }
@@ -827,12 +824,6 @@ final class ForgePane: @unchecked Sendable {
             ptr(frameHolder),
             ForgeBoardView.frame(board) { [weak self] in
                 self?.frameRows() ?? []
-            })
-        Gtk.removeChildren(of: modelHolder)
-        gtk_box_append(
-            ptr(modelHolder),
-            ForgeBoardView.model(board) { [weak self] id in
-                Gtk.onMain { [weak self] in self?.runner.pick(.model, id: id) }
             })
         Gtk.removeChildren(of: chipsHolder)
         gtk_box_append(

@@ -109,38 +109,24 @@ struct ForgeTests {
         #expect(inputs["video"] as? [Any] != nil)
         let unet = try #require(read["unet"] as? [String: Any])
         let unetInputs = try #require(unet["inputs"] as? [String: Any])
-        #expect(unetInputs["unet_name"] as? String == ForgeModel.distilled.fileName)
+        #expect(unetInputs["unet_name"] as? String == ForgeModel.fileName)
     }
 
-    @Test("Choosing the other model changes the weights and the whole drive they need")
-    func modelCarriesItsSchedule() {
-        let fine = ForgeGraph(recipe: recipe.with(model: .dev))
-        #expect(fine.problems.isEmpty)
-        #expect(fine.node("unet")?.inputs["unet_name"] == .text(ForgeModel.dev.fileName))
-        #expect(fine.node("sig1")?.classType == "LTXVScheduler")
-        #expect(fine.node("sig1")?.inputs["steps"] == .whole(20))
-        #expect(fine.node("sig1")?.inputs["max_shift"] == .decimal(2.05))
-        #expect(fine.node("sig1")?.inputs["base_shift"] == .decimal(0.95))
-        #expect(fine.node("sig1")?.inputs["stretch"] == .flag(true))
-        #expect(fine.node("sig1")?.inputs["terminal"] == .decimal(0.1))
-        #expect(fine.node("sig1")?.inputs["latent"] == .link("lat_v", 0))
-        #expect(fine.node("sig2")?.inputs["sigmas"] == .text(ForgeModel.dev.stageTwoSigmas))
-        #expect(fine.node("guider1")?.inputs["video_cfg"] == .decimal(3.0))
-        #expect(fine.node("guider2")?.inputs["video_cfg"] == .decimal(1.0))
-        #expect(fine.node("sampler")?.inputs["sampler_name"] == .text("euler"))
-        #expect(fine.node("neg")?.inputs["text"] == .text("blurry"))
-        let unguided = ForgeGraph(recipe: recipe.with(model: .dev).with(negative: " "))
-        #expect(unguided.node("neg")?.inputs["text"] == .text(ForgeModel.defaultNegative))
-
-        let fast = ForgeGraph(recipe: recipe.with(negative: ""))
-        #expect(fast.node("sig1")?.classType == "ManualSigmas")
-        #expect(fast.node("sig1")?.inputs["sigmas"] == .text(ForgeModel.distilled.stageOneSigmas))
-        #expect(fast.node("guider1")?.inputs["video_cfg"] == .decimal(1.0))
-        #expect(fast.node("sampler")?.inputs["sampler_name"] == .text("euler_ancestral"))
-        #expect(fast.node("neg")?.inputs["text"] == .text(""))
-        #expect(!ForgeModel.distilled.heedsNegative && ForgeModel.dev.heedsNegative)
-        #expect(ForgeModel.dev.stageOneSigmas.isEmpty)
-        #expect(JSONSerialization.isValidJSONObject(fine.payload))
+    @Test("The one model is driven exactly as the box measured it")
+    func theOneDrive() {
+        let graph = ForgeGraph(recipe: recipe)
+        #expect(graph.node("unet")?.inputs["unet_name"] == .text(ForgeModel.fileName))
+        #expect(graph.node("sig1")?.classType == "ManualSigmas")
+        #expect(graph.node("sig1")?.inputs["sigmas"] == .text(ForgeModel.stageOneSigmas))
+        #expect(graph.node("sig2")?.inputs["sigmas"] == .text(ForgeModel.stageTwoSigmas))
+        #expect(graph.node("guider1")?.inputs["video_cfg"] == .decimal(1.0))
+        #expect(graph.node("guider2")?.inputs["audio_cfg"] == .decimal(1.0))
+        #expect(graph.node("sampler")?.inputs["sampler_name"] == .text("euler_ancestral"))
+        #expect(graph.node("neg")?.inputs["text"] == .text("blurry"))
+        #expect(!ForgeField.allCases.contains { $0.label == Localized.text("Model") })
+        let stale = Data(#"{"prompt":"a cat","width":1280,"height":704,"seconds":5,"fps":24,"seed":7,"model":"dev"}"#.utf8)
+        let read = try? JSONDecoder().decode(ForgeRecipe.self, from: stale)
+        #expect(read?.prompt == "a cat", "a recipe that named the model there used to be still reads")
     }
 
     @Test("Every frame the socket sends reads as the event it is")
@@ -537,7 +523,7 @@ struct ForgeTests {
         #expect(stopped.sketch == nil)
     }
 
-    @Test("The clock learns seconds per megapixel-frame per model and says about, or nothing")
+    @Test("The clock learns seconds per megapixel-frame and says about, or nothing")
     func clock() {
         var clock = ForgeClock()
         #expect(clock.estimate(recipe) == nil)
@@ -548,7 +534,6 @@ struct ForgeTests {
         let shorter = recipe.with(seconds: 1)
         let ratio = Double(shorter.length) / Double(recipe.length)
         #expect(clock.estimate(shorter).map { abs($0 - 100 * ratio) < 0.01 } == true)
-        #expect(clock.estimate(recipe.with(model: .dev)) == nil)
         clock.learn(recipe, seconds: 200)
         #expect(clock.estimate(recipe).map { abs($0 - 150) < 0.001 } == true)
         clock.learn(recipe, seconds: 0)
@@ -918,9 +903,7 @@ struct ForgeSetupTests {
         #expect(ForgeSurface.preferredWidth > ForgeSurface.minimumWidth)
         #expect(ForgeSurface.preferredHeight > ForgeSurface.minimumHeight)
         #expect(ForgeSurface.preferredWidth > ForgeSurface.preferredHeight)
-        #expect(!ForgeStudio.chips.contains(.model))
         #expect(!ForgeStudio.chips.contains(.prompt))
-        #expect(QuickAskLane.videoChips.contains(.model))
     }
 
     @Test("The renderer row is the setup, not a text field")
@@ -968,7 +951,7 @@ extension DeviceStores {
             #expect(ForgeStore.recipe().prompt.isEmpty)
             let recipe = ForgeRecipe(
                 prompt: "a cat", negative: "blurry", sound: "rain", frame: .kept("a.png [output]"),
-                width: 704, height: 1280, seconds: 8, fps: 30, seed: 12345, model: .dev)
+                width: 704, height: 1280, seconds: 8, fps: 30, seed: 12345)
             ForgeStore.remember(recipe)
             let read = ForgeStore.recipe()
             #expect(read.prompt.isEmpty, "a new box asks for something new")
@@ -979,7 +962,6 @@ extension DeviceStores {
             #expect(read.seconds == 8)
             #expect(read.fps == 30)
             #expect(read.seed == 12345)
-            #expect(read.model == .dev)
             #expect(read.length == 8 * 30 + 1)
             fresh()
         }

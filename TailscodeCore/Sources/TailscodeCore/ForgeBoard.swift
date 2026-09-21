@@ -23,7 +23,6 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
     case size
     case seconds
     case fps
-    case model
     case seed
 
     public var label: String {
@@ -36,7 +35,6 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
         case .size: return Localized.text("Size")
         case .seconds: return Localized.text("Length")
         case .fps: return Localized.text("Smoothness")
-        case .model: return Localized.text("Model")
         case .seed: return Localized.text("Seed")
         }
     }
@@ -52,7 +50,7 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
     /// which is why pressing one of them opens the list rather than walking it blind.
     public var isCyclable: Bool {
         switch self {
-        case .size, .seconds, .fps, .model, .seed: return true
+        case .size, .seconds, .fps, .seed: return true
         case .endpoint, .prompt, .negative, .sound, .frame: return false
         }
     }
@@ -62,7 +60,7 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
     public var isTyped: Bool {
         switch self {
         case .prompt, .negative, .sound: return true
-        case .endpoint, .frame, .size, .seconds, .fps, .model, .seed: return false
+        case .endpoint, .frame, .size, .seconds, .fps, .seed: return false
         }
     }
 
@@ -88,7 +86,6 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
         case .size: return "aspectratio"
         case .seconds: return "timer"
         case .fps: return "speedometer"
-        case .model: return "cpu"
         case .seed: return "dice"
         }
     }
@@ -591,12 +588,6 @@ public struct ForgeBoard: Sendable, Equatable {
                     id: "\(fps)", title: Localized.text("%@ fps", "\(fps)"),
                     detail: "", selected: recipe.fps == fps)
             }
-        case .model:
-            return ForgeModel.allCases.map { model in
-                ForgeChoice(
-                    id: model.rawValue, title: model.label, detail: model.detail,
-                    selected: recipe.model == model)
-            }
         case .seed:
             return [
                 ForgeChoice(
@@ -623,9 +614,6 @@ public struct ForgeBoard: Sendable, Equatable {
         case .fps:
             guard let fps = Int(id) else { return }
             revise(recipe.with(fps: fps))
-        case .model:
-            guard let model = ForgeModel(rawValue: id) else { return }
-            revise(recipe.with(model: model))
         case .seed:
             guard id == "reroll" else { return }
             cycle(.seed)
@@ -658,8 +646,6 @@ public struct ForgeBoard: Sendable, Equatable {
             return Localized.text("%@s", "\(recipe.seconds)")
         case .fps:
             return Localized.text("%@ fps", "\(recipe.fps)")
-        case .model:
-            return recipe.model.label
         case .seed:
             return "\(recipe.seed)"
         }
@@ -674,8 +660,6 @@ public struct ForgeBoard: Sendable, Equatable {
             revise(recipe.with(seconds: Self.next(Self.secondsOptions, after: recipe.seconds)))
         case .fps:
             revise(recipe.with(fps: Self.next(ForgeRecipe.fpsOptions, after: recipe.fps)))
-        case .model:
-            revise(recipe.with(model: Self.next(ForgeModel.allCases, after: recipe.model)))
         case .seed:
             revise(recipe.with(seed: ForgeRecipe.freshSeed(avoiding: recipe.seed)))
         case .endpoint, .prompt, .negative, .sound, .frame:
@@ -784,7 +768,7 @@ public struct ForgeBoard: Sendable, Equatable {
     /// nothing about what is on screen is worse than a row that says it is out of reach.
     private func settingsSection() -> ForgeSection {
         let fields: [ForgeField] = [
-            .prompt, .negative, .sound, .frame, .size, .seconds, .fps, .model, .seed,
+            .prompt, .negative, .sound, .frame, .size, .seconds, .fps, .seed,
         ]
         let rows = fields.map { field in
             ForgeRow(
@@ -798,12 +782,11 @@ public struct ForgeBoard: Sendable, Equatable {
 
     private func hint(for field: ForgeField) -> String? {
         switch field {
-        case .model: return recipe.model.detail
         case .seconds: return Localized.text("%@ frames", "\(recipe.length)")
         case .seed: return Localized.text("The same seed and prompt make the same clip")
         case .sound: return ForgeWords.soundHint
         case .frame: return recipe.frame?.detail ?? ForgeWords.frameHint
-        case .negative: return recipe.model.heedsNegative ? nil : ForgeWords.negativeIgnoredHint
+        case .negative: return ForgeWords.negativeIgnoredHint
         case .endpoint, .prompt, .size, .fps: return nil
         }
     }
@@ -899,7 +882,7 @@ public enum ForgeWords {
         Localized.text("What is heard: rain on a tin roof, a distant train…")
     }
     public static var negativeIgnoredHint: String {
-        Localized.text("%@ runs without guidance and ignores this; %@ steers by it", ForgeModel.distilled.label, ForgeModel.dev.label)
+        Localized.text("%@ runs without guidance, so this changes nothing", ForgeModel.label)
     }
     public static var frameUnset: String { Localized.text("The words alone") }
     public static var frameHint: String {
@@ -972,10 +955,10 @@ public enum ForgeBoardCheck {
             graph.node("noise2")?.inputs["noise_seed"] == .whole(ForgeGraph.refinementSeed),
             "and the refinement pass is fixed, so a seed means one picture")
         expect(
-            graph.node("unet")?.inputs["unet_name"] == .text(ForgeModel.distilled.fileName),
+            graph.node("unet")?.inputs["unet_name"] == .text(ForgeModel.fileName),
             "the chosen model is the one loaded")
         expect(
-            graph.node("sig1")?.inputs["sigmas"] == .text(ForgeModel.distilled.stageOneSigmas),
+            graph.node("sig1")?.inputs["sigmas"] == .text(ForgeModel.stageOneSigmas),
             "and it brings its own schedule")
         expect(graph.node("save")?.inputs["filename_prefix"] == .text(ForgeGraph.prefix), "everything lands in one folder")
         expect(graph.node("split1")?.classType == "LTXVSeparateAVLatent", "the passes are split back into video and audio")

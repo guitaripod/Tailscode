@@ -309,7 +309,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
             window?.makeFirstResponder(avoid)
         case .sound:
             window?.makeFirstResponder(sound)
-        case .frame, .size, .seconds, .fps, .model, .seed:
+        case .frame, .size, .seconds, .fps, .seed:
             return
         }
     }

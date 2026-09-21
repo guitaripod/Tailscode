@@ -158,7 +158,7 @@ final class VideoForgeViewController: UIViewController {
             case .prompt: typed = self.board.recipe.prompt
             case .negative: typed = self.board.recipe.negative
             case .sound: typed = self.board.recipe.sound
-            case .endpoint, .frame, .size, .seconds, .fps, .model, .seed: typed = ""
+            case .endpoint, .frame, .size, .seconds, .fps, .seed: typed = ""
             }
             cell.apply(row, field: field, words: typed, hint: self.board.value(of: field))
             cell.onEdit = { [weak self] text in self?.type(text, into: field) }
@@ -279,9 +279,6 @@ final class VideoForgeViewController: UIViewController {
         if runner.isRendering { items.append(.dismissNote) }
         if let prompt = board.rows.first(where: { $0.kind == .field(.prompt) }) {
             items.append(.row(prompt.id))
-        }
-        if let model = board.rows.first(where: { $0.kind == .field(.model) }) {
-            items.append(.row(model.id))
         }
         items.append(.chips)
         if let avoid = board.rows.first(where: { $0.kind == .field(.negative) }) {
@@ -443,7 +440,7 @@ final class VideoForgeViewController: UIViewController {
         case .prompt: runner.describe(text)
         case .negative: runner.avoid(text)
         case .sound: runner.hear(text)
-        case .endpoint, .frame, .size, .seconds, .fps, .model, .seed: return
+        case .endpoint, .frame, .size, .seconds, .fps, .seed: return
         }
     }
 

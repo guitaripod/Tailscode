@@ -16,7 +16,6 @@ final class ForgeStudioView: NSView {
     private let stage = ForgeHeroStage()
     private let film = ForgeFilmstrip()
     private let renderer = ForgeChipButton()
-    private let model = ForgeChipButton()
     private let chips = ForgeChipWrap()
     private let call = RowKit.ActionButton(title: ForgeBoard().renderCall) {}
     private let status = NSTextField(labelWithString: "")
@@ -47,10 +46,6 @@ final class ForgeStudioView: NSView {
             self?.onClipMenu?(entry, view, point)
         }
         renderer.onPress = { [weak self] in self?.onConfigure?() }
-        model.onPress = { [weak self] in
-            guard let self else { return }
-            self.openMenu(for: .model, from: self.model)
-        }
         chips.onPick = { [weak self] field, id in self?.onPick?(field, id) }
         call.setAction { [weak self] in self?.onCall?() }
 
@@ -98,7 +93,7 @@ final class ForgeStudioView: NSView {
         controls.insertArrangedSubview(field, at: 1)
         controls.insertArrangedSubview(avoid, at: 2)
         controls.insertArrangedSubview(sound, at: 3)
-        controls.insertArrangedSubview(aside, at: 6)
+        controls.insertArrangedSubview(aside, at: 5)
     }
 
     private let controls = FillingStack()
@@ -109,7 +104,6 @@ final class ForgeStudioView: NSView {
             top: MacTheme.Spacing.s, left: MacTheme.Spacing.s, bottom: MacTheme.Spacing.s,
             right: MacTheme.Spacing.m)
         controls.addArrangedSubview(renderer)
-        controls.addArrangedSubview(model)
         controls.addArrangedSubview(chips)
         controls.addArrangedSubview(call)
         controls.widthAnchor.constraint(greaterThanOrEqualToConstant: CGFloat(ForgeStudio.controlWidth))
@@ -131,11 +125,6 @@ final class ForgeStudioView: NSView {
                 title: row.title, detail: row.detail, badge: row.badge,
                 focused: row.id == board.focused?.id)
         }
-        model.render(
-            title: board.value(of: .model), detail: "", badge: nil,
-            focused: board.focused?.kind == .field(.model))
-        model.toolTip = board.recipe.model.detail
-        model.isEnabled = !board.isBusy
         chips.render(board)
         call.title = board.renderCall
         call.contentTintColor = board.isBusy ? MacTheme.Color.danger : MacTheme.Color.accent

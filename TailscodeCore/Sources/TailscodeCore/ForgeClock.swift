@@ -54,10 +54,10 @@ public struct ForgeClock: Sendable, Codable, Equatable {
         Double(recipe.width) * Double(recipe.height) * Double(recipe.length) / 1_000_000
     }
 
-    /// One rate per model. A clip that opens on a picture costs the same sampling as one that
-    /// does not, so the frame is not part of the key.
+    /// One rate for the one model. A clip that opens on a picture costs the same sampling as one
+    /// that does not, so the frame is not part of the key.
     static func key(for recipe: ForgeRecipe) -> String {
-        recipe.model.rawValue
+        ForgeModel.clockKey
     }
 
     /// Seconds as a person would say them: under a minute in seconds, otherwise minutes with the

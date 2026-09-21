@@ -841,11 +841,9 @@ public enum ForgeSurface {
 /// stage is the room, the words are typed once, the settings walk as chips, and what was made is a
 /// strip of clips rather than another list.
 public enum ForgeStudio {
-    /// The walkable settings worn as chips — everything a tap can change except the model. The
-    /// model is a first-class picker of its own, because which transformer runs is a decision a
-    /// person looks for, not one they hunt for in a grid of sizes.
+    /// The walkable settings worn as chips — everything a tap can change.
     public static var chips: [ForgeField] {
-        ForgeField.allCases.filter { $0.isCyclable && $0 != .model }
+        ForgeField.allCases.filter(\.isCyclable)
     }
 
     /// Share of a desktop given to the stage. The rest is the control column.
@@ -1032,10 +1030,7 @@ public enum ForgeSetupCheck {
             ForgeSurface.preferredWidth > ForgeSurface.preferredHeight,
             "the desktop is a landscape studio, not a tall form")
         expect(ForgeStudio.chips.contains(.size) && ForgeStudio.chips.contains(.seed), "the chips are the walkable settings")
-        expect(!ForgeStudio.chips.contains(.model), "the model is a picker, not a chip")
-        expect(
-            ForgeModel.allCases.allSatisfy { $0.label.contains(ForgeModel.family) },
-            "the picker names the transformer, not a nickname")
+        expect(ForgeModel.label.contains(ForgeModel.family), "the model is named by its transformer, not a nickname")
         expect(!ForgeStudio.chips.contains(.prompt), "the prompt is the composer, not a chip")
         expect(!ForgeStudio.chips.contains(.endpoint), "the renderer is a status, not a chip")
         expect(ForgeStudio.stageShare > 0.5 && ForgeStudio.stageShare < 0.75, "the stage is the room")

@@ -1,95 +1,25 @@
 import Foundation
 
-/// Which transformer renders the video. The two on the box are the same 22B model twice — one
-/// distilled to reach a picture in eight sampler steps, one not — and they are not interchangeable
-/// in the one place it matters: how the first pass is driven. The distilled model runs a fixed
-/// eight-sigma schedule at a guidance of one; the undistilled one needs LTX's own shifted
-/// schedule, twenty steps of it, and real guidance against a negative prompt — driven on the
-/// distilled recipe it decodes to fog. So the drive belongs to the model rather than to the
-/// recipe, and picking a model picks the whole of it.
-public enum ForgeModel: String, Sendable, Codable, Hashable, CaseIterable {
-    case distilled
-    case dev
-
-    public var fileName: String {
-        switch self {
-        case .distilled: return "ltx-2.5-22b-distilled-transformer-bf16.safetensors"
-        case .dev: return "ltx-2.5-22b-dev-transformer-bf16.safetensors"
-        }
-    }
-
+/// The one transformer this app renders with, and the drive it was measured with: LTX-2.5's
+/// distilled 22B model on its eight fixed sigmas at a guidance of one, which is the recipe
+/// Lightricks ships for 2.5 and the only one verified end to end on the box. The undistilled
+/// checkpoint is the training base for LoRAs and fine-tunes; driven directly it decodes to fog,
+/// and its own pipeline needs a distilled refinement LoRA that does not exist for 2.5, so it is
+/// not offered.
+public enum ForgeModel {
+    public static let fileName = "ltx-2.5-22b-distilled-transformer-bf16.safetensors"
     public static var family: String { "LTX-2.5" }
-
-    public var label: String {
-        switch self {
-        case .distilled: return Localized.text("%@ Fast", Self.family)
-        case .dev: return Localized.text("%@ Fine", Self.family)
-        }
-    }
-
-    public var detail: String {
-        switch self {
-        case .distilled: return Localized.text("Eight steps, about twenty seconds a clip")
-        case .dev: return Localized.text("Twenty guided steps, the avoid list counts, several times the wait")
-        }
-    }
-
-    /// How the first pass is scheduled: the distilled model's eight measured sigmas, or LTX's own
-    /// shifted scheduler for the undistilled one, as the reference graphs drive them.
-    public enum Schedule: Sendable, Equatable {
-        case fixed(String)
-        case shifted(steps: Int, maxShift: Double, baseShift: Double, stretch: Bool, terminal: Double)
-    }
-
-    /// The measured schedule for the distilled model. The dev numbers are LTX's reference
-    /// scheduler settings, verified on the box on 2026-09-22 against the fog the distilled
-    /// schedule made of the same model.
-    public var stageOneSchedule: Schedule {
-        switch self {
-        case .distilled:
-            return .fixed("1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0")
-        case .dev:
-            return .shifted(steps: 20, maxShift: 2.05, baseShift: 0.95, stretch: true, terminal: 0.1)
-        }
-    }
-
-    /// The distilled model's first-pass sigmas as text, which is what the graph and the checks
-    /// name; the dev model has none, its schedule being computed on the machine.
-    public var stageOneSigmas: String {
-        if case .fixed(let sigmas) = stageOneSchedule { return sigmas }
-        return ""
-    }
-
-    public var stageTwoSigmas: String {
-        switch self {
-        case .distilled: return "0.85, 0.7250, 0.4219, 0.0"
-        case .dev: return "0.909375, 0.725, 0.421875, 0.0"
-        }
-    }
-
-    /// Guidance on the first pass. One for the distilled model, which was trained to need none;
-    /// three for the undistilled one, which is where the negative prompt starts to mean anything.
-    public var guidance: Double {
-        switch self {
-        case .distilled: return 1.0
-        case .dev: return 3.0
-        }
-    }
-
-    public var sampler: String {
-        switch self {
-        case .distilled: return "euler_ancestral"
-        case .dev: return "euler"
-        }
-    }
-
-    /// Whether the avoid list reaches the render. At a guidance of one a negative prompt changes
-    /// nothing, so the distilled model ignores it and the surface says so.
-    public var heedsNegative: Bool { guidance > 1 }
-
-    /// What the undistilled model is told to avoid when nobody wrote anything: the failure modes
-    /// guidance is there to steer away from.
-    public static let defaultNegative = "blurry, distorted, low quality, jittery, watermark, text"
+    public static var label: String { Localized.text("%@ Fast", family) }
+    public static var detail: String { Localized.text("Eight steps, about twenty seconds a clip") }
+    /// The measured first-pass schedule, verified end to end on the box.
+    public static let stageOneSigmas = "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    public static let stageTwoSigmas = "0.85, 0.7250, 0.4219, 0.0"
+    /// The distilled model was trained to need no guidance, so a negative prompt changes nothing
+    /// and the avoid row says so.
+    public static let guidance = 1.0
+    public static let sampler = "euler_ancestral"
+    /// The key the clock files its rate under; one model, one rate.
+    public static let clockKey = "distilled"
 }
 
 /// A frame size the renderer will actually take, offered as a short list rather than two number
@@ -216,12 +146,11 @@ public struct ForgeRecipe: Sendable, Codable, Hashable {
     public let seconds: Int
     public let fps: Int
     public var seed: Int
-    public var model: ForgeModel
 
     public init(
         prompt: String = "", negative: String = "", sound: String = "", frame: ForgeFrame? = nil,
         width: Int = ForgeSize.landscape.width, height: Int = ForgeSize.landscape.height,
-        seconds: Int = 5, fps: Int = 24, seed: Int = 0, model: ForgeModel = .distilled
+        seconds: Int = 5, fps: Int = 24, seed: Int = 0
     ) {
         self.prompt = prompt
         self.negative = negative
@@ -232,14 +161,14 @@ public struct ForgeRecipe: Sendable, Codable, Hashable {
         self.seconds = min(max(seconds, ForgeRecipe.secondsRange.lowerBound), ForgeRecipe.secondsRange.upperBound)
         self.fps = ForgeRecipe.fpsOptions.contains(fps) ? fps : 24
         self.seed = max(0, seed)
-        self.model = model
     }
 
     private enum CodingKeys: String, CodingKey {
-        case prompt, negative, sound, frame, width, height, seconds, fps, seed, model
+        case prompt, negative, sound, frame, width, height, seconds, fps, seed
     }
 
-    /// A recipe written before the sound and the first frame existed still reads.
+    /// A recipe written before the sound and the first frame existed still reads, and one that
+    /// named a model — there used to be two — reads as the one there is.
     public init(from decoder: Decoder) throws {
         let box = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
@@ -251,8 +180,7 @@ public struct ForgeRecipe: Sendable, Codable, Hashable {
             height: try box.decodeIfPresent(Int.self, forKey: .height) ?? ForgeSize.landscape.height,
             seconds: try box.decodeIfPresent(Int.self, forKey: .seconds) ?? 5,
             fps: try box.decodeIfPresent(Int.self, forKey: .fps) ?? 24,
-            seed: try box.decodeIfPresent(Int.self, forKey: .seed) ?? 0,
-            model: try box.decodeIfPresent(ForgeModel.self, forKey: .model) ?? .distilled)
+            seed: try box.decodeIfPresent(Int.self, forKey: .seed) ?? 0)
     }
 
     /// The sentence the verified image-to-video graph opens its prompt with. The model is told
@@ -263,15 +191,6 @@ public struct ForgeRecipe: Sendable, Codable, Hashable {
     /// What the text encoder is actually given: the opening line when the clip starts from a
     /// picture, the words, then the sound as its own closing sentence. One reader so the graph,
     /// the tests and the helper's own instructions all mean the same paragraph.
-    /// What the negative encoder is given: the person's avoid list, or — for the model that
-    /// actually steers by it — the default one when the list is empty. The distilled model runs at
-    /// a guidance of one, where nothing here matters, and is given the words as typed.
-    public var renderedNegative: String {
-        let words = negative.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard words.isEmpty, model.heedsNegative else { return words }
-        return ForgeModel.defaultNegative
-    }
-
     public var renderedPrompt: String {
         var parts: [String] = []
         if frame != nil { parts.append(Self.openingLine) }
@@ -304,8 +223,7 @@ public struct ForgeRecipe: Sendable, Codable, Hashable {
     /// One sentence so three clients cannot each invent their own.
     public var summary: String {
         let base = Localized.text(
-            "%@ · %@s · %@fps · %@ · seed %@", size.label, "\(seconds)", "\(fps)",
-            model.label.lowercased(), "\(seed)")
+            "%@ · %@s · %@fps · seed %@", size.label, "\(seconds)", "\(fps)", "\(seed)")
         guard let frame else { return base }
         return base + " · " + Localized.text("from %@", frame.label)
     }
@@ -324,20 +242,18 @@ public struct ForgeRecipe: Sendable, Codable, Hashable {
 
     public func with(fps: Int) -> ForgeRecipe { copy(fps: fps) }
 
-    public func with(model: ForgeModel) -> ForgeRecipe { copy(model: model) }
-
     public func with(seed: Int) -> ForgeRecipe { copy(seed: seed) }
 
     private func copy(
         prompt: String? = nil, negative: String? = nil, sound: String? = nil,
         frame: ForgeFrame?? = nil, width: Int? = nil, height: Int? = nil, seconds: Int? = nil,
-        fps: Int? = nil, seed: Int? = nil, model: ForgeModel? = nil
+        fps: Int? = nil, seed: Int? = nil
     ) -> ForgeRecipe {
         ForgeRecipe(
             prompt: prompt ?? self.prompt, negative: negative ?? self.negative,
             sound: sound ?? self.sound, frame: frame ?? self.frame, width: width ?? self.width,
             height: height ?? self.height, seconds: seconds ?? self.seconds, fps: fps ?? self.fps,
-            seed: seed ?? self.seed, model: model ?? self.model)
+            seed: seed ?? self.seed)
     }
 
     /// A seed small enough to read out loud and retype. The point of showing a seed at all is that
@@ -429,7 +345,6 @@ enum ForgeClass {
         "SamplerCustomAdvanced": 2,
         "LTXVSeparateAVLatent": 2,
         "LTXVLatentUpsampler": 1,
-        "LTXVScheduler": 1,
         "VAEDecodeTiled": 1,
         "LTXVAudioVAEDecode": 1,
         "CreateVideo": 1,
@@ -562,7 +477,7 @@ public struct ForgeGraph: Sendable, Equatable {
             ForgeNode(
                 key: "unet", classType: "UNETLoader",
                 inputs: [
-                    "unet_name": .text(recipe.model.fileName), "weight_dtype": .text("default"),
+                    "unet_name": .text(ForgeModel.fileName), "weight_dtype": .text("default"),
                 ]),
             ForgeNode(
                 key: "clip", classType: "CLIPLoader",
@@ -581,7 +496,7 @@ public struct ForgeGraph: Sendable, Equatable {
                 inputs: ["text": .text(recipe.renderedPrompt), "clip": .link("clip", 0)]),
             ForgeNode(
                 key: "neg", classType: "CLIPTextEncode",
-                inputs: ["text": .text(recipe.renderedNegative), "clip": .link("clip", 0)]),
+                inputs: ["text": .text(recipe.negative), "clip": .link("clip", 0)]),
             ForgeNode(
                 key: "cond", classType: "LTXVConditioning",
                 inputs: [
@@ -613,14 +528,16 @@ public struct ForgeGraph: Sendable, Equatable {
                 inputs: ["noise_seed": .whole(recipe.seed)]),
             ForgeNode(
                 key: "sampler", classType: "KSamplerSelect",
-                inputs: ["sampler_name": .text(recipe.model.sampler)]),
-            scheduleNode(recipe.model),
+                inputs: ["sampler_name": .text(ForgeModel.sampler)]),
+            ForgeNode(
+                key: "sig1", classType: "ManualSigmas",
+                inputs: ["sigmas": .text(ForgeModel.stageOneSigmas)]),
             ForgeNode(
                 key: "guider1", classType: "LTXVDualCFGGuider",
                 inputs: [
                     "model": .link("unet", 0), "positive": .link("cond", 0),
-                    "negative": .link("cond", 1), "video_cfg": .decimal(recipe.model.guidance),
-                    "audio_cfg": .decimal(recipe.model.guidance),
+                    "negative": .link("cond", 1), "video_cfg": .decimal(ForgeModel.guidance),
+                    "audio_cfg": .decimal(ForgeModel.guidance),
                 ]),
             ForgeNode(
                 key: "pass1", classType: "SamplerCustomAdvanced",
@@ -651,7 +568,7 @@ public struct ForgeGraph: Sendable, Equatable {
                 inputs: ["noise_seed": .whole(refinementSeed)]),
             ForgeNode(
                 key: "sig2", classType: "ManualSigmas",
-                inputs: ["sigmas": .text(recipe.model.stageTwoSigmas)]),
+                inputs: ["sigmas": .text(ForgeModel.stageTwoSigmas)]),
             ForgeNode(
                 key: "guider2", classType: "LTXVDualCFGGuider",
                 inputs: [
@@ -693,23 +610,6 @@ public struct ForgeGraph: Sendable, Equatable {
                     "format": .text("auto"), "codec": .text("auto"),
                 ]),
         ]
-    }
-
-    /// The first pass's sigmas: the distilled model's eight fixed ones, or LTX's own scheduler
-    /// shifted against the latent's size for the undistilled one.
-    private static func scheduleNode(_ model: ForgeModel) -> ForgeNode {
-        switch model.stageOneSchedule {
-        case .fixed(let sigmas):
-            return ForgeNode(key: "sig1", classType: "ManualSigmas", inputs: ["sigmas": .text(sigmas)])
-        case .shifted(let steps, let maxShift, let baseShift, let stretch, let terminal):
-            return ForgeNode(
-                key: "sig1", classType: "LTXVScheduler",
-                inputs: [
-                    "steps": .whole(steps), "max_shift": .decimal(maxShift),
-                    "base_shift": .decimal(baseShift), "stretch": .flag(stretch),
-                    "terminal": .decimal(terminal), "latent": .link("lat_v", 0),
-                ])
-        }
     }
 
     /// The nodes a clip that opens on a picture needs, as the verified image-to-video graph has
