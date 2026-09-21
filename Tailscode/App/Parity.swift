@@ -123,6 +123,8 @@ enum ParityManifest {
         case .videoSlot: return .notApplicable("no tiling on a phone; a slot is a pane among panes, and the same reason splitPanes is not applicable applies to what a pane could hold")
         case .imageLane: return .implemented("ImageStudioViewController")
         case .imageLibrary: return .implemented("ImageLibrary")
+        case .imagePromptHelper: return .implemented("helperMenu")
+        case .imageLivePreview: return .implemented("sketch")
         case .watchDirectory: return .notApplicable("the board is what an empty video slot shows instead of a text box, and a phone has no slot to show it in; a full-screen browser of what is on would be a different app, not this capability")
         case .watchAccounts: return .notApplicable("nothing on a phone reads a follow list — there is no board and no slot to put one in, so an account here would sign in to feed a surface that does not exist")
         case .splitPanes: return .notApplicable("one conversation fills a phone; a tiling tree presumes a desktop's width and the OS owns window arrangement")

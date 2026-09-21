@@ -165,4 +165,20 @@ final class ImageWindow: @unchecked Sendable {
     func driverType(_ text: String) { pane.driverType(text) }
 
     func driverSubmit() { pane.driverSubmit() }
+
+    func driverEnhance() { pane.driverEnhance() }
+
+    func driverUseRewrite() { pane.driverUseRewrite() }
+
+    /// One line for the headless driver: the rewrite card as it stands.
+    var rewriteSummary: String {
+        guard let draft = pane.studio.draft else { return "none" }
+        let phase: String
+        switch draft.phase {
+        case .writing: phase = "writing"
+        case .landed: phase = "landed"
+        case .failed(let reason): phase = "failed(\(reason))"
+        }
+        return "\(phase) helper=\(draft.helper.model)@\(draft.helper.displayHost) words=\(draft.words) aspect=\(draft.aspect?.rawValue ?? "-")"
+    }
 }

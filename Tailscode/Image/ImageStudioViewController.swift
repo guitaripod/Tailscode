@@ -414,7 +414,7 @@ final class ImageStudioViewController: UIViewController {
         return ImageStageReading(
             slot: slot, exhibit: exhibit, image: image, placeholder: placeholder, ratio: ratio,
             caption: caption, startedAt: studio.startedAt, progress: studio.progress,
-            shelfHasPictures: !library.isEmpty)
+            sketch: studio.sketch, shelfHasPictures: !library.isEmpty)
     }
 
     private func fetchOriginal(of item: ImageGenLibraryItem) {
@@ -456,7 +456,7 @@ final class ImageStudioViewController: UIViewController {
         guard let path = dataSource.indexPath(for: .stage),
             let cell = collectionView.cellForItem(at: path) as? ImageStageCell
         else { return }
-        cell.applyProgress(studio.progress, startedAt: studio.startedAt)
+        cell.applyProgress(studio.progress, startedAt: studio.startedAt, sketch: studio.sketch)
     }
 
     @objc private func libraryDidChange() {
@@ -682,7 +682,9 @@ final class ImageStudioViewController: UIViewController {
         return button
     }
 
-    /// Which machine and which model, filled from a real answer rather than a guess about ports.
+    /// Which machine and which model: every door that answered, grouped by machine, each model
+    /// under the name its server gives it with the current one marked and the loaded ones
+    /// saying so. Filled from a real survey rather than a guess about ports.
     private func helperMenu() -> UIMenu {
         let current = studio.helper
         let models = UIDeferredMenuElement.uncached { [weak self] complete in
@@ -690,45 +692,65 @@ final class ImageStudioViewController: UIViewController {
                 complete([])
                 return
             }
-            self.studio.helperModels { names in
-                let address = self.studio.helper?.address
-                let rows = names.prefix(12).map { name in
-                    UIAction(
-                        title: name, subtitle: address,
-                        state: name == self.studio.helper?.model ? .on : .off
-                    ) { [weak self] _ in
-                        guard let self, let address = self.studio.helper?.address else { return }
-                        self.studio.setHelper(ImageGenHelper(address: address, model: name))
-                        self.updateChips()
-                    }
+            let build: @MainActor @Sendable ([ImageGenHelperServer]) -> Void = { [weak self] servers in
+                guard let self else {
+                    complete([])
+                    return
                 }
-                complete(
-                    rows.isEmpty
-                        ? [
-                            UIAction(
-                                title: ImageGenWords.enhanceMissing,
-                                attributes: .disabled
-                            ) { _ in }
-                        ] : Array(rows))
+                var groups: [UIMenuElement] = servers.map { server in
+                    UIMenu(
+                        title: server.heading, options: .displayInline,
+                        children: server.models.prefix(24).map { model in
+                            let on = self.studio.helper?.address == server.address
+                                && self.studio.helper?.model == model.id
+                            return UIAction(
+                                title: model.label, subtitle: model.detail, state: on ? .on : .off
+                            ) { [weak self] _ in
+                                guard let self else { return }
+                                self.studio.setHelper(
+                                    ImageGenHelper(address: server.address, model: model))
+                                self.updateChips()
+                            }
+                        })
+                }
+                if groups.isEmpty {
+                    groups.append(
+                        UIAction(
+                            title: ImageGenRewriteWords.noneFoundTitle,
+                            subtitle: ImageGenRewriteWords.noneFoundHint, attributes: .disabled
+                        ) { _ in })
+                }
+                complete(groups)
+            }
+            if self.studio.helperServers.isEmpty {
+                self.studio.surveyHelpers(completion: build)
+            } else {
+                build(self.studio.helperServers)
             }
         }
-        var children: [UIMenuElement] = [UIMenu(title: "", options: .displayInline, children: [models])]
+        var children: [UIMenuElement] = [models]
+        children.append(
+            UIAction(
+                title: ImageGenRewriteWords.lookAgainTitle,
+                subtitle: ImageGenRewriteWords.lookAgainHint,
+                image: UIImage(systemName: "arrow.clockwise")
+            ) { [weak self] _ in
+                self?.studio.surveyHelpers()
+            })
         if let current {
             children.append(
                 UIAction(
                     title: current.enabled
-                        ? ImageGenWords.helperOffTitle : ImageGenWords.enhanceTitle,
+                        ? ImageGenRewriteWords.offTitle : ImageGenRewriteWords.onTitle,
                     subtitle: current.enabled ? ImageGenWords.helperOffHint : current.displayHost,
                     image: UIImage(systemName: current.enabled ? "wand.and.stars.inverse" : "wand.and.stars")
                 ) { [weak self] _ in
                     guard let self else { return }
-                    var flipped = current
-                    flipped.enabled.toggle()
-                    self.studio.setHelper(flipped)
+                    self.studio.toggleHelper()
                     self.updateChips()
                 })
         }
-        return UIMenu(title: ImageGenWords.helperTitle, children: children)
+        return UIMenu(title: ImageGenRewriteWords.chooseTitle, children: children)
     }
 
     /// Press once to have the brief written out, press again to get your own sentence back.
@@ -747,8 +769,8 @@ final class ImageStudioViewController: UIViewController {
             switch result {
             case .success(let written):
                 self.beforeEnhance = brief
-                if let aspect = written.1, self.slot.applies(.aspect) {
-                    self.studio.choose(aspect: aspect)
+                if let aspect = written.1, !self.studio.aspectChosen, self.slot.applies(.aspect) {
+                    self.studio.follow(aspect: aspect)
                 }
                 self.setPrompt(written.0)
                 self.studio.rememberDraft(written.0)

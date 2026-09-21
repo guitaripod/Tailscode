@@ -220,6 +220,8 @@ public enum ImageGenBrief {
 
         Run about twenty sentences and four to five hundred words whether the request was three         words or three hundred. Present tense, third person, declarative. Never write "you",         "create" or "make sure", and never use quality boosters such as "8K", "masterpiece" or         "highly detailed". Name colours with a modifier, give materials rather than only nouns,         enumerate rather than summarise, and hedge what is genuinely ambiguous with "appears to         be" or "likely". People get their observable surface and a life stage rather than an age         in years. Everything must hold together physically. The description is always in English,         except text shown inside the image, which stays in its own script.
 
+        A request that edits a picture names it as <image1>, <image2> and so on: keep those         tokens exactly where the request uses them, describe what changes, and leave what the         request does not mention as it is in the picture.
+
         Choose the aspect ratio from the subject unless the user gave one: 3:2 for horizontal,         2:3 for vertical, 1:1 for a badge, icon, album cover or centred emblem, 16:9 for a wide         cinematic frame, 9:16 for a phone screen or tall banner, 21:9 for an ultra-wide panorama.         Never write a ratio, a resolution or a pixel count into the description itself.
 
         Answer with one strictly valid JSON object on a single line and nothing else:
@@ -231,33 +233,91 @@ public enum ImageGenBrief {
     /// rewriting rules, cut to what fits in one turn: the shape, the length, the register, and
     /// the one-line JSON that comes back so the ratio can be read off it too.
     public static func expansionAsk(_ brief: String) -> String {
-        """
-        Rewrite this image request as one English paragraph describing the finished image, as if \
-        you were looking at it.
+        expansionAsk(brief, context: ImageGenRewriteContext())
+    }
 
-        Rules: open by naming the medium, the style and the subject. Keep every string of text, \
-        every count, every stated colour and position the request fixed, and copy quoted text \
-        character for character. Place elements with eight to fourteen positional phrases that \
-        reach the corners and edges. Put each piece of legible text in straight double quotes \
-        where it sits. Give the lighting its own sentence. Close with one sentence on balance, \
-        palette and mood. Around twenty sentences, four to five hundred words, present tense, \
-        third person, observing rather than instructing. No quality boosters, no "8K", no \
-        "masterpiece". Hedge what is genuinely ambiguous.
+    /// The same ask with everything the helper is otherwise blind to: which engine paints, the
+    /// shape already chosen, the pictures the words address, what to keep out of the frame, and
+    /// — on a second pass — the paragraph to revise and what to change about it.
+    public static func expansionAsk(_ brief: String, context: ImageGenRewriteContext) -> String {
+        var lines: [String] = []
+        if context.isRevision, let instruction = context.instruction, let previous = context.previous {
+            lines.append(
+                "Revise the description below as instructed. Keep everything the instruction "
+                    + "does not touch — the same subject, the same placements, the same quoted text "
+                    + "— and change only what it asks for.")
+            lines.append("")
+            lines.append("Instruction: \(instruction.trimmingCharacters(in: .whitespacesAndNewlines))")
+            lines.append("")
+            lines.append("Previous description: \(previous.trimmingCharacters(in: .whitespacesAndNewlines))")
+            lines.append("")
+            lines.append("The original request: \(brief)")
+        } else {
+            lines.append(
+                "Rewrite this image request as one English paragraph describing the finished "
+                    + "image, as if you were looking at it.")
+            lines.append("")
+            lines.append("Rules: open by naming the medium, the style and the subject. Keep every "
+                + "string of text, every count, every stated colour and position the request "
+                + "fixed, and copy quoted text character for character. Place elements with "
+                + "eight to fourteen positional phrases that reach the corners and edges. Put "
+                + "each piece of legible text in straight double quotes where it sits. Give the "
+                + "lighting its own sentence. Close with one sentence on balance, palette and "
+                + "mood. Around twenty sentences, four to five hundred words, present tense, "
+                + "third person, observing rather than instructing. No quality boosters, no "
+                + "\"8K\", no \"masterpiece\". Hedge what is genuinely ambiguous.")
+            lines.append("")
+            lines.append("The request: \(brief)")
+        }
+        lines.append("")
+        lines.append(contextLines(context).joined(separator: "\n"))
+        lines.append("")
+        lines.append("Answer with one strictly valid JSON object on a single line and nothing else:")
+        lines.append(
+            "{\"rewritten_prompt\": \"<the description>\", \"wh_ratio\": \"<one of 1:1, 3:2, 2:3, 16:9, 9:16, 21:9>\"}")
+        return lines.joined(separator: "\n")
+    }
 
-        Answer with one strictly valid JSON object on a single line and nothing else:
-        {"rewritten_prompt": "<the description>", "wh_ratio": "<one of 1:1, 3:2, 2:3, 16:9, 9:16, 21:9>"}
-
-        The request: \(brief)
-        """
+    /// What the helper is told about the render that the brief itself does not say. Each fact
+    /// is one line, and a fact the studio does not have is left out rather than guessed.
+    static func contextLines(_ context: ImageGenRewriteContext) -> [String] {
+        var lines: [String] = []
+        switch context.engine {
+        case .quality:
+            lines.append("The picture is painted by Qwen Image 2.1, which reads a long description best.")
+        case .fast:
+            lines.append(
+                "The picture is painted by FLUX.2 Klein in four steps: keep the description to "
+                    + "its strongest elements rather than every corner, around two hundred words.")
+        }
+        if context.referenceCount > 0 {
+            let names = (1...context.referenceCount).map { "<image\($0)>" }.joined(separator: ", ")
+            lines.append(
+                context.referenceCount == 1
+                    ? "The words edit a reference picture the request calls <image1>. Keep that token exactly where the request uses it, describe what changes, and leave what the request does not mention as it is in the picture."
+                    : "The words edit \(context.referenceCount) reference pictures the request calls \(names). Keep those tokens exactly where the request uses them, describe what changes, and leave what the request does not mention as it is in the pictures.")
+            lines.append("Answer wh_ratio with the shape the edited picture already has if the request implies one, else \"1:1\".")
+        } else if let aspect = context.aspect {
+            lines.append(
+                "The shape is already chosen: \(aspect.ratioLabel). Compose for it and answer wh_ratio \"\(aspect.ratioLabel)\".")
+        }
+        let avoid = context.negative.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !avoid.isEmpty {
+            lines.append(
+                "Keep out of the frame, and do not mention: \(avoid). These are sent to the painter "
+                    + "separately as things to avoid, so the description simply never contains them.")
+        }
+        return lines
     }
 
     /// Reads back what a model answered the expansion ask with. A model that wrapped the JSON in
     /// prose, or in a fence, is still answering — the object is found rather than demanded.
     public static func readExpansion(_ answer: String) -> (prompt: String, aspect: ImageGenAspect?)? {
-        guard let start = answer.firstIndex(of: "{"), let end = answer.lastIndex(of: "}"),
+        let text = stripThinking(answer)
+        guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}"),
             start < end
         else { return nil }
-        let slice = String(answer[start...end])
+        let slice = String(text[start...end])
         guard let data = slice.data(using: .utf8),
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let prompt = object["rewritten_prompt"] as? String,
@@ -265,6 +325,75 @@ public enum ImageGenBrief {
         else { return nil }
         let ratio = (object["wh_ratio"] as? String).flatMap(aspect(forRatio:))
         return (prompt.trimmingCharacters(in: .whitespacesAndNewlines), ratio)
+    }
+
+    /// The paragraph so far, read out of a JSON object that is still being written. A model
+    /// streams the object a token at a time, so the string behind `rewritten_prompt` is decoded
+    /// up to wherever the stream has reached — escapes and all — and a model that skipped the
+    /// JSON and is writing prose is shown as it writes. Empty while the answer has not reached
+    /// the paragraph yet, which is what a card should show rather than a brace.
+    public static func partialExpansion(_ answer: String) -> String {
+        let text = stripThinking(answer)
+        if let keyRange = text.range(of: "\"rewritten_prompt\"") {
+            var cursor = keyRange.upperBound
+            guard let colon = text[cursor...].firstIndex(of: ":") else { return "" }
+            cursor = text.index(after: colon)
+            guard let quote = text[cursor...].firstIndex(of: "\"") else { return "" }
+            cursor = text.index(after: quote)
+            return decodeJSONString(text[cursor...])
+        }
+        let opening = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if opening.isEmpty { return "" }
+        if opening.hasPrefix("{") || opening.hasPrefix("`") { return "" }
+        let head = opening.prefix(24).lowercased()
+        if head.hasPrefix("json") || head.hasPrefix("here") && head.contains("{") { return "" }
+        return opening
+    }
+
+    /// Decodes the body of a JSON string up to its closing quote or the end of what has arrived.
+    /// A trailing lone backslash is left for the next token to complete.
+    static func decodeJSONString(_ raw: Substring) -> String {
+        var out = ""
+        var iterator = raw.makeIterator()
+        while let character = iterator.next() {
+            if character == "\"" { break }
+            guard character == "\\" else {
+                out.append(character)
+                continue
+            }
+            guard let escaped = iterator.next() else { break }
+            switch escaped {
+            case "n": out.append("\n")
+            case "t": out.append("\t")
+            case "r": out.append("\r")
+            case "b", "f": break
+            case "u":
+                var hex = ""
+                for _ in 0..<4 {
+                    guard let digit = iterator.next() else { return out }
+                    hex.append(digit)
+                }
+                if let code = UInt32(hex, radix: 16), let scalar = Unicode.Scalar(code) {
+                    out.unicodeScalars.append(scalar)
+                }
+            default: out.append(escaped)
+            }
+        }
+        return out
+    }
+
+    /// A model that thinks aloud wraps it in `<think>` tags, closed or — while it is still
+    /// thinking — not. Neither is the paragraph.
+    public static func stripThinking(_ answer: String) -> String {
+        var text = answer
+        while let open = text.range(of: "<think>") {
+            if let close = text.range(of: "</think>", range: open.upperBound..<text.endIndex) {
+                text.removeSubrange(open.lowerBound..<close.upperBound)
+            } else {
+                text.removeSubrange(open.lowerBound..<text.endIndex)
+            }
+        }
+        return text
     }
 
     /// The shape chip that matches a ratio the rewriter chose, when one of them does.

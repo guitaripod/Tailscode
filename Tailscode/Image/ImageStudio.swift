@@ -50,6 +50,9 @@ final class ImageStudio {
     /// says what it is doing; the clock says for how long — neither is invented.
     private(set) var startedAt: Date?
     private(set) var progress: ImageGenProgress?
+    /// The sampler's own sketch of the picture so far, decoded from the frames the machine sends
+    /// after every step. Nil until one lands — a server started without previews sends none.
+    private(set) var sketch: UIImage?
     private(set) var library: ImageLibrary
     /// A kept picture put on the stage by hand. Nil means the stage shows what the session made,
     /// or — with nothing made yet — the newest thing on the machine.
@@ -124,6 +127,7 @@ final class ImageStudio {
 
     func advance(_ field: ImageGenField) {
         slot.advance(field)
+        if field == .aspect { aspectChosen = true }
         remember()
     }
 
@@ -134,6 +138,7 @@ final class ImageStudio {
 
     func choose(aspect: ImageGenAspect) {
         slot.setAspect(aspect)
+        aspectChosen = true
         remember()
     }
 
@@ -153,10 +158,16 @@ final class ImageStudio {
     /// Whether a rewrite is out right now. The chip says so and the composer stays the person's
     /// to edit while it runs.
     private(set) var enhancing = false
+    private let rewriter = ImageGenRewriter()
+
+    /// Whether the shape was picked by hand in this studio's life. A chosen shape is kept by the
+    /// helper; an inherited one is the helper's to improve on.
+    private(set) var aspectChosen = false
 
     /// Rewrites the brief with the helper, or finds one first when none is filed. The answer
     /// carries the paragraph and the shape it asked for; the caller decides what to do with both,
-    /// because the words belong to whoever typed them.
+    /// because the words belong to whoever typed them. The helper is told which engine paints,
+    /// the shape already chosen, the pictures the words address and the avoid list.
     func enhance(
         _ brief: String,
         completion: @escaping @MainActor @Sendable (
@@ -166,43 +177,35 @@ final class ImageStudio {
         guard !enhancing else { return }
         enhancing = true
         announce()
-        let endpoint = slot.endpoint
-        let filed = helper
-        Task.detached { [weak self] in
-            var using = filed
-            if using == nil || using?.enabled == false {
-                if let found = await ImageGenHelperFinder.find(near: endpoint),
-                    let model = ImageGenHelperFinder.preferred(among: found.models)
-                {
-                    using = ImageGenHelper(address: found.address, model: model)
+        let context = slot.rewriteContext(aspectChosen: aspectChosen)
+        rewriter.start(
+            brief: brief, context: context, filed: helper, near: slot.endpoint,
+            onHelper: { found in
+                Task { @MainActor in ImageGenStore.remember(helper: found) }
+            },
+            onChange: { [weak self] draft in
+                guard let draft else {
+                    Task { @MainActor [weak self] in
+                        self?.finishEnhancing()
+                        completion(.failure(.unreachable))
+                    }
+                    return
                 }
-            }
-            guard let using, using.enabled else {
-                await MainActor.run { [weak self] in
-                    self?.finishEnhancing()
-                    completion(.failure(.unreachable))
+                switch draft.phase {
+                case .writing:
+                    return
+                case .landed:
+                    Task { @MainActor [weak self] in
+                        self?.finishEnhancing()
+                        completion(.success((draft.written, draft.aspect)))
+                    }
+                case .failed(let reason):
+                    Task { @MainActor [weak self] in
+                        self?.finishEnhancing()
+                        completion(.failure(.refused(reason)))
+                    }
                 }
-                return
-            }
-            ImageGenStore.remember(helper: using)
-            do {
-                let written = try await ImageGenEnhancer(helper: using).enhance(brief)
-                await MainActor.run { [weak self] in
-                    self?.finishEnhancing()
-                    completion(.success(written))
-                }
-            } catch let failure as ImageGenEnhancer.Failure {
-                await MainActor.run { [weak self] in
-                    self?.finishEnhancing()
-                    completion(.failure(failure))
-                }
-            } catch {
-                await MainActor.run { [weak self] in
-                    self?.finishEnhancing()
-                    completion(.failure(.unreachable))
-                }
-            }
-        }
+            })
     }
 
     private func finishEnhancing() {
@@ -210,26 +213,53 @@ final class ImageStudio {
         announce()
     }
 
-    /// Which models the helper's machine offers, for the menu that picks one.
-    func helperModels(completion: @escaping @MainActor @Sendable ([String]) -> Void) {
+    /// Every machine that answered the last survey and what each serves, for the picker.
+    private(set) var helperServers: [ImageGenHelperServer] = []
+    private(set) var surveying = false
+
+    /// Asks every door near the painter and on this device what it serves, and files the best
+    /// writer unless a person already chose one.
+    func surveyHelpers(completion: (@MainActor @Sendable ([ImageGenHelperServer]) -> Void)? = nil) {
         let endpoint = slot.endpoint
-        let filed = helper
-        Task.detached {
-            if let filed {
-                let models = await ImageGenHelperFinder.models(at: filed.address)
-                if !models.isEmpty {
-                    await MainActor.run { completion(models) }
-                    return
+        surveying = true
+        Task.detached { [weak self] in
+            let servers = await ImageGenHelperFinder.survey(near: endpoint)
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.surveying = false
+                self.helperServers = servers
+                if let found = ImageGenHelperFinder.preferred(across: servers),
+                    self.helper?.yields(to: found) ?? true
+                {
+                    ImageGenStore.remember(helper: found)
                 }
+                self.announce()
+                completion?(servers)
             }
-            let found = await ImageGenHelperFinder.find(near: endpoint)
-            await MainActor.run { completion(found?.models ?? []) }
         }
     }
 
+    /// Files the helper a person picked from the list, which is kept over anything found later.
     func setHelper(_ helper: ImageGenHelper?) {
-        ImageGenStore.remember(helper: helper)
+        var chosen = helper
+        chosen?.chosenByHand = true
+        ImageGenStore.remember(helper: chosen)
         announce()
+    }
+
+    /// Switches the filed helper off or on without forgetting it.
+    func toggleHelper() {
+        guard var current = helper else { return }
+        current.enabled.toggle()
+        ImageGenStore.remember(helper: current)
+        announce()
+    }
+
+    /// The shape the helper answered with: followed, but never counted as a choice by hand.
+    func follow(aspect: ImageGenAspect) {
+        guard aspect != slot.aspect else { return }
+        slot.setAspect(aspect)
+        remember()
     }
 
     func setNegative(_ words: String) {
@@ -355,6 +385,7 @@ final class ImageStudio {
         slot.fail(prompt: prompt, reason: ImageGenWords.stoppedNotice)
         startedAt = nil
         progress = nil
+        sketch = nil
         announce()
     }
 
@@ -403,10 +434,15 @@ final class ImageStudio {
         AppLogger.session.info(
             "image render queued on \(endpoint.displayHost) engine=\(recipe.engine.rawValue) mode=\(recipe.mode.rawValue) aspect=\(recipe.aspect.rawValue) size=\(recipe.size.rawValue) steps=\(recipe.steps) references=\(recipe.references.count) cutout=\(recipe.cutout)"
         )
+        sketch = nil
         fresh.run(
             references: slot.references,
             progress: { [weak self] report in
                 Task { @MainActor [weak self] in self?.progressed(report, from: fresh) }
+            },
+            preview: { [weak self] frame in
+                let image = UIImage(data: frame.bytes)
+                Task { @MainActor [weak self] in self?.sketched(image, from: fresh) }
             }
         ) { [weak self] outcome in
             Task { @MainActor [weak self] in self?.finished(outcome, from: fresh) }
@@ -416,6 +452,12 @@ final class ImageStudio {
     private func progressed(_ report: ImageGenProgress, from runner: ImageGenRunner) {
         guard runner === self.runner else { return }
         progress = report
+        NotificationCenter.default.post(name: ImageStudio.progressDidChange, object: nil)
+    }
+
+    private func sketched(_ image: UIImage?, from runner: ImageGenRunner) {
+        guard runner === self.runner, let image else { return }
+        sketch = image
         NotificationCenter.default.post(name: ImageStudio.progressDidChange, object: nil)
     }
 
@@ -447,6 +489,7 @@ final class ImageStudio {
             self.runner = nil
             startedAt = nil
             progress = nil
+            sketch = nil
         }
         announce()
     }

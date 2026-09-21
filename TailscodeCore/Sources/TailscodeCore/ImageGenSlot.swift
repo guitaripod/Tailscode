@@ -562,6 +562,18 @@ public struct ImageGenSlot: Sendable, Equatable {
             references: references.compactMap { $0.machineName ?? $0.name }, cutout: cutout)
     }
 
+    /// What the prompt helper is told beside the brief. `aspectChosen` says whether the shape
+    /// was picked by hand this session — a chosen shape is kept, an inherited one is the helper's
+    /// to improve on; an edit takes its shape from the picture either way.
+    public func rewriteContext(
+        aspectChosen: Bool, instruction: String? = nil, previous: String? = nil
+    ) -> ImageGenRewriteContext {
+        ImageGenRewriteContext(
+            engine: engine, aspect: aspectChosen && aspectApplies ? aspect : nil,
+            referenceCount: references.count, negative: negativeApplies ? negative : "",
+            instruction: instruction, previous: previous)
+    }
+
     /// The picture the stage is showing: the one chosen, else the newest there is.
     public var onStage: ImageGenPicture? {
         if let selected, let match = pictures.first(where: { $0.path == selected }) { return match }
@@ -1118,6 +1130,9 @@ public enum ImageGenWords {
     public static var enhanceLookingHint: String {
         Localized.text("Looks for Ollama, llama-swap, llama.cpp or LM Studio on the machine")
     }
+
+    /// The one word beside a helper's name when it is filed but switched off.
+    public static var offMark: String { Localized.text("off") }
 
     public static var enhanceMissing: String {
         Localized.text("No prompt helper found. Anything OpenAI-shaped will do")

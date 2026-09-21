@@ -175,6 +175,7 @@ cmd_start() {
     [ -n "${TAILSCODE_TRACE:-}" ] && HARNESS_ENV+=(TAILSCODE_TRACE="$TAILSCODE_TRACE")
     [ -n "${TAILSCODE_ORB:-}" ] && HARNESS_ENV+=(TAILSCODE_ORB="$TAILSCODE_ORB")
     [ -n "${TAILSCODE_STATS:-}" ] && HARNESS_ENV+=(TAILSCODE_STATS="$TAILSCODE_STATS")
+    [ -n "${TAILSCODE_IMAGE_ENDPOINT:-}" ] && HARNESS_ENV+=(TAILSCODE_IMAGE_ENDPOINT="$TAILSCODE_IMAGE_ENDPOINT")
 
     "${HARNESS_ENV[@]}" "$(binary "$flavour")" ${extra[@]+"${extra[@]}"} >"$LOG" 2>&1 &
     echo $! >"$STATE/app.pid"

@@ -1041,6 +1041,42 @@ enum MatrixTheme {
             padding: 9px 12px;
             margin-top: 4px;
         }
+        .draw-rewrite {
+            background-image: linear-gradient(to bottom, alpha(\(accent), 0.10), alpha(\(text), 0.03));
+            border: 1px solid alpha(\(accent), 0.30);
+            border-radius: 12px;
+            padding: 9px 12px;
+            margin-top: 4px;
+        }
+        .draw-rewrite-head { color: \(text); \(t(.panelDetail)) }
+        .draw-rewrite-head.danger { color: \(danger); }
+        .draw-rewrite-scroller { border-radius: 9px; }
+        .draw-rewrite-body, .draw-rewrite-body text {
+            background-color: alpha(\(canvas), 0.55);
+            color: \(text);
+            \(t(.panelDetail))
+        }
+        menubutton.draw-link, menubutton.draw-link > button {
+            color: \(accent);
+            background: none;
+            background-image: none;
+            border: none;
+            box-shadow: none;
+            padding: 0 2px;
+            min-height: 0;
+            \(t(.hint))
+        }
+        menubutton.draw-link > button:hover { text-decoration-line: underline; }
+        menubutton.draw-helper-link, menubutton.draw-helper-link > button { color: \(textDim); }
+        menubutton.draw-helper-link > button:hover { color: \(accent); }
+        .draw-action-lead {
+            color: \(text);
+            border-color: alpha(\(accent), 0.55);
+            background-image: linear-gradient(to bottom, alpha(\(accent), 0.26), alpha(\(accent), 0.12));
+        }
+        .draw-sketch { border-radius: 10px; }
+        .menu-heading { color: \(textDim); \(t(.badge)) opacity: 0.75; }
+        .menu-row-on { background-color: alpha(\(accent), 0.10); }
         .draw-hint-title { color: \(text); \(t(.panelDetail)) }
         .draw-hint-body { color: \(textDim); \(t(.hint)) }
         .draw-example {

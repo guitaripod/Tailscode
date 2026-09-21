@@ -38,10 +38,31 @@ final class DrawPane: @unchecked Sendable {
     private let seedChip: UnsafeMutablePointer<GtkWidget>
     private let moreChip: UnsafeMutablePointer<GtkWidget>
     private let enhanceChip: UnsafeMutablePointer<GtkWidget>
-    private let helperChip: UnsafeMutablePointer<GtkWidget>
+    /// Which model writes, on which machine: every door that answered, grouped by machine, with
+    /// the current one marked. Sits beside Enhance in both shapes of this surface.
+    private let helperMenu: UnsafeMutablePointer<GtkWidget>
     /// The words as they were before a rewrite, kept for exactly one undo — a helper that
     /// misread the brief must never cost the sentence a person actually wrote.
     private var beforeEnhance: String?
+    /// The rewrite card: who is writing, the paragraph as it lands, and the three verbs.
+    private let rewriteBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+    private let rewriteHead = Gtk.label("", css: "draw-rewrite-head", wrap: true, selectable: false)
+    private let rewriteBody = gtk_text_view_new()!
+    private let rewriteInstruction = gtk_entry_new()!
+    private let rewriteVerbs = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+    private let rewriteUse: UnsafeMutablePointer<GtkWidget>
+    private let rewriteKeep: UnsafeMutablePointer<GtkWidget>
+    private let rewriteAgain: UnsafeMutablePointer<GtkWidget>
+    private let rewriteStop: UnsafeMutablePointer<GtkWidget>
+    private var rewriteShown = ""
+    private var rewriteWasWriting = false
+    /// The sketch on the stage while a render runs, swapped in place for each frame the machine
+    /// sends rather than rebuilt: a frame changes one paintable, never the layout around it.
+    private var sketchPicture: UnsafeMutablePointer<GtkWidget>?
+    private var sketchObserver: NSObjectProtocol?
+    private var rewriteObserver: NSObjectProtocol?
+    private var progressObserver: NSObjectProtocol?
+    private var surveyShown: Date?
     private let referenceChip: UnsafeMutablePointer<GtkWidget>
     private let renderButton: UnsafeMutablePointer<GtkWidget>
     /// The pictures the next render works from, shown as what they are rather than as a count.
@@ -154,55 +175,23 @@ final class DrawPane: @unchecked Sendable {
         moreChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         enhanceChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         let helperHeld = Weak<ImageStudio>(studio)
-        helperChip = Gtk.menuButton("", css: ["draw-chip"]) {
+        helperMenu = Gtk.menuButton("", css: ["draw-chip"]) {
             guard let studio = helperHeld.value else { return [] }
-            var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = []
-            let current = studio.helper
-            for model in studio.knownHelperModels {
-                let address = studio.knownHelperAddress ?? current?.address ?? ""
-                rows.append(
-                    (
-                        title: model, detail: address.isEmpty ? nil : address,
-                        action: {
-                            Gtk.onMain {
-                                guard !address.isEmpty else { return }
-                                studio.setHelper(ImageGenHelper(address: address, model: model))
-                            }
-                        }
-                    ))
-            }
-            if rows.isEmpty {
-                rows.append(
-                    (
-                        title: ImageGenWords.enhanceLookingTitle,
-                        detail: ImageGenWords.enhanceLookingHint,
-                        action: { Gtk.onMain { studio.lookForHelper() } }
-                    ))
-            }
-            if let current {
-                rows.append(
-                    (
-                        title: current.enabled
-                            ? ImageGenWords.helperOffTitle : ImageGenWords.enhanceTitle,
-                        detail: current.enabled ? ImageGenWords.helperOffHint : nil,
-                        action: {
-                            Gtk.onMain {
-                                var flipped = current
-                                flipped.enabled.toggle()
-                                studio.setHelper(flipped)
-                            }
-                        }
-                    ))
-            }
-            return rows
+            return DrawPane.helperSections(studio)
         }
+        rewriteUse = Gtk.button(ImageGenRewriteWords.useTitle, css: ["draw-action", "draw-action-lead"], onClick: {})
+        rewriteKeep = Gtk.button(ImageGenRewriteWords.keepTitle, css: ["draw-action"], onClick: {})
+        rewriteAgain = Gtk.button(ImageGenRewriteWords.againTitle, css: ["draw-action"], onClick: {})
+        rewriteStop = Gtk.button(ImageGenRewriteWords.stopTitle, css: ["draw-action", "danger"], onClick: {})
         referenceChip = Gtk.button("", css: ["draw-chip"], onClick: {})
         renderButton = Gtk.button("", css: ["draw-go"], onClick: {})
+        buildRewriteCard()
         buildRoot()
         render()
         refreshNotice()
         studio.checkMachine()
         studio.library.refresh()
+        if !(studio.helper?.isChosenByHand ?? false) { studio.surveyHelpers() }
         studioObserver = NotificationCenter.default.addObserver(
             forName: ImageStudio.didChange, object: nil, queue: nil
         ) { [weak self] _ in
@@ -210,6 +199,132 @@ final class DrawPane: @unchecked Sendable {
                 self?.render()
                 self?.onChange?()
             }
+        }
+        sketchObserver = NotificationCenter.default.addObserver(
+            forName: ImageStudio.previewDidChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            Gtk.onMain { [weak self] in self?.adoptSketch() }
+        }
+        rewriteObserver = NotificationCenter.default.addObserver(
+            forName: ImageStudio.rewriteDidChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            Gtk.onMain { [weak self] in self?.refreshRewrite() }
+        }
+        progressObserver = NotificationCenter.default.addObserver(
+            forName: ImageStudio.progressDidChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            Gtk.onMain { [weak self] in self?.refreshProgressOnly() }
+        }
+        studio.onNotice = { [weak self] line in
+            Gtk.onMain { [weak self] in self?.onNotice?(line) }
+        }
+    }
+
+    /// The picker's rows: every machine that answered, its models under it with the current one
+    /// marked and the loaded ones saying so; then the look-again row and the off switch. A menu
+    /// opened before any survey starts one, so the first opening is never empty for long.
+    private static func helperSections(_ studio: ImageStudio) -> [Gtk.MenuSection] {
+        let current = studio.helper
+        var sections: [Gtk.MenuSection] = []
+        if studio.helperServers.isEmpty, !studio.surveying { Gtk.onMain { studio.surveyHelpers() } }
+        for server in studio.helperServers {
+            let rows = server.models.map { model in
+                Gtk.MenuRow(
+                    title: model.label, detail: model.detail,
+                    on: current?.address == server.address && current?.model == model.id,
+                    action: {
+                        Gtk.onMain {
+                            studio.setHelper(ImageGenHelper(address: server.address, model: model))
+                        }
+                    })
+            }
+            sections.append(Gtk.MenuSection(heading: server.heading, rows: rows))
+        }
+        var tail: [Gtk.MenuRow] = []
+        if studio.surveying {
+            tail.append(Gtk.MenuRow(title: ImageGenRewriteWords.lookingTitle, detail: nil))
+        } else if studio.helperServers.isEmpty {
+            tail.append(
+                Gtk.MenuRow(
+                    title: ImageGenRewriteWords.noneFoundTitle,
+                    detail: ImageGenRewriteWords.noneFoundHint))
+            tail.append(
+                Gtk.MenuRow(
+                    title: ImageGenRewriteWords.lookAgainTitle,
+                    detail: ImageGenRewriteWords.lookAgainHint,
+                    action: { Gtk.onMain { studio.surveyHelpers() } }))
+        } else {
+            tail.append(
+                Gtk.MenuRow(
+                    title: ImageGenRewriteWords.lookAgainTitle,
+                    detail: ImageGenRewriteWords.lookAgainHint,
+                    action: { Gtk.onMain { studio.surveyHelpers() } }))
+        }
+        if let current {
+            tail.append(
+                Gtk.MenuRow(
+                    title: current.enabled
+                        ? ImageGenRewriteWords.offTitle : ImageGenRewriteWords.onTitle,
+                    detail: current.enabled ? ImageGenWords.helperOffHint : current.displayHost,
+                    action: { Gtk.onMain { studio.toggleHelper() } }))
+        }
+        sections.append(Gtk.MenuSection(heading: nil, rows: tail))
+        return sections
+    }
+
+    /// The card under the words. Built once; ``refreshRewrite()`` tells it what changed.
+    private func buildRewriteCard() {
+        Gtk.addClass(rewriteBox, "draw-rewrite")
+        gtk_widget_set_visible(rewriteBox, 0)
+        gtk_label_set_xalign(op(rewriteHead), 0)
+        gtk_label_set_max_width_chars(op(rewriteHead), 64)
+        gtk_box_append(ptr(rewriteBox), rewriteHead)
+        gtk_text_view_set_editable(ptr(rewriteBody), 0)
+        gtk_text_view_set_cursor_visible(ptr(rewriteBody), 0)
+        gtk_text_view_set_wrap_mode(ptr(rewriteBody), GTK_WRAP_WORD_CHAR)
+        gtk_text_view_set_left_margin(ptr(rewriteBody), 10)
+        gtk_text_view_set_right_margin(ptr(rewriteBody), 10)
+        gtk_text_view_set_top_margin(ptr(rewriteBody), 8)
+        gtk_text_view_set_bottom_margin(ptr(rewriteBody), 8)
+        Gtk.addClass(rewriteBody, "draw-rewrite-body")
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_min_content_height(op(scroller), 150)
+        gtk_scrolled_window_set_max_content_height(op(scroller), 260)
+        gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+        gtk_scrolled_window_set_child(op(scroller), rewriteBody)
+        Gtk.addClass(scroller, "draw-rewrite-scroller")
+        gtk_box_append(ptr(rewriteBox), scroller)
+        gtk_entry_set_placeholder_text(ptr(rewriteInstruction), ImageGenRewriteWords.instructionPlaceholder)
+        Gtk.addClass(rewriteInstruction, "draw-avoid")
+        gtk_widget_set_hexpand(rewriteInstruction, 1)
+        gtk_widget_set_tooltip_text(rewriteInstruction, ImageGenRewriteWords.reviseTitle)
+        gtk_box_append(ptr(rewriteBox), rewriteInstruction)
+        gtk_widget_set_tooltip_text(rewriteUse, ImageGenRewriteWords.useHint)
+        gtk_widget_set_tooltip_text(rewriteKeep, ImageGenRewriteWords.keepHint)
+        gtk_widget_set_tooltip_text(rewriteAgain, ImageGenRewriteWords.againHint)
+        for verb in [rewriteUse, rewriteAgain, rewriteKeep, rewriteStop] {
+            gtk_box_append(ptr(rewriteVerbs), verb)
+        }
+        gtk_widget_set_halign(rewriteVerbs, GTK_ALIGN_START)
+        gtk_box_append(ptr(rewriteBox), rewriteVerbs)
+        Gtk.connect(UnsafeMutableRawPointer(rewriteUse), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in self?.useRewrite() }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(rewriteKeep), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in self?.studio.dismissRewrite() }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(rewriteAgain), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, let draft = self.studio.draft else { return }
+                self.studio.rewrite(draft.original)
+            }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(rewriteStop), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in self?.studio.stopRewrite() }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(rewriteInstruction), "activate") { [weak self] in
+            Gtk.onMain { [weak self] in self?.revisePressed() }
         }
     }
 
@@ -294,6 +409,10 @@ final class DrawPane: @unchecked Sendable {
         enhancePressed()
     }
 
+    func driverUseRewrite() {
+        useRewrite()
+    }
+
     func focusPrompt() {
         gtk_widget_grab_focus(fills ? promptView : entry)
     }
@@ -310,11 +429,70 @@ final class DrawPane: @unchecked Sendable {
         }
     }
 
+    /// A step moved: the machine's line, the bar, the clock, the sketch's caption and the row
+    /// on the shelf change in place. Nothing is rebuilt — a frame changes words, never layout.
+    private func refreshProgressOnly() {
+        guard slot.isBusy else { return }
+        refreshStatus()
+        if fills {
+            refreshInFlightRow()
+            if let sketchPicture, studio.previewTexture != 0 {
+                tailscode_set_accessible_label(
+                    sketchPicture, ImageGenPreviewWords.caption(studio.progress))
+            }
+            if studio.previewTexture != 0, case .painting(_, let engine, let mode) = slot.phase {
+                gtk_label_set_text(op(factsLabel), inFlightFactsLine(engine: engine, mode: mode))
+            }
+        }
+    }
+
+    /// The facts line under the stage while a render runs: the engine, the shape and the steps,
+    /// then what the stage is showing in place of the picture — the sketch with its step, or the
+    /// previous picture until this one lands.
+    private func inFlightFactsLine(engine: ImageGenEngine, mode: ImageGenMode) -> String {
+        guard case .painting(let prompt, _, _) = slot.phase else { return "" }
+        let steps = Localized.text(
+            "%@ steps", "\(slot.recipe(prompt: prompt, seed: slot.seed.last ?? 0).steps)")
+        let shape =
+            mode == .edit
+            ? "\(engine.short) · \(ImageGenMode.edit.label) · \(steps)"
+            : "\(engine.short) · \(slot.aspect.short) \(slot.aspect.ratioLabel) · \(slot.aspect.label(slot.size)) · \(steps)"
+        let sketching = studio.previewTexture != 0
+        let previous = fills && slot.isBusy ? underwayKey : nil
+        let note =
+            sketching
+            ? ImageGenPreviewWords.caption(studio.progress)
+            : mode == .edit
+                ? ImageGenStudioWords.editingShownNote : ImageGenStudioWords.previousShownNote
+        return previous == nil && !sketching ? shape : "\(shape) · \(note)"
+    }
+
+    /// A new sketch swaps the paintable of the picture already on the stage; only the first
+    /// frame, which has no picture to swap into, rebuilds the stage.
+    private func adoptSketch() {
+        guard slot.isBusy, studio.previewTexture != 0 else { return }
+        guard let sketchPicture, gtk_widget_get_parent(sketchPicture) == stagePicture,
+            let raw = UnsafeMutableRawPointer(bitPattern: studio.previewTexture)
+        else {
+            refreshStage()
+            return
+        }
+        gtk_picture_set_paintable(op(sketchPicture), OpaquePointer(raw))
+        tailscode_set_accessible_label(sketchPicture, ImageGenPreviewWords.caption(studio.progress))
+    }
+
     /// Lets go of the view. A studio of this pane's own dies with it; the shared one keeps
     /// painting, because closing a window is not cancelling a render.
     func shutdown() {
         if let studioObserver { NotificationCenter.default.removeObserver(studioObserver) }
         studioObserver = nil
+        if let sketchObserver { NotificationCenter.default.removeObserver(sketchObserver) }
+        sketchObserver = nil
+        if let rewriteObserver { NotificationCenter.default.removeObserver(rewriteObserver) }
+        rewriteObserver = nil
+        if let progressObserver { NotificationCenter.default.removeObserver(progressObserver) }
+        progressObserver = nil
+        studio.onNotice = nil
         if studio !== ImageStudio.shared { studio.release() }
     }
 
@@ -364,13 +542,13 @@ final class DrawPane: @unchecked Sendable {
         gtk_label_set_xalign(op(keptHintLabel), 0)
         Gtk.addClass(actionRow, "draw-actions")
 
-        for chip in [engineChip, aspectChip, sizeChip, enhanceChip, referenceChip, moreChip] {
+        for chip in [engineChip, aspectChip, sizeChip, enhanceChip, helperMenu, referenceChip, moreChip] {
             gtk_widget_set_halign(chip, GTK_ALIGN_START)
             gtk_box_append(ptr(chipRow), chip)
         }
         Gtk.addClass(moreRow, "draw-chips-more")
         gtk_widget_set_halign(moreRow, GTK_ALIGN_START)
-        for chip in [detailChip, cutoutChip, seedChip, helperChip] {
+        for chip in [detailChip, cutoutChip, seedChip] {
             gtk_widget_set_halign(chip, GTK_ALIGN_START)
             gtk_box_append(ptr(moreRow), chip)
         }
@@ -397,6 +575,7 @@ final class DrawPane: @unchecked Sendable {
         gtk_box_append(ptr(askBox), progressLabel)
         gtk_box_append(ptr(askBox), progressBar)
         gtk_box_append(ptr(askBox), hintBox)
+        gtk_box_append(ptr(askBox), rewriteBox)
         gtk_box_append(ptr(askBox), referenceStrip)
         gtk_box_append(ptr(askBox), chipRow)
         gtk_box_append(ptr(askBox), moreRow)
@@ -528,21 +707,116 @@ final class DrawPane: @unchecked Sendable {
                 : (beforeEnhance == nil ? ImageGenWords.enhanceTitle : ImageGenWords.undoTitle))
         gtk_widget_set_tooltip_text(
             enhanceChip,
-            helper.map(ImageGenWords.enhanceHint) ?? ImageGenWords.enhanceLookingHint)
+            busy ? ImageGenRewriteWords.stopTitle
+                : helper.map(ImageGenWords.enhanceHint) ?? ImageGenWords.enhanceLookingHint)
         gtk_widget_set_sensitive(enhanceChip, busy || !slot.isBusy ? 1 : 0)
         mark(enhanceChip, on: busy || beforeEnhance != nil)
+        let name: String
+        if let helper {
+            let shown = fills ? helper.name : helper.chip
+            name = helper.enabled ? shown : "\(shown) · \(ImageGenWords.offMark)"
+        } else if studio.surveying {
+            name = ImageGenRewriteWords.lookingTitle
+        } else {
+            name = ImageGenRewriteWords.chooseTitle
+        }
         gtk_menu_button_set_label(
-            op(helperChip),
-            helper.map { "\(ImageGenWords.helperTitle) · \($0.chip)" }
-                ?? ImageGenWords.enhanceLookingTitle)
+            op(helperMenu),
+            fills
+                ? ImageGenRewriteWords.withLine(name)
+                : "\(ImageGenRewriteWords.chooseTitle) · \(name)")
         gtk_widget_set_tooltip_text(
-            helperChip, helper.map { $0.displayHost } ?? ImageGenWords.enhanceLookingHint)
-        mark(helperChip, on: helper?.enabled == true)
+            helperMenu,
+            helper.map { "\(ImageGenRewriteWords.chooseHint) · \($0.label ?? $0.model) · \($0.displayHost)" }
+                ?? ImageGenRewriteWords.chooseHint)
+        mark(helperMenu, on: helper?.enabled == true && !fills)
+        reopenHelperMenuIfSurveyLanded()
+        refreshRewrite()
     }
 
-    /// Press once to have the brief written out, press again to get your own sentence back. A
-    /// rewrite that lands also takes the shape the helper asked for, unless a person has already
-    /// chosen one by hand this session.
+    /// A menu opened before the survey came back was a "Looking…" row; when the answer lands
+    /// while it is still open, it is rebuilt in place rather than left to be closed and opened.
+    private func reopenHelperMenuIfSurveyLanded() {
+        guard let landed = studio.surveyedAt, landed != surveyShown else { return }
+        surveyShown = landed
+        guard let popover = gtk_menu_button_get_popover(op(helperMenu)),
+            gtk_widget_get_mapped(UnsafeMutableRawPointer(popover).assumingMemoryBound(to: GtkWidget.self)) != 0
+        else { return }
+        gtk_menu_button_popdown(op(helperMenu))
+        gtk_menu_button_popup(op(helperMenu))
+    }
+
+    /// The card follows the draft: hidden with none, writing with a Stop, landed with the three
+    /// verbs and a line for what to change, failed with the reason and a way to try again. The
+    /// paragraph is set only when it grew, and the view keeps its end in sight while it does.
+    private func refreshRewrite() {
+        guard let draft = studio.draft else {
+            gtk_widget_set_visible(rewriteBox, 0)
+            rewriteShown = ""
+            return
+        }
+        gtk_widget_set_visible(rewriteBox, 1)
+        gtk_label_set_text(op(rewriteHead), draft.headline)
+        if case .failed = draft.phase {
+            Gtk.addClass(rewriteHead, "danger")
+        } else {
+            gtk_widget_remove_css_class(rewriteHead, "danger")
+        }
+        let landedNow = !draft.isWriting && rewriteWasWriting
+        rewriteWasWriting = draft.isWriting
+        if draft.written != rewriteShown || landedNow {
+            rewriteShown = draft.written
+            let buffer = gtk_text_view_get_buffer(ptr(rewriteBody))
+            gtk_text_buffer_set_text(buffer, draft.written, -1)
+            var edge = GtkTextIter()
+            if draft.isWriting {
+                gtk_text_buffer_get_end_iter(buffer, &edge)
+            } else {
+                gtk_text_buffer_get_start_iter(buffer, &edge)
+            }
+            let mark = gtk_text_buffer_create_mark(buffer, nil, &edge, 0)
+            gtk_text_view_scroll_mark_onscreen(ptr(rewriteBody), mark)
+            gtk_text_buffer_delete_mark(buffer, mark)
+        }
+        let scroller = gtk_widget_get_parent(rewriteBody)
+        gtk_widget_set_visible(scroller, draft.written.isEmpty ? 0 : 1)
+        gtk_widget_set_visible(rewriteStop, draft.isWriting ? 1 : 0)
+        gtk_widget_set_visible(rewriteUse, draft.isUsable ? 1 : 0)
+        gtk_widget_set_visible(rewriteAgain, draft.isWriting ? 0 : 1)
+        gtk_widget_set_visible(rewriteKeep, draft.isWriting ? 0 : 1)
+        gtk_widget_set_visible(rewriteInstruction, draft.isUsable ? 1 : 0)
+        gtk_widget_set_sensitive(rewriteUse, slot.isBusy ? 0 : 1)
+    }
+
+    /// Takes the paragraph: into the box, where it can still be edited, with the typed sentence
+    /// one press away. The shape the helper chose is followed only where nobody chose one by
+    /// hand, and never for an edit, which takes its shape from the picture.
+    private func useRewrite() {
+        guard let draft = studio.draft, draft.isUsable else { return }
+        beforeEnhance = promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? draft.original : promptText
+        if let aspect = draft.aspect, !studio.aspectChosen, slot.applies(.aspect) {
+            studio.follow(aspect: aspect)
+        }
+        fill(draft.written)
+        studio.dismissRewrite()
+        onNotice?(ImageGenWords.enhancedNotice(draft.helper))
+        refreshEnhance()
+    }
+
+    /// One line of what to change sends the same paragraph back for a revision.
+    private func revisePressed() {
+        guard let draft = studio.draft, draft.isUsable,
+            let raw = gtk_editable_get_text(op(rewriteInstruction))
+        else { return }
+        let instruction = String(cString: raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !instruction.isEmpty else { return }
+        gtk_editable_set_text(op(rewriteInstruction), "")
+        studio.rewrite(draft.original, instruction: instruction)
+    }
+
+    /// Press once to have the brief written out, press again while it writes to stop it, and
+    /// press once more after taking it to get your own sentence back.
     private func enhancePressed() {
         if let original = beforeEnhance {
             fill(original)
@@ -550,35 +824,16 @@ final class DrawPane: @unchecked Sendable {
             refreshEnhance()
             return
         }
-        guard !studio.enhancing else { return }
+        if studio.enhancing {
+            studio.stopRewrite()
+            return
+        }
         let brief = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !brief.isEmpty else {
             focusPrompt()
             return
         }
-        let pane = Weak(self)
-        studio.enhance(brief) { result in
-            Gtk.onMain {
-                guard let pane = pane.value else { return }
-                switch result {
-                case .success(let written):
-                    pane.beforeEnhance = brief
-                    if let aspect = written.1, pane.slot.applies(.aspect) {
-                        pane.studio.choose(aspect: aspect)
-                    }
-                    pane.fill(written.0)
-                    if let helper = pane.studio.helper {
-                        pane.onNotice?(ImageGenWords.enhancedNotice(helper))
-                    }
-                case .failure(let failure):
-                    pane.onNotice?(
-                        pane.studio.helper == nil
-                            ? ImageGenWords.enhanceMissing : failure.reason)
-                }
-                pane.refreshEnhance()
-            }
-        }
-        refreshEnhance()
+        studio.rewrite(brief)
     }
 
     private func mark(_ chip: UnsafeMutablePointer<GtkWidget>, on: Bool) {
@@ -794,7 +1049,18 @@ final class DrawPane: @unchecked Sendable {
         gtk_widget_set_visible(zoomHint, zoomed ? 1 : 0)
 
         let previousKey = fills && slot.isBusy ? underwayKey : nil
-        if slot.isBusy, let previousKey,
+        sketchPicture = nil
+        if slot.isBusy, studio.previewTexture != 0,
+            let widget = Gtk.pictureWidget(bits: studio.previewTexture)
+        {
+            gtk_widget_set_vexpand(widget, 1)
+            gtk_widget_set_hexpand(widget, 1)
+            Gtk.addClass(widget, "draw-sketch")
+            gtk_widget_set_tooltip_text(widget, ImageGenPreviewWords.note)
+            tailscode_set_accessible_label(widget, ImageGenPreviewWords.caption(studio.progress))
+            sketchPicture = widget
+            gtk_box_append(ptr(stagePicture), widget)
+        } else if slot.isBusy, let previousKey,
             let bits = textures[previousKey] ?? studio.library.textures[previousKey], bits != 0,
             let widget = Gtk.pictureWidget(bits: bits)
         {
@@ -833,17 +1099,7 @@ final class DrawPane: @unchecked Sendable {
             gtk_widget_set_visible(underRow, 1)
             gtk_label_set_text(op(captionLabel), prompt)
             gtk_widget_set_visible(captionLabel, 1)
-            let steps = Localized.text(
-                "%@ steps", "\(slot.recipe(prompt: prompt, seed: slot.seed.last ?? 0).steps)")
-            let shape =
-                mode == .edit
-                ? "\(engine.short) · \(ImageGenMode.edit.label) · \(steps)"
-                : "\(engine.short) · \(slot.aspect.short) \(slot.aspect.ratioLabel) · \(slot.aspect.label(slot.size)) · \(steps)"
-            let note =
-                mode == .edit
-                ? ImageGenStudioWords.editingShownNote : ImageGenStudioWords.previousShownNote
-            gtk_label_set_text(
-                op(factsLabel), previousKey == nil ? shape : "\(shape) · \(note)")
+            gtk_label_set_text(op(factsLabel), inFlightFactsLine(engine: engine, mode: mode))
             gtk_widget_set_visible(factsLabel, 1)
             gtk_widget_set_visible(keptHintLabel, 0)
             refreshActions()
@@ -1354,6 +1610,14 @@ final class DrawPane: @unchecked Sendable {
         gtk_widget_remove_css_class(enhanceChip, "draw-chip")
         gtk_box_append(ptr(countRow), enhanceChip)
         gtk_box_append(ptr(words), countRow)
+        Gtk.addClass(helperMenu, "draw-link")
+        Gtk.addClass(helperMenu, "draw-helper-link")
+        gtk_widget_remove_css_class(helperMenu, "draw-chip")
+        gtk_menu_button_set_can_shrink(op(helperMenu), 0)
+        gtk_menu_button_set_always_show_arrow(op(helperMenu), 1)
+        gtk_widget_set_halign(helperMenu, GTK_ALIGN_END)
+        gtk_box_append(ptr(words), helperMenu)
+        gtk_box_append(ptr(words), rewriteBox)
         gtk_box_append(ptr(words), hintBox)
         gtk_box_append(ptr(briefColumn), section(ImageGenStudioWords.wordsTitle, words))
 

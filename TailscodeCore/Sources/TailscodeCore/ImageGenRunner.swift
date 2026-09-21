@@ -62,6 +62,7 @@ public final class ImageGenRunner: @unchecked Sendable {
     /// machine already keeps is named where it is and nothing travels.
     public func run(
         references: [ImageGenReference], progress: (@Sendable (ImageGenProgress) -> Void)? = nil,
+        preview: (@Sendable (ImageGenPreviewFrame) -> Void)? = nil,
         _ done: @escaping @Sendable (Outcome) -> Void
     ) {
         guard let recipe else {
@@ -87,7 +88,8 @@ public final class ImageGenRunner: @unchecked Sendable {
                 let verdict = SocketVerdict()
                 let listener = Task.detached {
                     await Self.listen(
-                        socket, for: request, verdict: verdict, progress: progress)
+                        socket, for: request, verdict: verdict, progress: progress,
+                        preview: preview)
                 }
                 defer {
                     listener.cancel()
@@ -139,16 +141,19 @@ public final class ImageGenRunner: @unchecked Sendable {
     public func run(
         prompt: String, engine: ImageGenEngine, mode: ImageGenMode, aspect: ImageGenAspect,
         referencePath: String?, progress: (@Sendable (ImageGenProgress) -> Void)? = nil,
+        preview: (@Sendable (ImageGenPreviewFrame) -> Void)? = nil,
         _ done: @escaping @Sendable (Outcome) -> Void
     ) {
         run(
             prompt: prompt, engine: engine, mode: mode, aspect: aspect,
-            reference: referencePath.map { ImageGenReference(path: $0) }, progress: progress, done)
+            reference: referencePath.map { ImageGenReference(path: $0) }, progress: progress,
+            preview: preview, done)
     }
 
     public func run(
         prompt: String, engine: ImageGenEngine, mode: ImageGenMode, aspect: ImageGenAspect,
         reference: ImageGenReference?, progress: (@Sendable (ImageGenProgress) -> Void)? = nil,
+        preview: (@Sendable (ImageGenPreviewFrame) -> Void)? = nil,
         _ done: @escaping @Sendable (Outcome) -> Void
     ) {
         let started = Date()
@@ -168,7 +173,8 @@ public final class ImageGenRunner: @unchecked Sendable {
                 let verdict = SocketVerdict()
                 let listener = Task.detached {
                     await Self.listen(
-                        socket, for: request, verdict: verdict, progress: progress)
+                        socket, for: request, verdict: verdict, progress: progress,
+                        preview: preview)
                 }
                 defer {
                     listener.cancel()
@@ -228,13 +234,16 @@ public final class ImageGenRunner: @unchecked Sendable {
 
     /// Reads frames until the run is over or the socket is. The node census gives the bar its
     /// honest fraction; the node's class gives the stage its words; the sampler's step gives the
-    /// painting stage its count. Nothing here decides success — history does.
+    /// painting stage its count; a binary frame is the sampler's own sketch of the picture so
+    /// far, handed to `preview` as it lands. Nothing here decides success — history does.
     private static func listen(
         _ socket: URLSessionWebSocketTask?, for request: ImageGenRequest, verdict: SocketVerdict,
-        progress: (@Sendable (ImageGenProgress) -> Void)?
+        progress: (@Sendable (ImageGenProgress) -> Void)?,
+        preview: (@Sendable (ImageGenPreviewFrame) -> Void)? = nil
     ) async {
         guard let socket else { return }
         var current = ImageGenProgress(stage: .queued(ahead: 0))
+        var sketches = ImageGenPreviewAssembler()
         while !Task.isCancelled {
             let message: URLSessionWebSocketTask.Message
             do {
@@ -242,7 +251,16 @@ public final class ImageGenRunner: @unchecked Sendable {
             } catch {
                 return
             }
-            guard case .string(let text) = message else { continue }
+            let text: String
+            switch message {
+            case .string(let string):
+                text = string
+            case .data(let bytes):
+                if let frame = sketches.feed(bytes) { preview?(frame) }
+                continue
+            @unknown default:
+                continue
+            }
             let event = ForgeEvent.read(text)
             if let id = event.promptID, !id.isEmpty, id != request.id { continue }
             switch event {

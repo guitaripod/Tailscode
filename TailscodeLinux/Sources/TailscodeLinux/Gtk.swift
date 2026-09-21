@@ -628,6 +628,86 @@ enum Gtk {
         return button
     }
 
+    /// One row of a grouped menu: a title, a second line, whether it wears the current mark, and
+    /// what pressing it does — nothing, for a row that is only there to say something.
+    struct MenuRow: Sendable {
+        let title: String
+        let detail: String?
+        var on: Bool = false
+        var action: (@Sendable () -> Void)? = nil
+    }
+
+    /// A run of rows under one heading. A nil heading is a run with no line over it.
+    struct MenuSection: Sendable {
+        let heading: String?
+        let rows: [MenuRow]
+    }
+
+    /// The grouped cousin of ``menuButton(_:css:rows:)``: the same popover, built on every
+    /// opening, with a dim heading over each run of rows and a mark on the row that is current.
+    /// A row with no action is a sentence rather than a choice and is drawn as one.
+    static func menuButton(
+        _ title: String, css: [String] = [],
+        sections: @escaping @Sendable () -> [MenuSection]
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_menu_button_new()!
+        gtk_menu_button_set_label(op(button), title)
+        gtk_menu_button_set_can_shrink(op(button), 1)
+        for name in css { addClass(button, name) }
+        let popover = gtk_popover_new()!
+        gtk_menu_button_set_popover(op(button), popover)
+        let popoverBits = UInt(bitPattern: popover)
+        connect(UnsafeMutableRawPointer(popover), "map") {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits) else { return }
+            let column = box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+            let scroller = gtk_scrolled_window_new()!
+            gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+            gtk_scrolled_window_set_max_content_height(op(scroller), 480)
+            gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+            gtk_scrolled_window_set_propagate_natural_width(op(scroller), 1)
+            for (index, section) in sections().enumerated() {
+                if let heading = section.heading {
+                    let line = label(heading, css: "menu-heading", selectable: false)
+                    gtk_widget_set_margin_top(line, index == 0 ? 2 : 8)
+                    gtk_widget_set_margin_start(line, 10)
+                    gtk_widget_set_margin_end(line, 10)
+                    gtk_box_append(ptr(column), line)
+                }
+                for row in section.rows {
+                    let item = gtk_button_new()!
+                    addClass(item, "flat")
+                    if row.on { addClass(item, "menu-row-on") }
+                    let lines = box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+                    let mark = row.on ? "✓ " : (section.rows.contains { $0.on } ? "   " : "")
+                    gtk_box_append(
+                        ptr(lines), label(mark + row.title, css: "row-title", selectable: false))
+                    if let detail = row.detail, !detail.isEmpty {
+                        let subtitle = label(detail, css: "row-detail", selectable: false)
+                        gtk_label_set_max_width_chars(op(subtitle), 72)
+                        gtk_label_set_wrap(op(subtitle), 1)
+                        gtk_box_append(ptr(lines), subtitle)
+                    }
+                    gtk_button_set_child(ptr(item), lines)
+                    if let action = row.action {
+                        connect(UnsafeMutableRawPointer(item), "clicked") {
+                            guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits) else {
+                                return
+                            }
+                            gtk_popover_popdown(ptr(raw))
+                            action()
+                        }
+                    } else {
+                        gtk_widget_set_sensitive(item, 0)
+                    }
+                    gtk_box_append(ptr(column), item)
+                }
+            }
+            gtk_scrolled_window_set_child(op(scroller), column)
+            gtk_popover_set_child(ptr(raw), scroller)
+        }
+        return button
+    }
+
     /// A menu popped up at a point inside `widget` — the right-click cousin of ``menuButton``:
     /// the same row shape, built once for this opening, unparented again when it closes. The
     /// anchor must be a widget that outlives the menu, not a row a re-render may remove.

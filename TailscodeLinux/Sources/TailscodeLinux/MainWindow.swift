@@ -577,6 +577,16 @@ final class MainWindow: @unchecked Sendable {
                     ImageWindow.current?.driverSubmit()
                     FileHandle.standardOutput.write(
                         Data("IMAGEGO \(ImageStudio.shared.isPainting)\n".utf8))
+                case "imageenhance":
+                    ImageWindow.current?.driverEnhance()
+                    FileHandle.standardOutput.write(
+                        Data("IMAGEENHANCE \(ImageStudio.shared.helper?.chip ?? "-")\n".utf8))
+                case "imageuse":
+                    ImageWindow.current?.driverUseRewrite()
+                    FileHandle.standardOutput.write(Data("IMAGEUSE\n".utf8))
+                case "imagerewrite":
+                    FileHandle.standardOutput.write(
+                        Data("IMAGEREWRITE \(ImageWindow.current?.rewriteSummary ?? "-") sketch=\(ImageStudio.shared.previewTexture != 0)\n".utf8))
                 case "imagesum":
                     FileHandle.standardOutput.write(
                         Data("IMAGESUM \(ImageStudio.shared.summary)\n".utf8))

@@ -34,6 +34,12 @@ final class ImageStudio: @unchecked Sendable {
     private(set) var keptStage: KeptStage?
     /// What the machine's own socket last said about the render in flight.
     private(set) var progress: ImageGenProgress?
+    /// The sampler's own sketch of the picture so far, decoded to a texture the stage can wear.
+    /// Zero while the machine has sent none — a server started without previews sends none.
+    private(set) var previewTexture: UInt = 0
+    /// Posted for every sketch that lands, apart from ``didChange``: a frame changes one
+    /// paintable, and a surface that rebuilt itself for each would spend the render on widgets.
+    static let previewDidChange = Notification.Name("tailscode.imageStudio.previewDidChange")
     private var runner: ImageGenRunner?
     private var checked = false
     /// When the render in flight started, so the surface can say how long it has been rather than
@@ -118,6 +124,7 @@ final class ImageStudio: @unchecked Sendable {
 
     func advance(_ field: ImageGenField) {
         slot.advance(field)
+        if field == .aspect { aspectChosen = true }
         rememberChoices()
         announce()
     }
@@ -130,6 +137,15 @@ final class ImageStudio: @unchecked Sendable {
     }
 
     func choose(aspect: ImageGenAspect) {
+        slot.setAspect(aspect)
+        aspectChosen = true
+        rememberChoices()
+        announce()
+    }
+
+    /// The shape the helper answered with: followed, but never counted as a choice by hand.
+    func follow(aspect: ImageGenAspect) {
+        guard aspect != slot.aspect else { return }
         slot.setAspect(aspect)
         rememberChoices()
         announce()
@@ -150,115 +166,129 @@ final class ImageStudio: @unchecked Sendable {
     /// The small model that thickens a thin brief, when this device knows one.
     var helper: ImageGenHelper? { ImageGenStore.helper() }
 
-    /// Whether a rewrite is out right now. The chip says so and the composer stays the person's
-    /// to edit while it runs.
-    private(set) var enhancing = false
+    /// The rewrite in flight or landed and not yet taken, drawn as a card under the words.
+    private(set) var draft: ImageGenRewriteDraft?
+    private let rewriter = ImageGenRewriter()
 
-    /// Rewrites the brief with the helper, or finds one first when none is filed. The answer
-    /// carries the paragraph and the shape it asked for; the caller decides what to do with both,
-    /// because the words belong to whoever typed them.
-    func enhance(
-        _ brief: String,
-        completion: @escaping @Sendable (Result<(String, ImageGenAspect?), ImageGenEnhancer.Failure>) -> Void
-    ) {
-        guard !enhancing else { return }
-        enhancing = true
+    /// Whether a rewrite is out right now. The card says so and the composer stays the person's
+    /// to edit while it runs.
+    var enhancing: Bool { draft?.isWriting == true }
+
+    /// Whether the shape was picked by hand in this studio's life. A chosen shape is kept by the
+    /// helper; an inherited one is the helper's to improve on.
+    private(set) var aspectChosen = false
+
+    /// Asks the helper for the paragraph, streaming it into ``draft`` as it is written. With no
+    /// helper filed the machines near the painter are surveyed first and the best writer is
+    /// filed. `instruction` turns the ask into a revision of the paragraph already written.
+    func rewrite(_ brief: String, instruction: String? = nil) {
+        let previous = instruction == nil ? nil : draft?.written
+        let context = slot.rewriteContext(
+            aspectChosen: aspectChosen, instruction: instruction, previous: previous)
+        rewriter.start(
+            brief: brief, context: context, filed: helper, near: slot.endpoint,
+            onHelper: { found in
+                Gtk.onMain { ImageGenStore.remember(helper: found) }
+            },
+            onChange: { [weak self] draft in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    guard let draft else {
+                        self.draft = nil
+                        self.onNotice?(ImageGenRewriteWords.noneFoundTitle)
+                        self.announce()
+                        return
+                    }
+                    let grewOnly = self.draft?.isWriting == true && draft.isWriting
+                    self.draft = draft
+                    if grewOnly {
+                        self.announceRewrite()
+                    } else {
+                        self.announce()
+                    }
+                }
+            })
+        draft = nil
         announce()
-        let endpoint = slot.endpoint
-        let filed = helper
-        Task.detached { [weak self] in
-            var using = filed
-            if using == nil || using?.enabled == false {
-                if let found = await ImageGenHelperFinder.find(near: endpoint),
-                    let model = ImageGenHelperFinder.preferred(among: found.models)
-                {
-                    using = ImageGenHelper(address: found.address, model: model)
-                }
-            }
-            guard let using, using.enabled else {
-                Gtk.onMain { [weak self] in
-                    self?.finishEnhancing()
-                    completion(.failure(.unreachable))
-                }
-                return
-            }
-            ImageGenStore.remember(helper: using)
-            do {
-                let written = try await ImageGenEnhancer(helper: using).enhance(brief)
-                Gtk.onMain { [weak self] in
-                    self?.finishEnhancing()
-                    completion(.success(written))
-                }
-            } catch let failure as ImageGenEnhancer.Failure {
-                Gtk.onMain { [weak self] in
-                    self?.finishEnhancing()
-                    completion(.failure(failure))
-                }
-            } catch {
-                Gtk.onMain { [weak self] in
-                    self?.finishEnhancing()
-                    completion(.failure(.unreachable))
-                }
+    }
+
+    /// Posted when the paragraph grew and nothing else changed. A token a few times a second is
+    /// a change to one text view, and a surface that rebuilt itself for each starved the frame
+    /// clock and painted nothing until the paragraph was done. Coalesced to a few a second.
+    static let rewriteDidChange = Notification.Name("tailscode.imageStudio.rewriteDidChange")
+    private var rewriteAnnouncePending = false
+
+    private func announceRewrite() {
+        guard !rewriteAnnouncePending else { return }
+        rewriteAnnouncePending = true
+        Gtk.after(70) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.rewriteAnnouncePending = false
+                NotificationCenter.default.post(name: ImageStudio.rewriteDidChange, object: nil)
             }
         }
     }
 
-    private func finishEnhancing() {
-        enhancing = false
+    /// Stops a rewrite that is still writing and drops what it had.
+    func stopRewrite() {
+        rewriter.cancel()
+        draft = nil
         announce()
     }
 
-    /// What the last look found: the machine that answered and the models it listed, so the
-    /// menu is filled from a real answer rather than from a guess about ports.
-    private(set) var knownHelperAddress: String?
-    private(set) var knownHelperModels: [String] = []
+    /// Closes the card, keeping nothing. The words in the box were never touched.
+    func dismissRewrite() {
+        rewriter.cancel()
+        draft = nil
+        announce()
+    }
 
-    /// Looks for a helper without rewriting anything, which is what the menu's own row means.
-    func lookForHelper() {
+    /// One line for whoever is showing this studio — a helper found on its own, a helper gone.
+    var onNotice: (@Sendable (String) -> Void)?
+
+    /// Every machine that answered the last survey and what each serves, for the picker.
+    private(set) var helperServers: [ImageGenHelperServer] = []
+    private(set) var surveying = false
+    private(set) var surveyedAt: Date?
+
+    /// Asks every door near the painter and on this device what it serves, and files the best
+    /// writer when none is filed yet.
+    func surveyHelpers() {
+        guard !surveying else { return }
+        surveying = true
+        announce()
         let endpoint = slot.endpoint
         Task.detached { [weak self] in
-            let found = await ImageGenHelperFinder.find(near: endpoint)
+            let servers = await ImageGenHelperFinder.survey(near: endpoint)
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                self.knownHelperAddress = found?.address
-                self.knownHelperModels = found?.models ?? []
-                if let found, self.helper == nil,
-                    let model = ImageGenHelperFinder.preferred(among: found.models)
+                self.surveying = false
+                self.surveyedAt = Date()
+                self.helperServers = servers
+                if let found = ImageGenHelperFinder.preferred(across: servers),
+                    self.helper?.yields(to: found) ?? true
                 {
-                    self.setHelper(ImageGenHelper(address: found.address, model: model))
+                    ImageGenStore.remember(helper: found)
                 }
                 self.announce()
             }
         }
     }
 
-    /// Which models the helper's machine offers, for the menu that picks one.
-    func helperModels(completion: @escaping @Sendable ([String]) -> Void) {
-        let endpoint = slot.endpoint
-        let filed = helper
-        Task.detached { [weak self] in
-            if let filed {
-                let models = await ImageGenHelperFinder.models(at: filed.address)
-                if !models.isEmpty {
-                    Gtk.onMain { [weak self] in
-                        self?.knownHelperAddress = filed.address
-                        self?.knownHelperModels = models
-                        completion(models)
-                    }
-                    return
-                }
-            }
-            let found = await ImageGenHelperFinder.find(near: endpoint)
-            Gtk.onMain { [weak self] in
-                self?.knownHelperAddress = found?.address
-                self?.knownHelperModels = found?.models ?? []
-                completion(found?.models ?? [])
-            }
-        }
+    /// Files the helper a person picked from the list, which is kept over anything found later.
+    func setHelper(_ helper: ImageGenHelper?) {
+        var chosen = helper
+        chosen?.chosenByHand = true
+        ImageGenStore.remember(helper: chosen)
+        announce()
     }
 
-    func setHelper(_ helper: ImageGenHelper?) {
-        ImageGenStore.remember(helper: helper)
+    /// Switches the filed helper off or on without forgetting it.
+    func toggleHelper() {
+        guard var current = helper else { return }
+        current.enabled.toggle()
+        ImageGenStore.remember(helper: current)
         announce()
     }
 
@@ -337,6 +367,7 @@ final class ImageStudio: @unchecked Sendable {
         slot.fail(prompt: prompt, reason: ImageGenWords.stoppedNotice)
         startedAt = nil
         progress = nil
+        dropPreview()
         announce()
     }
 
@@ -421,13 +452,25 @@ final class ImageStudio: @unchecked Sendable {
         let fresh = ImageGenRunner(endpoint: slot.endpoint, recipe: recipe)
         runner = fresh
         announce()
+        dropPreview()
         fresh.run(
             references: references,
             progress: { [weak self] progress in
                 Gtk.onMain { [weak self] in
                     guard let self, fresh === self.runner else { return }
+                    let stageChanged = self.progress?.stage != progress.stage
                     self.progress = progress
-                    self.announce()
+                    if stageChanged {
+                        self.announce()
+                    } else {
+                        self.announceProgress()
+                    }
+                }
+            },
+            preview: { [weak self] frame in
+                Gtk.onMain { [weak self] in
+                    guard let self, fresh === self.runner else { return }
+                    self.adoptPreview(frame)
                 }
             }
         ) { [weak self] outcome in
@@ -455,8 +498,30 @@ final class ImageStudio: @unchecked Sendable {
             self.runner = nil
             startedAt = nil
             progress = nil
+            dropPreview()
         }
         announce()
+    }
+
+    /// Decodes one sketch and wears it in place of the last. The frames are small — the machine
+    /// bounds them to a few hundred pixels — so a decode per step is cheaper than a layout.
+    private func adoptPreview(_ frame: ImageGenPreviewFrame) {
+        let bits: UInt = frame.bytes.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress,
+                let texture = tailscode_texture_from_bytes(base, gsize(frame.bytes.count))
+            else { return 0 }
+            return UInt(bitPattern: UnsafeMutableRawPointer(texture))
+        }
+        guard bits != 0 else { return }
+        dropPreview()
+        previewTexture = bits
+        NotificationCenter.default.post(name: ImageStudio.previewDidChange, object: nil)
+    }
+
+    private func dropPreview() {
+        guard previewTexture != 0 else { return }
+        if let raw = UnsafeMutableRawPointer(bitPattern: previewTexture) { g_object_unref(raw) }
+        previewTexture = 0
     }
 
     private func decode(_ path: String, data: Data) {
@@ -477,9 +542,40 @@ final class ImageStudio: @unchecked Sendable {
         textures[path] = bits
     }
 
+    /// Every surface watching this studio rebuilds on a change, so changes are announced once
+    /// per short beat rather than once each: a render's socket speaks several times a second, and
+    /// a rebuild per frame sat above the frame clock and painted nothing until the picture landed.
+    private var announcePending = false
+    private static let announceBeat: UInt32 = 80
+
     private func announce() {
-        Gtk.onMain {
-            NotificationCenter.default.post(name: ImageStudio.didChange, object: nil)
+        Gtk.onMain { [weak self] in
+            guard let self, !self.announcePending else { return }
+            self.announcePending = true
+            Gtk.after(Self.announceBeat) { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.announcePending = false
+                    NotificationCenter.default.post(name: ImageStudio.didChange, object: nil)
+                }
+            }
+        }
+    }
+
+    /// The sampler's step or the node census moved and nothing else did: a line, a bar and a
+    /// clock change, and the stage stays exactly where it is. Coalesced the same way.
+    static let progressDidChange = Notification.Name("tailscode.imageStudio.progressDidChange")
+    private var progressAnnouncePending = false
+
+    private func announceProgress() {
+        guard !progressAnnouncePending else { return }
+        progressAnnouncePending = true
+        Gtk.after(Self.announceBeat) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.progressAnnouncePending = false
+                NotificationCenter.default.post(name: ImageStudio.progressDidChange, object: nil)
+            }
         }
     }
 
@@ -512,6 +608,8 @@ final class ImageStudio: @unchecked Sendable {
     func release() {
         runner?.cancel()
         runner = nil
+        rewriter.cancel()
+        dropPreview()
         for bits in textures.values {
             if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
         }

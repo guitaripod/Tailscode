@@ -126,6 +126,8 @@ enum ParityManifest {
         case .imageGenSlot: return .implemented("DrawPane")
         case .imageLane: return .implemented("presentImageStudio")
         case .imageLibrary: return .implemented("DrawLibrary")
+        case .imagePromptHelper: return .implemented("helperSections")
+        case .imageLivePreview: return .implemented("adoptSketch")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("acceptChatDrops")
         case .clickToActivate: return .implemented("onPressCapture")

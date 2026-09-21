@@ -16,6 +16,8 @@ struct ImageStageReading {
     let caption: String?
     let startedAt: Date?
     let progress: ImageGenProgress?
+    /// The sampler's own sketch of the picture so far, while one is being painted.
+    var sketch: UIImage? = nil
     /// Whether the shelf below has anything on it, which changes what an empty stage suggests.
     let shelfHasPictures: Bool
 }
@@ -154,9 +156,12 @@ final class ImageStageCell: UICollectionViewListCell {
     private func applyStage(_ reading: ImageStageReading) {
         clock?.cancel()
         clock = nil
-        let shown = reading.image ?? reading.placeholder
+        let sketching = reading.slot.isBusy && reading.sketch != nil
+        let shown = sketching ? reading.sketch : (reading.image ?? reading.placeholder)
         picture.image = shown
         picture.isHidden = shown == nil
+        picture.accessibilityLabel = sketching ? ImageGenPreviewWords.caption(reading.progress) : nil
+        scrim.alpha = sketching ? 0.35 : 1
         spinner.stopAnimating()
         if !reading.slot.isBusy, reading.slot.failure == nil, shown != nil {
             scrim.isHidden = true
@@ -203,8 +208,15 @@ final class ImageStageCell: UICollectionViewListCell {
 
     /// The machine's own words and the sampler's own count, moved in place: a frame changes the
     /// line and the bar, never the layout around them.
-    func applyProgress(_ progress: ImageGenProgress?, startedAt: Date?) {
+    func applyProgress(_ progress: ImageGenProgress?, startedAt: Date?, sketch: UIImage? = nil) {
         guard let reading, reading.slot.isBusy else { return }
+        if let sketch, sketch !== reading.sketch {
+            picture.image = sketch
+            picture.isHidden = false
+            picture.accessibilityLabel = ImageGenPreviewWords.caption(progress)
+            scrim.isHidden = false
+            scrim.alpha = 0.35
+        }
         show(body: reading.slot.waitingLine(since: startedAt, progress: progress))
         if let fraction = progress?.bar {
             let wasHidden = bar.isHidden
@@ -216,7 +228,8 @@ final class ImageStageCell: UICollectionViewListCell {
         self.reading = ImageStageReading(
             slot: reading.slot, exhibit: reading.exhibit, image: reading.image,
             placeholder: reading.placeholder, ratio: reading.ratio, caption: reading.caption,
-            startedAt: startedAt, progress: progress, shelfHasPictures: reading.shelfHasPictures)
+            startedAt: startedAt, progress: progress, sketch: sketch ?? reading.sketch,
+            shelfHasPictures: reading.shelfHasPictures)
     }
 
     /// One second is the whole resolution a wait like this needs, and the clock stops the moment
