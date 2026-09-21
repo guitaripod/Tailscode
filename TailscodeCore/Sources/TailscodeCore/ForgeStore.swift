@@ -63,6 +63,7 @@ public enum ForgeStore {
     static let recipeKey = "tailscode.forge.recipe"
     static let historyKey = "tailscode.forge.history"
     static let renderersKey = "tailscode.forge.renderers"
+    static let clockKey = "tailscode.forge.clock"
     public static let didChange = Notification.Name("tailscode.forge.didChange")
 
     /// Enough history to be a history and not a filesystem. The files are on the other machine and
@@ -152,15 +153,18 @@ public enum ForgeStore {
         defaults.set(data, forKey: renderersKey)
     }
 
-    /// What the next draft starts as. The prompt is deliberately dropped — a person opening the
-    /// box wants to describe something new, and the settings are what they would otherwise set
-    /// again every single time.
+    /// What the next draft starts as. The prompt, the sound and the start picture are deliberately
+    /// dropped — a person opening the box wants to describe something new, and a clip that quietly
+    /// opened on yesterday's picture is not it — while the settings are what they would otherwise
+    /// set again every single time.
     public static func recipe() -> ForgeRecipe {
         guard let data = defaults.data(forKey: recipeKey),
             let stored = try? JSONDecoder().decode(ForgeRecipe.self, from: data)
         else { return ForgeRecipe() }
         var fresh = stored
         fresh.prompt = ""
+        fresh.sound = ""
+        fresh.frame = nil
         return fresh
     }
 
@@ -168,6 +172,21 @@ public enum ForgeStore {
         guard let data = try? JSONEncoder().encode(recipe) else { return }
         defaults.set(data, forKey: recipeKey)
         NotificationCenter.default.post(name: didChange, object: nil)
+    }
+
+    /// What renders have cost on the machines this device has used. One clock for all of them:
+    /// a person with two cards is rare, and a clock per machine would say nothing on the second
+    /// until it had been measured again.
+    public static func clock() -> ForgeClock {
+        guard let data = defaults.data(forKey: clockKey),
+            let stored = try? JSONDecoder().decode(ForgeClock.self, from: data)
+        else { return ForgeClock() }
+        return stored
+    }
+
+    public static func remember(clock: ForgeClock) {
+        guard let data = try? JSONEncoder().encode(clock) else { return }
+        defaults.set(data, forKey: clockKey)
     }
 
     public static func history() -> [ForgeEntry] {

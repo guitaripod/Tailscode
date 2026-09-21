@@ -608,6 +608,13 @@ final class MainWindow: @unchecked Sendable {
                     ForgeWindow.current?.describe(argument)
                     FileHandle.standardOutput.write(
                         Data("FORGE \(ForgeWindow.current?.summary ?? "-")\n".utf8))
+                case "fsum":
+                    FileHandle.standardOutput.write(
+                        Data("FORGE \(ForgeWindow.current?.summary ?? "-")\n".utf8))
+                case "fenhance", "fuse", "fframe", "fextend", "fsound":
+                    ForgeWindow.current?.drive(verb, argument)
+                    FileHandle.standardOutput.write(
+                        Data("FORGE \(ForgeWindow.current?.summary ?? "-")\n".utf8))
                 case "fkey":
                     let keyval: UInt32
                     var state: UInt32 = 0

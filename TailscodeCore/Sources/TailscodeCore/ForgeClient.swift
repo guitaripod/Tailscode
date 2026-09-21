@@ -71,6 +71,49 @@ enum ForgeFetch {
         }
     }
 
+    /// Puts a picture in the machine's own input directory and hands back the name a graph must
+    /// call it by. A start picture chosen on this device is a file the renderer cannot open, so
+    /// the bytes travel and the name comes back — the same road the image studio's references
+    /// take, because it is the same machine.
+    static func upload(_ data: Data, named name: String, to endpoint: ForgeEndpoint) async throws -> String {
+        guard let url = endpoint.url("/upload/image") else { throw ForgeFailure.unreachable(endpoint.host) }
+        let boundary = "tailscode-" + UUID().uuidString
+        var request = URLRequest(url: url, timeoutInterval: coldTimeout)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = multipart(data, named: name, boundary: boundary)
+        let answer: Data
+        let response: URLResponse
+        do {
+            (answer, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw ForgeFailure.unreachable(endpoint.host)
+        }
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+            let object = try? JSONSerialization.jsonObject(with: answer) as? [String: Any],
+            let stored = object["name"] as? String, !stored.isEmpty
+        else {
+            throw ForgeFailure.refused(
+                endpoint.host, Localized.text("%@ would not take the start picture", endpoint.host))
+        }
+        let subfolder = object["subfolder"] as? String ?? ""
+        return subfolder.isEmpty ? stored : subfolder + "/" + stored
+    }
+
+    private static func multipart(_ data: Data, named name: String, boundary: String) -> Data {
+        var body = Data()
+        func write(_ text: String) { body.append(Data(text.utf8)) }
+        write("--\(boundary)\r\n")
+        write("Content-Disposition: form-data; name=\"image\"; filename=\"\(name)\"\r\n")
+        write("Content-Type: application/octet-stream\r\n\r\n")
+        body.append(data)
+        write("\r\n--\(boundary)\r\n")
+        write("Content-Disposition: form-data; name=\"overwrite\"\r\n\r\n")
+        write("true\r\n")
+        write("--\(boundary)--\r\n")
+        return body
+    }
+
     /// A call whose answer nobody reads — cancelling. It either landed or the render was already
     /// over, and neither is worth a sentence on a screen.
     static func fire(_ url: URL?) async {
@@ -141,6 +184,18 @@ public struct ForgeClient: Sendable {
         return body != nil
     }
 
+    /// Puts the start picture on the machine when it is a file on this device, and hands back the
+    /// name the graph must use. Nil when the recipe needs no upload.
+    public func place(_ frame: ForgeFrame?) async throws -> String? {
+        guard case .file(let path) = frame else { return nil }
+        guard let data = FileManager.default.contents(atPath: path), !data.isEmpty else {
+            throw ForgeFailure.refused(
+                endpoint.host, Localized.text("The start picture could not be read"))
+        }
+        return try await ForgeFetch.upload(
+            data, named: (path as NSString).lastPathComponent, to: endpoint)
+    }
+
     public func submit(_ graph: ForgeGraph) async throws -> String {
         let body = try await ForgeFetch.json(
             endpoint.url("/prompt"),
@@ -202,12 +257,12 @@ public struct ForgeClient: Sendable {
     /// One render, start to finish, as the states a screen draws. The last snapshot is always a
     /// terminal phase — done, failed or cancelled — so a client that renders every element and
     /// stops when the stream ends can never be left showing a bar that will not move.
-    public func render(_ recipe: ForgeRecipe) -> AsyncStream<ForgeJob> {
+    public func render(_ recipe: ForgeRecipe, expecting: TimeInterval? = nil) -> AsyncStream<ForgeJob> {
         let (stream, continuation) = AsyncStream<ForgeJob>.makeStream()
         let held = HeldSocket()
         let work = Task {
             await withTaskCancellationHandler {
-                await drive(recipe, into: continuation, held: held)
+                await drive(recipe, expecting: expecting, into: continuation, held: held)
             } onCancel: {
                 held.close()
             }
@@ -217,14 +272,20 @@ public struct ForgeClient: Sendable {
     }
 
     private func drive(
-        _ recipe: ForgeRecipe, into continuation: AsyncStream<ForgeJob>.Continuation,
-        held: HeldSocket
+        _ recipe: ForgeRecipe, expecting: TimeInterval?,
+        into continuation: AsyncStream<ForgeJob>.Continuation, held: HeldSocket
     ) async {
-        var job = ForgeJob(recipe: recipe)
+        var job = ForgeJob(recipe: recipe, expected: expecting)
         job.submitting()
         continuation.yield(job)
 
-        let graph = ForgeGraph(recipe: recipe)
+        let placed: String?
+        do {
+            placed = try await place(recipe.frame)
+        } catch {
+            return end(&job, error, continuation)
+        }
+        let graph = ForgeGraph(recipe: recipe, uploadedFrame: placed)
         let problems = graph.problems
         guard problems.isEmpty else {
             return end(&job, ForgeFailure.rejected(endpoint.host, problems.joined(separator: " · ")), continuation)
@@ -244,10 +305,11 @@ public struct ForgeClient: Sendable {
         } catch {
             return end(&job, error, continuation)
         }
-        job.accepted(promptID: promptID)
+        job.accepted(promptID: promptID, nodes: graph.nodes.count)
         continuation.yield(job)
 
         var lost = false
+        var sketches = ImageGenPreviewAssembler()
         listening: while !Task.isCancelled {
             let message: URLSessionWebSocketTask.Message
             do {
@@ -256,8 +318,16 @@ public struct ForgeClient: Sendable {
                 lost = true
                 break listening
             }
-            guard case .string(let text) = message else { continue }
-            let event = ForgeEvent.read(text)
+            let event: ForgeEvent
+            switch message {
+            case .string(let text):
+                event = ForgeEvent.read(text)
+            case .data(let chunk):
+                guard let frame = sketches.feed(chunk) else { continue }
+                event = .sketched(frame)
+            @unknown default:
+                continue
+            }
             if let id = event.promptID, !id.isEmpty, id != promptID { continue }
             job.saw(event)
             continuation.yield(job)

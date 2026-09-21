@@ -1329,6 +1329,15 @@ enum MatrixTheme {
             border-radius: 2px;
         }
         .forge-reason { \(t(.note)) padding: 0 2px; }
+        .forge-sketch { border-radius: 10px; }
+        .forge-enhance {
+            color: \(text);
+            border: 1px solid alpha(\(accent), 0.35);
+            border-radius: 8px;
+            padding: 4px 12px;
+            \(t(.rowTitle))
+        }
+        .forge-enhance:hover { background-color: alpha(\(accent), 0.10); }
         .forge-working { color: \(textDim); }
         .forge-refusal { color: \(danger); }
         .pane-focused { border: 1px solid alpha(\(accent), 0.55); }

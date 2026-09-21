@@ -25,6 +25,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
     private let studio = ForgeStudioView()
     private let field = NSTextField()
     private let avoid = NSTextField()
+    private let sound = NSTextField()
     private let asideLabel = NSTextField(wrappingLabelWithString: "")
     private var asideGlass: NSGlassEffectView?
     private let theatre = AVPlayerView()
@@ -86,7 +87,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
 
         prepareFields()
         let aside = buildAside()
-        studio.attachPrompt(field, avoid: avoid, aside: aside)
+        studio.attachPrompt(field, avoid: avoid, sound: sound, aside: aside)
 
         NSLayoutConstraint.activate([
             theatre.topAnchor.constraint(equalTo: topAnchor),
@@ -117,6 +118,12 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         avoid.delegate = self
         avoid.translatesAutoresizingMaskIntoConstraints = false
         avoid.toolTip = ForgeField.negative.label
+
+        sound.placeholderString = ForgeWords.soundPlaceholder
+        sound.font = MacTheme.Ramp.font(.rowDetail)
+        sound.delegate = self
+        sound.translatesAutoresizingMaskIntoConstraints = false
+        sound.toolTip = "\(ForgeField.sound.label) · \(ForgeWords.soundHint)"
     }
 
     private func buildAside() -> NSView {
@@ -241,6 +248,8 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
             typed()
         } else if box === avoid, !typing {
             runner.avoid(avoid.stringValue)
+        } else if box === sound, !typing {
+            runner.hear(sound.stringValue)
         }
     }
 
@@ -298,7 +307,9 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
             focusPrompt()
         case .negative:
             window?.makeFirstResponder(avoid)
-        case .size, .seconds, .fps, .model, .seed:
+        case .sound:
+            window?.makeFirstResponder(sound)
+        case .frame, .size, .seconds, .fps, .model, .seed:
             return
         }
     }
@@ -470,9 +481,15 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         field.placeholderString = board.prompt
         field.isEnabled = !board.isBusy
         avoid.isEnabled = !board.isBusy
+        sound.isEnabled = !board.isBusy
         if avoid.stringValue != board.recipe.negative, !typing {
             typing = true
             avoid.stringValue = board.recipe.negative
+            typing = false
+        }
+        if sound.stringValue != board.recipe.sound, !typing {
+            typing = true
+            sound.stringValue = board.recipe.sound
             typing = false
         }
         if !watching {

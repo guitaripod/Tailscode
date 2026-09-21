@@ -220,56 +220,8 @@ final class DrawPane: @unchecked Sendable {
         }
     }
 
-    /// The picker's rows: every machine that answered, its models under it with the current one
-    /// marked and the loaded ones saying so; then the look-again row and the off switch. A menu
-    /// opened before any survey starts one, so the first opening is never empty for long.
     private static func helperSections(_ studio: ImageStudio) -> [Gtk.MenuSection] {
-        let current = studio.helper
-        var sections: [Gtk.MenuSection] = []
-        if studio.helperServers.isEmpty, !studio.surveying { Gtk.onMain { studio.surveyHelpers() } }
-        for server in studio.helperServers {
-            let rows = server.models.map { model in
-                Gtk.MenuRow(
-                    title: model.label, detail: model.detail,
-                    on: current?.address == server.address && current?.model == model.id,
-                    action: {
-                        Gtk.onMain {
-                            studio.setHelper(ImageGenHelper(address: server.address, model: model))
-                        }
-                    })
-            }
-            sections.append(Gtk.MenuSection(heading: server.heading, rows: rows))
-        }
-        var tail: [Gtk.MenuRow] = []
-        if studio.surveying {
-            tail.append(Gtk.MenuRow(title: ImageGenRewriteWords.lookingTitle, detail: nil))
-        } else if studio.helperServers.isEmpty {
-            tail.append(
-                Gtk.MenuRow(
-                    title: ImageGenRewriteWords.noneFoundTitle,
-                    detail: ImageGenRewriteWords.noneFoundHint))
-            tail.append(
-                Gtk.MenuRow(
-                    title: ImageGenRewriteWords.lookAgainTitle,
-                    detail: ImageGenRewriteWords.lookAgainHint,
-                    action: { Gtk.onMain { studio.surveyHelpers() } }))
-        } else {
-            tail.append(
-                Gtk.MenuRow(
-                    title: ImageGenRewriteWords.lookAgainTitle,
-                    detail: ImageGenRewriteWords.lookAgainHint,
-                    action: { Gtk.onMain { studio.surveyHelpers() } }))
-        }
-        if let current {
-            tail.append(
-                Gtk.MenuRow(
-                    title: current.enabled
-                        ? ImageGenRewriteWords.offTitle : ImageGenRewriteWords.onTitle,
-                    detail: current.enabled ? ImageGenWords.helperOffHint : current.displayHost,
-                    action: { Gtk.onMain { studio.toggleHelper() } }))
-        }
-        sections.append(Gtk.MenuSection(heading: nil, rows: tail))
-        return sections
+        HelperMenu.sections(studio)
     }
 
     /// The card under the words. Built once; ``refreshRewrite()`` tells it what changed.
@@ -1342,7 +1294,41 @@ final class DrawPane: @unchecked Sendable {
             }
             gtk_widget_set_tooltip_text(button, action.hint)
             gtk_box_append(ptr(actionRow), button)
+            if action == .reference { gtk_box_append(ptr(actionRow), animateButton()) }
         }
+    }
+
+    private func animateButton() -> UnsafeMutablePointer<GtkWidget> {
+        let animate = Gtk.button("▶  \(ForgeWords.animateTitle)", css: ["flat", "draw-action"]) {
+            [weak self] in
+            Gtk.onMain { [weak self] in self?.animateStage() }
+        }
+        gtk_widget_set_tooltip_text(animate, ForgeWords.animateHint)
+        return animate
+    }
+
+    /// The bridge to the other thing this app makes: the forge opened over the work, holding
+    /// this picture as the clip's first frame. A picture the machine keeps is named in its own
+    /// directory so no byte travels; one only this device holds is sent with the render.
+    private func animateStage() {
+        let frame: ForgeFrame
+        var width: Int?
+        var height: Int?
+        if let kept = studio.keptStage {
+            frame = .kept(kept.item.annotatedName)
+            width = kept.facts?.width
+            height = kept.facts?.height
+        } else if let picture = slot.onStage, let remote = picture.remoteName {
+            frame = .kept(ImageGenLibraryItem(filename: remote).annotatedName)
+            width = picture.aspect.pixels.width
+            height = picture.aspect.pixels.height
+        } else if let path = stagePath {
+            frame = .file(path)
+        } else {
+            return
+        }
+        ForgeRunner.shared.start(from: frame, width: width, height: height)
+        ForgeWindow.present(parent: hostWindow)
     }
 
     /// While a render runs the verbs it will land with already take their room, invisible and

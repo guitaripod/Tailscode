@@ -66,6 +66,38 @@ enum ForgeBoardView {
         return button
     }
 
+    /// The Start from row: what the clip opens on, and a menu of where else it could — a file,
+    /// the end of a kept clip, or nothing. Every row is the board's own value and words.
+    static func frame(
+        _ board: ForgeBoard,
+        rows: @escaping @Sendable () -> [(title: String, detail: String?, action: @Sendable () -> Void)]
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        guard let row = board.rows.first(where: { $0.kind == .field(.frame) }) else {
+            return Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        }
+        let button = Gtk.menuButton("", css: ["flat", "forge-model"], rows: rows)
+        gtk_widget_set_hexpand(button, 1)
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.margins(line, top: 8, bottom: 8, leading: 10, trailing: 10)
+        let name = Gtk.label(ForgeField.frame.label, css: "forge-chip-label", selectable: false)
+        gtk_label_set_xalign(op(name), 0)
+        gtk_label_set_ellipsize(op(name), PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_hexpand(name, 0)
+        let value = Gtk.label(row.detail, css: "forge-chip-value", selectable: false)
+        gtk_label_set_ellipsize(op(value), PANGO_ELLIPSIZE_MIDDLE)
+        gtk_widget_set_hexpand(value, 1)
+        gtk_label_set_xalign(op(value), 0)
+        let mark = Gtk.label(ForgeField.frame.affordanceGlyph, css: "forge-affordance", selectable: false)
+        gtk_box_append(ptr(line), name)
+        gtk_box_append(ptr(line), value)
+        gtk_box_append(ptr(line), mark)
+        gtk_menu_button_set_child(op(button), line)
+        gtk_menu_button_set_always_show_arrow(op(button), 0)
+        gtk_widget_set_tooltip_text(button, row.note ?? ForgeWords.frameHint)
+        gtk_widget_set_sensitive(button, board.isBusy ? 0 : 1)
+        return button
+    }
+
     static func chips(
         _ board: ForgeBoard, onPick: @escaping @Sendable (ForgeField, String) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
@@ -163,6 +195,8 @@ enum ForgeBoardView {
         if let badge = job.badge {
             let pill = Gtk.label(badge, css: "pill", selectable: false)
             Gtk.addClass(pill, job.phase.tone == .danger ? "pill-error" : "pill-live")
+            gtk_label_set_ellipsize(op(pill), PANGO_ELLIPSIZE_NONE)
+            gtk_widget_set_hexpand(pill, 0)
             gtk_box_append(ptr(line), pill)
         }
         return line

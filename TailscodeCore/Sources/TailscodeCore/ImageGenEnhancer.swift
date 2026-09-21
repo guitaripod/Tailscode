@@ -378,14 +378,22 @@ public struct ImageGenEnhancer: Sendable {
     ) async throws -> (prompt: String, aspect: ImageGenAspect?) {
         let trimmed = brief.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw Failure.unreadable }
+        return try await stream(ImageGenRewriteAsk(brief: trimmed, context: context), onText: onText)
+    }
+
+    /// The same stream for any ask that answers in the expansion's JSON — the image brief and
+    /// the video brief share the reader, and differ only in what they tell the model.
+    public func stream(
+        _ ask: ImageGenRewriteAsk, onText: @escaping @Sendable (String) -> Void
+    ) async throws -> (prompt: String, aspect: ImageGenAspect?) {
         guard let url = URL(string: helper.address + "/v1/chat/completions") else {
             throw Failure.unreachable
         }
         let body: [String: Any] = [
             "model": helper.model,
             "messages": [
-                ["role": "system", "content": Self.systemPrompt],
-                ["role": "user", "content": ImageGenBrief.expansionAsk(trimmed, context: context)],
+                ["role": "system", "content": ask.system],
+                ["role": "user", "content": ask.user],
             ],
             "temperature": 0.7,
             "max_tokens": 1600,
@@ -417,6 +425,30 @@ public struct ImageGenEnhancer: Sendable {
             return (plain, nil)
         }
         return read
+    }
+}
+
+/// One question to the helper: the rules it writes to and the brief with everything around it.
+/// The image studio and the video forge each compose their own, and the same enhancer streams
+/// either, because both answer in the same one-line JSON.
+public struct ImageGenRewriteAsk: Sendable, Equatable {
+    public let system: String
+    public let user: String
+    /// What the person asked to change, when the ask is a revision of a paragraph already
+    /// written; carried so the card can say so.
+    public let instruction: String?
+
+    public init(system: String, user: String, instruction: String? = nil) {
+        self.system = system
+        self.user = user
+        self.instruction = instruction
+    }
+
+    public init(brief: String, context: ImageGenRewriteContext) {
+        self.init(
+            system: ImageGenBrief.expansionSystem,
+            user: ImageGenBrief.expansionAsk(brief, context: context),
+            instruction: context.instruction)
     }
 }
 

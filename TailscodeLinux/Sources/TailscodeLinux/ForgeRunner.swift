@@ -1,3 +1,4 @@
+import CGdkPixbuf
 import Foundation
 import TailscodeCore
 
@@ -11,7 +12,7 @@ import TailscodeCore
 ///
 /// Everything here runs on the GLib main context, hopped through `Gtk.onMain` at every boundary a
 /// task crosses, so the board is only ever read and written by the one thread that draws it.
-final class ForgeRunner: @unchecked Sendable {
+final class ForgeRunner: @unchecked Sendable, HelperHost {
     static let shared = ForgeRunner()
 
     private(set) var board: ForgeBoard
@@ -27,12 +28,23 @@ final class ForgeRunner: @unchecked Sendable {
     /// sidebar for as long as the app is up, which is what lets a render still be seen once the
     /// window it was started from has gone.
     private var watchers: [ObjectIdentifier: @Sendable () -> Void] = [:]
+    /// The rewrite in flight or landed and not yet taken, drawn as a card under the words.
+    private(set) var draft: ImageGenRewriteDraft?
+    private let rewriter = ImageGenRewriter()
+    private var rewriteAnnouncePending = false
+    /// One line for whoever is showing this — a helper found on its own, a helper gone.
+    var onNotice: (@Sendable (String) -> Void)?
+    /// Every machine that answered the last survey and what each serves, for the picker.
+    private(set) var helperServers: [ImageGenHelperServer] = []
+    private(set) var surveying = false
+    private(set) var surveyedAt: Date?
 
     private init() {
         board = ForgeBoard(
             recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint(),
             rendererName: ForgeStore.label(for: ForgeStore.endpoint()))
         board.filled(history: ForgeStore.history())
+        board.learned(ForgeStore.clock())
     }
 
     /// Whether the other machine is working, which is the one fact a surface that is closed still
@@ -84,6 +96,40 @@ final class ForgeRunner: @unchecked Sendable {
 
     func avoid(_ words: String) {
         board.avoid(words)
+        remember()
+        changed()
+    }
+
+    func hear(_ words: String) {
+        board.hear(words)
+        remember()
+        changed()
+    }
+
+    /// Opens the next clip on a picture, with its shape read off the file when it is one on
+    /// this device, or on nothing.
+    func start(from frame: ForgeFrame?, width: Int? = nil, height: Int? = nil) {
+        var width = width
+        var height = height
+        if width == nil, case .file(let path) = frame, let size = Gtk.imageSize(atPath: path) {
+            width = size.width
+            height = size.height
+        }
+        board.start(from: frame, pictureWidth: width, pictureHeight: height)
+        remember()
+        changed()
+    }
+
+    /// Continues a kept clip: the next render opens where it ended.
+    func extend(_ entry: ForgeEntry) {
+        board.extend(entry)
+        remember()
+        changed()
+    }
+
+    /// The shape the helper answered with, followed only where nobody chose one.
+    func follow(size: ForgeSize) {
+        board.follow(size: size)
         remember()
         changed()
     }
@@ -184,10 +230,11 @@ final class ForgeRunner: @unchecked Sendable {
         renderTicket += 1
         let ticket = renderTicket
         let client = ForgeClient(endpoint: endpoint)
+        let expecting = board.clock.estimate(recipe)
         render = Render(
             ticket: ticket, client: client,
             task: Task { [weak self] in
-                for await job in client.render(recipe) {
+                for await job in client.render(recipe, expecting: expecting) {
                     Gtk.onMain { [weak self] in self?.saw(job, from: ticket) }
                 }
                 Gtk.onMain { [weak self] in self?.ended(ticket) }
@@ -204,6 +251,7 @@ final class ForgeRunner: @unchecked Sendable {
         guard let render, render.ticket == ticket, render.isOut else { return }
         board.saw(job)
         if job.isFinished, ForgeStore.record(job) != nil {
+            if let clock = board.learn(from: job) { ForgeStore.remember(clock: clock) }
             SettingsFile.capture()
             board.filled(history: ForgeStore.history())
         }
@@ -363,4 +411,131 @@ extension ForgeRunner {
     private static let demoPromptID = "demo"
     private static let demoAsset = ForgeAsset(
         filename: "forge_00001.mp4", subfolder: "video", type: "output")
+}
+
+extension ForgeRunner {
+    /// The small model that writes the caption, shared with the image studio: one helper on
+    /// this device, filed once, offered in both places.
+    var helper: ImageGenHelper? { ImageGenStore.helper() }
+
+    /// Whether a rewrite is out right now.
+    var enhancing: Bool { draft?.isWriting == true }
+
+    /// Posted when the paragraph grew and nothing else changed, coalesced to a few a second,
+    /// so the surface refreshes one text view rather than rebuilding itself per token.
+    static let rewriteDidChange = Notification.Name("tailscode.forge.rewriteDidChange")
+
+    /// Asks the helper for the caption, streaming it into ``draft`` as it is written. With no
+    /// helper filed the machines near the renderer are surveyed first and the best writer is
+    /// filed. `instruction` turns the ask into a revision of the caption already written.
+    func rewrite(_ brief: String, instruction: String? = nil) {
+        let previous = instruction == nil ? nil : draft?.written
+        let context = ForgeRewriteContext(
+            recipe: board.recipe, sizeChosen: board.sizeChosen, instruction: instruction,
+            previous: previous)
+        let near = board.endpoint.map { ImageGenEndpoint(host: $0.host, port: $0.port) }
+        rewriter.start(
+            brief: brief, ask: context.ask(brief), filed: helper, near: near,
+            onHelper: { found in
+                Gtk.onMain { ImageGenStore.remember(helper: found) }
+            },
+            onChange: { [weak self] draft in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    guard let draft else {
+                        self.draft = nil
+                        self.onNotice?(ImageGenRewriteWords.noneFoundTitle)
+                        self.changed()
+                        return
+                    }
+                    let grewOnly = self.draft?.isWriting == true && draft.isWriting
+                    self.draft = draft
+                    if grewOnly {
+                        self.announceRewrite()
+                    } else {
+                        self.changed()
+                    }
+                }
+            })
+        draft = nil
+        changed()
+    }
+
+    private func announceRewrite() {
+        guard !rewriteAnnouncePending else { return }
+        rewriteAnnouncePending = true
+        Gtk.after(70) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.rewriteAnnouncePending = false
+                NotificationCenter.default.post(name: ForgeRunner.rewriteDidChange, object: nil)
+            }
+        }
+    }
+
+    /// Stops a rewrite that is still writing and drops what it had.
+    func stopRewrite() {
+        rewriter.cancel()
+        draft = nil
+        changed()
+    }
+
+    /// Closes the card, keeping nothing. The words in the box were never touched.
+    func dismissRewrite() {
+        rewriter.cancel()
+        draft = nil
+        changed()
+    }
+
+    /// Asks every door near the renderer and on this device what it serves, and files the best
+    /// writer when none is filed yet.
+    func surveyHelpers() {
+        guard !surveying else { return }
+        surveying = true
+        changed()
+        let near = board.endpoint.map { ImageGenEndpoint(host: $0.host, port: $0.port) }
+        Task.detached { [weak self] in
+            let servers = await ImageGenHelperFinder.survey(near: near)
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.surveying = false
+                self.surveyedAt = Date()
+                self.helperServers = servers
+                if let found = ImageGenHelperFinder.preferred(across: servers),
+                    self.helper?.yields(to: found) ?? true
+                {
+                    ImageGenStore.remember(helper: found)
+                }
+                self.changed()
+            }
+        }
+    }
+
+    /// Files the helper a person picked from the list, which is kept over anything found later.
+    func setHelper(_ helper: ImageGenHelper?) {
+        var chosen = helper
+        chosen?.chosenByHand = true
+        ImageGenStore.remember(helper: chosen)
+        changed()
+    }
+
+    /// Switches the filed helper off or on without forgetting it.
+    func toggleHelper() {
+        guard var current = helper else { return }
+        current.enabled.toggle()
+        ImageGenStore.remember(helper: current)
+        changed()
+    }
+}
+
+extension Gtk {
+    /// A picture file's pixel size, read from its header without decoding it.
+    static func imageSize(atPath path: String) -> (width: Int, height: Int)? {
+        var width: gint = 0
+        var height: gint = 0
+        guard gdk_pixbuf_get_file_info(path, &width, &height) != nil, width > 0, height > 0 else {
+            return nil
+        }
+        return (Int(width), Int(height))
+    }
 }

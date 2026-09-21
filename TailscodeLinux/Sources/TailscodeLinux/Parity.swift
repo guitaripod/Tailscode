@@ -162,6 +162,11 @@ enum ParityManifest {
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("presentClipMenu")
         case .videoLane: return .implemented("makeLaneRow")
+        case .videoPromptHelper: return .implemented("refreshEnhance")
+        case .videoLivePreview: return .implemented("adoptSketch")
+        case .videoFirstFrame: return .implemented("frameRows")
+        case .videoSound: return .implemented("typedSound")
+        case .videoEstimate: return .implemented("expectation")
         case .reviewPrompt: return .notApplicable("there is no app store on Linux for a review to land in — no star-rating surface exists to open, and asking for one would be a dead button; the policy stays in Core only because the Apple clients share it")
         case .rateAndShare: return .notApplicable("there is no store to rate the app in and no listing to hand around from inside it — the AUR page and the README are the doors, and both are reached from a browser rather than from a settings row")
         }

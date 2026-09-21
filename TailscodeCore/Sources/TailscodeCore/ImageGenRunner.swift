@@ -293,7 +293,7 @@ public final class ImageGenRunner: @unchecked Sendable {
             case .finished, .succeeded, .failed, .interrupted:
                 verdict.settled = true
                 return
-            case .cached, .executed, .ignored:
+            case .cached, .executed, .ignored, .sketched:
                 continue
             }
             progress?(current)

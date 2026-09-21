@@ -18,6 +18,8 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
     case endpoint
     case prompt
     case negative
+    case sound
+    case frame
     case size
     case seconds
     case fps
@@ -29,6 +31,8 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
         case .endpoint: return Localized.text("Renderer")
         case .prompt: return Localized.text("Prompt")
         case .negative: return Localized.text("Avoid")
+        case .sound: return Localized.text("Sound")
+        case .frame: return Localized.text("Start from")
         case .size: return Localized.text("Size")
         case .seconds: return Localized.text("Length")
         case .fps: return Localized.text("Smoothness")
@@ -49,7 +53,16 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
     public var isCyclable: Bool {
         switch self {
         case .size, .seconds, .fps, .model, .seed: return true
-        case .endpoint, .prompt, .negative: return false
+        case .endpoint, .prompt, .negative, .sound, .frame: return false
+        }
+    }
+
+    /// Whether the value is words a person types. The sound is a sentence like the prompt and
+    /// the avoid list; the start picture is a thing to pick, and a client opens its own picker.
+    public var isTyped: Bool {
+        switch self {
+        case .prompt, .negative, .sound: return true
+        case .endpoint, .frame, .size, .seconds, .fps, .model, .seed: return false
         }
     }
 
@@ -70,6 +83,8 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
         case .endpoint: return "desktopcomputer"
         case .prompt: return "text.alignleft"
         case .negative: return "nosign"
+        case .sound: return "speaker.wave.2"
+        case .frame: return "photo"
         case .size: return "aspectratio"
         case .seconds: return "timer"
         case .fps: return "speedometer"
@@ -239,6 +254,11 @@ public struct ForgeBoard: Sendable, Equatable {
     public private(set) var expanded: Set<String> = []
     public private(set) var sections: [ForgeSection] = []
     public private(set) var rows: [ForgeRow] = []
+    /// What renders have cost on this machine so far, for the line under the button.
+    public private(set) var clock = ForgeClock()
+    /// Whether the size was picked by hand in this board's life. A chosen size is kept by the
+    /// helper and by a start picture; an inherited one follows either.
+    public private(set) var sizeChosen = false
 
     private var reach = ForgePhase.idle
     /// Whether the store has been asked yet. A board nobody has handed a history to has no history
@@ -329,12 +349,78 @@ public struct ForgeBoard: Sendable, Equatable {
         revise(recipe.with(negative: words))
     }
 
+    public mutating func hear(_ words: String) {
+        revise(recipe.with(sound: words))
+    }
+
+    /// Opens the next clip on a picture, or on nothing. A clip that continues another takes
+    /// that clip's own shape, and a picture whose shape is known takes the nearest offered
+    /// size, unless a size was chosen by hand — a photograph cropped to a frame it never had is
+    /// not what anybody meant by starting from it.
+    public mutating func start(from frame: ForgeFrame?, pictureWidth: Int? = nil, pictureHeight: Int? = nil) {
+        var next = recipe.with(frame: frame)
+        if !sizeChosen, let frame {
+            switch frame {
+            case .clipEnd:
+                break
+            case .file, .kept:
+                if let pictureWidth, let pictureHeight {
+                    next = next.with(size: ForgeSize.nearest(width: pictureWidth, height: pictureHeight))
+                }
+            }
+        }
+        revise(next)
+    }
+
+    /// Continues a clip already made: the next render opens where that one ended, in the same
+    /// shape, from the same words — which the person edits into what happens next — and on a
+    /// fresh seed, because the same seed would be asked to make the same clip again.
+    public mutating func extend(_ entry: ForgeEntry) {
+        guard let asset = entry.asset else { return }
+        revise(
+            entry.recipe.with(frame: .clipEnd(asset))
+                .with(seed: ForgeRecipe.freshSeed(avoiding: entry.recipe.seed)))
+        sizeChosen = false
+    }
+
+    /// The size a helper answered with: followed, but never counted as a choice by hand.
+    public mutating func follow(size: ForgeSize) {
+        guard !sizeChosen, size != recipe.size else { return }
+        revise(recipe.with(size: size))
+    }
+
+    /// What renders have cost, read back from the store or learned from a finished one.
+    public mutating func learned(_ clock: ForgeClock) {
+        self.clock = clock
+        if !job.isBusy { job.expect(clock.estimate(recipe)) }
+        rebuild()
+    }
+
+    /// One finished render, measured. Answers the clock as it now stands so the caller can keep
+    /// it.
+    @discardableResult
+    public mutating func learn(from job: ForgeJob) -> ForgeClock? {
+        guard let seconds = job.worked else { return nil }
+        clock.learn(job.recipe, seconds: seconds)
+        return clock
+    }
+
+    /// What the next render should cost, for the line under the button. Nil until a clip on the
+    /// same model has been measured.
+    public var expectation: String? {
+        guard !job.isBusy, let seconds = clock.estimate(recipe) else { return nil }
+        return ForgeClock.aboutLine(seconds)
+    }
+
     /// Changes what the next render is made from. A render already in flight keeps its own copy of
     /// the recipe it was started with, so editing the draft mid-render changes the next one rather
     /// than rewriting the one being watched.
     public mutating func revise(_ recipe: ForgeRecipe) {
         self.recipe = recipe
-        if !job.isBusy { job.revise(recipe) }
+        if !job.isBusy {
+            job.revise(recipe)
+            job.expect(clock.estimate(recipe))
+        }
         rebuild()
     }
 
@@ -356,6 +442,7 @@ public struct ForgeBoard: Sendable, Equatable {
     /// can ask for the same thing again, or the same thing slightly different, without retyping it.
     public mutating func reuse(_ entry: ForgeEntry) {
         revise(entry.recipe)
+        sizeChosen = false
     }
 
     public mutating func move(by delta: Int) {
@@ -517,7 +604,7 @@ public struct ForgeBoard: Sendable, Equatable {
                     detail: Localized.text("The same seed and prompt make the same clip"),
                     selected: false)
             ]
-        case .endpoint, .prompt, .negative:
+        case .endpoint, .prompt, .negative, .sound, .frame:
             return []
         }
     }
@@ -529,6 +616,7 @@ public struct ForgeBoard: Sendable, Equatable {
         case .size:
             guard let size = ForgeSize.options.first(where: { $0.id == id }) else { return }
             revise(recipe.with(size: size))
+            sizeChosen = true
         case .seconds:
             guard let seconds = Int(id) else { return }
             revise(recipe.with(seconds: seconds))
@@ -541,7 +629,7 @@ public struct ForgeBoard: Sendable, Equatable {
         case .seed:
             guard id == "reroll" else { return }
             cycle(.seed)
-        case .endpoint, .prompt, .negative:
+        case .endpoint, .prompt, .negative, .sound, .frame:
             return
         }
     }
@@ -559,6 +647,11 @@ public struct ForgeBoard: Sendable, Equatable {
         case .negative:
             let trimmed = recipe.negative.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? Localized.text("Nothing in particular") : trimmed
+        case .sound:
+            let trimmed = recipe.sound.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? ForgeWords.soundUnset : trimmed
+        case .frame:
+            return recipe.frame?.label ?? ForgeWords.frameUnset
         case .size:
             return recipe.size.label
         case .seconds:
@@ -576,6 +669,7 @@ public struct ForgeBoard: Sendable, Equatable {
         switch field {
         case .size:
             revise(recipe.with(size: Self.next(ForgeSize.options, after: recipe.size)))
+            sizeChosen = true
         case .seconds:
             revise(recipe.with(seconds: Self.next(Self.secondsOptions, after: recipe.seconds)))
         case .fps:
@@ -584,7 +678,7 @@ public struct ForgeBoard: Sendable, Equatable {
             revise(recipe.with(model: Self.next(ForgeModel.allCases, after: recipe.model)))
         case .seed:
             revise(recipe.with(seed: ForgeRecipe.freshSeed(avoiding: recipe.seed)))
-        case .endpoint, .prompt, .negative:
+        case .endpoint, .prompt, .negative, .sound, .frame:
             return
         }
     }
@@ -662,6 +756,10 @@ public struct ForgeBoard: Sendable, Equatable {
             rows: [row], hidden: 0)
     }
 
+    /// What the stage shows while nothing plays, in one reading: the sketch when the machine has
+    /// sent one, else the phase's own glyph.
+    public var sketch: ImageGenPreviewFrame? { job.sketch }
+
     /// What the button under the render says it would do, which is the same question `begin()`
     /// answers — said in words here so a client never has to guess a caption from a phase.
     public var renderCall: String {
@@ -685,7 +783,9 @@ public struct ForgeBoard: Sendable, Equatable {
     /// from the recipe as it stood when it was posted, and a row that looks editable but changes
     /// nothing about what is on screen is worse than a row that says it is out of reach.
     private func settingsSection() -> ForgeSection {
-        let fields: [ForgeField] = [.prompt, .negative, .size, .seconds, .fps, .model, .seed]
+        let fields: [ForgeField] = [
+            .prompt, .negative, .sound, .frame, .size, .seconds, .fps, .model, .seed,
+        ]
         let rows = fields.map { field in
             ForgeRow(
                 sectionID: Self.settingsID, kind: .field(field), title: field.label,
@@ -701,6 +801,8 @@ public struct ForgeBoard: Sendable, Equatable {
         case .model: return recipe.model.detail
         case .seconds: return Localized.text("%@ frames", "\(recipe.length)")
         case .seed: return Localized.text("The same seed and prompt make the same clip")
+        case .sound: return ForgeWords.soundHint
+        case .frame: return recipe.frame?.detail ?? ForgeWords.frameHint
         case .endpoint, .prompt, .negative, .size, .fps: return nil
         }
     }
@@ -783,6 +885,47 @@ extension ForgeBoard {
         else { return }
         focus(index)
     }
+}
+
+/// Words the board says about the sound, the start picture and the player, in one place so the
+/// three clients cannot each invent a placeholder.
+public enum ForgeWords {
+    public static var soundUnset: String { Localized.text("Whatever fits the picture") }
+    public static var soundHint: String {
+        Localized.text("Every clip comes with sound. Say what is heard, or let the model decide")
+    }
+    public static var soundPlaceholder: String {
+        Localized.text("What is heard: rain on a tin roof, a distant train…")
+    }
+    public static var frameUnset: String { Localized.text("The words alone") }
+    public static var frameHint: String {
+        Localized.text("A picture the clip opens on, or the end of a clip already made")
+    }
+    public static var pickFileTitle: String { Localized.text("A picture file…") }
+    public static var pickFileHint: String { Localized.text("Sent to the machine with the render") }
+    public static func continueTitle(_ entry: ForgeEntry) -> String {
+        Localized.text("Where “%@” ended", entry.title)
+    }
+    public static var continueHint: String { Localized.text("The last frame of that clip opens this one") }
+    public static var noFrameTitle: String { Localized.text("No picture") }
+    public static var extendTitle: String { Localized.text("Continue it") }
+    public static var extendHint: String {
+        Localized.text("Start the next clip where this one ended, with these words to edit")
+    }
+    public static var animateTitle: String { Localized.text("Animate this") }
+    public static var animateHint: String { Localized.text("Open the video forge with this picture as the first frame") }
+    /// The mark on a playing clip: the clip has a soundtrack, and whether it is being heard.
+    public static var soundOnMark: String { Localized.text("sound") }
+    public static var soundOffMark: String { Localized.text("muted") }
+    public static var soundToggleHint: String { Localized.text("m mutes and unmutes") }
+    /// The caption over a sketch on the stage, so it is never mistaken for the clip.
+    public static func sketchCaption(_ job: ForgeJob) -> String {
+        guard job.samplerSteps > 0 else { return Localized.text("Sketch") }
+        return Localized.text(
+            "Sketch · %@ · step %@ of %@", job.stageName ?? "", "\(min(job.samplerStep, job.samplerSteps))",
+            "\(job.samplerSteps)")
+    }
+    public static var sketchNote: String { Localized.text("the machine's own sketch of the first frame so far") }
 }
 
 /// The forge's rules, checked headlessly rather than in one client — the graph the box actually

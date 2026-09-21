@@ -18,7 +18,7 @@ struct KeptStage: Sendable, Equatable {
 /// that machine's card, so the job, the slot and the textures live here and the window is only a
 /// view onto them. Reopening finds the same picture exactly where it was, and a pane in the grid
 /// gets a studio of its own so the two never share a prompt.
-final class ImageStudio: @unchecked Sendable {
+final class ImageStudio: @unchecked Sendable, HelperHost {
     static let didChange = Notification.Name("tailscode.imageStudio.didChange")
 
     /// The one the modal shows, which is the one that keeps painting while nobody is looking.

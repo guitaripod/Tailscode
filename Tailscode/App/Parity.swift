@@ -169,6 +169,17 @@ enum ParityManifest {
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("ForgeClipCell")
         case .videoLane: return .implemented("composerLanePan")
+        case .videoPromptHelper:
+            return .gap(
+                "ForgeBrief, ForgeRewriteContext and the shared rewriter are Core's, but the phone's forge has no Enhance control or helper menu yet; the image studio's card is the shape to port")
+        case .videoLivePreview:
+            return .gap(
+                "ForgeJob.sketch carries every frame the socket sends, but ForgeStageCell still draws the phase glyph while a render runs rather than the sketch")
+        case .videoFirstFrame:
+            return .gap(
+                "ForgeRecipe.frame and the image-to-video graph are Core's, but the phone's forge has no Start from row, no Continue it on a clip, and no Animate this on a picture")
+        case .videoSound: return .implemented("hear")
+        case .videoEstimate: return .implemented("expecting")
         }
     }
 }

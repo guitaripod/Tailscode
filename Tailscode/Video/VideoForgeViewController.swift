@@ -153,7 +153,13 @@ final class VideoForgeViewController: UIViewController {
             guard let self, let row = self.row(for: item), case .field(let field) = row.kind else {
                 return
             }
-            let typed = field == .prompt ? self.board.recipe.prompt : self.board.recipe.negative
+            let typed: String
+            switch field {
+            case .prompt: typed = self.board.recipe.prompt
+            case .negative: typed = self.board.recipe.negative
+            case .sound: typed = self.board.recipe.sound
+            case .endpoint, .frame, .size, .seconds, .fps, .model, .seed: typed = ""
+            }
             cell.apply(row, field: field, words: typed, hint: self.board.value(of: field))
             cell.onEdit = { [weak self] text in self?.type(text, into: field) }
             cell.onFocus = { [weak self] focused in
@@ -213,7 +219,7 @@ final class VideoForgeViewController: UIViewController {
             case .job:
                 return view.dequeueConfiguredReusableCell(using: stage, for: indexPath, item: item)
             case .field(let field):
-                guard field == .prompt || field == .negative else {
+                guard field.isTyped else {
                     return view.dequeueConfiguredReusableCell(
                         using: value, for: indexPath, item: item)
                 }
@@ -436,7 +442,8 @@ final class VideoForgeViewController: UIViewController {
         switch field {
         case .prompt: runner.describe(text)
         case .negative: runner.avoid(text)
-        case .endpoint, .size, .seconds, .fps, .model, .seed: return
+        case .sound: runner.hear(text)
+        case .endpoint, .frame, .size, .seconds, .fps, .model, .seed: return
         }
     }
 

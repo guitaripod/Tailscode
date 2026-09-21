@@ -154,6 +154,21 @@ public final class ImageGenRewriter: @unchecked Sendable {
         onHelper: @escaping @Sendable (ImageGenHelper) -> Void,
         onChange: @escaping @Sendable (ImageGenRewriteDraft?) -> Void
     ) {
+        let original = brief.trimmingCharacters(in: .whitespacesAndNewlines)
+        start(
+            brief: original, ask: ImageGenRewriteAsk(brief: original, context: context), filed: filed,
+            near: endpoint, session: session, onHelper: onHelper, onChange: onChange)
+    }
+
+    /// The same rewrite for any ask — the video forge composes its own brief and reads the
+    /// same paragraph back. `near` is the machine whose neighbours are surveyed for a helper
+    /// when none is filed.
+    public func start(
+        brief: String, ask: ImageGenRewriteAsk, filed: ImageGenHelper?,
+        near endpoint: ImageGenEndpoint?, session: URLSession = .shared,
+        onHelper: @escaping @Sendable (ImageGenHelper) -> Void,
+        onChange: @escaping @Sendable (ImageGenRewriteDraft?) -> Void
+    ) {
         cancel()
         lock.lock()
         cancelled = false
@@ -174,12 +189,12 @@ public final class ImageGenRewriter: @unchecked Sendable {
                 return
             }
             var draft = ImageGenRewriteDraft(
-                original: original, helper: using, instruction: context.instruction)
+                original: original, helper: using, instruction: ask.instruction)
             onChange(draft)
             let enhancer = ImageGenEnhancer(helper: using, session: session)
             let held = Held(draft)
             do {
-                let read = try await enhancer.stream(original, context: context) { [weak self] text in
+                let read = try await enhancer.stream(ask) { [weak self] text in
                     guard let self, !self.isCancelled else { return }
                     var current = held.value
                     current.written = text

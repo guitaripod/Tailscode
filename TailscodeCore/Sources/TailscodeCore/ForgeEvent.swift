@@ -25,10 +25,11 @@ public struct ForgeCensus: Sendable, Equatable {
 }
 
 /// One frame off the renderer's socket. Every type the server actually sends has a case here,
-/// including the two that are easy to miss and impossible to work without: the null-node
-/// `executing` frame that is how a finished job announces itself, and the binary preview frames
-/// that must be dropped rather than parsed. Anything else the server grows later reads as
-/// `ignored`, so a new frame type is a no-op instead of a crash.
+/// including the one that is easy to miss and impossible to work without: the null-node
+/// `executing` frame that is how a finished job announces itself. The binary preview frames come
+/// down the same socket and are read into `sketched` by the caller, which owns the assembler that
+/// puts a sketch back together from the pieces a socket hands over. Anything else the server
+/// grows later reads as `ignored`, so a new frame type is a no-op instead of a crash.
 public enum ForgeEvent: Sendable, Equatable {
     case status(queued: Int)
     case started(String)
@@ -45,13 +46,16 @@ public enum ForgeEvent: Sendable, Equatable {
     case succeeded(String)
     case failed(String, reason: String)
     case interrupted(String)
+    /// The machine's sketch of the latent after a sampler step. A binary frame names no job, so
+    /// the socket — opened for one client id, and one render at a time — is what says whose it is.
+    case sketched(ImageGenPreviewFrame)
     case ignored
 
     /// The prompt this frame is about, when it names one. A socket carries every job this client
     /// started, so a frame that does not name the job in hand is not the job in hand.
     public var promptID: String? {
         switch self {
-        case .status, .ignored: return nil
+        case .status, .ignored, .sketched: return nil
         case .started(let id), .cached(let id, _), .progressed(let id, _),
             .executing(let id, _), .executed(let id, _), .sampling(let id, _, _, _),
             .finished(let id), .succeeded(let id), .failed(let id, _), .interrupted(let id):

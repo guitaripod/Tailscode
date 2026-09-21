@@ -149,4 +149,15 @@ final class ForgeWindow: @unchecked Sendable {
     func handleChord(_ chord: KeyChord) -> Bool {
         pane.handleChord(chord)
     }
+
+    func drive(_ verb: String, _ argument: String) {
+        switch verb {
+        case "fenhance": pane.driveEnhance()
+        case "fuse": pane.driveUseRewrite()
+        case "fframe": pane.driveFrame(argument)
+        case "fextend": pane.driveExtendNewest()
+        case "fsound": pane.driveSound(argument)
+        default: break
+        }
+    }
 }

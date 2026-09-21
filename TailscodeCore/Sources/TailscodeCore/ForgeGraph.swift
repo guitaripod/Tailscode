@@ -76,6 +76,28 @@ public struct ForgeSize: Sendable, Codable, Hashable, Identifiable {
 
     public static let options: [ForgeSize] = [landscape, portrait, square, small]
 
+    /// The offered size whose shape is closest to a picture's, so a clip that starts from a
+    /// photograph is not cropped to a frame the photograph never had.
+    public static func nearest(width: Int, height: Int) -> ForgeSize {
+        guard width > 0, height > 0 else { return landscape }
+        let wanted = log(Double(width) / Double(height))
+        return options.min {
+            abs(log(Double($0.width) / Double($0.height)) - wanted)
+                < abs(log(Double($1.width) / Double($1.height)) - wanted)
+        } ?? landscape
+    }
+
+    /// The size a helper's answer points at. The helper speaks in picture ratios; a clip has
+    /// three shapes, so anything wide is landscape, anything tall is portrait, and a square is
+    /// a square.
+    public static func following(_ aspect: ImageGenAspect) -> ForgeSize {
+        switch aspect {
+        case .square: return square
+        case .landscape, .screen, .wide: return landscape
+        case .portrait, .tall: return portrait
+        }
+    }
+
     public var name: String {
         switch self {
         case Self.landscape: return Localized.text("Landscape")
@@ -84,6 +106,49 @@ public struct ForgeSize: Sendable, Codable, Hashable, Identifiable {
         case Self.small: return Localized.text("Small")
         default: return label
         }
+    }
+}
+
+/// The picture a clip starts from, when it starts from one. Three places a first frame can come
+/// from and three different things the graph has to do about each: a file on this device has to
+/// be put on the machine first and is then named by whoever put it there; a picture the machine
+/// already keeps is named in its own directory and no byte travels; and a clip already made is
+/// opened on the machine and its last frame taken, which is how one clip continues into the next.
+public enum ForgeFrame: Sendable, Codable, Hashable {
+    case file(String)
+    case kept(String)
+    case clipEnd(ForgeAsset)
+
+    /// The word the chip wears: the file's own name, or the clip it continues.
+    public var label: String {
+        switch self {
+        case .file(let path): return (path as NSString).lastPathComponent
+        case .kept(let name):
+            let bare = name.replacingOccurrences(of: " [output]", with: "")
+                .replacingOccurrences(of: " [input]", with: "")
+            return (bare as NSString).lastPathComponent
+        case .clipEnd(let asset): return asset.filename
+        }
+    }
+
+    /// What starting from it means, for the row under the chip.
+    public var detail: String {
+        switch self {
+        case .file, .kept: return Localized.text("The clip opens on this picture")
+        case .clipEnd: return Localized.text("The clip opens where this one ended")
+        }
+    }
+
+    public var isClipEnd: Bool {
+        if case .clipEnd = self { return true }
+        return false
+    }
+
+    /// Whether the picture is still on this device only. The graph cannot name it until the
+    /// render has put it on the machine.
+    public var needsUpload: Bool {
+        if case .file = self { return true }
+        return false
     }
 }
 
@@ -102,6 +167,12 @@ public struct ForgeRecipe: Sendable, Codable, Hashable {
 
     public var prompt: String
     public var negative: String
+    /// What is heard. LTX-2.5 renders a soundtrack with every clip whether or not anybody asked
+    /// for one, so the sound is a thing to describe rather than a thing to switch on; it goes to
+    /// the model as the last sentence of the prompt.
+    public var sound: String
+    /// The picture the clip opens on, or nil for a clip made from words alone.
+    public var frame: ForgeFrame?
     public let width: Int
     public let height: Int
     public let seconds: Int
@@ -110,18 +181,58 @@ public struct ForgeRecipe: Sendable, Codable, Hashable {
     public var model: ForgeModel
 
     public init(
-        prompt: String = "", negative: String = "", width: Int = ForgeSize.landscape.width,
-        height: Int = ForgeSize.landscape.height, seconds: Int = 5, fps: Int = 24, seed: Int = 0,
-        model: ForgeModel = .distilled
+        prompt: String = "", negative: String = "", sound: String = "", frame: ForgeFrame? = nil,
+        width: Int = ForgeSize.landscape.width, height: Int = ForgeSize.landscape.height,
+        seconds: Int = 5, fps: Int = 24, seed: Int = 0, model: ForgeModel = .distilled
     ) {
         self.prompt = prompt
         self.negative = negative
+        self.sound = sound
+        self.frame = frame
         self.width = ForgeRecipe.blocked(width)
         self.height = ForgeRecipe.blocked(height)
         self.seconds = min(max(seconds, ForgeRecipe.secondsRange.lowerBound), ForgeRecipe.secondsRange.upperBound)
         self.fps = ForgeRecipe.fpsOptions.contains(fps) ? fps : 24
         self.seed = max(0, seed)
         self.model = model
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case prompt, negative, sound, frame, width, height, seconds, fps, seed, model
+    }
+
+    /// A recipe written before the sound and the first frame existed still reads.
+    public init(from decoder: Decoder) throws {
+        let box = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            prompt: try box.decodeIfPresent(String.self, forKey: .prompt) ?? "",
+            negative: try box.decodeIfPresent(String.self, forKey: .negative) ?? "",
+            sound: try box.decodeIfPresent(String.self, forKey: .sound) ?? "",
+            frame: try box.decodeIfPresent(ForgeFrame.self, forKey: .frame),
+            width: try box.decodeIfPresent(Int.self, forKey: .width) ?? ForgeSize.landscape.width,
+            height: try box.decodeIfPresent(Int.self, forKey: .height) ?? ForgeSize.landscape.height,
+            seconds: try box.decodeIfPresent(Int.self, forKey: .seconds) ?? 5,
+            fps: try box.decodeIfPresent(Int.self, forKey: .fps) ?? 24,
+            seed: try box.decodeIfPresent(Int.self, forKey: .seed) ?? 0,
+            model: try box.decodeIfPresent(ForgeModel.self, forKey: .model) ?? .distilled)
+    }
+
+    /// The sentence the verified image-to-video graph opens its prompt with. The model is told
+    /// in words as well as in latents that the picture is the first frame, so a description that
+    /// starts mid-motion does not fight the conditioning.
+    public static let openingLine = "Use the provided start image as the first frame."
+
+    /// What the text encoder is actually given: the opening line when the clip starts from a
+    /// picture, the words, then the sound as its own closing sentence. One reader so the graph,
+    /// the tests and the helper's own instructions all mean the same paragraph.
+    public var renderedPrompt: String {
+        var parts: [String] = []
+        if frame != nil { parts.append(Self.openingLine) }
+        let words = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !words.isEmpty { parts.append(words) }
+        let heard = sound.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !heard.isEmpty { parts.append(heard) }
+        return parts.joined(separator: " ")
     }
 
     public var size: ForgeSize { ForgeSize(width: width, height: height) }
@@ -145,51 +256,41 @@ public struct ForgeRecipe: Sendable, Codable, Hashable {
     /// The line under a clip: what it is, how long, how smooth, on which model, from which seed.
     /// One sentence so three clients cannot each invent their own.
     public var summary: String {
-        Localized.text(
+        let base = Localized.text(
             "%@ · %@s · %@fps · %@ · seed %@", size.label, "\(seconds)", "\(fps)",
             model.label.lowercased(), "\(seed)")
+        guard let frame else { return base }
+        return base + " · " + Localized.text("from %@", frame.label)
     }
 
-    public func with(prompt: String) -> ForgeRecipe {
-        ForgeRecipe(
-            prompt: prompt, negative: negative, width: width, height: height, seconds: seconds,
-            fps: fps, seed: seed, model: model)
-    }
+    public func with(prompt: String) -> ForgeRecipe { copy(prompt: prompt) }
 
-    public func with(negative: String) -> ForgeRecipe {
-        ForgeRecipe(
-            prompt: prompt, negative: negative, width: width, height: height, seconds: seconds,
-            fps: fps, seed: seed, model: model)
-    }
+    public func with(negative: String) -> ForgeRecipe { copy(negative: negative) }
 
-    public func with(size: ForgeSize) -> ForgeRecipe {
-        ForgeRecipe(
-            prompt: prompt, negative: negative, width: size.width, height: size.height,
-            seconds: seconds, fps: fps, seed: seed, model: model)
-    }
+    public func with(sound: String) -> ForgeRecipe { copy(sound: sound) }
 
-    public func with(seconds: Int) -> ForgeRecipe {
-        ForgeRecipe(
-            prompt: prompt, negative: negative, width: width, height: height, seconds: seconds,
-            fps: fps, seed: seed, model: model)
-    }
+    public func with(frame: ForgeFrame?) -> ForgeRecipe { copy(frame: .some(frame)) }
 
-    public func with(fps: Int) -> ForgeRecipe {
-        ForgeRecipe(
-            prompt: prompt, negative: negative, width: width, height: height, seconds: seconds,
-            fps: fps, seed: seed, model: model)
-    }
+    public func with(size: ForgeSize) -> ForgeRecipe { copy(width: size.width, height: size.height) }
 
-    public func with(model: ForgeModel) -> ForgeRecipe {
-        ForgeRecipe(
-            prompt: prompt, negative: negative, width: width, height: height, seconds: seconds,
-            fps: fps, seed: seed, model: model)
-    }
+    public func with(seconds: Int) -> ForgeRecipe { copy(seconds: seconds) }
 
-    public func with(seed: Int) -> ForgeRecipe {
+    public func with(fps: Int) -> ForgeRecipe { copy(fps: fps) }
+
+    public func with(model: ForgeModel) -> ForgeRecipe { copy(model: model) }
+
+    public func with(seed: Int) -> ForgeRecipe { copy(seed: seed) }
+
+    private func copy(
+        prompt: String? = nil, negative: String? = nil, sound: String? = nil,
+        frame: ForgeFrame?? = nil, width: Int? = nil, height: Int? = nil, seconds: Int? = nil,
+        fps: Int? = nil, seed: Int? = nil, model: ForgeModel? = nil
+    ) -> ForgeRecipe {
         ForgeRecipe(
-            prompt: prompt, negative: negative, width: width, height: height, seconds: seconds,
-            fps: fps, seed: seed, model: model)
+            prompt: prompt ?? self.prompt, negative: negative ?? self.negative,
+            sound: sound ?? self.sound, frame: frame ?? self.frame, width: width ?? self.width,
+            height: height ?? self.height, seconds: seconds ?? self.seconds, fps: fps ?? self.fps,
+            seed: seed ?? self.seed, model: model ?? self.model)
     }
 
     /// A seed small enough to read out loud and retype. The point of showing a seed at all is that
@@ -219,6 +320,7 @@ public enum ForgeValue: Sendable, Equatable {
     case text(String)
     case whole(Int)
     case decimal(Double)
+    case flag(Bool)
     case link(String, Int)
 
     var json: Any {
@@ -226,6 +328,7 @@ public enum ForgeValue: Sendable, Equatable {
         case .text(let value): return value
         case .whole(let value): return value
         case .decimal(let value): return value
+        case .flag(let value): return value
         case .link(let key, let slot): return [key, slot]
         }
     }
@@ -283,6 +386,12 @@ enum ForgeClass {
         "LTXVAudioVAEDecode": 1,
         "CreateVideo": 1,
         "SaveVideo": 0,
+        "LoadImage": 2,
+        "LoadVideo": 1,
+        "GetVideoComponents": 5,
+        "ImageFromBatch": 1,
+        "LTXVPreprocess": 1,
+        "LTXVImgToVideoInplace": 1,
     ]
 }
 
@@ -304,12 +413,28 @@ public struct ForgeGraph: Sendable, Equatable {
     public static let refinementSeed = 42
     public static let outputKey = "save"
 
+    /// How strongly the first frame holds each pass, as the verified image-to-video graph sets
+    /// them: the first pass is guided rather than pinned so the motion can begin, and the second
+    /// pass, refining at full size, is pinned to the picture exactly.
+    public static let firstPassHold = 0.7
+    public static let secondPassHold = 1.0
+    /// The compression the verified graph applies to a start picture before encoding it, so a
+    /// clean render is not asked to continue a picture cleaner than anything it will make.
+    public static let frameCompression = 18
+    /// A frame index past any clip this app can make: `ImageFromBatch` clamps it to the last
+    /// frame there is, which is the one frame the next clip needs.
+    public static let lastFrameIndex = 16384
+
     public let recipe: ForgeRecipe
     public let nodes: [ForgeNode]
+    /// The name the machine gave the start picture when it was put there. Nil for a recipe that
+    /// starts from words or from a picture the machine already holds.
+    public let uploadedFrame: String?
 
-    public init(recipe: ForgeRecipe, prefix: String = ForgeGraph.prefix) {
+    public init(recipe: ForgeRecipe, prefix: String = ForgeGraph.prefix, uploadedFrame: String? = nil) {
         self.recipe = recipe
-        nodes = ForgeGraph.build(recipe: recipe, prefix: prefix)
+        self.uploadedFrame = uploadedFrame
+        nodes = ForgeGraph.build(recipe: recipe, prefix: prefix, uploadedFrame: uploadedFrame)
     }
 
     /// A graph assembled from nodes handed in rather than built from a recipe. The checks need it:
@@ -318,7 +443,12 @@ public struct ForgeGraph: Sendable, Equatable {
     init(recipe: ForgeRecipe, nodes: [ForgeNode]) {
         self.recipe = recipe
         self.nodes = nodes
+        uploadedFrame = nil
     }
+
+    /// Whether the clip opens on a picture. The graph then carries the start nodes and both
+    /// passes are held to the frame.
+    public var startsFromFrame: Bool { node("start1") != nil }
 
     public func node(_ key: String) -> ForgeNode? { nodes.first { $0.key == key } }
 
@@ -370,12 +500,17 @@ public struct ForgeGraph: Sendable, Equatable {
         if node("lat_v")?.inputs["width"] != .whole(recipe.stageOneWidth) {
             found.append(Localized.text("the first pass is not sampling at half size"))
         }
+        if recipe.frame?.needsUpload == true, uploadedFrame == nil {
+            found.append(Localized.text("the start picture was never put on the machine"))
+        }
         return found
     }
 
-    private static func build(recipe: ForgeRecipe, prefix: String) -> [ForgeNode] {
+    private static func build(recipe: ForgeRecipe, prefix: String, uploadedFrame: String?) -> [ForgeNode] {
         let rate = Double(recipe.fps)
-        return [
+        let start = startNodes(recipe: recipe, uploadedFrame: uploadedFrame)
+        let held = !start.isEmpty
+        return start + [
             ForgeNode(
                 key: "unet", classType: "UNETLoader",
                 inputs: [
@@ -395,7 +530,7 @@ public struct ForgeGraph: Sendable, Equatable {
 
             ForgeNode(
                 key: "pos", classType: "CLIPTextEncode",
-                inputs: ["text": .text(recipe.prompt), "clip": .link("clip", 0)]),
+                inputs: ["text": .text(recipe.renderedPrompt), "clip": .link("clip", 0)]),
             ForgeNode(
                 key: "neg", classType: "CLIPTextEncode",
                 inputs: ["text": .text(recipe.negative), "clip": .link("clip", 0)]),
@@ -420,7 +555,10 @@ public struct ForgeGraph: Sendable, Equatable {
                 ]),
             ForgeNode(
                 key: "av1", classType: "LTXVConcatAVLatent",
-                inputs: ["video_latent": .link("lat_v", 0), "audio_latent": .link("lat_a", 0)]),
+                inputs: [
+                    "video_latent": .link(held ? "start1" : "lat_v", 0),
+                    "audio_latent": .link("lat_a", 0),
+                ]),
 
             ForgeNode(
                 key: "noise1", classType: "RandomNoise",
@@ -457,7 +595,10 @@ public struct ForgeGraph: Sendable, Equatable {
                 ]),
             ForgeNode(
                 key: "av2", classType: "LTXVConcatAVLatent",
-                inputs: ["video_latent": .link("up", 0), "audio_latent": .link("split1", 1)]),
+                inputs: [
+                    "video_latent": .link(held ? "start2" : "up", 0),
+                    "audio_latent": .link("split1", 1),
+                ]),
 
             ForgeNode(
                 key: "noise2", classType: "RandomNoise",
@@ -506,5 +647,58 @@ public struct ForgeGraph: Sendable, Equatable {
                     "format": .text("auto"), "codec": .text("auto"),
                 ]),
         ]
+    }
+
+    /// The nodes a clip that opens on a picture needs, as the verified image-to-video graph has
+    /// them: the picture opened — a file the machine was handed, a picture it keeps, or the last
+    /// frame of a clip it made — compressed the way the model expects, then written into the
+    /// first frame of each pass's latent by `LTXVImgToVideoInplace`, which scales the picture to
+    /// the latent's own size. Empty for a clip made from words alone.
+    private static func startNodes(recipe: ForgeRecipe, uploadedFrame: String?) -> [ForgeNode] {
+        guard let frame = recipe.frame else { return [] }
+        var nodes: [ForgeNode] = []
+        let picture: String
+        switch frame {
+        case .file:
+            guard let uploadedFrame else { return [] }
+            nodes.append(
+                ForgeNode(key: "still", classType: "LoadImage", inputs: ["image": .text(uploadedFrame)]))
+            picture = "still"
+        case .kept(let name):
+            nodes.append(ForgeNode(key: "still", classType: "LoadImage", inputs: ["image": .text(name)]))
+            picture = "still"
+        case .clipEnd(let asset):
+            nodes.append(
+                ForgeNode(key: "reel", classType: "LoadVideo", inputs: ["file": .text(asset.annotatedName)]))
+            nodes.append(
+                ForgeNode(key: "frames", classType: "GetVideoComponents", inputs: ["video": .link("reel", 0)]))
+            nodes.append(
+                ForgeNode(
+                    key: "last", classType: "ImageFromBatch",
+                    inputs: [
+                        "image": .link("frames", 0), "batch_index": .whole(lastFrameIndex),
+                        "length": .whole(1),
+                    ]))
+            picture = "last"
+        }
+        nodes.append(
+            ForgeNode(
+                key: "prep", classType: "LTXVPreprocess",
+                inputs: ["image": .link(picture, 0), "img_compression": .whole(frameCompression)]))
+        nodes.append(
+            ForgeNode(
+                key: "start1", classType: "LTXVImgToVideoInplace",
+                inputs: [
+                    "vae": .link("vae_v", 0), "image": .link("prep", 0), "latent": .link("lat_v", 0),
+                    "strength": .decimal(firstPassHold), "bypass": .flag(false),
+                ]))
+        nodes.append(
+            ForgeNode(
+                key: "start2", classType: "LTXVImgToVideoInplace",
+                inputs: [
+                    "vae": .link("vae_v", 0), "image": .link("prep", 0), "latent": .link("up", 0),
+                    "strength": .decimal(secondPassHold), "bypass": .flag(false),
+                ]))
+        return nodes
     }
 }

@@ -285,6 +285,17 @@ enum ParityManifest {
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("presentClipMenu")
         case .videoLane: return .implemented("laneControl")
+        case .videoPromptHelper:
+            return .gap(
+                "ForgeBrief, ForgeRewriteContext and the shared rewriter are Core's, but the Mac's forge has no Enhance control or helper menu yet; the Linux ForgePane is the shape to port")
+        case .videoLivePreview:
+            return .gap(
+                "ForgeJob.sketch carries every frame the socket sends, but ForgeHeroStage still draws the phase glyph while a render runs rather than the sketch")
+        case .videoFirstFrame:
+            return .gap(
+                "ForgeRecipe.frame and the image-to-video graph are Core's, but the Mac's forge has no Start from row, no Continue it on a clip, and no picture surface to animate from")
+        case .videoSound: return .implemented("hear")
+        case .videoEstimate: return .implemented("expecting")
         case .reviewPrompt: return .implemented("MacReviewPrompt")
         case .rateAndShare: return .gap("the Help menu carries no Rate or Share item yet: MacReviewPrompt asks at the right moment, but a person who wants to write a review or hand the store listing to a colleague has no door of their own — two Help items, one opening the App Store review form and one handing the listing to NSSharingServicePicker, with the review item held back from the ad-hoc copy the store never sold")
         }

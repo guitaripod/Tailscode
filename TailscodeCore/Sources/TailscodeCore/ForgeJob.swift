@@ -25,24 +25,52 @@ public struct ForgeAsset: Sendable, Codable, Hashable {
         return ["mp4", "webm", "mov", "mkv"].contains(suffix)
     }
 
+    /// What a graph on the same machine calls this file: ComfyUI's loaders read an annotated
+    /// name — the path inside the directory, then the directory's kind in brackets — straight
+    /// out of the directory the file was written to, so a clip continues into the next without
+    /// a byte travelling.
+    public var annotatedName: String {
+        let path = subfolder.isEmpty ? filename : subfolder + "/" + filename
+        return path + " [\(type)]"
+    }
+
     /// The file inside a history entry's outputs. Public because the shape is the server's: it
     /// files a video under `images` with an `animated` flag beside it, which is exactly the sort of
-    /// detail that changes in a point release, so a client's selftest pins it here.
+    /// detail that changes in a point release, so a client's selftest pins it here. The save node
+    /// is read first by its own key, because a graph that opens a clip to continue it reports the
+    /// clip it opened as an output too — typed `input`, and not the file anybody asked for.
     public static func read(outputs: Any) -> ForgeAsset? {
+        if let byNode = outputs as? [String: Any], let saved = byNode[ForgeGraph.outputKey],
+            let asset = first(in: saved)
+        {
+            return asset
+        }
+        let found = all(in: outputs)
+        return found.first { $0.type == "output" } ?? found.first
+    }
+
+    private static func first(in outputs: Any) -> ForgeAsset? {
+        all(in: outputs).first
+    }
+
+    private static func all(in outputs: Any) -> [ForgeAsset] {
+        var found: [ForgeAsset] = []
         var stack: [Any] = [outputs]
         while let next = stack.popLast() {
             if let object = next as? [String: Any] {
                 if let filename = object["filename"] as? String, !filename.isEmpty {
-                    return ForgeAsset(
-                        filename: filename, subfolder: object["subfolder"] as? String ?? "",
-                        type: object["type"] as? String ?? "output")
+                    found.append(
+                        ForgeAsset(
+                            filename: filename, subfolder: object["subfolder"] as? String ?? "",
+                            type: object["type"] as? String ?? "output"))
+                    continue
                 }
-                stack.append(contentsOf: object.values)
+                for key in object.keys.sorted(by: >) { stack.append(object[key]!) }
             } else if let list = next as? [Any] {
-                stack.append(contentsOf: list)
+                stack.append(contentsOf: list.reversed())
             }
         }
-        return nil
+        return found
     }
 }
 
@@ -70,25 +98,43 @@ public struct ForgeJob: Sendable, Equatable {
     public private(set) var recipe: ForgeRecipe
     public private(set) var phase: ForgeJobPhase
     public private(set) var promptID: String?
+    /// How many nodes the graph that was posted has. The server's census names only the nodes
+    /// it has touched, so five loaders finished and nothing yet running would read as a render
+    /// that is done; the bar is finished over the whole graph, never over what has been seen.
+    public private(set) var graphNodes: Int
     public private(set) var census: ForgeCensus?
     public private(set) var samplerStep: Int
     public private(set) var samplerSteps: Int
     public private(set) var startedAt: Date?
+    /// When the machine actually began on it, as opposed to when it was asked. The queue and the
+    /// wake are not the render, and an estimate learned from them would say every clip takes as
+    /// long as the slowest morning.
+    public private(set) var ranAt: Date?
     public private(set) var endedAt: Date?
+    /// How long this render was expected to take when it was sent, learned from the ones before
+    /// it on the same machine. Nil the first time.
+    public private(set) var expected: TimeInterval?
+    /// The machine's own sketch of the clip so far: the first frame of the latent, decoded after
+    /// each sampler step. Nil until the first step and after the render ends.
+    public private(set) var sketch: ImageGenPreviewFrame?
     /// The highest fraction reached. A census frame that counts fewer finished nodes than the last
     /// one is the server re-reporting, not the render going backwards, and a bar that retreats is
     /// read as a fault.
     private var reached: Double
 
-    public init(recipe: ForgeRecipe = ForgeRecipe()) {
+    public init(recipe: ForgeRecipe = ForgeRecipe(), expected: TimeInterval? = nil) {
         self.recipe = recipe
         phase = .drafting
         promptID = nil
+        graphNodes = 0
         census = nil
         samplerStep = 0
         samplerSteps = 0
         startedAt = nil
+        ranAt = nil
         endedAt = nil
+        self.expected = expected
+        sketch = nil
         reached = 0
     }
 
@@ -107,8 +153,16 @@ public struct ForgeJob: Sendable, Equatable {
         samplerStep = 0
         samplerSteps = 0
         startedAt = nil
+        ranAt = nil
         endedAt = nil
+        sketch = nil
         reached = 0
+    }
+
+    /// What the next render is expected to cost, told to a draft so the button under it can say
+    /// so before anybody presses it.
+    public mutating func expect(_ seconds: TimeInterval?) {
+        expected = seconds
     }
 
     public mutating func submitting(at moment: Date = Date()) {
@@ -118,8 +172,11 @@ public struct ForgeJob: Sendable, Equatable {
         reached = 0
     }
 
-    public mutating func accepted(promptID: String, queued: Int = 0, at moment: Date = Date()) {
+    public mutating func accepted(
+        promptID: String, queued: Int = 0, nodes: Int = 0, at moment: Date = Date()
+    ) {
         self.promptID = promptID
+        graphNodes = nodes
         startedAt = startedAt ?? moment
         phase = .queued(max(0, queued))
     }
@@ -127,16 +184,19 @@ public struct ForgeJob: Sendable, Equatable {
     public mutating func delivered(_ asset: ForgeAsset, at moment: Date = Date()) {
         reached = 1
         endedAt = moment
+        sketch = nil
         phase = .done(asset)
     }
 
     public mutating func failed(_ reason: String, at moment: Date = Date()) {
         endedAt = moment
+        sketch = nil
         phase = .failed(reason)
     }
 
     public mutating func cancelled(at moment: Date = Date()) {
         endedAt = moment
+        sketch = nil
         phase = .cancelled
     }
 
@@ -150,12 +210,15 @@ public struct ForgeJob: Sendable, Equatable {
             guard case .queued = phase else { return }
             phase = .queued(max(0, queued - 1))
         case .started:
+            ranAt = ranAt ?? Date()
             advance()
         case .cached:
             advance()
         case .progressed(_, let census):
             self.census = census
-            reached = max(reached, census.fraction)
+            let whole = max(census.total, graphNodes)
+            let fraction = whole > 0 ? Double(census.finished) / Double(whole) : 0
+            reached = max(reached, min(1, fraction))
             advance()
         case .sampling(_, _, let step, let steps):
             samplerStep = step
@@ -163,6 +226,9 @@ public struct ForgeJob: Sendable, Equatable {
             advance()
         case .executing, .executed:
             advance()
+        case .sketched(let frame):
+            guard isBusy else { return }
+            sketch = frame
         case .finished, .succeeded:
             reached = 1
             advance()
@@ -228,8 +294,9 @@ public struct ForgeJob: Sendable, Equatable {
     public var subtitle: String {
         switch phase {
         case .drafting:
-            return recipe.isRenderable
-                ? Localized.text("Ready to render") : Localized.text("Describe the video")
+            guard recipe.isRenderable else { return Localized.text("Describe the video") }
+            guard let expected else { return Localized.text("Ready to render") }
+            return Localized.text("Ready to render") + " · " + ForgeClock.aboutLine(expected)
         case .submitting:
             return Localized.text("Waking the renderer…")
         case .queued(let ahead):
@@ -238,7 +305,9 @@ public struct ForgeJob: Sendable, Equatable {
                 : Localized.text("Waiting its turn")
         case .running(let fraction):
             guard fraction < 1 else { return Localized.text("Saving the file…") }
-            return Localized.text("Rendering · %@%%", "\(Int((fraction * 100).rounded()))")
+            let line = Localized.text("Rendering · %@%%", "\(Int((fraction * 100).rounded()))")
+            guard let left = remaining() else { return line }
+            return line + " · " + left
         case .done:
             guard let spent = spent() else { return Localized.text("Ready") }
             return Localized.text("Ready · %@", spent)
@@ -286,6 +355,8 @@ public struct ForgeJob: Sendable, Equatable {
         case "video", "save": return Localized.text("Writing the file")
         case "unet", "clip", "vae_v", "vae_a", "upscaler": return Localized.text("Loading models")
         case "pos", "neg", "cond": return Localized.text("Reading the prompt")
+        case "still", "reel", "frames", "last", "prep", "start1", "start2":
+            return Localized.text("Reading the start picture")
         default: return nil
         }
     }
@@ -300,6 +371,24 @@ public struct ForgeJob: Sendable, Equatable {
         let minutes = seconds / 60
         let rest = seconds % 60
         return Localized.text("%@m %@s", "\(minutes)", "\(rest)")
+    }
+
+    /// How much longer, from the estimate and the clock, in words — or nothing, when there was
+    /// no estimate or the render has already outrun it, because "0 s left" over a bar still
+    /// moving is a lie a person catches at once.
+    public func remaining(now: Date = Date()) -> String? {
+        guard let expected, let since = ranAt ?? startedAt else { return nil }
+        let left = expected - now.timeIntervalSince(since)
+        guard left >= 1 else { return nil }
+        return ForgeClock.leftLine(left)
+    }
+
+    /// How long the machine actually worked, for the clock to learn from: from the first frame
+    /// the machine sent about this job to the last, and nothing when it never finished.
+    public var worked: TimeInterval? {
+        guard case .done = phase, let endedAt, let since = ranAt ?? startedAt else { return nil }
+        let seconds = endedAt.timeIntervalSince(since)
+        return seconds > 0 ? seconds : nil
     }
 
     public var prompt: String { Localized.text("Describe the video") }

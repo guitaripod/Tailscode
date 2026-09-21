@@ -94,10 +94,11 @@ final class ForgeStudioView: NSView {
     }
     private var wasSet = false
 
-    func attachPrompt(_ field: NSView, avoid: NSView, aside: NSView) {
+    func attachPrompt(_ field: NSView, avoid: NSView, sound: NSView, aside: NSView) {
         controls.insertArrangedSubview(field, at: 1)
         controls.insertArrangedSubview(avoid, at: 2)
-        controls.insertArrangedSubview(aside, at: 5)
+        controls.insertArrangedSubview(sound, at: 3)
+        controls.insertArrangedSubview(aside, at: 6)
     }
 
     private let controls = FillingStack()

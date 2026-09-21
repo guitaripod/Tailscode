@@ -55,6 +55,7 @@ final class ForgeRunner {
             recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint(),
             rendererName: ForgeStore.label(for: ForgeStore.endpoint()))
         board.filled(history: ForgeStore.history())
+        board.learned(ForgeStore.clock())
         if let endpoint = ForgeStore.endpoint() {
             board.point(at: endpoint, named: ForgeStore.label(for: endpoint))
         }
@@ -127,8 +128,9 @@ final class ForgeRunner {
         renderClient = client
         renderTicket += 1
         let ticket = renderTicket
+        let expecting = board.clock.estimate(recipe)
         renderTask = Task { [weak self] in
-            for await job in client.render(recipe) {
+            for await job in client.render(recipe, expecting: expecting) {
                 guard let self, self.renderTicket == ticket else { return }
                 self.board.saw(job)
                 self.announce()
@@ -160,6 +162,7 @@ final class ForgeRunner {
     private func settle(_ ticket: Int) {
         guard renderTicket == ticket else { return }
         renderTask = nil
+        if let clock = board.learn(from: board.job) { ForgeStore.remember(clock: clock) }
         if ForgeStore.record(board.job) != nil {
             board.filled(history: ForgeStore.history())
         }
@@ -237,6 +240,11 @@ final class ForgeRunner {
 
     func avoid(_ words: String) {
         board.avoid(words)
+        announce()
+    }
+
+    func hear(_ words: String) {
+        board.hear(words)
         announce()
     }
 

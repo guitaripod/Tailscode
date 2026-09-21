@@ -61,6 +61,7 @@ final class ForgeRunner {
             recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint(),
             rendererName: ForgeStore.label(for: ForgeStore.endpoint()))
         board.filled(history: ForgeStore.history())
+        board.learned(ForgeStore.clock())
     }
 
     /// Whether the other machine is working, which is the one fact a surface that is closed still
@@ -159,6 +160,12 @@ final class ForgeRunner {
         changed()
     }
 
+    func hear(_ words: String) {
+        board.hear(words)
+        ForgeStore.remember(board.recipe)
+        changed()
+    }
+
     func reuse(_ entry: ForgeEntry) {
         board.reuse(entry)
         ForgeStore.remember(board.recipe)
@@ -205,8 +212,9 @@ final class ForgeRunner {
         renderClient = connection
         renderTicket += 1
         let ticket = renderTicket
+        let expecting = board.clock.estimate(recipe)
         renderTask = Task { [weak self] in
-            for await job in connection.render(recipe) {
+            for await job in connection.render(recipe, expecting: expecting) {
                 guard let self, self.renderTicket == ticket else { return }
                 self.saw(job)
             }
@@ -226,6 +234,7 @@ final class ForgeRunner {
     private func saw(_ job: ForgeJob) {
         board.saw(job)
         if job.isFinished, ForgeStore.record(job) != nil {
+            if let clock = board.learn(from: job) { ForgeStore.remember(clock: clock) }
             board.filled(history: ForgeStore.history())
         }
         changed()
