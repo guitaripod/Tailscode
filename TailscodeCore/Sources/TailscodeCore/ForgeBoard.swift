@@ -803,7 +803,8 @@ public struct ForgeBoard: Sendable, Equatable {
         case .seed: return Localized.text("The same seed and prompt make the same clip")
         case .sound: return ForgeWords.soundHint
         case .frame: return recipe.frame?.detail ?? ForgeWords.frameHint
-        case .endpoint, .prompt, .negative, .size, .fps: return nil
+        case .negative: return recipe.model.heedsNegative ? nil : ForgeWords.negativeIgnoredHint
+        case .endpoint, .prompt, .size, .fps: return nil
         }
     }
 
@@ -896,6 +897,9 @@ public enum ForgeWords {
     }
     public static var soundPlaceholder: String {
         Localized.text("What is heard: rain on a tin roof, a distant train…")
+    }
+    public static var negativeIgnoredHint: String {
+        Localized.text("%@ runs without guidance and ignores this; %@ steers by it", ForgeModel.distilled.label, ForgeModel.dev.label)
     }
     public static var frameUnset: String { Localized.text("The words alone") }
     public static var frameHint: String {

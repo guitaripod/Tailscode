@@ -112,13 +112,35 @@ struct ForgeTests {
         #expect(unetInputs["unet_name"] as? String == ForgeModel.distilled.fileName)
     }
 
-    @Test("Choosing the other model changes both the weights and the schedule they need")
+    @Test("Choosing the other model changes the weights and the whole drive they need")
     func modelCarriesItsSchedule() {
         let fine = ForgeGraph(recipe: recipe.with(model: .dev))
+        #expect(fine.problems.isEmpty)
         #expect(fine.node("unet")?.inputs["unet_name"] == .text(ForgeModel.dev.fileName))
-        #expect(fine.node("sig1")?.inputs["sigmas"] == .text(ForgeModel.dev.stageOneSigmas))
+        #expect(fine.node("sig1")?.classType == "LTXVScheduler")
+        #expect(fine.node("sig1")?.inputs["steps"] == .whole(20))
+        #expect(fine.node("sig1")?.inputs["max_shift"] == .decimal(2.05))
+        #expect(fine.node("sig1")?.inputs["base_shift"] == .decimal(0.95))
+        #expect(fine.node("sig1")?.inputs["stretch"] == .flag(true))
+        #expect(fine.node("sig1")?.inputs["terminal"] == .decimal(0.1))
+        #expect(fine.node("sig1")?.inputs["latent"] == .link("lat_v", 0))
         #expect(fine.node("sig2")?.inputs["sigmas"] == .text(ForgeModel.dev.stageTwoSigmas))
-        #expect(ForgeModel.dev.stageOneSigmas != ForgeModel.distilled.stageOneSigmas)
+        #expect(fine.node("guider1")?.inputs["video_cfg"] == .decimal(3.0))
+        #expect(fine.node("guider2")?.inputs["video_cfg"] == .decimal(1.0))
+        #expect(fine.node("sampler")?.inputs["sampler_name"] == .text("euler"))
+        #expect(fine.node("neg")?.inputs["text"] == .text("blurry"))
+        let unguided = ForgeGraph(recipe: recipe.with(model: .dev).with(negative: " "))
+        #expect(unguided.node("neg")?.inputs["text"] == .text(ForgeModel.defaultNegative))
+
+        let fast = ForgeGraph(recipe: recipe.with(negative: ""))
+        #expect(fast.node("sig1")?.classType == "ManualSigmas")
+        #expect(fast.node("sig1")?.inputs["sigmas"] == .text(ForgeModel.distilled.stageOneSigmas))
+        #expect(fast.node("guider1")?.inputs["video_cfg"] == .decimal(1.0))
+        #expect(fast.node("sampler")?.inputs["sampler_name"] == .text("euler_ancestral"))
+        #expect(fast.node("neg")?.inputs["text"] == .text(""))
+        #expect(!ForgeModel.distilled.heedsNegative && ForgeModel.dev.heedsNegative)
+        #expect(ForgeModel.dev.stageOneSigmas.isEmpty)
+        #expect(JSONSerialization.isValidJSONObject(fine.payload))
     }
 
     @Test("Every frame the socket sends reads as the event it is")

@@ -137,6 +137,7 @@ final class ForgeWindow: @unchecked Sendable {
         case "fframe": pane.driveFrame(argument)
         case "fextend": pane.driveExtendNewest()
         case "fsound": pane.driveSound(argument)
+        case "fmodel": ForgeRunner.shared.pick(.model, id: argument)
         default: break
         }
     }
