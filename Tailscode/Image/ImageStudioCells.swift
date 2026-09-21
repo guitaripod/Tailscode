@@ -130,12 +130,13 @@ final class ImageStageCell: UICollectionViewListCell {
     }
 
     func apply(_ reading: ImageStageReading, ceiling: CGFloat) {
+        let previous = self.reading
         self.reading = reading
         var background = UIBackgroundConfiguration.clear()
         background.backgroundColor = .clear
         backgroundConfiguration = background
         applyShape(reading.ratio, ceiling: ceiling)
-        applyStage(reading)
+        applyStage(reading, after: previous)
     }
 
     /// The stage takes the shape of the picture on it — or, with none, of the one being asked for
@@ -153,12 +154,20 @@ final class ImageStageCell: UICollectionViewListCell {
         ratio = pin
     }
 
-    private func applyStage(_ reading: ImageStageReading) {
+    private func applyStage(_ reading: ImageStageReading, after previous: ImageStageReading?) {
         clock?.cancel()
         clock = nil
         let sketching = reading.slot.isBusy && reading.sketch != nil
         let shown = sketching ? reading.sketch : (reading.image ?? reading.placeholder)
-        picture.image = shown
+        let arriving = !sketching && previous?.sketch != nil && reading.image != nil
+            && picture.image != nil && !UIAccessibility.isReduceMotionEnabled
+        if arriving {
+            UIView.transition(with: picture, duration: 0.7, options: [.transitionCrossDissolve]) {
+                self.picture.image = shown
+            }
+        } else {
+            picture.image = shown
+        }
         picture.isHidden = shown == nil
         picture.accessibilityLabel = sketching ? ImageGenPreviewWords.caption(reading.progress) : nil
         scrim.alpha = sketching ? 0.35 : 1

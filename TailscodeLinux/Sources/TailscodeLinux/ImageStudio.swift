@@ -444,6 +444,7 @@ final class ImageStudio: @unchecked Sendable {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         keptStage = nil
+        dropPreview()
         slot.begin(prompt: text)
         startedAt = Date()
         progress = nil
@@ -498,9 +499,16 @@ final class ImageStudio: @unchecked Sendable {
             self.runner = nil
             startedAt = nil
             progress = nil
-            dropPreview()
+            if case .failure = outcome { dropPreview() }
         }
         announce()
+    }
+
+    /// Lets go of the last sketch once the stage has faded it into the picture. A landed render
+    /// keeps its sketch for exactly that long, so the picture can arrive under it rather than
+    /// in place of it.
+    func settleSketch() {
+        dropPreview()
     }
 
     /// Decodes one sketch and wears it in place of the last. The frames are small — the machine

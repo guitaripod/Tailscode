@@ -992,7 +992,8 @@ enum MatrixTheme {
         .draw-caption { color: \(textDim); \(t(.hint)) opacity: 0.85; }
         .draw-stage-room { min-height: 180px; }
         .draw-facts { color: \(textDim); \(t(.badge)) }
-        .draw-actions { margin-top: 4px; }
+        .draw-actions { margin-top: 4px; transition: opacity 450ms ease-out; }
+        .draw-actions-reserved { opacity: 0; transition: none; }
         .draw-action {
             color: \(textDim);
             background-color: alpha(\(text), 0.04);

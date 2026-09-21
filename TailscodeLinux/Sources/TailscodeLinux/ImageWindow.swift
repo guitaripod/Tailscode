@@ -170,6 +170,8 @@ final class ImageWindow: @unchecked Sendable {
 
     func driverUseRewrite() { pane.driverUseRewrite() }
 
+    var arrivalSummary: String { pane.arrivalSummary }
+
     /// One line for the headless driver: the rewrite card as it stands.
     var rewriteSummary: String {
         guard let draft = pane.studio.draft else { return "none" }

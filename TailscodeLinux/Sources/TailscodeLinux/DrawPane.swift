@@ -467,6 +467,78 @@ final class DrawPane: @unchecked Sendable {
         return previous == nil && !sketching ? shape : "\(shape) · \(note)"
     }
 
+    /// The picture a render just landed arrives under its last sketch rather than in place of
+    /// it: both sit in a stack that crossfades from the sketch to the picture once, on the frame
+    /// after it is mapped, and the sketch is let go when the fade is over. A rebuild in the
+    /// meantime — the shelf catching up, a thumbnail decoding — finds the fade already begun for
+    /// this picture and shows the picture outright, so nothing fades twice. Reduced motion
+    /// shows the picture at once.
+    private var arrivedKey: String?
+    /// Until when the arrival stack is left alone: a rebuild inside this window — the shelf
+    /// catching up, a thumbnail decoding — would cut the fade short, so the stage keeps what it
+    /// has while the picture is still arriving.
+    private var arrivalUntil: Date?
+
+    private func arrivalKeeps(_ key: String?) -> Bool {
+        guard let arrivalUntil, arrivalUntil > Date(), let key, key == arrivedKey,
+            !slot.isBusy, !zoomed, let stack = arrivalStackWidget,
+            gtk_widget_get_parent(stack) == stagePicture
+        else { return false }
+        return true
+    }
+
+    private func arrivalStack(for key: String, landing: UnsafeMutablePointer<GtkWidget>)
+        -> UnsafeMutablePointer<GtkWidget>?
+    {
+        guard fills, arrivedKey != key, studio.previewTexture != 0,
+            slot.pictures.first?.path == key, RepeatingMotion.allowed,
+            let sketch = Gtk.pictureWidget(bits: studio.previewTexture)
+        else { return nil }
+        arrivedKey = key
+        arrivalUntil = Date().addingTimeInterval(Double(Self.arrivalFade + 400) / 1000)
+        let stack = gtk_stack_new()!
+        gtk_stack_set_transition_type(op(stack), GTK_STACK_TRANSITION_TYPE_CROSSFADE)
+        gtk_stack_set_transition_duration(op(stack), Self.arrivalFade)
+        gtk_stack_set_hhomogeneous(op(stack), 1)
+        gtk_stack_set_vhomogeneous(op(stack), 1)
+        gtk_widget_set_vexpand(stack, 1)
+        gtk_widget_set_hexpand(stack, 1)
+        gtk_widget_set_vexpand(sketch, 1)
+        gtk_widget_set_hexpand(sketch, 1)
+        Gtk.addClass(sketch, "draw-sketch")
+        gtk_stack_add_child(op(stack), sketch)
+        gtk_stack_add_child(op(stack), landing)
+        gtk_stack_set_visible_child(op(stack), sketch)
+        arrivalStackWidget = stack
+        let stackBits = UInt(bitPattern: stack)
+        let landingBits = UInt(bitPattern: landing)
+        Gtk.connect(UnsafeMutableRawPointer(stack), "map") {
+            Gtk.after(60) {
+                guard let stack = UnsafeMutablePointer<GtkWidget>(bitPattern: stackBits),
+                    let landing = UnsafeMutablePointer<GtkWidget>(bitPattern: landingBits),
+                    gtk_widget_get_parent(landing) == stack, gtk_widget_get_mapped(stack) != 0
+                else { return }
+                gtk_stack_set_visible_child(op(stack), landing)
+            }
+        }
+        Gtk.after(Self.arrivalFade + 400) { [weak self] in
+            Gtk.onMain { [weak self] in self?.studio.settleSketch() }
+        }
+        return stack
+    }
+
+    private static let arrivalFade: UInt32 = 700
+
+    /// For the headless driver: whether a landed picture was faded in, and what the stack says.
+    var arrivalSummary: String {
+        guard let arrivedKey else { return "none" }
+        guard let stack = arrivalStackWidget else { return "built(\(arrivedKey.suffix(12)))" }
+        let running = gtk_stack_get_transition_running(op(stack)) != 0
+        return "stack running=\(running) mapped=\(gtk_widget_get_mapped(stack) != 0)"
+    }
+
+    private var arrivalStackWidget: UnsafeMutablePointer<GtkWidget>?
+
     /// A new sketch swaps the paintable of the picture already on the stage; only the first
     /// frame, which has no picture to swap into, rebuilds the stage.
     private func adoptSketch() {
@@ -1017,8 +1089,9 @@ final class DrawPane: @unchecked Sendable {
     /// than showing a grey rectangle, and a render in flight paints in place of the picture so the
     /// eye never has to go looking for where the answer will appear.
     private func refreshStage() {
-        Gtk.removeChildren(of: stagePicture)
         let key = stageTextureKey
+        let keepArrival = arrivalKeeps(key)
+        if !keepArrival { Gtk.removeChildren(of: stagePicture) }
         let hasBits = key.flatMap { textures[$0] }.map { $0 != 0 } ?? false
         if slot.isBusy || !hasBits { zoomed = false }
         if fills {
@@ -1049,8 +1122,9 @@ final class DrawPane: @unchecked Sendable {
         gtk_widget_set_visible(zoomHint, zoomed ? 1 : 0)
 
         let previousKey = fills && slot.isBusy ? underwayKey : nil
-        sketchPicture = nil
-        if slot.isBusy, studio.previewTexture != 0,
+        if !keepArrival { sketchPicture = nil }
+        if keepArrival {
+        } else if slot.isBusy, studio.previewTexture != 0,
             let widget = Gtk.pictureWidget(bits: studio.previewTexture)
         {
             gtk_widget_set_vexpand(widget, 1)
@@ -1087,7 +1161,11 @@ final class DrawPane: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.openStage() }
             }
             if zoomed { Gtk.addClass(button, "draw-tile-zoomed") }
-            gtk_box_append(ptr(stagePicture), button)
+            if let arrival = arrivalStack(for: key, landing: button) {
+                gtk_box_append(ptr(stagePicture), arrival)
+            } else {
+                gtk_box_append(ptr(stagePicture), button)
+            }
         } else if studio.keptStage != nil {
             stagePicture.appendWorking(room: fills)
         } else {
@@ -1238,11 +1316,17 @@ final class DrawPane: @unchecked Sendable {
     /// on, and the one that destroys sits apart from the hand reaching for the others.
     private func refreshActions() {
         Gtk.removeChildren(of: actionRow)
+        if fills, slot.isBusy {
+            reserveActionRow()
+            return
+        }
         guard !slot.isBusy, stagePath != nil else {
             gtk_widget_set_visible(actionRow, 0)
             return
         }
         gtk_widget_set_visible(actionRow, 1)
+        gtk_widget_remove_css_class(actionRow, "draw-actions-reserved")
+        gtk_widget_set_can_target(actionRow, 1)
         for action in stageActions {
             if action.isDestructive {
                 let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
@@ -1257,6 +1341,26 @@ final class DrawPane: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.perform(action) }
             }
             gtk_widget_set_tooltip_text(button, action.hint)
+            gtk_box_append(ptr(actionRow), button)
+        }
+    }
+
+    /// While a render runs the verbs it will land with already take their room, invisible and
+    /// untouchable, so the stage does not shrink by a row the moment the picture arrives — a
+    /// picture that jumps up as it lands is a picture nobody watched arrive.
+    private func reserveActionRow() {
+        gtk_widget_set_visible(actionRow, 1)
+        Gtk.addClass(actionRow, "draw-actions-reserved")
+        gtk_widget_set_can_target(actionRow, 0)
+        for action in ImageGenAction.forPicture {
+            if action.isDestructive {
+                let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+                gtk_widget_set_hexpand(spacer, 1)
+                gtk_box_append(ptr(actionRow), spacer)
+            }
+            let button = Gtk.button(
+                "\(action.glyph)  \(action.title)", css: ["flat", "draw-action"], onClick: {})
+            gtk_widget_set_sensitive(button, 0)
             gtk_box_append(ptr(actionRow), button)
         }
     }

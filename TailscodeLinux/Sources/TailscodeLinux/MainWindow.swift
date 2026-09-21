@@ -586,7 +586,7 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(Data("IMAGEUSE\n".utf8))
                 case "imagerewrite":
                     FileHandle.standardOutput.write(
-                        Data("IMAGEREWRITE \(ImageWindow.current?.rewriteSummary ?? "-") sketch=\(ImageStudio.shared.previewTexture != 0)\n".utf8))
+                        Data("IMAGEREWRITE \(ImageWindow.current?.rewriteSummary ?? "-") sketch=\(ImageStudio.shared.previewTexture != 0) anim=\(RepeatingMotion.allowed) arrival=\(ImageWindow.current?.arrivalSummary ?? "-")\n".utf8))
                 case "imagesum":
                     FileHandle.standardOutput.write(
                         Data("IMAGESUM \(ImageStudio.shared.summary)\n".utf8))
