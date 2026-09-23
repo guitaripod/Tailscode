@@ -171,6 +171,22 @@ enum Gtk {
         tailscode_on_right_click(widget, callback, box)
     }
 
+    /// The row-menu right click for a widget whose own child is selectable text: claimed on the
+    /// way down, before a `GtkLabel`'s own copy-menu gesture ever sees the press and keeps this
+    /// one from arriving at all.
+    static func onRightClickCapture(
+        _ widget: UnsafeMutablePointer<GtkWidget>,
+        _ handler: @escaping @Sendable (Double, Double) -> Void
+    ) {
+        let box = Unmanaged.passRetained(PointBox(handler)).toOpaque()
+        let callback: @convention(c) (Double, Double, UnsafeMutableRawPointer?) -> Void = {
+            x, y, raw in
+            guard let raw else { return }
+            Unmanaged<PointBox>.fromOpaque(raw).takeUnretainedValue().handler(x, y)
+        }
+        tailscode_on_right_click_capture(widget, callback, box)
+    }
+
     final class PointBox: @unchecked Sendable {
         let handler: @Sendable (Double, Double) -> Void
         init(_ handler: @escaping @Sendable (Double, Double) -> Void) { self.handler = handler }

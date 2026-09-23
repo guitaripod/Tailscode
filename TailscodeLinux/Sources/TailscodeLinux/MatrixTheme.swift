@@ -673,6 +673,11 @@ enum MatrixTheme {
         .response-stat-glyph { color: \(textDim); \(t(.responseStat)) }
         .response-stat-value { color: \(textDim); \(t(.responseStat)) }
         .card-interrupted { border-left: 2px solid \(warn); }
+        .card-retry { border-left: 2px solid \(warn); }
+        .card-revert { border-left: 2px solid \(warn); }
+        .retry-attempt { \(t(.rowStamp)) color: \(textDim); }
+        .note-quiet { color: \(textDim); \(t(.note)) }
+        .note-attention { color: \(warn); \(t(.note)) }
         .card button:disabled, .card button:disabled label { opacity: 0.45; }
         .card-design { border-left: 2px solid \(info); }
         .design-letter, .design-letter:hover {

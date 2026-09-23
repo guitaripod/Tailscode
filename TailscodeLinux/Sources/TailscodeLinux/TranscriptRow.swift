@@ -71,6 +71,15 @@ final class TranscriptContext: @unchecked Sendable {
     /// through the pane, which is the one place that knows which conversation is being looked at.
     var resumeInterrupted: (@Sendable () -> Void)?
     var dismissInterrupted: (@Sendable () -> Void)?
+    /// A right-click on a user message's own row: its id, the row widget's bits and the point to
+    /// anchor a popover at. The pane decides what the row may offer (today, only Undo from here,
+    /// and only where the backend and the message qualify) because only it holds the backend's
+    /// capabilities and the live conversation state.
+    var presentMessageMenu: (@Sendable (String, UInt, Double, Double) -> Void)?
+    /// The one press a standing revert's banner offers. The pane owns it because only it can tell
+    /// whether this device is already mid-press and knows what to do with the composer once the
+    /// server answers.
+    var restoreRevert: (@Sendable () -> Void)?
     /// The gallery's ear while it is open: a page whose texture was still being fetched repaints
     /// the moment ``store(textureBits:data:forKey:)`` lands it.
     var onImageStored: (@Sendable (String) -> Void)?
@@ -146,7 +155,12 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     /// - Parameter turnOpen: whether the conversation is mid-turn. The newest message of an open
     ///   turn is still being written even on a backend that stamps nothing on the record itself
     ///   (`MessageSegment.isSealed`), which is every message the Claude bridge serves.
-    func rows(for messages: [ChatMessage], turnOpen: Bool = false) -> [TranscriptRow] {
+    /// - Parameter modelName: threaded to ``TranscriptRow/rows(for:prompt:cacheMarkup:sealed:modelName:)``
+    ///   for a note's own model naming; not part of the memo key; see that function's doc.
+    func rows(
+        for messages: [ChatMessage], turnOpen: Bool = false,
+        modelName: (ModelSelection) -> String? = { _ in nil }
+    ) -> [TranscriptRow] {
         lock.lock()
         defer { lock.unlock() }
         let palette = MatrixTheme.palette.name
@@ -171,7 +185,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
             } else {
                 rows = TranscriptRow.rows(
                     for: message, prompt: prompt, cacheMarkup: message.id != writing,
-                    sealed: sealed)
+                    sealed: sealed, modelName: modelName)
             }
             if message.role == .user { prompt = message }
             next[message.id] = (message, sealed, rows)
@@ -229,7 +243,7 @@ extension TranscriptRow {
 /// the picture. No bubbles — the material lives in the chrome around this.
 struct TranscriptRow: Hashable {
     enum Kind: Hashable {
-        case userText(String)
+        case userText(String, messageID: String)
         case interruption
         /// The markup rides in the row, computed where the rows are computed — off the GLib main
         /// context — so painting a prose row is a label set, not a markdown parse. The palette's
@@ -258,6 +272,15 @@ struct TranscriptRow: Hashable {
         case pendingSend(PendingSend, ResumePlan?)
         /// Not ``interruption``, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
+        /// A line the server wrote for the reader rather than the model: quiet, still, never a
+        /// message. See ``TranscriptNoteReading``.
+        case note(TranscriptNoteLine)
+        /// The turn waiting on its provider between attempts. Docked at the end of the transcript
+        /// in the same family as ``interruptedTurn``, and gone the moment an attempt answers.
+        case providerRetry(ProviderRetryCard)
+        /// A revert standing on the conversation, where the messages it set aside used to be.
+        /// `restoring` is this device's own press, worn by the button until the server answers.
+        case revertBanner(RevertBanner, restoring: Bool)
         case turnBreak
     }
 
@@ -301,9 +324,11 @@ struct TranscriptRow: Hashable {
     /// - Parameter sealed: whether this message's text is finished, decided by the caller because
     ///   only the caller can see the conversation (`MessageSegment.isSealed`). Nil falls back to
     ///   what the record says about itself, which is all a caller with no state has.
+    /// - Parameter modelName: maps a note's model to the name this client already shows for it, so
+    ///   `TranscriptNoteReading` can write the model's picked name rather than its bare id.
     static func rows(
         for message: ChatMessage, prompt: ChatMessage? = nil, cacheMarkup: Bool = true,
-        sealed: Bool? = nil
+        sealed: Bool? = nil, modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [TranscriptRow] {
         let sealed = sealed ?? !message.isStreaming
         var rows: [TranscriptRow] = []
@@ -320,7 +345,9 @@ struct TranscriptRow: Hashable {
                         rows.append(TranscriptRow(key: "\(key):int", kind: .interruption))
                     }
                     if !remainder.isEmpty {
-                        rows.append(TranscriptRow(key: key, kind: .userText(remainder)))
+                        rows.append(
+                            TranscriptRow(
+                                key: key, kind: .userText(remainder, messageID: message.id)))
                     }
                     continue
                 }
@@ -372,6 +399,11 @@ struct TranscriptRow: Hashable {
                     TranscriptRow(key: key, kind: .file(reference, mine: message.role == .user)))
             case .compaction(let compaction):
                 rows.append(TranscriptRow(key: key, kind: .compaction(compaction)))
+            case .note(let note):
+                rows.append(
+                    TranscriptRow(
+                        key: key,
+                        kind: .note(TranscriptNoteReading.read(note, modelName: modelName))))
             case .unknown:
                 continue
             }
@@ -391,11 +423,13 @@ struct TranscriptRow: Hashable {
 
     /// Rows for a whole transcript, with a hairline between turns so the reading rhythm survives
     /// density.
-    static func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
+    static func rows(
+        for messages: [ChatMessage], modelName: (ModelSelection) -> String? = { _ in nil }
+    ) -> [TranscriptRow] {
         var all: [TranscriptRow] = []
         var prompt: ChatMessage?
         for message in messages {
-            let rows = Self.rows(for: message, prompt: prompt)
+            let rows = Self.rows(for: message, prompt: prompt, modelName: modelName)
             if message.role == .user { prompt = message }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
@@ -542,7 +576,7 @@ struct TranscriptRow: Hashable {
     /// What in-conversation search reads for this row: the words a person saw, not widget state.
     var searchText: String {
         switch kind {
-        case .userText(let text), .reasoning(let text):
+        case .userText(let text, _), .reasoning(let text):
             return text
         case .agentProse(let text, _):
             return text
@@ -581,6 +615,12 @@ struct TranscriptRow: Hashable {
             return ResumeReading.spoken(plan, words: send.text)
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
+        case .note(let line):
+            return line.text
+        case .providerRetry(let card):
+            return "\(card.title) \(card.reason)"
+        case .revertBanner(let banner, _):
+            return "\(banner.title) \(banner.detail)"
         case .interruption:
             return "interrupted"
         case .turnBreak:
@@ -590,8 +630,8 @@ struct TranscriptRow: Hashable {
 
     func makeWidget(context: TranscriptContext) -> UnsafeMutablePointer<GtkWidget> {
         switch kind {
-        case .userText(let text):
-            return Self.prompt(text)
+        case .userText(let text, let messageID):
+            return Self.prompt(text, messageID: messageID, context: context)
         case .interruption:
             let label = Gtk.label(
                 "⌧ " + Localized.text("interrupted"), css: "interruption", selectable: false)
@@ -633,6 +673,12 @@ struct TranscriptRow: Hashable {
             return Self.pendingSend(send, plan: plan, context: context)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
+        case .note(let line):
+            return Self.note(line)
+        case .providerRetry(let card):
+            return Self.providerRetry(card)
+        case .revertBanner(let banner, let restoring):
+            return Self.revertBanner(banner, restoring: restoring, context: context)
         case .turnBreak:
             let rule = Gtk.hairline()
             Gtk.margins(rule, top: 10, bottom: 10)
@@ -640,7 +686,12 @@ struct TranscriptRow: Hashable {
         }
     }
 
-    private static func prompt(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
+    /// A user message's own actions, right-click, the way every other row in this app keeps them
+    /// out of its face until asked for. Undo is the only one there is today; the anchor is the
+    /// prompt's own widget, which outlives the popover a re-render never has reason to touch.
+    private static func prompt(
+        _ text: String, messageID: String, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
         let rule = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(rule, "prompt-rule")
@@ -651,6 +702,8 @@ struct TranscriptRow: Hashable {
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(row), rule)
         gtk_box_append(ptr(row), label)
+        let bits = UInt(bitPattern: row)
+        Gtk.onRightClickCapture(row) { x, y in context.presentMessageMenu?(messageID, bits, x, y) }
         return row
     }
 
@@ -1380,6 +1433,126 @@ struct TranscriptRow: Hashable {
             gtk_box_append(ptr(buttons), button)
         }
         gtk_box_append(ptr(card), buttons)
+        return card
+    }
+
+    /// A line the server wrote for the reader, never a message: small, quiet, and, unlike every
+    /// card around it, carrying no author, no time and no action. The tooltip repeats it as
+    /// `spoken`, which says "Note:" first, because the sentence alone can read as something
+    /// somebody typed.
+    private static func note(_ line: TranscriptNoteLine) -> UnsafeMutablePointer<GtkWidget> {
+        let textTone = line.tone == .attention ? "note-attention" : "note-quiet"
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        gtk_box_append(
+            ptr(row), Gtk.label(line.glyph, css: line.tone.glyphCSS, selectable: false))
+        let text = Gtk.label(line.text, css: textTone, wrap: true, selectable: false)
+        gtk_widget_set_halign(text, GTK_ALIGN_START)
+        gtk_widget_set_hexpand(text, 1)
+        gtk_box_append(ptr(row), text)
+        gtk_widget_set_halign(row, GTK_ALIGN_START)
+        gtk_widget_set_tooltip_text(row, line.spoken)
+        return row
+    }
+
+    /// The turn waiting on its provider. It asks nothing of the person (no retry button, no stop
+    /// button, stopping stays where it always is), so the only press this card ever offers is the
+    /// remedy's own link, opened in the browser the way every other outside link on this desk is.
+    private static func providerRetry(_ card: ProviderRetryCard) -> UnsafeMutablePointer<GtkWidget> {
+        let box = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(box, "card")
+        Gtk.addClass(box, "card-retry")
+
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(
+            ptr(heading),
+            Gtk.label(
+                ProviderRetryCard.glyph, css: ProviderRetryCard.tone.glyphCSS, selectable: false))
+        let title = Gtk.label(card.title, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(box), heading)
+
+        let reason = Gtk.label(card.reason, css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_halign(reason, GTK_ALIGN_START)
+        gtk_box_append(ptr(box), reason)
+
+        let attempt = Gtk.label(card.attemptLine, css: "retry-attempt", wrap: true, selectable: false)
+        gtk_widget_set_halign(attempt, GTK_ALIGN_START)
+        gtk_box_append(ptr(box), attempt)
+
+        if let remedy = card.remedy {
+            let remedyTitle = Gtk.label(remedy.title, css: "row-title", wrap: true, selectable: false)
+            gtk_widget_set_halign(remedyTitle, GTK_ALIGN_START)
+            gtk_box_append(ptr(box), remedyTitle)
+            let remedyMessage = Gtk.label(
+                remedy.message, css: "tool-detail", wrap: true, selectable: false)
+            gtk_widget_set_halign(remedyMessage, GTK_ALIGN_START)
+            gtk_box_append(ptr(box), remedyMessage)
+            if let link = remedy.link {
+                let button = Gtk.button(remedy.label, css: ["flat", "seam-read"]) {
+                    Self.open(link)
+                }
+                gtk_widget_set_halign(button, GTK_ALIGN_START)
+                gtk_box_append(ptr(box), button)
+            }
+        }
+        return box
+    }
+
+    /// Opens a URL the way every other outside link on this desk does: a hand-off to the desktop
+    /// rather than a browser this app would then have to own.
+    private static func open(_ url: URL) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-open")
+        process.arguments = [url.absoluteString]
+        try? process.run()
+    }
+
+    /// A revert standing on the conversation, where the messages it set aside used to be. The
+    /// button wears this device's own press (`restoring`) until the server answers, which is state
+    /// the banner itself does not carry: Core hands over one steady `restoreTitle`, and the two
+    /// alphabets meet only here.
+    private static func revertBanner(
+        _ banner: RevertBanner, restoring: Bool, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "card")
+        Gtk.addClass(card, "card-revert")
+
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(
+            ptr(heading),
+            Gtk.label(RevertBanner.glyph, css: RevertBanner.tone.glyphCSS, selectable: false))
+        let title = Gtk.label(banner.title, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(card), heading)
+
+        let detail = Gtk.label(banner.detail, css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), detail)
+
+        let (shown, more) = banner.files(upTo: 6)
+        for file in shown {
+            let text = [file.path, file.change, file.counts].compactMap { $0 }.joined(separator: " · ")
+            let row = Gtk.label(text, css: "row-detail", wrap: true, selectable: false)
+            gtk_widget_set_halign(row, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), row)
+        }
+        if let more {
+            let line = Gtk.label(more, css: "row-note", wrap: true, selectable: false)
+            gtk_widget_set_halign(line, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), line)
+        }
+
+        let button = Gtk.button(
+            restoring ? RevertReading.restoringTitle : banner.restoreTitle, css: ["flat", "seam-read"]
+        ) { context.restoreRevert?() }
+        gtk_widget_set_sensitive(button, restoring ? 0 : 1)
+        gtk_widget_set_halign(button, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), button)
         return card
     }
 }

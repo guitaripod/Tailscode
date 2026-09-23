@@ -132,7 +132,8 @@ public enum InterruptedTurnReading {
                     elapsed(from: cutOff.detectedAt, to: now)),
             progress: progressLines(cutOff.progress),
             queued: cutOff.queued,
-            state: state)
+            state: state,
+            holdsUnattendedWork: cutOff.holdsUnattendedWork)
     }
 
     /// The card as it must be drawn the instant a button is pressed, before the server has said
@@ -146,7 +147,8 @@ public enum InterruptedTurnReading {
             detail: detail(for: press.state) ?? turn.detail,
             progress: turn.progress,
             queued: turn.queued,
-            state: press.state)
+            state: press.state,
+            holdsUnattendedWork: turn.cost != nil)
     }
 
     /// What to say when the server refused a press, given the body it refused with.
@@ -232,10 +234,10 @@ public enum InterruptedTurnReading {
     /// and the press cannot drift apart.
     private static func compose(
         prompt: String, detail: String, progress: [String], queued: [String],
-        state: InterruptedTurn.State
+        state: InterruptedTurn.State, holdsUnattendedWork: Bool
     ) -> InterruptedTurn {
         let line = queuedLine(queued)
-        let price = cost(for: state)
+        let price = holdsUnattendedWork ? cost(for: state) : nil
         let title = title(for: state)
         return InterruptedTurn(
             prompt: prompt,

@@ -228,6 +228,11 @@ gboolean tailscode_paned_handle_center(GtkWidget *paned, double *x, double *y);
 /// nobody chose.
 void tailscode_on_right_click(
     GtkWidget *widget, void (*handler)(double x, double y, void *), void *data);
+/// The same right click, claimed on the way down rather than the way up: for a widget whose own
+/// child is itself selectable text, whose GtkLabel already answers a secondary click with its own
+/// copy menu and would otherwise never let this widget's row menu see the press at all.
+void tailscode_on_right_click_capture(
+    GtkWidget *widget, void (*handler)(double x, double y, void *), void *data);
 char *tailscode_label_selection(GtkWidget *widget);
 gboolean tailscode_label_has_selection(GtkWidget *widget);
 /// Whether a widget is a label — the band tints the label inside a segment, whatever wrapped it.

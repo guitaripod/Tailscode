@@ -43,6 +43,28 @@ final class ChatViewController: UIViewController {
     /// and left exactly as it was.
     private var lastInterrupted: InterruptedTurn?
     private static let interruptedRowID = "interrupted"
+    /// The turn waiting on its provider right now, read fresh from `state.retry` on every render:
+    /// the card recomputes its own countdown on a clock of its own, so nothing here needs to track
+    /// more than whether the wait itself is still standing.
+    private var retryStanding: TurnRetry?
+    private var lastRetryStanding: TurnRetry?
+    private static let retryRowID = "retry"
+    /// The conversation wound back to one of your messages, or nil when nothing is set aside.
+    private var revertBanner: RevertBanner?
+    private var lastRevertBanner: RevertBanner?
+    /// Whether this device's own press on Restore is still out, baked into the banner's redraw the
+    /// same way an interrupted-turn press is: the banner has no identity of its own to carry it.
+    private var lastRestoringRevert = false
+    private static let revertRowID = "revert"
+    /// The standing revert's own boundary message, so the composer is refilled exactly once per
+    /// revert rather than on every unrelated render while one stands.
+    private var lastRevertMessageID: String?
+    /// The exact words a revert put in the composer, so a Restore that follows clears them again
+    /// only if the reader left them untouched.
+    private var revertComposerFill: String?
+    /// The message this device asked to wind back to. Only the device that pressed Undo gets the
+    /// words back in its composer; a revert made on another machine leaves this one's draft alone.
+    private var requestedRevertID: String?
     /// The compaction happening right now, or the one that was just refused. Finished ones are
     /// rows in the transcript and need no state here.
     private var liveCompaction: CompactionRow?
@@ -925,6 +947,12 @@ final class ChatViewController: UIViewController {
             DesignBoardCell.self, forCellWithReuseIdentifier: DesignBoardCell.reuseID)
         collectionView.register(
             LinkEmbedCell.self, forCellWithReuseIdentifier: LinkEmbedCell.reuseID)
+        collectionView.register(
+            TranscriptNoteCell.self, forCellWithReuseIdentifier: TranscriptNoteCell.reuseID)
+        collectionView.register(
+            ProviderRetryCell.self, forCellWithReuseIdentifier: ProviderRetryCell.reuseID)
+        collectionView.register(
+            RevertBannerCell.self, forCellWithReuseIdentifier: RevertBannerCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -1578,6 +1606,22 @@ final class ChatViewController: UIViewController {
                     onDismiss: { [weak self] in self?.viewModel.dismissInterruptedTurn() })
                 return cell
             }
+            if id == Self.retryRowID, let retry = self.retryStanding {
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: ProviderRetryCell.reuseID, for: indexPath)
+                    as! ProviderRetryCell
+                cell.configure(retry) { [weak self] url in self?.openWebLink(url) }
+                return cell
+            }
+            if id == Self.revertRowID, let banner = self.revertBanner {
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: RevertBannerCell.reuseID, for: indexPath)
+                    as! RevertBannerCell
+                cell.configure(banner, restoring: self.viewModel.isRestoringRevert) {
+                    [weak self] in self?.viewModel.restoreRevert()
+                }
+                return cell
+            }
             if id.hasPrefix("question:"), let request = self.pendingQuestion {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: QuestionCell.reuseID, for: indexPath) as! QuestionCell
@@ -1753,6 +1797,12 @@ final class ChatViewController: UIViewController {
                     as! LinkEmbedCell
                 cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(embed) { [weak self] url in self?.openWebLink(url) }
+                return cell
+            case .note(let line):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: TranscriptNoteCell.reuseID, for: indexPath)
+                    as! TranscriptNoteCell
+                cell.configure(line)
                 return cell
             }
         }
@@ -2126,6 +2176,15 @@ final class ChatViewController: UIViewController {
         viewModel.onInterruptionRefused = { [weak self] said in
             self?.presentToast(said, duration: 5.0)
         }
+        viewModel.onRevertChange = { [weak self] in
+            guard let self else { return }
+            self.render(self.viewModel.state)
+        }
+        viewModel.onRevertRestored = { [weak self] in
+            guard let self else { return }
+            if self.composer.currentText == self.revertComposerFill { self.composer.clear() }
+            self.revertComposerFill = nil
+        }
         viewModel.onResumeChange = { [weak self] plan in
             guard let self else { return }
             if let plan {
@@ -2215,7 +2274,10 @@ final class ChatViewController: UIViewController {
         let rows = ChatRowBuilder.makeRows(
             from: state.messages, agents: subagentPlacement(for: state.messages),
             runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }),
-            turnOpen: state.status == .running, memo: segmentMemo)
+            turnOpen: state.status == .running, memo: segmentMemo,
+            modelName: { [contextID = viewModel.contextID] selection in
+                ModelCatalog.cached(for: contextID).first { $0.selection == selection }?.name
+            })
         let previous = rowsByID
         let uniqueRows = Self.dedupeRows(rows)
         rowsByID = Dictionary(uniqueKeysWithValues: uniqueRows.map { ($0.id, $0) })
@@ -2263,6 +2325,9 @@ final class ChatViewController: UIViewController {
             }
         }
         ids.append(contentsOf: pendingIDs)
+        revertBanner = RevertReading.read(state.revert, setAside: state.revertedMessages)
+        fillComposerAfterRevert(state)
+        if revertBanner != nil { ids.append(Self.revertRowID) }
         let lastContentRole: MessageRole? =
             viewModel.pendingSends.isEmpty
             ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
@@ -2270,8 +2335,11 @@ final class ChatViewController: UIViewController {
         updateLiveCompaction(
             state.compaction, seams: seamCount,
             queued: !viewModel.pendingSends.isEmpty || !viewModel.queued.isEmpty)
+        retryStanding = state.retry
         if let liveCompaction {
             ids.append(liveCompaction.id)
+        } else if retryStanding != nil {
+            ids.append(Self.retryRowID)
         } else if viewModel.isBusy, pendingPermission == nil, pendingQuestion == nil,
             lastContentRole != .assistant
         {
@@ -2355,6 +2423,18 @@ final class ChatViewController: UIViewController {
             changed.append(Self.interruptedRowID)
         }
         lastInterrupted = interrupted
+        if retryStanding != lastRetryStanding, !changed.contains(Self.retryRowID) {
+            changed.append(Self.retryRowID)
+        }
+        lastRetryStanding = retryStanding
+        let restoringRevert = viewModel.isRestoringRevert
+        if (revertBanner != lastRevertBanner || restoringRevert != lastRestoringRevert),
+            !changed.contains(Self.revertRowID)
+        {
+            changed.append(Self.revertRowID)
+        }
+        lastRevertBanner = revertBanner
+        lastRestoringRevert = restoringRevert
         for id in settledCascadeRows where rowsByID[id] != nil && !changed.contains(id) {
             changed.append(id)
         }
@@ -2579,6 +2659,61 @@ final class ChatViewController: UIViewController {
         guard let card = InterruptedTurnReading.read(state.interruption) else { return nil }
         guard let press = viewModel.interruptionPress, card.acceptsPress else { return card }
         return InterruptedTurnReading.pressed(card, press)
+    }
+
+    /// Puts the wound-back message's words back into an empty composer once per revert this device
+    /// asked for, and never twice while the same revert still stands.
+    ///
+    /// Words already sitting in the composer that are exactly the wound-back message count as the
+    /// offer too: the draft store keeps them across a relaunch, and a Restore after one should
+    /// take them back just as it would have before it.
+    private func fillComposerAfterRevert(_ state: ConversationState) {
+        guard let revert = state.revert else {
+            lastRevertMessageID = nil
+            return
+        }
+        guard revert.messageID != lastRevertMessageID else { return }
+        lastRevertMessageID = revert.messageID
+        revertComposerFill = nil
+        guard let prompt = RevertReading.prompt(in: state.revertedMessages) else { return }
+        if composer.currentText == prompt {
+            revertComposerFill = prompt
+            return
+        }
+        guard revert.messageID == requestedRevertID, composer.currentText.isEmpty else { return }
+        requestedRevertID = nil
+        composer.setDraft(prompt, focus: false, cursorAtEnd: true)
+        revertComposerFill = prompt
+    }
+
+    /// The message a transcript row stands for, read back from the server's own account rather
+    /// than the row's text: Undo from here has to name a real message id, and a row's words alone
+    /// cannot tell a sent message from a queued one that has none yet.
+    private func chatMessage(for rowID: String) -> ChatMessage? {
+        guard let messageID = rowsByID[rowID]?.messageID else { return nil }
+        return viewModel.state.messages.first { $0.id == messageID }
+    }
+
+    private func confirmRevert(to message: ChatMessage) {
+        guard !viewModel.isReverting else { return }
+        let alert = UIAlertController(
+            title: RevertReading.confirmTitle,
+            message: RevertReading.confirmMessage(stopping: viewModel.state.status == .running),
+            preferredStyle: .alert)
+        alert.addAction(
+            UIAlertAction(title: RevertReading.confirmAction, style: .destructive) {
+                [weak self] _ in
+                self?.performRevert(to: message)
+            })
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func performRevert(to message: ChatMessage) {
+        Theme.Haptics.warning()
+        presentToast(RevertReading.undoingTitle)
+        requestedRevertID = message.id
+        viewModel.revert(to: message.id)
     }
 
     private func updateBanner(for state: ConversationState) {
@@ -3698,6 +3833,20 @@ final class ChatViewController: UIViewController {
 
         func tourScrollToBottom() { scrollToBottom(animated: true) }
 
+        func tourConfirmRevert(toMessageID messageID: String) {
+            guard let message = viewModel.state.messages.first(where: { $0.id == messageID })
+            else { return }
+            confirmRevert(to: message)
+        }
+
+        func tourRevert(toMessageID messageID: String) {
+            guard let message = viewModel.state.messages.first(where: { $0.id == messageID })
+            else { return }
+            performRevert(to: message)
+        }
+
+        func tourRestoreRevert() { viewModel.restoreRevert() }
+
         func tourScrollToTop() {
             userScrolledUp = true
             collectionView.setContentOffset(
@@ -4368,6 +4517,9 @@ final class ChatViewController: UIViewController {
             case .responseStats, .timestamp, .error:
                 continue
             case .webEmbed:
+                continue
+            case .note(let line):
+                out.append("_\(line.text)_")
                 continue
             }
             out.append("**\(who):** \(body)")
@@ -5346,6 +5498,10 @@ extension ChatViewController: UICollectionViewDelegate {
             }
         }
         guard let text = messageText(for: id), !text.isEmpty else { return nil }
+        let revertMessage = chatMessage(for: id).flatMap { message in
+            RevertReading.offersUndo(on: message, capabilities: viewModel.backend.capabilities)
+                ? message : nil
+        }
 
         return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
             [weak self] _ in
@@ -5381,6 +5537,16 @@ extension ChatViewController: UICollectionViewDelegate {
                 ) { _ in
                     self?.shareText(text)
                 })
+            if let revertMessage {
+                actions.append(
+                    UIAction(
+                        title: RevertReading.actionTitle,
+                        image: UIImage(systemName: RevertReading.actionSymbol),
+                        attributes: .destructive
+                    ) { _ in
+                        self?.confirmRevert(to: revertMessage)
+                    })
+            }
             return UIMenu(children: actions)
         }
     }
@@ -5445,7 +5611,7 @@ extension ChatViewController: UICollectionViewDelegate {
             return stats.line
         case .webEmbed(let embed):
             return embed.url
-        case .timestamp, .error:
+        case .timestamp, .error, .note:
             return nil
         }
     }

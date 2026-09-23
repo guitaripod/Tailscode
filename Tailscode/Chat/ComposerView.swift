@@ -398,8 +398,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.becomeFirstResponder()
     }
 
-    func setDraft(_ text: String, focus: Bool = true) {
+    func setDraft(_ text: String, focus: Bool = true, cursorAtEnd: Bool = false) {
         textView.text = text
+        if cursorAtEnd {
+            textView.selectedTextRange = textView.textRange(
+                from: textView.endOfDocument, to: textView.endOfDocument)
+        }
         textViewDidChange(textView)
         resyncKeyboard()
         if focus { textView.becomeFirstResponder() }

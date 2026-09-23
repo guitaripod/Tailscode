@@ -38,7 +38,7 @@ struct FirstAnswerClock {
                 switch part.kind {
                 case .text(let text), .reasoning(let text): return !text.isEmpty
                 case .tool, .file, .compaction: return true
-                case .unknown: return false
+                case .note, .unknown: return false
                 }
             }
             if begun { return true }

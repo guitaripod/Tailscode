@@ -96,6 +96,16 @@ final class AnswerlessTurnCell: UICollectionViewCell {
         isAccessibilityElement = true
         accessibilityLabel = turn.spoken
         accessibilityTraits = .staticText
+        accessibilityCustomActions = action.isHidden ? [] : [askAction(turn.action)]
+    }
+
+    /// The card's one button as a VoiceOver action: the card reads as one element, which hides
+    /// the button inside it, so the press is handed to the rotor instead.
+    private func askAction(_ title: String) -> UIAccessibilityCustomAction {
+        UIAccessibilityCustomAction(name: title) { [weak self] _ in
+            self?.ask()
+            return true
+        }
     }
 
     private func ask() {

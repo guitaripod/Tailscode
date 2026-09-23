@@ -87,6 +87,30 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkTranscriptNotes()
+            report("transcript notes: \(checks) claims hold: words, face and never an answer")
+        } catch {
+            report("transcript notes: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkProviderRetryCard()
+            report("provider retry: \(checks) claims hold: words, remedy and a clock that wakes once")
+        } catch {
+            report("provider retry: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkRevertBanner()
+            report("revert banner: \(checks) claims hold: words, the more line, restoring")
+        } catch {
+            report("revert banner: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkWorkflowCard()
             report("workflow card: \(checks) run shapes read correctly")
         } catch {
@@ -1340,11 +1364,205 @@ public enum SelfTest {
             createdAt: Date())
         let rows = TranscriptRow.rows(for: message)
         guard rows.count == 2, case .interruption = rows[0].kind,
-            case .userText("keep going") = rows[1].kind
+            case .userText("keep going", messageID: "m") = rows[1].kind
         else {
             throw SelfTestFailure("interruption rows wrong: \(rows.map(\.kind))")
         }
         return cases.count + 1
+    }
+
+    /// A note is a fact the server wrote for the reader, never a message: this proves it reads the
+    /// right sentence and face for a model switch (with the name this client already shows, not
+    /// the bare id) and for the demo's own background-command line, that it is never mistaken for
+    /// answer text, and that it folds into exactly one quiet, unpromoted, searchable row.
+    private static func checkTranscriptNotes() throws -> Int {
+        let openAI = ModelSelection(providerID: "openai", modelID: "gpt-5.1-codex")
+        let anthropic = ModelSelection(providerID: "anthropic", modelID: "claude-sonnet-5")
+        let names: [ModelSelection: String] = [openAI: "GPT-5.1 Codex", anthropic: "Sonnet 5"]
+        let modelNote = TranscriptNote(
+            .model(openAI, effort: "high", previous: anthropic))
+        let line = TranscriptNoteReading.read(modelNote) { names[$0] }
+        guard line.text == "Switched from Sonnet 5 to GPT-5.1 Codex at high effort" else {
+            throw SelfTestFailure("a model switch names both models: \(line.text)")
+        }
+        guard line.tone == .quiet, !line.glyph.isEmpty, !line.symbol.isEmpty else {
+            throw SelfTestFailure("a model switch is quiet, not an alarm")
+        }
+        guard line.spoken == Localized.text("Note: %@", line.text) else {
+            throw SelfTestFailure("a note tells a screen reader it is a note: \(line.spoken)")
+        }
+
+        let message = ChatMessage(
+            id: "note-msg", role: .system, agentType: .openCode,
+            parts: [MessagePart(id: "note", kind: .note(modelNote))], createdAt: Date())
+        guard TranscriptNoteReading.note(in: message) == modelNote else {
+            throw SelfTestFailure("a system message carrying a note part reads back as one")
+        }
+        guard message.parts.first?.text == nil else {
+            throw SelfTestFailure("a note is never answer text")
+        }
+
+        let bareRows = TranscriptRow.rows(for: message)
+        guard bareRows.count == 1, case .note(let bareLine) = bareRows[0].kind,
+            bareLine.text.contains("gpt-5.1-codex")
+        else {
+            throw SelfTestFailure("with no catalog a note falls back to the model's own id")
+        }
+        guard !bareRows[0].isPromptBlock else {
+            throw SelfTestFailure("a note never rises to the top with the prompt")
+        }
+
+        let namedRows = TranscriptRow.rows(for: message, modelName: { names[$0] })
+        guard case .note(let namedLine) = namedRows.first?.kind,
+            namedLine.text.contains("GPT-5.1 Codex")
+        else {
+            throw SelfTestFailure("the row builder resolves a note's model name from its catalog")
+        }
+        guard namedRows[0].searchText.contains("GPT-5.1 Codex") else {
+            throw SelfTestFailure("a note is still searchable")
+        }
+
+        let finished = TranscriptNote(
+            .workFinished(
+                "go test ./internal/auth/...", work: .command, outcome: .completed))
+        let finishedLine = TranscriptNoteReading.read(finished)
+        guard finishedLine.text == "Background command finished: go test ./internal/auth/..." else {
+            throw SelfTestFailure("a finished background command names itself: \(finishedLine.text)")
+        }
+        guard finishedLine.tone == .quiet else {
+            throw SelfTestFailure("a command that finished cleanly is quiet")
+        }
+
+        let restarted = TranscriptNoteReading.read(TranscriptNote(.resumedAfterRestart))
+        guard restarted.tone == .attention else {
+            throw SelfTestFailure("a restart nobody asked for is worth attention")
+        }
+
+        return 8
+    }
+
+    /// The retry card cannot be produced by the demo (nothing here is actually rate-limited), so
+    /// its whole contract is proved from a `TurnRetry` built by hand: the words, the countdown that
+    /// wakes once at the exact moment they next change rather than every second, the remedy's own
+    /// link, and that `.retrying` reads like every other in-flight state.
+    private static func checkProviderRetryCard() throws -> Int {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        guard ProviderRetryReading.read(nil) == nil else {
+            throw SelfTestFailure("nothing standing reads as nothing")
+        }
+        let remedy = TurnRetry.Remedy(
+            title: "Raise your rate limit", message: "This account is on the free tier.",
+            label: "Open billing", link: "https://example.com/billing")
+        let retry = TurnRetry(
+            attempt: 3, reason: "Rate limited by the provider.",
+            nextAttemptAt: now.addingTimeInterval(75), remedy: remedy)
+        guard let card = ProviderRetryReading.read(retry, now: now) else {
+            throw SelfTestFailure("a standing retry always reads into a card")
+        }
+        guard card.reason == "Rate limited by the provider." else {
+            throw SelfTestFailure("the provider's own words lead the card")
+        }
+        guard card.attemptLine.contains("3"), card.attemptLine.contains("1 min") else {
+            throw SelfTestFailure("the attempt line names the attempt and the wait: \(card.attemptLine)")
+        }
+        guard card.remedy?.label == "Open billing", card.remedy?.link?.absoluteString.isEmpty == false
+        else {
+            throw SelfTestFailure("a remedy carries its own link")
+        }
+        guard let next = ProviderRetryReading.nextChange(retry, now: now), next > now,
+            next.timeIntervalSince(now) <= 2
+        else {
+            throw SelfTestFailure("the clock wakes at the next tick, not every second and not late")
+        }
+        let stillNever = TurnRetry(attempt: 1, reason: "waiting", nextAttemptAt: nil)
+        guard ProviderRetryReading.nextChange(stillNever, now: now) == nil else {
+            throw SelfTestFailure("a retry with no next attempt arms no timer")
+        }
+        guard ActivityKind.retrying(attempt: 3).icon.tone == .attention,
+            ActivityKind.retrying(attempt: 3).icon.motion == .turning
+        else {
+            throw SelfTestFailure("a retrying turn reads like the other in-flight states")
+        }
+
+        let row = TranscriptRow(key: "retry:card", kind: .providerRetry(card))
+        guard row.searchText.contains("Rate limited") else {
+            throw SelfTestFailure("a retry card is searchable")
+        }
+        if gtk_init_check() != 0 {
+            _ = row.makeWidget(context: TranscriptContext())
+        }
+        return 6
+    }
+
+    /// The revert banner's words, its "more files" line past the room it is given, and the
+    /// restoring state this device wears on the button while its own press is on the wire, none
+    /// of which the demo's own two-file undo ever exercises.
+    private static func checkRevertBanner() throws -> Int {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let files = (0..<9).map {
+            SessionRevert.File(
+                path: "internal/pkg\($0)/file.go", change: .modified, additions: $0 + 1,
+                deletions: $0)
+        }
+        let revert = SessionRevert(messageID: "u2", files: files)
+        let setAside = [
+            ChatMessage(
+                id: "u2", role: .user, agentType: .openCode,
+                parts: [
+                    MessagePart(
+                        id: "t",
+                        kind: .text("Refactor the auth module to async/await and add a test."))
+                ], createdAt: now),
+            ChatMessage(
+                id: "a2", role: .assistant, agentType: .openCode,
+                parts: [MessagePart(id: "t", kind: .text("On it."))], createdAt: now),
+        ]
+        guard let banner = RevertReading.read(revert, setAside: setAside) else {
+            throw SelfTestFailure("a standing revert always reads into a banner")
+        }
+        guard banner.title == Localized.text("Wound back one message") else {
+            throw SelfTestFailure("the title counts the prompts set aside: \(banner.title)")
+        }
+        guard banner.detail.contains("back as they were") else {
+            throw SelfTestFailure("the detail names what happened to the files: \(banner.detail)")
+        }
+        let (shown, more) = banner.files(upTo: 6)
+        guard shown.count == 6, more == Localized.text("%@ more files", "3") else {
+            throw SelfTestFailure(
+                "nine files past a limit of six show six and count three more: \(shown.count) shown, more=\(more ?? "nil")"
+            )
+        }
+        guard
+            RevertReading.prompt(in: setAside)
+                == "Refactor the auth module to async/await and add a test."
+        else {
+            throw SelfTestFailure("the composer refill is the exact words wound back to")
+        }
+        let capabilities = BackendCapabilities(
+            supportsFileBrowsing: false, supportsDiffs: false, supportsPermissions: false,
+            supportsMultipleSessions: true, supportsModelSelection: true,
+            supportsAttachments: true, supportsRevert: true)
+        guard RevertReading.offersUndo(on: setAside[0], capabilities: capabilities) else {
+            throw SelfTestFailure("a user message on a server that can revert offers undo")
+        }
+        guard !RevertReading.offersUndo(on: setAside[1], capabilities: capabilities) else {
+            throw SelfTestFailure("an assistant message never offers undo")
+        }
+
+        let resting = TranscriptRow(key: "revert:u2", kind: .revertBanner(banner, restoring: false))
+        let restoring = TranscriptRow(
+            key: "revert:u2:restoring", kind: .revertBanner(banner, restoring: true))
+        guard resting != restoring else {
+            throw SelfTestFailure("a press in flight is a different row, so it redraws")
+        }
+        guard resting.searchText.contains("Wound back") else {
+            throw SelfTestFailure("a revert banner is searchable")
+        }
+        if gtk_init_check() != 0 {
+            _ = resting.makeWidget(context: TranscriptContext())
+            _ = restoring.makeWidget(context: TranscriptContext())
+        }
+        return 7
     }
 
     /// The height a table hands the transcript has to be the height it will draw at, and a header

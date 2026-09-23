@@ -182,6 +182,18 @@ final class ChatPane: @unchecked Sendable {
     /// asked of it, and the moment the server's own account moves — resumed, gone, or refused and
     /// re-read — this is dropped and the card goes back to reporting only what the server said.
     private var interruptedPress: InterruptedTurnPress?
+    /// A wind-back in flight from this device: set the instant the confirm dialog answers, so a
+    /// second right-click cannot fire a second one while the first is still on the wire.
+    private var revertUndoInFlight = false
+    /// This device's own press on a standing revert's Restore button, worn by the row until the
+    /// server answers (the banner itself carries no such state, so it lives here the same way
+    /// ``interruptedPress`` carries the interrupted-turn card's).
+    private var revertRestoring = false
+    /// The exact words a successful undo put in an empty composer, remembered so a Restore that
+    /// follows clears them only if they are still exactly what was put there. A draft typed over
+    /// them in the meantime is never thrown away.
+    private var revertComposerFill: String?
+    private var retryWakeGeneration = 0
 
     private(set) var entry: SessionEntry?
     /// What this pane is watching instead of talking, when it is a video slot rather than a chat.
@@ -642,6 +654,14 @@ final class ChatPane: @unchecked Sendable {
         }
         context.dismissInterrupted = { [weak self] in
             Gtk.onMain { [weak self] in self?.dismissInterruptedTurn() }
+        }
+        context.presentMessageMenu = { [weak self] messageID, widgetBits, x, y in
+            Gtk.onMain { [weak self] in
+                self?.presentMessageMenu(messageID: messageID, widgetBits: widgetBits, x: x, y: y)
+            }
+        }
+        context.restoreRevert = { [weak self] in
+            Gtk.onMain { [weak self] in self?.pressRestoreRevert() }
         }
         context.presentText = { [weak self] title, subtitle, body, mono in
             Gtk.onMain { [weak self] in
@@ -1117,7 +1137,9 @@ final class ChatPane: @unchecked Sendable {
                     let messages = state.messages.count > tail
                         ? Array(state.messages.suffix(tail)) : state.messages
                     let started = Date()
-                    let rows = self.rowBuilder.rows(for: messages, turnOpen: state.status == .running)
+                    let rows = self.rowBuilder.rows(
+                        for: messages, turnOpen: state.status == .running,
+                        modelName: self.noteModelName)
                     if tracing {
                         let ms = Int(Date().timeIntervalSince(started) * 1000)
                         FileHandle.standardOutput.write(
@@ -1353,6 +1375,7 @@ final class ChatPane: @unchecked Sendable {
         // without it a re-entrant apply appends a second copy and every consumer downstream, which
         // assumes one row per key, tears.
         var rows = rows.filter { !Self.dockedKey($0.key) }
+        dockRevert(&rows, state: state)
         pending.reconcile(userMessages: state.messages.count { $0.role == .user })
         armResumeForWalledTurn(state)
         if !pending.isEmpty {
@@ -1378,6 +1401,7 @@ final class ChatPane: @unchecked Sendable {
                     key: "interrupted:\(Self.cardKey(cutOff.state))",
                     kind: .interruptedTurn(cutOff)))
         }
+        dockRetry(&rows, state: state)
         // What has been written and not sent sits at the very end, in the order it will go.
         for (index, waiting) in queue.items.enumerated() {
             rows.append(
@@ -1422,7 +1446,57 @@ final class ChatPane: @unchecked Sendable {
         refreshPills()
         updateStatus()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
+        scheduleRetryWake()
         drainQueue(state)
+    }
+
+    /// A standing revert, docked right where the set-aside messages used to be. It is an account of
+    /// what just happened to the transcript above it, so it reads before anything this device is
+    /// separately holding or waiting to send. With no revert standing, a Restore press this device
+    /// was still wearing is over.
+    private func dockRevert(_ rows: inout [TranscriptRow], state: ConversationState) {
+        guard let revert = state.revert,
+            let banner = RevertReading.read(revert, setAside: state.revertedMessages)
+        else {
+            revertRestoring = false
+            return
+        }
+        if !rows.isEmpty {
+            rows.append(TranscriptRow(key: "revert:break", kind: .turnBreak))
+        }
+        rows.append(
+            TranscriptRow(
+                key: "revert:\(revert.messageID)" + (revertRestoring ? ":restoring" : ""),
+                kind: .revertBanner(banner, restoring: revertRestoring)))
+    }
+
+    /// The turn waiting on its provider, docked in the cut-off card's family. The two never stand
+    /// together: one is the machine gone, the other is the machine still trying.
+    private func dockRetry(_ rows: inout [TranscriptRow], state: ConversationState) {
+        guard let card = ProviderRetryReading.read(state.retry) else { return }
+        if !rows.isEmpty {
+            rows.append(TranscriptRow(key: "retry:break", kind: .turnBreak))
+        }
+        rows.append(TranscriptRow(key: "retry:card", kind: .providerRetry(card)))
+    }
+
+    /// The retry card's countdown never ticks blindly: it wakes once, at the exact moment
+    /// `ProviderRetryReading` says the words next change, redraws from what this device is already
+    /// holding, and re-arms for the moment after that. A retry that has gone (answered, or the
+    /// turn over) simply has nothing to arm for, which is how the clock lets go of the card.
+    private func scheduleRetryWake() {
+        guard let retry = lastState?.retry,
+            let next = ProviderRetryReading.nextChange(retry, now: Date())
+        else { return }
+        retryWakeGeneration += 1
+        let token = retryWakeGeneration
+        let wait = UInt32(max(0, next.timeIntervalSince(Date())) * 1000) + 20
+        Gtk.after(wait) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, self.retryWakeGeneration == token else { return }
+                self.redrawPending()
+            }
+        }
     }
 
     /// An answer that is on the page twice, named in the log the moment it is built.
@@ -1889,7 +1963,7 @@ final class ChatPane: @unchecked Sendable {
     /// Whether a row is one this device docks at the end rather than one the server reported.
     private static func dockedKey(_ key: String) -> Bool {
         key.hasPrefix("echo:") || key.hasPrefix("pending:") || key.hasPrefix("queued:")
-            || key.hasPrefix("interrupted")
+            || key.hasPrefix("interrupted") || key.hasPrefix("revert:") || key.hasPrefix("retry")
     }
 
     /// An empty pane asks which server rather than captioning itself. The chooser owns the
@@ -4217,6 +4291,133 @@ final class ChatPane: @unchecked Sendable {
         return InterruptedTurnReading.refusal(body: body)
     }
 
+    /// The name this client already shows for a model, for a transcript note to write instead of
+    /// the model's bare id. Read straight from the server's own remembered catalog rather than the
+    /// live `models` field, which starts empty until the catalog watch's first hop lands and would
+    /// leave the very first note of a freshly opened chat naming an id it need not have.
+    private func noteModelName(_ selection: ModelSelection) -> String? {
+        guard let profileID = entry?.profileID else { return nil }
+        return ModelCatalogStore.cached(profileID).first { $0.selection == selection }?.name
+    }
+
+    /// The right-click on a user message's own row: Undo from here, where the backend can revert
+    /// and the row is a real message in the conversation this device holds (never a queued send,
+    /// which carries no server id yet), and Copy. The row claims the press before its selectable
+    /// label can, so Copy stands in for the label's own copy menu on every backend.
+    private func presentMessageMenu(messageID: String, widgetBits: UInt, x: Double, y: Double) {
+        guard let raw = UnsafeMutableRawPointer(bitPattern: widgetBits),
+            let message = lastState?.messages.first(where: { $0.id == messageID })
+        else { return }
+        var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = []
+        if let capabilities = backend?.capabilities,
+            RevertReading.offersUndo(on: message, capabilities: capabilities)
+        {
+            rows.append(
+                (RevertReading.actionTitle, nil,
+                 { [weak self] in
+                     Gtk.onMain { [weak self] in self?.confirmUndo(messageID: messageID) }
+                 }))
+        }
+        let words = message.parts.compactMap(\.text).joined(separator: "\n")
+        if !words.isEmpty {
+            rows.append(
+                (Localized.text("Copy"), nil, { Gtk.onMain { Gtk.copyToClipboard(words) } }))
+        }
+        Gtk.contextMenu(on: ptr(raw), x: x, y: y, rows: rows)
+    }
+
+    /// The confirmation states what the press does before anything happens, because winding a
+    /// conversation back is not something a mis-click should be able to do quietly.
+    private func confirmUndo(messageID: String) {
+        guard !revertUndoInFlight else { return }
+        Dialogs.confirm(
+            title: RevertReading.confirmTitle,
+            body: RevertReading.confirmMessage(stopping: lastState?.status == .running),
+            confirmLabel: RevertReading.confirmAction, destructive: true, parent: host?.windowWidget
+        ) { [weak self] in
+            Gtk.onMain { [weak self] in self?.performUndo(messageID: messageID) }
+        }
+    }
+
+    private func performUndo(messageID: String) {
+        guard let conversation, !revertUndoInFlight else { return }
+        revertUndoInFlight = true
+        setNotice(RevertReading.undoingTitle)
+        Task { [weak self] in
+            do {
+                try await conversation.revert(to: messageID)
+                let state = await conversation.state
+                Gtk.onMain { [weak self] in self?.finishUndo(state) }
+            } catch {
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.revertUndoInFlight = false
+                    self.setNotice(RevertReading.failure(restoring: false, error))
+                }
+            }
+        }
+    }
+
+    /// The composer only ever receives the wound-back words when it was empty to begin with (a
+    /// draft in progress is never overwritten), and the exact words are kept so a later Restore
+    /// knows whether it may clear them again or whether the person has since made them their own.
+    private func finishUndo(_ state: ConversationState) {
+        revertUndoInFlight = false
+        revertComposerFill = nil
+        retireUndoNotice()
+        guard editor.text.isEmpty, let words = RevertReading.prompt(in: state.revertedMessages)
+        else { return }
+        fillComposerForRevert(words)
+        revertComposerFill = words
+    }
+
+    /// Takes "Winding back…" down once the banner has landed: the banner is the news now, and the
+    /// notice left standing over it would claim the wait was still open when the card beneath it
+    /// already says it is not.
+    private func retireUndoNotice() {
+        if notice == RevertReading.undoingTitle { notice = nil }
+        updateStatus()
+    }
+
+    private func pressRestoreRevert() {
+        guard let conversation, !revertRestoring else { return }
+        revertRestoring = true
+        redrawPending()
+        Task { [weak self] in
+            do {
+                try await conversation.restoreRevert()
+                Gtk.onMain { [weak self] in self?.finishRestoreRevert() }
+            } catch {
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.revertRestoring = false
+                    self.setNotice(RevertReading.failure(restoring: true, error))
+                    self.redrawPending()
+                }
+            }
+        }
+    }
+
+    /// Restoring brings the set-aside messages back rather than sending anything, so the banner
+    /// simply comes down on the next state; what is left to do here is put the composer back the
+    /// way it was, and only when it still holds exactly the words the undo put there.
+    private func finishRestoreRevert() {
+        revertRestoring = false
+        if let fill = revertComposerFill, editor.text == fill {
+            clearComposer()
+        }
+        revertComposerFill = nil
+    }
+
+    /// Puts the wound-back prompt in the composer as if it were being edited: the same buffer,
+    /// vim-document and mode sync a queued send's own Edit action uses, so a person can send it
+    /// again unchanged or rework it before they do.
+    private func fillComposerForRevert(_ text: String) {
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), text, -1)
+        vim.reset(to: text, cursor: text.count, mode: .insert)
+        updateVimBadge()
+    }
+
     private func attachRows() -> [(String, String?, @Sendable () -> Void)] {
         let able = abilities
         let supported = backend?.capabilities.supportsAttachments != false
@@ -4735,6 +4936,75 @@ final class ChatPane: @unchecked Sendable {
             queued: mode == "queued" ? ["then do the same for the sidebar"] : [],
             resumedAt: mode == "resumed" ? now : nil)
         apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+    }
+
+    /// The "Undo from here" confirmation and the banner that follows it, driven straight past the
+    /// right-click popover a headless, software-rendered display never paints: this is the exact
+    /// same `confirmUndo` the menu item calls, so everything past the press (the dialog's words,
+    /// the revert, the banner, Restore) is the real path, not a stand-in for it, on a desktop that
+    /// can actually show a modal window. `mode == "skip"` calls `performUndo` directly instead,
+    /// for the same headless display, which cannot show that modal window either.
+    func driverUndoDemo(_ mode: String) {
+        guard isDemoConversation else { return }
+        let messageID = "o1u1"
+        if mode == "skip" {
+            performUndo(messageID: messageID)
+        } else {
+            confirmUndo(messageID: messageID)
+        }
+    }
+
+    /// The Restore press on a standing revert's banner, for the same headless display: a plain
+    /// row button, so unlike the popover and the confirmation this one the display can actually
+    /// show, but a driver verb still saves a click hunting for it across screenshots.
+    func driverRestoreDemo() {
+        guard isDemoConversation else { return }
+        pressRestoreRevert()
+    }
+
+    /// Whether the open chat belongs to the demo world. The undo and restore drivers act on the
+    /// server rather than drawing a synthetic state, so they refuse to touch a real machine's
+    /// conversation even when a drive verb is typed against one by mistake.
+    private var isDemoConversation: Bool {
+        entry?.profileID.hasPrefix(DemoWorld.profilePrefix) == true
+    }
+
+    /// A turn waiting on its provider between attempts, so the card and its countdown can be
+    /// driven and photographed headlessly without an account that is actually rate-limited.
+    /// `mode == "remedy"` adds the provider's own remedy and its link; anything else is the bare
+    /// wait, which is the shape a client sees far more often.
+    func driverRetryDemo(_ mode: String) {
+        let now = Date()
+        let asked = ChatMessage(
+            id: "demo-retry-prompt", role: .user, agentType: .openCode,
+            parts: [MessagePart(id: "t", kind: .text("Summarize the last ten commits."))],
+            createdAt: now.addingTimeInterval(-40))
+        var state = ConversationState(
+            messages: [asked], status: .running, hasLoadedTranscript: true)
+        let remedy: TurnRetry.Remedy? =
+            mode == "remedy"
+            ? TurnRetry.Remedy(
+                title: "This plan is out of credit",
+                message: "Add credit, or wait for the weekly reset.",
+                label: "Open billing", link: "https://example.com/billing")
+            : nil
+        state.retry = TurnRetry(
+            attempt: 3, reason: "The provider returned a 429 (rate limited).",
+            nextAttemptAt: now.addingTimeInterval(75), remedy: remedy)
+        reassert(state)
+    }
+
+    /// Applies a synthetic state again and again for a couple of seconds. The demo world's own
+    /// sessions keep re-emitting their scripted state on a clock this pane is also subscribed to,
+    /// which would overwrite the synthetic one within a frame or two, so a screenshot taken any
+    /// time after the drive step would otherwise show something other than the card it drove.
+    private func reassert(_ state: ConversationState) {
+        let rows = rowBuilder.rows(for: state.messages, turnOpen: state.status == .running)
+        for delay: UInt32 in [0, 250, 500, 800, 1200, 1700, 2300] {
+            Gtk.after(delay) { [weak self] in
+                Gtk.onMain { [weak self] in self?.apply(state: state, rows: rows) }
+            }
+        }
     }
 
     static let tableDemoAnswer = """

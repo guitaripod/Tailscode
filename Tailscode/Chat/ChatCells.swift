@@ -33,6 +33,9 @@ struct ChatRow: Hashable {
         case timestamp(String)
         case error(String)
         case answerless(AnswerlessTurn)
+        /// What the server wrote for the reader rather than the model: a quiet line, never a
+        /// message, standing between the turns it separates.
+        case note(TranscriptNoteLine)
         /// What the answer above it took, drawn only where the reader asked for it.
         case responseStats(ResponseStats)
         /// A tiny preview card for an address the transcript mentioned, docked under the prose

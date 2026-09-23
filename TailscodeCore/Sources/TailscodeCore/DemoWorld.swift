@@ -361,7 +361,8 @@ public enum DemoWorld {
             supportsMultipleSessions: true, supportsModelSelection: true, supportsAttachments: true,
             supportsReasoningEffort: false, supportsClearing: false, supportsForking: false,
             supportsAbort: true, supportsSessionUsage: true, supportsQuestions: true,
-            supportsRenaming: true, supportsSubagents: false, supportsCommands: true),
+            supportsRenaming: true, supportsSubagents: false, supportsCommands: true,
+            supportsRevert: true),
         sessionUsage: AgentUsage(costUSD: 0.42, tokens: 18_431),
         fileTree: [
             ".": [
@@ -380,6 +381,10 @@ public enum DemoWorld {
                 FileNode(path: "/home/demo/dev/acme-api/go.mod", name: "go.mod", isDirectory: false),
                 FileNode(path: "/home/demo/dev/acme-api/README.md", name: "README.md", isDirectory: false),
             ],
+        ],
+        diffs: [
+            FileDiff(path: "internal/auth/session.go", additions: 122, deletions: 47),
+            FileDiff(path: "internal/auth/token.go", additions: 18, deletions: 9),
         ],
         git: demoGit(
             root: "/home/demo/dev/acme-api", branch: "async-auth", upstream: nil, ahead: 0,
@@ -684,6 +689,12 @@ public enum DemoWorld {
                     "Found 2 call sites — converting both and adding `AuthClientTests.login()`.\n\n```swift\nfunc login() async throws -> Session {\n    let token = try await api.token()\n    return Session(token: token)\n}\n```\n\nDone. Both call sites migrated; the test covers the happy path and the expired-token retry.")),
             ], cost: 0.42, tokens: 18_431,
                 context: MessageUsage(input: 900, output: 1_300, cacheRead: 61_200, cacheWrite: 2_000))),
+            step(note("o1n1", .workFinished(
+                "go test ./internal/auth/...", work: .command, outcome: .completed), at: ago(700))),
+            step(note("o1n2", .model(
+                ModelSelection(providerID: "openai", modelID: "gpt-5.1-codex"), effort: "high",
+                previous: ModelSelection(providerID: "anthropic", modelID: "claude-sonnet-5")),
+                at: ago(560))),
             step(.status(.idle)),
         ]
     }
@@ -822,6 +833,15 @@ public enum DemoWorld {
         ChatMessage(
             id: id, role: .user, agentType: type,
             parts: [MessagePart(id: "t", kind: .text(text))], createdAt: date)
+    }
+
+    private static func note(_ id: String, _ subject: TranscriptNote.Subject, at date: Date)
+        -> ChatMessage
+    {
+        ChatMessage(
+            id: id, role: .system, agentType: .openCode,
+            parts: [MessagePart(id: "\(id)/note", kind: .note(TranscriptNote(subject)))],
+            createdAt: date, completedAt: date)
     }
 
     private static func compaction(_ id: String, _ type: AgentType, at date: Date) -> ChatMessage {

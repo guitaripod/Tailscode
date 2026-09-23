@@ -174,6 +174,30 @@ final class InterruptedTurnCell: UICollectionViewCell {
         isAccessibilityElement = true
         accessibilityLabel = turn.spoken
         accessibilityTraits = .staticText
+        accessibilityCustomActions = pressActions(turn)
+    }
+
+    /// The card's two buttons as VoiceOver actions. The card reads as one element so its account
+    /// is heard whole, which hides the buttons inside it, so the presses it offers are handed to
+    /// the rotor, and only while the buttons themselves would take them.
+    private func pressActions(_ turn: InterruptedTurn) -> [UIAccessibilityCustomAction] {
+        guard turn.acceptsPress else { return [] }
+        var actions: [UIAccessibilityCustomAction] = []
+        if !resume.isHidden {
+            actions.append(
+                UIAccessibilityCustomAction(name: turn.resumeTitle) { [weak self] _ in
+                    self?.pickUp()
+                    return true
+                })
+        }
+        if !dismiss.isHidden {
+            actions.append(
+                UIAccessibilityCustomAction(name: turn.dismissTitle) { [weak self] _ in
+                    self?.letGo()
+                    return true
+                })
+        }
+        return actions
     }
 
     private static func line(_ text: String) -> UILabel {

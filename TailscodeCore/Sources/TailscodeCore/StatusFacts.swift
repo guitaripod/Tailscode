@@ -132,7 +132,7 @@ public struct StatusFacts: Sendable {
                     characters += (call.output?.utf8.count ?? 0) + call.name.utf8.count + 120
                 case .compaction(let compaction):
                     characters = compaction.summary?.utf8.count ?? 0
-                case .file, .unknown:
+                case .file, .note, .unknown:
                     continue
                 }
             }

@@ -1020,6 +1020,22 @@ void tailscode_on_right_click(
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
 }
 
+void tailscode_on_right_click_capture(
+    GtkWidget *widget, void (*handler)(double x, double y, void *), void *data) {
+    TailscodePress *box = g_new0(TailscodePress, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkGesture *click = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_SECONDARY);
+    gtk_event_controller_set_propagation_phase(
+        GTK_EVENT_CONTROLLER(click), GTK_PHASE_CAPTURE);
+    g_signal_connect_data(click, "pressed", G_CALLBACK(tailscode_right_click_pressed), NULL,
+                          NULL, 0);
+    g_signal_connect_data(click, "released", G_CALLBACK(tailscode_right_click_released), box,
+                          (GClosureNotify)(void (*)(void))g_free, 0);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
+}
+
 char *tailscode_label_selection(GtkWidget *widget) {
     if (!widget || !GTK_IS_LABEL(widget)) return NULL;
     int start = 0, end = 0;

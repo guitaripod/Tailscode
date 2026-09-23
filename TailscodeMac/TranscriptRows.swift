@@ -64,6 +64,19 @@ final class TranscriptContext {
     /// A turn the server's machine cut off, picked back up or let go on that machine.
     var resumeInterrupted: (() -> Void)?
     var dismissInterrupted: (() -> Void)?
+    /// Whether "Undo from here" belongs on this message's row: a live question, since the answer
+    /// depends on the conversation's own capabilities and on whatever else this device is already
+    /// winding back, both of which change while the row just sits there.
+    var offersUndo: ((String) -> Bool)?
+    /// The row asked to undo back to its own message; the confirmation and the request itself
+    /// belong to the transcript, which is the one thing that knows the conversation well enough
+    /// to ask and to carry the answer out.
+    var confirmUndo: ((String) -> Void)?
+    /// The standing revert's own Restore press.
+    var restoreRevert: (() -> Void)?
+    /// Names a model the way this device already names it elsewhere, for a note that mentions
+    /// one. Nil leaves Core's own fallback, the model's bare id, standing.
+    var modelName: (ModelSelection) -> String? = { _ in nil }
 
     /// A run reads as open when any step inside it is, so folding a step into a run carries the
     /// reader's decision in with it rather than collapsing it.
@@ -163,7 +176,7 @@ enum ActivityStep: Hashable {
 /// the picture. No bubbles — the material lives in the chrome around this.
 struct TranscriptRow: Hashable {
     enum Kind: Hashable {
-        case userText(String)
+        case userText(String, messageID: String)
         case interruption
         /// The rendering rides in the row, computed where the rows are computed, so painting a
         /// prose row is a label set, not a markdown parse.
@@ -177,7 +190,7 @@ struct TranscriptRow: Hashable {
         case run([ActivityStep])
         case subagent(ToolCall)
         case workflow(ToolCall)
-        case file(FileReference, mine: Bool)
+        case file(FileReference, mine: Bool, messageID: String)
         /// A board of design alternatives the agent wrote, standing where the manifest that made
         /// it was written rather than as a line about a file.
         case designBoard(DesignSighting)
@@ -191,6 +204,19 @@ struct TranscriptRow: Hashable {
         case pendingSend(PendingSend, ResumePlan?, now: Date)
         /// Not `interruption`, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
+        /// A line the server wrote for the reader rather than for the model: the model or the
+        /// agent changing hands, a restart picking a turn back up, work it left running reporting
+        /// back. Read into words only where it is drawn, so a client with no catalog yet still
+        /// shows Core's own fallback rather than a value baked in too early.
+        case note(TranscriptNote)
+        /// The turn is waiting on its provider between attempts.
+        case providerRetry(ProviderRetryCard)
+        /// The conversation wound back to one of the reader's own messages, with the way back
+        /// still open. `restoring` is this device's own press on Restore, in flight.
+        case revertBanner(RevertBanner, restoring: Bool)
+        /// An undo this device asked for, standing where the banner will land once the server
+        /// answers.
+        case revertPending
         case turnBreak
     }
 
@@ -202,7 +228,7 @@ struct TranscriptRow: Hashable {
     var isPromptBlock: Bool {
         switch kind {
         case .userText, .pendingSend: return true
-        case .file(_, let mine): return mine
+        case .file(_, let mine, _): return mine
         default: return false
         }
     }
@@ -264,7 +290,9 @@ struct TranscriptRow: Hashable {
                         rows.append(TranscriptRow(key: "\(key):int", kind: .interruption))
                     }
                     if !remainder.isEmpty {
-                        rows.append(TranscriptRow(key: key, kind: .userText(remainder)))
+                        rows.append(
+                            TranscriptRow(
+                                key: key, kind: .userText(remainder, messageID: message.id)))
                     }
                     continue
                 }
@@ -307,9 +335,13 @@ struct TranscriptRow: Hashable {
                         key: key, kind: Self.kind(for: call)))
             case .file(let reference):
                 rows.append(
-                    TranscriptRow(key: key, kind: .file(reference, mine: message.role == .user)))
+                    TranscriptRow(
+                        key: key,
+                        kind: .file(reference, mine: message.role == .user, messageID: message.id)))
             case .compaction(let compaction):
                 rows.append(TranscriptRow(key: key, kind: .compaction(compaction)))
+            case .note(let note):
+                rows.append(TranscriptRow(key: key, kind: .note(note)))
             case .unknown:
                 continue
             }
@@ -431,7 +463,7 @@ struct TranscriptRow: Hashable {
     /// What in-conversation search reads for this row: the words a person saw, not widget state.
     var searchText: String {
         switch kind {
-        case .userText(let text), .reasoning(let text):
+        case .userText(let text, _), .reasoning(let text):
             return text
         case .agentProse(let text, _):
             return text
@@ -450,7 +482,7 @@ struct TranscriptRow: Hashable {
                 case .tool(_, let call): return Self.searchText(for: call)
                 }
             }.joined(separator: " ")
-        case .file(let reference, _):
+        case .file(let reference, _, _):
             return reference.filename ?? reference.path ?? ""
         case .taskBoard(let board):
             return board.items.map(\.subject).joined(separator: " ")
@@ -470,6 +502,14 @@ struct TranscriptRow: Hashable {
             return ResumeReading.spoken(plan, words: send.text, now: now)
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
+        case .note(let note):
+            return TranscriptNoteReading.read(note).text
+        case .providerRetry(let card):
+            return card.spoken
+        case .revertBanner(let banner, _):
+            return banner.spoken
+        case .revertPending:
+            return RevertReading.undoingTitle
         case .interruption:
             return "interrupted"
         case .turnBreak:
@@ -480,8 +520,8 @@ struct TranscriptRow: Hashable {
     @MainActor
     func makeView(context: TranscriptContext) -> NSView {
         switch kind {
-        case .userText(let text):
-            return Self.prompt(text)
+        case .userText(let text, let messageID):
+            return Self.prompt(text, messageID: messageID, context: context)
         case .interruption:
             return RowKit.label(
                 "⌧ " + Localized.text("interrupted"), font: MacTheme.Ramp.font(.interruption),
@@ -504,8 +544,10 @@ struct TranscriptRow: Hashable {
             return WorkflowCardView.make(call, key: key, context: context)
         case .subagent(let call):
             return SubagentRowView.make(call, key: key, context: context)
-        case .file(let reference, let mine):
-            return ImageRowView.make(reference, mine: mine, key: key, context: context)
+        case .file(let reference, let mine, let messageID):
+            let view = ImageRowView.make(reference, mine: mine, key: key, context: context)
+            guard mine else { return view }
+            return Self.wrappedForUndo(view, messageID: messageID, context: context)
         case .designBoard(let sighting):
             return Self.designBoard(sighting, context: context)
         case .taskBoard(let board):
@@ -522,21 +564,30 @@ struct TranscriptRow: Hashable {
             return Self.pendingSend(send, plan: plan, now: now, context: context)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
+        case .note(let note):
+            return Self.noteLine(TranscriptNoteReading.read(note, modelName: context.modelName))
+        case .providerRetry(let card):
+            return Self.providerRetry(card)
+        case .revertBanner(let banner, let restoring):
+            return Self.revertBanner(banner, restoring: restoring, context: context)
+        case .revertPending:
+            return Self.revertPending()
         case .turnBreak:
             return RowKit.hairline(verticalPadding: MacTheme.Spacing.m)
         }
     }
 
     @MainActor
-    private static func prompt(_ text: String) -> NSView {
+    private static func prompt(_ text: String, messageID: String, context: TranscriptContext)
+        -> NSView
+    {
         let rule = RowKit.Ground(frame: .zero)
         rule.fill = MacTheme.Color.accent
 
         let label = RowKit.attributedLabel(
             MacMarkdown.plainWithLinks(
                 text, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label))
-        let row = NSView()
-        row.translatesAutoresizingMaskIntoConstraints = false
+        let row = PromptRow(messageID: messageID, text: text, context: context)
         row.addSubview(rule)
         row.addSubview(label)
         NSLayoutConstraint.activate([
@@ -549,6 +600,25 @@ struct TranscriptRow: Hashable {
             label.trailingAnchor.constraint(equalTo: row.trailingAnchor),
             label.topAnchor.constraint(equalTo: row.topAnchor),
             label.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+        ])
+        return row
+    }
+
+    /// A row that is not itself built as a ``PromptRow`` still gets "Undo from here" when it is
+    /// part of what the reader sent. A picture with no words beside it is a message like any
+    /// other, and the only thing it lacks is somewhere to put the menu.
+    @MainActor
+    private static func wrappedForUndo(_ view: NSView, messageID: String, context: TranscriptContext)
+        -> NSView
+    {
+        let row = PromptRow(messageID: messageID, text: nil, context: context)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            view.topAnchor.constraint(equalTo: row.topAnchor),
+            view.bottomAnchor.constraint(equalTo: row.bottomAnchor),
         ])
         return row
     }
@@ -924,6 +994,141 @@ struct TranscriptRow: Hashable {
                 RowKit.linkButton(turn.dismissTitle, enabled: turn.acceptsPress) { dismiss() })
         }
         return buttons.arrangedSubviews.isEmpty ? nil : buttons
+    }
+
+    /// A line the server wrote for the reader: small, tinted by its tone, holding perfectly still.
+    /// Never a bubble and never a card, because a note is a fact about the conversation rather
+    /// than something anybody said.
+    @MainActor
+    private static func noteLine(_ line: TranscriptNoteLine) -> NSView {
+        Self.quietLine(symbol: line.symbol, text: line.text, tone: line.tone, spoken: line.spoken)
+    }
+
+    /// The placeholder an undo wears from the press until the server answers, standing exactly
+    /// where the banner will land so the person sees the same slot fill in rather than a card
+    /// appearing out of nowhere once the request finally lands.
+    @MainActor
+    private static func revertPending() -> NSView {
+        Self.quietLine(
+            symbol: RevertBanner.symbol, text: RevertReading.undoingTitle, tone: RevertBanner.tone,
+            spoken: RevertReading.undoingTitle)
+    }
+
+    /// The one small shape a quiet, still line across the transcript is built from: a note, and
+    /// the placeholder an undo wears while it is in flight.
+    @MainActor
+    private static func quietLine(symbol: String, text: String, tone: ActivityTone, spoken: String)
+        -> NSView
+    {
+        let icon = NSImageView()
+        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(
+                NSImage.SymbolConfiguration(
+                    pointSize: 11 * MacTheme.UIScale.factor, weight: .medium))
+        icon.contentTintColor = tone.color
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+        icon.setAccessibilityElement(false)
+        let label = RowKit.wrapping(text, font: MacTheme.Ramp.font(.note), color: tone.color)
+        let row = NSStackView(views: [icon, label])
+        row.orientation = .horizontal
+        row.alignment = .firstBaseline
+        row.spacing = MacTheme.Spacing.xs
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.setAccessibilityElement(true)
+        row.setAccessibilityRole(.staticText)
+        row.setAccessibilityLabel(spoken)
+        return row
+    }
+
+    /// The card docked while the turn waits on its provider: the reason it gave, the attempt line
+    /// that carries the countdown in tabular figures so it never jitters, and the remedy it named,
+    /// where it named one. No other action belongs here: stopping the turn stays where it is.
+    @MainActor
+    private static func providerRetry(_ card: ProviderRetryCard) -> NSView {
+        let view = RowKit.card(
+            symbol: ProviderRetryCard.symbol, title: card.title, detail: card.reason,
+            tint: ProviderRetryCard.tone.color)
+        view.addArrangedSubview(
+            RowKit.label(
+                card.attemptLine, font: MacTheme.Ramp.font(.rowStamp),
+                color: ProviderRetryCard.tone.color))
+        if let remedy = card.remedy {
+            view.addArrangedSubview(
+                RowKit.label(
+                    remedy.title, font: MacTheme.Ramp.font(.rowTitleStrong),
+                    color: MacTheme.Color.label))
+            view.addArrangedSubview(
+                RowKit.wrapping(
+                    remedy.message, font: MacTheme.Ramp.font(.cardBody),
+                    color: MacTheme.Color.secondaryLabel))
+            if let link = remedy.link {
+                view.addArrangedSubview(RowKit.linkButton(remedy.label) { NSWorkspace.shared.open(link) })
+            }
+        }
+        view.setAccessibilityElement(true)
+        view.setAccessibilityRole(.group)
+        view.setAccessibilityLabel(card.spoken)
+        return view
+    }
+
+    /// How many set-aside files a revert banner names before it pages the rest: enough that most
+    /// reverts show every file, narrow enough that the card never grows past the turn it stands in
+    /// for.
+    private static let revertFileLimit = 6
+
+    /// The banner where the set-aside messages were: how many were wound back, which files came
+    /// back and how, and Restore one press away for as long as the revert stands.
+    @MainActor
+    private static func revertBanner(
+        _ banner: RevertBanner, restoring: Bool, context: TranscriptContext
+    ) -> NSView {
+        let card = RowKit.card(
+            symbol: RevertBanner.symbol, title: banner.title, detail: banner.detail,
+            tint: RevertBanner.tone.color)
+        let paged = banner.files(upTo: Self.revertFileLimit)
+        for file in paged.shown {
+            card.addArrangedSubview(Self.revertFileRow(file))
+        }
+        if let more = paged.more {
+            card.addArrangedSubview(
+                RowKit.label(more, font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.tertiaryLabel))
+        }
+        if let restore = context.restoreRevert {
+            card.addArrangedSubview(
+                RowKit.linkButton(
+                    restoring ? RevertReading.restoringTitle : banner.restoreTitle,
+                    enabled: !restoring, action: restore))
+        }
+        card.setAccessibilityElement(true)
+        card.setAccessibilityRole(.group)
+        card.setAccessibilityLabel(banner.spoken)
+        return card
+    }
+
+    /// One file a revert put back: its path, what happened to it, and by how much. These are the
+    /// same three facts `GitPanelView` draws for a changed file, because a revert's files are
+    /// exactly that.
+    @MainActor
+    private static func revertFileRow(_ file: RevertBanner.FileLine) -> NSView {
+        let path = RowKit.label(
+            file.path, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label)
+        path.lineBreakMode = .byTruncatingMiddle
+        path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let change = RowKit.label(
+            file.change, font: MacTheme.Ramp.font(.panelFootnote),
+            color: MacTheme.Color.secondaryLabel)
+        change.setContentHuggingPriority(.required, for: .horizontal)
+        var views = [path, change]
+        if let counts = file.counts {
+            let countsLabel = RowKit.label(
+                counts, font: MacTheme.Ramp.font(.rowStamp), color: MacTheme.Color.tertiaryLabel)
+            countsLabel.setContentHuggingPriority(.required, for: .horizontal)
+            views.append(countsLabel)
+        }
+        let row = NSStackView(views: views)
+        row.orientation = .horizontal
+        row.spacing = MacTheme.Spacing.s
+        return row
     }
 }
 
@@ -1439,6 +1644,84 @@ final class DisclosureRow: NSView {
                 return
             }
         }
+    }
+}
+
+/// A prompt row that knows its own message, so it can offer "Undo from here" the way every other
+/// destructive action on a Mac does: from the row's own context menu rather than a button that
+/// would sit in the transcript forever asking to be pressed.
+///
+/// The item is left off the menu entirely when it does not apply, rather than shown and disabled,
+/// because a menu that always has the same items and sometimes greys one out invites a second
+/// look at a row that never earned one. Where it does apply, the menu is the message's own, with
+/// Copy beside it, because the words are a selectable label whose text menu would otherwise
+/// answer every right-click on them.
+@MainActor
+final class PromptRow: NSView {
+    private let messageID: String
+    private let text: String?
+    private let context: TranscriptContext
+
+    init(messageID: String, text: String?, context: TranscriptContext) {
+        self.messageID = messageID
+        self.text = text
+        self.context = context
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        return asksForMenu(NSApp.currentEvent) ? self : hit
+    }
+
+    /// Whether the event in flight is a request for a context menu this row answers: a right
+    /// click, or a click with Control held, on a message that can be wound back to. Any other
+    /// event reaches the label as before, so selecting the words still works.
+    private func asksForMenu(_ event: NSEvent?) -> Bool {
+        guard let event else { return false }
+        let wantsMenu =
+            event.type == .rightMouseDown
+            || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
+        return wantsMenu && context.offersUndo?(messageID) == true
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard context.offersUndo?(messageID) == true else { return nil }
+        let menu = NSMenu()
+        let item = NSMenuItem(
+            title: RevertReading.actionTitle, action: #selector(undo), keyEquivalent: "")
+        item.target = self
+        item.image = NSImage(
+            systemSymbolName: RevertReading.actionSymbol, accessibilityDescription: nil)
+        menu.addItem(item)
+        if text != nil {
+            menu.addItem(.separator())
+            let copy = NSMenuItem(
+                title: Localized.text("Copy"), action: #selector(copyWords), keyEquivalent: "")
+            copy.target = self
+            menu.addItem(copy)
+        }
+        return menu
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard event.modifierFlags.contains(.control), let menu = menu(for: event) else {
+            return super.mouseDown(with: event)
+        }
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    @objc private func undo() {
+        context.confirmUndo?(messageID)
+    }
+
+    @objc private func copyWords() {
+        guard let text else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 }
 

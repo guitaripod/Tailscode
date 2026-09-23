@@ -111,50 +111,83 @@ public struct SessionSpend: Sendable, Equatable {
     }
 
     /// From what this device already holds, for a backend that prices its own messages but has no
-    /// spend route. Coarser by design: a transcript knows what each answer cost and nothing about
-    /// which tier the tokens were, so the panel shows the turns and says the rest is unavailable.
+    /// spend route. A turn is everything answered after one prompt (a server that writes one
+    /// message per step still bills one turn for them), and the token tiers are the ones each
+    /// message reported, where it reported any.
     public init?(messages: [ChatMessage]) {
         var turns: [SessionSpendReport.Turn] = []
+        var open: SessionSpendReport.Turn?
         var prompt: String?
         var promptAt: Date?
+        func close() {
+            if let turn = open { turns.append(turn) }
+            open = nil
+        }
         for message in messages {
             if message.role == .user {
+                close()
                 prompt = message.parts.compactMap(\.text).first.map { String($0.prefix(160)) }
                 promptAt = message.createdAt
                 continue
             }
             guard message.role == .assistant, let cost = message.costUSD, cost > 0 else { continue }
-            turns.append(
-                SessionSpendReport.Turn(
-                    at: promptAt ?? message.createdAt,
-                    seconds: message.completedAt.map {
-                        max(0, $0.timeIntervalSince(promptAt ?? message.createdAt))
-                    },
-                    model: message.modelID, calls: 1,
-                    tokens: SessionSpendReport.Tokens(output: message.totalTokens ?? 0),
-                    costUSD: cost, prompt: prompt))
-            prompt = nil
-            promptAt = nil
+            let tokens = Self.tokens(of: message)
+            let started = promptAt ?? message.createdAt
+            var turn =
+                open
+                ?? SessionSpendReport.Turn(
+                    at: started, model: message.modelID, calls: 0, prompt: prompt)
+            turn.calls += 1
+            turn.costUSD += cost
+            turn.tokens.input += tokens.input
+            turn.tokens.output += tokens.output
+            turn.tokens.cacheRead += tokens.cacheRead
+            turn.tokens.cacheWrite5m += tokens.cacheWrite5m
+            if let model = message.modelID { turn.model = model }
+            if let completed = message.completedAt {
+                turn.seconds = max(0, completed.timeIntervalSince(started))
+            }
+            open = turn
         }
+        close()
         guard !turns.isEmpty else { return nil }
         var byModel: [String: SessionSpendReport.ModelShare] = [:]
+        var total = SessionSpendReport.Tokens()
         for turn in turns {
             let key = turn.model ?? Localized.text("unknown")
             var slot = byModel[key]
                 ?? SessionSpendReport.ModelShare(
                     model: key, turns: 0, tokens: SessionSpendReport.Tokens(), costUSD: 0)
             slot.turns += 1
+            slot.tokens.input += turn.tokens.input
             slot.tokens.output += turn.tokens.output
+            slot.tokens.cacheRead += turn.tokens.cacheRead
+            slot.tokens.cacheWrite5m += turn.tokens.cacheWrite5m
             slot.costUSD += turn.costUSD
             byModel[key] = slot
+            total.input += turn.tokens.input
+            total.output += turn.tokens.output
+            total.cacheRead += turn.tokens.cacheRead
+            total.cacheWrite5m += turn.tokens.cacheWrite5m
         }
         self.init(
             report: SessionSpendReport(
                 costUSD: turns.reduce(0) { $0 + $1.costUSD },
-                tokens: SessionSpendReport.Tokens(
-                    output: turns.reduce(0) { $0 + $1.tokens.output }),
+                tokens: total,
                 turns: turns, byModel: byModel.values.sorted { $0.costUSD > $1.costUSD },
-                startedAt: turns.first?.at, endedAt: turns.last?.at, estimated: false))
+                startedAt: turns.first?.at,
+                endedAt: turns.last.map { $0.at.addingTimeInterval($0.seconds ?? 0) },
+                estimated: false))
+    }
+
+    /// The tiers one message reported, or its total as answer tokens when it reported only that.
+    private static func tokens(of message: ChatMessage) -> SessionSpendReport.Tokens {
+        guard let usage = message.usage else {
+            return SessionSpendReport.Tokens(output: message.totalTokens ?? 0)
+        }
+        return SessionSpendReport.Tokens(
+            input: usage.input, output: usage.output + usage.reasoning,
+            cacheRead: usage.cacheRead, cacheWrite5m: usage.cacheWrite)
     }
 
     private static func tiers(of report: SessionSpendReport) -> [Tier] {

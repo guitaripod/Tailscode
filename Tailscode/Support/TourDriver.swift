@@ -73,6 +73,16 @@
             Task { await driver.cardWalk() }
         }
 
+        /// Holds the demo's opencode chat in one of the states winding it back passes through: the
+        /// notes its server wrote, the confirmation, and the banner with the words back in the
+        /// composer. Each is a surface a unit test cannot photograph and a live server would have to
+        /// be rewound to reach.
+        static func startRevertWalk(in window: UIWindow) {
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.revertWalk() }
+        }
+
         private let window: UIWindow
 
         private init(window: UIWindow) { self.window = window }
@@ -329,6 +339,31 @@
             await hold(0.4)
             await popToHome(hold: 1.0)
             AppLogger.ui.info("cardwalk: away from \(session)")
+        }
+
+        private func revertWalk() async {
+            let state = ProcessInfo.processInfo.environment["TAILSCODE_REVERT_STATE"] ?? "notes"
+            AppLogger.ui.info("revertwalk: state=\(state)")
+            await hold(1.5)
+            home?.openSession(withID: "demo-o1")
+            await hold(2.5)
+            switch state {
+            case "confirm":
+                chat?.tourConfirmRevert(toMessageID: "o1u1")
+            case "banner", "restored":
+                chat?.tourRevert(toMessageID: "o1u1")
+                await hold(2.0)
+                chat?.tourScrollToBottom()
+                if state == "restored" {
+                    await hold(1.5)
+                    chat?.tourRestoreRevert()
+                    await hold(1.5)
+                    chat?.tourScrollToBottom()
+                }
+            default:
+                chat?.tourScrollToBottom()
+            }
+            AppLogger.ui.info("revertwalk: settled")
         }
 
         private func chatsWalk() async {

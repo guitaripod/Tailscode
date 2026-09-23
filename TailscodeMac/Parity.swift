@@ -25,6 +25,9 @@ enum ParityManifest {
 
     static func declared(for capability: AppCapability) -> ParityEvidence {
         switch capability {
+        case .transcriptNotes: return .implemented("noteLine")
+        case .providerRetry: return .implemented("providerRetry")
+        case .conversationRevert: return .implemented("revertBanner")
         case .sessionSections: return .implemented("groupIntoSections")
         case .sessionRowStatus: return .implemented("observedPresence")
         case .activityIconography: return .implemented("ActivityBadgeView")

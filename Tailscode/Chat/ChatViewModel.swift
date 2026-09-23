@@ -47,6 +47,18 @@ final class ChatViewModel {
     var onInterruptionRefused: ((String) -> Void)?
     /// A press this device has made on the cut-off card and has no answer to yet.
     private(set) var interruptionPress: InterruptedTurnPress?
+    /// A press on Restore began or ended. Separate from `onState` because the revert banner has no
+    /// identity of its own to carry the press across a redraw the way the interrupted-turn card's
+    /// record does: this device's own news is the only place it can live.
+    var onRevertChange: (() -> Void)?
+    /// A press on Restore just landed. The banner itself comes down once the server's own account
+    /// says the revert is gone, which arrives through the ordinary state stream; this is only the
+    /// composer's cue to take back the words it lent the reader, when they are still untouched.
+    var onRevertRestored: (() -> Void)?
+    /// A press on Undo from here this device has made and has no answer to yet, so a second press
+    /// on another message before the first lands cannot race it.
+    private(set) var isReverting = false
+    private(set) var isRestoringRevert = false
 
     init(
         backend: any CodingAgentBackend, session: AgentSession, contextID: String = "default",
@@ -1292,6 +1304,46 @@ final class ChatViewModel {
         interruptionPress = nil
         onInterruptionChange?()
         if let refusal { onInterruptionRefused?(refusal) }
+    }
+
+    /// Winds the conversation back to `messageID`. The Kit stops a running turn first and asks a
+    /// busy server again on its own, so this is one call rather than a stop followed by a retry;
+    /// the banner appears through the ordinary state stream once the server has done it.
+    func revert(to messageID: String) {
+        guard !isReverting else { return }
+        AppLogger.chat.info("revert to \(messageID)")
+        isReverting = true
+        Task {
+            do {
+                try await conversation.revert(to: messageID)
+            } catch {
+                AppLogger.chat.error("revert failed: \(Self.readable(error))")
+                onError?(RevertReading.failure(restoring: false, error))
+            }
+            isReverting = false
+        }
+    }
+
+    /// Undoes the standing revert. The button renames itself and refuses a second press the moment
+    /// this is called; a failure leaves the revert standing and reports why, a success is read off
+    /// the state stream like any other change the server made.
+    func restoreRevert() {
+        guard !isRestoringRevert else { return }
+        AppLogger.chat.info("revert restore")
+        isRestoringRevert = true
+        onRevertChange?()
+        Task {
+            do {
+                try await conversation.restoreRevert()
+                isRestoringRevert = false
+                onRevertRestored?()
+            } catch {
+                AppLogger.chat.error("revert restore failed: \(Self.readable(error))")
+                isRestoringRevert = false
+                onRevertChange?()
+                onError?(RevertReading.failure(restoring: true, error))
+            }
+        }
     }
 
     func rejectQuestion(_ question: QuestionRequest) {

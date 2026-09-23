@@ -332,6 +332,10 @@ public enum ActivityKind: Sendable, Equatable {
     /// breathing. The server ends such shells itself unless told not to; a person can end one from
     /// any client.
     case stalled(tasks: Int)
+    /// The turn is open and waiting on its provider between attempts: the last request was refused
+    /// or failed and the server will ask again on its own. Nothing is being written and nobody here
+    /// has to do anything, so it turns over like a reconnect rather than breathing like work.
+    case retrying(attempt: Int)
     case compacting
     case needsApproval
     case needsAnswer
@@ -346,7 +350,8 @@ public enum ActivityKind: Sendable, Equatable {
     /// state has one, because a count of zero is not a state anybody sees.
     public static let everyState: [ActivityKind] = [
         .working, .thinking, .writing, .usingTool(name: "Bash", kind: .shell),
-        .delegating(active: 3), .inBackground(tasks: 1), .stalled(tasks: 1), .compacting,
+        .delegating(active: 3), .inBackground(tasks: 1), .stalled(tasks: 1),
+        .retrying(attempt: 2), .compacting,
         .needsApproval, .needsAnswer, .queued(2), .connecting, .reconnecting, .failed, .offline,
     ]
 
@@ -370,6 +375,10 @@ public enum ActivityKind: Sendable, Equatable {
         case .stalled:
             return ActivityIcon(
                 symbol: "exclamationmark.circle", glyph: "◔", tone: .attention, motion: .still)
+        case .retrying:
+            return ActivityIcon(
+                symbol: "arrow.triangle.2.circlepath", glyph: "◐", cycle: ActivityIcon.sweepCycle,
+                tone: .attention, motion: .turning)
         case .compacting:
             return ActivityIcon(
                 symbol: "rectangle.compress.vertical", glyph: "◐", cycle: ActivityIcon.sweepCycle,
@@ -417,6 +426,7 @@ public enum ActivityKind: Sendable, Equatable {
             return tasks == 1
                 ? Localized.text("Stuck background task")
                 : Localized.text("%@ stuck background tasks", "\(tasks)")
+        case .retrying: return Localized.text("Retrying")
         case .compacting: return Localized.text("Compacting")
         case .needsApproval: return Localized.text("Needs you")
         case .needsAnswer: return Localized.text("Needs an answer")
@@ -441,6 +451,7 @@ public enum ActivityKind: Sendable, Equatable {
         case .delegating: return Localized.text("agents")
         case .inBackground(let tasks): return Localized.text("%@ in background", "\(tasks)")
         case .stalled(let tasks): return Localized.text("%@ stuck", "\(tasks)")
+        case .retrying(let attempt): return Localized.text("retry %@", "\(attempt)")
         case .compacting: return Localized.text("compacting")
         case .needsApproval: return Localized.text("y / a / n")
         case .needsAnswer: return Localized.text("answer")
@@ -475,6 +486,10 @@ public enum ActivityKind: Sendable, Equatable {
                 : Localized.text(
                     "%@ background tasks are stuck on the machine: nothing has moved for a long time. Stop them, or wait",
                     "\(tasks)")
+        case .retrying(let attempt):
+            return Localized.text(
+                "Waiting on the provider: attempt %@ failed and the server is trying again",
+                "\(attempt)")
         case .compacting: return Localized.text("Compacting the conversation")
         case .needsApproval: return Localized.text("Waiting for your approval")
         case .needsAnswer: return Localized.text("Waiting for your answer")
@@ -492,7 +507,7 @@ public enum ActivityKind: Sendable, Equatable {
     public var isInFlight: Bool {
         switch self {
         case .working, .thinking, .writing, .usingTool, .delegating, .inBackground, .stalled,
-            .compacting, .needsApproval, .needsAnswer:
+            .retrying, .compacting, .needsApproval, .needsAnswer:
             return true
         case .queued, .connecting, .reconnecting, .failed, .offline:
             return false
@@ -570,6 +585,7 @@ public enum ActivityKind: Sendable, Equatable {
         if !state.pendingPermissions.isEmpty { return .needsApproval }
         if !state.pendingQuestions.isEmpty { return .needsAnswer }
         guard state.status == .running else { return nil }
+        if let retry = state.retry { return .retrying(attempt: retry.attempt) }
         if let call = runningCall(in: state) {
             return .usingTool(name: call.name, kind: call.summary.kind)
         }

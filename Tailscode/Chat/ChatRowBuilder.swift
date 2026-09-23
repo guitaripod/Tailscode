@@ -9,9 +9,12 @@ enum ChatRowBuilder {
     ///   stamps nothing on the record itself (the Claude bridge) leaves every message reading
     ///   `isStreaming == false`, whether the turn that wrote it is still open or not. Only the
     ///   conversation knows that (`MessageSegment.isSealed`).
+    /// - Parameter modelName: the display name the client already shows for a model, for a note
+    ///   that names one; nil when the catalog does not know it, which reads as the model's id.
     static func makeRows(
         from messages: [ChatMessage], agents: ChatViewController.SubagentPlacement,
-        runs: [String: WorkflowRun] = [:], turnOpen: Bool = false, memo: SegmentRowMemo? = nil
+        runs: [String: WorkflowRun] = [:], turnOpen: Bool = false, memo: SegmentRowMemo? = nil,
+        modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [ChatRow] {
         defer { memo?.sweep() }
         var rows: [ChatRow] = []
@@ -172,6 +175,12 @@ enum ChatRowBuilder {
                             id: id, messageID: message.id, role: .system,
                             content: .compaction(
                                 CompactionRow(id: id, state: .done(compaction)))))
+                case .note(let note):
+                    flushActivity()
+                    rows.append(
+                        ChatRow(
+                            id: id, messageID: message.id, role: .system,
+                            content: .note(TranscriptNoteReading.read(note, modelName: modelName))))
                 case .unknown:
                     continue
                 }
@@ -342,7 +351,7 @@ enum ChatRowBuilder {
                     steps.append(.tool(call))
                 case .text(let text):
                     if !text.isEmpty { report = text }
-                case .file, .compaction, .unknown:
+                case .file, .compaction, .note, .unknown:
                     continue
                 }
             }

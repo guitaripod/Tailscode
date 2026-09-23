@@ -289,6 +289,12 @@ final class MainWindow: @unchecked Sendable {
                 case "cutoffdemo":
                     self.activePane.driverInterruptedDemo(
                         argument.isEmpty ? "busy" : argument)
+                case "retrydemo":
+                    self.activePane.driverRetryDemo(argument)
+                case "undodemo":
+                    self.activePane.driverUndoDemo(argument)
+                case "restoredemo":
+                    self.activePane.driverRestoreDemo()
                 case "designui":
                     self.presentDesignPreflight(for: self.activePane, argument: argument)
                 case "designdemo":

@@ -278,6 +278,25 @@ final class ComposerView: NSView {
         takeFocus()
     }
 
+    /// What an undone message offers the box: its own words, ready to edit, but never over a
+    /// sentence somebody is already in the middle of. Returns whether it landed, so a caller can
+    /// remember exactly what it put there.
+    @discardableResult
+    func fillIfEmpty(_ text: String) -> Bool {
+        guard editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        setEditorText(text, caretAtEnd: true)
+        return true
+    }
+
+    /// Takes back words this composer offered, but only if they are still exactly what was put
+    /// there: a person who kept typing after the offer landed keeps every word they added.
+    func clearIfUnchanged(from text: String) {
+        guard editor.text == text else { return }
+        setEditorText("", caretAtEnd: true)
+    }
+
     /// The completion panel is a sibling of the composer rather than a child — it hangs above the
     /// prompt box in the transcript's own container — so hiding the composer would otherwise leave
     /// a list of slash commands floating over a pane with nothing to type into.

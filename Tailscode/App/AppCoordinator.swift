@@ -51,6 +51,11 @@ final class AppCoordinator: NSObject {
                 window.makeKeyAndVisible()
                 return
             }
+            if CommandLine.arguments.contains(where: { $0.hasPrefix("--turn-cards-preview") }) {
+                window.rootViewController = TurnCardsPreviewViewController()
+                window.makeKeyAndVisible()
+                return
+            }
         #endif
         if CommandLine.arguments.contains("--demo"), !ConnectionController.shared.isDemoMode {
             ConnectionController.shared.enterDemoMode()
@@ -96,6 +101,9 @@ final class AppCoordinator: NSObject {
             }
             if CommandLine.arguments.contains("--cardwalk") {
                 TourDriver.startCardWalk(in: window)
+            }
+            if CommandLine.arguments.contains("--revertwalk") {
+                TourDriver.startRevertWalk(in: window)
             }
         #endif
     }

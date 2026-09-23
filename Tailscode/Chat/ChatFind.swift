@@ -50,6 +50,8 @@ enum ChatFind {
             return stats.spoken
         case .webEmbed(let embed):
             return embed.url
+        case .note(let line):
+            return line.text
         }
     }
 
