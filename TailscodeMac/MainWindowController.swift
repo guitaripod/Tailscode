@@ -98,7 +98,7 @@ final class MainWindowController: NSWindowController {
             MainActor.assumeIsolated { self?.applyTheme() }
         }
         NotificationCenter.default.addObserver(
-            forName: UpdateLedger.didChange, object: nil, queue: .main
+            forName: MacUpdateWatch.didChange, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateMark?.render() }
         }
@@ -612,6 +612,7 @@ final class MainWindowController: NSWindowController {
                 Task { [weak self] in await self?.sidebar.refresh() }
             }
             serversWindow?.onNeedsPro = { [weak self] in self?.presentPro() }
+            serversWindow?.onOpenUpdateCenter = { [weak self] in self?.presentUpdates() }
         }
         serversWindow?.present()
     }

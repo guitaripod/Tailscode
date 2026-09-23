@@ -49,20 +49,26 @@ enum MacAppInstall {
     /// This app's own row, read off the disk it is installed on.
     ///
     /// Blocking — git and the toolchain probes are subprocesses — so it is asked for off the main
-    /// actor. No `storeURL` is ever passed: see the note on this type.
-    static func reading(at checkedAt: Date = Date()) -> UpdateReading {
+    /// actor. No `storeURL` is ever passed: see the note on this type. `lastKnown` carries the last
+    /// reading this device wrote down forward — the outcome of an update this app took is a fact
+    /// about the last press, not something a fresh git probe could ever answer again.
+    static func reading(at checkedAt: Date = Date(), lastKnown: UpdateReading? = nil)
+        -> UpdateReading
+    {
         #if TAILSCODE_MAS
             let install = install
             return UpdateReadings.app(
                 install: install, release: nil, checkout: nil, projectURL: projectURL,
-                subtitle: install.kind.sentence)
+                subtitle: install.kind.sentence, lastKnown: lastKnown)
         #else
-            return checkoutBackedReading(at: checkedAt)
+            return checkoutBackedReading(at: checkedAt, lastKnown: lastKnown)
         #endif
     }
 
     #if !TAILSCODE_MAS
-        private static func checkoutBackedReading(at checkedAt: Date) -> UpdateReading {
+        private static func checkoutBackedReading(at checkedAt: Date, lastKnown: UpdateReading?)
+            -> UpdateReading
+        {
             let install = install
             let report = checkoutReading()
             let subtitle = subtitle(install: install, checkout: report.state)
@@ -70,12 +76,12 @@ enum MacAppInstall {
                 return UpdateReadings.app(
                     install: install, release: nil, checkout: nil, failure: report.staleReason,
                     projectURL: projectURL, checkedAt: report.staleReason == nil ? checkedAt : nil,
-                    subtitle: subtitle)
+                    subtitle: subtitle, lastKnown: lastKnown)
             }
             return UpdateReadings.app(
                 install: install, release: nil, checkout: state, obstacle: obstacle(for: state),
                 command: buildCommand(at: state.path), projectURL: projectURL,
-                checkedAt: checkedAt, subtitle: subtitle)
+                checkedAt: checkedAt, subtitle: subtitle, lastKnown: lastKnown)
         }
 
         /// A checkout, and — kept beside it rather than folded into it — why its comparison is not

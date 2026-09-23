@@ -43,7 +43,13 @@ final class ServersWindow: NSWindowController {
     private let onChanged: @MainActor () -> Void
     /// What to open when somebody reaches past the free copy's one server.
     var onNeedsPro: (@MainActor () -> Void)?
+    /// What to open when somebody reaches past one server's own card to the whole picture.
+    var onOpenUpdateCenter: (@MainActor () -> Void)?
     private let listColumn = FillingStack()
+    /// Every claude-bridge row's embedded software card, by profile id — rewritten in place from
+    /// the ledger rather than rebuilt, so a job landing a reading every couple of seconds does not
+    /// throw away whatever section a person had open.
+    private var softwareCards: [String: UpdateCardView] = [:]
     private let listHeader = MacDialogs.sectionHeader(Localized.text("CONFIGURED"))
     private let tailnetHeader = MacDialogs.sectionHeader(Localized.text("THIS MAC"))
     private let tailnetCaption = NSTextField(labelWithString: Localized.text("Tailscale"))
@@ -73,6 +79,20 @@ final class ServersWindow: NSWindowController {
         window.center()
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(updatesChanged), name: MacUpdateWatch.didChange, object: nil)
+    }
+
+    /// An answer landed for some machine — possibly one of these, possibly from a sweep started
+    /// elsewhere, and during an install every couple of seconds. Every open card rewrites itself in
+    /// place rather than the row being rebuilt around it.
+    @objc private func updatesChanged() {
+        for (id, card) in softwareCards {
+            guard let profile = ServerDirectory.shared.profiles.first(where: { $0.id == id }) else {
+                continue
+            }
+            applySoftware(profile, into: card)
+        }
     }
 
     /// Nothing outside the main window is reached by its restyle pass, and every colour and size
@@ -106,6 +126,11 @@ final class ServersWindow: NSWindowController {
         renderList()
         window?.makeKeyAndOrderFront(nil)
         pollTailnet()
+        Task {
+            for profile in ServerDirectory.shared.profiles where profile.backend == .claudeCode {
+                await MacUpdateWatch.shared.check(.server(profileID: profile.id))
+            }
+        }
     }
 
     /// Every address in this window is a tailnet address, so this Mac's own tailnet is the first
@@ -199,6 +224,7 @@ final class ServersWindow: NSWindowController {
 
     private func renderList() {
         listColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        softwareCards = [:]
         let profiles = ServerDirectory.shared.profiles
         guard !profiles.isEmpty else {
             listColumn.addArrangedSubview(
@@ -210,6 +236,11 @@ final class ServersWindow: NSWindowController {
         }
     }
 
+    /// A claude-bridge row's embedded software card is floored to a real width below: every label
+    /// inside it, and every label beside it in the same column, shares one required width once the
+    /// column fills to its widest member, and a card built entirely from wrapping content has no
+    /// opinion of its own to offer that fill — left unfloored, the whole row settles on whatever the
+    /// card's tightest internal line can still lay out.
     private func makeRow(_ profile: ConnectionProfile) -> NSView {
         let icon = NSImageView()
         icon.image = NSImage(
@@ -226,25 +257,32 @@ final class ServersWindow: NSWindowController {
         let detail = MacDialogs.detailLabel(
             "\(ServerLabel.agent(profile.backend)) · \(ServerLabel.address(profile))")
 
-        let lines = NSStackView(views: [title, detail])
+        let lines = FillingStack(views: [title, detail])
         lines.orientation = .vertical
         lines.alignment = .leading
         lines.spacing = 2
 
         if profile.backend == .claudeCode {
-            let software = NSStackView()
-            software.orientation = .vertical
-            software.alignment = .leading
-            software.spacing = 3
-            lines.addArrangedSubview(software)
-
-            let auto = AutoUpdateRow()
-            auto.onSet = { [weak self, weak auto] enabled in
-                guard let auto else { return }
-                self?.setAutoUpdate(profile, enabled, auto: auto, into: software)
+            let card = UpdateCardView(style: .embedded)
+            card.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
+            card.onAction = { [weak self] action in
+                guard let self, let reading = self.softwareReading(profile) else { return }
+                UpdatePress.perform(action, for: reading, from: self.window) { [weak self] text in
+                    self?.setStatus(text)
+                }
             }
-            lines.addArrangedSubview(auto)
-            checkSoftware(profile, auto: auto, into: software)
+            card.onAutomation = { [weak self, weak card] enabled in
+                guard let self, let card, let reading = self.softwareReading(profile) else { return }
+                UpdatePress.setAutomation(enabled, for: reading, card: card)
+            }
+            softwareCards[profile.id] = card
+            lines.addArrangedSubview(card)
+            applySoftware(profile, into: card)
+
+            lines.addArrangedSubview(
+                makeInlineButton(Localized.text("All software updates")) { [weak self] in
+                    self?.onOpenUpdateCenter?()
+                })
 
             let account = NSStackView()
             account.orientation = .vertical
@@ -487,129 +525,26 @@ final class ServersWindow: NSWindowController {
         }
     }
 
-    /// What this machine says about its own software, asked and classified in the one place that
-    /// does it — an unanswered `/update` has two very different causes, and only one of them
-    /// deserves the install command: a bridge old enough to lack the route still answers `/health`,
-    /// while a machine that answers neither is unreachable, and telling somebody to reinstall a
-    /// server that is merely asleep would be worse than saying nothing.
-    private func checkSoftware(
-        _ profile: ConnectionProfile, auto: AutoUpdateRow, into box: NSStackView
-    ) {
-        setSoftwareText(box, Localized.text("Checking for updates…"))
-        Task { [weak self] in
-            let reading = await MacUpdateWatch.shared.check(profile, checkingRemote: true)
-            self?.renderSoftware(reading, profile: profile, auto: auto, into: box)
-        }
+    private func softwareReading(_ profile: ConnectionProfile) -> UpdateReading? {
+        UpdateLedger.remembered(.server(profileID: profile.id))
     }
 
-    /// One reading, in Core's own words. A second ladder of hand-written cases here is exactly how
-    /// this window and the Update Center came to hold two opinions about what a missing field
-    /// meant, so there is one renderer and both surfaces call it.
-    ///
-    /// The invitation is switched over rather than sorted by a property, because the two presses
-    /// this window follows through itself — fetch and build, and load a build already there — are
-    /// two different jobs on the machine and only one of them is worth minutes of building. Every
-    /// other invitation ends in the shared one, and a case added to Core stops compiling here until
-    /// somebody says which of the two it is.
-    private func renderSoftware(
-        _ reading: UpdateReading, profile: ConnectionProfile, auto: AutoUpdateRow,
-        into box: NSStackView
-    ) {
-        box.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        box.addArrangedSubview(
-            RowKit.label(
-                reading.headline, font: MacTheme.Ramp.font(.cardTitle), color: reading.tone.color))
-        for line in UpdateReadingViews.lines(for: reading) {
-            box.addArrangedSubview(line)
-        }
-        auto.write(reading.automation)
-        guard let invitation = reading.invitation else { return }
-        if let promise = UpdateReadingViews.promise(invitation) {
-            box.addArrangedSubview(promise)
-        }
-        box.addArrangedSubview(
-            makeInlineButton(invitation.label) { [weak self] in
-                guard let self else { return }
-                switch invitation {
-                case .installHere:
-                    self.runUpdate(profile, auto: auto, into: box)
-                case .restartHere:
-                    self.runRestart(profile, auto: auto, into: box)
-                case .openStore, .copyCommand, .openPage, .recheck:
-                    guard let said = UpdateReadingViews.perform(invitation, on: reading) else {
-                        return
-                    }
-                    self.setStatus(said)
-                }
-            })
-    }
-
-    /// The update is followed to the end, not to the first heartbeat — the shared watch owns that
-    /// loop, and this window only draws each step it reports.
-    private func runUpdate(
-        _ profile: ConnectionProfile, auto: AutoUpdateRow, into box: NSStackView
-    ) {
-        setSoftwareText(box, Localized.text("Updating — asking the server to fetch and build…"))
-        follow(profile, auto: auto, into: box) { step in
-            await MacUpdateWatch.shared.install(.server(profileID: profile.id), onStep: step)
-        }
-    }
-
-    /// The build is already on that machine, so there is nothing to fetch and nothing to make: the
-    /// press hands the process to whatever starts it again. It is followed exactly the way an
-    /// update is, because the stretch that matters — the machine answering nothing while it comes
-    /// back — is the same stretch.
-    private func runRestart(
-        _ profile: ConnectionProfile, auto: AutoUpdateRow, into box: NSStackView
-    ) {
-        setSoftwareText(
-            box, Localized.text("Asking the server to load the build it already has…"))
-        follow(profile, auto: auto, into: box) { step in
-            await MacUpdateWatch.shared.restart(.server(profileID: profile.id), onStep: step)
-        }
-    }
-
-    private func follow(
-        _ profile: ConnectionProfile, auto: AutoUpdateRow, into box: NSStackView,
-        job: @escaping @MainActor (@escaping @MainActor (UpdateReading) -> Void) async -> Void
-    ) {
-        Task { [weak self] in
-            await job { reading in
-                self?.renderSoftware(reading, profile: profile, auto: auto, into: box)
-            }
-            guard let self,
-                let settled = UpdateLedger.remembered(.server(profileID: profile.id))
-            else { return }
-            self.setStatus(
-                Localized.text("%@ — %@", profile.name, settled.installed.line))
-        }
-    }
-
-    /// The policy is the machine's, so the press is a request and the switch takes its position
-    /// from the answer. What comes back is published through the same path a check is, which is why
-    /// the ledger — and the Update Center reading from it — agree before this row is redrawn; a
-    /// refusal changes nothing except the line at the foot of this window.
-    private func setAutoUpdate(
-        _ profile: ConnectionProfile, _ enabled: Bool, auto: AutoUpdateRow, into box: NSStackView
-    ) {
-        auto.setAsking(true)
-        Task { [weak self] in
-            var refusal: String?
-            do {
-                _ = try await MacUpdateWatch.shared.setAutoUpdate(
-                    .server(profileID: profile.id), enabled)
-            } catch {
-                refusal = (error as? AgentError)?.errorDescription ?? error.localizedDescription
-            }
-            guard let self else { return }
-            auto.setAsking(false)
-            if let settled = UpdateLedger.remembered(.server(profileID: profile.id)) {
-                self.renderSoftware(settled, profile: profile, auto: auto, into: box)
-            }
-            guard let refusal else { return }
-            self.setStatus(
-                Localized.text("%@ would not take that setting — %@", profile.name, refusal))
-        }
+    /// The card for this machine, drawn from the ledger — or, before anything has been asked, the
+    /// card of a machine being asked. Every other client answers this the same way; the classifying
+    /// of what a missing field means lives once, in Core's `UpdateReadings`.
+    private func applySoftware(_ profile: ConnectionProfile, into card: UpdateCardView) {
+        let component = UpdateComponent.server(profileID: profile.id)
+        let remembered = UpdateLedger.remembered(component)
+        let reading =
+            remembered
+            ?? UpdateReading(
+                component: component, title: profile.name, installed: .unknown,
+                verdict: .unverified(.neverChecked), product: UpdateProduct.name(for: profile.backend))
+        let snapshot = MacUpdateWatch.shared.snapshot
+        card.apply(
+            UpdateCard(
+                reading, acknowledged: UpdateLedger.isAcknowledged(reading),
+                busy: remembered == nil || snapshot.isBusy(component)))
     }
 
     /// Which account this server's Claude answers as — or the warning that it answers as nobody,

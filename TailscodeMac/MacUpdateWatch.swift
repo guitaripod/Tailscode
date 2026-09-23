@@ -2,317 +2,157 @@ import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
 import TailscodeCore
+import os
 
-/// The check behind the standing mark: every machine in the picture asked on its own slow cadence,
-/// every answer written through `UpdateLedger` so the mark is on screen before the next launch has
-/// asked anybody anything.
+/// This Mac's seat at the one `UpdateDriver` every client shares.
 ///
-/// The classification is never this file's. It decides only which of the four things happened —
-/// the server answered, it is too old to have the route, it answered nothing, or it has no
-/// self-update at all — and `UpdateReadings` decides what each of those is allowed to say. The
-/// distinction that matters most is between a bridge too old to answer and a machine that is
-/// merely asleep: telling somebody to reinstall a server that is napping is worse than saying
-/// nothing.
+/// The asking, the following through a restart, and every clock that decides how long to wait for
+/// a quiet machine now live in Core, asked once instead of three times. What is left here is only
+/// what a Mac alone can answer: which servers are configured, how to reach one, and what this
+/// bundle is actually running — plus the main-thread relay AppKit needs, since the driver and the
+/// ledger both post from whatever thread happened to learn something.
 @MainActor
 final class MacUpdateWatch {
     static let shared = MacUpdateWatch()
 
+    /// Posted on the main queue whenever a card could have changed. `UpdateLedger` and
+    /// `UpdateDriver` each post their own notification from arbitrary threads; every AppKit
+    /// observer of an update listens here instead; so a view is never touched off the main thread.
+    nonisolated static let didChange = Notification.Name("tailscode.mac.updates.didChange")
+
+    private nonisolated static let log = Logger(
+        subsystem: "com.guitaripod.tailscode", category: "updates")
     /// How often the loop wakes to *ask whether* a check is due. Whether it is remains
-    /// `UpdateFreshness`'s answer, never this timer's: a Mac that slept for a day checks when it
-    /// wakes rather than at the next multiple of half an hour.
+    /// `UpdateFreshness`'s answer, never this timer's: a Mac asleep for a day checks when it wakes
+    /// rather than at the next multiple of half an hour.
     private static let wake: Duration = .seconds(1800)
-    private static let followDeadline: TimeInterval = 600
-    private static let followInterval: Duration = .seconds(3)
+    private static let fixtureEnv = "TAILSCODE_UPDATE_FIXTURES"
 
+    let driver: UpdateDriver
+
+    private var relays: [any NSObjectProtocol] = []
     private var loop: Task<Void, Never>?
-    private var sweeping = false
-    /// Profiles whose update this window is following through its restart, so a second press
-    /// cannot start a build on top of one already running.
-    private var installing: Set<String> = []
+    private var started = false
 
-    private init() {}
+    private init() {
+        driver = UpdateDriver(
+            environment: UpdateDriver.Environment(
+                machines: { await Self.machines() },
+                checkApp: { _ in await Self.checkApp() },
+                log: { Self.log.info("\($0)") }))
+    }
 
+    var snapshot: UpdateDriver.Snapshot { driver.snapshot }
+
+    /// A debug launch that seeds every state a card can be in and asks nobody anything, so the
+    /// board can be looked at without a fleet. Compiled out of a release build entirely, the same
+    /// way the iPhone's own fixture switch is.
+    private static var fixtures: Bool {
+        #if DEBUG
+            return ProcessInfo.processInfo.environment[fixtureEnv] != nil
+        #else
+            return false
+        #endif
+    }
+
+    /// Which fixture machines a debug launch asked for: `1` for all of them, or a comma list of
+    /// ids among `arch,mini,studio,pi,box,old`.
+    private static var fixtureSelection: Set<String> {
+        let value = ProcessInfo.processInfo.environment[fixtureEnv] ?? ""
+        guard value != "1" else { return [] }
+        return Set(value.split(separator: ",").map(String.init))
+    }
+
+    /// Starts watching every configured machine, and picks up any job the last run of this app was
+    /// following when it stopped — a relaunch mid-update asks the machine where it got to rather
+    /// than believing the last thing this process wrote down before it quit.
     func start() {
-        guard loop == nil else { return }
-        loop = Task { [weak self] in
+        guard !started else { return }
+        started = true
+        relays = [UpdateLedger.didChange, UpdateDriver.didChange].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+                NotificationCenter.default.post(name: Self.didChange, object: nil)
+            }
+        }
+        guard !Self.fixtures else {
+            UpdateLedger.keep([])
+            UpdateLedger.record(
+                UpdateFixtures.readings(
+                    appTitle: Localized.text("Tailscode on this Mac"), only: Self.fixtureSelection))
+            return
+        }
+        let driver = driver
+        loop = Task {
+            await driver.resume()
             while !Task.isCancelled {
-                guard let self else { return }
-                if UpdateLedger.isDue() { await self.sweep(checkingRemote: true) }
+                await driver.checkIfDue()
                 try? await Task.sleep(for: Self.wake)
             }
         }
     }
 
-    func stop() {
-        loop?.cancel()
-        loop = nil
+    /// Asks once, if it is due. Opening a window that shows updates calls this rather than forcing
+    /// a sweep, so looking at the board twice in a minute costs nothing.
+    func checkIfDue() {
+        guard !Self.fixtures else { return }
+        Task { await driver.checkIfDue() }
     }
 
-    /// One pass over this app and every configured server. `checkingRemote` is what it costs: it
-    /// makes each bridge fetch, so it is spent on a due check or somebody actually asking, and
-    /// never on the poll that follows an update through its restart.
-    ///
-    /// Each answer is recorded as it lands rather than at the end, so a machine that takes fifteen
-    /// seconds to reply does not hold the whole surface blank.
-    func sweep(checkingRemote: Bool) async {
-        guard !sweeping else { return }
-        sweeping = true
-        defer { sweeping = false }
-        let profiles = Self.checkableProfiles()
-        let components: [UpdateComponent] = [.app] + profiles.map { .server(profileID: $0.id) }
-        UpdateLedger.keep(components)
-        await checkApp()
-        for profile in profiles {
-            await check(profile, checkingRemote: checkingRemote)
-        }
-        UpdateLedger.noteCheck()
+    func checkAll() async {
+        guard !Self.fixtures else { return }
+        await driver.checkAll(force: true)
     }
 
-    @discardableResult
-    func checkApp() async -> UpdateReading {
-        let reading = await Task.detached(priority: .utility) { MacAppInstall.reading() }.value
-        UpdateLedger.record(reading)
-        return reading
+    func check(_ component: UpdateComponent) async {
+        await driver.check(component)
     }
 
-    @discardableResult
-    func check(_ profile: ConnectionProfile, checkingRemote: Bool) async -> UpdateReading {
-        let reading = await Self.reading(for: profile, checkingRemote: checkingRemote)
-        UpdateLedger.record(reading)
-        return reading
+    func perform(_ component: UpdateComponent) async {
+        await driver.perform(component)
     }
 
-    func recheck(_ component: UpdateComponent) async {
-        switch component {
-        case .app:
-            await checkApp()
-        case .server(let profileID):
-            guard let profile = Self.profile(profileID) else { return }
-            await check(profile, checkingRemote: true)
-        }
+    func updateEverything() async {
+        await driver.updateEverything()
+    }
+
+    func setAutoUpdate(_ component: UpdateComponent, _ enabled: Bool) async -> String? {
+        await driver.setAutoUpdate(component, enabled)
     }
 
     /// A server removed must stop holding the mark up, and one just added is worth asking about
     /// before the next due check comes round.
     func noteProfilesChanged() {
-        let profiles = Self.checkableProfiles()
-        let components: [UpdateComponent] = [.app] + profiles.map { .server(profileID: $0.id) }
-        UpdateLedger.keep(components)
+        guard !Self.fixtures else { return }
         Task {
-            for profile in profiles
-            where UpdateLedger.remembered(.server(profileID: profile.id)) == nil {
-                await self.check(profile, checkingRemote: true)
+            let machines = await Self.machines()
+            driver.keep(machines)
+            for machine in machines where UpdateLedger.remembered(machine.component) == nil {
+                await driver.check(machine.component)
             }
         }
     }
 
-    func isInstalling(_ component: UpdateComponent) -> Bool {
-        guard case .server(let profileID) = component else { return false }
-        return installing.contains(profileID)
-    }
-
-    /// An update asked for and then followed to the end rather than to the first heartbeat, which
-    /// is the whole of what `follow` is for.
-    ///
-    /// A machine that refuses to start one — a dirty tree, a route that errors, no right to ask —
-    /// is recorded as the answer it gave and nothing is followed: a discarded refusal leaves the
-    /// card exactly as it was under a surface still claiming the machine was asked.
-    func install(
-        _ component: UpdateComponent, onStep: (@MainActor (UpdateReading) -> Void)? = nil
-    ) async {
-        guard case .server(let profileID) = component, let profile = Self.profile(profileID),
-            let backend = ServerDirectory.shared.backend(for: profile) as? any SelfUpdatingBackend,
-            installing.insert(profileID).inserted
-        else { return }
-        defer { installing.remove(profileID) }
-        do {
-            record(.answered(try await backend.startUpdate()), for: profile, onStep: onStep)
-        } catch {
-            record(.silent(Self.why(error, on: profile)), for: profile, onStep: onStep)
-            return
-        }
-        await follow(
-            profile, backend: backend,
-            stalled: Localized.text(
-                "The update did not settle within ten minutes — check %@ over ssh.", profile.name),
-            onStep: onStep)
-    }
-
-    /// A build already sitting on that machine, loaded rather than made again.
-    ///
-    /// The half that matters is the same half an update ends with, so it is watched the same way:
-    /// the process stops answering while whatever supervises it brings it back, and a refused
-    /// connection in that stretch is the restart doing its job. Nothing is fetched and nothing is
-    /// built, so the only wait is the machine's own — it holds until nothing is running that
-    /// stopping would destroy, and that wait is a phase it reports rather than a silence.
-    ///
-    /// It takes the same lock an install does: a machine already being worked on must not be handed
-    /// a second job, and the surfaces that grey a button while one runs ask that one question.
-    func restart(
-        _ component: UpdateComponent, onStep: (@MainActor (UpdateReading) -> Void)? = nil
-    ) async {
-        guard case .server(let profileID) = component, let profile = Self.profile(profileID),
-            let backend = ServerDirectory.shared.backend(for: profile) as? any SelfUpdatingBackend,
-            installing.insert(profileID).inserted
-        else { return }
-        defer { installing.remove(profileID) }
-        do {
-            record(.answered(try await backend.restartServer()), for: profile, onStep: onStep)
-        } catch {
-            record(.silent(Self.why(error, on: profile)), for: profile, onStep: onStep)
-            return
-        }
-        await follow(
-            profile, backend: backend,
-            stalled: Localized.text(
-                "%@ has not come back within ten minutes — check it over ssh.", profile.name),
-            onStep: onStep)
-    }
-
-    /// Turning a machine's own update policy on or off, where the policy lives: on the machine.
-    ///
-    /// The answer it gives back is published exactly the way a check is, so the ledger and every
-    /// surface reading from it agree at once and no client is left rendering a switch from what it
-    /// last sent. A machine that refuses says so through the thrown error and the ledger keeps the
-    /// last thing it actually said, which is what the switch goes on showing.
-    @discardableResult
-    func setAutoUpdate(_ component: UpdateComponent, _ enabled: Bool) async throws -> UpdateReading {
-        guard case .server(let profileID) = component, let profile = Self.profile(profileID),
-            let backend = ServerDirectory.shared.backend(for: profile) as? any SelfUpdatingBackend
-        else {
-            throw AgentError.unsupported("This server has no update policy to set.")
-        }
-        let status = try await backend.setAutoUpdate(enabled)
-        return record(.answered(status), for: profile, onStep: nil)
-    }
-
-    /// The stretch after the press, watched to the end rather than to the first heartbeat.
-    ///
-    /// The old process keeps answering `/health` through a whole fetch and build, and then stops
-    /// answering anything at all while it restarts — so a refused connection here is the restart
-    /// doing its job, not a failure, and the loop simply asks again. Only a settled phase, or ten
-    /// minutes of silence, ends it.
-    ///
-    /// The last word is a fresh comparison against the remote rather than the phase that settled.
-    /// The poll asks with `checkingRemote: false` throughout — a server mid-build must not be made
-    /// to fetch every three seconds — and a machine whose whole update was watched with that off
-    /// would come to rest on "Can't say" about the very build it just installed.
-    private func follow(
-        _ profile: ConnectionProfile, backend: any SelfUpdatingBackend, stalled: String,
-        onStep: (@MainActor (UpdateReading) -> Void)?
-    ) async {
-        let deadline = Date().addingTimeInterval(Self.followDeadline)
-        var answered = false
-        while Date() < deadline {
-            try? await Task.sleep(for: Self.followInterval)
-            guard let status = try? await backend.updateStatus(checkingRemote: false) else {
-                continue
-            }
-            answered = true
-            record(.answered(status), for: profile, onStep: onStep)
-            // A machine holding a finished build until the turn on it ends can hold for hours, and
-            // it answers everything while it does. The following stops; its own account of what it
-            // is waiting for is the last word, never a claim that it went away.
-            guard status.isRunning, status.phase != .waiting else {
-                onStep?(await check(profile, checkingRemote: true))
-                return
-            }
-        }
-        guard !answered else {
-            onStep?(await check(profile, checkingRemote: true))
-            return
-        }
-        record(.silent(stalled), for: profile, onStep: onStep)
-    }
-
-    /// One at a time, in the order Core gives them: a bridge serialises its own fetch, and two
-    /// updates started together queue behind each other anyway while both surfaces claim to be
-    /// working. This app is never in that order — updating it would replace the process doing the
-    /// watching.
-    func installEverything() async {
-        for component in UpdateLedger.rollup().updateOrder {
-            await install(component)
-        }
-    }
-
-    @discardableResult
-    private func record(
-        _ outcome: UpdateReadings.Outcome, for profile: ConnectionProfile,
-        onStep: (@MainActor (UpdateReading) -> Void)?
-    ) -> UpdateReading {
-        let reading = UpdateReadings.server(
-            profileID: profile.id, title: profile.name, subtitle: Self.subtitle(for: profile),
-            outcome: outcome, lastKnown: UpdateLedger.remembered(.server(profileID: profile.id)))
+    private static func checkApp() async {
+        let lastKnown = UpdateLedger.remembered(.app)
+        let reading = await Task.detached(priority: .utility) {
+            MacAppInstall.reading(lastKnown: lastKnown)
+        }.value
         UpdateLedger.record(reading)
-        onStep?(reading)
-        return reading
-    }
-
-    private static func reading(for profile: ConnectionProfile, checkingRemote: Bool) async
-        -> UpdateReading
-    {
-        UpdateReadings.server(
-            profileID: profile.id, title: profile.name, subtitle: subtitle(for: profile),
-            outcome: await outcome(for: profile, checkingRemote: checkingRemote),
-            lastKnown: UpdateLedger.remembered(.server(profileID: profile.id)))
-    }
-
-    private static func outcome(for profile: ConnectionProfile, checkingRemote: Bool) async
-        -> UpdateReadings.Outcome
-    {
-        guard let backend = ServerDirectory.shared.backend(for: profile) else {
-            return .silent(
-                Localized.text("This Mac holds no way to reach %@.", profile.name))
-        }
-        guard let updating = backend as? any SelfUpdatingBackend else {
-            guard let health = try? await ServerProbe.health(of: backend) else {
-                return .silent(Localized.text("%@ did not answer.", profile.name))
-            }
-            return .notSelfUpdating(
-                version: health.version,
-                why: Localized.text(
-                    "%@ does not update itself — whatever installed it on that machine is what "
-                        + "replaces it.", ServerLabel.agent(profile.backend)))
-        }
-        do {
-            return .answered(try await updating.updateStatus(checkingRemote: checkingRemote))
-        } catch {
-            let health = try? await ServerProbe.health(of: backend)
-            guard health != nil || isMissingRoute(error) else {
-                return .silent(why(error, on: profile))
-            }
-            return .routeMissing(version: health?.version)
-        }
-    }
-
-    /// A bridge older than the route answers 404 — or, on an install old enough to predate the
-    /// whole feature, says outright that it does not know what is being asked of it.
-    private static func isMissingRoute(_ error: any Error) -> Bool {
-        guard let agent = error as? AgentError else { return false }
-        switch agent {
-        case .http(let status, _): return status == 404
-        case .unsupported: return true
-        case .decoding, .invalidURL, .server, .connection: return false
-        }
-    }
-
-    private static func why(_ error: any Error, on profile: ConnectionProfile) -> String {
-        let detail = (error as? AgentError)?.errorDescription ?? error.localizedDescription
-        return Localized.text("%@ did not answer — %@", profile.name, detail)
-    }
-
-    private static func subtitle(for profile: ConnectionProfile) -> String {
-        "\(ServerLabel.agent(profile.backend)) · \(ServerLabel.address(profile))"
-    }
-
-    private static func profile(_ id: String) -> ConnectionProfile? {
-        checkableProfiles().first { $0.id == id }
     }
 
     /// The demo's servers are a story, not machines: asking one what it runs would write an
-    /// invented verdict into a ledger that outlives the demo, and the mark it held up would be
-    /// about a machine that never existed.
-    private static func checkableProfiles() -> [ConnectionProfile] {
-        ServerDirectory.shared.profiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
+    /// invented verdict into a ledger that outlives the demo.
+    private static func machines() async -> [UpdateDriver.Machine] {
+        await MainActor.run { ServerDirectory.shared.profiles }
+            .filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
+            .map { profile in
+                UpdateDriver.Machine(
+                    profileID: profile.id, title: profile.name,
+                    subtitle:
+                        "\(ServerLabel.agent(profile.backend)) · \(ServerLabel.address(profile))",
+                    agent: profile.backend,
+                    backend: { await MainActor.run { ServerDirectory.shared.backend(for: profile) } }
+                )
+            }
     }
 }

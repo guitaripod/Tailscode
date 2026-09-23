@@ -2421,11 +2421,12 @@ enum SelfTest {
             !selfTaking.stands(),
             "but a machine that will take it itself is not a request that somebody act")
 
-        let switchRow = AutoUpdateRow()
-        switchRow.write(nil)
-        try expect(switchRow.isHidden, "a server too old for a policy is offered no switch at all")
-        switchRow.write(selfTaking.automation, now: now)
-        try expect(!switchRow.isHidden, "and a machine with one is offered it")
+        try expect(
+            UpdateCard(quiet).automation == nil,
+            "a server too old for a policy is offered no automation at all")
+        try expect(
+            UpdateCard(selfTaking, now: now).automation != nil,
+            "and a machine with one is offered it")
 
         let old = UpdateReadings.server(
             profileID: "probe-old", title: "old", subtitle: "claude-bridge",
@@ -2449,12 +2450,53 @@ enum SelfTest {
         try expect(standing.updateOrder == [behind.component], "only what one press finishes")
 
         let board = UpdateBoardViewController()
-        try expect(board.view.subviews.count == 1, "the update board builds its own view")
+        guard let boardScroll = board.view as? NSScrollView else {
+            throw SelfTestFailure("updates: the board's view is not the scroll view it stands in as")
+        }
+        checks += 1
+        try expect(
+            boardScroll.documentView != nil, "the update board builds its own scrolling column")
         let footer = UpdateFooterView()
         footer.render()
         try expect(
-            footer.isHidden == !UpdateLedger.rollup().showsMark,
-            "the standing mark is shown exactly when something stands")
+            footer.isHidden == (UpdateLedger.rollup().chip == nil),
+            "the standing mark is shown exactly when the rollup has a chip to say so")
+
+        let neverChecked = UpdateReading(
+            component: .server(profileID: "probe-neverchecked"), title: "neverchecked",
+            installed: .unknown, verdict: .unverified(.neverChecked), product: "claude-bridge")
+        let ahead = UpdateReading(
+            component: .server(profileID: "probe-ahead"), title: "ahead",
+            installed: VersionFact(text: "1.11.0", provenance: .serverBuild),
+            verdict: .ahead(.ownBuild(published: "1.10.0")), product: "claude-bridge")
+        let stageReadings =
+            UpdateFixtures.readings(now: now)
+            + [quiet, behind, current, owed, stranded, dirty, selfTaking, old, neverChecked, ahead]
+        var seenStages: [UpdateCard.Stage] = []
+        for reading in stageReadings {
+            let busy = reading.id == neverChecked.id
+            let card = UpdateCard(reading, busy: busy, now: now)
+            if !seenStages.contains(card.stage) { seenStages.append(card.stage) }
+            let view = UpdateCardView(style: .standalone)
+            view.translatesAutoresizingMaskIntoConstraints = false
+            view.widthAnchor.constraint(equalToConstant: 460).isActive = true
+            view.apply(card)
+            view.layoutSubtreeIfNeeded()
+            let size = view.fittingSize
+            try expect(
+                size.height > 0 && size.height < 4000,
+                "\(reading.title) (\(card.stage)): the card draws at a sane height, not \(size.height)"
+            )
+            try expect(
+                size.width > 0, "\(reading.title) (\(card.stage)): the card draws at some width")
+        }
+        let everyStage: [UpdateCard.Stage] = [
+            .checking, .upToDate, .updated, .available, .restartNeeded, .updating, .failed,
+            .attention, .ahead,
+        ]
+        for stage in everyStage {
+            try expect(seenStages.contains(stage), "no fixture or probe ever reaches the \(stage) stage")
+        }
 
         let probeID = "selftest-\(UUID().uuidString)"
         let component = UpdateComponent.server(profileID: probeID)

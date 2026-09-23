@@ -1,119 +1,585 @@
 import AppKit
 import TailscodeCore
 
-/// The one place a `UpdateReading` becomes AppKit, so the servers window and the Update Center ask
-/// the same question of the same machine and print the same answer. Two hand-written ladders is
-/// how the app came to hold two opinions about what a missing field meant.
+/// One machine's software, drawn from Core's `UpdateCard` and nothing else.
+///
+/// It is rewritten in place rather than rebuilt: a job in flight lands a new reading every two
+/// seconds for minutes on end, and a card that rebuilt itself on each one would throw away the
+/// scroll position and whatever button was under the pointer. Lists — the steps, what is new, the
+/// details — are laid out again only when their shape actually changes; the clock beside the step
+/// under way ticks on its own, once a second, while the card is in a window.
+///
+/// Two ways to sit: `standalone` draws its own card and names the machine above the headline, for
+/// the window listing every machine; `embedded` draws neither, for a screen that is already about
+/// that one machine.
 @MainActor
-enum UpdateReadingViews {
-    /// Everything under the headline, in the order Core wrote it: what this copy is, what is true
-    /// of it, what it runs and what it could run — each number with the source that said it — the
-    /// first few things an update would bring in, and then the obstacle's own list.
-    ///
-    /// "The checkout has uncommitted changes" is a sentence nobody can act on until it says which,
-    /// so the named items follow the summary in the same idiom. They are capped exactly as the
-    /// commits are, and Core has already spent the last line saying how many it left out.
-    static func lines(for reading: UpdateReading, now: Date = Date()) -> [NSView] {
-        var views: [NSView] = []
-        if let subtitle = reading.subtitle {
-            views.append(
-                RowKit.wrapping(
-                    subtitle, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
-        }
-        views.append(
-            RowKit.wrapping(
-                reading.detail(now: now), font: MacTheme.Ramp.font(.panelFootnote),
-                color: MacTheme.Color.secondaryLabel))
-        views.append(versionLine(Localized.text("Running"), reading.installed))
-        views.append(versionLine(Localized.text("Newest known"), reading.available))
-        if let manager = reading.manager, !manager.isEmpty {
-            views.append(
-                RowKit.label(
-                    Localized.text("Supervised by %@", manager), font: MacTheme.Ramp.font(.panelFootnote),
-                    color: MacTheme.Color.tertiaryLabel))
-        }
-        for change in (reading.verdict.offer?.changes ?? []).prefix(5) {
-            views.append(
-                RowKit.wrapping(
-                    "· \(change)", font: MacTheme.Ramp.font(.panelFootnote),
-                    color: MacTheme.Color.secondaryLabel))
-        }
-        for detail in clamped(reading.verdict.offer?.detailLines ?? [], to: 5) {
-            views.append(
-                RowKit.wrapping(
-                    "· \(detail)", font: MacTheme.Ramp.font(.panelFootnote),
-                    color: MacTheme.Color.tertiaryLabel))
-        }
-        return views
+final class UpdateCardView: NSView {
+    enum Style {
+        case standalone
+        case embedded
     }
 
-    /// A list cut to what a surface holds, never at the cost of its last line: Core spends that line
-    /// saying how many it left out, so dropping it is the one cut that makes the list lie about
-    /// itself — five dirty files and no hint there are twelve.
-    static func clamped(_ lines: [String], to limit: Int) -> [String] {
-        guard lines.count > limit else { return lines }
-        return Array(lines.prefix(limit - 1)) + [lines[lines.count - 1]]
+    var onAction: ((UpdateCard.Action) -> Void)?
+    var onAutomation: ((Bool) -> Void)?
+
+    private let style: Style
+    private let machineLabel = NSTextField(labelWithString: "")
+    private let mark = UpdateMarkView(pointSize: 15)
+    private let headlineLabel = NSTextField(wrappingLabelWithString: "")
+    private let versionLabel = NSTextField(wrappingLabelWithString: "")
+    private let messageLabel = NSTextField(wrappingLabelWithString: "")
+    private let header: NSStackView
+    private let stepsStack = FillingStack()
+    private let notesTitleLabel = NSTextField(labelWithString: "")
+    private let notesStack = FillingStack()
+    private let moreNotesButton = RowKit.ActionButton(title: "", action: {})
+    private let actionsStack = NSStackView()
+    private let automationCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let automationStatus = NSTextField(wrappingLabelWithString: "")
+    private let automationRow = FillingStack()
+    private let detailsButton = RowKit.ActionButton(title: "", action: {})
+    private let factsStack = FillingStack()
+    private let footnoteLabel = NSTextField(labelWithString: "")
+    private let column = FillingStack()
+
+    private var card: UpdateCard?
+    private var notesExpanded = false
+    private var detailsExpanded = false
+    private var clock: Timer?
+    private weak var clockLabel: NSTextField?
+    private var clockSince: Date?
+    private var drawnSteps: [UpdateCard.Step] = []
+    private var drawnNotes: [ReleaseNote] = []
+    private var drawnFacts: [UpdateCard.Fact] = []
+    private var drawnActions: [ActionKey] = []
+
+    /// How much of what is new a card says before it offers the rest.
+    private static let noteLimit = 4
+
+    init(style: Style) {
+        self.style = style
+        let titles = NSStackView(views: [headlineLabel, versionLabel])
+        titles.orientation = .vertical
+        titles.alignment = .leading
+        titles.spacing = 2
+        header = NSStackView(views: [mark, titles])
+        header.orientation = .horizontal
+        header.alignment = .top
+        header.spacing = MacTheme.Spacing.s
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        build()
     }
 
-    /// What the press will actually accomplish, printed before it is pressed. An offer that ends
-    /// in another program's hands says so; anything else would be this app taking credit for a job
-    /// it cannot finish.
-    static func promise(_ invitation: UpdateInvitation) -> NSView? {
-        guard let promise = invitation.promise else { return nil }
-        return RowKit.wrapping(
-            promise, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    private func build() {
+        wantsLayer = true
+        if style == .standalone {
+            layer?.cornerRadius = MacTheme.Radius.card
+            layer?.borderWidth = 1
+        }
+
+        machineLabel.lineBreakMode = .byTruncatingTail
+        headlineLabel.isSelectable = false
+        headlineLabel.setContentHuggingPriority(.required, for: .vertical)
+        versionLabel.isSelectable = false
+        versionLabel.setContentHuggingPriority(.required, for: .vertical)
+        messageLabel.isSelectable = true
+        header.setAccessibilityElement(true)
+        header.setAccessibilityRole(.staticText)
+
+        stepsStack.spacing = MacTheme.Spacing.s
+
+        notesTitleLabel.lineBreakMode = .byTruncatingTail
+        notesStack.spacing = MacTheme.Spacing.xs
+
+        moreNotesButton.isBordered = false
+        moreNotesButton.alignment = .left
+        moreNotesButton.setContentHuggingPriority(.required, for: .horizontal)
+        moreNotesButton.setAction { [weak self] in self?.toggleNotes() }
+
+        actionsStack.orientation = .horizontal
+        actionsStack.alignment = .centerY
+        actionsStack.spacing = MacTheme.Spacing.m
+
+        automationCheckbox.target = self
+        automationCheckbox.action = #selector(automationToggled)
+        automationStatus.isSelectable = false
+        automationRow.spacing = 2
+        automationRow.addArrangedSubview(automationCheckbox)
+        automationRow.addArrangedSubview(automationStatus)
+
+        detailsButton.isBordered = false
+        detailsButton.alignment = .left
+        detailsButton.imagePosition = .imageTrailing
+        detailsButton.imageHugsTitle = true
+        detailsButton.setContentHuggingPriority(.required, for: .horizontal)
+        detailsButton.setAction { [weak self] in self?.toggleDetails() }
+
+        factsStack.spacing = MacTheme.Spacing.s
+
+        footnoteLabel.lineBreakMode = .byTruncatingTail
+
+        var rows: [NSView] = [machineLabel, header, messageLabel, stepsStack]
+        rows += [notesTitleLabel, notesStack, moreNotesButton, actionsStack, automationRow]
+        rows += [detailsButton, factsStack, footnoteLabel]
+        for row in rows { column.addArrangedSubview(row) }
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: machineLabel)
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: notesTitleLabel)
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: notesStack)
+        column.setCustomSpacing(MacTheme.Spacing.s, after: detailsButton)
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(column)
+        let inset: CGFloat = style == .standalone ? MacTheme.Spacing.l : 0
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
+            column.topAnchor.constraint(equalTo: topAnchor, constant: inset),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -inset),
+        ])
+        applyTheme()
     }
 
-    /// Every offer is drawn the same way on purpose: nothing here is emphasised into looking
-    /// safer than it is, and no button steals the Return key — a window holding two servers'
-    /// updates must never install whichever one AppKit last called its default.
-    static func button(
-        _ title: String, enabled: Bool = true, action: @escaping () -> Void
-    ) -> NSButton {
-        let button = RowKit.ActionButton(title: title, action: action)
+    /// One answer painted into the card it belongs to.
+    func apply(_ card: UpdateCard) {
+        self.card = card
+        let line = [card.machine, card.subtitle].compactMap { $0 }.joined(separator: " · ")
+        machineLabel.stringValue = line.uppercased()
+        machineLabel.isHidden = style == .embedded
+
+        mark.apply(card.icon)
+        headlineLabel.stringValue = card.headline
+        headlineLabel.textColor = card.stage == .failed ? MacTheme.Color.danger : MacTheme.Color.label
+        write(versionLabel, card.versionLine)
+        header.setAccessibilityLabel(
+            [card.headline, card.versionLine].compactMap { $0 }.joined(separator: ", "))
+
+        write(messageLabel, card.message)
+
+        renderSteps(card.steps)
+        renderNotes(card)
+        renderActions(card)
+        renderAutomation(card.automation)
+        renderFacts(card.facts)
+
+        write(footnoteLabel, card.footnote)
+        setAccessibilityLabel(card.accessibility)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        runClock()
+    }
+
+    private func renderSteps(_ steps: [UpdateCard.Step]) {
+        stepsStack.isHidden = steps.isEmpty
+        let shape = steps.map { StepShape(id: $0.id, title: $0.title, state: $0.state) }
+        let drawn = drawnSteps.map { StepShape(id: $0.id, title: $0.title, state: $0.state) }
+        if shape != drawn {
+            for view in stepsStack.arrangedSubviews {
+                stepsStack.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+            clockLabel = nil
+            for step in steps {
+                let row = StepRow(step: step)
+                if step.state == .active { clockLabel = row.clock }
+                stepsStack.addArrangedSubview(row)
+            }
+        } else {
+            for (row, step) in zip(stepsStack.arrangedSubviews.compactMap { $0 as? StepRow }, steps) {
+                row.update(detail: step.detail)
+            }
+        }
+        drawnSteps = steps
+        clockSince = steps.first { $0.state == .active }?.since
+        runClock()
+    }
+
+    private func renderNotes(_ card: UpdateCard) {
+        let lines = card.notes.flatMap(\.items)
+        write(notesTitleLabel, card.notesTitle?.uppercased())
+        notesStack.isHidden = lines.isEmpty
+        if card.notes != drawnNotes {
+            drawnNotes = card.notes
+            notesExpanded = false
+            rebuildNotes()
+        }
+        let hidden = lines.count - Self.noteLimit
+        moreNotesButton.isHidden = hidden <= 0
+        moreNotesButton.title =
+            notesExpanded
+            ? Localized.text("Show less") : Localized.text("Show all %@", String(lines.count))
+    }
+
+    private func rebuildNotes() {
+        for view in notesStack.arrangedSubviews {
+            notesStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        let lines = drawnNotes.flatMap(\.items)
+        let shown = notesExpanded ? lines : Array(lines.prefix(Self.noteLimit))
+        for line in shown { notesStack.addArrangedSubview(Bullet(text: line)) }
+    }
+
+    private func toggleNotes() {
+        notesExpanded.toggle()
+        rebuildNotes()
+        if let card { renderNotes(card) }
+    }
+
+    private func renderActions(_ card: UpdateCard) {
+        let actions = [card.primary].compactMap { $0 } + card.secondary
+        let keys = actions.map(ActionKey.init)
+        actionsStack.isHidden = actions.isEmpty
+        guard keys != drawnActions else { return }
+        drawnActions = keys
+        for view in actionsStack.arrangedSubviews {
+            actionsStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        for action in actions { actionsStack.addArrangedSubview(button(for: action)) }
+        actionsStack.addArrangedSubview(RowKit.spacer())
+    }
+
+    /// Every offer is drawn the same way on purpose: the primary press looks the part but claims no
+    /// keyboard shortcut, because a board holding two servers' updates must never install whichever
+    /// one AppKit last decided was the default the moment somebody hit Return.
+    private func button(for action: UpdateCard.Action) -> NSButton {
+        guard action.prominent else {
+            let button = RowKit.linkButton(action.title, enabled: action.enabled) {
+                [weak self] in self?.onAction?(action)
+            }
+            button.font = MacTheme.Ramp.font(.control)
+            if case .setAside = action.kind { button.contentTintColor = MacTheme.Color.secondaryLabel }
+            return button
+        }
+        let button = RowKit.ActionButton(title: action.title) { [weak self] in
+            self?.onAction?(action)
+        }
         button.bezelStyle = .rounded
-        button.controlSize = .small
         button.font = MacTheme.Ramp.font(.control)
-        button.isEnabled = enabled
+        button.keyEquivalent = ""
+        button.bezelColor = MacTheme.Color.accent
+        button.isEnabled = action.enabled
         return button
     }
 
-    /// Carrying an invitation out, in the one place that knows what each of them promised.
-    /// Returns what to tell the person, when there is anything worth telling.
-    @discardableResult
-    static func perform(_ invitation: UpdateInvitation, on reading: UpdateReading) -> String? {
-        switch invitation {
-        case .installHere:
-            Task { await MacUpdateWatch.shared.install(reading.component) }
-            return Localized.text("Asking %@ to fetch and build…", reading.title)
-        case .restartHere:
-            Task { await MacUpdateWatch.shared.restart(reading.component) }
-            return Localized.text("Asking %@ to load the build it already has…", reading.title)
-        case .openStore(let url), .openPage(let url):
-            guard let target = URL(string: url) else { return nil }
-            NSWorkspace.shared.open(target)
-            return nil
-        case .copyCommand(let command):
-            RowKit.copyToClipboard(command)
-            return Localized.text("Command copied — run it in a terminal.")
-        case .recheck:
-            Task { await MacUpdateWatch.shared.recheck(reading.component) }
-            return Localized.text("Asking %@ again…", reading.title)
+    private func renderAutomation(_ automation: UpdateCard.Automation?) {
+        automationRow.isHidden = automation == nil
+        guard let automation else { return }
+        automationCheckbox.title = automation.title
+        automationCheckbox.state = automation.isOn ? .on : .off
+        automationCheckbox.isEnabled = true
+        automationStatus.stringValue = automation.status
+    }
+
+    /// The machine did not change its policy; the checkbox goes back to what the machine last said.
+    func restoreAutomation() {
+        renderAutomation(card?.automation)
+    }
+
+    @objc private func automationToggled() {
+        let wanted = automationCheckbox.state == .on
+        automationCheckbox.isEnabled = false
+        onAutomation?(wanted)
+    }
+
+    private func renderFacts(_ facts: [UpdateCard.Fact]) {
+        detailsButton.isHidden = facts.isEmpty
+        detailsButton.title = Localized.text("Details")
+        detailsButton.image = NSImage(
+            systemSymbolName: detailsExpanded ? "chevron.up" : "chevron.down",
+            accessibilityDescription: nil)
+        factsStack.isHidden = facts.isEmpty || !detailsExpanded
+        guard facts != drawnFacts else { return }
+        drawnFacts = facts
+        for view in factsStack.arrangedSubviews {
+            factsStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        for fact in facts { factsStack.addArrangedSubview(FactRow(fact: fact)) }
+    }
+
+    private func toggleDetails() {
+        detailsExpanded.toggle()
+        renderFacts(drawnFacts)
+    }
+
+    /// A clock that ticks only while there is a step under way and somebody could see it.
+    private func runClock() {
+        guard window != nil, clockLabel != nil, clockSince != nil else {
+            clock?.invalidate()
+            clock = nil
+            clockLabel?.stringValue = ""
+            return
+        }
+        tick()
+        guard clock == nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        timer.tolerance = 0.2
+        RunLoop.main.add(timer, forMode: .common)
+        clock = timer
+    }
+
+    private func tick() {
+        guard let since = clockSince, let clockLabel else { return }
+        clockLabel.stringValue = RelativeWhen.clock(Date().timeIntervalSince(since))
+    }
+
+    private func write(_ label: NSTextField, _ text: String?) {
+        label.isHidden = text == nil
+        label.stringValue = text ?? ""
+    }
+
+    /// The tokens are values rather than dynamic colours and the fonts carry the type scale, so a
+    /// theme or scale change has to reach every label of a card that is already on screen.
+    func applyTheme() {
+        if style == .standalone {
+            layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
+            layer?.borderColor = MacTheme.Color.separator.cgColor
+        }
+        machineLabel.font = MacTheme.Ramp.font(.sectionLabel)
+        machineLabel.textColor = MacTheme.Color.secondaryLabel
+        headlineLabel.font = MacTheme.Ramp.font(.cardTitle)
+        headlineLabel.textColor = card?.stage == .failed ? MacTheme.Color.danger : MacTheme.Color.label
+        versionLabel.font = MacTheme.Ramp.font(.panelLabel)
+        versionLabel.textColor = MacTheme.Color.secondaryLabel
+        messageLabel.font = MacTheme.Ramp.font(.panelDetail)
+        messageLabel.textColor = MacTheme.Color.secondaryLabel
+        notesTitleLabel.font = MacTheme.Ramp.font(.sectionLabel)
+        notesTitleLabel.textColor = MacTheme.Color.secondaryLabel
+        moreNotesButton.font = MacTheme.Ramp.font(.control)
+        moreNotesButton.contentTintColor = MacTheme.Color.accent
+        automationCheckbox.font = MacTheme.Ramp.font(.panelLabel)
+        automationStatus.font = MacTheme.Ramp.font(.panelFootnote)
+        automationStatus.textColor = MacTheme.Color.secondaryLabel
+        detailsButton.font = MacTheme.Ramp.font(.control)
+        detailsButton.contentTintColor = MacTheme.Color.secondaryLabel
+        footnoteLabel.font = MacTheme.Ramp.font(.panelFootnote)
+        footnoteLabel.textColor = MacTheme.Color.tertiaryLabel
+        for view in stepsStack.arrangedSubviews.compactMap({ $0 as? StepRow }) { view.applyTheme() }
+        for view in factsStack.arrangedSubviews.compactMap({ $0 as? FactRow }) { view.applyTheme() }
+        for view in notesStack.arrangedSubviews.compactMap({ $0 as? Bullet }) { view.applyTheme() }
+    }
+
+    /// AppKit resolves a `CGColor` once, against the appearance in force when it was asked for, so
+    /// the card's ground and hairline are the two things a light↔dark flip cannot reach on its own.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyTheme()
+    }
+
+    private struct StepShape: Equatable {
+        let id: String
+        let title: String
+        let state: UpdateCard.Step.State
+    }
+
+    /// What distinguishes one drawn press from another, so an answer that changes nothing about
+    /// the buttons leaves the buttons alone.
+    private struct ActionKey: Equatable {
+        let title: String
+        let enabled: Bool
+        let prominent: Bool
+
+        init(_ action: UpdateCard.Action) {
+            title = action.title
+            enabled = action.enabled
+            prominent = action.prominent
+        }
+    }
+}
+
+/// One step of a job: done, under way with its clock, still to come, or where it stopped.
+@MainActor
+private final class StepRow: NSView {
+    let clock = NSTextField(labelWithString: "")
+    private let title: NSTextField
+    private let detail = NSTextField(wrappingLabelWithString: "")
+    private let glyph: NSView
+    private let state: UpdateCard.Step.State
+
+    init(step: UpdateCard.Step) {
+        state = step.state
+        switch step.state {
+        case .active:
+            let spinner = NSProgressIndicator()
+            spinner.style = .spinning
+            spinner.controlSize = .small
+            spinner.isIndeterminate = true
+            spinner.translatesAutoresizingMaskIntoConstraints = false
+            spinner.startAnimation(nil)
+            glyph = spinner
+        case .done, .pending, .failed:
+            let image = NSImageView()
+            image.image = NSImage(
+                systemSymbolName: Self.symbol(step.state), accessibilityDescription: nil)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
+            image.contentTintColor = Self.tint(step.state)
+            image.translatesAutoresizingMaskIntoConstraints = false
+            glyph = image
+        }
+        title = NSTextField(labelWithString: step.title)
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        glyph.setContentHuggingPriority(.required, for: .horizontal)
+        title.lineBreakMode = .byTruncatingTail
+        clock.setContentHuggingPriority(.required, for: .horizontal)
+        clock.translatesAutoresizingMaskIntoConstraints = false
+        update(detail: step.detail)
+
+        let line = NSStackView(views: [title, RowKit.spacer(), clock])
+        line.orientation = .horizontal
+        line.alignment = .firstBaseline
+        line.translatesAutoresizingMaskIntoConstraints = false
+        let text = FillingStack(views: [line, detail])
+        text.spacing = 2
+        text.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let row = NSStackView(views: [glyph, text])
+        row.orientation = .horizontal
+        row.alignment = .top
+        row.distribution = .fill
+        row.spacing = MacTheme.Spacing.s
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            glyph.widthAnchor.constraint(equalToConstant: 20),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityLabel(
+            [step.title, Self.spoken(step.state), step.detail].compactMap { $0 }
+                .joined(separator: ", "))
+        applyTheme()
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func update(detail text: String?) {
+        detail.stringValue = text ?? ""
+        detail.isHidden = text == nil
+    }
+
+    func applyTheme() {
+        title.font = MacTheme.Ramp.font(state == .active ? .rowTitleStrong : .rowTitle)
+        title.textColor =
+            state == .pending
+            ? MacTheme.Color.tertiaryLabel : state == .failed ? MacTheme.Color.danger : MacTheme.Color.label
+        clock.font = MacTheme.Ramp.font(.rowStamp)
+        clock.textColor = MacTheme.Color.secondaryLabel
+        detail.font = MacTheme.Ramp.font(.panelFootnote)
+        detail.textColor = MacTheme.Color.secondaryLabel
+    }
+
+    private static func symbol(_ state: UpdateCard.Step.State) -> String {
+        switch state {
+        case .done: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        case .pending, .active: return "circle"
         }
     }
 
-    private static func versionLine(_ caption: String, _ fact: VersionFact) -> NSView {
-        let label = RowKit.label(
-            caption, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
-        label.setContentHuggingPriority(.required, for: .horizontal)
-        let value = RowKit.wrapping(
-            fact.line, font: MacTheme.Ramp.font(.panelFootnote),
-            color: fact.isKnown ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel)
-        let row = NSStackView(views: [label, value])
+    private static func tint(_ state: UpdateCard.Step.State) -> NSColor {
+        switch state {
+        case .done: return MacTheme.Color.success
+        case .failed: return MacTheme.Color.danger
+        case .pending, .active: return MacTheme.Color.tertiaryLabel
+        }
+    }
+
+    private static func spoken(_ state: UpdateCard.Step.State) -> String {
+        switch state {
+        case .done: return Localized.text("done")
+        case .active: return Localized.text("under way")
+        case .pending: return Localized.text("not started")
+        case .failed: return Localized.text("failed")
+        }
+    }
+}
+
+/// One line of what is new.
+@MainActor
+private final class Bullet: NSView {
+    private let dot = NSTextField(labelWithString: "•")
+    private let label: NSTextField
+
+    init(text: String) {
+        label = NSTextField(wrappingLabelWithString: text)
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        dot.setContentHuggingPriority(.required, for: .horizontal)
+        label.isSelectable = true
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let row = NSStackView(views: [dot, label])
         row.orientation = .horizontal
         row.alignment = .firstBaseline
         row.spacing = MacTheme.Spacing.s
-        return row
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityLabel(text)
+        applyTheme()
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func applyTheme() {
+        dot.font = MacTheme.Ramp.font(.panelDetail)
+        dot.textColor = MacTheme.Color.accent
+        label.font = MacTheme.Ramp.font(.panelDetail)
+        label.textColor = MacTheme.Color.label
+    }
+}
+
+/// A number the card rests on, with who said it. Selectable rather than menu-driven — this is an
+/// ordinary `NSTextField`, and the system's own Copy already reaches selected text.
+@MainActor
+private final class FactRow: NSView {
+    private let label: NSTextField
+    private let value: NSTextField
+
+    init(fact: UpdateCard.Fact) {
+        label = NSTextField(labelWithString: fact.label)
+        value = NSTextField(wrappingLabelWithString: fact.value)
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        value.isSelectable = true
+        value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let column = FillingStack(views: [label, value])
+        column.spacing = 1
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(column)
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor),
+            column.topAnchor.constraint(equalTo: topAnchor),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityLabel("\(fact.label): \(fact.value)")
+        applyTheme()
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func applyTheme() {
+        label.font = MacTheme.Ramp.font(.panelFootnote)
+        label.textColor = MacTheme.Color.tertiaryLabel
+        value.font = MacTheme.Ramp.font(.panelFootnote)
+        value.textColor = MacTheme.Color.secondaryLabel
     }
 }
 
@@ -183,351 +649,6 @@ final class UpdateMarkView: NSView {
     }
 }
 
-/// One machine's card, which rewrites itself rather than being rebuilt.
-///
-/// A ledger post lands every three seconds while an install runs, and a board that rebuilt its
-/// column on each one would throw away the scroll position and whatever button was under the
-/// pointer. So the card owns its labels: an answer that arrives writes their text, their tone and
-/// their visibility, and the buttons keep their identity across every step of an update.
-@MainActor
-final class UpdateCardView: NSView {
-    var onAct: ((UpdateInvitation, UpdateReading) -> Void)?
-    var onSetAside: ((UpdateReading) -> Void)?
-
-    private let mark = UpdateMarkView(pointSize: 13)
-    private let title = NSTextField(labelWithString: "")
-    private let headline = NSTextField(labelWithString: "")
-    private let subtitle = NSTextField(wrappingLabelWithString: "")
-    private let detail = NSTextField(wrappingLabelWithString: "")
-    private let asideNote = NSTextField(wrappingLabelWithString: "")
-    private let running = UpdateVersionLine(caption: Localized.text("Running"))
-    private let newest = UpdateVersionLine(caption: Localized.text("Newest known"))
-    private let supervisor = NSTextField(labelWithString: "")
-    private let changes = (0..<5).map { _ in NSTextField(wrappingLabelWithString: "") }
-    private let details = (0..<5).map { _ in NSTextField(wrappingLabelWithString: "") }
-    private let promise = NSTextField(wrappingLabelWithString: "")
-    private let actionButton = NSButton()
-    private let asideButton = NSButton()
-    private let buttons = NSStackView()
-    private let column = FillingStack()
-
-    private var reading: UpdateReading?
-    private var invitation: UpdateInvitation?
-
-    init() {
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
-        layer?.cornerRadius = MacTheme.Radius.card
-        layer?.borderWidth = 1
-
-        title.lineBreakMode = .byTruncatingTail
-        headline.lineBreakMode = .byTruncatingTail
-        headline.setContentHuggingPriority(.required, for: .horizontal)
-        headline.setContentCompressionResistancePriority(.init(200), for: .horizontal)
-        for label in [title, headline, supervisor] {
-            label.lineBreakMode = .byTruncatingTail
-            label.translatesAutoresizingMaskIntoConstraints = false
-        }
-        for label in [subtitle, detail, asideNote, promise] + changes + details {
-            label.isSelectable = true
-            label.translatesAutoresizingMaskIntoConstraints = false
-            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        }
-
-        let header = NSStackView(views: [mark, title, RowKit.spacer(), headline])
-        header.orientation = .horizontal
-        header.alignment = .centerY
-        header.spacing = MacTheme.Spacing.s
-
-        asideButton.title = Localized.text("Not now")
-        for (button, action) in [
-            (actionButton, #selector(takeOffer)), (asideButton, #selector(setOfferAside)),
-        ] {
-            button.setButtonType(.momentaryPushIn)
-            button.bezelStyle = .rounded
-            button.controlSize = .small
-            button.font = MacTheme.Ramp.font(.control)
-            button.target = self
-            button.action = action
-        }
-        buttons.orientation = .horizontal
-        buttons.alignment = .centerY
-        buttons.spacing = MacTheme.Spacing.s
-        for view in [actionButton, asideButton, RowKit.spacer()] {
-            buttons.addArrangedSubview(view)
-        }
-
-        column.spacing = MacTheme.Spacing.s
-        column.translatesAutoresizingMaskIntoConstraints = false
-        var rows: [NSView] = [header, subtitle, detail, asideNote, running, newest, supervisor]
-        rows.append(contentsOf: changes as [NSView])
-        rows.append(contentsOf: details as [NSView])
-        rows.append(promise)
-        rows.append(buttons)
-        for row in rows { column.addArrangedSubview(row) }
-        addSubview(column)
-        let inset = MacTheme.Spacing.m
-        NSLayoutConstraint.activate([
-            column.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
-            column.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
-            column.topAnchor.constraint(equalTo: topAnchor, constant: inset),
-            column.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -inset),
-        ])
-        applyTheme()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    /// One answer painted into the card it belongs to.
-    ///
-    /// A row set aside keeps its place and its sentence and loses everything that was an offer:
-    /// the whole of the collapse contract is that the mark stops standing, not that the machine
-    /// stops being listed.
-    func write(_ reading: UpdateReading, acknowledged: Bool, busy: Bool) {
-        self.reading = reading
-        let invitation = acknowledged ? nil : reading.invitation
-        self.invitation = invitation
-
-        mark.apply(reading.icon)
-        title.stringValue = reading.title
-        headline.stringValue = reading.headline
-        headline.textColor = Self.headlineInk(reading.tone)
-
-        write(subtitle, acknowledged ? nil : reading.subtitle)
-        detail.stringValue = reading.detail()
-        write(
-            asideNote,
-            acknowledged
-                ? Localized.text(
-                    "Set aside. It stays on this list, and the mark comes back the moment what is "
-                        + "offered changes.")
-                : nil)
-
-        running.write(reading.installed, hidden: acknowledged)
-        newest.write(reading.available, hidden: acknowledged)
-        write(supervisor, acknowledged ? nil : supervisedBy(reading))
-
-        let subjects = acknowledged ? [] : (reading.verdict.offer?.changes ?? [])
-        for (index, label) in changes.enumerated() {
-            write(label, index < subjects.count ? "· \(subjects[index])" : nil)
-        }
-        let obstacle = acknowledged
-            ? []
-            : UpdateReadingViews.clamped(
-                reading.verdict.offer?.detailLines ?? [], to: details.count)
-        for (index, label) in details.enumerated() {
-            write(label, index < obstacle.count ? "· \(obstacle[index])" : nil)
-        }
-
-        write(promise, invitation?.promise)
-        actionButton.isHidden = invitation == nil
-        actionButton.title = invitation?.label ?? ""
-        actionButton.isEnabled = !busy
-        asideButton.isHidden = acknowledged || reading.acknowledgeableIdentity == nil
-        buttons.isHidden = actionButton.isHidden && asideButton.isHidden
-    }
-
-    /// The tokens are values rather than dynamic colours and the fonts carry the type scale, so a
-    /// theme or scale change has to reach every label of a card that is already on screen.
-    func applyTheme() {
-        layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
-        layer?.borderColor = MacTheme.Color.separator.cgColor
-        title.font = MacTheme.Ramp.font(.cardTitle)
-        title.textColor = MacTheme.Color.label
-        headline.font = MacTheme.Ramp.font(.panelFootnote)
-        headline.textColor = Self.headlineInk(reading?.tone)
-        for button in [actionButton, asideButton] {
-            button.font = MacTheme.Ramp.font(.control)
-        }
-        for label in [subtitle, asideNote, supervisor, promise] {
-            label.font = MacTheme.Ramp.font(.panelFootnote)
-            label.textColor = MacTheme.Color.tertiaryLabel
-        }
-        for label in [detail] + changes {
-            label.font = MacTheme.Ramp.font(.panelFootnote)
-            label.textColor = MacTheme.Color.secondaryLabel
-        }
-        for label in details {
-            label.font = MacTheme.Ramp.font(.panelFootnote)
-            label.textColor = MacTheme.Color.tertiaryLabel
-        }
-        running.applyTheme()
-        newest.applyTheme()
-    }
-
-    /// AppKit resolves a `CGColor` once, against the appearance in force when it was asked for, so
-    /// the ground and the hairline are the two things on this card that a light↔dark flip cannot
-    /// reach on its own — and a card that never rebuilds would keep them for the rest of the session.
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        applyTheme()
-    }
-
-    /// The verdict's own ink, floored where the tone is quiet. `tertiaryLabel` is the ornament
-    /// register by construction — it sits below the contrast floor — and the headline is the one
-    /// fact the card is about, which most verdicts state quietly.
-    private static func headlineInk(_ tone: ActivityTone?) -> NSColor {
-        guard let tone, tone != .quiet else { return MacTheme.Color.secondaryLabel }
-        return tone.color
-    }
-
-    private func supervisedBy(_ reading: UpdateReading) -> String? {
-        guard let manager = reading.manager, !manager.isEmpty else { return nil }
-        return Localized.text("Supervised by %@", manager)
-    }
-
-    private func write(_ label: NSTextField, _ text: String?) {
-        label.isHidden = text == nil
-        label.stringValue = text ?? ""
-    }
-
-    @objc private func takeOffer() {
-        guard let invitation, let reading else { return }
-        onAct?(invitation, reading)
-    }
-
-    @objc private func setOfferAside() {
-        guard let reading else { return }
-        onSetAside?(reading)
-    }
-}
-
-/// A number and who said it, on one line — built once and rewritten, for the same reason the card
-/// around it is.
-@MainActor
-final class UpdateVersionLine: NSStackView {
-    private let caption = NSTextField(labelWithString: "")
-    private let value = NSTextField(wrappingLabelWithString: "")
-    private var isKnown = false
-
-    init(caption text: String) {
-        super.init(frame: .zero)
-        caption.stringValue = text
-        caption.setContentHuggingPriority(.required, for: .horizontal)
-        caption.translatesAutoresizingMaskIntoConstraints = false
-        value.isSelectable = true
-        value.translatesAutoresizingMaskIntoConstraints = false
-        value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        orientation = .horizontal
-        alignment = .firstBaseline
-        spacing = MacTheme.Spacing.s
-        translatesAutoresizingMaskIntoConstraints = false
-        addArrangedSubview(caption)
-        addArrangedSubview(value)
-        applyTheme()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    func write(_ fact: VersionFact, hidden: Bool) {
-        isHidden = hidden
-        isKnown = fact.isKnown
-        value.stringValue = fact.line
-        value.textColor = isKnown ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel
-    }
-
-    func applyTheme() {
-        caption.font = MacTheme.Ramp.font(.panelFootnote)
-        caption.textColor = MacTheme.Color.tertiaryLabel
-        value.font = MacTheme.Ramp.font(.panelFootnote)
-        value.textColor = isKnown ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel
-    }
-}
-
-/// The one switch on this screen that is not this device's.
-///
-/// Whether a machine keeps itself current is the machine's own policy, so the row renders what that
-/// machine last answered and never what this Mac last asked for — a switch drawn from a request
-/// would sit proudly on for a bridge that never received it, and two Macs would disagree about the
-/// same server. While the machine is being asked the checkbox is simply unavailable rather than
-/// moved: it takes its position from an answer, and a refusal therefore leaves it exactly where the
-/// machine put it.
-///
-/// The sentence under it is Core's whole account — what the machine will do, when it last did it,
-/// and what it is holding off for right now — and a machine too old to have a policy at all gets no
-/// row, because a switch that does nothing is worse than a question left unasked.
-@MainActor
-final class AutoUpdateRow: NSView {
-    var onSet: ((Bool) -> Void)?
-
-    private let toggle = NSButton(checkboxWithTitle: "", target: nil, action: nil)
-    private let footnote = NSTextField(wrappingLabelWithString: "")
-    private var machineSaid = false
-
-    init() {
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        toggle.title = Localized.text("Keep this server up to date")
-        toggle.target = self
-        toggle.action = #selector(toggled)
-        toggle.translatesAutoresizingMaskIntoConstraints = false
-        footnote.isSelectable = true
-        footnote.translatesAutoresizingMaskIntoConstraints = false
-        footnote.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-
-        let column = NSStackView(views: [toggle, footnote])
-        column.orientation = .vertical
-        column.alignment = .leading
-        column.spacing = 2
-        column.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(column)
-        NSLayoutConstraint.activate([
-            column.leadingAnchor.constraint(equalTo: leadingAnchor),
-            column.trailingAnchor.constraint(equalTo: trailingAnchor),
-            column.topAnchor.constraint(equalTo: topAnchor),
-            column.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
-        isHidden = true
-        applyTheme()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    func write(_ automation: UpdateAutomation?, now: Date = Date()) {
-        guard let automation else {
-            isHidden = true
-            return
-        }
-        isHidden = false
-        machineSaid = automation.enabled
-        toggle.state = automation.enabled ? .on : .off
-        toggle.isEnabled = true
-        footnote.stringValue = automation.sentence(now: now)
-    }
-
-    /// The stretch between the press and the machine's answer. The switch waits where the pointer
-    /// left it and takes no further presses, and every way out of that wait writes it from what the
-    /// machine said — so a refusal puts it back where the machine had it rather than leaving this
-    /// Mac's request standing as though it were an answer.
-    func setAsking(_ asking: Bool) {
-        toggle.isEnabled = !asking
-        guard !asking else { return }
-        toggle.state = machineSaid ? .on : .off
-    }
-
-    func applyTheme() {
-        toggle.font = MacTheme.Ramp.font(.panelLabel)
-        footnote.font = MacTheme.Ramp.font(.panelFootnote)
-        footnote.textColor = MacTheme.Color.secondaryLabel
-    }
-
-    @objc private func repaint() {
-        applyTheme()
-    }
-
-    @objc private func toggled() {
-        let wanted = toggle.state == .on
-        toggle.isEnabled = false
-        onSet?(wanted)
-    }
-}
-
 /// The standing mark at the foot of the chat list: what every machine in the picture adds up to,
 /// in one line that opens the Update Center.
 ///
@@ -540,25 +661,16 @@ final class UpdateFooterView: NSView {
     var onOpen: (() -> Void)?
 
     private let mark = UpdateMarkView(pointSize: 12)
-    private let headline = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
+    private let titleLabel = NSTextField(labelWithString: "")
 
     init() {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        headline.lineBreakMode = .byTruncatingTail
-        headline.setContentCompressionResistancePriority(.init(200), for: .horizontal)
-        headline.translatesAutoresizingMaskIntoConstraints = false
-        detail.lineBreakMode = .byTruncatingTail
-        detail.setContentCompressionResistancePriority(.init(200), for: .horizontal)
-        detail.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let lines = NSStackView(views: [headline, detail])
-        lines.orientation = .vertical
-        lines.alignment = .leading
-        lines.spacing = 1
-        lines.translatesAutoresizingMaskIntoConstraints = false
-        let row = NSStackView(views: [mark, lines])
+        let row = NSStackView(views: [mark, titleLabel])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = MacTheme.Spacing.s
@@ -575,9 +687,9 @@ final class UpdateFooterView: NSView {
         setAccessibilityRole(.button)
         addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(clicked)))
         NotificationCenter.default.addObserver(
-            self, selector: #selector(ledgerChanged), name: UpdateLedger.didChange, object: nil)
+            self, selector: #selector(changed), name: MacUpdateWatch.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(ledgerChanged), name: MacTheme.Chrome.didRepaint, object: nil)
+            self, selector: #selector(changed), name: MacTheme.Chrome.didRepaint, object: nil)
         isHidden = true
         render()
     }
@@ -588,20 +700,17 @@ final class UpdateFooterView: NSView {
     /// The type is read here rather than kept from `init`: the ramp is a live preference, and a row
     /// that took its size once would sit at 10 points between neighbours that had doubled.
     func render() {
-        headline.font = MacTheme.Ramp.font(.panelFootnote)
-        detail.font = MacTheme.Ramp.font(.panelFootnote)
-        detail.textColor = MacTheme.Color.tertiaryLabel
+        titleLabel.font = MacTheme.Ramp.font(.panelFootnote)
         let rollup = UpdateLedger.rollup()
-        isHidden = !rollup.showsMark
-        guard rollup.showsMark else {
+        guard let chip = rollup.chip else {
+            isHidden = true
             mark.apply(nil)
             return
         }
-        let icon = rollup.icon
-        mark.apply(icon)
-        headline.stringValue = rollup.headline
-        headline.textColor = icon.tone.color
-        detail.stringValue = rollup.detail()
+        isHidden = false
+        mark.apply(ActivityIcon(symbol: chip.symbol, glyph: "•", tone: chip.tone, motion: chip.motion))
+        titleLabel.stringValue = chip.title
+        titleLabel.textColor = chip.tone.color
         toolTip = rollup.accessibilityLine()
         setAccessibilityLabel(rollup.accessibilityLine())
     }
@@ -613,7 +722,7 @@ final class UpdateFooterView: NSView {
         return true
     }
 
-    @objc private func ledgerChanged() {
+    @objc private func changed() {
         render()
     }
 
@@ -664,15 +773,15 @@ final class UpdateMarkButton: NSButton {
     /// The dot is the whole of what this button says about the mark, and a tooltip is not read
     /// aloud — so what it says goes into the label too, or a VoiceOver user is never told at all.
     func render() {
-        let rollup = UpdateLedger.rollup()
-        dot.isHidden = !rollup.showsMark
-        guard rollup.showsMark else {
+        guard let chip = UpdateLedger.rollup().chip else {
+            dot.isHidden = true
             toolTip = tip
             setAccessibilityLabel(tip)
             return
         }
-        dot.layer?.backgroundColor = rollup.icon.tone.color.cgColor
-        toolTip = Localized.text("%@ — %@", tip, rollup.headline)
+        dot.isHidden = false
+        dot.layer?.backgroundColor = chip.tone.color.cgColor
+        toolTip = Localized.text("%@ — %@", tip, chip.title)
         setAccessibilityLabel(toolTip)
     }
 
@@ -681,5 +790,153 @@ final class UpdateMarkButton: NSButton {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         render()
+    }
+}
+
+/// A card's press, carried out. Shared by the Software Updates window and a server's own row, so a
+/// press drawn in two places is kept one way — and the question asked before a restart is Core's,
+/// word for word, on every desk.
+@MainActor
+enum UpdatePress {
+    static func perform(
+        _ action: UpdateCard.Action, for reading: UpdateReading, from window: NSWindow?,
+        status: (String) -> Void = { _ in }
+    ) {
+        switch action.kind {
+        case .invitation(let invitation):
+            take(invitation, action: action, reading: reading, from: window, status: status)
+        case .setAside:
+            UpdateLedger.acknowledge(reading)
+        case .showLog:
+            UpdateLogWindowController.present(title: reading.title, log: reading.log ?? "")
+        case .checkNow:
+            Task { await MacUpdateWatch.shared.check(reading.component) }
+        }
+    }
+
+    private static func take(
+        _ invitation: UpdateInvitation, action: UpdateCard.Action, reading: UpdateReading,
+        from window: NSWindow?, status: (String) -> Void
+    ) {
+        switch invitation {
+        case .installHere, .restartHere:
+            guard let confirmation = action.confirmation else {
+                start(reading)
+                return
+            }
+            MacDialogs.confirm(
+                on: window, title: confirmation.title, body: confirmation.message,
+                confirmLabel: confirmation.confirm, destructive: false
+            ) { start(reading) }
+        case .openStore(let url), .openPage(let url):
+            guard let target = URL(string: url) else { return }
+            NSWorkspace.shared.open(target)
+        case .copyCommand(let command):
+            RowKit.copyToClipboard(command)
+            status(
+                [Localized.text("Command copied"), invitation.promise].compactMap { $0 }
+                    .joined(separator: " — "))
+        case .recheck:
+            Task { await MacUpdateWatch.shared.check(reading.component) }
+        }
+    }
+
+    private static func start(_ reading: UpdateReading) {
+        Task { await MacUpdateWatch.shared.perform(reading.component) }
+    }
+
+    /// Turning a machine's own policy on or off. The card draws the checkbox from what the machine
+    /// said; a refusal puts it back there and says why.
+    static func setAutomation(_ enabled: Bool, for reading: UpdateReading, card: UpdateCardView) {
+        Task {
+            guard
+                let failure = await MacUpdateWatch.shared.setAutoUpdate(reading.component, enabled)
+            else { return }
+            card.restoreAutomation()
+            MacDialogs.confirm(
+                on: card.window,
+                title: Localized.text("%@ didn't change its update setting", reading.title),
+                body: failure, confirmLabel: Localized.text("OK"), destructive: false
+            ) {}
+        }
+    }
+}
+
+/// What a failed update printed, readable and copyable, in a window of its own — held statically
+/// because a window presented from a local variable is dead on arrival, released while it is still
+/// on screen.
+@MainActor
+final class UpdateLogWindowController: NSWindowController {
+    private static var current: UpdateLogWindowController?
+
+    static func present(title: String, log: String) {
+        let controller = UpdateLogWindowController(title: title, log: log)
+        current = controller
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private init(title: String, log: String) {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 420),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered,
+            defer: false)
+        window.title = Localized.text("%@ — update log", title)
+        window.isReleasedWhenClosed = false
+        MacTheme.Chrome.adopt(window)
+        super.init(window: window)
+        window.contentView = Self.makeContent(log: log)
+        window.center()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    private static func makeContent(log: String) -> NSView {
+        let textView = NSTextView()
+        textView.string = log
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.font = MacTheme.Ramp.font(.code)
+        textView.textColor = MacTheme.Color.label
+        textView.drawsBackground = false
+        textView.textContainerInset = NSSize(width: MacTheme.Spacing.m, height: MacTheme.Spacing.m)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+
+        let scroll = NSScrollView()
+        scroll.documentView = textView
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.drawsBackground = true
+        scroll.backgroundColor = MacTheme.Color.canvas
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+
+        let copy = RowKit.ActionButton(title: Localized.text("Copy")) {
+            RowKit.copyToClipboard(log)
+        }
+        copy.bezelStyle = .rounded
+        let row = NSStackView(views: [RowKit.spacer(), copy])
+        row.orientation = .horizontal
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = NSView()
+        container.addSubview(scroll)
+        container.addSubview(row)
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: container.topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: row.topAnchor, constant: -MacTheme.Spacing.s),
+            row.leadingAnchor.constraint(
+                equalTo: container.leadingAnchor, constant: MacTheme.Spacing.m),
+            row.trailingAnchor.constraint(
+                equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.m),
+            row.bottomAnchor.constraint(
+                equalTo: container.bottomAnchor, constant: -MacTheme.Spacing.m),
+        ])
+        return container
     }
 }
