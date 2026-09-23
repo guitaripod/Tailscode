@@ -473,6 +473,19 @@ enum Gtk {
         for widget in doomed { gtk_box_remove(ptr(parent), widget) }
     }
 
+    /// Puts exactly `children` in a box, in this order. A child the box already held is
+    /// referenced across the teardown: the box owns the only reference to what was appended to
+    /// it, so taking a row out to put it back frees it, and whoever kept the pointer to draw into
+    /// later writes into a widget that no longer exists.
+    static func replaceChildren(
+        of parent: UnsafeMutablePointer<GtkWidget>, with children: [UnsafeMutablePointer<GtkWidget>]
+    ) {
+        for child in children { g_object_ref(UnsafeMutableRawPointer(child)) }
+        removeChildren(of: parent)
+        for child in children { gtk_box_append(ptr(parent), child) }
+        for child in children { g_object_unref(UnsafeMutableRawPointer(child)) }
+    }
+
     private static func isPopover(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
         let instance = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GTypeInstance.self)
         return g_type_check_instance_is_a(instance, gtk_popover_get_type()) != 0

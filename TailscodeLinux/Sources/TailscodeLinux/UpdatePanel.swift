@@ -613,15 +613,14 @@ final class UpdatePanel: @unchecked Sendable {
         emptyLabel.map { gtk_widget_set_visible($0, rollup.readings.isEmpty ? 1 : 0) }
     }
 
+    /// A machine changing rank — failing, going quiet, finishing — moves its card, and every card
+    /// that stays keeps the widget it has: its owner goes on drawing into it for the life of the
+    /// window.
     private func relayout(_ ids: [String]) {
         guard let cardsBox else { return }
         for stale in Set(cards.keys).subtracting(ids) { cards.removeValue(forKey: stale) }
-        Gtk.removeChildren(of: cardsBox)
-        for id in ids {
-            let card = cards[id] ?? makeCard(id)
-            cards[id] = card
-            gtk_box_append(ptr(cardsBox), card.widget)
-        }
+        for id in ids where cards[id] == nil { cards[id] = makeCard(id) }
+        Gtk.replaceChildren(of: cardsBox, with: ids.compactMap { cards[$0]?.widget })
         order = ids
     }
 

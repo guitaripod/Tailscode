@@ -238,18 +238,71 @@ extension DeviceStores {
             #expect(card?.message?.contains("It didn't start the update") == true)
         }
 
-        /// A press that never reached the machine started nothing, and says so.
+        /// A press that never reached the machine started nothing, and says so — in words, never
+        /// the transport's own dump of error domains and user-info keys.
         @Test func anUnreachedPressRestoresTheCard() async {
             let id = "driver-\(UUID().uuidString)"
             defer { UpdateLedger.forget(.server(profileID: id)) }
             seed(id, behind)
+            let dump = "Error Domain=NSURLErrorDomain Code=-1004 \"(null)\""
             let bridge = FakeBridge(
-                press: .failure(AgentError.connection("offline")),
-                polls: [.failure(AgentError.connection("offline"))])
+                press: .failure(AgentError.connection(dump)),
+                polls: [.failure(AgentError.connection(dump))])
             await driver(bridge, id: id).update(.server(profileID: id))
             let card = card(id)
             #expect(card?.stage == .available)
-            #expect(card?.message?.contains("Couldn't ask arch to update") == true)
+            #expect(card?.message?.contains("Couldn't ask arch to update: it isn't answering") == true)
+            #expect(card?.message?.contains("NSURLErrorDomain") == false)
+        }
+
+        private var waitingToLoad: ServerUpdate {
+            ServerUpdate(
+                version: "1.10.0", running: "1.9.2", restartRequired: true,
+                remote: .init(checked: true, ok: true), latestVersion: "1.10.0", behind: 0,
+                canUpdate: true, manager: "systemd", canRestart: true)
+        }
+
+        /// A machine asked to load the build it was waiting to load, that refuses the connection
+        /// the moment it is asked, has begun that very restart — a bridge stops listening the
+        /// instant it goes. The silence is followed back to what it landed on, never reported as
+        /// a press that did not arrive.
+        @Test func aRestartThatFindsTheMachineGoneFollowsItBack() async {
+            let id = "driver-\(UUID().uuidString)"
+            defer { UpdateLedger.forget(.server(profileID: id)) }
+            seed(id, waitingToLoad)
+            #expect(card(id)?.stage == .restartNeeded)
+            var back = landed
+            back.job = nil
+            let bridge = FakeBridge(
+                press: .failure(AgentError.connection("refused")),
+                polls: [
+                    .failure(AgentError.connection("refused")),
+                    .failure(AgentError.connection("refused")),
+                    .failure(AgentError.connection("refused")),
+                    .success(back),
+                ], remote: back)
+            await driver(bridge, id: id).restart(.server(profileID: id))
+            let done = card(id)
+            #expect(done?.stage == .updated)
+            #expect(done?.message?.contains("Couldn't ask") != true)
+            let outcome = UpdateLedger.remembered(.server(profileID: id), now: clock.now)?.lastOutcome
+            #expect(outcome?.from == "1.9.2")
+            #expect(outcome?.to == "1.10.0")
+            #expect(outcome?.kind == .serverRestart)
+        }
+
+        /// An update pressed on a machine that is simply not there started nothing: only a
+        /// restart that was already owed is read into the silence.
+        @Test func anUpdateThatFindsTheMachineGoneIsNotFollowed() async {
+            let id = "driver-\(UUID().uuidString)"
+            defer { UpdateLedger.forget(.server(profileID: id)) }
+            seed(id, behind)
+            let bridge = FakeBridge(
+                press: .failure(AgentError.connection("refused")),
+                polls: [.failure(AgentError.connection("refused")), .success(behind)])
+            await driver(bridge, id: id).update(.server(profileID: id))
+            #expect(card(id)?.stage == .available)
+            #expect(bridge.presses == 1)
         }
 
         /// A bridge from before jobs is followed by its phases, and given the outcome its versions

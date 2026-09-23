@@ -85,6 +85,21 @@ public enum UpdateReadings {
         return reading.with(verdict: .working(progress.with(lostContactSince: .some(since))))
     }
 
+    /// A machine that stopped answering the moment it was asked to load the build it was waiting to
+    /// load. A bridge that has begun its restart refuses every connection until the new process is
+    /// listening, so the silence is the restart itself — the same thing a refused connection means
+    /// in the middle of a job this device is following — and it is followed back rather than
+    /// reported as a press that never arrived.
+    public static func restartUnderWay(_ reading: UpdateReading, at now: Date = Date())
+        -> UpdateReading
+    {
+        guard let progress = reading.verdict.progress else { return reading }
+        return reading.with(
+            verdict: .working(
+                progress.with(
+                    step: .restarting, observedAt: .some(now), lostContactSince: .some(nil))))
+    }
+
     /// A machine back from its restart, being asked what it landed on.
     public static func settling(_ reading: UpdateReading, at now: Date = Date()) -> UpdateReading {
         guard let progress = reading.verdict.progress else { return reading }

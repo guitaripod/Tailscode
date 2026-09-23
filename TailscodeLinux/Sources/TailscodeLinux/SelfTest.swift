@@ -111,6 +111,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkReplaceChildren()
+            report("reorder: \(checks) claims hold: a kept row survives being moved, a dropped one is freed")
+        } catch {
+            report("reorder: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkWorkflowCard()
             report("workflow card: \(checks) run shapes read correctly")
         } catch {
@@ -1563,6 +1571,52 @@ public enum SelfTest {
             _ = restoring.makeWidget(context: TranscriptContext())
         }
         return 7
+    }
+
+    /// Moving rows around a box must not free the ones that stay. The Software Updates window
+    /// re-ordered its cards whenever a machine changed rank, by emptying the box and appending the
+    /// same widgets again — the box held their only reference, so each card was freed on the way
+    /// out and the next answer wrote into a dead label. Watched through weak pointers, so the
+    /// claim is read without ever touching a widget that might be gone.
+    private static func checkReplaceChildren() throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        let box = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        g_object_ref_sink(UnsafeMutableRawPointer(box))
+        defer { g_object_unref(UnsafeMutableRawPointer(box)) }
+        let first = Gtk.label("first", selectable: false)
+        let second = Gtk.label("second", selectable: false)
+        gtk_box_append(ptr(box), first)
+        gtk_box_append(ptr(box), second)
+
+        let watches = UnsafeMutablePointer<gpointer?>.allocate(capacity: 2)
+        defer { watches.deallocate() }
+        watches[0] = UnsafeMutableRawPointer(first)
+        watches[1] = UnsafeMutableRawPointer(second)
+        g_object_add_weak_pointer(ptr(first), watches)
+        g_object_add_weak_pointer(ptr(second), watches + 1)
+        defer {
+            if let alive = watches[0] { g_object_remove_weak_pointer(ptr(alive), watches) }
+            if let alive = watches[1] { g_object_remove_weak_pointer(ptr(alive), watches + 1) }
+        }
+
+        Gtk.replaceChildren(of: box, with: [second, first])
+        guard watches[0] != nil, watches[1] != nil else {
+            throw SelfTestFailure("a row moved within its box is still alive afterwards")
+        }
+        guard gtk_widget_get_first_child(box) == second, gtk_widget_get_last_child(box) == first
+        else {
+            throw SelfTestFailure("the rows stand in the order asked for")
+        }
+        gtk_label_set_text(op(first), "drawn into after the move")
+
+        Gtk.replaceChildren(of: box, with: [second])
+        guard watches[0] == nil else {
+            throw SelfTestFailure("a row left out is released rather than leaked")
+        }
+        guard watches[1] != nil, gtk_widget_get_first_child(box) == second else {
+            throw SelfTestFailure("the row kept is still the box's only row")
+        }
+        return 4
     }
 
     /// The height a table hands the transcript has to be the height it will draw at, and a header

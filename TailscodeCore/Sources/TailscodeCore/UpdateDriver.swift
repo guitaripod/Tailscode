@@ -319,7 +319,7 @@ public final class UpdateDriver: @unchecked Sendable {
             record(machine, .answered(status))
             return nil
         case .failure(let error)?:
-            return AgentErrorText.readable(error)
+            return Self.words(for: error) ?? Localized.text("%@ didn't answer.", machine.title)
         case nil:
             return Localized.text("%@ didn't answer in time.", machine.title)
         }
@@ -402,23 +402,24 @@ public final class UpdateDriver: @unchecked Sendable {
                 }
                 record(machine, .answered(status))
             case let failure:
-                guard
-                    case .success(let status)? = await attempt(timing.requestTimeout, {
-                        try await updating.updateStatus(checkingRemote: false)
-                    }), status.isRunning
-                else {
-                    let why: String
-                    if case .failure(let error)? = failure {
-                        why = AgentErrorText.readable(error)
-                    } else {
-                        why = Localized.text("it didn't answer in time")
-                    }
+                let check = await attempt(timing.requestTimeout, {
+                    try await updating.updateStatus(checkingRemote: false)
+                })
+                if case .success(let status)? = check, status.isRunning {
+                    last = status
+                    jobID = status.job?.id
+                    record(machine, .answered(status))
+                } else if press == .restart, Self.neverReached(failure), Self.neverReached(check),
+                    let asking = remembered(machine)
+                {
+                    environment.log(
+                        "\(machine.profileID.prefix(8)) stopped answering its restart; following it back")
+                    UpdateLedger.record(UpdateReadings.restartUnderWay(asking, at: environment.now()))
+                } else {
+                    let why = Self.words(for: failure) ?? Localized.text("it isn't answering")
                     environment.log("\(machine.profileID.prefix(8)) could not be asked: \(why)")
                     return unasked(machine, before: before, press: press, why: why)
                 }
-                last = status
-                jobID = status.job?.id
-                record(machine, .answered(status))
             }
         }
 
@@ -623,11 +624,36 @@ public final class UpdateDriver: @unchecked Sendable {
                     "%@ is up but didn't answer about updates in time — it may be busy.",
                     machine.title))
         }
-        guard let failure else {
+        guard let failure, let words = Self.words(for: failure) else {
             return .silent(Localized.text("%@ didn't answer.", machine.title))
         }
-        return .silent(
-            Localized.text("%@ didn't answer — %@", machine.title, AgentErrorText.readable(failure)))
+        return .silent(Localized.text("%@ didn't answer — %@", machine.title, words))
+    }
+
+    /// What a failed request says, in words somebody can act on — or nil when it never reached the
+    /// machine at all. Underneath a request that never arrived is a dump of error domains and
+    /// user-info keys, the whole of it on Linux, and none of it says more than that the machine
+    /// did not answer, which the sentence around it already does.
+    private static func words(for error: any Error) -> String? {
+        if let agent = error as? AgentError, case .connection = agent { return nil }
+        return AgentErrorText.readable(error)
+    }
+
+    private static func words(for result: Result<ServerUpdate, any Error>?) -> String? {
+        switch result {
+        case .failure(let error)?: return words(for: error)
+        case nil: return Localized.text("it didn't answer in time")
+        case .success?: return nil
+        }
+    }
+
+    /// A request whose connection itself failed, as opposed to one the machine answered or one
+    /// that ran out of time.
+    private static func neverReached(_ result: Result<ServerUpdate, any Error>?) -> Bool {
+        guard case .failure(let error)? = result, let agent = error as? AgentError,
+            case .connection = agent
+        else { return false }
+        return true
     }
 
     private static func isMissingRoute(_ error: any Error) -> Bool {

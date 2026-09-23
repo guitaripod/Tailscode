@@ -205,8 +205,26 @@ reap() {
 
 stop_app() { reap app; }
 
+# The bus starts a portal and an accessibility bus the first time the app asks for them, and they
+# are not its children, so they outlive the harness. They would leave when their bus closed, by
+# raising SIGTERM at themselves — but a process started from an agent's shell inherits SIGTERM
+# blocked, and they piled up by the dozen inside the bridge's service until its every restart
+# waited out the stop timeout. Whatever still speaks on this bus goes when the bus does, by the
+# one signal nothing can block.
+reap_bus_services() {
+    local address pid
+    [ -s "$STATE/bus.addr" ] || return 0
+    address=$(cat "$STATE/bus.addr")
+    for pid in $(pgrep -u "$(id -u)"); do
+        { tr '\0' '\n' <"/proc/$pid/environ"; } 2>/dev/null |
+            grep -qxF "DBUS_SESSION_BUS_ADDRESS=$address" && kill -9 "$pid" 2>/dev/null
+    done
+    return 0
+}
+
 cmd_stop() {
     reap app
+    reap_bus_services
     reap bus
     reap xvfb
     rm -f "$STATE/bus.addr"
