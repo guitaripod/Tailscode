@@ -54,7 +54,10 @@ enum Kit {
     /// stopped or declined step is not a failure, and absolute file paths read and list. 0.31.2
     /// re-reads a bridge transcript with If-None-Match, so an unchanged one answers 304, shares one
     /// connection pool per set of deadlines, and sends every refresh read at once.
-    static let version = Version(0, 31, 2)
+    /// 0.32.0 draws what opencode 2 writes for the reader as transcript notes, names the provider
+    /// wait a turn sits out, winds a conversation back to a message with the way back open, and
+    /// lets opencode 2 report its own cut-off turns and session usage.
+    static let version = Version(0, 32, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

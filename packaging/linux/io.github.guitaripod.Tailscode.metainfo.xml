@@ -69,6 +69,19 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.56" date="2026-09-24">
+      <description>
+        <p>Undo from here, and provider waits that explain themselves.</p>
+        <p>opencode 2 chats:</p>
+        <ul>
+          <li>Undo from here: right-click one of your messages to wind the chat back to it. The messages after it are set aside, the files the agent changed since are put back, and your words return to the message box to edit. Restore brings it all back until you send your next message.</li>
+          <li>When a provider is rate limited or out of capacity, the chat shows its reason, which attempt failed and a countdown to the next one, with a button to the fix it names.</li>
+          <li>Quiet lines show when the model or agent changed, when the server restarted and picked a turn back up, and when a background command finished.</li>
+          <li>A turn cut off by a server restart can be picked back up or let go, and cost and tokens show for every chat.</li>
+          <li>Right-clicking one of your messages also offers Copy.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.55" date="2026-09-23">
       <description>
         <p>No more stutter every ten seconds, and faster chats.</p>
