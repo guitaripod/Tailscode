@@ -147,6 +147,7 @@ enum ParityManifest {
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("NotificationManager")
         case .missedActivity: return .implemented("MissedActivityCell")
+        case .liveActivity: return .implemented("AppActivityController")
         case .hapticFeedback: return .implemented("HapticEngine")
         case .homeQuickActions: return .implemented("HomeQuickActions")
         case .usageWidgets: return .implemented("WidgetGlance")

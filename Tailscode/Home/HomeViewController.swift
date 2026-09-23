@@ -456,6 +456,9 @@ final class HomeViewController: UIViewController {
             SessionActivity.shared.wakeHeldQueues(entries: self.viewModel.entries) {
                 self.viewModel.backend(forProfileID: $0)
             }
+            SessionActivity.shared.wakeLiveCards(entries: self.viewModel.entries) {
+                self.viewModel.backend(forProfileID: $0)
+            }
         }
         viewModel.onError = { [weak self] message in
             self?.refreshControl.endRefreshing()

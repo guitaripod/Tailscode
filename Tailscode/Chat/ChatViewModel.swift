@@ -155,13 +155,7 @@ final class ChatViewModel {
                 !fresh.hasPlaceholderTitle, fresh.title != displayTitle
             else { return }
             displayTitle = fresh.title
-            if activityLive {
-                let live = Self.liveStatus(for: state)
-                AppActivityController.shared.update(
-                    sessionID: session.id, phase: live.phase, statusText: live.text,
-                    lastTool: live.tool, toolCount: live.toolCount, icon: live.icon,
-                    title: fresh.title)
-            }
+            AppActivityController.shared.retitle(sessionID: session.id, title: fresh.title)
             onTitleChange?()
         }
     }
@@ -483,10 +477,10 @@ final class ChatViewModel {
                     title: self.alertTitle,
                     presence: self.presence(for: state),
                     keepAlive: self)
-                self.syncLiveActivity(with: state)
                 if state.status != .running { self.flushQueue() }
-                if !self.isBusy, !awaiting, !self.isBound, self.queue.isEmpty,
-                    self.resume.isEmpty
+                self.syncLiveActivity(with: state)
+                if state.status != .unknown, !self.isBusy, !awaiting, !self.isBound,
+                    self.queue.isEmpty, self.resume.isEmpty
                 {
                     self.stop()
                 }
@@ -781,8 +775,13 @@ final class ChatViewModel {
     }
 
     private(set) var optimisticThinking = false
-    private var activityLive = false
     private var turnSawRunning = false
+    /// Whether the turn this chat last watched has been put to rest on the Lock Screen already, so
+    /// a conversation that sits idle is not settled again on every state it streams.
+    private var cardSettled = false
+    /// Whether this conversation is the one on screen. A turn that ends under the reader's eyes
+    /// has been read as it ended, and leaves no card behind.
+    var isOnScreen = false
 
     private func reconcileOptimisticState(with state: ConversationState) {
         if state.status == .running { optimisticThinking = false }
@@ -795,25 +794,65 @@ final class ChatViewModel {
         }
     }
 
-    /// Drives the Live Activity for turns this device initiated (`deliver`
-    /// starts it). Merely observing a session that is live on the server must
-    /// not start one: such sessions can run for hours, leaving an activity
-    /// that never reaches its done state.
+    /// Drives the conversation's Live Activity once one exists. Only a send from this device opens
+    /// one (`deliver`): merely observing a session that is live on the server must not, since such
+    /// sessions can run for hours on another machine's behalf. A card that does exist follows every
+    /// turn of its conversation — the next one takes it back wherever it was started — and a turn
+    /// that ends settles it rather than taking it down, because the ending is the news. A send still
+    /// on its way is not an ending, whatever the server's last state said.
     private func syncLiveActivity(with state: ConversationState) {
+        let cards = AppActivityController.shared
+        guard cards.isTracking(session.id) else { return }
         if state.status == .running {
             turnSawRunning = true
-            guard activityLive else { return }
-            let live = Self.liveStatus(for: state)
-            AppActivityController.shared.update(
-                sessionID: session.id, phase: live.phase, statusText: live.text,
-                lastTool: live.tool, toolCount: live.toolCount, icon: live.icon,
-                title: AgentSession.isPlaceholderTitle(displayTitle) ? nil : displayTitle)
-        } else if (state.status == .idle || state.status == .stable), activityLive, turnSawRunning {
-            AppActivityController.shared.end(
-                sessionID: session.id, outcome: state.lastFailure == nil ? .done : .error)
-            activityLive = false
-            turnSawRunning = false
+            cardSettled = false
+            cards.update(
+                sessionID: session.id, reading: LiveActivityReading.live(in: state),
+                title: cardTitle)
+            return
         }
+        guard state.status == .idle || state.status == .stable, !optimisticThinking, !cardSettled
+        else { return }
+        cardSettled = true
+        turnSawRunning = false
+        cards.settle(
+            sessionID: session.id, reading: LiveActivityReading.settled(from: state),
+            title: cardTitle, onScreen: isOnScreen)
+    }
+
+    /// Settles the card on an outcome this device decided rather than one the server reported.
+    private func settleCard(_ detail: LiveActivityDetail) {
+        cardSettled = true
+        AppActivityController.shared.settle(
+            sessionID: session.id, reading: LiveActivityReading(detail: detail), title: cardTitle,
+            onScreen: isOnScreen)
+    }
+
+    private var cardTitle: String? {
+        AgentSession.isPlaceholderTitle(displayTitle) ? nil : displayTitle
+    }
+
+    /// Where the card's push token goes: to the server, which keeps the card current while this
+    /// process is asleep. A simulator build is unsigned, and asking for a token there refuses the
+    /// card outright rather than starting one without it.
+    private func cardPushSink(title: String) -> AppActivityController.PushTokenSink? {
+        #if targetEnvironment(simulator)
+            return nil
+        #else
+            let backend = self.backend
+            let sessionID = session.id
+            return { token, startedAt in
+                #if DEBUG
+                    let environment = "development"
+                #else
+                    let environment = "production"
+                #endif
+                try? await backend.registerLiveActivity(
+                    LiveActivityRegistration(
+                        token: token, environment: environment, startedAt: startedAt, title: title),
+                    for: sessionID)
+            }
+        #endif
     }
 
     /// The messages written while a turn was running. Held here rather than handed to the server
@@ -1060,27 +1099,13 @@ final class ChatViewModel {
         }
         optimisticThinking = true
         onPending?()
-        if !activityLive {
-            let activityTitle = AgentSession.isPlaceholderTitle(displayTitle)
-                ? AgentSession.provisionalTitle(fromPrompt: text) : displayTitle
-            let backend = self.backend
-            let sessionID = session.id
-            activityLive = AppActivityController.shared.start(
-                sessionID: sessionID, sessionTitle: activityTitle, serverName: serverName,
-                onPushToken: { token, startedAt in
-                    #if DEBUG
-                        let environment = "development"
-                    #else
-                        let environment = "production"
-                    #endif
-                    try? await backend.registerLiveActivity(
-                        LiveActivityRegistration(
-                            token: token, environment: environment,
-                            startedAt: startedAt, title: activityTitle),
-                        for: sessionID)
-                })
-            turnSawRunning = false
-        }
+        let activityTitle = AgentSession.isPlaceholderTitle(displayTitle)
+            ? AgentSession.provisionalTitle(fromPrompt: text) : displayTitle
+        AppActivityController.shared.start(
+            sessionID: session.id, sessionTitle: activityTitle, serverName: serverName,
+            onPushToken: cardPushSink(title: activityTitle))
+        turnSawRunning = false
+        cardSettled = false
         let resolvedModel = model ?? selectedModel
         let resolvedEffort = ModelEffort.surviving(
             effort ?? currentEffort, options: reasoningEffortOptions)
@@ -1116,12 +1141,7 @@ final class ChatViewModel {
                 guard !Task.isCancelled, generation == sendGeneration else { return }
                 if optimisticThinking, !turnSawRunning {
                     optimisticThinking = false
-                    if activityLive {
-                        AppActivityController.shared.end(
-                            sessionID: session.id, outcome: .error,
-                            statusText: String(localized: "No response"))
-                        activityLive = false
-                    }
+                    settleCard(.noResponse)
                     recoverFailedSend(
                         outgoing, row: echoID,
                         reason: String(localized: "the machine never picked it up"))
@@ -1134,13 +1154,12 @@ final class ChatViewModel {
                     return
                 }
                 optimisticThinking = false
-                if activityLive, !turnSawRunning {
-                    AppActivityController.shared.end(
-                        sessionID: session.id, outcome: cancelled ? .done : .error,
-                        statusText: cancelled
-                            ? String(localized: "Cancelled")
-                            : String(localized: "Couldn't send"))
-                    activityLive = false
+                if !turnSawRunning {
+                    if cancelled {
+                        AppActivityController.shared.withdraw(session.id)
+                    } else {
+                        settleCard(.sendFailed)
+                    }
                 }
                 if cancelled {
                     pending.remove(id: echoID)
@@ -1163,11 +1182,7 @@ final class ChatViewModel {
             sendTask?.cancel()
             optimisticThinking = false
             pending.removeAll()
-            if activityLive {
-                AppActivityController.shared.end(
-                    sessionID: session.id, outcome: .done, statusText: String(localized: "Cancelled"))
-                activityLive = false
-            }
+            AppActivityController.shared.withdraw(session.id)
             onPending?()
             if canAbort { Task { try? await conversation.cancelCurrentTurn() } }
             return
@@ -1370,48 +1385,12 @@ final class ChatViewModel {
         onModelChange?()
     }
 
-    /// What the turn is doing, in the Live Activity's own vocabulary. What it *is* is decided once
+    /// What the turn is doing, in the words the Live Activity uses. What it *is* is decided once
     /// in `ActivityKind.inFlight`, so the badge in the navigation bar, the row in the list and the
-    /// card on the lock screen can never disagree about the same second; the wording stays here,
+    /// card on the lock screen can never disagree about the same second; the sentence is Core's,
     /// because a lock screen has room for a sentence where a band has room for a word.
-    static func liveStatus(for state: ConversationState) -> (
-        phase: AppActivityController.Phase, text: String, tool: String?, toolCount: Int,
-        icon: ActivityIcon
-    ) {
-        let last = state.messages.last
-        let tools = (last?.parts ?? []).compactMap { part -> ToolCall? in
-            if case .tool(let call) = part.kind { return call }
-            return nil
-        }
-        let lastTool = (tools.last { $0.status == .running } ?? tools.last).map(\.name)
-        let activity = ActivityKind.inFlight(in: state) ?? .thinking
-        switch activity {
-        case .needsAnswer:
-            return (
-                .approval, String(localized: "Waiting for your answer"), lastTool, tools.count,
-                activity.icon
-            )
-        case .needsApproval:
-            return (
-                .approval, String(localized: "Awaiting your approval"), lastTool, tools.count,
-                activity.icon
-            )
-        case .usingTool(let name, _):
-            return (
-                .tool, String(localized: "Running \(name)"), lastTool, tools.count, activity.icon
-            )
-        case .compacting:
-            return (.tool, String(localized: "Compacting…"), lastTool, tools.count, activity.icon)
-        case .writing:
-            return (
-                .responding, String(localized: "Writing…"), lastTool, tools.count, activity.icon
-            )
-        default:
-            return (
-                .thinking, String(localized: "Thinking…"), lastTool, tools.count,
-                ActivityKind.thinking.icon
-            )
-        }
+    static func liveLine(for state: ConversationState) -> String {
+        LiveActivityReading.live(in: state).line
     }
 
     static func readable(_ error: Error) -> String {

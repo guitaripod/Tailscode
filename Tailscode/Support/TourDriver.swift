@@ -63,6 +63,16 @@
             Task { await driver.chatsWalk() }
         }
 
+        /// Sends one message and walks away from the chat before the answer lands, so the turn ends
+        /// with nobody reading it and its Live Activity settles instead of being read as it ended —
+        /// the state of the card a person meets on the Lock Screen, and the one a screenshot has to
+        /// be arranged for.
+        static func startCardWalk(in window: UIWindow) {
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.cardWalk() }
+        }
+
         private let window: UIWindow
 
         private init(window: UIWindow) { self.window = window }
@@ -308,6 +318,17 @@
                 chat?.tourPresentDesignBoard()
             }
             AppLogger.ui.info("designwalk: settled")
+        }
+
+        private func cardWalk() async {
+            let session = ProcessInfo.processInfo.environment["TAILSCODE_CARD_SESSION"] ?? "demo-c2"
+            await hold(1.5)
+            home?.openSession(withID: session)
+            await hold(2.0)
+            chat?.tourSend("Tighten the retry loop")
+            await hold(0.4)
+            await popToHome(hold: 1.0)
+            AppLogger.ui.info("cardwalk: away from \(session)")
         }
 
         private func chatsWalk() async {

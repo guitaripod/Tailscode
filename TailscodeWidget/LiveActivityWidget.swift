@@ -4,8 +4,6 @@ import TailscodeCore
 import WidgetKit
 
 extension ChatActivityAttributes.ContentState.Phase {
-    var isTerminal: Bool { self == .done || self == .error }
-
     var label: String {
         switch self {
         case .thinking: return String(localized: "Thinking")
@@ -40,13 +38,32 @@ extension ChatActivityAttributes.ContentState.Phase {
 }
 
 extension ChatActivityAttributes.ContentState {
+    /// Which thing the card is saying, when its sender named it — which every sender now does,
+    /// the server included, so a push arriving while the phone slept reads in this phone's
+    /// language rather than the server's.
+    var reading: LiveActivityDetail? { detail.flatMap(LiveActivityDetail.init(rawValue:)) }
+
+    var line: String {
+        guard let reading else { return statusText }
+        return reading.line(
+            tool: isSettled ? nil : lastTool, toolCount: toolCount, background: background ?? 0)
+    }
+
     /// The app computes the face where Core lives — a running shell wears the terminal here
-    /// exactly as it does in the transcript — and the widget only draws what it was handed.
-    var faceSymbol: String { symbol ?? phase.fallbackSymbol }
+    /// exactly as it does in the transcript — and a card whose sender did not say is given the
+    /// face its detail wears, then its phase's.
+    var faceSymbol: String {
+        symbol ?? reading?.face(tool: isSettled ? nil : lastTool).symbol ?? phase.fallbackSymbol
+    }
 
     var faceTone: ActivityTone {
-        tone.flatMap(ActivityTone.init(rawValue:)) ?? phase.fallbackTone
+        tone.flatMap(ActivityTone.init(rawValue:))
+            ?? reading?.face(tool: isSettled ? nil : lastTool).tone ?? phase.fallbackTone
     }
+
+    /// Stopped for the person — a live approval or a question the turn ended on. The island says
+    /// so with the face rather than a clock, because a clock would read as work.
+    var isWaitingOnYou: Bool { phase == .approval }
 }
 
 extension ActivityTone {
@@ -66,10 +83,10 @@ private func sessionURL(_ context: ActivityViewContext<ChatActivityAttributes>) 
     URL(string: "tailscode://session/\(context.attributes.sessionID)")
 }
 
-/// Terminal states arrive with staleDate == now on purpose, so a stale look
-/// only applies while a turn is still (supposedly) running.
+/// A settled card has no stale date, so a stale look only applies while a turn is still
+/// (supposedly) running.
 private func staleDim(_ context: ActivityViewContext<ChatActivityAttributes>) -> Bool {
-    context.isStale && !context.state.phase.isTerminal
+    context.isStale && !context.state.isSettled
 }
 
 struct LiveActivityWidget: Widget {
@@ -102,18 +119,17 @@ struct LiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 6) {
-                        if let tool = state.lastTool, !state.phase.isTerminal {
-                            Label(
-                                tool,
-                                systemImage: state.phase == .tool
-                                    ? state.faceSymbol : "wrench.and.screwdriver"
-                            )
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        if let endedAt = state.endedAt {
+                            EndedAgo(endedAt: endedAt)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        } else if let tool = state.lastTool {
+                            ToolLabel(tool: tool, state: state)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if state.toolCount > 0 {
+                        if state.toolCount > 0, !state.isSettled {
                             Text(String(localized: "\(state.toolCount) tools"))
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
@@ -129,13 +145,18 @@ struct LiveActivityWidget: Widget {
                 Image(systemName: state.faceSymbol)
                     .font(.caption2)
                     .foregroundStyle(state.faceTone.color.opacity(staleDim(context) ? 0.4 : 1))
-                    .accessibilityLabel(state.phase.label)
+                    .accessibilityLabel(state.line)
             } compactTrailing: {
-                if state.phase.isTerminal || state.phase == .approval {
+                if state.isWaitingOnYou {
                     Image(systemName: state.faceSymbol)
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(state.faceTone.color)
-                        .accessibilityLabel(state.phase.label)
+                        .accessibilityLabel(state.line)
+                } else if let endedAt = state.endedAt {
+                    FrozenClock(startedAt: state.startedAt, endedAt: endedAt)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(state.faceTone.color)
+                        .frame(maxWidth: 44)
                 } else if context.isStale {
                     Image(systemName: "clock.badge.exclamationmark")
                         .font(.caption2)
@@ -155,7 +176,7 @@ struct LiveActivityWidget: Widget {
                 Image(systemName: state.faceSymbol)
                     .font(.caption2)
                     .foregroundStyle(state.faceTone.color.opacity(staleDim(context) ? 0.4 : 1))
-                    .accessibilityLabel(state.phase.label)
+                    .accessibilityLabel(state.line)
             }
         }
     }
@@ -175,15 +196,14 @@ private struct LockScreenView: View {
                 StatusText(state: state, isStale: context.isStale)
                     .font(.caption)
                     .lineLimit(1)
-                if let tool = state.lastTool, !state.phase.isTerminal {
-                    Label(
-                        tool,
-                        systemImage: state.phase == .tool
-                            ? state.faceSymbol : "wrench.and.screwdriver"
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if let endedAt = state.endedAt {
+                    EndedAgo(endedAt: endedAt)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else if let tool = state.lastTool {
+                    ToolLabel(tool: tool, state: state)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 8)
@@ -221,13 +241,60 @@ private struct StatusText: View {
     let isStale: Bool
 
     var body: some View {
-        if isStale && !state.phase.isTerminal {
+        if isStale && !state.isSettled {
             Text(String(localized: "Waiting for updates…"))
                 .foregroundStyle(.secondary)
         } else {
-            Text(state.statusText)
+            Text(state.line)
                 .foregroundStyle(state.faceTone.color)
         }
+    }
+}
+
+/// The tool the turn last reached for. While that tool is out on the machine the line above
+/// already names it, so it wears the tool's own face; otherwise it is context, and says so.
+private struct ToolLabel: View {
+    let tool: String
+    let state: ChatActivityAttributes.ContentState
+
+    var body: some View {
+        Label(
+            tool,
+            systemImage: state.phase == .tool ? state.faceSymbol : "wrench.and.screwdriver"
+        )
+        .lineLimit(1)
+    }
+}
+
+/// How long ago the turn ended, in the reader's language and kept current by the system — the
+/// line a card that has been waiting to be read owes whoever finally reads it.
+private struct EndedAgo: View {
+    let endedAt: Date
+
+    var body: some View {
+        Text(
+            .currentDate,
+            format: .reference(to: endedAt, allowedFields: [.day, .hour, .minute], maxFieldCount: 1)
+        )
+        .lineLimit(1)
+    }
+}
+
+/// The turn's clock, stopped where the turn stopped.
+private struct FrozenClock: View {
+    let startedAt: Date
+    let endedAt: Date
+
+    var body: some View {
+        Text(
+            timerInterval: startedAt...max(startedAt, endedAt),
+            pauseTime: max(startedAt, endedAt),
+            countsDown: false
+        )
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .multilineTextAlignment(.trailing)
     }
 }
 
@@ -236,19 +303,11 @@ private struct ElapsedView: View {
     let isStale: Bool
 
     var body: some View {
-        if state.phase.isTerminal {
-            Text(
-                timerInterval: state.startedAt...(state.endedAt ?? state.startedAt),
-                pauseTime: state.endedAt ?? state.startedAt,
-                countsDown: false
-            )
-            .font(.subheadline.weight(.semibold))
-            .monospacedDigit()
-            .foregroundStyle(state.faceTone.color)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .frame(maxWidth: 56)
-            .multilineTextAlignment(.trailing)
+        if let endedAt = state.endedAt {
+            FrozenClock(startedAt: state.startedAt, endedAt: endedAt)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(state.faceTone.color)
+                .frame(maxWidth: 56)
         } else if isStale {
             Image(systemName: "clock.badge.exclamationmark")
                 .font(.subheadline)

@@ -94,6 +94,9 @@ final class AppCoordinator: NSObject {
             if CommandLine.arguments.contains("--designwalk") {
                 TourDriver.startDesignWalk(in: window)
             }
+            if CommandLine.arguments.contains("--cardwalk") {
+                TourDriver.startCardWalk(in: window)
+            }
         #endif
     }
 

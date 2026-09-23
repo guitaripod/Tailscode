@@ -339,6 +339,10 @@ final class ChatViewController: UIViewController {
         super.viewDidAppear(animated)
         AppLogger.chat.info(
             "chat appeared session=\(viewModel.session.id) title=\(viewModel.displayTitle)")
+        viewModel.isOnScreen = true
+        if UIApplication.shared.applicationState == .active {
+            AppActivityController.shared.seen(viewModel.session.id)
+        }
         if !announcedIdentity {
             announcedIdentity = true
             announceIdentity()
@@ -476,6 +480,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        viewModel.isOnScreen = false
         cascade.release()
         flushDraft()
         SessionSeenStore.markSeen(viewModel.session.id)
@@ -1466,6 +1471,7 @@ final class ChatViewController: UIViewController {
         suppressBannerUntil = Date().addingTimeInterval(3)
         if view.window != nil {
             NotificationManager.clearNotices(sessionID: viewModel.session.id)
+            AppActivityController.shared.seen(viewModel.session.id)
         }
         viewModel.resync()
         viewModel.serviceResume()
@@ -2698,7 +2704,7 @@ final class ChatViewController: UIViewController {
 
     /// The nav status states the same facts as the desktop status bands — phase, running tool,
     /// clock — derived through the shared `StatusFacts` rather than a private phase guess. The
-    /// richer iOS wording for the busy line still comes from `liveStatus`, but the phase and
+    /// richer iOS wording for the busy line still comes from `liveLine`, but the phase and
     /// color are the facts'.
     /// - Parameter messagesMoved: whether the transcript itself changed. When it did not — a
     ///   redraw of what this device is holding — the two readings that walk every message in the
@@ -2724,7 +2730,7 @@ final class ChatViewController: UIViewController {
         case .idle, .offline, .connecting:
             text = nil
         case .working:
-            text = ChatViewModel.liveStatus(for: state).text
+            text = ChatViewModel.liveLine(for: state)
         case .background(let tasks):
             text = ActivityKind.inBackground(tasks: tasks).title
         case .stalled(let tasks):
@@ -2732,7 +2738,7 @@ final class ChatViewController: UIViewController {
         case .compacting:
             text = String(localized: "Compacting…")
         case .awaitingApproval:
-            text = ChatViewModel.liveStatus(for: state).text
+            text = ChatViewModel.liveLine(for: state)
             color = Theme.Color.warning
         case .awaitingAnswer:
             text = String(localized: "Waiting for your answer")

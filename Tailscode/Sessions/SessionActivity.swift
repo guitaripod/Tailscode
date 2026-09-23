@@ -66,6 +66,31 @@ final class SessionActivity {
         }
     }
 
+    /// Wakes a view model for every conversation whose Live Activity a previous process left live,
+    /// so the turn it follows is watched to its end and the card settles when it does — rather than
+    /// standing at whatever it last said until the platform ends it hours later. Each is woken once
+    /// a launch: a server that cannot be reached is not asked again on every listing.
+    func wakeLiveCards(
+        entries: [SessionEntry], backend: (String) -> (any CodingAgentBackend)?
+    ) {
+        for sessionID in AppActivityController.shared.unwatchedLiveSessions
+        where retained[sessionID] == nil && !wokenForCards.contains(sessionID) {
+            guard let entry = entries.first(where: { $0.session.id == sessionID }),
+                let backend = backend(entry.profileID)
+            else { continue }
+            wokenForCards.insert(sessionID)
+            let viewModel = ChatViewModel(
+                backend: backend, session: entry.session, contextID: entry.profileID,
+                serverName: entry.profileName)
+            viewModel.isBound = false
+            retained[sessionID] = viewModel
+            AppLogger.chat.info("live card wake session=\(sessionID)")
+            viewModel.start()
+        }
+    }
+
+    private var wokenForCards: Set<String> = []
+
     func retainedViewModel(for sessionID: String, contextID: String) -> ChatViewModel? {
         guard let viewModel = retained[sessionID], viewModel.contextID == contextID else {
             return nil
@@ -78,7 +103,7 @@ final class SessionActivity {
     /// transcripts aren't streaming here, so nothing beyond liveness is known.
     func liveDetail(for sessionID: String) -> String? {
         guard let viewModel = retained[sessionID] else { return nil }
-        return ChatViewModel.liveStatus(for: viewModel.state).text
+        return ChatViewModel.liveLine(for: viewModel.state)
     }
 
     /// How many turns this device is driving on one server right now — which is exactly what a

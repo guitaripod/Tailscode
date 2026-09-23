@@ -144,6 +144,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case demoMode
     case activityNotifications
     case missedActivity
+    case liveActivity
     case videoSlot
     case watchDirectory
     case watchAccounts
@@ -740,6 +741,10 @@ public enum CapabilityRegistry {
             id: .missedActivity, area: "app", title: "What happened while you were away",
             spec:
                 "A notification is a thing that appears for seconds and is then gone whether or not anybody saw it, so every alert the client raises is also written down in ActivityInbox and listed until it is looked at: what happened, in which chat, on which server, how long ago, with the ones still blocking a turn first. Opening the chat clears its own entries — a glance at the list is not looking, or the list would empty itself as it was drawn — and an approval or question answered on the server leaves the list by the same withdrawal that takes the notification back, so it can never send someone to a chat that is waiting on nothing. The list offers to clear itself whole, and says nothing at all when there is nothing to say. A notice names its chat by the name a person would recognise: the first turn is the news and the server has not named it yet, so MissedActivity.name falls back to the words that started it, and ActivityInbox.reconcile holds the standing list against every fresh listing — adopting the name the server has since written, dropping a chat that was deleted on a server that answered, and dropping finished-news for a session that is working again, while a server that said nothing is never read as having deleted anything."),
+        CapabilityDefinition(
+            id: .liveActivity, area: "app", title: "A turn you can follow with the phone locked",
+            spec:
+                "A turn this device starts is followed on the Lock Screen and in the Dynamic Island, and the card says what the chat's own status surface says — thinking, writing, the tool out on the machine wearing that tool's own symbol, compacting, and a turn stopped for the person, which leads every other card — with the turn's clock beside it. The words are named rather than written: the app and claude-bridge both stamp a LiveActivityDetail and the facts it is made from, and the widget writes the words in the reader's language, so a card a server pushed while the phone slept reads exactly as well as one the app drew. An ending is news until it has been read, so a card never vanishes when the work stops: it settles in place — how the turn ended (done, with what it did and what the machine is still carrying for it; the question it stopped to ask; a failure; a cut-off; an answer that came back empty), how long it ran and how long ago it ended — and stays in the Dynamic Island and on the Lock Screen until the conversation is opened, which is what reads it. A turn that ends under the reader's eyes leaves nothing behind. The conversation's next turn takes the same card back rather than stacking a second one, whether this device sent it, a queued message drained, or the machine began one itself, which the server announces by push. A card nobody came for leaves the Dynamic Island after LiveActivityLinger.island and the Lock Screen after LiveActivityLinger.lockScreen, on the device's clock and the server's alike; a relaunch adopts the cards already standing instead of sweeping them away; and several at once rank by what they say — waiting on the person, then moving, then gone wrong, then finished."),
         CapabilityDefinition(
             id: .homeQuickActions, area: "app", title: "Home screen quick actions",
             spec:
