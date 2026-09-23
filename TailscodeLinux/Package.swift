@@ -120,8 +120,11 @@ enum Kit {
     /// carries background work's age and stall and the person's own end of it. 0.30.1 speaks
     /// opencode 2 — the backend finds out which generation a server runs and answers in it.
     /// 0.31.0 reads an update as a job and a release — the step a bridge's update is on, how it
-    /// ended and what the new version brings — and asks for the project to be fetched now.
-    static let version = Version(0, 31, 0)
+    /// ended and what the new version brings — and asks for the project to be fetched now. 0.31.1
+    /// keeps an opencode 2 conversation whole: a sent prompt appears as it is delivered, a file
+    /// attachment no longer breaks the transcript, a shell run beside the chat streams live, a
+    /// stopped or declined step is not a failure, and absolute file paths read and list.
+    static let version = Version(0, 31, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

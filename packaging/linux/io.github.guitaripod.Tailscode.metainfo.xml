@@ -69,6 +69,20 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.54" date="2026-09-23">
+      <description>
+        <p>opencode 2 conversations stay whole.</p>
+        <p>opencode 2 fixes:</p>
+        <ul>
+          <li>A message you send to an opencode 2 server appears in the chat right away. Before, it could sit under &quot;Waiting for the machine to start&quot; until you left the chat and came back.</li>
+          <li>A chat where you attached a file opens again. Before, one attachment stopped the whole chat from loading.</li>
+          <li>Stopping a turn or declining a permission no longer shows an error.</li>
+          <li>Shell commands run in the same chat from opencode&#x27;s own terminal appear as they run, and one that timed out or was killed shows as failed.</li>
+          <li>Files opened by their full path, and folder suggestions for a new chat typed as a full path, work against an opencode 2 server.</li>
+          <li>The one-line opencode setup script no longer restarts an opencode 2 server in the middle of an answer.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.53" date="2026-09-23">
       <description>
         <p>Server updates show what&#x27;s new, and the video studio grows up.</p>
