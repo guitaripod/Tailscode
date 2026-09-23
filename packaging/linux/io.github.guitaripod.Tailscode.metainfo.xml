@@ -69,6 +69,18 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.55" date="2026-09-23">
+      <description>
+        <p>No more stutter every ten seconds, and faster chats.</p>
+        <p>Faster:</p>
+        <ul>
+          <li>The window no longer freezes for a moment every ten seconds: settings are written only when something changes, in the background, instead of three times a refresh on the thread that draws the window.</li>
+          <li>Long answers take less work per word as they are written out.</li>
+          <li>Opening a chat sends all of its requests to the server at the same time and reuses the open connection.</li>
+          <li>Reopening an unchanged chat no longer downloads it again (needs claude-bridge 1.11).</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.54" date="2026-09-23">
       <description>
         <p>opencode 2 conversations stay whole.</p>

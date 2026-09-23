@@ -123,8 +123,10 @@ enum Kit {
     /// ended and what the new version brings — and asks for the project to be fetched now. 0.31.1
     /// keeps an opencode 2 conversation whole: a sent prompt appears as it is delivered, a file
     /// attachment no longer breaks the transcript, a shell run beside the chat streams live, a
-    /// stopped or declined step is not a failure, and absolute file paths read and list.
-    static let version = Version(0, 31, 1)
+    /// stopped or declined step is not a failure, and absolute file paths read and list. 0.31.2
+    /// re-reads a bridge transcript with If-None-Match, so an unchanged one answers 304, shares one
+    /// connection pool per set of deadlines, and sends every refresh read at once.
+    static let version = Version(0, 31, 2)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

@@ -10,7 +10,7 @@
   <a href="LICENSE">GPL-3.0</a>
 </p>
 
-Latest releases: **iPhone 1.52** · **macOS 1.45** · **Linux 1.54**. Free is the whole core with one server; **Pro** is a one-time $14.99 purchase for unlimited servers, concurrent Live Activities and the delegate board.
+Latest releases: **iPhone 1.52** · **macOS 1.45** · **Linux 1.55**. Free is the whole core with one server; **Pro** is a one-time $14.99 purchase for unlimited servers, concurrent Live Activities and the delegate board.
 
 
 
@@ -65,7 +65,7 @@ Exhaustiveness forces disclosure, not implementation — `.gap("later")` compile
 
 **iPhone and Mac** — [App Store](https://apps.apple.com/app/tailscode/id6791660932); one purchase covers both. The Mac can also be built ad-hoc, unsandboxed: `scripts/install-macapp.sh` replaces `/Applications/Tailscode.app`.
 
-**Arch** — [tailscode](https://aur.archlinux.org/packages/tailscode) builds the `v1.54` tag; [tailscode-git](https://aur.archlinux.org/packages/tailscode-git) tracks master.
+**Arch** — [tailscode](https://aur.archlinux.org/packages/tailscode) builds the `v1.55` tag; [tailscode-git](https://aur.archlinux.org/packages/tailscode-git) tracks master.
 
 ```bash
 paru -S tailscode
@@ -74,7 +74,7 @@ paru -S tailscode
 **Other Linux** — the [release tarball](https://github.com/guitaripod/Tailscode/releases): one static-stdlib x86_64 binary plus desktop entry, icons, man page and completions, built in CI on `ubuntu-24.04` (needs nothing newer than `GLIBC_2.39`).
 
 ```bash
-tar xf tailscode-1.54-linux-x86_64.tar.gz -C ~/.local --strip-components=2
+tar xf tailscode-1.55-linux-x86_64.tar.gz -C ~/.local --strip-components=2
 ```
 
 The app watches the release feed and lights an update mark in its own chrome, then hands you the command for the way it was installed. A Flatpak manifest lives in `packaging/flatpak/` but is not on Flathub. On a Steam Deck use Desktop Mode with a keyboard; install Tailscale with the [deck script](https://github.com/tailscale-dev/deck-tailscale) first.
