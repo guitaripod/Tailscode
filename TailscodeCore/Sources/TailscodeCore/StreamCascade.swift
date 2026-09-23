@@ -240,48 +240,159 @@ public enum CascadeGate {
         scan(source, count: source.count, at: index, sealed: sealed)
     }
 
-    /// A marker is a slot, not a string: seven of them exist, and naming one by building a
-    /// `String` at every asterisk is an allocation for a fact the type system already holds.
-    private enum Marker: Int {
-        case backtick, star, underscore, doubleStar, doubleUnderscore, doubleTilde, bracket
-
-        static let count = 7
+    /// Where the last reading of a growing text stood: the walk's state just before a character
+    /// that was not the last one, and the text it was read from.
+    ///
+    /// Parity is counted from the start of the text, and the walk that counts it is a left-to-right
+    /// state machine, so everything it learned up to a point is still true of the same text grown
+    /// longer. Only the last character can change under an append (a combining mark or a joiner
+    /// arriving makes it a different cluster), and every decision reads the character after it,
+    /// which is why the memo stops one character short of where the text ended.
+    public struct Memo: Sendable {
+        fileprivate let source: String
+        fileprivate let offset: Int
+        fileprivate let walk: Walk
     }
 
-    private static func scan<C: Collection>(
-        _ characters: C, count: Int, at index: Int, sealed: Bool
-    ) -> Int where C.Element == Character {
-        let limit = min(index, count)
-        guard limit > 0, !sealed else { return max(0, limit) }
-        var pending = [Int?](repeating: nil, count: Marker.count)
+    /// What the whole of a text reads as: how many characters it has, and how far a renderer may
+    /// go into it without meeting a half-open token.
+    public struct Reading: Sendable, Equatable {
+        public let count: Int
+        public let cut: Int
+    }
 
-        func toggle(_ marker: Marker, at position: Int) {
-            pending[marker.rawValue] = pending[marker.rawValue] == nil ? position : nil
+    /// The gate over the whole of a text that grows at its end, picking up where the reading of
+    /// the same text, shorter, left off.
+    ///
+    /// A row being written is gated on every arrival, and counting from the start each time made an
+    /// answer's gate cost the square of its length: milliseconds per token for a long paragraph,
+    /// on the main thread of every client. With the memo each arrival reads only what arrived. A
+    /// text that is not the last one grown longer (rewritten, shortened, a different row) is read
+    /// from the start, so the answer is always the one a full reading gives.
+    public static func read(_ source: String, sealed: Bool = false, memo: inout Memo?) -> Reading {
+        var walk = Walk()
+        var cursor = source.startIndex
+        if let held = memo, extends(source, held.source) {
+            walk = held.walk
+            cursor = source.utf8.index(source.utf8.startIndex, offsetBy: held.offset)
+        }
+        var resume: (index: String.Index, walk: Walk)?
+        while cursor < source.endIndex {
+            let after = source.index(after: cursor)
+            let next: Character? = after < source.endIndex ? source[after] : nil
+            if next != nil { resume = (cursor, walk) }
+            let step = walk.read(source[cursor], next: next)
+            walk.previous = source[cursor]
+            walk.position += 1
+            cursor = after
+            if step == 2, cursor < source.endIndex {
+                walk.previous = source[cursor]
+                walk.position += 1
+                cursor = source.index(after: cursor)
+            }
+        }
+        if let resume {
+            memo = Memo(
+                source: source,
+                offset: source.utf8.distance(from: source.utf8.startIndex, to: resume.index),
+                walk: resume.walk)
+        } else {
+            memo = nil
+        }
+        let count = walk.position
+        guard count > 0, !sealed else { return Reading(count: count, cut: count) }
+        return Reading(count: count, cut: walk.cut(limit: count))
+    }
+
+    /// Whether `text` is `prefix` with more written after it, compared as bytes.
+    private static func extends(_ text: String, _ prefix: String) -> Bool {
+        let length = prefix.utf8.count
+        guard text.utf8.count >= length else { return false }
+        let compared = text.utf8.withContiguousStorageIfAvailable { whole in
+            prefix.utf8.withContiguousStorageIfAvailable { start in
+                length == 0 || memcmp(whole.baseAddress!, start.baseAddress!, length) == 0
+            }
+        }
+        if case let same?? = compared { return same }
+        return text.utf8.starts(with: prefix.utf8)
+    }
+
+    /// A marker is a slot, not a string: seven of them exist, and naming one by building a
+    /// `String` at every asterisk is an allocation for a fact the type system already holds.
+    fileprivate enum Marker: Int {
+        case backtick, star, underscore, doubleStar, doubleUnderscore, doubleTilde, bracket
+    }
+
+    /// The seven open markers as seven plain fields, so a walk can be copied to remember where it
+    /// stood without a heap allocation for every character it remembers.
+    fileprivate struct Pending: Sendable {
+        var backtick: Int?
+        var star: Int?
+        var underscore: Int?
+        var doubleStar: Int?
+        var doubleUnderscore: Int?
+        var doubleTilde: Int?
+        var bracket: Int?
+
+        subscript(marker: Marker) -> Int? {
+            get {
+                switch marker {
+                case .backtick: return backtick
+                case .star: return star
+                case .underscore: return underscore
+                case .doubleStar: return doubleStar
+                case .doubleUnderscore: return doubleUnderscore
+                case .doubleTilde: return doubleTilde
+                case .bracket: return bracket
+                }
+            }
+            set {
+                switch marker {
+                case .backtick: backtick = newValue
+                case .star: star = newValue
+                case .underscore: underscore = newValue
+                case .doubleStar: doubleStar = newValue
+                case .doubleUnderscore: doubleUnderscore = newValue
+                case .doubleTilde: doubleTilde = newValue
+                case .bracket: bracket = newValue
+                }
+            }
         }
 
-        var cursor = characters.startIndex
-        var position = 0
+        var all: [Int?] {
+            [backtick, star, underscore, doubleStar, doubleUnderscore, doubleTilde, bracket]
+        }
+    }
+
+    /// The gate's reading of a text so far, one character at a time. The caller moves `previous`
+    /// and `position` along; `read` decides what the character means and how many it consumed.
+    fileprivate struct Walk: Sendable {
+        var pending = Pending()
         var previous: Character?
+        var position = 0
         var undecidedTail = false
-        while position < limit {
-            let character = characters[cursor]
-            let next: Character? =
-                position + 1 < limit ? characters[characters.index(after: cursor)] : nil
-            var step = 1
+
+        private mutating func toggle(_ marker: Marker) {
+            pending[marker] = pending[marker] == nil ? position : nil
+        }
+
+        /// Reads the character at `position` with the one after it (nil at the end of what may be
+        /// read) and answers how many characters that took: two for a doubled marker, else one.
+        mutating func read(_ character: Character, next: Character?) -> Int {
             switch character {
             case "`":
-                toggle(.backtick, at: position)
+                toggle(.backtick)
             case "*", "_":
                 let doubled = next == character
                 if !doubled, character == "_",
                     previous?.isLetter == true || previous?.isNumber == true
                 {
-                    break
+                    return 1
                 }
-                if !doubled, next == " " { break }
+                if !doubled, next == " " { return 1 }
                 if !doubled, next == nil {
                     undecidedTail = true
-                    break
+                    return 1
                 }
                 let marker: Marker
                 switch (character, doubled) {
@@ -290,38 +401,57 @@ public enum CascadeGate {
                 case (_, false): marker = .underscore
                 default: marker = .doubleUnderscore
                 }
-                toggle(marker, at: position)
-                step = doubled ? 2 : 1
+                toggle(marker)
+                return doubled ? 2 : 1
             case "~":
                 guard next == "~" else {
                     if next == nil { undecidedTail = true }
-                    break
+                    return 1
                 }
-                toggle(.doubleTilde, at: position)
-                step = 2
+                toggle(.doubleTilde)
+                return 2
             case "[":
-                pending[Marker.bracket.rawValue] = position
+                pending[.bracket] = position
             case "]":
                 if next == nil { undecidedTail = true }
-                if next != "(" { pending[Marker.bracket.rawValue] = nil }
+                if next != "(" { pending[.bracket] = nil }
             case ")":
-                pending[Marker.bracket.rawValue] = nil
+                pending[.bracket] = nil
             default:
                 break
             }
+            return 1
+        }
+
+        func cut(limit: Int) -> Int {
+            var earliest: Int?
+            for open in pending.all {
+                guard let open, open >= limit - window else { continue }
+                if earliest == nil || open < earliest! { earliest = open }
+            }
+            return min(earliest ?? limit, undecidedTail ? limit - 1 : limit)
+        }
+    }
+
+    private static func scan<C: Collection>(
+        _ characters: C, count: Int, at index: Int, sealed: Bool
+    ) -> Int where C.Element == Character {
+        let limit = min(index, count)
+        guard limit > 0, !sealed else { return max(0, limit) }
+        var walk = Walk()
+        var cursor = characters.startIndex
+        while walk.position < limit {
+            let next: Character? =
+                walk.position + 1 < limit ? characters[characters.index(after: cursor)] : nil
+            let step = walk.read(characters[cursor], next: next)
             for _ in 0..<step {
-                previous = characters[cursor]
+                walk.previous = characters[cursor]
                 cursor = characters.index(after: cursor)
-                position += 1
-                if position >= limit { break }
+                walk.position += 1
+                if walk.position >= limit { break }
             }
         }
-        var earliest: Int?
-        for open in pending {
-            guard let open, open >= limit - window else { continue }
-            if earliest == nil || open < earliest! { earliest = open }
-        }
-        return min(earliest ?? limit, undecidedTail ? limit - 1 : limit)
+        return walk.cut(limit: limit)
     }
 }
 
@@ -478,6 +608,7 @@ public struct LiveCascade: Sendable {
     private var gateCut: Int?
     private var gateSince: Double = 0
     private var gateGaveUp = false
+    private var gateMemo: CascadeGate.Memo?
     private var handed = 0
     private var handedRow: String?
     private var owedSince: Double?
@@ -573,11 +704,13 @@ public struct LiveCascade: Sendable {
         if row != handedRow {
             handedRow = row
             handed = 0
+            gateMemo = nil
             openGate()
         }
-        let count = source.count
+        let reading = CascadeGate.read(source, sealed: sealed || !markdown, memo: &gateMemo)
+        let count = reading.count
         guard !sealed, markdown else { return handOver(source, count: count) }
-        let cut = CascadeGate.safeCut(source, at: count)
+        let cut = reading.cut
         guard cut < count else { return handOver(source, count: count) }
         if gateCut != cut {
             gateCut = cut
@@ -591,11 +724,19 @@ public struct LiveCascade: Sendable {
                 return source
             }
             handed = shown
-            return String(source.prefix(shown))
+            return Self.prefix(source, count: count, keeping: shown)
         }
         gateGaveUp = true
         handed = count
         return source
+    }
+
+    /// The first `kept` characters of a text `count` long, found by stepping back from its end: the
+    /// gate holds back a few characters of a long row, so walking the short way costs a clause
+    /// rather than the whole answer on every arrival.
+    private static func prefix(_ source: String, count: Int, keeping kept: Int) -> String {
+        let end = source.index(source.endIndex, offsetBy: kept - count)
+        return String(source[..<end])
     }
 
     /// The row has nothing half-open, so the gate has nothing to remember about it.

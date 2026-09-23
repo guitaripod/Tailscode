@@ -15,6 +15,7 @@ final class HomeViewController: UIViewController {
     var onOpenSettings: (() -> Void)?
 
     private let viewModel: SessionListViewModel
+    private var warmed: ChatViewModel?
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<HomeSection, HomeItem>!
     private let refreshControl = UIRefreshControl()
@@ -1333,6 +1334,49 @@ final class HomeViewController: UIViewController {
         land(on: entry)
     }
 
+    /// Starts the conversation a finger has come down on, before the finger lifts.
+    ///
+    /// The press is the intent and the lift only confirms it, so the tenth of a second between
+    /// them, and the push after, is spent reading the chat: its transcript from this device's
+    /// cache, the stream dialled, the server asked what changed. The chat that opens renders what
+    /// is already in memory instead of a placeholder. A press that turns into a scroll costs one
+    /// read: the conversation is unbound, so it stops itself the moment it settles, and nothing
+    /// holds on to it past a few seconds.
+    private func warm(_ entry: SessionEntry) {
+        guard
+            SessionActivity.shared.retainedViewModel(
+                for: entry.session.id, contextID: entry.profileID) == nil,
+            warmed?.session.id != entry.session.id || warmed?.contextID != entry.profileID,
+            let backend = viewModel.backend(for: entry)
+        else { return }
+        let chat = ChatViewModel(
+            backend: backend, session: entry.session, contextID: entry.profileID,
+            serverName: entry.profileName)
+        chat.isBound = false
+        warmed = chat
+        chat.start()
+        AppLogger.session.info("warm session=\(entry.session.id)")
+        Task { @MainActor [weak self, weak chat] in
+            try? await Task.sleep(for: Self.warmLifetime)
+            guard let self, let chat, self.warmed === chat else { return }
+            self.warmed = nil
+            let kept = SessionActivity.shared.retainedViewModel(
+                for: chat.session.id, contextID: chat.contextID)
+            if !chat.isBound, kept !== chat { chat.stop() }
+        }
+    }
+
+    private static let warmLifetime: Duration = .seconds(8)
+
+    /// The warmed conversation, if it is the one being opened.
+    private func takeWarmed(_ entry: SessionEntry) -> ChatViewModel? {
+        guard let chat = warmed, chat.session.id == entry.session.id,
+            chat.contextID == entry.profileID
+        else { return nil }
+        warmed = nil
+        return chat
+    }
+
     /// Opens a conversation, and — when the caller has one — puts a question into it.
     ///
     /// The question travels *with* the open rather than being chained onto what this returns.
@@ -1376,6 +1420,7 @@ final class HomeViewController: UIViewController {
         let reused =
             SessionActivity.shared.retainedViewModel(
                 for: entry.session.id, contextID: entry.profileID)
+            ?? takeWarmed(entry)
         let chatViewModel =
             reused
             ?? ChatViewModel(
@@ -3316,6 +3361,16 @@ extension HomeViewController {
 }
 
 extension HomeViewController: UICollectionViewDelegate {
+    func collectionView(
+        _ collectionView: UICollectionView, didHighlightItemAt indexPath: IndexPath
+    ) {
+        switch dataSource.itemIdentifier(for: indexPath) {
+        case .live(let card): warm(card.entry)
+        case .recent(let card): warm(card.entry)
+        default: break
+        }
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         releaseDeferredSnapshotIfNeeded()

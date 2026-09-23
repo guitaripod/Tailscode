@@ -8,6 +8,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         AppLogger.lifecycle.info("didFinishLaunching")
+        FieldMetrics.shared.start()
         ShortcutSet.configDirectoryOverride = FileManager.default.urls(
             for: .documentDirectory, in: .userDomainMask
         ).first

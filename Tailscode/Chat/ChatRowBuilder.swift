@@ -11,8 +11,9 @@ enum ChatRowBuilder {
     ///   conversation knows that (`MessageSegment.isSealed`).
     static func makeRows(
         from messages: [ChatMessage], agents: ChatViewController.SubagentPlacement,
-        runs: [String: WorkflowRun] = [:], turnOpen: Bool = false
+        runs: [String: WorkflowRun] = [:], turnOpen: Bool = false, memo: SegmentRowMemo? = nil
     ) -> [ChatRow] {
+        defer { memo?.sweep() }
         var rows: [ChatRow] = []
         var lastDate: Date?
         var seenMessageIDs = Set<String>()
@@ -118,7 +119,7 @@ enum ChatRowBuilder {
                         continue
                     }
                     steps.append(.tool(call))
-                    if call.summary.kind == .workflow, !pendingUnattached.isEmpty {
+                    if call.summaryKind == .workflow, !pendingUnattached.isEmpty {
                         flushActivity()
                         rows.append(
                             contentsOf: Self.agentRows(
@@ -148,10 +149,15 @@ enum ChatRowBuilder {
                         let sealed = MessageSegment.isSealed(
                             streaming: message.isStreaming, isNewest: message.id == writing,
                             turnOpen: turnOpen)
-                        rows.append(
-                            contentsOf: Self.segmentRows(
+                        let split = {
+                            Self.segmentRows(
                                 text, id: id, messageID: message.id, role: message.role,
-                                sealed: sealed))
+                                sealed: sealed)
+                        }
+                        rows.append(
+                            contentsOf: memo?.rows(
+                                for: id, text: text, role: message.role, sealed: sealed,
+                                split: split) ?? split())
                     }
                 case .file(let file):
                     flushActivity()

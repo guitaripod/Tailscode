@@ -3,7 +3,7 @@ import OSLog
 
 enum AppLogger {
     enum Category: String {
-        case lifecycle, connection, session, chat, streaming, persistence, ui
+        case lifecycle, connection, session, chat, streaming, persistence, ui, performance
     }
 
     static let lifecycle = AppLog(.lifecycle)
@@ -13,6 +13,7 @@ enum AppLogger {
     static let streaming = AppLog(.streaming)
     static let persistence = AppLog(.persistence)
     static let ui = AppLog(.ui)
+    static let performance = AppLog(.performance)
 }
 
 struct AppLog: Sendable {

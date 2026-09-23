@@ -218,7 +218,7 @@ struct TranscriptRow: Hashable {
 
     /// A Workflow call is its run, not a tool line; everything else that spawns work is an agent.
     static func kind(for call: ToolCall) -> Kind {
-        if call.summary.kind == .workflow { return .workflow(call) }
+        if call.summaryKind == .workflow { return .workflow(call) }
         return call.spawnsSubagent ? .subagent(call) : .tool(call)
     }
 

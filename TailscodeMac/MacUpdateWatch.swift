@@ -137,7 +137,7 @@ final class MacUpdateWatch {
         let reading = await Task.detached(priority: .utility) {
             MacAppInstall.reading(lastKnown: lastKnown)
         }.value
-        UpdateLedger.record(reading)
+        UpdateLedger.record(reading, restamp: true)
     }
 
     /// The demo's servers are a story, not machines: asking one what it runs would write an

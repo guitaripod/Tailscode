@@ -2172,6 +2172,19 @@ final class ChatViewController: UIViewController {
     private func render(_ state: ConversationState) {
         lastRenderedState = state
         compose(state, rebuild: rebuildTranscript(state))
+        noteOpened(state)
+    }
+
+    private let openedAt = ContinuousClock.now
+    private var openTimed = false
+
+    /// How long the conversation took to appear, from the moment this screen was made for it to
+    /// the first build that had words to draw: the wait a person feels on every tap.
+    private func noteOpened(_ state: ConversationState) {
+        guard !openTimed, !state.messages.isEmpty else { return }
+        openTimed = true
+        AppLogger.performance.info(
+            "journey open session=\(viewModel.session.id) ms=\(FirstAnswerClock.milliseconds(since: openedAt)) messages=\(state.messages.count) rows=\(orderedIDs.count)")
     }
 
     /// Only what this device is holding changed — a message sent, taken back, failed, or moved in
@@ -2192,6 +2205,8 @@ final class ChatViewController: UIViewController {
         let rows: [ChatRow]
     }
 
+    private let segmentMemo = SegmentRowMemo()
+
     private func rebuildTranscript(_ state: ConversationState) -> TranscriptRebuild {
         let runs = WorkflowRunAssembly.runs(
             messages: state.messages, agents: viewModel.trackedSubagents)
@@ -2200,7 +2215,7 @@ final class ChatViewController: UIViewController {
         let rows = ChatRowBuilder.makeRows(
             from: state.messages, agents: subagentPlacement(for: state.messages),
             runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }),
-            turnOpen: state.status == .running)
+            turnOpen: state.status == .running, memo: segmentMemo)
         let previous = rowsByID
         let uniqueRows = Self.dedupeRows(rows)
         rowsByID = Dictionary(uniqueKeysWithValues: uniqueRows.map { ($0.id, $0) })

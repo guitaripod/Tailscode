@@ -48,13 +48,16 @@ public enum UpdateLedger {
         remembered(now: now).first { $0.component == component }
     }
 
-    public static func record(_ reading: UpdateReading) {
-        record([reading])
+    /// - Parameter restamp: whether a reading that differs only in when it was read is written
+    ///   anyway. A check somebody asked for is, so its card says it was checked just now; the
+    ///   follow loops' polling is not (see ``restampAfter``).
+    public static func record(_ reading: UpdateReading, restamp: Bool = false) {
+        record([reading], restamp: restamp)
     }
 
-    public static func record(_ readings: [UpdateReading]) {
+    public static func record(_ readings: [UpdateReading], restamp: Bool = false) {
         guard !readings.isEmpty else { return }
-        mutate { all in
+        mutate(restamp: restamp) { all in
             let replaced = Set(readings.map(\.component))
             return all.filter { !replaced.contains($0.component) } + readings
         }
@@ -86,18 +89,57 @@ public enum UpdateLedger {
     /// Read, edit and write as one step. Every path that changes the ledger goes through here, and
     /// the notification is posted after the lock is dropped so an observer that reads the ledger
     /// back cannot deadlock against the write that woke it.
-    private static func mutate(_ change: ([UpdateReading]) -> [UpdateReading]) {
+    private static func mutate(
+        restamp: Bool = false, _ change: ([UpdateReading]) -> [UpdateReading]
+    ) {
         lock.lock()
         let before = stored()
         let after = change(before)
-        let changed = after.count != before.count || after != before
-        if changed, let data = try? JSONEncoder().encode(after) {
+        let changed = (after.count != before.count || after != before)
+            && (restamp || worthRecording(after, over: before, now: Date()))
+        if changed, let data = try? encoder.encode(after) {
             defaults.set(data, forKey: readingsKey)
         }
         lock.unlock()
         guard changed else { return }
         NotificationCenter.default.post(name: didChange, object: nil)
     }
+
+    /// How long a reading that only moved its clock is left the way it was written.
+    ///
+    /// A machine being followed is asked every few seconds (every ten for hours on end while it
+    /// waits for its turns to finish before restarting) and answers the same thing with a new time
+    /// on it. Recording each of those told every surface the picture had changed, and on the
+    /// desktop that keeps its settings in a file it rewrote the whole file with it. The times still
+    /// reach the ledger, a few minutes apart instead of a few seconds, which is finer than anything
+    /// that reads them: a card's "checked" line and freshness windows measured in hours.
+    static let restampAfter: TimeInterval = 5 * 60
+
+    /// Whether `after` says anything `before` did not, beyond the moments its answers were read.
+    static func worthRecording(
+        _ after: [UpdateReading], over before: [UpdateReading], now: Date
+    ) -> Bool {
+        let prior = Dictionary(
+            before.map { ($0.component.key, $0) }, uniquingKeysWith: { first, _ in first })
+        guard Set(after.map(\.component.key)) == Set(prior.keys), after.count == prior.count else {
+            return true
+        }
+        for reading in after {
+            guard let old = prior[reading.component.key] else { return true }
+            guard reading != old else { continue }
+            guard reading.unstamped == old.unstamped, let stamped = old.checkedAt, stamped <= now,
+                now.timeIntervalSince(stamped) < restampAfter
+            else { return true }
+        }
+        return false
+    }
+
+    /// Keys in one order, so the same ledger is always the same bytes.
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
 
     public static func lastCheck() -> Date? {
         let stamp = defaults.double(forKey: lastCheckKey)
@@ -146,5 +188,24 @@ public enum UpdateLedger {
         init(from decoder: any Decoder) throws {
             reading = try? UpdateReading(from: decoder)
         }
+    }
+}
+
+extension UpdateReading {
+    /// The reading with the moments it was read at set aside, for telling a new answer from the same
+    /// answer read again.
+    var unstamped: UpdateReading {
+        UpdateReading(
+            component: component, title: title, subtitle: subtitle,
+            installed: VersionFact(text: installed.text, provenance: installed.provenance),
+            available: VersionFact(text: available.text, provenance: available.provenance),
+            verdict: verdict, invitation: invitation, manager: manager, log: log, checkedAt: nil,
+            note: note,
+            automation: automation.map {
+                UpdateAutomation(
+                    enabled: $0.enabled, lastTakenAt: $0.lastTakenAt, lastTarget: $0.lastTarget,
+                    holdingOff: $0.holdingOff)
+            },
+            product: product, lastOutcome: lastOutcome, build: build)
     }
 }

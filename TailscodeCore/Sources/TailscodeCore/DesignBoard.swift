@@ -330,11 +330,21 @@ public enum DesignReading {
     private static func source(of call: ToolCall) -> DesignSource? {
         switch call.summaryKind {
         case .fileWrite, .fileEdit:
-            guard let path = call.summary.filePath, DesignPaths.isManifest(path) else { return nil }
+            guard let path = writtenPath(of: call), DesignPaths.isManifest(path) else { return nil }
             return .board(directory: DesignPaths.directory(ofManifest: path))
         default:
             return nil
         }
+    }
+
+    /// The path a write or an edit names, read straight from its input. The whole summary would
+    /// say the same, but building it counts every line of the edit and strips the call's output,
+    /// and this question is asked of every edit in a transcript each time the transcript is built.
+    private static func writtenPath(of call: ToolCall) -> String? {
+        for key in ["file_path", "path", "notebook_path"] {
+            if let path = call.input?[key]?.stringValue { return path }
+        }
+        return nil
     }
 
     /// Artifact links the design skill publishes. Only the artifact shape is claimed: a link to

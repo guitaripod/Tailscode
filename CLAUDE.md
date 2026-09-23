@@ -93,3 +93,11 @@ Report the version and pid the install printed. If an install is deliberately sk
 ## Reality
 
 - All networking/streaming/state lives in CodingAgentKit; the app only renders `ConversationState` from `AgentConversation.states()` and forwards user intent. If a capability is missing, add it to the Kit (it's the reusable core), not the app.
+
+## Performance (measured, then kept)
+
+- A transcript is rebuilt from every message on each state a conversation emits, which while a turn streams is every token, so nothing in a rebuild may cost the size of the conversation. Ask a tool call what it is with `summaryKind`, never `summary` (that parses the input and strips the whole output); read a path from `input`. iOS reuses each text part's split rows (`SegmentRowMemo`), the desktops reuse whole messages (`TranscriptRowBuilder`).
+- The live row's markdown gate reads only what arrived (`CascadeGate.read` and its memo), and the prefix it hands back is found from the end.
+- Linux `SettingsFile` writes only when a value changed, coalesced on its own queue, and `flush()` runs on every exit path. Nothing on a timer may encode the whole file on the GTK thread. `UpdateLedger.worthRecording` keeps a reading that only moved its clock from counting as news.
+- Every `HTTPClient(policy:)` with the same policy shares one `URLSession`; bridge transcripts are read with `If-None-Match` and a 304 hands back the held copy (claude-bridge 1.11+).
+- Numbers from the field: iOS logs `journey open`, `journey firstAnswer` and daily MetricKit summaries (hang and crash stacks under `Library/Logs/diagnostics`) in the `performance` category; Linux has `TAILSCODE_TRACE=1`.

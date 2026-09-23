@@ -227,7 +227,7 @@ public final class UpdateDriver: @unchecked Sendable {
         guard !isFollowing(machine.component) else { return remembered(machine) }
         guard beginAsking(machine.component) else { return remembered(machine) }
         let outcome = await outcome(for: machine, remote: remote, fetchingNow: fetchingNow)
-        let reading = record(machine, outcome)
+        let reading = record(machine, outcome, restamp: true)
         endAsking(machine.component)
         if reading.verdict.isBusy { follow(machine, press: nil) }
         return reading
@@ -663,9 +663,11 @@ public final class UpdateDriver: @unchecked Sendable {
     }
 
     @discardableResult
-    private func record(_ machine: Machine, _ outcome: UpdateReadings.Outcome) -> UpdateReading {
+    private func record(
+        _ machine: Machine, _ outcome: UpdateReadings.Outcome, restamp: Bool = false
+    ) -> UpdateReading {
         let reading = reading(machine, outcome)
-        UpdateLedger.record(reading)
+        UpdateLedger.record(reading, restamp: restamp)
         return reading
     }
 

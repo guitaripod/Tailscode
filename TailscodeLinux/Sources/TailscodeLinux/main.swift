@@ -158,6 +158,7 @@ if wantsAsk {
 /// and it touches no widget because by here there may be none left.
 Gtk.connect(UnsafeMutableRawPointer(app), "shutdown") {
     DraftStore.flush()
+    SettingsFile.flush()
 }
 
 Trace.stamp("gtk run")

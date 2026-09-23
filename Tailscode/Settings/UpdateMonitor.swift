@@ -133,7 +133,8 @@ enum UpdateMonitor {
                 install: install, release: release, failure: failure,
                 storeURL: AppStoreLookup.storeURL, projectURL: projectURL, checkedAt: now,
                 title: String(localized: "This \(UIDevice.current.model)"),
-                lastKnown: UpdateLedger.remembered(.app)))
+                lastKnown: UpdateLedger.remembered(.app)),
+            restamp: true)
     }
 
     /// The demo's servers are a story, not machines: asking them what they run would put an

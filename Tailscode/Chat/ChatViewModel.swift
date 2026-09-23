@@ -462,6 +462,10 @@ final class ChatViewModel {
                 }
                 let displayedBefore = (self.displayedModel, self.displayedEffort)
                 self.state = state
+                if let waited = self.firstAnswer.answered(state) {
+                    AppLogger.performance.info(
+                        "journey firstAnswer session=\(self.session.id) ms=\(waited)")
+                }
                 if (self.displayedModel, self.displayedEffort) != displayedBefore {
                     self.onModelChange?()
                 }
@@ -1027,6 +1031,7 @@ final class ChatViewModel {
     var canRegenerate: Bool { lastSent != nil && !isBusy }
 
     private var sendTask: Task<Void, Never>?
+    private var firstAnswer = FirstAnswerClock()
 
     /// Holds a send on the wire for as long as `TAILSCODE_HOLD_SEND` says, so the states a fast
     /// server passes through in a frame can be seen and photographed. A screenshot that has to
@@ -1089,6 +1094,7 @@ final class ChatViewModel {
             text: text, model: model, effort: effort, attachments: attachments)
         lastSent = outgoing
         let userCount = state.messages.count { $0.role == .user }
+        firstAnswer.sent(promptsBefore: userCount)
         let echoID: UUID
         if let row, pending.restart(id: row, userMessages: userCount) != nil {
             echoID = row

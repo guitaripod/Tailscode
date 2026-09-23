@@ -1976,6 +1976,7 @@ public enum SelfTest {
         let previous = keys.map { ($0, defaults.object(forKey: $0)) }
         defer {
             for (key, value) in previous { SettingsFile.set(value, forKey: key) }
+            SettingsFile.flush()
         }
 
         SettingsFile.set(true, forKey: keys[0])

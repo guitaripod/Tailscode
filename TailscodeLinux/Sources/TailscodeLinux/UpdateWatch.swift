@@ -170,7 +170,7 @@ enum UpdateWatch {
         let reading = await Task.detached {
             appReading(fetching: fetching, release: release, failure: failure)
         }.value
-        UpdateLedger.record(reading)
+        UpdateLedger.record(reading, restamp: fetching)
     }
 
     /// The app replacing itself. Answers nil once the work has been handed off, and the sentence to

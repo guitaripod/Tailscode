@@ -2915,6 +2915,7 @@ final class MainWindow: @unchecked Sendable {
     func quitForUpdate() {
         stashDrafts()
         DraftStore.flush()
+        SettingsFile.flush()
         g_application_quit(ptr(app))
     }
 
