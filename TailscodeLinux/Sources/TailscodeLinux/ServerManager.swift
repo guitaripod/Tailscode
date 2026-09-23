@@ -43,6 +43,7 @@ final class ServerManager: @unchecked Sendable {
     /// expander should leave the reader where they were, not collapsed back to the top.
     private var expandAfterReload: String?
     private var profiles: [ConnectionProfile] = []
+    private var observingUpdates = false
 
     init(onChanged: @escaping @Sendable () -> Void) {
         self.onChanged = onChanged
@@ -79,12 +80,47 @@ final class ServerManager: @unchecked Sendable {
         token = Self.hold(self)
         let token = self.token
         Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { Self.release(token) }
+        observeUpdates()
 
         reload()
         readTailnetAddress()
         gtk_window_present(ptr(window))
     }
 
+    /// Every answer any machine gives redraws that machine's own embedded card in place — the
+    /// same ledger the Software window renders from, so the two can never disagree about what a
+    /// reading means while both happen to be open at once.
+    private func observeUpdates() {
+        guard !observingUpdates else { return }
+        observingUpdates = true
+        for name in [UpdateLedger.didChange, UpdateDriver.didChange] {
+            _ = NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) {
+                [weak self] _ in
+                Gtk.onMain { [weak self] in self?.refreshSoftwareCards() }
+            }
+        }
+    }
+
+    private func refreshSoftwareCards() {
+        guard window != nil else { return }
+        let rollup = UpdateLedger.rollup()
+        let snapshot = UpdateWatch.driver.snapshot
+        for profile in profiles {
+            guard let cardView = rows[profile.id]?.softwareCard else { continue }
+            let component = UpdateComponent.server(profileID: profile.id)
+            let existing = rollup.readings.first { $0.component == component }
+            let reading =
+                existing
+                ?? UpdateReading(
+                    component: component, title: profile.name, installed: .unknown,
+                    verdict: .unverified(.neverChecked),
+                    product: UpdateProduct.name(for: profile.backend))
+            cardView.apply(
+                UpdateCard(
+                    reading, acknowledged: rollup.isAcknowledged(reading),
+                    busy: snapshot.isBusy(component) || existing == nil))
+        }
+    }
 
     private func makeConfiguredGroup(on page: UnsafeMutablePointer<GtkWidget>)
         -> UnsafeMutablePointer<GtkWidget>
@@ -220,6 +256,7 @@ final class ServerManager: @unchecked Sendable {
             adw_preferences_group_add(ptr(group), ptr(row))
             configuredRows.append(row)
         }
+        refreshSoftwareCards()
     }
 
     private func makeRow(_ profile: ConnectionProfile) -> UnsafeMutablePointer<GtkWidget> {
@@ -255,19 +292,62 @@ final class ServerManager: @unchecked Sendable {
         let isDemo = profile.id.hasPrefix(DemoWorld.profilePrefix)
         let isEnvironment = profile.id == "environment"
 
-        if profile.backend == .claudeCode && !isDemo {
-            let (software, softwareActions) = Self.factRow(title: Localized.text("Software"))
-            slots.software = software
-            slots.softwareActions = softwareActions
-            adw_expander_row_add_row(ptr(row), software)
+        if !isDemo {
+            let cardView = UpdateCardView(style: .embedded)
+            slots.softwareCard = cardView
+            let wrapper = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            Gtk.margins(wrapper, top: 10, bottom: 10, leading: 12, trailing: 12)
+            gtk_box_append(ptr(wrapper), cardView.widget)
+            let cardRow = adw_preferences_row_new()!
+            gtk_list_box_row_set_child(ptr(cardRow), wrapper)
+            gtk_list_box_row_set_activatable(ptr(cardRow), 0)
+            gtk_list_box_row_set_selectable(ptr(cardRow), 0)
+            adw_expander_row_add_row(ptr(row), cardRow)
 
-            let auto = Self.autoUpdateRow(profileID: profile.id) { [weak self] id, enabled in
-                self?.setAutoUpdate(id, enabled)
+            let id = profile.id
+            cardView.onAction = { [weak self] action in
+                guard let self,
+                    let reading = UpdateLedger.rollup().readings.first(where: {
+                        $0.component == .server(profileID: id)
+                    })
+                else { return }
+                UpdatePress.perform(action, for: reading, parent: self.window) { [weak self] text in
+                    Gtk.onMain { [weak self] in self?.toast(text) }
+                }
             }
-            slots.auto = auto
-            gtk_widget_set_visible(auto, 0)
-            adw_expander_row_add_row(ptr(row), auto)
+            cardView.onAutomation = { [weak self, weak cardView] enabled in
+                guard let self, let cardView,
+                    let reading = UpdateLedger.rollup().readings.first(where: {
+                        $0.component == .server(profileID: id)
+                    })
+                else { return }
+                UpdatePress.setAutomation(
+                    enabled, for: reading,
+                    restore: { [weak cardView] in cardView?.restoreAutomation() },
+                    toast: { [weak self] text in Gtk.onMain { [weak self] in self?.toast(text) } })
+            }
 
+            let updatesRow = adw_action_row_new()!
+            adw_preferences_row_set_use_markup(ptr(updatesRow), 0)
+            adw_preferences_row_set_title(ptr(updatesRow), Localized.text("All software updates"))
+            adw_action_row_set_subtitle(
+                ptr(updatesRow),
+                Localized.text("This app and every server, and what each one is running"))
+            adw_action_row_set_subtitle_lines(ptr(updatesRow), 0)
+            gtk_list_box_row_set_activatable(ptr(updatesRow), 1)
+            let chevron = Gtk.label("›", css: "dim", selectable: false)
+            gtk_widget_set_valign(chevron, GTK_ALIGN_CENTER)
+            adw_action_row_add_suffix(ptr(updatesRow), chevron)
+            Gtk.connect(UnsafeMutableRawPointer(updatesRow), "activated") { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self, let window = self.window else { return }
+                    UpdatePanel.present(parent: window)
+                }
+            }
+            adw_expander_row_add_row(ptr(row), updatesRow)
+        }
+
+        if profile.backend == .claudeCode && !isDemo {
             let (account, accountActions) = Self.factRow(title: Localized.text("Claude account"))
             slots.account = account
             slots.accountActions = accountActions
@@ -380,8 +460,8 @@ final class ServerManager: @unchecked Sendable {
         }
 
         checkHealth(profile)
+        if !isDemo { UpdateWatch.recheck(.server(profileID: profile.id)) }
         if profile.backend == .claudeCode && !isDemo {
-            checkSoftware(profile)
             checkAccount(profile)
         }
         return row
@@ -465,194 +545,6 @@ final class ServerManager: @unchecked Sendable {
                     title: diagnosis.title)
                 self.setGlyph(slots, "✕", css: "glyph-error")
             }
-        }
-    }
-
-    /// What this machine is running, asked through the same road the update centre uses — so the
-    /// answer is written into ``UpdateLedger`` on the way past and the two screens cannot end up
-    /// telling the person different things about the same server.
-    private func checkSoftware(_ profile: ConnectionProfile) {
-        guard let slots = rows[profile.id] else { return }
-        setFact(
-            slots.software, slots.softwareActions, Localized.text("Checking for updates…"),
-            tone: .quiet, actions: [])
-        let id = profile.id
-        Task { [weak self] in
-            let reading = await UpdateWatch.ask(profile, checkingRemote: true)
-            Gtk.onMain { [weak self] in self?.renderSoftware(reading, profileID: id) }
-        }
-    }
-
-    /// One `UpdateReading`, drawn. There is no decision left to make here: whether a server is
-    /// current, too old for the route, unreachable, built but not restarted, or unable to update
-    /// itself is Core's judgement, and a client that re-derived it from the same fields would
-    /// eventually derive it differently.
-    private func renderSoftware(_ reading: UpdateReading, profileID: String) {
-        guard let slots = rows[profileID] else { return }
-        var lines = [reading.headline, reading.detail()]
-        let changes = reading.verdict.offer?.changes ?? []
-        if !changes.isEmpty {
-            lines.append(changes.prefix(5).map { "· \($0)" }.joined(separator: "\n"))
-        }
-        let named = reading.verdict.offer?.detailLines ?? []
-        if !named.isEmpty {
-            lines.append(named.prefix(5).map { "· \($0)" }.joined(separator: "\n"))
-        }
-        // The promise reads under the fact rather than beside the button: the suffix box of an
-        // action row is a few characters wide, and a sentence squeezed into it wraps into a column.
-        if let promise = reading.invitation?.promise { lines.append(promise) }
-        setFact(
-            slots.software, slots.softwareActions, lines.joined(separator: "\n"),
-            tone: Self.tone(for: reading),
-            actions: softwareActions(for: reading, profileID: profileID))
-        renderAutoUpdate(reading, into: slots)
-    }
-
-    /// The switch that hands a machine the job of staying current. It is built once with the row it
-    /// belongs to and only ever repainted, because a widget that appears the first time a machine
-    /// answers is a widget nobody owns; it stays hidden until that machine says it has a policy at
-    /// all, since a bridge too old for one deserves no switch rather than a dead one.
-    ///
-    /// Offered on the environment's server as much as on a typed-in one: `TAILSCODE_HOST` decides
-    /// which machine this row talks to, and this setting lives on that machine either way.
-    private static func autoUpdateRow(
-        profileID: String, onChange: @escaping @Sendable (String, Bool) -> Void
-    ) -> UnsafeMutablePointer<GtkWidget> {
-        let row = adw_switch_row_new()!
-        adw_preferences_row_set_use_markup(ptr(row), 0)
-        adw_preferences_row_set_title(ptr(row), Localized.text("Keep this server up to date"))
-        adw_action_row_set_subtitle_lines(ptr(row), 0)
-        let bits = UInt(bitPattern: row)
-        Gtk.onNotify(UnsafeMutableRawPointer(row), property: "active") {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-            onChange(profileID, adw_switch_row_get_active(op(raw)) != 0)
-        }
-        return row
-    }
-
-    /// A press on the switch is a request to the machine, and the answer it gives is what the switch
-    /// then shows — never the value the finger left behind. A machine that refuses says so and the
-    /// row goes back to the last thing that machine actually said.
-    private func setAutoUpdate(_ profileID: String, _ enabled: Bool) {
-        guard let slots = rows[profileID], !slots.writingAuto,
-            let profile = profiles.first(where: { $0.id == profileID })
-        else { return }
-        Task { [weak self] in
-            let reading = await UpdateWatch.setAutoUpdate(profile, enabled)
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                guard let reading else {
-                    self.toast(Localized.text("%@ did not take that.", profile.name))
-                    UpdateLedger.remembered(.server(profileID: profileID))
-                        .map { self.renderSoftware($0, profileID: profileID) }
-                    return
-                }
-                self.renderSoftware(reading, profileID: profileID)
-            }
-        }
-    }
-
-    /// The machine's own account of its policy, written into the switch from the reading rather than
-    /// from the press — so the flag being set fires no second request of its own.
-    private func renderAutoUpdate(_ reading: UpdateReading, into slots: ServerRow) {
-        guard let row = slots.auto else { return }
-        guard let automation = reading.automation else {
-            gtk_widget_set_visible(row, 0)
-            return
-        }
-        slots.writingAuto = true
-        adw_switch_row_set_active(OpaquePointer(row), automation.enabled ? 1 : 0)
-        slots.writingAuto = false
-        adw_action_row_set_subtitle(ptr(row), automation.sentence())
-        gtk_widget_set_visible(row, 1)
-    }
-
-    private static func tone(for reading: UpdateReading) -> Tone {
-        switch reading.verdict {
-        case .current: return .good
-        case .behind(let offer): return offer.canInstallHere ? .warn : .quiet
-        case .failed: return .bad
-        case .ahead, .working, .blocked, .unverified: return .quiet
-        }
-    }
-
-    /// The one press the reading earned, and nothing else. `installHere` and `restartHere` are the
-    /// two that end on this machine; everything else says outright that it hands the job somewhere
-    /// else, and what a press promises is printed with the fact above it rather than crushed into
-    /// the strip the button sits in.
-    private func softwareActions(for reading: UpdateReading, profileID: String)
-        -> [UnsafeMutablePointer<GtkWidget>]
-    {
-        guard let invitation = reading.invitation else { return [] }
-        var made: [UnsafeMutablePointer<GtkWidget>] = []
-        switch invitation {
-        case .installHere:
-            made.append(
-                Self.inlineButton(invitation.label, css: ["suggested-action"]) { [weak self] in
-                    self?.runUpdate(profileID: profileID)
-                })
-        case .restartHere:
-            made.append(
-                Self.inlineButton(invitation.label) { [weak self] in
-                    self?.runRestart(profileID: profileID)
-                })
-        case .copyCommand(let command):
-            made.append(
-                Self.inlineButton(invitation.label) { [weak self] in
-                    Gtk.copyToClipboard(command)
-                    self?.toast(Localized.text("Install command copied"))
-                })
-        case .recheck:
-            made.append(
-                Self.inlineButton(invitation.label) { [weak self] in
-                    guard let self,
-                        let profile = self.profiles.first(where: { $0.id == profileID })
-                    else { return }
-                    self.checkSoftware(profile)
-                })
-        case .openStore(let url), .openPage(let url):
-            made.append(Self.inlineButton(invitation.label) { SignInDialog.openInBrowser(url) })
-        }
-        return made
-    }
-
-    /// The update is followed to the end, not to the first heartbeat: the old process keeps
-    /// answering `/health` through the whole fetch and build, so a refused connection is the restart
-    /// doing its job. ``UpdateWatch`` owns that walk, and this row is one of the things it reports
-    /// to — the update centre's own row updates from the same answers at the same moment.
-    private func runUpdate(profileID: String) {
-        guard let profile = profiles.first(where: { $0.id == profileID }),
-            let slots = rows[profileID]
-        else { return }
-        setFact(
-            slots.software, slots.softwareActions,
-            Localized.text("Updating — asking the server to fetch and build…"), tone: .quiet,
-            actions: [])
-        UpdateWatch.updateServer(profile) { [weak self] reading in
-            guard let self else { return }
-            self.renderSoftware(reading, profileID: profileID)
-            guard !reading.verdict.isBusy else { return }
-            self.toast(Localized.text("%@ · %@", profile.name, reading.headline))
-            self.checkHealth(profile)
-        }
-    }
-
-    /// A build that machine already has, loaded. The same walk as an update and for the same reason:
-    /// the bridge goes quiet partway through while its supervisor starts it again, which is the
-    /// press working rather than the press failing.
-    private func runRestart(profileID: String) {
-        guard let profile = profiles.first(where: { $0.id == profileID }),
-            let slots = rows[profileID]
-        else { return }
-        setFact(
-            slots.software, slots.softwareActions,
-            UpdateProgress(step: .waitingForQuiet).word, tone: .quiet, actions: [])
-        UpdateWatch.restartServer(profile) { [weak self] reading in
-            guard let self else { return }
-            self.renderSoftware(reading, profileID: profileID)
-            guard !reading.verdict.isBusy else { return }
-            self.toast(Localized.text("%@ · %@", profile.name, reading.headline))
-            self.checkHealth(profile)
         }
     }
 
@@ -1141,8 +1033,10 @@ final class ServerManager: @unchecked Sendable {
     private func recheck(_ profileID: String) {
         guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
         checkHealth(profile)
+        if !profile.id.hasPrefix(DemoWorld.profilePrefix) {
+            UpdateWatch.recheck(.server(profileID: profile.id))
+        }
         if profile.backend == .claudeCode, !profile.id.hasPrefix(DemoWorld.profilePrefix) {
-            checkSoftware(profile)
             checkAccount(profile)
         }
     }
@@ -1395,12 +1289,9 @@ private final class ServerRow {
     var glyph: UnsafeMutablePointer<GtkWidget>?
     var health: UnsafeMutablePointer<GtkWidget>?
     var healthActions: UnsafeMutablePointer<GtkWidget>?
-    var software: UnsafeMutablePointer<GtkWidget>?
-    var softwareActions: UnsafeMutablePointer<GtkWidget>?
-    var auto: UnsafeMutablePointer<GtkWidget>?
-    /// Set while the switch is being written from a reading. A switch changed in code notifies as
-    /// loudly as one changed by a finger, and the machine would be asked to set what it just said.
-    var writingAuto = false
+    /// The embedded software card, Core's `UpdateCard` drawn the same way the Software window
+    /// draws it — kept here so a ledger change can rewrite exactly this row's card in place.
+    var softwareCard: UpdateCardView?
     var account: UnsafeMutablePointer<GtkWidget>?
     var accountActions: UnsafeMutablePointer<GtkWidget>?
     var address: UnsafeMutablePointer<GtkWidget>?

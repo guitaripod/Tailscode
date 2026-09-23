@@ -119,7 +119,9 @@ enum Kit {
     /// splits an omp model name into its door and id and gives omp its own fallback ladder. 0.29.0
     /// carries background work's age and stall and the person's own end of it. 0.30.1 speaks
     /// opencode 2 — the backend finds out which generation a server runs and answers in it.
-    static let version = Version(0, 30, 1)
+    /// 0.31.0 reads an update as a job and a release — the step a bridge's update is on, how it
+    /// ended and what the new version brings — and asks for the project to be fetched now.
+    static let version = Version(0, 31, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

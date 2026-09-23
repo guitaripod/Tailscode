@@ -34,7 +34,6 @@ final class MainWindow: @unchecked Sendable {
     private let updateBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let updateGlyph = Gtk.label("·", css: nil, selectable: false)
     private let updateHeadline = Gtk.label("", css: "sidebar-detail", selectable: false)
-    private var updates: UpdatePanel?
     private let usageBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
     private let orb = OrbPainter()
     private var orbTarget: SessionEntry?
@@ -400,6 +399,8 @@ final class MainWindow: @unchecked Sendable {
                     self.activePane.jumpToBottom()
                 case "servers":
                     self.presentServers()
+                case "updates":
+                    self.presentUpdates()
                 case "settings":
                     self.presentSettings()
                 case "models":
@@ -2859,9 +2860,7 @@ final class MainWindow: @unchecked Sendable {
     /// The update centre, held the same way the server screen is: a second ask raises the window
     /// already open rather than stacking a second copy of a screen following a live update.
     private func presentUpdates() {
-        let panel = updates ?? UpdatePanel()
-        updates = panel
-        panel.present(parent: sidebarPane)
+        UpdatePanel.present(parent: sidebarPane)
     }
 
     /// The mark, drawn from what this device already knew. It says one thing and holds still unless
@@ -2869,34 +2868,42 @@ final class MainWindow: @unchecked Sendable {
     /// stillness is what tells a reader the app is not busy on their behalf. There is no dismiss
     /// gesture here and no other one anywhere: setting an offer aside happens inside the update
     /// centre, against that exact offer.
+    ///
+    /// The glyph is the rollup's own icon; the word and the tone the glyph turns are the chip's —
+    /// a chip that says "Update" holds still even while another machine updates in the background,
+    /// because a spinning arrow beside that word would read as the download it is not.
     private func renderUpdates() {
         let rollup = UpdateLedger.rollup()
-        guard rollup.showsMark else {
+        guard let chip = rollup.chip else {
             ActivityPulse.stop(updateGlyph)
             gtk_widget_set_visible(updateBox, 0)
             return
         }
-        let icon = rollup.icon
+        let icon = ActivityIcon(
+            symbol: rollup.icon.symbol, glyph: rollup.icon.glyph, cycle: rollup.icon.cycle,
+            tone: chip.tone, motion: chip.motion)
         gtk_label_set_text(op(updateGlyph), icon.glyph)
         Gtk.setTone(updateGlyph, icon.glyphCSS, from: Self.updateTones)
         ActivityPulse.apply(icon, to: updateGlyph)
-        gtk_label_set_text(op(updateHeadline), rollup.headline)
+        gtk_label_set_text(op(updateHeadline), chip.title)
         gtk_widget_set_tooltip_text(updateBox, rollup.accessibilityLine())
         gtk_widget_set_visible(updateBox, 1)
     }
 
     private static let updateTones = ActivityTone.allCases.map(\.glyphCSS)
 
-    /// Every answer any machine gives redraws the mark — and is written through to the settings
-    /// file, because `UserDefaults` on Linux is keyed to the running executable and a mark that
-    /// lived only there would evaporate on exactly the install it exists to talk about.
+    /// Every answer any machine gives, and every change to what this device is asking or
+    /// following right now, redraws the mark — and is written through to the settings file,
+    /// because `UserDefaults` on Linux is keyed to the running executable and a mark that lived
+    /// only there would evaporate on exactly the install it exists to talk about.
     private func observeUpdates() {
-        NotificationCenter.default.addObserver(
-            forName: UpdateLedger.didChange, object: nil, queue: nil
-        ) { [weak self] _ in
-            Gtk.onMain { [weak self] in
-                SettingsFile.capture()
-                self?.renderUpdates()
+        for name in [UpdateLedger.didChange, UpdateDriver.didChange] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) {
+                [weak self] _ in
+                Gtk.onMain { [weak self] in
+                    SettingsFile.capture()
+                    self?.renderUpdates()
+                }
             }
         }
     }

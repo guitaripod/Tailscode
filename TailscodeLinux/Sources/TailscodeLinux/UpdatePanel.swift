@@ -5,518 +5,719 @@ import CodingAgentKitApple
 import Foundation
 import TailscodeCore
 
-/// Every machine in the picture and what it is running: this app, and each server it talks to.
+/// One machine's software, drawn from Core's `UpdateCard` and nothing else.
 ///
-/// One expander per machine, each carrying the one line that leads it, the honest sentence under
-/// that line, both version numbers with who said them, what an update would bring in, and the single
-/// press that machine has earned — which says before it is pressed whether this app can actually
-/// finish the job. Nothing here invents a verdict: every word comes off the ``UpdateReading`` Core
-/// built, so this screen and the server screen cannot disagree.
+/// It is rewritten in place rather than rebuilt: a job in flight lands a new reading every couple
+/// of seconds for minutes on end, and a card that rebuilt itself on each one would throw away
+/// whatever the reader had opened and move a button under the pointer. Lists — the steps, what is
+/// new, the details — are laid out again only when their content actually changes; the clock
+/// beside the step under way ticks on its own, once a second, while the card's window is mapped.
 ///
-/// Not modal, deliberately. An update takes minutes on somebody else's machine and the person is
-/// not meant to sit and watch it — the window is a place to come back to, and the chat list stays
-/// live behind it. A window presented from a local variable is a window whose buttons do nothing,
-/// so this one holds itself for exactly as long as its window is open, like ``ServerManager``.
-final class UpdatePanel: @unchecked Sendable {
-    private var token: UInt = 0
-    private var window: UnsafeMutablePointer<GtkWidget>?
-    private var machines: UnsafeMutablePointer<GtkWidget>?
-    private var everythingRow: UnsafeMutablePointer<GtkWidget>?
-    private var everythingActions: UnsafeMutablePointer<GtkWidget>?
-    private var listed: [UnsafeMutablePointer<GtkWidget>] = []
-    private var rows: [String: UpdateRow] = [:]
-    private var profiles: [ConnectionProfile] = []
-    private var watching: UInt = 0
-    /// The machine whose expander was open when the list was last rebuilt. A reading that arrives
-    /// while somebody is reading a row must not collapse it back to the top.
-    private var expandAfterReload: String?
-
-    func present(parent: UnsafeMutablePointer<GtkWidget>?) {
-        if let window {
-            gtk_window_present(ptr(window))
-            return
-        }
-        let window = adw_preferences_window_new()!
-        gtk_window_set_title(ptr(window), Localized.text("Software"))
-        gtk_window_set_default_size(ptr(window), 620, 720)
-        gtk_window_set_modal(ptr(window), 0)
-        if let parent, let root = gtk_widget_get_root(parent) {
-            gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
-        }
-        self.window = window
-
-        let page = adw_preferences_page_new()!
-        adw_preferences_window_add(ptr(window), ptr(page))
-        machines = makeMachinesGroup(on: page)
-        makeActionsGroup(on: page)
-
-        token = Self.hold(self)
-        let token = self.token
-        Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { Self.release(token) }
-        observeLedger()
-
-        reload()
-        loadProfiles()
-        gtk_window_present(ptr(window))
+/// Two ways to sit: `standalone` draws its own boxed card and names the machine above the
+/// headline, for the window listing every machine; `embedded` draws neither, for a screen that is
+/// already about that one machine.
+final class UpdateCardView: @unchecked Sendable {
+    enum Style {
+        case standalone
+        case embedded
     }
 
-    private func makeMachinesGroup(on page: UnsafeMutablePointer<GtkWidget>)
-        -> UnsafeMutablePointer<GtkWidget>
+    var onAction: ((UpdateCard.Action) -> Void)?
+    var onAutomation: ((Bool) -> Void)?
+
+    let widget: UnsafeMutablePointer<GtkWidget>
+
+    private let style: Style
+    private let machineLabel = Gtk.label("", css: "sidebar-detail", selectable: false)
+    private let glyph = Gtk.label("·", selectable: false)
+    private let headlineLabel = Gtk.label("", css: "card-title", wrap: true, selectable: false)
+    private let versionLabel = Gtk.label("", css: "usage-plan", wrap: true, selectable: false)
+    private let messageLabel = Gtk.label("", wrap: true)
+    private let stepsBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+    private let notesTitleLabel = Gtk.label("", css: "update-heading", selectable: false)
+    private let notesBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+    private let moreNotesButton = gtk_button_new()!
+    private let actionsBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+    private let automationBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+    private let automationTitleLabel = Gtk.label("", selectable: false)
+    private let automationSwitch = gtk_switch_new()!
+    private let automationStatusLabel = Gtk.label("", css: "seam-footnote", wrap: true, selectable: false)
+    private let detailsButton = gtk_button_new()!
+    private let factsBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+    private let footnoteLabel = Gtk.label("", css: "seam-footnote", selectable: false)
+
+    private var card: UpdateCard?
+    private var notesExpanded = false
+    private var detailsExpanded = false
+    private var writingAutomation = false
+    private var drawnSteps: [StepShape] = []
+    private var stepRows: [(id: String, detail: UnsafeMutablePointer<GtkWidget>, clock: UnsafeMutablePointer<GtkWidget>)] = []
+    private var drawnNotes: [ReleaseNote] = []
+    private var drawnFacts: [UpdateCard.Fact] = []
+    private var drawnActions: [ActionKey] = []
+
+    private var clockLabel: UnsafeMutablePointer<GtkWidget>?
+    private var clockSince: Date?
+    private var clockMapped = false
+    private var clockRunning = false
+
+    /// How much of what is new a card says before it offers the rest.
+    private static let noteLimit = 4
+    private static let glyphTones = ActivityTone.allCases.map(\.glyphCSS)
+
+    init(style: Style) {
+        self.style = style
+        let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+        if style == .standalone { Gtk.addClass(root, "usage-card") }
+        widget = root
+        gtk_widget_set_hexpand(root, 1)
+
+        gtk_widget_set_visible(machineLabel, style == .standalone ? 1 : 0)
+        gtk_box_append(ptr(root), machineLabel)
+
+        gtk_widget_set_valign(glyph, GTK_ALIGN_START)
+        let titles = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_widget_set_hexpand(titles, 1)
+        gtk_box_append(ptr(titles), headlineLabel)
+        gtk_box_append(ptr(titles), versionLabel)
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        gtk_box_append(ptr(header), glyph)
+        gtk_box_append(ptr(header), titles)
+        gtk_box_append(ptr(root), header)
+
+        gtk_box_append(ptr(root), messageLabel)
+        gtk_box_append(ptr(root), stepsBox)
+
+        gtk_box_append(ptr(root), notesTitleLabel)
+        gtk_box_append(ptr(root), notesBox)
+        Gtk.addClass(moreNotesButton, "flat")
+        Gtk.addClass(moreNotesButton, "update-link")
+        gtk_widget_set_halign(moreNotesButton, GTK_ALIGN_START)
+        gtk_box_append(ptr(root), moreNotesButton)
+
+        gtk_box_append(ptr(root), actionsBox)
+
+        let switchLine = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        gtk_widget_set_hexpand(automationTitleLabel, 1)
+        gtk_widget_set_valign(automationSwitch, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(switchLine), automationTitleLabel)
+        gtk_box_append(ptr(switchLine), automationSwitch)
+        gtk_box_append(ptr(automationBox), switchLine)
+        gtk_box_append(ptr(automationBox), automationStatusLabel)
+        gtk_box_append(ptr(root), automationBox)
+
+        Gtk.addClass(detailsButton, "flat")
+        Gtk.addClass(detailsButton, "update-link")
+        gtk_widget_set_halign(detailsButton, GTK_ALIGN_START)
+        gtk_box_append(ptr(root), detailsButton)
+        gtk_widget_set_visible(factsBox, 0)
+        gtk_box_append(ptr(root), factsBox)
+
+        gtk_box_append(ptr(root), footnoteLabel)
+
+        Gtk.connect(UnsafeMutableRawPointer(moreNotesButton), "clicked") { [weak self] in
+            self?.toggleNotes()
+        }
+        Gtk.connect(UnsafeMutableRawPointer(detailsButton), "clicked") { [weak self] in
+            self?.toggleDetails()
+        }
+        Gtk.onNotify(UnsafeMutableRawPointer(automationSwitch), property: "active") { [weak self] in
+            guard let self, !self.writingAutomation else { return }
+            let enabled = gtk_switch_get_active(op(self.automationSwitch)) != 0
+            gtk_widget_set_sensitive(self.automationSwitch, 0)
+            self.onAutomation?(enabled)
+        }
+        Gtk.connect(UnsafeMutableRawPointer(root), "map") { [weak self] in
+            self?.clockMapped = true
+            self?.runClock()
+        }
+        Gtk.connect(UnsafeMutableRawPointer(root), "unmap") { [weak self] in
+            self?.clockMapped = false
+            self?.runClock()
+        }
+    }
+
+    /// One answer painted into the card it belongs to.
+    func apply(_ card: UpdateCard) {
+        self.card = card
+        if style == .standalone {
+            gtk_label_set_text(
+                op(machineLabel),
+                [card.machine, card.subtitle].compactMap { $0 }.joined(separator: " · ").uppercased())
+        }
+
+        gtk_label_set_text(op(glyph), card.icon.glyph)
+        Gtk.setTone(glyph, card.icon.glyphCSS, from: Self.glyphTones)
+        ActivityPulse.apply(card.icon, to: glyph)
+
+        gtk_label_set_text(op(headlineLabel), card.headline)
+        Gtk.setTone(
+            headlineLabel, card.stage == .failed ? "pending-text-failed" : nil,
+            from: ["pending-text-failed"])
+        gtk_widget_set_tooltip_text(headlineLabel, card.accessibility)
+
+        gtk_label_set_text(op(versionLabel), card.versionLine ?? "")
+        gtk_widget_set_visible(versionLabel, card.versionLine == nil ? 0 : 1)
+
+        gtk_label_set_text(op(messageLabel), card.message ?? "")
+        gtk_widget_set_visible(messageLabel, card.message == nil ? 0 : 1)
+
+        renderSteps(card.steps)
+        renderNotes(card)
+        renderActions(card)
+        renderAutomation(card.automation)
+        renderFacts(card.facts)
+
+        gtk_label_set_text(op(footnoteLabel), card.footnote ?? "")
+        gtk_widget_set_visible(footnoteLabel, card.footnote == nil ? 0 : 1)
+    }
+
+    /// The machine did not change its policy; the switch goes back to what the machine last said.
+    func restoreAutomation() {
+        renderAutomation(card?.automation)
+    }
+
+    private struct StepShape: Equatable {
+        let id: String
+        let title: String
+        let state: UpdateCard.Step.State
+    }
+
+    private func renderSteps(_ steps: [UpdateCard.Step]) {
+        gtk_widget_set_visible(stepsBox, steps.isEmpty ? 0 : 1)
+        let shape = steps.map { StepShape(id: $0.id, title: $0.title, state: $0.state) }
+        if shape != drawnSteps {
+            Gtk.removeChildren(of: stepsBox)
+            stepRows = []
+            for step in steps {
+                let (row, detail, clock) = buildStepRow(step)
+                stepRows.append((id: step.id, detail: detail, clock: clock))
+                gtk_box_append(ptr(stepsBox), row)
+            }
+            drawnSteps = shape
+        } else {
+            for (built, step) in zip(stepRows, steps) {
+                gtk_label_set_text(op(built.detail), step.detail ?? "")
+                gtk_widget_set_visible(built.detail, step.detail == nil ? 0 : 1)
+            }
+        }
+        if let active = steps.first(where: { $0.state == .active }), let since = active.since,
+            let clock = stepRows.first(where: { $0.id == active.id })?.clock
+        {
+            clockLabel = clock
+            clockSince = since
+        } else {
+            clockLabel = nil
+            clockSince = nil
+        }
+        runClock()
+    }
+
+    private func buildStepRow(_ step: UpdateCard.Step)
+        -> (row: UnsafeMutablePointer<GtkWidget>, detail: UnsafeMutablePointer<GtkWidget>,
+            clock: UnsafeMutablePointer<GtkWidget>)
     {
-        let group = adw_preferences_group_new()!
-        adw_preferences_group_set_title(ptr(group), Localized.text("Machines"))
-        adw_preferences_page_add(ptr(page), ptr(group))
-        return group
-    }
-
-    private func makeActionsGroup(on page: UnsafeMutablePointer<GtkWidget>) {
-        let group = adw_preferences_group_new()!
-        adw_preferences_page_add(ptr(page), ptr(group))
-
-        let (everything, everythingActions) = Self.factRow(title: Localized.text("Everything"))
-        self.everythingRow = everything
-        self.everythingActions = everythingActions
-        gtk_widget_set_visible(everything, 0)
-        adw_preferences_group_add(ptr(group), ptr(everything))
-
-        let (recheck, recheckActions) = Self.factRow(title: Localized.text("Check again"))
-        adw_action_row_set_subtitle(
-            ptr(recheck),
-            Localized.text(
-                "Asks every machine what it is running and what it could run. It costs each server a "
-                    + "fetch, so it happens on its own every few hours rather than every time this "
-                    + "window opens."))
-        Gtk.removeChildren(of: recheckActions)
-        gtk_box_append(
-            ptr(recheckActions),
-            Self.inlineButton(Localized.text("Check again")) { [weak self] in
-                UpdateWatch.refresh()
-                self?.toast(Localized.text("Asking every machine…"))
-            })
-        gtk_widget_set_visible(recheckActions, 1)
-        adw_preferences_group_add(ptr(group), ptr(recheck))
-    }
-
-    /// Every answer that lands rewrites this screen, and rewrites it in place: rows are rebuilt only
-    /// when the *set* of machines changes, because a rebuild under somebody's hand closes the row
-    /// they opened and moves the button they were reaching for.
-    private func observeLedger() {
-        guard watching == 0 else { return }
-        watching = 1
-        NotificationCenter.default.addObserver(
-            forName: UpdateLedger.didChange, object: nil, queue: nil
-        ) { [weak self] _ in
-            Gtk.onMain { [weak self] in self?.apply() }
+        let mark: UnsafeMutablePointer<GtkWidget>
+        switch step.state {
+        case .active:
+            let spinner = gtk_spinner_new()!
+            gtk_spinner_set_spinning(op(spinner), 1)
+            mark = spinner
+        case .done:
+            mark = Gtk.label("✓", css: "glyph-done", selectable: false)
+        case .failed:
+            mark = Gtk.label("✗", css: "glyph-error", selectable: false)
+        case .pending:
+            mark = Gtk.label("○", css: "glyph-pending", selectable: false)
         }
+        gtk_widget_set_valign(mark, GTK_ALIGN_START)
+        gtk_widget_set_size_request(mark, 18, -1)
+
+        let title = Gtk.label(
+            step.title, css: step.state == .failed ? "pending-text-failed" : nil, selectable: false)
+        if step.state == .pending { Gtk.addClass(title, "dim") }
+        gtk_widget_set_hexpand(title, 1)
+
+        let clock = Gtk.label("", css: "draw-clock", selectable: false)
+
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(line), title)
+        gtk_box_append(ptr(line), clock)
+
+        let detail = Gtk.label(step.detail ?? "", css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_visible(detail, step.detail == nil ? 0 : 1)
+
+        let text = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_widget_set_hexpand(text, 1)
+        gtk_box_append(ptr(text), line)
+        gtk_box_append(ptr(text), detail)
+
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(row), mark)
+        gtk_box_append(ptr(row), text)
+        return (row, detail, clock)
     }
 
-    private func apply() {
-        guard window != nil else { return }
-        let rollup = UpdateLedger.rollup()
-        guard Set(rollup.readings.map(\.id)) == Set(rows.keys) else {
-            reload()
+    /// A clock that ticks only while there is a step under way and this card's window is mapped —
+    /// closed or minimised, it stops rather than redrawing text nobody can see.
+    private func runClock() {
+        guard clockMapped, clockLabel != nil, clockSince != nil else {
+            clockRunning = false
             return
         }
-        for reading in rollup.readings {
-            rows[reading.id]?.write(
-                reading, acknowledged: rollup.isAcknowledged(reading), panel: self)
-        }
-        renderEverything(rollup)
+        tickClock()
+        guard !clockRunning else { return }
+        clockRunning = true
+        scheduleClockTick()
     }
 
-    private func reload() {
-        guard let group = machines else { return }
-        let expanding = expandAfterReload
-        expandAfterReload = nil
-        for row in listed { adw_preferences_group_remove(ptr(group), ptr(row)) }
-        listed = []
-        rows = [:]
-
-        let rollup = UpdateLedger.rollup()
-        guard !rollup.readings.isEmpty else {
-            let row = adw_action_row_new()!
-            adw_preferences_row_set_use_markup(ptr(row), 0)
-            adw_preferences_row_set_title(ptr(row), Localized.text("Nothing has been asked yet"))
-            adw_action_row_set_subtitle(
-                ptr(row),
-                Localized.text("The first check runs on its own — or press Check again."))
-            adw_action_row_set_subtitle_lines(ptr(row), 0)
-            adw_preferences_group_add(ptr(group), ptr(row))
-            listed.append(row)
-            renderEverything(rollup)
-            return
-        }
-        for reading in rollup.readings {
-            let holder = UpdateRow(reading: reading)
-            rows[reading.id] = holder
-            holder.write(reading, acknowledged: rollup.isAcknowledged(reading), panel: self)
-            if reading.id == expanding { adw_expander_row_set_expanded(ptr(holder.row), 1) }
-            adw_preferences_group_add(ptr(group), ptr(holder.row))
-            listed.append(holder.row)
-        }
-        renderEverything(rollup)
-    }
-
-    /// One press for the servers this app can drive, walked one at a time — a bridge serialises its
-    /// own fetch, and two updates started together queue behind each other anyway while both
-    /// surfaces claim to be working. This app is never in the walk: on a desktop it would replace
-    /// the process doing the watching.
-    private func renderEverything(_ rollup: UpdateRollup) {
-        guard let row = everythingRow, let actions = everythingActions else { return }
-        guard rollup.canUpdateEverything else {
-            gtk_widget_set_visible(row, 0)
-            return
-        }
-        let order = rollup.installableServers
-        adw_action_row_set_subtitle(
-            ptr(row),
-            Localized.text(
-                "%@ servers can install their own update: %@. They are taken one at a time.",
-                String(order.count), order.map(\.title).joined(separator: ", ")))
-        Gtk.removeChildren(of: actions)
-        let components = order.map(\.component)
-        gtk_box_append(
-            ptr(actions),
-            Self.inlineButton(Localized.text("Update everything"), css: ["suggested-action"]) {
-                [weak self] in
-                self?.updateEverything(components)
-            })
-        gtk_widget_set_visible(actions, 1)
-        gtk_widget_set_visible(row, 1)
-    }
-
-    private func updateEverything(_ components: [UpdateComponent]) {
-        toast(Localized.text("Updating %@ servers, one at a time…", String(components.count)))
-        Task { [weak self] in
-            for component in components {
-                guard case .server(let profileID) = component else { continue }
-                await self?.updateAndWait(profileID)
-            }
+    private func scheduleClockTick() {
+        Gtk.after(1000) { [weak self] in
+            guard let self, self.clockRunning else { return }
+            self.tickClock()
+            self.scheduleClockTick()
         }
     }
 
-    /// One server taken to its end before the next is asked. `updateServer` reports through a
-    /// callback rather than returning, so the walk waits on the reading that settles it.
-    private func updateAndWait(_ profileID: String) async {
-        guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let gate = Gate()
-            UpdateWatch.updateServer(profile) { reading in
-                guard !reading.verdict.isBusy, gate.close() else { return }
-                continuation.resume()
-            }
+    private func tickClock() {
+        guard let since = clockSince, let clockLabel else { return }
+        gtk_label_set_text(op(clockLabel), RelativeWhen.clock(Date().timeIntervalSince(since)))
+    }
+
+    private func renderNotes(_ card: UpdateCard) {
+        let lines = card.notes.flatMap(\.items)
+        gtk_label_set_text(op(notesTitleLabel), (card.notesTitle ?? "").uppercased())
+        gtk_widget_set_visible(notesTitleLabel, lines.isEmpty ? 0 : 1)
+        gtk_widget_set_visible(notesBox, lines.isEmpty ? 0 : 1)
+        if card.notes != drawnNotes {
+            drawnNotes = card.notes
+            notesExpanded = false
+            rebuildNotes()
+        }
+        let hidden = lines.count - Self.noteLimit
+        gtk_widget_set_visible(moreNotesButton, hidden > 0 ? 1 : 0)
+        gtk_button_set_label(
+            ptr(moreNotesButton),
+            notesExpanded
+                ? Localized.text("Show less") : Localized.text("Show all %@", String(lines.count)))
+    }
+
+    private func rebuildNotes() {
+        Gtk.removeChildren(of: notesBox)
+        let lines = drawnNotes.flatMap(\.items)
+        let shown = notesExpanded ? lines : Array(lines.prefix(Self.noteLimit))
+        for line in shown { gtk_box_append(ptr(notesBox), buildBullet(line)) }
+    }
+
+    private func buildBullet(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let dot = Gtk.label("•", selectable: false)
+        gtk_widget_set_valign(dot, GTK_ALIGN_START)
+        let label = Gtk.label(text, wrap: true)
+        gtk_widget_set_hexpand(label, 1)
+        gtk_box_append(ptr(row), dot)
+        gtk_box_append(ptr(row), label)
+        return row
+    }
+
+    private func toggleNotes() {
+        notesExpanded.toggle()
+        rebuildNotes()
+        if let card { renderNotes(card) }
+    }
+
+    private struct ActionKey: Equatable {
+        let title: String
+        let enabled: Bool
+        let prominent: Bool
+
+        init(_ action: UpdateCard.Action) {
+            title = action.title
+            enabled = action.enabled
+            prominent = action.prominent
         }
     }
 
-    /// A continuation may be resumed exactly once, and a settled reading can arrive twice — the
-    /// server's own answer, then the fresh comparison that follows it.
-    private final class Gate: @unchecked Sendable {
-        private var open = true
+    private func renderActions(_ card: UpdateCard) {
+        let actions = [card.primary].compactMap { $0 } + card.secondary
+        gtk_widget_set_visible(actionsBox, actions.isEmpty ? 0 : 1)
+        let keys = actions.map(ActionKey.init)
+        guard keys != drawnActions else { return }
+        drawnActions = keys
+        Gtk.removeChildren(of: actionsBox)
+        for action in actions { gtk_box_append(ptr(actionsBox), buildActionButton(action)) }
+    }
 
-        func close() -> Bool {
-            guard open else { return false }
-            open = false
-            return true
+    private func buildActionButton(_ action: UpdateCard.Action) -> UnsafeMutablePointer<GtkWidget> {
+        let css = action.prominent ? ["suggested-action"] : ["flat"]
+        let button = Gtk.button(action.title, css: css) { [weak self] in
+            self?.onAction?(action)
+        }
+        gtk_widget_set_sensitive(button, action.enabled ? 1 : 0)
+        return button
+    }
+
+    private func renderAutomation(_ automation: UpdateCard.Automation?) {
+        gtk_widget_set_visible(automationBox, automation == nil ? 0 : 1)
+        guard let automation else { return }
+        gtk_label_set_text(op(automationTitleLabel), automation.title)
+        writingAutomation = true
+        gtk_switch_set_active(op(automationSwitch), automation.isOn ? 1 : 0)
+        writingAutomation = false
+        gtk_widget_set_sensitive(automationSwitch, 1)
+        gtk_label_set_text(op(automationStatusLabel), automation.status)
+    }
+
+    private func renderFacts(_ facts: [UpdateCard.Fact]) {
+        gtk_widget_set_visible(detailsButton, facts.isEmpty ? 0 : 1)
+        gtk_button_set_label(
+            ptr(detailsButton),
+            (detailsExpanded ? "▾ " : "▸ ") + Localized.text("Details"))
+        gtk_widget_set_visible(factsBox, facts.isEmpty || !detailsExpanded ? 0 : 1)
+        guard facts != drawnFacts else { return }
+        drawnFacts = facts
+        Gtk.removeChildren(of: factsBox)
+        for fact in facts { gtk_box_append(ptr(factsBox), buildFactRow(fact)) }
+    }
+
+    private func buildFactRow(_ fact: UpdateCard.Fact) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+        let label = Gtk.label(fact.label, css: "seam-footnote", selectable: false)
+        let value = Gtk.label(fact.value, css: "tool-detail", wrap: true)
+        gtk_box_append(ptr(row), label)
+        gtk_box_append(ptr(row), value)
+        return row
+    }
+
+    private func toggleDetails() {
+        detailsExpanded.toggle()
+        renderFacts(drawnFacts)
+    }
+}
+
+/// A card's press, carried out. Shared by the Software Updates window and a server's own embedded
+/// card, so a press drawn in two places is kept one way — and the question asked before a restart
+/// is the one Core wrote, word for word, on every desk.
+enum UpdatePress {
+    static func perform(
+        _ action: UpdateCard.Action, for reading: UpdateReading,
+        parent: UnsafeMutablePointer<GtkWidget>?, toast: @escaping @Sendable (String) -> Void
+    ) {
+        switch action.kind {
+        case .invitation(let invitation):
+            take(invitation, action: action, reading: reading, parent: parent, toast: toast)
+        case .setAside:
+            UpdateLedger.acknowledge(reading)
+        case .showLog:
+            Dialogs.reader(
+                title: Localized.text("%@ — update log", reading.title), body: reading.log ?? "",
+                mono: true, parent: parent)
+        case .checkNow:
+            UpdateWatch.recheck(reading.component)
+            toast(Localized.text("Asking %@…", reading.title))
         }
     }
 
-    fileprivate func act(on reading: UpdateReading) {
-        guard let invitation = reading.invitation else { return }
+    private static func take(
+        _ invitation: UpdateInvitation, action: UpdateCard.Action, reading: UpdateReading,
+        parent: UnsafeMutablePointer<GtkWidget>?, toast: @escaping @Sendable (String) -> Void
+    ) {
         switch invitation {
-        case .installHere:
-            install(reading)
-        case .restartHere:
-            restart(reading, promise: invitation.promise)
+        case .installHere, .restartHere:
+            guard let confirmation = action.confirmation else {
+                Task { await UpdateWatch.perform(reading.component) }
+                return
+            }
+            Dialogs.confirm(
+                title: confirmation.title, body: confirmation.message,
+                confirmLabel: confirmation.confirm, destructive: false, parent: parent
+            ) {
+                Task { await UpdateWatch.perform(reading.component) }
+            }
+        case .copyCommand(let command):
+            Gtk.copyToClipboard(command)
+            toast(
+                [Localized.text("Command copied"), invitation.promise].compactMap { $0 }
+                    .joined(separator: " "))
         case .openStore(let url), .openPage(let url):
             SignInDialog.openInBrowser(url)
             toast(Localized.text("Opened in your browser"))
-        case .copyCommand(let command):
-            Gtk.copyToClipboard(command)
-            toast(Localized.text("Install command copied"))
         case .recheck:
             UpdateWatch.recheck(reading.component)
             toast(Localized.text("Asking %@…", reading.title))
         }
     }
 
-    private func install(_ reading: UpdateReading) {
-        expandAfterReload = reading.id
-        switch reading.component {
-        case .app:
-            guard let refusal = UpdateWatch.beginSelfUpdate() else {
-                toast(
-                    Localized.text(
-                        "Building. Nothing closes until it is ready to restart — a build that fails "
-                            + "leaves you exactly here."))
+    /// Turning a machine's own policy on or off. The card draws the switch from what the machine
+    /// said; a refusal puts it back there and says why.
+    static func setAutomation(
+        _ enabled: Bool, for reading: UpdateReading, restore: @escaping @Sendable () -> Void,
+        toast: @escaping @Sendable (String) -> Void
+    ) {
+        Task {
+            guard let failure = await UpdateWatch.setAutoUpdate(reading.component, enabled) else {
                 return
             }
-            toast(refusal)
-        case .server(let profileID):
-            guard let profile = profiles.first(where: { $0.id == profileID }) else {
-                toast(Localized.text("That server is not configured any more."))
-                return
+            Gtk.onMain {
+                restore()
+                toast(Localized.text("%@ didn't change its update setting: %@", reading.title, failure))
             }
-            toast(Localized.text("%@ is fetching and building…", profile.name))
-            UpdateWatch.updateServer(profile) { _ in }
         }
     }
+}
 
-    /// A build already on that machine, loaded. It goes down the same walk an update does — the
-    /// bridge stops answering partway through and that is the supervisor doing its job, not a
-    /// failure — and the press repeats the promise it was offered under, because what it costs
-    /// depends on whether a turn is running at the moment it is taken.
-    private func restart(_ reading: UpdateReading, promise: String?) {
-        expandAfterReload = reading.id
-        guard case .server(let profileID) = reading.component,
-            let profile = profiles.first(where: { $0.id == profileID })
-        else {
-            toast(Localized.text("That server is not configured any more."))
+/// Every machine in the picture and what it is running: this app, and each server it talks to.
+///
+/// A hero states the whole picture in a sentence, offers "Update all" when more than one server can
+/// take its own update, and says when this device last asked. Below it, one card per machine —
+/// Core's `UpdateCard`, drawn by `UpdateCardView` and nothing else, so this window and a server's
+/// own screen can never disagree about what a reading means.
+///
+/// Not modal, deliberately: an update takes minutes on somebody else's machine and the person is
+/// not meant to sit and watch it. A single instance lives for the life of the process — opened
+/// from the sidebar mark or from any server's own screen, a second ask always raises the one
+/// window rather than stacking a copy of a screen already following a live update.
+final class UpdatePanel: @unchecked Sendable {
+    private static let shared = UpdatePanel()
+
+    static func present(parent: UnsafeMutablePointer<GtkWidget>?) {
+        shared.show(parent: parent)
+    }
+
+    private init() {}
+
+    private var window: UnsafeMutablePointer<GtkWidget>?
+    private var toastOverlay: UnsafeMutablePointer<GtkWidget>?
+    private var cardsBox: UnsafeMutablePointer<GtkWidget>?
+    private var emptyLabel: UnsafeMutablePointer<GtkWidget>?
+    private var heroTitle: UnsafeMutablePointer<GtkWidget>?
+    private var heroDetail: UnsafeMutablePointer<GtkWidget>?
+    private var heroChecked: UnsafeMutablePointer<GtkWidget>?
+    private var everythingButton: UnsafeMutablePointer<GtkWidget>?
+    private var cards: [String: UpdateCardView] = [:]
+    private var order: [String] = []
+    private var watching = false
+
+    private func show(parent: UnsafeMutablePointer<GtkWidget>?) {
+        if let window {
+            gtk_window_present(ptr(window))
             return
         }
-        toast(promise ?? reading.headline)
-        UpdateWatch.restartServer(profile) { _ in }
+        let window = gtk_window_new()!
+        gtk_window_set_title(ptr(window), Localized.text("Software Updates"))
+        gtk_window_set_default_size(ptr(window), 640, 760)
+        gtk_window_set_modal(ptr(window), 0)
+        if let parent, let root = gtk_widget_get_root(parent) {
+            gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
+        }
+        self.window = window
+
+        let header = adw_header_bar_new()!
+        adw_header_bar_set_title_widget(
+            op(header), Gtk.label(Localized.text("Software Updates"), selectable: false))
+        gtk_window_set_titlebar(ptr(window), header)
+
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 20)
+        Gtk.margins(column, top: 18, bottom: 24, leading: 18, trailing: 18)
+        buildHero(in: column)
+
+        let cardsBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 14)
+        self.cardsBox = cardsBox
+        gtk_box_append(ptr(column), cardsBox)
+
+        let empty = Gtk.label(
+            Localized.text("Nothing has answered yet. It asks on its own — or press Check now."),
+            css: "dim", wrap: true, selectable: false)
+        gtk_widget_set_halign(empty, GTK_ALIGN_START)
+        emptyLabel = empty
+        gtk_box_append(ptr(column), empty)
+
+        let viewport = gtk_viewport_new(nil, nil)!
+        gtk_viewport_set_scroll_to_focus(op(viewport), 0)
+        gtk_viewport_set_child(op(viewport), column)
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_child(op(scroller), viewport)
+        gtk_widget_set_vexpand(scroller, 1)
+
+        let toastOverlay = adw_toast_overlay_new()!
+        adw_toast_overlay_set_child(op(toastOverlay), scroller)
+        gtk_window_set_child(ptr(window), toastOverlay)
+        self.toastOverlay = toastOverlay
+
+        Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { [weak self] in
+            self?.forgetWidgets()
+        }
+        observeLedger()
+
+        render()
+        gtk_window_present(ptr(window))
     }
 
-    fileprivate func setAside(_ reading: UpdateReading) {
-        UpdateLedger.acknowledge(reading)
-        rows[reading.id].map { adw_expander_row_set_expanded(ptr($0.row), 0) }
-        toast(
-            Localized.text(
-                "Set aside. It comes back the moment there is something different to act on."))
+    private func buildHero(in column: UnsafeMutablePointer<GtkWidget>) {
+        let hero = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+
+        let title = Gtk.label("", css: "preflight-headline", wrap: true, selectable: false)
+        heroTitle = title
+        gtk_box_append(ptr(hero), title)
+
+        let detail = Gtk.label("", css: "dim", wrap: true, selectable: false)
+        heroDetail = detail
+        gtk_box_append(ptr(hero), detail)
+
+        let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        let everything = Gtk.button("", css: ["suggested-action", "pill"]) { [weak self] in
+            self?.confirmUpdateEverything()
+        }
+        everythingButton = everything
+        gtk_box_append(ptr(buttons), everything)
+        gtk_box_append(
+            ptr(buttons),
+            Gtk.button(Localized.text("Check now")) { [weak self] in self?.checkNow() })
+        gtk_box_append(ptr(hero), buttons)
+
+        let checked = Gtk.label("", css: "seam-footnote", selectable: false)
+        heroChecked = checked
+        gtk_box_append(ptr(hero), checked)
+
+        gtk_box_append(ptr(column), hero)
     }
 
-    /// A machine the ledger has never heard of is asked once, here, because somebody opened this
-    /// screen — a configured server with no row at all would otherwise read as a machine that does
-    /// not exist rather than one nobody has got round to asking.
-    private func loadProfiles() {
-        Task { [weak self] in
-            let profiles = await ServerDirectory.shared.profiles()
-                .filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
-            Gtk.onMain { [weak self] in self?.profiles = profiles }
-            for profile in profiles
-            where UpdateLedger.remembered(.server(profileID: profile.id)) == nil {
-                await UpdateWatch.ask(profile, checkingRemote: true)
+    private func observeLedger() {
+        guard !watching else { return }
+        watching = true
+        for name in [UpdateLedger.didChange, UpdateDriver.didChange] {
+            _ = NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) {
+                [weak self] _ in
+                Gtk.onMain { [weak self] in self?.render() }
             }
+        }
+    }
+
+    /// Every answer that lands rewrites this window in place: cards are rebuilt only when the
+    /// *set* or *order* of machines changes, because a rebuild under somebody's hand would close
+    /// the notes they had open and move the button they were reaching for.
+    private func render() {
+        guard window != nil else { return }
+        let rollup = UpdateLedger.rollup()
+        let snapshot = UpdateWatch.driver.snapshot
+        let ids = rollup.readings.map(\.id)
+        if ids != order { relayout(ids) }
+        renderHero(rollup, snapshot: snapshot)
+        for reading in rollup.readings {
+            cards[reading.id]?.apply(
+                UpdateCard(
+                    reading, acknowledged: rollup.isAcknowledged(reading),
+                    busy: snapshot.isBusy(reading.component)))
+        }
+        emptyLabel.map { gtk_widget_set_visible($0, rollup.readings.isEmpty ? 1 : 0) }
+    }
+
+    private func relayout(_ ids: [String]) {
+        guard let cardsBox else { return }
+        for stale in Set(cards.keys).subtracting(ids) { cards.removeValue(forKey: stale) }
+        Gtk.removeChildren(of: cardsBox)
+        for id in ids {
+            let card = cards[id] ?? makeCard(id)
+            cards[id] = card
+            gtk_box_append(ptr(cardsBox), card.widget)
+        }
+        order = ids
+    }
+
+    private func makeCard(_ id: String) -> UpdateCardView {
+        let card = UpdateCardView(style: .standalone)
+        card.onAction = { [weak self] action in
+            guard let self, let reading = self.reading(id) else { return }
+            UpdatePress.perform(action, for: reading, parent: self.window) { [weak self] text in
+                Gtk.onMain { [weak self] in self?.toast(text) }
+            }
+        }
+        card.onAutomation = { [weak self, weak card] enabled in
+            guard let self, let card, let reading = self.reading(id) else { return }
+            UpdatePress.setAutomation(
+                enabled, for: reading, restore: { [weak card] in card?.restoreAutomation() },
+                toast: { [weak self] text in Gtk.onMain { [weak self] in self?.toast(text) } })
+        }
+        return card
+    }
+
+    private func reading(_ id: String) -> UpdateReading? {
+        UpdateLedger.rollup().readings.first { $0.id == id }
+    }
+
+    private func renderHero(_ rollup: UpdateRollup, snapshot: UpdateDriver.Snapshot) {
+        guard let heroTitle, let heroDetail, let heroChecked, let everythingButton else { return }
+        gtk_label_set_text(op(heroTitle), rollup.headline)
+        let detail = rollup.readings.isEmpty ? "" : rollup.detail()
+        gtk_label_set_text(op(heroDetail), detail)
+        gtk_widget_set_visible(heroDetail, detail.isEmpty ? 0 : 1)
+
+        if let walk = snapshot.walk {
+            gtk_widget_set_visible(everythingButton, 1)
+            gtk_widget_set_sensitive(everythingButton, 0)
+            gtk_button_set_label(
+                ptr(everythingButton),
+                Localized.text(
+                    "Updating %@ of %@…", String(min(walk.done + 1, walk.total)),
+                    String(walk.total)))
+        } else {
+            gtk_widget_set_visible(everythingButton, rollup.canUpdateEverything ? 1 : 0)
+            gtk_widget_set_sensitive(everythingButton, 1)
+            gtk_button_set_label(
+                ptr(everythingButton),
+                Localized.text("Update all %@ servers", String(rollup.installableServers.count)))
+        }
+
+        let checkedText: String
+        if snapshot.checking {
+            checkedText = Localized.text("Checking every machine…")
+        } else if let last = UpdateLedger.lastCheck() {
+            checkedText = Localized.text("Last checked %@", RelativeWhen.ago(last))
+        } else {
+            checkedText = ""
+        }
+        gtk_label_set_text(op(heroChecked), checkedText)
+        gtk_widget_set_visible(heroChecked, checkedText.isEmpty ? 0 : 1)
+    }
+
+    private func checkNow() {
+        UpdateWatch.refresh()
+        toast(Localized.text("Asking every machine…"))
+    }
+
+    private func confirmUpdateEverything() {
+        let count = UpdateLedger.rollup().installableServers.count
+        Dialogs.confirm(
+            title: Localized.text("Update all %@ servers?", String(count)),
+            body: Localized.text(
+                "One at a time: each downloads and builds, then restarts once nothing is running "
+                    + "on it."),
+            confirmLabel: Localized.text("Update all"), destructive: false, parent: window
+        ) {
+            Task { await UpdateWatch.updateEverything() }
         }
     }
 
     private func toast(_ text: String) {
-        guard let window, let toast = adw_toast_new(text) else { return }
-        adw_preferences_window_add_toast(ptr(window), toast)
+        guard let toastOverlay, let toast = adw_toast_new(text) else { return }
+        adw_toast_overlay_add_toast(op(toastOverlay), toast)
     }
 
-    fileprivate enum Tone {
-        case good, warn, bad, quiet
-
-        var css: String? {
-            switch self {
-            case .good: return "fact-good"
-            case .warn: return "fact-warn"
-            case .bad: return "fact-bad"
-            case .quiet: return nil
-            }
-        }
-
-        /// The four meanings the rest of the app answers to, resolved into this screen's own tones.
-        /// A reading that is merely unknown is quiet on purpose: doubt is not an alarm.
-        static func of(_ reading: UpdateReading) -> Tone {
-            switch reading.verdict {
-            case .behind(let offer): return offer.canInstallHere ? .warn : .quiet
-            case .failed: return .bad
-            case .current: return .good
-            case .ahead, .working, .blocked, .unverified: return .quiet
-            }
-        }
-    }
-
-    fileprivate static let factTones = ["fact-good", "fact-warn", "fact-bad"]
-    fileprivate static let glyphTones = ActivityTone.allCases.map(\.glyphCSS)
-
-    fileprivate static func setFact(
-        _ row: UnsafeMutablePointer<GtkWidget>?, _ actionBox: UnsafeMutablePointer<GtkWidget>?,
-        _ text: String, tone: Tone, actions: [UnsafeMutablePointer<GtkWidget>],
-        title: String? = nil
-    ) {
-        guard let row else { return }
-        if let title { adw_preferences_row_set_title(ptr(row), title) }
-        adw_action_row_set_subtitle(ptr(row), text)
-        Gtk.setTone(row, tone.css, from: factTones)
-        guard let actionBox else { return }
-        Gtk.removeChildren(of: actionBox)
-        for action in actions { gtk_box_append(ptr(actionBox), action) }
-        gtk_widget_set_visible(actionBox, actions.isEmpty ? 0 : 1)
-    }
-
-    /// A row that states one fact about a machine and carries whatever buttons that fact earns. The
-    /// subtitle is where the sentence goes — it wraps to as many lines as it needs, because these
-    /// sentences are paragraphs and truncating one puts the surface back to a bare number.
-    fileprivate static func factRow(title: String)
-        -> (UnsafeMutablePointer<GtkWidget>, UnsafeMutablePointer<GtkWidget>)
-    {
-        let row = adw_action_row_new()!
-        adw_preferences_row_set_use_markup(ptr(row), 0)
-        adw_preferences_row_set_title(ptr(row), title)
-        adw_action_row_set_subtitle_lines(ptr(row), 0)
-        adw_action_row_set_subtitle_selectable(ptr(row), 1)
-        let actions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        gtk_widget_set_valign(actions, GTK_ALIGN_CENTER)
-        gtk_widget_set_visible(actions, 0)
-        adw_action_row_add_suffix(ptr(row), actions)
-        return (row, actions)
-    }
-
-    fileprivate static func inlineButton(
-        _ title: String, css: [String] = ["flat"], onClick: @escaping @Sendable () -> Void
-    ) -> UnsafeMutablePointer<GtkWidget> {
-        let button = Gtk.button(title, css: css, onClick: onClick)
-        gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
-        return button
-    }
-
-    private final class Registry: @unchecked Sendable {
-        var panels: [UInt: UpdatePanel] = [:]
-        var next: UInt = 1
-    }
-
-    private static let registry = Registry()
-
-    private static func hold(_ panel: UpdatePanel) -> UInt {
-        let token = registry.next
-        registry.next += 1
-        registry.panels[token] = panel
-        return token
-    }
-
-    private static func release(_ token: UInt) {
-        registry.panels[token]?.forgetWidgets()
-        registry.panels[token] = nil
-    }
-
-    /// Every pointer here belongs to a window GTK has destroyed. The panel itself outlives it — the
-    /// app holds one so a second ask raises rather than rebuilds — and an update still in flight will
-    /// come back to write into a row. Nothing may be touched again, and a reopened window builds a
-    /// fresh set rather than taking back the group it used to remove rows from.
+    /// Every pointer here belongs to a window GTK has destroyed. The panel itself outlives it —
+    /// it is a permanent singleton, so a second ask can always find the same window — and an
+    /// update still in flight will come back to write into a card. Nothing may be touched again,
+    /// and a reopened window builds a fresh set rather than taking back widgets already gone.
     private func forgetWidgets() {
         window = nil
-        machines = nil
-        everythingRow = nil
-        everythingActions = nil
-        listed = []
-        rows = [:]
-        expandAfterReload = nil
-    }
-}
-
-/// The widgets one machine's expander owns, so an answer that lands a minute later writes into
-/// exactly its own row rather than rebuilding the list under whoever is reading it.
-private final class UpdateRow {
-    let row: UnsafeMutablePointer<GtkWidget>
-    private let glyph: UnsafeMutablePointer<GtkWidget>
-    private let state: UnsafeMutablePointer<GtkWidget>
-    private let stateActions: UnsafeMutablePointer<GtkWidget>
-    private let installed: UnsafeMutablePointer<GtkWidget>
-    private let available: UnsafeMutablePointer<GtkWidget>
-    private let changes: UnsafeMutablePointer<GtkWidget>
-    private let obstacle: UnsafeMutablePointer<GtkWidget>
-
-    init(reading: UpdateReading) {
-        row = adw_expander_row_new()!
-        adw_preferences_row_set_use_markup(ptr(row), 0)
-        adw_preferences_row_set_title(ptr(row), reading.title)
-        if let subtitle = reading.subtitle {
-            adw_expander_row_set_subtitle(ptr(row), subtitle)
-        }
-
-        glyph = Gtk.label(reading.icon.glyph, css: reading.icon.glyphCSS, selectable: false)
-        gtk_widget_set_valign(glyph, GTK_ALIGN_CENTER)
-        adw_expander_row_add_prefix(ptr(row), glyph)
-
-        (state, stateActions) = UpdatePanel.factRow(title: reading.headline)
-        adw_expander_row_add_row(ptr(row), state)
-
-        installed = UpdatePanel.factRow(title: Localized.text("Running")).0
-        adw_expander_row_add_row(ptr(row), installed)
-
-        available = UpdatePanel.factRow(title: Localized.text("Available")).0
-        adw_expander_row_add_row(ptr(row), available)
-
-        changes = UpdatePanel.factRow(title: Localized.text("What it would bring")).0
-        adw_expander_row_add_row(ptr(row), changes)
-
-        obstacle = UpdatePanel.factRow(title: Localized.text("What is in the way")).0
-        adw_expander_row_add_row(ptr(row), obstacle)
-    }
-
-    /// One reading painted into the row it belongs to. The expander's own subtitle carries the
-    /// headline as well as the machine's address, so a collapsed row still says what is true about
-    /// it — the whole point of a standing fact is that it does not need opening.
-    func write(_ reading: UpdateReading, acknowledged: Bool, panel: UpdatePanel) {
-        adw_preferences_row_set_title(ptr(row), reading.title)
-        adw_expander_row_set_subtitle(
-            ptr(row),
-            reading.subtitle.map { "\(reading.headline) · \($0)" } ?? reading.headline)
-        gtk_label_set_text(op(glyph), reading.icon.glyph)
-        Gtk.setTone(glyph, reading.icon.glyphCSS, from: UpdatePanel.glyphTones)
-        ActivityPulse.apply(reading.icon, to: glyph)
-
-        UpdatePanel.setFact(
-            state, stateActions, reading.detail(), tone: UpdatePanel.Tone.of(reading),
-            actions: buttons(for: reading, acknowledged: acknowledged, panel: panel),
-            title: reading.headline)
-
-        UpdatePanel.setFact(
-            installed, nil, reading.installed.line, tone: .quiet, actions: [],
-            title: Localized.text("Running"))
-        gtk_widget_set_visible(installed, reading.installed.isKnown ? 1 : 0)
-
-        UpdatePanel.setFact(
-            available, nil, reading.available.line, tone: .quiet, actions: [],
-            title: Localized.text("Available"))
-        gtk_widget_set_visible(available, reading.available.isKnown ? 1 : 0)
-
-        let subjects = reading.verdict.offer?.changes ?? []
-        UpdatePanel.setFact(
-            changes, nil, subjects.prefix(8).map { "· \($0)" }.joined(separator: "\n"),
-            tone: .quiet, actions: [], title: Localized.text("What it would bring"))
-        gtk_widget_set_visible(changes, subjects.isEmpty ? 0 : 1)
-
-        let named = reading.verdict.offer?.detailLines ?? []
-        UpdatePanel.setFact(
-            obstacle, nil, named.prefix(8).map { "· \($0)" }.joined(separator: "\n"),
-            tone: .quiet, actions: [], title: Localized.text("What is in the way"))
-        gtk_widget_set_visible(obstacle, named.isEmpty ? 0 : 1)
-    }
-
-    /// The one press, and what it promises. A promise is printed as its own button-height sentence
-    /// beside the button rather than after it: an offer that ends in another app's hands has to say
-    /// so before it is taken, not once it is too late to choose differently.
-    ///
-    /// "Not now" is offered on exactly the rows that are holding the mark up, which is Core's
-    /// judgement rather than this screen's — a failure a person has read and decided to live with
-    /// is as much a standing mark as an offer they are not taking, and one they could not set aside
-    /// would keep the sidebar lit over a build that is never coming back.
-    private func buttons(for reading: UpdateReading, acknowledged: Bool, panel: UpdatePanel)
-        -> [UnsafeMutablePointer<GtkWidget>]
-    {
-        var made: [UnsafeMutablePointer<GtkWidget>] = []
-        if let invitation = reading.invitation {
-            if let promise = invitation.promise {
-                let note = Gtk.label(promise, css: "row-detail", wrap: true, selectable: false)
-                gtk_label_set_max_width_chars(op(note), 34)
-                gtk_widget_set_valign(note, GTK_ALIGN_CENTER)
-                made.append(note)
-            }
-            let suggested = invitation.isOneClickInstall ? ["suggested-action"] : ["flat"]
-            made.append(
-                UpdatePanel.inlineButton(invitation.label, css: suggested) { [weak panel] in
-                    Gtk.onMain { [weak panel] in panel?.act(on: reading) }
-                })
-        }
-        guard reading.stands(acknowledged: acknowledged) else { return made }
-        made.append(
-            UpdatePanel.inlineButton(Localized.text("Not now")) { [weak panel] in
-                Gtk.onMain { [weak panel] in panel?.setAside(reading) }
-            })
-        return made
+        toastOverlay = nil
+        cardsBox = nil
+        emptyLabel = nil
+        heroTitle = nil
+        heroDetail = nil
+        heroChecked = nil
+        everythingButton = nil
+        cards = [:]
+        order = []
     }
 }

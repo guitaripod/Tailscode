@@ -627,6 +627,9 @@ enum MatrixTheme {
         .card-permission { border-left: 2px solid \(warn); }
         .card-question { border-left: 2px solid \(warn); }
         .card-title { \(t(.cardTitle)) color: \(text); }
+        .card-title.pending-text-failed { color: \(danger); }
+        .update-link { padding: 2px 0; min-height: 0; min-width: 0; }
+        .update-heading { \(t(.sectionLabel)) opacity: 0.5; padding: 6px 0 0 0; }
         .answer-option {
             \(t(.option))
             color: \(info);
