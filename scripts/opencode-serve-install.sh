@@ -102,7 +102,9 @@ export PATH="\$HOME/.opencode/bin:\$HOME/.local/bin:/opt/homebrew/bin:/usr/local
 STATE="\${XDG_STATE_HOME:-\$HOME/.local/state}/opencode-serve/catalog.sig"
 mkdir -p "\$(dirname "\$STATE")"
 if command -v sha256sum >/dev/null 2>&1; then digest() { sha256sum; }; else digest() { shasum -a 256; }; fi
-opencode models 2>/dev/null | digest | cut -d' ' -f1 >"\$STATE" || true
+if [ "\$(opencode --version 2>/dev/null | grep -oE '[0-9]+' | head -1)" = 1 ]; then
+    opencode models 2>/dev/null | digest | cut -d' ' -f1 >"\$STATE" || true
+fi
 exec opencode serve --hostname 0.0.0.0 --port "\${OPENCODE_SERVE_PORT:-4096}"
 EOF
     chmod +x "$RUNNER"
@@ -133,7 +135,12 @@ EOF
 ## The check that makes a new model appear without anyone being told to restart anything.
 ## `opencode models` resolves the catalog the same way the server does, in a fresh process, so
 ## it answers what the server would offer if it were started now — and a restart is worth it
-## exactly when that differs from what it was started with.
+## exactly when that differs from what it was started with. opencode 2 follows its config and
+## the models.dev catalog while it runs, so there is nothing for a restart to pick up, and its
+## bare `opencode models` starts a background server of its own — with the 2.x binary already
+## installed under a 1.x server that has not been restarted yet, that second server would open
+## (and migrate) the database the running one is still writing. The check stands down whenever
+## the binary or the server is 2.x.
 write_refresher() {
     write_managed "$REFRESHER" <<EOF || true
 #!/usr/bin/env bash
@@ -178,6 +185,8 @@ is_idle() {
 
 restart() { opencode-serve-restart; }
 
+[ "\$(opencode --version 2>/dev/null | grep -oE '[0-9]+' | head -1)" = 1 ] || exit 0
+if request "/api/info" && grep -q '"version"' "\$body"; then exit 0; fi
 sig=\$(opencode models 2>/dev/null | digest)
 [ -n "\$sig" ] || exit 0
 if [ "\$sig" = "\$(cat "\$STATE" 2>/dev/null || true)" ]; then exit 0; fi
