@@ -69,6 +69,28 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.53" date="2026-09-23">
+      <description>
+        <p>Server updates show what&#x27;s new, and the video studio grows up.</p>
+        <p>Server updates:</p>
+        <ul>
+          <li>When a server has a new version, the foot of the sidebar says so. Click it to see what&#x27;s new before you update.</li>
+          <li>Each server shows the version it runs, the new one, and what&#x27;s new in it, with one Update button.</li>
+          <li>While it updates you see every step — download, build, wait for running chats to finish, restart, confirm — with a timer.</li>
+          <li>Afterwards it says which version the server is on, even when the server updated itself overnight.</li>
+          <li>If an update fails you see which step failed and why, and can try again or read the log.</li>
+        </ul>
+        <p>Video studio:</p>
+        <ul>
+          <li>Laid out like the image studio: the form on the left, the clip in the middle, your kept clips on the right.</li>
+          <li>The prompt helper writes the clip&#x27;s caption for you, and you can watch the first frame being sketched while it renders.</li>
+          <li>A clip can start from a picture or continue where a kept clip ended; the image studio&#x27;s pictures offer Animate this.</li>
+          <li>A sound field for what the clip should sound like, and an estimate of how long each render will take.</li>
+          <li>The Fine model is gone. It produced blurry clips, so the studio renders with the one model built for it.</li>
+          <li>Long prompts scroll inside their box instead of growing the window.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.52" date="2026-09-21">
       <description>
         <p>The prompt helper is chosen, watched and told what it could not see. The studio's helper picker was never on screen; it is now a line under the word count (&quot;with Qwen 3.8 27B&quot;) and a chip beside Enhance in a slot, listing every machine that answered — Ollama, llama-swap, llama.cpp, LM Studio, vLLM — with each model under the name its server gives it, its id, and whether it is already in memory. The default is the best writer rather than the fastest, a model you pick is kept over anything found later, and switching the helper off keeps it filed. A rewrite streams into a card under the words as it is written — Stop while it writes; Use these words, Write again or Keep mine once it lands — with one line for what to change, which sends the same paragraph back for a revision. The helper is told which engine paints, the shape you chose by hand (kept, and answered back), how many reference pictures the words address and that their image tokens must stay, and the avoid list. Taking the paragraph puts it in the box where it can still be edited, with your own sentence one press away.</p>

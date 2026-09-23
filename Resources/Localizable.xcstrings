@@ -3445,6 +3445,71 @@
         }
       }
     },
+    "%@ — %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ — %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ — %2$@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ — %2$@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ — %2$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ — %2$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ — %2$@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ — %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ — %2$@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ — %2$@"
+          }
+        }
+      }
+    },
     "%@ — up to date": {
       "extractionState": "manual",
       "localizations": {
@@ -8008,6 +8073,136 @@
         }
       }
     },
+    "a day ago": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vor einem Tag"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a day ago"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hace un día"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "il y a un jour"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "un giorno fa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1日前"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1일 전"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "há um dia"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 天前"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 天前"
+          }
+        }
+      }
+    },
+    "a minute ago": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vor einer Minute"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a minute ago"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hace un minuto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "il y a une minute"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "un minuto fa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1分前"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1분 전"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "há um minuto"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 分钟前"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 分鐘前"
+          }
+        }
+      }
+    },
     "a newer build": {
       "extractionState": "manual",
       "localizations": {
@@ -8134,6 +8329,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "那台機器上已經有更新的版本了，但那裡沒有任何東西會重新啟動它，因此必須手動啟動。"
+          }
+        }
+      }
+    },
+    "A rebuild takes xcodegen and a multi-minute xcodebuild, and what it produces is the bundle this process is running from — so the command is handed over rather than pressed here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein erneuter Build braucht xcodegen und ein mehrminütiges xcodebuild, und dabei entsteht genau das Bundle, aus dem dieser Prozess gerade läuft – daher wird der Befehl weitergegeben, statt hier per Knopfdruck ausgelöst zu werden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A rebuild takes xcodegen and a multi-minute xcodebuild, and what it produces is the bundle this process is running from — so the command is handed over rather than pressed here."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una reconstrucción exige xcodegen y un xcodebuild de varios minutos, y lo que produce es precisamente el bundle desde el que se está ejecutando este proceso, así que el comando se entrega para ejecutarlo en lugar de pulsarlo aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une recompilation nécessite xcodegen et un xcodebuild de plusieurs minutes, et ce qu'elle produit est exactement le bundle depuis lequel ce processus s'exécute — la commande est donc transmise plutôt que déclenchée ici."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una ricompilazione richiede xcodegen e un xcodebuild di più minuti, e ciò che produce è esattamente il bundle da cui questo processo è in esecuzione: perciò il comando viene consegnato invece di essere premuto qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再ビルドにはxcodegenと数分かかるxcodebuildが必要で、生成されるのはまさにこのプロセスが実行中のバンドルです — そのため、ここでは押すボタンではなくコマンドが渡されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "재빌드에는 xcodegen과 몇 분이 걸리는 xcodebuild가 필요하며, 그 결과물은 바로 이 프로세스가 실행 중인 번들입니다 — 그래서 여기서 버튼을 누르는 대신 명령을 전달합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma recompilação exige xcodegen e um xcodebuild de vários minutos, e o que ela produz é exatamente o bundle a partir do qual este processo está sendo executado — por isso o comando é repassado, em vez de ser apertado por aqui."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新构建需要 xcodegen 和耗时数分钟的 xcodebuild，其产物正是本进程当前运行所用的应用包——因此这里给出的是命令，而不是一个可按的按钮。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新建置需要 xcodegen 和耗時數分鐘的 xcodebuild，其產物正是本處理程序目前執行所用的應用程式包——因此這裡給出的是指令，而不是一個可按的按鈕。"
           }
         }
       }
@@ -8593,6 +8853,71 @@
         }
       }
     },
+    "Add, probe, update or remove a server": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einen Server hinzufügen, prüfen, aktualisieren oder entfernen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add, probe, update or remove a server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir, probar, actualizar o eliminar un servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter, tester, mettre à jour ou supprimer un serveur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi, prova, aggiorna o rimuovi un server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーの追加、接続確認、更新、削除"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 추가, 연결 확인, 업데이트 또는 제거"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar, testar, atualizar ou remover um servidor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加、探测、更新或移除服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新增、探測、更新或移除伺服器"
+          }
+        }
+      }
+    },
     "All software updates": {
       "extractionState": "manual",
       "localizations": {
@@ -8654,6 +8979,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "所有軟體更新"
+          }
+        }
+      }
+    },
+    "an hour ago": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vor einer Stunde"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "an hour ago"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hace una hora"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "il y a une heure"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "un'ora fa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1時間前"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1시간 전"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "há uma hora"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 小时前"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 小時前"
           }
         }
       }
@@ -13204,6 +13594,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "由這台機器上的簽出程式碼建置"
+          }
+        }
+      }
+    },
+    "Built from the checkout at %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aus dem Checkout unter %@ gebaut."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built from the checkout at %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compilado desde el checkout en %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compilé depuis le checkout à %@."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compilato dal checkout in %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@のチェックアウトからビルドされました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@의 체크아웃에서 빌드되었습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compilado a partir do checkout em %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "由位于 %@ 的检出代码构建。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "由位於 %@ 的簽出程式碼建置。"
           }
         }
       }
@@ -22893,6 +23348,71 @@
         }
       }
     },
+    "Every machine here reports what it runs and what it could run. A server that could not be reached, or is too old to answer, says so rather than reading as up to date.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jede Maschine hier meldet, was sie ausführt und was sie ausführen könnte. Ein Server, der nicht erreicht werden konnte oder zu alt ist, um zu antworten, sagt das offen, statt als aktuell zu erscheinen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every machine here reports what it runs and what it could run. A server that could not be reached, or is too old to answer, says so rather than reading as up to date."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada máquina de aquí informa qué versión ejecuta y cuál podría ejecutar. Un servidor al que no se pudo contactar, o que es demasiado antiguo para responder, lo indica claramente en vez de aparecer como actualizado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque machine ici indique ce qu'elle exécute et ce qu'elle pourrait exécuter. Un serveur qu'on n'a pas pu joindre, ou trop ancien pour répondre, l'indique clairement plutôt que d'apparaître comme à jour."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ogni macchina qui segnala cosa sta eseguendo e cosa potrebbe eseguire. Un server che non è stato possibile raggiungere, o che è troppo vecchio per rispondere, lo segnala chiaramente invece di apparire come aggiornato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここにある各マシンは、実行中のバージョンと実行できるバージョンの両方を報告します。接続できなかった、または古すぎて応答できないサーバーは、そのことをはっきり伝えます。最新の状態であるかのように表示されることはありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "여기 있는 각 머신은 자신이 실행 중인 버전과 실행할 수 있는 버전을 모두 알려줍니다. 연결할 수 없거나 응답하기에는 너무 오래된 서버는, 최신 상태인 것처럼 보이는 대신 그 사실을 그대로 알려줍니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada máquina aqui informa o que está executando e o que poderia executar. Um servidor que não pôde ser contatado, ou que é antigo demais para responder, informa isso claramente, em vez de aparecer como atualizado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这里的每台机器都会报告自己正在运行的版本和可以运行的版本。无法连接、或者太旧以至于无法响应的服务器，会如实说明这一点，而不会被当作是最新的。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這裡的每台機器都會回報自己正在執行的版本和可以執行的版本。無法連線、或太舊以致無法回應的伺服器，會如實說明這一點，而不會被當作是最新的。"
+          }
+        }
+      }
+    },
     "Every server in Tailscode is reached over your tailnet. The API token is only used to list your devices during discovery.": {
       "extractionState": "manual",
       "localizations": {
@@ -28287,6 +28807,71 @@
         }
       }
     },
+    "Nothing has been asked yet. This app and every server you add answer for their own software.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es wurde noch nichts abgefragt. Diese App und jeder Server, den Sie hinzufügen, antworten für ihre eigene Software."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing has been asked yet. This app and every server you add answer for their own software."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todavía no se ha consultado nada. Esta app y cada servidor que se añada responden por su propio software."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien n'a encore été demandé. Cette app et chaque serveur que vous ajoutez répondent de leur propre logiciel."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è stato ancora chiesto nulla. Questa app e ogni server che aggiungi rispondono del proprio software."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだ何も問い合わせていません。このアプリと追加した各サーバーが、それぞれ自分のソフトウェアについて答えます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 아무것도 물어보지 않았습니다. 이 앱과 추가한 모든 서버가 각자 자신의 소프트웨어에 대해 답합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda nada foi perguntado. Este app e cada servidor que você adicionar respondem pelo próprio software."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前还没有进行过任何查询。本应用和你添加的每台服务器，都会各自回答有关自身软件的问题。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前還沒有進行過任何查詢。本應用程式和你新增的每台伺服器，都會各自回答有關自身軟體的問題。"
+          }
+        }
+      }
+    },
     "Nothing here knows when this was last checked.": {
       "extractionState": "manual",
       "localizations": {
@@ -29973,6 +30558,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "已擱置。情況有變化時會再次提醒你。"
+          }
+        }
+      }
+    },
+    "Show all %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle %@ anzeigen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show all %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar las %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher les %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra tutti e %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべて表示(%@件)"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전체 %@개 보기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar todas as %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示全部 %@ 条"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顯示全部 %@ 則"
           }
         }
       }
@@ -50717,6 +51367,71 @@
         }
       }
     },
+    "Tailscode on this Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode auf diesem Mac"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode on this Mac"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode en este Mac"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode sur ce Mac"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode su questo Mac"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このMacのTailscode"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 Mac의 Tailscode"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode neste Mac"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 Mac 上的 Tailscode"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 Mac 上的 Tailscode"
+          }
+        }
+      }
+    },
     "Tailscode Pro is a one-time purchase that lifts the one-server limit. Your first server keeps working either way.": {
       "extractionState": "manual",
       "localizations": {
@@ -52533,6 +53248,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "由 App Store 負責安裝——此應用程式無法自行更新。"
+          }
+        }
+      }
+    },
+    "The checkout at %@ could not reach its remote, so nothing here knows whether a newer build exists.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Checkout unter %@ konnte seinen Remote nicht erreichen, daher weiß hier niemand, ob ein neuerer Build existiert."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The checkout at %@ could not reach its remote, so nothing here knows whether a newer build exists."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El checkout en %@ no pudo contactar con su remoto, así que nada aquí sabe si existe un build más reciente."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le checkout à %@ n'a pas pu joindre son dépôt distant, donc rien ici ne sait s'il existe un build plus récent."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il checkout in %@ non è riuscito a raggiungere il proprio remoto, quindi qui non si sa se esiste un build più recente."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@のチェックアウトはリモートに接続できなかったため、より新しいビルドが存在するかどうかは、ここでは分かりません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@의 체크아웃이 원격 저장소에 연결하지 못해, 더 최신 빌드가 있는지 여기서는 알 수 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O checkout em %@ não conseguiu contatar seu remoto, então nada aqui sabe se existe um build mais recente."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "位于 %@ 的检出代码无法连接到其远程仓库，因此这里无法得知是否存在更新的版本。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "位於 %@ 的簽出程式碼無法連線到其遠端版本庫，因此這裡無法得知是否存在更新的版本。"
           }
         }
       }
@@ -58777,6 +59557,136 @@
         }
       }
     },
+    "Update all %@ servers": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle %@ Server aktualisieren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update all %@ servers"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizar los %@ servidores"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettre à jour les %@ serveurs"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna tutti i %@ server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@台のサーバーをすべて更新"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 %@대 모두 업데이트"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizar todos os %@ servidores"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新全部 %@ 台服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新全部 %@ 台伺服器"
+          }
+        }
+      }
+    },
+    "Update all %@ servers?": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle %@ Server aktualisieren?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update all %@ servers?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Actualizar los %@ servidores?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettre à jour les %@ serveurs ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiornare tutti i %@ server?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@台のサーバーをすべて更新しますか?"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 %@대를 모두 업데이트하시겠습니까?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizar todos os %@ servidores?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要更新全部 %@ 台服务器吗？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要更新全部 %@ 台伺服器嗎？"
+          }
+        }
+      }
+    },
     "Update all %lld servers": {
       "extractionState": "manual",
       "localizations": {
@@ -59297,6 +60207,71 @@
         }
       }
     },
+    "update updates software version build bridge upgrade newest release": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update Aktualisierung Software Version Build bridge Upgrade neueste Veröffentlichung"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "update updates software version build bridge upgrade newest release"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "actualizar actualización actualizaciones software versión build bridge upgrade reciente lanzamiento"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mise à jour mises à jour logiciel version build bridge upgrade nouvelle version sortie"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "aggiornamento aggiornamenti software versione build bridge upgrade più recente release"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アップデート 更新 ソフトウェア バージョン ビルド bridge アップグレード 最新 リリース"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트 소프트웨어 버전 빌드 bridge 업그레이드 최신 릴리스"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "atualizar atualização atualizações software versão build bridge upgrade mais recente lançamento"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新 升级 软件 版本 build bridge 最新 发布"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新 升級 軟體 版本 build bridge 最新 發布"
+          }
+        }
+      }
+    },
     "Updated": {
       "extractionState": "manual",
       "localizations": {
@@ -59748,6 +60723,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在更新 %@ 台機器"
+          }
+        }
+      }
+    },
+    "Updating %@ of %@…": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisiere %1$@ von %2$@…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updating %@ of %@…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizando %1$@ de %2$@…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mise à jour de %1$@ sur %2$@…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiornamento di %1$@ su %2$@…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@件中%1$@件目を更新中…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@개 중 %1$@개 업데이트 중…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizando %1$@ de %2$@…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在更新第 %1$@ 个，共 %2$@ 个…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在更新第 %1$@ 個，共 %2$@ 個…"
           }
         }
       }
