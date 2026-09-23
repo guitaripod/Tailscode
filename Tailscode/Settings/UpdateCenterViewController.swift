@@ -2,23 +2,60 @@ import SafariServices
 import TailscodeCore
 import UIKit
 
-/// The one press, performed. Shared by the Update Center and a server's own screen so a promise
-/// printed in two places cannot be kept two different ways — and so the sentence a reader was
-/// shown before pressing is the sentence the press honours.
+/// A card's press, carried out. Shared by the Software Updates screen and a server's own screen,
+/// so a press drawn in two places is kept one way — and the question asked before a restart is the
+/// one Core wrote, word for word, on every desk.
 @MainActor
 enum UpdatePress {
-    static func perform(_ reading: UpdateReading, from presenter: UIViewController) {
-        guard let invitation = reading.invitation else { return }
+    static func perform(
+        _ action: UpdateCard.Action, for reading: UpdateReading, from presenter: UIViewController
+    ) {
+        switch action.kind {
+        case .invitation(let invitation):
+            take(invitation, action: action, reading: reading, from: presenter)
+        case .setAside:
+            Theme.Haptics.selection()
+            UpdateLedger.acknowledge(reading)
+        case .showLog:
+            Theme.Haptics.tap()
+            let log = UpdateLogViewController(title: reading.title, log: reading.log ?? "")
+            presenter.present(UINavigationController(rootViewController: log), animated: true)
+        case .checkNow:
+            Theme.Haptics.tap()
+            Task { await UpdateMonitor.check(reading.component) }
+        }
+    }
+
+    private static func take(
+        _ invitation: UpdateInvitation, action: UpdateCard.Action, reading: UpdateReading,
+        from presenter: UIViewController
+    ) {
         switch invitation {
-        case .installHere:
-            confirmInstall(reading, from: presenter)
-        case .restartHere:
-            confirmRestart(reading, invitation: invitation, from: presenter)
+        case .installHere, .restartHere:
+            guard let confirmation = action.confirmation else {
+                start(reading)
+                return
+            }
+            let alert = UIAlertController(
+                title: confirmation.title, message: confirmation.message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+            alert.addAction(
+                UIAlertAction(title: confirmation.confirm, style: .default) { _ in
+                    start(reading)
+                })
+            presenter.present(alert, animated: true)
         case .openStore(let url):
             Theme.Haptics.tap()
             open(url)
         case .copyCommand(let command):
-            copy(command, from: presenter)
+            UIPasteboard.general.string = command
+            Theme.Haptics.success()
+            let alert = UIAlertController(
+                title: String(localized: "Command copied"),
+                message: [command, invitation.promise].compactMap { $0 }.joined(separator: "\n\n"),
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
+            presenter.present(alert, animated: true)
         case .openPage(let url):
             Theme.Haptics.tap()
             guard let link = URL(string: url), link.scheme?.hasPrefix("http") == true else {
@@ -28,87 +65,97 @@ enum UpdatePress {
             presenter.present(SFSafariViewController(url: link), animated: true)
         case .recheck:
             Theme.Haptics.tap()
-            Task { await UpdateMonitor.check(reading.component, force: true) }
+            Task { await UpdateMonitor.check(reading.component) }
         }
     }
 
-    /// The changes an update would bring, before it is taken: an update restarts the server, and a
-    /// person is entitled to know what they are restarting it for.
-    private static func confirmInstall(_ reading: UpdateReading, from presenter: UIViewController) {
-        let changes = (reading.verdict.offer?.changes ?? []).prefix(8)
-            .map { "• \($0)" }.joined(separator: "\n")
-        let alert = UIAlertController(
-            title: String(localized: "Update \(reading.title)?"),
-            message: changes.isEmpty
-                ? String(
-                    localized:
-                        "The server pulls the new code, rebuilds it, and restarts. It stops answering for a moment while it does."
-                )
-                : String(
-                    localized:
-                        "\(changes)\n\nThe server rebuilds and restarts, so it stops answering for a moment."
-                ),
-            preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        alert.addAction(
-            UIAlertAction(title: String(localized: "Update"), style: .default) { _ in
-                Theme.Haptics.tap()
-                Task { await UpdateMonitor.update(reading.component) }
-            })
-        presenter.present(alert, animated: true)
-    }
-
-    /// Nothing is fetched and nothing is built, so what there is to be told beforehand is what the
-    /// press costs: who brings the bridge back, and whether it is about to be taken out from under
-    /// a turn. That is exactly what the promise says and it says it differently when something is
-    /// running, so the promise is the message rather than a sentence written here about it.
-    private static func confirmRestart(
-        _ reading: UpdateReading, invitation: UpdateInvitation, from presenter: UIViewController
-    ) {
-        let alert = UIAlertController(
-            title: String(localized: "Restart \(reading.title)?"),
-            message: invitation.promise, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        alert.addAction(
-            UIAlertAction(title: invitation.label, style: .default) { _ in
-                Theme.Haptics.tap()
-                Task { await UpdateMonitor.restart(reading.component) }
-            })
-        presenter.present(alert, animated: true)
-    }
-
-    private static func copy(_ command: String, from presenter: UIViewController) {
-        UIPasteboard.general.string = command
-        Theme.Haptics.success()
-        let alert = UIAlertController(
-            title: String(localized: "Copied"),
-            message: String(
-                localized:
-                    "Run it on the machine that server runs on. It updates in place and keeps your password."
-            ),
-            preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
-        presenter.present(alert, animated: true)
+    private static func start(_ reading: UpdateReading) {
+        Theme.Haptics.tap()
+        Task { await UpdateMonitor.perform(reading.component) }
     }
 
     private static func open(_ url: String) {
         guard let link = URL(string: url) else { return }
         UIApplication.shared.open(link)
     }
+
+    /// Turning a machine's own policy on or off. The card draws the switch from what the machine
+    /// said; a refusal puts it back there and says why.
+    static func setAutomation(
+        _ enabled: Bool, for reading: UpdateReading, card: UpdateCardView,
+        from presenter: UIViewController
+    ) {
+        Task {
+            guard let failure = await UpdateMonitor.setAutoUpdate(reading.component, enabled) else {
+                return
+            }
+            card.restoreAutomation()
+            Theme.Haptics.warning()
+            let alert = UIAlertController(
+                title: String(localized: "\(reading.title) didn't change its update setting"),
+                message: failure, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
+            presenter.present(alert, animated: true)
+        }
+    }
 }
 
-/// Every machine in the picture, and what it is running.
+/// What a failed update printed, readable and copyable.
+@MainActor
+final class UpdateLogViewController: UIViewController {
+    private let log: String
+
+    init(title: String, log: String) {
+        self.log = log
+        super.init(nibName: nil, bundle: nil)
+        self.title = String(localized: "\(title) — update log")
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = Theme.Color.background
+        let text = UITextView()
+        text.text = log
+        text.isEditable = false
+        text.font = Theme.Ramp.font(.code)
+        text.adjustsFontForContentSizeCategory = true
+        text.textColor = Theme.Color.label
+        text.backgroundColor = .clear
+        text.textContainerInset = UIEdgeInsets(
+            top: Theme.Spacing.l, left: Theme.Spacing.m, bottom: Theme.Spacing.l,
+            right: Theme.Spacing.m)
+        text.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(text)
+        NSLayoutConstraint.activate([
+            text.topAnchor.constraint(equalTo: view.topAnchor),
+            text.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            text.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            text.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            systemItem: .done,
+            primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc"),
+            primaryAction: UIAction { [weak self] _ in
+                UIPasteboard.general.string = self?.log
+                Theme.Haptics.success()
+            })
+    }
+}
+
+/// Every machine in the picture and what it is running, one card each.
 ///
-/// One section per machine — this app and each configured server — because the question a person
-/// actually has is "is anything here out of date", and answering it one screen at a time hides the
-/// server that is three months behind. Every number arrives with the name of whoever said it and
-/// the moment it was read; nothing here invents a word, and nothing here decides what a verdict
-/// means. The rows are Core's sentences arranged by a phone.
+/// The screen leads with the one line that sums it up — something to update, something updating,
+/// or nothing to do — and a single press for every server that can take its own update. Each card
+/// below is Core's: what is new and the press that takes it, the steps while it runs, what it
+/// became once it lands. Nothing here decides what a verdict means.
 ///
-/// Nothing dismisses. "Not now" records this exact offer against this exact machine, which stops
-/// the standing mark and collapses the card explaining it — and expires by itself the moment a
-/// newer release, a different obstacle or an obstacle that cleared gives the person something new
-/// to decide.
+/// It renders from `UpdateLedger` the instant it opens and corrects itself as answers land, and the
+/// cards are rewritten in place: a job lands a new reading every two seconds, and a screen that
+/// rebuilt itself on each would move the button under the reader's thumb.
 @MainActor
 final class UpdateCenterViewController: UIViewController {
     static func present(from presenter: UIViewController) {
@@ -120,398 +167,213 @@ final class UpdateCenterViewController: UIViewController {
         nav.pushViewController(center, animated: true)
     }
 
-    private enum Section: Hashable {
-        case everything
-        case component(String)
-    }
-
-    private enum Item: Hashable {
-        case verdict(String)
-        case installed(String)
-        case available(String)
-        case change(String, Int)
-        case obstacle(String, Int)
-        case log(String)
-        case invitation(String)
-        case notNow(String)
-        case updateEverything
-    }
-
-    /// Enough of an update's subjects to judge whether to take it, and enough of an obstacle to
-    /// know what to go and clear; the rest is a changelog, and this screen is not a changelog.
-    private static let changeLimit = 6
-
-    private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
-    private var rollup = UpdateLedger.rollup()
+    private let scroll = UIScrollView()
+    private let column = UIStackView()
+    private let heroTitle = UILabel()
+    private let heroDetail = UILabel()
+    private let heroChecked = UILabel()
+    private let everythingButton = UIButton(type: .system)
+    private let hero = UIStackView()
+    private let emptyLabel = UILabel()
     private let refresher = UIRefreshControl()
+    private var cards: [String: UpdateCardView] = [:]
+    private var order: [String] = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = String(localized: "Updates")
+        title = String(localized: "Software Updates")
         view.backgroundColor = Theme.Color.groupedBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "arrow.clockwise"),
             primaryAction: UIAction { [weak self] _ in self?.recheck() })
-        navigationItem.rightBarButtonItem?.accessibilityLabel = String(localized: "Check again")
-        configure()
-        applySnapshot()
+        navigationItem.rightBarButtonItem?.accessibilityLabel = String(localized: "Check now")
+        build()
+        render()
         NotificationCenter.default.addObserver(
-            self, selector: #selector(ledgerChanged), name: UpdateLedger.didChange, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(sweepChanged), name: UpdateMonitor.didChange, object: nil)
-        Task { await UpdateMonitor.checkAll() }
+            self, selector: #selector(changed), name: UpdateMonitor.didChange, object: nil)
+        UpdateMonitor.checkIfDue()
     }
 
-    private func configure() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
-        config.headerMode = .supplementary
-        config.footerMode = .supplementary
-        config.backgroundColor = .clear
-        let layout = UICollectionViewCompositionalLayout.readableList(using: config)
-        collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
-        collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collectionView.backgroundColor = .clear
-        collectionView.delegate = self
-        collectionView.refreshControl = refresher
+    @objc private func changed() { render() }
+
+    private func build() {
+        scroll.alwaysBounceVertical = true
+        scroll.refreshControl = refresher
         refresher.addAction(UIAction { [weak self] _ in self?.recheck() }, for: .valueChanged)
-        view.addSubview(collectionView)
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scroll)
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> {
-            [weak self] cell, _, item in
-            self?.configure(cell, item)
-        }
-        let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
-            elementKind: UICollectionView.elementKindSectionHeader
-        ) { [weak self] view, _, indexPath in
-            guard let self, let section = self.section(at: indexPath),
-                case .component(let key) = section, let reading = self.reading(key)
-            else {
-                view.contentConfiguration = nil
-                return
-            }
-            var content = UIListContentConfiguration.header()
-            content.text = reading.title
-            content.secondaryText = reading.subtitle
-            content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
-            view.contentConfiguration = content
-        }
-        let footer = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
-            elementKind: UICollectionView.elementKindSectionFooter
-        ) { [weak self] view, _, indexPath in
-            guard let self, let text = self.footerText(at: indexPath) else {
-                view.contentConfiguration = nil
-                return
-            }
-            var content = UIListContentConfiguration.footer()
-            content.text = text
-            view.contentConfiguration = content
-        }
+        heroTitle.font = Theme.Ramp.font(.headline)
+        heroTitle.adjustsFontForContentSizeCategory = true
+        heroTitle.textColor = Theme.Color.label
+        heroTitle.numberOfLines = 0
+        heroTitle.accessibilityTraits = .header
+        heroDetail.font = Theme.Ramp.font(.panelDetail)
+        heroDetail.adjustsFontForContentSizeCategory = true
+        heroDetail.textColor = Theme.Color.secondaryLabel
+        heroDetail.numberOfLines = 0
+        heroChecked.font = Theme.Ramp.font(.panelFootnote)
+        heroChecked.adjustsFontForContentSizeCategory = true
+        heroChecked.textColor = Theme.Color.tertiaryLabel
 
-        dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
-            collectionView, indexPath, item in
-            collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: item)
+        var everything = Theme.Glass.buttonConfiguration(prominent: true)
+        everything.cornerStyle = .capsule
+        everything.image = UIImage(systemName: "arrow.down.circle")
+        everything.imagePadding = Theme.Spacing.xs
+        everythingButton.configuration = everything
+        everythingButton.addAction(
+            UIAction { [weak self] _ in self?.updateEverything() }, for: .touchUpInside)
+
+        for view: UIView in [heroTitle, heroDetail, everythingButton, heroChecked] {
+            hero.addArrangedSubview(view)
         }
-        dataSource.supplementaryViewProvider = { collectionView, kind, indexPath in
-            let registration = kind == UICollectionView.elementKindSectionFooter ? footer : header
-            return collectionView.dequeueConfiguredReusableSupplementary(
-                using: registration, for: indexPath)
-        }
+        hero.axis = .vertical
+        hero.alignment = .leading
+        hero.spacing = Theme.Spacing.xs
+        hero.setCustomSpacing(Theme.Spacing.m, after: heroDetail)
+        hero.setCustomSpacing(Theme.Spacing.m, after: everythingButton)
+        hero.isLayoutMarginsRelativeArrangement = true
+        hero.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: 0, leading: Theme.Spacing.xs, bottom: Theme.Spacing.xs,
+            trailing: Theme.Spacing.xs)
+
+        emptyLabel.text = String(
+            localized: "Nothing has answered yet. Pull down to ask this app and every server what they are running.")
+        emptyLabel.font = Theme.Ramp.font(.panelDetail)
+        emptyLabel.adjustsFontForContentSizeCategory = true
+        emptyLabel.textColor = Theme.Color.secondaryLabel
+        emptyLabel.numberOfLines = 0
+        emptyLabel.textAlignment = .center
+
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.l
+        column.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(column)
+        let content = scroll.contentLayoutGuide
+        let frame = scroll.frameLayoutGuide
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: view.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            column.topAnchor.constraint(equalTo: content.topAnchor, constant: Theme.Spacing.l),
+            column.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -Theme.Spacing.xl),
+            column.leadingAnchor.constraint(
+                equalTo: view.readableContentGuide.leadingAnchor),
+            column.trailingAnchor.constraint(
+                equalTo: view.readableContentGuide.trailingAnchor),
+            column.widthAnchor.constraint(
+                lessThanOrEqualTo: frame.widthAnchor, constant: -2 * Theme.Spacing.l),
+        ])
     }
 
-    private func section(at indexPath: IndexPath) -> Section? {
-        dataSource.snapshot().sectionIdentifiers[safe: indexPath.section]
-    }
-
-    private func reading(_ key: String) -> UpdateReading? {
-        rollup.readings.first { $0.id == key }
-    }
-
-    /// The last section carries the provenance disclaimer, because it is a fact about every number
-    /// above it and repeating it under each one would train the reader to skip it.
-    private func footerText(at indexPath: IndexPath) -> String? {
-        let sections = dataSource.snapshot().sectionIdentifiers
-        guard indexPath.section == sections.count - 1 else { return nil }
-        return String(
-            localized:
-                "Every version above is shown with who reported it and when. A machine that could not be reached, or that is too old to answer, says so rather than reading as up to date."
-        )
-    }
-
-    private func configure(_ cell: UICollectionViewListCell, _ item: Item) {
-        var content = cell.defaultContentConfiguration()
-        cell.accessories = []
-        switch item {
-        case .verdict(let key):
-            guard let reading = reading(key) else { break }
-            content.text = reading.headline
-            content.secondaryText = reading.detail()
-            content.secondaryTextProperties.numberOfLines = 0
-            content.secondaryTextProperties.font = Theme.Ramp.font(.panelDetail)
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(
-                systemName: reading.icon.symbol,
-                withConfiguration: UIImage.SymbolConfiguration(textStyle: .body))
-            content.imageProperties.tintColor = reading.tone.color
-            cell.accessibilityLabel = reading.accessibilityLine()
-            if reading.verdict.isBusy { cell.accessories = [.working()] }
-        case .installed(let key):
-            guard let reading = reading(key) else { break }
-            content.text = String(localized: "Installed")
-            content.secondaryText = reading.installed.line
-            content.secondaryTextProperties.numberOfLines = 0
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.textProperties.font = Theme.Ramp.font(.panelLabel)
-        case .available(let key):
-            guard let reading = reading(key) else { break }
-            content.text = String(localized: "Available")
-            content.secondaryText = reading.available.line
-            content.secondaryTextProperties.numberOfLines = 0
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.textProperties.font = Theme.Ramp.font(.panelLabel)
-        case .change(let key, let index):
-            guard let change = reading(key)?.verdict.offer?.changes[safe: index] else { break }
-            content.text = change
-            content.textProperties.numberOfLines = 2
-            content.textProperties.font = Theme.Ramp.font(.panelDetail)
-            content.textProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(
-                systemName: "circle.fill",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 5, weight: .bold))
-            content.imageProperties.tintColor = Theme.Color.tertiaryLabel
-        case .obstacle(let key, let index):
-            guard let line = reading(key)?.verdict.offer?.detailLines[safe: index] else { break }
-            content.text = line
-            content.textProperties.numberOfLines = 2
-            content.textProperties.font = Theme.Ramp.font(.panelDetail)
-            content.textProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(
-                systemName: "circle.fill",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 5, weight: .bold))
-            content.imageProperties.tintColor = Theme.Color.warning
-        case .log:
-            content.text = String(localized: "Show what it printed")
-            content.textProperties.color = Theme.Color.accent
-            content.image = UIImage(systemName: "text.alignleft")
-            content.imageProperties.tintColor = Theme.Color.accent
-            cell.accessories = [.disclosureIndicator()]
-        case .invitation(let key):
-            guard let invitation = reading(key)?.invitation else { break }
-            content.text = invitation.label
-            content.textProperties.color = Theme.Color.accent
-            if let promise = invitation.promise {
-                content.secondaryText = promise
-                content.secondaryTextProperties.numberOfLines = 0
-                content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            }
-            content.image = UIImage(systemName: Self.symbol(for: invitation))
-            content.imageProperties.tintColor = Theme.Color.accent
-        case .notNow:
-            content.text = String(localized: "Not now")
-            content.secondaryText = String(
-                localized:
-                    "Keeps the row and stops the mark, until this offer changes into a different one."
-            )
-            content.secondaryTextProperties.numberOfLines = 0
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(systemName: "clock.arrow.circlepath")
-            content.imageProperties.tintColor = Theme.Color.secondaryLabel
-        case .updateEverything:
-            content.text = String(localized: "Update everything")
-            content.secondaryText = String(
-                localized:
-                    "\(rollup.installableServers.count) servers, one at a time — each rebuilds and restarts before the next starts."
-            )
-            content.secondaryTextProperties.numberOfLines = 0
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.textProperties.color = Theme.Color.accent
-            content.image = UIImage(systemName: "arrow.down.circle.fill")
-            content.imageProperties.tintColor = Theme.Color.accent
-            if UpdateMonitor.isUpdatingEverything { cell.accessories = [.working()] }
+    private func render() {
+        let rollup = UpdateLedger.rollup()
+        let snapshot = UpdateMonitor.snapshot
+        let ids = rollup.readings.map(\.id)
+        if ids != order || column.arrangedSubviews.isEmpty {
+            relayout(ids)
         }
-        cell.contentConfiguration = content
-    }
-
-    private static func symbol(for invitation: UpdateInvitation) -> String {
-        switch invitation {
-        case .installHere: return "arrow.down.circle"
-        case .restartHere: return "arrow.clockwise.circle"
-        case .openStore: return "arrow.up.forward.app"
-        case .copyCommand: return "doc.on.doc"
-        case .openPage: return "safari"
-        case .recheck: return "arrow.clockwise"
-        }
-    }
-
-    /// What one machine is worth saying about it, in the order a person reads it: the verdict, the
-    /// numbers it rests on, what an update would bring, what is standing in its way named rather
-    /// than summarised, and only then the press. An acknowledged offer keeps its verdict and its
-    /// numbers and loses the card — the row never disappears.
-    private func items(for reading: UpdateReading) -> [Item] {
-        let key = reading.id
-        var items: [Item] = [.verdict(key)]
-        if reading.installed.isKnown { items.append(.installed(key)) }
-        if reading.available.isKnown { items.append(.available(key)) }
-        let collapsed = rollup.isAcknowledged(reading)
-        if !collapsed, let offer = reading.verdict.offer {
-            let count = min(Self.changeLimit, offer.changes.count)
-            items += (0..<count).map { Item.change(key, $0) }
-            let obstacles = min(Self.changeLimit, offer.detailLines.count)
-            items += (0..<obstacles).map { Item.obstacle(key, $0) }
-        }
-        if reading.log != nil, case .failed = reading.verdict { items.append(.log(key)) }
-        if !collapsed, reading.invitation != nil { items.append(.invitation(key)) }
-        if !collapsed, reading.stands() { items.append(.notNow(key)) }
-        return items
-    }
-
-    private func applySnapshot() {
-        var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
-        if rollup.canUpdateEverything {
-            snapshot.appendSections([.everything])
-            snapshot.appendItems([.updateEverything], toSection: .everything)
-        }
+        renderHero(rollup, snapshot: snapshot)
         for reading in rollup.readings {
-            let section = Section.component(reading.id)
-            snapshot.appendSections([section])
-            snapshot.appendItems(items(for: reading), toSection: section)
+            cards[reading.id]?.apply(
+                UpdateCard(
+                    reading, acknowledged: rollup.isAcknowledged(reading),
+                    busy: snapshot.isBusy(reading.component)))
         }
-        let existing = Set(dataSource.snapshot().itemIdentifiers)
-        let carried = snapshot.itemIdentifiers.filter { existing.contains($0) }
-        if !carried.isEmpty { snapshot.reconfigureItems(carried) }
-        dataSource.apply(snapshot, animatingDifferences: false)
-        updateEmptyState(itemCount: snapshot.numberOfItems)
+        emptyLabel.isHidden = !rollup.readings.isEmpty
+        if refresher.isRefreshing, !snapshot.checking { refresher.endRefreshing() }
     }
 
-    private func updateEmptyState(itemCount: Int) {
-        let working = itemCount == 0 && UpdateMonitor.isChecking
-        if !working { collectionView.backgroundView = nil }
-        collectionView.showsWork(working)
-        guard itemCount == 0 else {
-            contentUnavailableConfiguration = nil
-            return
+    /// The column rebuilt around a new set — or a new order — of machines. The cards themselves
+    /// are kept and moved rather than made again, so one that merely moved up the list carries
+    /// what its reader had opened with it.
+    private func relayout(_ ids: [String]) {
+        for stale in Set(cards.keys).subtracting(ids) { cards.removeValue(forKey: stale) }
+        for view in column.arrangedSubviews { view.removeFromSuperview() }
+        column.addArrangedSubview(hero)
+        for id in ids {
+            let card = cards[id] ?? makeCard(id)
+            cards[id] = card
+            column.addArrangedSubview(card)
         }
-        guard !working else {
-            contentUnavailableConfiguration = nil
-            return
-        }
-        var config = UIContentUnavailableConfiguration.empty()
-        config.image = UIImage(systemName: "questionmark.circle")
-        config.text = String(localized: "Nothing has answered yet")
-        config.secondaryText = String(
-            localized: "Pull down to ask this app and every server what they are running.")
-        contentUnavailableConfiguration = config
+        column.addArrangedSubview(emptyLabel)
+        order = ids
     }
 
-    @objc private func ledgerChanged() {
-        rollup = UpdateLedger.rollup()
-        applySnapshot()
+    private func makeCard(_ id: String) -> UpdateCardView {
+        let card = UpdateCardView(style: .standalone)
+        card.onAction = { [weak self] action in
+            guard let self, let reading = self.reading(id) else { return }
+            UpdatePress.perform(action, for: reading, from: self)
+        }
+        card.onAutomation = { [weak self, weak card] enabled in
+            guard let self, let card, let reading = self.reading(id) else { return }
+            UpdatePress.setAutomation(enabled, for: reading, card: card, from: self)
+        }
+        return card
     }
 
-    @objc private func sweepChanged() {
-        if refresher.isRefreshing, !UpdateMonitor.isChecking { refresher.endRefreshing() }
-        rollup = UpdateLedger.rollup()
-        applySnapshot()
+    private func reading(_ id: String) -> UpdateReading? {
+        UpdateLedger.rollup().readings.first { $0.id == id }
+    }
+
+    private func renderHero(_ rollup: UpdateRollup, snapshot: UpdateDriver.Snapshot) {
+        heroTitle.text = rollup.headline
+        heroDetail.text = rollup.readings.isEmpty ? nil : rollup.detail()
+        heroDetail.isHidden = heroDetail.text?.isEmpty ?? true
+        if let walk = snapshot.walk {
+            everythingButton.isHidden = false
+            everythingButton.isEnabled = false
+            everythingButton.configuration?.title = String(
+                localized: "Updating \(min(walk.done + 1, walk.total)) of \(walk.total)…")
+        } else {
+            everythingButton.isHidden = !rollup.canUpdateEverything
+            everythingButton.isEnabled = true
+            everythingButton.configuration?.title = String(
+                localized: "Update all \(rollup.installableServers.count) servers")
+        }
+        if snapshot.checking {
+            heroChecked.text = String(localized: "Checking every machine…")
+        } else if let last = UpdateLedger.lastCheck() {
+            heroChecked.text = String(localized: "Last checked \(RelativeWhen.ago(last))")
+        } else {
+            heroChecked.text = nil
+        }
+        heroChecked.isHidden = heroChecked.text == nil
     }
 
     private func recheck() {
         Theme.Haptics.tap()
         Task { [weak self] in
-            await UpdateMonitor.checkAll(force: true)
+            await UpdateMonitor.checkAll()
             self?.refresher.endRefreshing()
         }
     }
 
-    private func showLog(_ reading: UpdateReading) {
+    private func updateEverything() {
+        let count = UpdateLedger.rollup().installableServers.count
         let alert = UIAlertController(
-            title: String(localized: "Update failed"),
-            message: reading.log ?? reading.detail(), preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
+            title: String(localized: "Update all \(count) servers?"),
+            message: String(
+                localized:
+                    "One at a time: each downloads and builds, then restarts once nothing is running on it."
+            ),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         alert.addAction(
-            UIAlertAction(title: String(localized: "Copy"), style: .default) { _ in
-                UIPasteboard.general.string = reading.log
+            UIAlertAction(title: String(localized: "Update all"), style: .default) { _ in
                 Theme.Haptics.tap()
+                Task { await UpdateMonitor.updateEverything() }
             })
         present(alert, animated: true)
     }
 }
 
-extension UpdateCenterViewController: UICollectionViewDelegate {
-    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        collectionView.deselectItem(at: indexPath, animated: true)
-        switch dataSource.itemIdentifier(for: indexPath) {
-        case .invitation(let key):
-            guard let reading = reading(key) else { return }
-            UpdatePress.perform(reading, from: self)
-        case .notNow(let key):
-            guard let reading = reading(key) else { return }
-            Theme.Haptics.selection()
-            UpdateLedger.acknowledge(reading)
-        case .log(let key):
-            guard let reading = reading(key) else { return }
-            showLog(reading)
-        case .updateEverything:
-            Theme.Haptics.tap()
-            Task { await UpdateMonitor.updateEverything() }
-        default:
-            break
-        }
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
-    ) -> UIContextMenuConfiguration? {
-        guard indexPaths.count == 1 else { return nil }
-        let text: String?
-        switch dataSource.itemIdentifier(for: indexPaths[0]) {
-        case .installed(let key): text = reading(key)?.installed.line
-        case .available(let key): text = reading(key)?.available.line
-        case .verdict(let key): text = reading(key)?.accessibilityLine()
-        case .obstacle(let key, let index):
-            text = reading(key)?.verdict.offer?.detailLines[safe: index]
-        default: text = nil
-        }
-        guard let text else { return nil }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
-            UIMenu(children: [
-                UIAction(
-                    title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")
-                ) { _ in
-                    UIPasteboard.general.string = text
-                    Theme.Haptics.tap()
-                }
-            ])
-        }
-    }
-}
-
-/// The gear, wearing the one mark the app owes its reader.
-///
-/// The mark is chrome: it sits in the corner of a button that already existed, covers nothing, and
-/// there is no gesture that puts it out — it goes out when the fact it stands for stops being
-/// true, or when the person sets that exact offer aside inside the Update Center.
-///
-/// It holds perfectly still while an update merely *exists*, because a settled fact that pulses
-/// reads as work in progress and teaches a reader to ignore it. Only a machine actually being
-/// replaced earns motion, and it gets the one motion the vocabulary gives that state: a sweep,
-/// drawn as an arc turning on the display's own clock so it is in time with every other badge on
-/// screen.
+/// The gear on Home. It used to carry the update mark as a dot in its corner; the mark now has a
+/// word of its own beside it (`UpdateChipButton`), so the gear is only the way to Settings.
 @MainActor
-final class UpdateMarkButton: UIButton {
-    private let mark = CAShapeLayer()
-    private var link: CADisplayLink?
-    private var declared: ActivityMotion = .still
-    private var tone: ActivityTone = .quiet
-
-    /// What the mark is allowed to do here and now. Reduce Motion is read at the moment of asking
-    /// rather than folded into the stored value, or the mark would stay still forever after the
-    /// setting was switched back off.
-    private var motion: ActivityMotion {
-        declared.honoring(reduceMotion: UIAccessibility.isReduceMotionEnabled)
-    }
-
-    private static let diameter: CGFloat = 9
+final class SettingsGearButton: UIButton {
     private static let side: CGFloat = 34
 
     init() {
@@ -520,93 +382,64 @@ final class UpdateMarkButton: UIButton {
             UIImage(
                 systemName: "gearshape",
                 withConfiguration: UIImage.SymbolConfiguration(textStyle: .body)), for: .normal)
-        mark.isHidden = true
-        mark.fillColor = UIColor.clear.cgColor
-        layer.addSublayer(mark)
         accessibilityLabel = String(localized: "Settings")
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(reapply),
-            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
-        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
-            (view: UpdateMarkButton, _) in view.reapply()
-        }
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: CGSize {
         CGSize(width: Self.side, height: Self.side)
     }
+}
 
-    func apply(_ rollup: UpdateRollup) {
-        accessibilityValue = rollup.showsMark ? rollup.headline : nil
-        mark.isHidden = !rollup.showsMark
-        tone = rollup.tone
-        declared = rollup.motion
-        reapply()
+/// The standing update mark, in words: `Update`, `2 updates`, `Updating`, `Update failed`.
+///
+/// A dot on a gear told a reader that something somewhere wanted attention and left them to find
+/// out what. The chip says what, in the chrome beside the gear, and opens the screen that answers
+/// it. It covers nothing and has no dismiss gesture — it goes when the fact it stands for stops
+/// being true, or when the person sets that exact offer aside. It holds perfectly still unless a
+/// machine is actually being updated, and then only its symbol turns.
+@MainActor
+final class UpdateChipButton: UIButton {
+    private var turning = false
+
+    init() {
+        super.init(frame: .zero)
+        var config = UIButton.Configuration.tinted()
+        config.cornerStyle = .capsule
+        config.buttonSize = .mini
+        config.imagePadding = 4
+        config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+            textStyle: .caption1, scale: .medium)
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            var attributes = $0
+            attributes.font = Theme.Ramp.font(.metricLabel)
+            return attributes
+        }
+        configuration = config
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(motionPreferenceChanged),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        window == nil ? stop() : reapply()
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func apply(_ chip: UpdateChip) {
+        configuration?.title = chip.title
+        configuration?.image = UIImage(systemName: chip.symbol)
+        configuration?.baseForegroundColor = chip.tone.color
+        configuration?.baseBackgroundColor = chip.tone.color
+        accessibilityLabel = chip.title
+        accessibilityHint = String(localized: "Opens Software Updates")
+        turning = chip.motion.isAnimated
+        applyMotion()
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let size = Self.diameter
-        let frame = CGRect(
-            x: bounds.maxX - size - 3, y: bounds.minY + 3, width: size, height: size)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        mark.frame = frame
-        mark.path = path(in: CGRect(origin: .zero, size: frame.size))
-        CATransaction.commit()
-    }
+    @objc private func motionPreferenceChanged() { applyMotion() }
 
-    /// A filled dot when nothing is moving, and an open arc when something is: the arc is what a
-    /// sweep looks like at nine points, and a full circle turning would be indistinguishable from
-    /// a still one.
-    private func path(in rect: CGRect) -> CGPath {
-        let inset = rect.insetBy(dx: 1, dy: 1)
-        guard motion.isAnimated else { return UIBezierPath(ovalIn: rect).cgPath }
-        return UIBezierPath(
-            arcCenter: CGPoint(x: inset.midX, y: inset.midY), radius: inset.width / 2,
-            startAngle: 0, endAngle: .pi * 1.5, clockwise: true
-        ).cgPath
-    }
-
-    @objc private func reapply() {
-        let moving = motion.isAnimated
-        let ink = tone.color.resolvedColor(with: traitCollection).cgColor
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        mark.strokeColor = ink
-        mark.fillColor = moving ? UIColor.clear.cgColor : ink
-        mark.lineWidth = moving ? 2 : 0
-        mark.transform = CATransform3DIdentity
-        CATransaction.commit()
-        setNeedsLayout()
-        moving && !mark.isHidden ? start() : stop()
-    }
-
-    private func start() {
-        guard link == nil, window != nil else { return }
-        let link = CADisplayLink(target: self, selector: #selector(step))
-        link.runAtActivityTempo()
-        link.add(to: .main, forMode: .common)
-        self.link = link
-    }
-
-    private func stop() {
-        link?.invalidate()
-        link = nil
-    }
-
-    @objc private func step(_ link: CADisplayLink) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        mark.transform = CATransform3DMakeRotation(motion.rotation(at: link.timestamp), 0, 0, 1)
-        CATransaction.commit()
+    private func applyMotion() {
+        imageView?.removeAllSymbolEffects()
+        guard turning, !UIAccessibility.isReduceMotionEnabled else { return }
+        imageView?.addSymbolEffect(.rotate, options: .repeat(.continuous))
     }
 }

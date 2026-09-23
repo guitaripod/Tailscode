@@ -271,6 +271,18 @@ final class SettingsViewController: UIViewController {
             guard navigationController?.viewControllers.count == 1 else { return }
             let environment = ProcessInfo.processInfo.environment
             if let wanted = environment["TAILSCODE_OPEN_SERVER"],
+                wanted.hasPrefix(UpdateFixtures.profilePrefix),
+                let url = URL(string: "http://100.64.0.99:4098")
+            {
+                navigationController?.pushViewController(
+                    ServerDetailViewController(
+                        profile: ConnectionProfile(
+                            id: wanted, name: String(wanted.dropFirst(UpdateFixtures.profilePrefix.count)),
+                            backend: .claudeCode, baseURL: url, username: "claude")),
+                    animated: false)
+                return
+            }
+            if let wanted = environment["TAILSCODE_OPEN_SERVER"],
                 let profile = ConnectionController.shared.profiles.first(where: {
                     wanted.isEmpty || $0.name.hasPrefix(wanted)
                 })
@@ -327,7 +339,7 @@ final class SettingsViewController: UIViewController {
         center.addObserver(
             self, selector: #selector(themeChanged), name: ThemeSelection.didChange, object: nil)
         center.addObserver(
-            self, selector: #selector(updatesChanged), name: UpdateLedger.didChange, object: nil)
+            self, selector: #selector(updatesChanged), name: UpdateMonitor.didChange, object: nil)
     }
 
     /// The software row and the per-server marks are the same fact seen at two widths, so one
@@ -819,7 +831,7 @@ final class SettingsViewController: UIViewController {
             reading.stands(acknowledged: rollup.isAcknowledged(reading)) || reading.verdict.isBusy
         else { return nil }
         let badge = ActivityBadgeView(pointSize: 11)
-        badge.show(reading.icon, spoken: reading.headline)
+        badge.show(reading.icon, spoken: UpdateCard(reading).headline)
         return .customView(configuration: .init(customView: badge, placement: .trailing()))
     }
 

@@ -33,11 +33,7 @@ public enum UpdateLedger {
         stored().map { reading in
             let verdict = UpdateFreshness.decayed(reading, now: now)
             guard verdict != reading.verdict else { return reading }
-            return UpdateReading(
-                component: reading.component, title: reading.title, subtitle: reading.subtitle,
-                installed: reading.installed, available: reading.available, verdict: verdict,
-                invitation: reading.invitation, manager: reading.manager, log: reading.log,
-                checkedAt: reading.checkedAt, note: reading.note, automation: reading.automation)
+            return reading.with(verdict: verdict)
         }
     }
 

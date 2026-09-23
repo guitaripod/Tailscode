@@ -2,133 +2,122 @@ import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
 import TailscodeCore
+import UIKit
 
-/// What every machine in the picture is running, kept alive across screens.
+/// This phone's seat at `UpdateDriver`, which does the asking, the pressing and the following for
+/// all three clients the same way.
 ///
-/// An update is a standing fact, so the asking cannot belong to the screen that shows it: the mark
-/// on the Home chrome has to be right before anyone opens anything, and it has to survive a
-/// relaunch. Every answer is written through `UpdateLedger`, which is what the surfaces render
-/// from — this type only decides *when* to ask and hands what came back to Core to be judged.
-///
-/// Its own `didChange` is about the asking, not the answers: a screen that wants to spin while a
-/// sweep is out listens here, and a screen that wants the verdicts listens to `UpdateLedger`.
+/// What is left here is only what the driver cannot know about a phone: which servers are
+/// configured (the demo's are a story, not machines, and are never asked), how to reach one, and
+/// what the App Store says about this app. Every answer goes through `UpdateLedger`, which is what
+/// the cards render from; a screen that wants to grey a press while a job is under way listens to
+/// the driver's own `didChange`.
 @MainActor
 enum UpdateMonitor {
-    static let didChange = Notification.Name("UpdateMonitor.didChange")
+    /// Posted on the main thread whenever a card could have changed — an answer landed, or this
+    /// device started or stopped asking. The driver works off the main thread and the ledger posts
+    /// from whichever thread wrote it; screens listen here and never have to ask which.
+    nonisolated static let didChange = Notification.Name("UpdateMonitor.didChange")
 
     /// A server consulting its remote costs it a `git fetch` before it can answer, which is a long
     /// way past the eight seconds a health probe is given.
     private static let policy = ConnectionPolicy(
-        requestTimeout: .seconds(20), resourceTimeout: .seconds(30))
-
-    /// A debounce against two explicit refreshes landing on top of each other, and nothing more.
-    /// Whether asking again is worth a `git fetch` on every server is `UpdateLedger.isDue`, which
-    /// survives a relaunch — this one is process-local and would let every cold start sweep.
-    private static let freshness: TimeInterval = 60
+        requestTimeout: .seconds(25), resourceTimeout: .seconds(40))
 
     private static let projectURL = "https://github.com/guitaripod/Tailscode"
 
-    private static var updaters: [String: BridgeUpdater] = [:]
-    private static var sweeping = false
-    private static var walking = false
-    private static var lastSweep: Date?
     private static var connectionsObserver: (any NSObjectProtocol)?
+    private static var relays: [any NSObjectProtocol] = []
 
-    /// True while answers are being collected, which is the only thing a client may draw a spinner
-    /// for. An update in flight is a verdict, not a spinner, and it lives in the reading.
-    static var isChecking: Bool { sweeping }
+    static let driver = UpdateDriver(
+        environment: UpdateDriver.Environment(
+            machines: { await machines() },
+            checkApp: { _ in await checkApp() },
+            log: { AppLogger.connection.info("\($0)") }))
 
-    /// True while `updateEverything` is walking the servers, so the row that started it can say so
-    /// rather than looking like it did nothing.
-    static var isUpdatingEverything: Bool { walking }
+    static var snapshot: UpdateDriver.Snapshot { driver.snapshot }
 
-    /// Starts watching the profile list. A removed server that kept its row would keep its mark
-    /// forever, so the ledger is pruned wherever the list changes rather than wherever it is read.
+    /// A debug launch that seeds every state a card can be in and asks nobody anything, so the
+    /// cards can be looked at without a fleet.
+    private static let fixtures: Bool = {
+        #if DEBUG
+            return ProcessInfo.processInfo.environment["TAILSCODE_UPDATE_FIXTURES"] != nil
+        #else
+            return false
+        #endif
+    }()
+
+    /// Which fixture machines a debug launch asked for: `1` for all of them, or a list.
+    private static var fixtureSelection: Set<String> {
+        let value = ProcessInfo.processInfo.environment["TAILSCODE_UPDATE_FIXTURES"] ?? ""
+        guard value != "1" else { return [] }
+        return Set(value.split(separator: ",").map(String.init))
+    }
+
+    /// Starts watching the profile list, and picks up any job the last run of this app was
+    /// following when it stopped — a relaunch mid-update asks the machine where it got to.
     static func start() {
         guard connectionsObserver == nil else { return }
+        relays = [UpdateLedger.didChange, UpdateDriver.didChange].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+                NotificationCenter.default.post(name: didChange, object: nil)
+            }
+        }
+        guard !fixtures else {
+            UpdateLedger.keep([])
+            UpdateLedger.record(
+                UpdateFixtures.readings(
+                    appTitle: String(localized: "This \(UIDevice.current.model)"),
+                    only: fixtureSelection))
+            connectionsObserver = relays.first
+            return
+        }
         connectionsObserver = NotificationCenter.default.addObserver(
             forName: ConnectionController.didChange, object: nil, queue: .main
         ) { _ in
-            Task { @MainActor in profilesChanged() }
+            Task { @MainActor in driver.keep(machines()) }
         }
-        profilesChanged()
+        driver.keep(machines())
+        Task { await driver.resume() }
     }
 
-    /// Whether anything is missing, or old enough that asking again is worth the round trip.
-    ///
-    /// A machine with no reading at all is asked whatever the clock says — a blank row is the one
-    /// thing the ledger cannot render honestly. Past that, `UpdateLedger.isDue` decides, and it is
-    /// the only thing that may: it is the six-hour policy, it survives a relaunch, and every other
-    /// gate here is process-local, so leaving any of them able to say yes on their own is how a
-    /// foreground costs every server a `git fetch` and Apple a round trip several times an hour.
-    static func needsCheck() -> Bool {
-        guard !sweeping else { return false }
-        let remembered = Set(UpdateLedger.remembered().map(\.id))
-        if !remembered.contains(UpdateComponent.app.key) { return true }
-        if checkableProfiles().contains(where: {
-            !remembered.contains(UpdateComponent.server(profileID: $0.id).key)
-        }) { return true }
-        guard UpdateLedger.isDue() else { return false }
-        guard let lastSweep else { return true }
-        return Date().timeIntervalSince(lastSweep) > freshness
-    }
-
-    /// Asks once, if it is due. The launch path and every foreground call this rather than
-    /// `checkAll`, so returning to the app twice in a minute costs nothing.
+    /// Asks once, if it is due. Launch and every foreground call this, so returning to the app
+    /// twice in a minute costs nothing.
     static func checkIfDue() {
-        guard needsCheck() else { return }
-        Task { await checkAll() }
+        guard !fixtures else { return }
+        Task { await driver.checkIfDue() }
     }
 
-    /// Asks every machine at once, publishing each answer as it lands rather than at the end — one
-    /// unreachable server must not hold up the verdict of the two that answered instantly.
-    static func checkAll(force: Bool = false) async {
-        guard !sweeping else { return }
-        guard force || needsCheck() else { return }
-        sweeping = true
-        NotificationCenter.default.post(name: didChange, object: nil)
-        defer {
-            sweeping = false
-            lastSweep = Date()
-            UpdateLedger.noteCheck()
-            NotificationCenter.default.post(name: didChange, object: nil)
-        }
-        profilesChanged()
-        let profiles = checkableProfiles()
-        AppLogger.connection.info("update sweep starting for \(profiles.count) server(s) + this app")
-        let pending = profiles.compactMap { profile -> BridgeUpdater? in
-            let updater = updater(for: profile)
-            return updater.isWorking ? nil : updater
-        }
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await checkApp() }
-            for updater in pending {
-                group.addTask { await updater.check(checkingRemote: true) }
-            }
-        }
+    static func checkAll() async {
+        guard !fixtures else { return }
+        await driver.checkAll(force: true)
     }
 
-    /// One machine, asked again because somebody pressed "Check again".
-    static func check(_ component: UpdateComponent, force: Bool = false) async {
-        switch component {
-        case .app:
-            await checkApp()
-        case .server(let id):
-            guard let profile = checkableProfiles().first(where: { $0.id == id }) else {
-                UpdateLedger.forget(component)
-                return
-            }
-            await updater(for: profile).check(checkingRemote: true, force: force)
-        }
+    static func check(_ component: UpdateComponent) async {
+        guard !fixtures else { return }
+        await driver.check(component)
+    }
+
+    static func perform(_ component: UpdateComponent) async {
+        guard !fixtures else { return }
+        await driver.perform(component)
+    }
+
+    static func updateEverything() async {
+        guard !fixtures else { return }
+        await driver.updateEverything()
+    }
+
+    static func setAutoUpdate(_ component: UpdateComponent, _ enabled: Bool) async -> String? {
+        guard !fixtures else { return "Fixture launch — nothing is asked." }
+        return await driver.setAutoUpdate(component, enabled)
     }
 
     /// This app's own answer: what the bundle says it is, against what Apple publishes for it.
     ///
-    /// A simulator is skipped rather than asked. Its verdict is settled by what it *is* — whatever
-    /// was last built for it — so a store record could not change the answer, and spending a
-    /// request to learn something unusable is how a surface teaches itself to distrust its own
-    /// numbers.
-    static func checkApp() async {
+    /// A simulator is not asked. Its verdict is settled by what it *is* — whatever was last built
+    /// for it — so a store record could not change the answer.
+    private static func checkApp() async {
         let install = AppInstallProbe.current()
         let now = Date()
         var release: AppRelease?
@@ -142,86 +131,32 @@ enum UpdateMonitor {
         UpdateLedger.record(
             UpdateReadings.app(
                 install: install, release: release, failure: failure,
-                storeURL: AppStoreLookup.storeURL, projectURL: projectURL, checkedAt: now))
-    }
-
-    /// Takes one machine's update and follows it through its own restart. The app is never one of
-    /// them: the App Store installs this app, and nothing here could watch a process it replaced.
-    static func update(_ component: UpdateComponent) async {
-        guard case .server(let id) = component,
-            let profile = checkableProfiles().first(where: { $0.id == id })
-        else { return }
-        await updater(for: profile).update()
-    }
-
-    /// Takes one machine's restart and follows it through, the same way and by the same watcher an
-    /// update is followed: the software is already on its disk, so the whole job is the machine
-    /// going quiet, going away, and answering again.
-    static func restart(_ component: UpdateComponent) async {
-        guard case .server(let id) = component,
-            let profile = checkableProfiles().first(where: { $0.id == id })
-        else { return }
-        await updater(for: profile).restart()
-    }
-
-    /// Sets one machine's own update policy, and answers with why it could not be set when it could
-    /// not. Nothing is recorded on the strength of the asking — the reading comes back from the
-    /// server through the same ledger a check writes to, so every surface agrees with the machine.
-    static func setAutoUpdate(_ component: UpdateComponent, _ enabled: Bool) async -> String? {
-        guard case .server(let id) = component,
-            let profile = checkableProfiles().first(where: { $0.id == id })
-        else {
-            return String(localized: "This server is no longer configured on this device.")
-        }
-        return await updater(for: profile).setAutoUpdate(enabled)
-    }
-
-    /// Every server this app can rebuild, one at a time. A bridge serialises its own fetch, so two
-    /// started together queue behind each other anyway while both surfaces claim to be working —
-    /// and a machine whose whole remaining job is starting a binary it has is deliberately not
-    /// among them, which is why the order comes from Core rather than from every readable row.
-    static func updateEverything() async {
-        guard !walking else { return }
-        walking = true
-        NotificationCenter.default.post(name: didChange, object: nil)
-        defer {
-            walking = false
-            NotificationCenter.default.post(name: didChange, object: nil)
-        }
-        for component in UpdateLedger.rollup().updateOrder {
-            await update(component)
-        }
-    }
-
-    private static func profilesChanged() {
-        let live = checkableProfiles()
-        UpdateLedger.keep([.app] + live.map { UpdateComponent.server(profileID: $0.id) })
-        let ids = Set(live.map(\.id))
-        for (id, updater) in updaters where !ids.contains(id) {
-            updater.stop()
-            updaters.removeValue(forKey: id)
-        }
+                storeURL: AppStoreLookup.storeURL, projectURL: projectURL, checkedAt: now,
+                title: String(localized: "This \(UIDevice.current.model)"),
+                lastKnown: UpdateLedger.remembered(.app)))
     }
 
     /// The demo's servers are a story, not machines: asking them what they run would put an
     /// invented verdict in a ledger that outlives the demo.
-    private static func checkableProfiles() -> [ConnectionProfile] {
-        ConnectionController.shared.profiles.filter {
-            !$0.id.hasPrefix(DemoWorld.profilePrefix)
+    private static func machines() -> [UpdateDriver.Machine] {
+        ConnectionController.shared.profiles
+            .filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
+            .map { profile in
+                UpdateDriver.Machine(
+                    profileID: profile.id, title: profile.name, subtitle: subtitle(for: profile),
+                    agent: profile.backend,
+                    backend: {
+                        await MainActor.run {
+                            ConnectionController.shared.makeBackend(for: profile, policy: policy)
+                        }
+                    })
+            }
+    }
+
+    private static func subtitle(for profile: ConnectionProfile) -> String? {
+        guard let host = profile.baseURL.host, !host.isEmpty else {
+            return profile.backend.displayName
         }
-    }
-
-    private static func updater(for profile: ConnectionProfile) -> BridgeUpdater {
-        let updater = updaters[profile.id] ?? make(for: profile)
-        guard !updater.isWorking else { return updater }
-        updater.adopt(profile)
-        updater.attach(ConnectionController.shared.makeBackend(for: profile, policy: policy))
-        return updater
-    }
-
-    private static func make(for profile: ConnectionProfile) -> BridgeUpdater {
-        let updater = BridgeUpdater(profile: profile)
-        updaters[profile.id] = updater
-        return updater
+        return "\(profile.backend.displayName) · \(host)"
     }
 }

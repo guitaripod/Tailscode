@@ -52,8 +52,10 @@ final class HomeViewController: UIViewController {
     private var catalogProfileID: String?
     private var composerFloor: NSLayoutConstraint!
     private var composerRidesKeyboard: NSLayoutConstraint!
-    private let settingsButton = UpdateMarkButton()
+    private let settingsButton = SettingsGearButton()
     private lazy var settingsItem = UIBarButtonItem(customView: settingsButton)
+    private let updateChip = UpdateChipButton()
+    private lazy var updateChipItem = UIBarButtonItem(customView: updateChip)
     private let videoButton = VideoMarkButton()
     private lazy var videoItem = UIBarButtonItem(customView: videoButton)
     private let imageButton = ImageMarkButton()
@@ -113,6 +115,7 @@ final class HomeViewController: UIViewController {
         navigationItem.largeTitleDisplayMode = .always
         view.backgroundColor = Theme.Color.groupedBackground
         settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        updateChip.addTarget(self, action: #selector(openUpdates), for: .touchUpInside)
         videoButton.addTarget(self, action: #selector(openVideo), for: .touchUpInside)
         imageButton.addTarget(self, action: #selector(openImage), for: .touchUpInside)
         updateVideoMark()
@@ -490,7 +493,7 @@ final class HomeViewController: UIViewController {
             name: ConnectionController.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(updatesDidChange),
-            name: UpdateLedger.didChange, object: nil)
+            name: UpdateMonitor.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(supporterDidChange),
             name: SupporterInvitation.didChange, object: nil)
@@ -570,8 +573,11 @@ final class HomeViewController: UIViewController {
     /// each rebuilding `leftBarButtonItems` from what they found there fought: whichever ran last
     /// won, and the other's item vanished.
     private func updateLeftBarItems() {
-        settingsButton.apply(UpdateLedger.rollup())
         var items = [settingsItem]
+        if let chip = UpdateLedger.rollup().chip {
+            updateChip.apply(chip)
+            items.append(updateChipItem)
+        }
         if ConnectionController.shared.isDemoMode, !Self.demoBadgeHidden {
             items.append(demoBadge())
         }
@@ -589,8 +595,15 @@ final class HomeViewController: UIViewController {
         #endif
     }()
 
+    /// The chip comes and goes with the fact it stands for, so an answer landing rebuilds the
+    /// items rather than repainting one that may not be there.
     @objc private func updatesDidChange() {
-        settingsButton.apply(UpdateLedger.rollup())
+        updateLeftBarItems()
+    }
+
+    @objc private func openUpdates() {
+        Theme.Haptics.tap()
+        UpdateCenterViewController.present(from: self)
     }
 
     private func demoBadge() -> UIBarButtonItem {

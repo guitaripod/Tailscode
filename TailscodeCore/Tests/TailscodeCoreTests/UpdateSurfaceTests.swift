@@ -149,7 +149,8 @@ extension DeviceStores {
             #expect(reading.detail(now: Self.now).contains("quit and reopen"))
             #expect(reading.stands())
             #expect(UpdateRollup(readings: [reading]).showsMark)
-            #expect(reading.headline == Localized.text("Update to 1.24"))
+            #expect(reading.headline == Localized.text("Update available"))
+            #expect(UpdateCard(reading, now: Self.now).versionLine == "Tailscode 1.22 → 1.24")
             #expect(reading.detail(now: Self.now).contains("1.22"))
         }
 
@@ -556,7 +557,8 @@ extension DeviceStores {
             #expect(supervised.invitation?.finishesHere == true)
             #expect(supervised.invitation?.isOneClickInstall == false)
             #expect(supervised.needsOnlyRestart)
-            #expect(supervised.headline == Localized.text("Restart to finish the update"))
+            #expect(supervised.headline == Localized.text("Restart to finish updating"))
+            #expect(UpdateCard(supervised, now: Self.now).stage == .restartNeeded)
             #expect(supervised.icon.symbol == "arrow.clockwise.circle.fill")
             #expect(supervised.detail(now: Self.now).contains("1.6.0"))
             #expect(supervised.detail(now: Self.now).contains("1.5.0"))
@@ -675,7 +677,11 @@ extension DeviceStores {
                 checkedAt: Self.now)
 
             #expect(waiting.verdict.isBusy)
-            #expect(waiting.headline.contains("waiting"))
+            let card = UpdateCard(waiting, now: Self.now)
+            let active = card.steps.first { $0.state == .active }
+            #expect(active?.id == UpdateProgress.Step.waitingForQuiet.rawValue)
+            #expect(active?.detail == "Something is running on that machine.")
+            #expect(card.primary == nil)
             #expect(waiting.invitation == nil)
         }
         /// A wait can outlast any deadline worth polling through, and the machine is answering the

@@ -22,7 +22,8 @@ public enum UpdateComponent: Sendable, Hashable, Codable {
 /// An update surface is a claim about two machines, and the whole difference between a useful
 /// claim and a confident lie is whether the reader can tell who said it. A number Apple published
 /// and a number read out of a directory are both "the version" and they mean entirely different
-/// things when they disagree — so nothing here is ever shown as a bare number.
+/// things when they disagree — so the exact number and its source are always one tap away, in the
+/// details under every card, even where the card itself leads with the short form.
 public enum VersionProvenance: String, Sendable, Hashable, Codable, CaseIterable {
     /// The stamp written when the running binary was built. The only reading that is a fact about
     /// the *process* rather than about a directory.
@@ -49,7 +50,7 @@ public enum VersionProvenance: String, Sendable, Hashable, Codable, CaseIterable
     /// Nothing could be read.
     case unknown
 
-    /// Who said it, in the words the surface prints under the number.
+    /// Who said it, in the words the details print beside the number.
     public var sentence: String {
         switch self {
         case .serverBuild: return Localized.text("stamped when this build was made")
@@ -100,7 +101,11 @@ public struct VersionFact: Sendable, Hashable, Codable {
     public var isKnown: Bool { text != nil }
     public var parsed: SoftwareVersion? { text.flatMap(SoftwareVersion.init) }
 
-    /// The number with its source, which is the only form this app shows a version in.
+    /// The version as a person reads it — the release it descends from — for the line a card leads
+    /// with. The exact string and its source are ``line``.
+    public var short: String? { VersionLabel.short(text) }
+
+    /// The number with its source, which is the form the details show it in.
     public var line: String {
         guard let text else { return Localized.text("not reported") }
         return Localized.text("%@ · %@", text, provenance.sentence)
@@ -132,10 +137,13 @@ public struct UpdateOffer: Sendable, Equatable, Codable {
     public let details: [String]
     /// How many more there are than `details` carries.
     public let moreDetails: Int
+    /// What the update brings, in the project's own words, newest release first.
+    public let notes: [ReleaseNote]
 
     public init(
         version: String?, commits: Int? = nil, changes: [String] = [], upstream: String? = nil,
-        canInstallHere: Bool, blocked: String? = nil, details: [String] = [], moreDetails: Int = 0
+        canInstallHere: Bool, blocked: String? = nil, details: [String] = [], moreDetails: Int = 0,
+        notes: [ReleaseNote] = []
     ) {
         self.version = version
         self.commits = commits
@@ -145,6 +153,20 @@ public struct UpdateOffer: Sendable, Equatable, Codable {
         self.blocked = blocked
         self.details = details
         self.moreDetails = moreDetails
+        self.notes = notes
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decodeIfPresent(String.self, forKey: .version)
+        commits = try container.decodeIfPresent(Int.self, forKey: .commits)
+        changes = try container.decodeIfPresent([String].self, forKey: .changes) ?? []
+        upstream = try container.decodeIfPresent(String.self, forKey: .upstream)
+        canInstallHere = try container.decodeIfPresent(Bool.self, forKey: .canInstallHere) ?? false
+        blocked = try container.decodeIfPresent(String.self, forKey: .blocked)
+        details = try container.decodeIfPresent([String].self, forKey: .details) ?? []
+        moreDetails = try container.decodeIfPresent(Int.self, forKey: .moreDetails) ?? 0
+        notes = (try? container.decodeIfPresent([ReleaseNote].self, forKey: .notes)) ?? []
     }
 
     /// The obstacle's own list, with the tail it left out stated rather than dropped.
@@ -155,18 +177,29 @@ public struct UpdateOffer: Sendable, Equatable, Codable {
 
     /// What it would become, named however the machine can name it.
     public var target: String {
-        if let version { return version }
+        if let version { return VersionLabel.short(version) ?? version }
         if let commits, commits > 0 {
             return Localized.text("%@ commits newer", String(commits))
         }
         return Localized.text("a newer build")
     }
+
+    /// What is new, as a person reads it: the project's notes where it sent them, and the headlines
+    /// of its commits where it did not.
+    public var whatsNew: [ReleaseNote] {
+        guard notes.isEmpty else { return notes }
+        return ReleaseNote.fromSubjects(changes)
+    }
 }
 
-/// An update in flight. There is no percentage to show — a fetch and a Swift build have no honest
-/// fraction — so the step is the whole of the progress, and every client draws it as a step.
+/// An update in flight, as a sequence of steps. There is no percentage to show — a fetch and a
+/// Swift build have no honest fraction — so the step is the whole of the progress, drawn as a
+/// list every client lays out the same way: what is done, what is under way, what is still to come.
 public struct UpdateProgress: Sendable, Equatable, Codable {
-    public enum Step: String, Sendable, Equatable, Codable {
+    public enum Step: String, Sendable, Equatable, Codable, CaseIterable {
+        /// The press has been made and the machine has not answered it yet.
+        case requesting
+        /// Getting the new code.
         case starting
         case building
         case installing
@@ -174,30 +207,130 @@ public struct UpdateProgress: Sendable, Equatable, Codable {
         /// rather than a silence because it can outlast the build that produced it.
         case waitingForQuiet
         case restarting
-        /// Installed and answering again, but its new version has not been read back yet.
+        /// Answering again, and being asked what it landed on.
         case settling
     }
 
-    public let step: Step
-    /// Stamped by whoever is watching, on its own clock. A remote machine's `startedAt` is not
-    /// comparable with this device's `Date()` — two clocks that disagree by an hour would print
-    /// "started an hour ago" about a build thirty seconds old.
-    public let observedAt: Date?
-
-    public init(step: Step, observedAt: Date? = nil) {
-        self.step = step
-        self.observedAt = observedAt
+    /// What kind of job the steps belong to, which decides which steps there are.
+    public enum Kind: String, Sendable, Equatable, Codable {
+        case serverUpdate
+        case serverRestart
+        case appUpdate
     }
 
+    public let step: Step
+    /// When this device first saw the current step, on its own clock. A remote machine's stamps
+    /// are not comparable with this device's — two clocks that disagree by an hour would print
+    /// "an hour" about a build thirty seconds old — so every duration is measured here.
+    public let observedAt: Date?
+    public let kind: Kind?
+    /// What the job set out to install.
+    public let target: String?
+    public let jobID: String?
+    /// What the machine says it is waiting for, while it waits.
+    public let waitingFor: String?
+    /// When this device first saw the job.
+    public let startedAt: Date?
+    /// When the machine stopped answering, while this device is still following it. It may well
+    /// still be working; this is a fact about the line, not about the job.
+    public let lostContactSince: Date?
+    /// What the update brings, carried from the offer that was taken so it can still be read while
+    /// the job runs and once it has landed.
+    public let notes: [ReleaseNote]
+
+    public init(
+        step: Step, observedAt: Date? = nil, kind: Kind? = nil, target: String? = nil,
+        jobID: String? = nil, waitingFor: String? = nil, startedAt: Date? = nil,
+        lostContactSince: Date? = nil, notes: [ReleaseNote] = []
+    ) {
+        self.step = step
+        self.observedAt = observedAt
+        self.kind = kind
+        self.target = target
+        self.jobID = jobID
+        self.waitingFor = waitingFor
+        self.startedAt = startedAt
+        self.lostContactSince = lostContactSince
+        self.notes = notes
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        step = try container.decode(Step.self, forKey: .step)
+        observedAt = try container.decodeIfPresent(Date.self, forKey: .observedAt)
+        kind = try? container.decodeIfPresent(Kind.self, forKey: .kind)
+        target = try container.decodeIfPresent(String.self, forKey: .target)
+        jobID = try container.decodeIfPresent(String.self, forKey: .jobID)
+        waitingFor = try container.decodeIfPresent(String.self, forKey: .waitingFor)
+        startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
+        lostContactSince = try container.decodeIfPresent(Date.self, forKey: .lostContactSince)
+        notes = (try? container.decodeIfPresent([ReleaseNote].self, forKey: .notes)) ?? []
+    }
+
+    public func with(
+        step: Step? = nil, observedAt: Date?? = nil, waitingFor: String?? = nil,
+        lostContactSince: Date?? = nil
+    ) -> UpdateProgress {
+        UpdateProgress(
+            step: step ?? self.step, observedAt: observedAt ?? self.observedAt, kind: kind,
+            target: target, jobID: jobID, waitingFor: waitingFor ?? self.waitingFor,
+            startedAt: startedAt, lostContactSince: lostContactSince ?? self.lostContactSince,
+            notes: notes)
+    }
+
+    /// The steps a job of this kind passes through, in order. Asking is not among them: it is the
+    /// first step still waiting to begin.
+    public static func plan(for kind: Kind) -> [Step] {
+        switch kind {
+        case .serverUpdate: return [.starting, .building, .waitingForQuiet, .restarting, .settling]
+        case .serverRestart: return [.waitingForQuiet, .restarting, .settling]
+        case .appUpdate: return [.starting, .building, .installing, .restarting]
+        }
+    }
+
+    public var plan: [Step] { Self.plan(for: kind ?? .serverUpdate) }
+
+    /// The name a step wears in the list, in the imperative a person would give it.
+    public static func title(_ step: Step, kind: Kind) -> String {
+        switch step {
+        case .requesting, .starting: return Localized.text("Download")
+        case .building: return Localized.text("Build")
+        case .installing: return Localized.text("Install")
+        case .waitingForQuiet: return Localized.text("Wait until idle")
+        case .restarting:
+            return kind == .appUpdate ? Localized.text("Relaunch") : Localized.text("Restart")
+        case .settling: return Localized.text("Confirm")
+        }
+    }
+
+    /// What the step under way is doing, in one line.
+    public func activity(machine: String) -> String {
+        switch step {
+        case .requesting: return Localized.text("Asking %@ to start…", machine)
+        case .starting: return Localized.text("Getting the new code")
+        case .building: return Localized.text("Compiling — usually a few minutes")
+        case .installing: return Localized.text("Putting the new build in place")
+        case .waitingForQuiet:
+            return waitingFor ?? Localized.text("Waiting until nothing is running on it")
+        case .restarting:
+            return kind == .appUpdate
+                ? Localized.text("Relaunching")
+                : Localized.text("%@ is restarting — back in a few seconds", machine)
+        case .settling: return Localized.text("Checking what it landed on")
+        }
+    }
+
+    /// The step's one word, for surfaces with room for nothing else.
     public var word: String {
         switch step {
-        case .starting: return Localized.text("Starting")
+        case .requesting: return Localized.text("Asking")
+        case .starting: return Localized.text("Downloading")
         case .building: return Localized.text("Building")
         case .installing: return Localized.text("Installing")
-        case .waitingForQuiet:
-            return Localized.text("Built — waiting for that machine to finish what it is doing")
-        case .restarting: return Localized.text("Restarting")
-        case .settling: return Localized.text("Checking what it landed on")
+        case .waitingForQuiet: return Localized.text("Waiting until idle")
+        case .restarting:
+            return kind == .appUpdate ? Localized.text("Relaunching") : Localized.text("Restarting")
+        case .settling: return Localized.text("Confirming")
         }
     }
 }
@@ -206,10 +339,95 @@ public struct UpdateProgress: Sendable, Equatable, Codable {
 public struct UpdateFailure: Sendable, Equatable, Codable {
     public let reason: String
     public let at: Date?
+    /// The step it stopped on, when the machine said.
+    public let step: UpdateProgress.Step?
+    public let kind: UpdateProgress.Kind?
+    /// What the next try would bring, when the machine said — a failed update is still an offer,
+    /// and "Try again" is only worth pressing when it says what for.
+    public let notes: [ReleaseNote]
 
-    public init(reason: String, at: Date? = nil) {
+    public init(
+        reason: String, at: Date? = nil, step: UpdateProgress.Step? = nil,
+        kind: UpdateProgress.Kind? = nil, notes: [ReleaseNote] = []
+    ) {
         self.reason = reason
         self.at = at
+        self.step = step
+        self.kind = kind
+        self.notes = notes
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reason = try container.decode(String.self, forKey: .reason)
+        at = try container.decodeIfPresent(Date.self, forKey: .at)
+        step = try? container.decodeIfPresent(UpdateProgress.Step.self, forKey: .step)
+        kind = try? container.decodeIfPresent(UpdateProgress.Kind.self, forKey: .kind)
+        notes = (try? container.decodeIfPresent([ReleaseNote].self, forKey: .notes)) ?? []
+    }
+}
+
+/// How the last job on a machine ended, kept beside whatever the machine is doing now.
+///
+/// A machine that updated itself at two in the morning is simply current by breakfast, and "up to
+/// date" is true and tells nobody that anything happened. The outcome is what lets the card say
+/// what it became, from what, whether anybody pressed anything, and what came with it.
+public struct UpdateOutcome: Sendable, Equatable, Codable {
+    public enum Result: String, Sendable, Equatable, Codable {
+        case succeeded
+        case failed
+        /// Built, and the loading of it is owed.
+        case deferred
+    }
+
+    public let result: Result
+    public let kind: UpdateProgress.Kind
+    /// Taken by the machine's own policy rather than by a press.
+    public let automatic: Bool
+    public let from: String?
+    public let to: String?
+    public let reason: String?
+    public let at: Date?
+    public let jobID: String?
+    /// What came with it, carried from the offer that was taken.
+    public let notes: [ReleaseNote]
+
+    public init(
+        result: Result, kind: UpdateProgress.Kind = .serverUpdate, automatic: Bool = false,
+        from: String? = nil, to: String? = nil, reason: String? = nil, at: Date? = nil,
+        jobID: String? = nil, notes: [ReleaseNote] = []
+    ) {
+        self.result = result
+        self.kind = kind
+        self.automatic = automatic
+        self.from = from
+        self.to = to
+        self.reason = reason
+        self.at = at
+        self.jobID = jobID
+        self.notes = notes
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        result = try container.decode(Result.self, forKey: .result)
+        kind = (try? container.decodeIfPresent(UpdateProgress.Kind.self, forKey: .kind)) ?? .serverUpdate
+        automatic = try container.decodeIfPresent(Bool.self, forKey: .automatic) ?? false
+        from = try container.decodeIfPresent(String.self, forKey: .from)
+        to = try container.decodeIfPresent(String.self, forKey: .to)
+        reason = try container.decodeIfPresent(String.self, forKey: .reason)
+        at = try container.decodeIfPresent(Date.self, forKey: .at)
+        jobID = try container.decodeIfPresent(String.self, forKey: .jobID)
+        notes = (try? container.decodeIfPresent([ReleaseNote].self, forKey: .notes)) ?? []
+    }
+
+    /// How long a landed update is news. Past this the card is simply current.
+    public static let newsFor: TimeInterval = 24 * 3600
+
+    public func isNews(now: Date = Date()) -> Bool {
+        guard result == .succeeded, let at else { return false }
+        let age = now.timeIntervalSince(at)
+        return age >= -300 && age < Self.newsFor
     }
 }
 
@@ -294,12 +512,29 @@ public enum RelativeWhen {
         guard seconds >= 0 else { return Localized.text("just now") }
         if seconds < 90 { return Localized.text("just now") }
         if seconds < 3600 {
-            return Localized.text("%@ minutes ago", String(Int(seconds / 60)))
+            let minutes = Int(seconds / 60)
+            return minutes == 1
+                ? Localized.text("a minute ago") : Localized.text("%@ minutes ago", String(minutes))
         }
         if seconds < 86400 {
-            return Localized.text("%@ hours ago", String(Int(seconds / 3600)))
+            let hours = Int(seconds / 3600)
+            return hours == 1
+                ? Localized.text("an hour ago") : Localized.text("%@ hours ago", String(hours))
         }
-        return Localized.text("%@ days ago", String(Int(seconds / 86400)))
+        let days = Int(seconds / 86400)
+        return days == 1 ? Localized.text("a day ago") : Localized.text("%@ days ago", String(days))
+    }
+
+    /// A duration on a clock that is running, as a stepper shows it: `0:42`, `3:05`, `1:02:10`.
+    public static func clock(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let rest = total % 60
+        guard hours == 0 else {
+            return String(format: "%d:%02d:%02d", hours, minutes, rest)
+        }
+        return String(format: "%d:%02d", minutes, rest)
     }
 }
 
@@ -321,14 +556,18 @@ public enum UpdateVerdict: Sendable, Equatable, Codable {
         return false
     }
 
+    public var progress: UpdateProgress? {
+        if case .working(let progress) = self { return progress }
+        return nil
+    }
+
     /// Work that is deliberately holding rather than progressing.
     ///
     /// A machine that built a binary and is waiting for the turn on it to end answers every
-    /// question perfectly well and can hold for hours. It must therefore keep being asked — a
-    /// client that stops sweeping a machine because it is "busy" would show a wait that ended
-    /// yesterday — and it must never expire into "an update started and never reported how it
-    /// ended", which is a sentence about a machine that stopped talking rather than one that is
-    /// telling you exactly what it is doing.
+    /// question perfectly well and can hold for hours. It must therefore keep being asked, and it
+    /// must never expire into "an update started and never reported how it ended", which is a
+    /// sentence about a machine that stopped talking rather than one telling you exactly what it is
+    /// doing.
     public var isHolding: Bool {
         guard case .working(let progress) = self else { return false }
         return progress.step == .waitingForQuiet
@@ -337,6 +576,12 @@ public enum UpdateVerdict: Sendable, Equatable, Codable {
     public var offer: UpdateOffer? {
         if case .behind(let offer) = self { return offer }
         return nil
+    }
+
+    /// What a failed update would bring on its next try, when the machine said.
+    public var failureNotes: [ReleaseNote] {
+        if case .failed(let failure) = self { return failure.notes }
+        return []
     }
 
     /// Whether this verdict rests on an actual comparison against something published. Only these
@@ -382,21 +627,17 @@ public struct UpdateAutomation: Sendable, Equatable, Codable {
     /// Whether the update in front of this machine will be taken without anybody pressing anything.
     public var willTake: Bool { enabled && holdingOff == nil }
 
-    /// What the switch says under itself: what the machine will do, and what it has already done.
+    /// The line under the switch: what the machine will do, what it is holding off for, and what it
+    /// last did.
     public func sentence(now: Date = Date()) -> String {
         guard enabled else {
-            return Localized.text(
-                "Off. This machine takes an update only when somebody asks it to.")
+            return Localized.text("Off — new versions wait for you.")
         }
         if let holdingOff { return holdingOff }
-        var line = Localized.text(
-            "On. It takes an update only when it can finish the job and nothing is running on it — "
-                + "a restart stops a turn where it stands.")
+        var line = Localized.text("On — installs new versions when nothing is running.")
         if let lastTakenAt, lastTakenAt <= now {
             line += " "
-                + Localized.text(
-                    "Last took one %@%@.", RelativeWhen.ago(lastTakenAt, now: now),
-                    lastTarget.map { Localized.text(" (%@)", $0) } ?? "")
+                + Localized.text("Last updated %@.", RelativeWhen.ago(lastTakenAt, now: now))
         }
         return line
     }
@@ -423,9 +664,9 @@ public enum UpdateInvitation: Sendable, Equatable, Codable {
     public var label: String {
         switch self {
         case .installHere: return Localized.text("Update")
-        case .restartHere: return Localized.text("Restart it")
-        case .openStore: return Localized.text("Open the App Store")
-        case .copyCommand: return Localized.text("Copy the command")
+        case .restartHere: return Localized.text("Restart")
+        case .openStore: return Localized.text("Open App Store")
+        case .copyCommand: return Localized.text("Copy command")
         case .openPage: return Localized.text("Open")
         case .recheck: return Localized.text("Check again")
         }
@@ -440,18 +681,15 @@ public enum UpdateInvitation: Sendable, Equatable, Codable {
         case .restartHere(let supervisor, let waitingFor):
             guard let waitingFor else {
                 return Localized.text(
-                    "The bridge stops and %@ starts it again on the build it already has. It "
-                        + "answers nothing for a few seconds.", supervisor)
+                    "Nothing is running on it, so %@ brings it straight back on the new build — a "
+                        + "few seconds.", supervisor)
             }
             return Localized.text(
-                "%@ It waits for that to finish, then %@ starts it again on the build it already "
-                    + "has.", waitingFor, supervisor)
+                "%@ It restarts on the new build as soon as that finishes.", waitingFor)
         case .openStore:
             return Localized.text("The App Store installs it — this app cannot update itself.")
         case .copyCommand:
-            return Localized.text(
-                "Nothing here can install it. The command does, run in a terminal on the machine "
-                    + "it names.")
+            return Localized.text("Run it in a terminal on that machine.")
         case .openPage, .recheck: return nil
         }
     }
@@ -467,6 +705,17 @@ public enum UpdateInvitation: Sendable, Equatable, Codable {
     }
 
     public var isOneClickInstall: Bool { self == .installHere }
+
+    public var symbol: String {
+        switch self {
+        case .installHere: return "arrow.down.circle"
+        case .restartHere: return "arrow.clockwise.circle"
+        case .openStore: return "arrow.up.forward.app"
+        case .copyCommand: return "doc.on.doc"
+        case .openPage: return "safari"
+        case .recheck: return "arrow.clockwise"
+        }
+    }
 }
 
 /// Everything known about one machine's software, in the form every client renders.
@@ -490,13 +739,22 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
     /// this app, or a server too old to have an answer — and a client with no automation draws no
     /// switch rather than one that does nothing.
     public let automation: UpdateAutomation?
+    /// What the update installs, named the way its project names itself — `claude-bridge`,
+    /// `Tailscode` — so a card says what is new rather than only which machine.
+    public let product: String?
+    /// How the last job on this machine ended, whatever it is doing now.
+    public let lastOutcome: UpdateOutcome?
+    /// The build number beside the version, where there is one — what a bug report needs.
+    public let build: String?
 
     public init(
         component: UpdateComponent, title: String, subtitle: String? = nil,
         installed: VersionFact, available: VersionFact = .unknown, verdict: UpdateVerdict,
         invitation: UpdateInvitation? = nil, manager: String? = nil, log: String? = nil,
-        checkedAt: Date? = nil, note: String? = nil, automation: UpdateAutomation? = nil
+        checkedAt: Date? = nil, note: String? = nil, automation: UpdateAutomation? = nil,
+        product: String? = nil, lastOutcome: UpdateOutcome? = nil, build: String? = nil
     ) {
+        self.build = build
         self.automation = automation
         self.component = component
         self.title = title
@@ -509,84 +767,36 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
         self.log = log
         self.checkedAt = checkedAt
         self.note = note
+        self.product = product
+        self.lastOutcome = lastOutcome
     }
 
     public var id: String { component.key }
 
-    /// The line that leads the row.
-    public var headline: String {
-        switch verdict {
-        case .current: return Localized.text("Up to date")
-        case .behind(let offer):
-            return needsOnlyRestart
-                ? Localized.text("Restart to finish the update")
-                : Localized.text("Update to %@", offer.target)
-        case .ahead: return Localized.text("Newer than anything published")
-        case .working(let progress): return progress.word
-        case .failed: return Localized.text("The last update failed")
-        case .blocked: return Localized.text("Cannot update itself")
-        case .unverified(.neverChecked): return Localized.text("Not checked yet")
-        case .unverified(.stale): return Localized.text("Checked a while ago")
-        case .unverified(.unreachable): return Localized.text("Couldn't check")
-        case .unverified(.notReported): return Localized.text("Can't say")
-        case .unverified(.notComparable): return Localized.text("Can't compare")
-        case .unverified(.interrupted): return Localized.text("The last update didn't finish")
-        }
+    /// The same reading with a different verdict, or a different note or outcome — every other fact
+    /// carried across unchanged.
+    public func with(
+        verdict: UpdateVerdict? = nil, invitation: UpdateInvitation?? = nil, note: String?? = nil,
+        lastOutcome: UpdateOutcome?? = nil, title: String? = nil, subtitle: String?? = nil,
+        product: String?? = nil
+    ) -> UpdateReading {
+        UpdateReading(
+            component: component, title: title ?? self.title,
+            subtitle: subtitle ?? self.subtitle, installed: installed, available: available,
+            verdict: verdict ?? self.verdict, invitation: invitation ?? self.invitation,
+            manager: manager, log: log, checkedAt: checkedAt, note: note ?? self.note,
+            automation: automation, product: product ?? self.product,
+            lastOutcome: lastOutcome ?? self.lastOutcome, build: build)
     }
 
-    /// The honest sentence under it: what is running, where the number came from, what it was
-    /// compared against, and what is doubtful about any of that.
+    /// The line that leads the card.
+    public var headline: String { UpdateCard(self).headline }
+
+    /// Everything under the headline in one run of text: the versions and the one sentence the
+    /// card has to say about them.
     public func detail(now: Date = Date()) -> String {
-        guard let note else { return verdictDetail(now: now) }
-        return verdictDetail(now: now) + " " + note
-    }
-
-    private func verdictDetail(now: Date) -> String {
-        switch verdict {
-        case .current(let checkedAt, let against):
-            let compared = against.isKnown
-                ? Localized.text("Compared against %@.", against.line)
-                : Localized.text("Nothing newer was published.")
-            return Localized.text("Running %@.", installed.line) + " " + compared + " "
-                + Localized.text("Checked %@.", RelativeWhen.ago(checkedAt, now: now))
-        case .behind(let offer) where needsOnlyRestart:
-            var line = Localized.text(
-                "%@ is already on the machine; %@ is what is running.", offer.target,
-                installed.line)
-            if let blocked = offer.blocked { line += " " + blocked }
-            return line
-        case .behind(let offer):
-            var line = Localized.text("Running %@.", installed.line)
-            if let commits = offer.commits, commits > 0 {
-                line += " " + Localized.text("%@ commits behind", String(commits))
-                    + (offer.upstream.map { " " + Localized.text("of %@", $0) } ?? "") + "."
-            }
-            if let blocked = offer.blocked { line += " " + blocked }
-            return line
-        case .ahead(let reason):
-            var line = Localized.text("Running %@.", installed.line)
-            if let published = reason.published {
-                line += " " + Localized.text("The newest published is %@.", published)
-            }
-            return line + " " + reason.sentence
-        case .working(let progress):
-            guard let observedAt = progress.observedAt, observedAt <= now else {
-                return progress.word
-            }
-            return Localized.text(
-                "%@ · started %@", progress.word, RelativeWhen.ago(observedAt, now: now))
-        case .failed(let failure):
-            guard let at = failure.at, at <= now else { return failure.reason }
-            return Localized.text(
-                "%@ (%@)", failure.reason, RelativeWhen.ago(at, now: now))
-        case .blocked(let why):
-            return Localized.text("Running %@. %@", installed.line, why)
-        case .unverified(let doubt):
-            let head = installed.isKnown
-                ? Localized.text("Running %@.", installed.line)
-                : Localized.text("This machine did not report a version.")
-            return head + " " + doubt.sentence(now: now)
-        }
+        let card = UpdateCard(self, now: now)
+        return [card.versionLine, card.message].compactMap { $0 }.joined(separator: " ")
     }
 
     /// The whole visual identity, from the one vocabulary every other state in this app answers to.
@@ -597,10 +807,12 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
     public var icon: ActivityIcon {
         switch verdict {
         case .current:
+            if lastOutcome?.isNews() == true {
+                return ActivityIcon(
+                    symbol: "checkmark.circle.fill", glyph: "✓", tone: .live, motion: .still)
+            }
             return ActivityIcon(symbol: "checkmark.circle", glyph: "=", tone: .quiet, motion: .still)
         case .behind(let offer):
-            // A machine that only needs starting is not downloading anything, and a download arrow
-            // over it is the app describing work that will not happen.
             if needsOnlyRestart {
                 return ActivityIcon(
                     symbol: "arrow.clockwise.circle.fill", glyph: "⟳", tone: .attention,
@@ -626,6 +838,16 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
 
     public var tone: ActivityTone { icon.tone }
 
+    /// Whether the whole remaining job is loading a build the machine already has.
+    ///
+    /// Not a shade of "behind": nothing is fetched and nothing is built, and — the reason no
+    /// surface may read it as an ordinary update — a machine that keeps itself current will never
+    /// do it on its own, because from its side there is nothing left to take.
+    public var needsOnlyRestart: Bool {
+        guard case .behind = verdict, case .restartHere = invitation else { return false }
+        return true
+    }
+
     /// Whether this row is a reason for the standing mark. An update that exists is, however it
     /// has to be installed; a failure the person has to see is. Nothing settled or unknowable is,
     /// because a mark that can never go out stops being read — and nagging about something this
@@ -637,30 +859,12 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
     /// A machine that will take the update itself is the second thing that stops a row standing,
     /// and for the same reason rather than a different one: the mark is a request that somebody
     /// act, and nobody has to. The row keeps `.behind` — it *is* behind — with its target, its
-    /// changes and its place in the surface. Without this a fleet that keeps itself current lights
-    /// the mark on every push and clears it ten minutes later, several times a day, which is how a
-    /// mark stops being read at all.
-    /// Whether the whole remaining job is loading a build the machine already has.
-    ///
-    /// Not a shade of "behind": nothing is fetched and nothing is built, and — the reason no
-    /// surface may read it as an ordinary update — a machine that keeps itself current will never
-    /// do it on its own, because from its side there is nothing left to take.
-    public var needsOnlyRestart: Bool {
-        guard case .behind = verdict, case .restartHere = invitation else { return false }
-        return true
-    }
-
+    /// changes and its place in the surface.
     public func stands(acknowledged: Bool = false) -> Bool {
         guard !acknowledged else { return false }
-        // A build sitting unstarted is nobody's job but the reader's: trusting the machine to keep
-        // itself current is what suppresses the mark for an ordinary update, and that trust cannot
-        // cover work the machine has already decided it is finished with.
         if needsOnlyRestart { return true }
         switch verdict {
         case .behind(let offer):
-            // Both halves, and the second is what stops the trust becoming a way of never being
-            // told: a machine that says it will take its own updates and cannot install this one is
-            // a machine nobody will ever hear from about it again.
             return !(offer.canInstallHere && automation?.willTake == true)
         case .failed: return true
         case .current, .ahead, .working, .blocked, .unverified: return false
@@ -683,7 +887,7 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
     }
 
     public func accessibilityLine(now: Date = Date()) -> String {
-        Localized.text("%@ — %@. %@", title, headline, detail(now: now))
+        UpdateCard(self, now: now).accessibility
     }
 }
 
@@ -707,6 +911,14 @@ public struct UpdateRollup: Sendable, Equatable {
     /// Rows that are a reason the mark is lit, in the order a person should deal with them.
     public var standing: [UpdateReading] {
         readings.filter { $0.stands(acknowledged: isAcknowledged($0)) }
+    }
+
+    /// Machines that landed an update recently enough that it is still news.
+    public func recentlyUpdated(now: Date = Date()) -> [UpdateReading] {
+        readings.filter {
+            guard case .current = $0.verdict else { return false }
+            return $0.lastOutcome?.isNews(now: now) == true
+        }
     }
 
     /// Rows one press finishes, on the machines this app can drive. The app's own update is never
@@ -763,6 +975,41 @@ public struct UpdateRollup: Sendable, Equatable {
             tone: tone, motion: motion)
     }
 
+    /// The mark as a small labelled control — the word beside the symbol, for chrome that has room
+    /// for one: `Update`, `2 updates`, `Updating`, `Update failed`.
+    ///
+    /// Only the chip that says `Updating` moves. One that names something to decide holds still
+    /// even while another machine is being updated: a download arrow turning reads as a download.
+    public var chip: UpdateChip? {
+        guard showsMark else { return nil }
+        if standing.isEmpty {
+            return UpdateChip(
+                title: Localized.text("Updating"), symbol: "arrow.triangle.2.circlepath",
+                tone: .live, motion: .turning)
+        }
+        let motion: ActivityMotion = .still
+        if standing.count > 1 {
+            return UpdateChip(
+                title: Localized.text("%@ updates", String(standing.count)),
+                symbol: "arrow.down.circle.fill", tone: tone, motion: motion)
+        }
+        let only = standing[0]
+        switch UpdateCard(only).stage {
+        case .failed:
+            return UpdateChip(
+                title: Localized.text("Update failed"), symbol: "exclamationmark.triangle.fill",
+                tone: .danger, motion: motion)
+        case .restartNeeded:
+            return UpdateChip(
+                title: Localized.text("Update"), symbol: "arrow.clockwise.circle.fill",
+                tone: only.tone, motion: motion)
+        default:
+            return UpdateChip(
+                title: Localized.text("Update"), symbol: "arrow.down.circle.fill", tone: only.tone,
+                motion: motion)
+        }
+    }
+
     public var headline: String {
         if !busy.isEmpty && standing.isEmpty {
             return busy.count == 1
@@ -775,17 +1022,26 @@ public struct UpdateRollup: Sendable, Equatable {
                 ? Localized.text("Everything is up to date")
                 : Localized.text("Software")
         case 1:
-            return Localized.text("%@ has an update", standing[0].title)
+            return UpdateCard(standing[0]).headline
         default:
             return Localized.text("%@ updates available", String(standing.count))
         }
     }
 
     public func detail(now: Date = Date()) -> String {
-        if let only = standing.first, standing.count == 1 { return only.detail(now: now) }
+        if let only = standing.first, standing.count == 1 {
+            let card = UpdateCard(only, now: now)
+            return [only.title, card.versionLine].compactMap { $0 }.joined(separator: " · ")
+        }
         if !standing.isEmpty { return standing.map(\.title).joined(separator: ", ") }
+        if let working = busy.first, busy.count == 1, let progress = working.verdict.progress {
+            return progress.activity(machine: working.title)
+        }
+        if let fresh = recentlyUpdated(now: now).first {
+            return UpdateCard(fresh, now: now).headline + " · " + fresh.title
+        }
         if let unchecked = readings.first(where: { !$0.verdict.compared }) {
-            return unchecked.detail(now: now)
+            return unchecked.title + " · " + UpdateCard(unchecked, now: now).headline
         }
         return readings.map(\.title).joined(separator: ", ")
     }
@@ -817,17 +1073,28 @@ public struct UpdateRollup: Sendable, Equatable {
         }
     }
 
+    /// The order a person deals with them in: what broke, what is moving, what can be taken, what
+    /// just landed, and only then what needs nothing.
     private static func rank(_ reading: UpdateReading) -> Int {
         switch reading.verdict {
         case .failed: return 0
         case .working: return 1
         case .behind(let offer): return offer.canInstallHere ? 2 : 3
-        case .blocked: return 4
-        case .unverified: return 5
-        case .ahead: return 6
-        case .current: return 7
+        case .current where reading.lastOutcome?.isNews() == true: return 4
+        case .blocked: return 5
+        case .unverified: return 6
+        case .ahead: return 7
+        case .current: return 8
         }
     }
+}
+
+/// The mark as a labelled control.
+public struct UpdateChip: Sendable, Equatable {
+    public let title: String
+    public let symbol: String
+    public let tone: ActivityTone
+    public let motion: ActivityMotion
 }
 
 /// How long a "nothing newer" answer is worth anything.
@@ -875,11 +1142,11 @@ public enum UpdateFreshness {
         switch verdict {
         case .working(let progress):
             guard progress.step != .waitingForQuiet else { return verdict }
-            guard let at = progress.observedAt ?? checkedAt, at <= now else {
+            guard let at = checkedAt ?? progress.observedAt, at <= now else {
                 return .unverified(.interrupted(nil))
             }
             guard now.timeIntervalSince(at) > workExpiresAfter else { return verdict }
-            return .unverified(.interrupted(at))
+            return .unverified(.interrupted(progress.startedAt ?? at))
         case .current(let at, _):
             guard at <= now, now.timeIntervalSince(at) < expiresAfter else {
                 return .unverified(.stale(at <= now ? at : nil))
