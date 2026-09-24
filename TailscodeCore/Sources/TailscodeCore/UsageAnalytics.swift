@@ -681,7 +681,8 @@ public struct UsageAnalytics: Sendable, Equatable {
                 labels[project.directory] = project.name
                 continue
             }
-            let parent = URL(fileURLWithPath: project.directory).deletingLastPathComponent()
+            let parent = URL(fileURLWithPath: project.directory, isDirectory: true)
+                .deletingLastPathComponent()
                 .lastPathComponent
             labels[project.directory] =
                 parent.isEmpty ? project.directory : "\(parent)/\(project.name)"

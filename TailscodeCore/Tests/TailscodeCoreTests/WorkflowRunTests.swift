@@ -525,6 +525,48 @@ struct WorkflowRunTests {
         #expect(WorkflowRunCheck.run() == [])
     }
 
+    @Test("The fold answers what the assembly answers, on every state of a conversation growing")
+    func foldMatchesAssembly() {
+        let fold = WorkflowRunFold()
+        let prompt = ChatMessage(
+            id: "m0", role: .user, agentType: .claudeCode,
+            parts: [MessagePart(id: "text", kind: .text("run the audit"))], createdAt: Self.startedAt)
+        var launch = ChatMessage(
+            id: "m1", role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "call-1", kind: .tool(Self.call()))],
+            createdAt: Self.startedAt)
+        let agents = [Self.agent("a", at: Self.reportedAt, active: true, completed: false)]
+        var transcript = [prompt]
+        #expect(fold.runs(messages: transcript, agents: agents) == [])
+
+        transcript.append(launch)
+        #expect(
+            fold.runs(messages: transcript, agents: agents)
+                == WorkflowRunAssembly.runs(messages: transcript, agents: agents))
+
+        var finished = Self.call()
+        finished.status = .completed
+        launch.parts = [MessagePart(id: "call-1", kind: .tool(finished))]
+        transcript[1] = launch
+        let notification = ChatMessage(
+            id: "m2", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "text",
+                    kind: .text(
+                        "<task-notification>\n<task-id>wuzrihlvy</task-id>\n"
+                            + "<result>\"done\"</result>\n</task-notification>"))
+            ],
+            createdAt: Self.reportedAt)
+        transcript.append(notification)
+        let folded = fold.runs(messages: transcript, agents: agents)
+        #expect(folded == WorkflowRunAssembly.runs(messages: transcript, agents: agents))
+        #expect(folded.first?.state == .finished)
+        #expect(folded.first?.result == "done")
+
+        #expect(fold.runs(messages: [prompt], agents: agents) == [])
+    }
+
     @Test("Durations read as a person would say them")
     func durationFormatting() {
         #expect(WorkflowRun.duration(9) == "9s")

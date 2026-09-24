@@ -22,7 +22,7 @@ public struct ProjectScope: Hashable, Sendable {
     /// conversations that never had one.
     public var name: String {
         guard let directory, !directory.isEmpty else { return Localized.text("No project") }
-        return URL(fileURLWithPath: directory).lastPathComponent
+        return URL(fileURLWithPath: directory, isDirectory: true).lastPathComponent
     }
 
     public func matches(_ entry: SessionEntry) -> Bool {

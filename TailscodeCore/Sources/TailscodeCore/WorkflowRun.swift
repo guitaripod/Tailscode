@@ -430,6 +430,48 @@ public struct WorkflowRun: Sendable, Hashable, Identifiable {
     }
 }
 
+/// ``WorkflowRunAssembly/runs(messages:agents:)`` for a client that asks on every state a
+/// conversation emits, which while a turn streams is every token. Finding the launches means asking
+/// every tool call in the conversation what it is and reading every text part for a task
+/// notification, so a long transcript paid for the whole of itself on each word of the answer. The
+/// fold reads each message once and again only when that message changed, and answers exactly what
+/// the assembly would.
+public final class WorkflowRunFold {
+    private struct Reading {
+        let message: ChatMessage
+        let launches: [WorkflowRunAssembly.Launch]
+        let completions: [String: String]
+    }
+
+    private var memo: [String: Reading] = [:]
+
+    public init() {}
+
+    public func runs(messages: [ChatMessage], agents: [SubagentSummary]) -> [WorkflowRun] {
+        var next: [String: Reading] = [:]
+        next.reserveCapacity(messages.count)
+        var launches: [WorkflowRunAssembly.Launch] = []
+        var completions: [String: String] = [:]
+        for message in messages {
+            let reading: Reading
+            if let held = memo[message.id], held.message == message {
+                reading = held
+            } else {
+                reading = Reading(
+                    message: message, launches: WorkflowRunAssembly.launches(in: [message]),
+                    completions: WorkflowRunAssembly.completions(in: [message]))
+            }
+            next[message.id] = reading
+            launches += reading.launches
+            completions.merge(reading.completions) { _, later in later }
+        }
+        memo = next
+        guard !launches.isEmpty else { return [] }
+        return WorkflowRunAssembly.runs(
+            launches: launches, agents: agents, completions: completions)
+    }
+}
+
 /// Folds a conversation's Workflow tool calls and the agents trailing them into runs. Workflow
 /// agents carry no spawning call of their own, so they are seated against the run that could have
 /// fanned them out: the newest launch that had already been made when the agent first appeared.

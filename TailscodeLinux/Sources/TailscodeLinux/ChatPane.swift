@@ -39,6 +39,7 @@ final class ChatPane: @unchecked Sendable {
     let bandState = StatusBand.State()
     private var agents: [SubagentSummary] = []
     private var workflowRuns: [WorkflowRun] = []
+    private let workflowFold = WorkflowRunFold()
     private var usage: AgentUsage?
     /// What the whole conversation has cost. The server's own account when it keeps one, else what
     /// the transcript itself says — and never erased by a poll that came back with nothing, which
@@ -4655,7 +4656,7 @@ final class ChatPane: @unchecked Sendable {
     /// transcript for a spinner frame is a flicker.
     private func refreshWorkflowRuns() {
         guard let state = lastState else { return }
-        let runs = WorkflowRunAssembly.runs(messages: state.messages, agents: agents)
+        let runs = workflowFold.runs(messages: state.messages, agents: agents)
         if runs != workflowRuns {
             var byCall: [String: WorkflowRun] = [:]
             for run in runs { byCall[run.id] = run }

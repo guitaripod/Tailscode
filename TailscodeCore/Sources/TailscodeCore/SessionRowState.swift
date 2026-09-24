@@ -192,7 +192,9 @@ public struct SessionRowModel: Equatable, Sendable {
         self.title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
-        self.project = entry.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent }
+        self.project = entry.session.directory.map {
+            URL(fileURLWithPath: $0, isDirectory: true).lastPathComponent
+        }
         self.serverName = entry.profileName
         self.backendName = ServerLabel.agent(entry.backendType)
         self.age = Self.age(
