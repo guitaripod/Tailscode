@@ -39,7 +39,7 @@ final class TranscriptViewController: NSViewController {
 
     private let scrollView = NSScrollView()
     private let canvas = TranscriptViewController.page()
-    private let rowColumn = TranscriptColumn()
+    private var rowColumn = TranscriptColumn()
     private let pendingStack = FillingStack()
     private let earlierButton = RowKit.ActionButton(title: "") {}
     private let statusBand = StatusBandView()
@@ -593,6 +593,7 @@ final class TranscriptViewController: NSViewController {
         guard self.entry?.session.id != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
         onStopWatch?(SessionPinStore.key(entry.profileID, entry.session.id))
+        keepPage(of: self.entry)
         let previousEntry = self.entry
         let previousConversation = conversation
         let previousPresence = presence
@@ -656,7 +657,11 @@ final class TranscriptViewController: NSViewController {
         refreshAuthBanner()
         refreshIdentity()
 
-        if let remembered = sessionRows[entry.session.id] {
+        let pageKey = SessionPinStore.key(entry.profileID, entry.session.id)
+        if let kept = keptPages.removeValue(forKey: pageKey) {
+            keptOrder.removeAll { $0 == pageKey }
+            restorePage(kept)
+        } else if let remembered = sessionRows[entry.session.id] {
             placeholderShown = true
             lastFullRows = remembered
             let limit = max(windowLimit, Self.transcriptWindowPreference)
@@ -665,8 +670,10 @@ final class TranscriptViewController: NSViewController {
             showPlaceholder(Localized.text("Connecting…"))
         }
 
-        let conversation = AgentConversation(
-            backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
+        let conversation =
+            ConversationWarmer.shared.take(entry)
+            ?? AgentConversation(
+                backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
         self.conversation = conversation
         streamTask = Task { [weak self] in
             var resubscribes = 0
@@ -2578,6 +2585,8 @@ final class TranscriptViewController: NSViewController {
     func applyUIScale() {
         // Every row is rebuilt at a new size, so a canvas holding a place in the old ones is
         // holding a place that no longer exists.
+        keptPages = [:]
+        keptOrder = []
         releaseFreshCanvas(animated: false)
         rowBuilder.invalidate()
         Self.codeMemo = nil
@@ -3248,6 +3257,99 @@ final class TranscriptViewController: NSViewController {
         default:
             return nil
         }
+    }
+
+    /// A chat's page as it was left: the column of rows already built and everything those rows
+    /// were built against — which ones were open, the agents' transcripts fetched into their cards,
+    /// the boards read, the pictures still wanted — so coming back to a chat just left is a swap
+    /// and a diff instead of building every row again.
+    private struct KeptPage {
+        let column: TranscriptColumn
+        let renderedRows: [TranscriptRow]
+        let rowViews: [NSView]
+        let enteredRows: Set<String>
+        let expanded: TranscriptExpansion
+        let subagentRows: [String: [TranscriptRow]]
+        let designBoards: [String: DesignManifest]
+        let wantedImages: [String: FileReference]
+        let lastFullRows: [TranscriptRow]
+        let windowLimit: Int
+        let rowTailMessages: Int
+    }
+
+    private var keptPages: [String: KeptPage] = [:]
+    private var keptOrder: [String] = []
+    /// Three chats back is where going back and forth between conversations ends and a day of them
+    /// begins; a page is the size of its rows, and a pane keeping every chat it ever showed would
+    /// be a pane holding the day.
+    private static let keptLimit = 3
+
+    /// Sets the page being left aside for when its chat comes back, if it is a page that can be
+    /// shown again as it stands. One still being written, one holding a sent prompt up at the top,
+    /// or one not finished building is rebuilt instead: its rows are mid-motion, and a page put back
+    /// mid-motion is a page showing a moment that has already passed.
+    private func keepPage(of leaving: SessionEntry?) {
+        guard let leaving, !placeholderShown, fillComplete, cascade.key == nil,
+            lastStreamedKey == nil, canvasHold == nil, !rowViews.isEmpty
+        else { return }
+        let key = SessionPinStore.key(leaving.profileID, leaving.session.id)
+        clearFindHighlight()
+        let page = KeptPage(
+            column: rowColumn, renderedRows: renderedRows, rowViews: rowViews,
+            enteredRows: enteredRows, expanded: context.expanded,
+            subagentRows: context.subagentRows, designBoards: context.designBoards,
+            wantedImages: wantedImages, lastFullRows: lastFullRows, windowLimit: windowLimit,
+            rowTailMessages: rowTailMessages)
+        placeColumn(TranscriptColumn())
+        renderedRows = []
+        rowViews = []
+        enteredRows = []
+        wantedImages = [:]
+        placeholderShown = true
+        keptPages[key] = page
+        keptOrder.removeAll { $0 == key }
+        keptOrder.append(key)
+        while keptOrder.count > Self.keptLimit {
+            keptPages[keptOrder.removeFirst()] = nil
+        }
+    }
+
+    /// The page kept for this chat, back in the canvas at the end the reader returns to.
+    private func restorePage(_ page: KeptPage) {
+        tearDownAllRows()
+        placeColumn(page.column)
+        renderedRows = page.renderedRows
+        rowViews = page.rowViews
+        enteredRows = page.enteredRows
+        context.expanded = page.expanded
+        context.subagentRows = page.subagentRows
+        context.designBoards = page.designBoards
+        wantedImages = page.wantedImages
+        lastFullRows = page.lastFullRows
+        windowLimit = page.windowLimit
+        rowTailMessages = page.rowTailMessages
+        placeholderShown = false
+        currentPlaceholder = nil
+        emptyLabel.isHidden = true
+        fillComplete = true
+        pendingReveal = false
+        canvas.alphaValue = 1
+        settleOnTail()
+        syncJumpPill()
+        scheduleImageSweep()
+    }
+
+    /// Puts a column in the canvas where the rows go, between the button that widens the window
+    /// and the cards docked under the transcript.
+    private func placeColumn(_ column: TranscriptColumn) {
+        guard column !== rowColumn else { return }
+        let index = canvas.arrangedSubviews.firstIndex(of: rowColumn) ?? 1
+        canvas.removeArrangedSubview(rowColumn)
+        rowColumn.removeFromSuperview()
+        column.spacing = MacTheme.Spacing.m
+        column.translatesAutoresizingMaskIntoConstraints = false
+        canvas.insertArrangedSubview(column, at: index)
+        rowColumn = column
     }
 
     /// At most a handful of transcripts are kept renderable; the oldest falls out so a long day

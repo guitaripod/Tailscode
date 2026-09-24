@@ -133,6 +133,11 @@ final class SidebarViewController: NSViewController {
     /// the row is read again whenever the list scrolls or redraws under a pointer standing still.
     private var hoveredRow = -1
     private lazy var hoverWatch = SidebarHoverWatch { [weak self] in self?.refreshHover() }
+    /// A pointer that stops on a chat for this long is most of the way to a click, which is when
+    /// its conversation is started, so the pane that opens it finds its words already there.
+    private static let hoverIntent: TimeInterval = 0.065
+    private var warmWork: DispatchWorkItem?
+    private var pressWatch: Any?
     private var menuModel: SessionRowModel?
     /// The remembered split a context menu was opened on, held for the same reason `menuModel` is.
     private var menuTab: SplitTabRow?
@@ -160,6 +165,7 @@ final class SidebarViewController: NSViewController {
         tableView.target = self
         tableView.action = #selector(rowClicked)
         hoverWatch.watch(tableView, scrolling: scrollView)
+        watchPresses()
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("main"))
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
@@ -819,10 +825,45 @@ final class SidebarViewController: NSViewController {
                 as? SidebarSessionCell)?.setHovered(nil)
         }
         hoveredRow = row
+        warmWork?.cancel()
+        warmWork = nil
         guard row >= 0, row < tableView.numberOfRows else { return }
         (tableView.rowView(atRow: row, makeIfNecessary: false) as? SidebarRowView)?.isHovered = true
         (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarSessionCell)?
             .setHovered(quickState(for: row))
+        let work = DispatchWorkItem { [weak self] in self?.warm(row: row) }
+        warmWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.hoverIntent, execute: work)
+    }
+
+    /// Starts the conversation a row stands for, unless it is the one already open.
+    private func warm(row: Int) {
+        guard row >= 0, row < rows.count, case .session(let model, _, _) = rows[row] else { return }
+        let entry = model.entry
+        let showing =
+            focusedSessionID.map { $0() == entry.session.id } ?? (selectedID == entry.session.id)
+        guard !showing,
+            let profile = ServerDirectory.shared.profiles.first(where: { $0.id == entry.profileID }),
+            let backend = ServerDirectory.shared.backend(for: profile)
+        else { return }
+        ConversationWarmer.shared.warm(entry, backend: backend)
+    }
+
+    /// A button going down on a chat row is a click that has not finished: the conversation starts
+    /// then rather than a tenth of a second later, when the button comes up.
+    private func watchPresses() {
+        guard pressWatch == nil else { return }
+        pressWatch = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            MainActor.assumeIsolated { self?.pressed(event) }
+            return event
+        }
+    }
+
+    private func pressed(_ event: NSEvent) {
+        guard event.window === tableView.window, event.window != nil else { return }
+        let point = tableView.convert(event.locationInWindow, from: nil)
+        guard tableView.visibleRect.contains(point) else { return }
+        warm(row: tableView.row(at: point))
     }
 
     /// Which way each of a chat row's verbs would go, read from the stores at the moment the
