@@ -106,13 +106,14 @@ final class ServerDirectory {
         if isDemoMode { leaveDemoMode() } else { reload() }
     }
 
-    func delete(id: String) {
+    func delete(id: String) throws {
         if id.hasPrefix(DemoWorld.profilePrefix) {
             leaveDemoMode()
             return
         }
-        try? store?.delete(id: id)
-        reload()
+        guard let store else { throw AgentError.unsupported("no profile store") }
+        defer { reload() }
+        try store.delete(id: id)
     }
 
     /// Every session on every configured server, as one list — the same merge the Linux desktop

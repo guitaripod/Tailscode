@@ -2,6 +2,7 @@ import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
 import TailscodeCore
+import os
 
 /// A probe against a machine that is down must fail in seconds, not sit on the URL loader's
 /// two-minute connectivity grace: the racing deadline turns "still probing…" into a named
@@ -40,6 +41,7 @@ enum ServerProbe {
 /// account: signed in as whom, or signed out with the one button that fixes it.
 @MainActor
 final class ServersWindow: NSWindowController {
+    private static let log = Logger(subsystem: "com.guitaripod.tailscode", category: "persistence")
     private let onChanged: @MainActor () -> Void
     /// What to open when somebody reaches past the free copy's one server.
     var onNeedsPro: (@MainActor () -> Void)?
@@ -403,7 +405,13 @@ final class ServersWindow: NSWindowController {
                 "The saved address and password go away. Conversations stay on the server."),
             confirmLabel: Localized.text("Remove")
         ) { [weak self] in
-            ServerDirectory.shared.delete(id: id)
+            do {
+                try ServerDirectory.shared.delete(id: id)
+            } catch {
+                Self.log.error("remove server \(id, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+                self?.setStatus(Localized.text("%@ could not be removed.", profile.name))
+                return
+            }
             self?.onChanged()
             self?.renderList()
         }
