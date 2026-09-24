@@ -79,7 +79,7 @@ final class ModelDialPopover: NSObject {
     private func show(from anchor: NSView) {
         popover.behavior = .transient
         popover.delegate = self
-        popover.contentViewController = panel
+        popover.ground(panel)
         render()
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         panel.view.window?.makeFirstResponder(panel.searchField)
@@ -255,9 +255,9 @@ final class ModelDialPanel: NSViewController {
         effortLabel.attributedStringValue = NSAttributedString(
             string: Localized.text("EFFORT"),
             attributes: MacTheme.Ramp.attributes(
-                .sectionLabel, color: MacTheme.Color.onGlassSecondary))
+                .sectionLabel, color: MacTheme.Color.secondaryLabel))
         headline.font = MacTheme.Ramp.font(.rowDetail)
-        headline.textColor = MacTheme.Color.onGlassSecondary
+        headline.textColor = MacTheme.Color.secondaryLabel
         headline.lineBreakMode = .byTruncatingTail
         headline.alignment = .right
         effortLabel.setContentHuggingPriority(.required, for: .horizontal)
@@ -296,7 +296,7 @@ final class ModelDialPanel: NSViewController {
         rightFloor.priority = .defaultLow
 
         hint.font = MacTheme.Ramp.font(.hint)
-        hint.textColor = MacTheme.Color.onGlassSecondary
+        hint.textColor = MacTheme.Color.secondaryLabel
         hint.stringValue = ModelDial.hint
         hint.lineBreakMode = .byTruncatingTail
         let rule = NSBox()
@@ -363,7 +363,7 @@ final class ModelDialPanel: NSViewController {
                 label.attributedStringValue = NSAttributedString(
                     string: section.uppercased(),
                     attributes: MacTheme.Ramp.attributes(
-                        .sectionLabel, color: MacTheme.Color.onGlassSecondary))
+                        .sectionLabel, color: MacTheme.Color.secondaryLabel))
                 let wrap = NSView()
                 wrap.translatesAutoresizingMaskIntoConstraints = false
                 label.translatesAutoresizingMaskIntoConstraints = false
@@ -437,14 +437,14 @@ private final class DialModelRowView: NSView {
 
         let star = NSTextField(labelWithString: row.candidate == nil ? "" : (row.isStarred ? "★" : "☆"))
         star.font = MacTheme.Ramp.font(.rowMeta)
-        star.textColor = row.isStarred ? MacTheme.Color.warning : NSColor.tertiaryLabelColor
+        star.textColor = row.isStarred ? MacTheme.Color.warning : MacTheme.Color.tertiaryLabel
         star.alignment = .center
 
         let title = NSTextField(labelWithString: row.title)
         title.font = MacTheme.Ramp.font(row.isCurrent ? .rowTitleStrong : .rowTitle)
         title.textColor =
             row.kind == .serverDefault || row.opensCatalog
-            ? MacTheme.Color.onGlassSecondary : MacTheme.Color.onGlass
+            ? MacTheme.Color.secondaryLabel : MacTheme.Color.label
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.init(260), for: .horizontal)
 
@@ -475,7 +475,7 @@ private final class DialModelRowView: NSView {
         if !row.detail.isEmpty {
             let detail = NSTextField(labelWithString: row.detail)
             detail.font = MacTheme.Ramp.font(.rowNote)
-            detail.textColor = MacTheme.Color.onGlassSecondary
+            detail.textColor = MacTheme.Color.secondaryLabel
             detail.lineBreakMode = .byTruncatingTail
             detail.setContentCompressionResistancePriority(.init(240), for: .horizontal)
             line.addArrangedSubview(detail)
@@ -505,7 +505,7 @@ private final class DialModelRowView: NSView {
     private static func chip(_ fact: ModelFact) -> NSView {
         let label = NSTextField(labelWithString: fact.tag)
         label.font = MacTheme.Ramp.font(.chip)
-        label.textColor = MacTheme.Color.onGlassSecondary
+        label.textColor = MacTheme.Color.secondaryLabel
         label.toolTip = fact.label
         label.translatesAutoresizingMaskIntoConstraints = false
         let frame = NSView()
@@ -583,10 +583,10 @@ private final class DialRungView: NSView {
         self.isCurrent = isCurrent
         tint =
             rung.isServer
-            ? MacTheme.Color.onGlassSecondary
+            ? MacTheme.Color.secondaryLabel
             : rung.isPower
                 ? MacTheme.Color.danger
-                : (rung.level.flatMap(MacTheme.Color.modelEffort) ?? MacTheme.Color.onGlassSecondary)
+                : (rung.level.flatMap(MacTheme.Color.modelEffort) ?? MacTheme.Color.secondaryLabel)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         setAccessibilityElement(true)
@@ -595,7 +595,7 @@ private final class DialRungView: NSView {
 
         let key = NSTextField(labelWithString: String(rung.key))
         key.font = MacTheme.Ramp.font(.rowMeta)
-        key.textColor = MacTheme.Color.onGlassSecondary
+        key.textColor = MacTheme.Color.secondaryLabel
         key.alignment = .right
 
         let title = NSTextField(labelWithString: "")
@@ -610,7 +610,7 @@ private final class DialRungView: NSView {
         title.lineBreakMode = .byTruncatingTail
         let caption = NSTextField(labelWithString: rung.caption)
         caption.font = MacTheme.Ramp.font(.rowNote)
-        caption.textColor = MacTheme.Color.onGlassSecondary
+        caption.textColor = MacTheme.Color.secondaryLabel
         caption.lineBreakMode = .byTruncatingTail
         caption.maximumNumberOfLines = 1
         let words = NSStackView(views: [title, caption])

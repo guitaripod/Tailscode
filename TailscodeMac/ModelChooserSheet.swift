@@ -375,7 +375,7 @@ final class ModelChooserSheet: NSObject {
         briefingPopover?.close()
         let popover = NSPopover()
         popover.behavior = .transient
-        popover.contentViewController = BriefingPanelViewController(briefing: card)
+        popover.ground(BriefingPanelViewController(briefing: card))
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         briefingPopover = popover
     }
@@ -633,7 +633,7 @@ final class BriefingPanelViewController: NSViewController {
     static func colour(_ tone: ModelMachineState.Tone) -> NSColor {
         switch tone {
         case .live: return MacTheme.Color.success
-        case .quiet: return MacTheme.Color.tertiaryLabel
+        case .quiet: return MacTheme.Color.secondaryLabel
         case .danger: return MacTheme.Color.danger
         case .attention: return MacTheme.Color.warning
         }
@@ -658,11 +658,11 @@ final class BriefingPanelViewController: NSViewController {
             for (row, line) in section.lines.enumerated() {
                 let tint =
                     index == 0 && row == 0 && briefing.tone != nil
-                    ? Self.colour(briefing.tone!) : MacTheme.Color.tertiaryLabel
+                    ? Self.colour(briefing.tone!) : MacTheme.Color.secondaryLabel
                 column.addArrangedSubview(self.line(line, tint: tint))
             }
             if let footnote = section.footnote {
-                column.addArrangedSubview(wrapped(footnote, MacTheme.Color.tertiaryLabel))
+                column.addArrangedSubview(wrapped(footnote, MacTheme.Color.secondaryLabel))
             }
         }
         let host = NSView()
@@ -732,7 +732,7 @@ private final class ModelChooserHeaderView: NSTableCellView {
                     .metricLabel, color: MacTheme.Color.secondaryLabel)))
         let detail = NSTextField(labelWithString: section.detail)
         detail.font = MacTheme.Ramp.font(.gaugeCaption)
-        detail.textColor = MacTheme.Color.tertiaryLabel
+        detail.textColor = MacTheme.Color.secondaryLabel
         for view in [title, detail] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)

@@ -40,7 +40,7 @@ final class SpendPanelViewController: NSViewController {
         if spend.models.count > 1 { column.addArrangedSubview(models()) }
         column.addArrangedSubview(expensive())
         column.addArrangedSubview(
-            RowKit.label(spend.source, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+            RowKit.label(spend.source, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
 
         let clip = RowKit.FlippedClip()
         clip.drawsBackground = false
@@ -90,7 +90,7 @@ final class SpendPanelViewController: NSViewController {
                 labelWithAttributedString: NSAttributedString(
                     string: label.uppercased(),
                     attributes: MacTheme.Ramp.attributes(
-                        .metricLabel, color: MacTheme.Color.tertiaryLabel)))
+                        .metricLabel, color: MacTheme.Color.secondaryLabel)))
             caption.translatesAutoresizingMaskIntoConstraints = false
             let cell = NSStackView(views: [
                 RowKit.label(value, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label),
@@ -148,11 +148,11 @@ final class SpendPanelViewController: NSViewController {
             let span = NSStackView(views: [
                 RowKit.label(
                     Self.clock(first), font: MacTheme.Ramp.font(.panelFootnote),
-                    color: MacTheme.Color.tertiaryLabel),
+                    color: MacTheme.Color.secondaryLabel),
                 RowKit.spacer(),
                 RowKit.label(
                     Self.clock(last), font: MacTheme.Ramp.font(.panelFootnote),
-                    color: MacTheme.Color.tertiaryLabel),
+                    color: MacTheme.Color.secondaryLabel),
             ])
             span.orientation = .horizontal
             views.append(span)
@@ -224,7 +224,7 @@ final class SpendPanelViewController: NSViewController {
         if let trailing {
             views.append(
                 RowKit.label(
-                    trailing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+                    trailing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
         }
         let row = NSStackView(views: views)
         row.orientation = .horizontal
@@ -237,7 +237,7 @@ final class SpendPanelViewController: NSViewController {
     ) -> NSView {
         let name = RowKit.label(label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
         let count = RowKit.label(
-            detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+            detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
         count.setContentHuggingPriority(.required, for: .horizontal)
         let money = RowKit.label(
             value, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)

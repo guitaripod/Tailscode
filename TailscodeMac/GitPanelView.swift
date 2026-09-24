@@ -8,7 +8,7 @@ extension GitTone {
         case .added: return MacTheme.Color.success
         case .removed: return MacTheme.Color.danger
         case .changed: return MacTheme.Color.info
-        case .untracked: return MacTheme.Color.tertiaryLabel
+        case .untracked: return MacTheme.Color.secondaryLabel
         case .conflict: return MacTheme.Color.warning
         case .neutral: return MacTheme.Color.secondaryLabel
         }
@@ -62,7 +62,7 @@ final class GitPanelViewController: NSViewController {
         if let note {
             column.addArrangedSubview(
                 RowKit.wrapping(
-                    note, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+                    note, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
         }
         if !state.commits.isEmpty { column.addArrangedSubview(commits()) }
 
@@ -149,7 +149,7 @@ final class GitPanelViewController: NSViewController {
         }
         for fact in state.facts {
             let key = RowKit.label(
-                fact.label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+                fact.label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
             key.setContentHuggingPriority(.defaultHigh, for: .horizontal)
             let value = RowKit.label(
                 fact.value, font: MacTheme.Ramp.font(.panelFootnote),
@@ -178,7 +178,7 @@ final class GitPanelViewController: NSViewController {
             name.lineBreakMode = .byTruncatingMiddle
             let place = RowKit.label(
                 row.original.map { "← \($0)" } ?? row.folder, font: MacTheme.Ramp.font(.panelFootnote),
-                color: MacTheme.Color.tertiaryLabel)
+                color: MacTheme.Color.secondaryLabel)
             place.lineBreakMode = .byTruncatingHead
             let counts = NSTextField(labelWithAttributedString: Self.counts(row))
             counts.translatesAutoresizingMaskIntoConstraints = false
@@ -199,13 +199,13 @@ final class GitPanelViewController: NSViewController {
         for entry in state.commits.prefix(20) {
             let hash = RowKit.label(
                 entry.short, font: MacTheme.Ramp.font(.toolOutput),
-                color: entry.isHead ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel)
+                color: entry.isHead ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel)
             hash.setContentHuggingPriority(.required, for: .horizontal)
             let subject = RowKit.label(
                 entry.subject, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label)
             subject.lineBreakMode = .byTruncatingTail
             let age = RowKit.label(
-                entry.age, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+                entry.age, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
             age.setContentHuggingPriority(.required, for: .horizontal)
             let line = NSStackView(views: [hash, subject, NSView(), age])
             line.orientation = .horizontal
@@ -240,7 +240,7 @@ final class GitPanelViewController: NSViewController {
             return NSAttributedString(
                 string: row.detail,
                 attributes: [
-                    .foregroundColor: MacTheme.Color.tertiaryLabel,
+                    .foregroundColor: MacTheme.Color.secondaryLabel,
                     .font: MacTheme.Ramp.font(.panelFootnote),
                 ])
         }
@@ -270,7 +270,7 @@ final class GitPanelViewController: NSViewController {
                 text.append(
                     NSAttributedString(
                         string: " · ",
-                        attributes: [.font: font, .foregroundColor: MacTheme.Color.tertiaryLabel]))
+                        attributes: [.font: font, .foregroundColor: MacTheme.Color.secondaryLabel]))
             }
             text.append(
                 NSAttributedString(
@@ -292,7 +292,7 @@ final class GitPanelViewController: NSViewController {
         if let trailing {
             views.append(
                 RowKit.label(
-                    trailing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+                    trailing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
         }
         let row = NSStackView(views: views)
         row.orientation = .horizontal

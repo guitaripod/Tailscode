@@ -476,7 +476,7 @@ final class MainWindowController: NSWindowController {
             spend: spend, title: pane.currentEntry?.session.title ?? Localized.text("This conversation"))
         let popover = NSPopover()
         popover.behavior = .transient
-        popover.contentViewController = panel
+        popover.ground(panel)
         let anchor = pane.bandAnchor
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         spendPopover = popover
@@ -497,7 +497,7 @@ final class MainWindowController: NSWindowController {
                 } : nil)
         let popover = NSPopover()
         popover.behavior = .transient
-        popover.contentViewController = panel
+        popover.ground(panel)
         let anchor = pane.bandAnchor
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         contextPopover = popover
@@ -533,7 +533,7 @@ final class MainWindowController: NSWindowController {
             })
         let popover = NSPopover()
         popover.behavior = .transient
-        popover.contentViewController = panel
+        popover.ground(panel)
         let anchor = pane.bandAnchor
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         gitPopover = popover

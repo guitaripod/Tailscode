@@ -103,7 +103,7 @@ final class DelegateBetaBadge: NSView, NSPopoverDelegate {
         panel.onHover = { [weak self] inside in
             if inside { self?.closing?.cancel() } else { self?.scheduleClose() }
         }
-        popover.contentViewController = panel
+        popover.ground(panel)
         popover.show(relativeTo: bounds, of: self, preferredEdge: .minY)
         self.popover = popover
     }

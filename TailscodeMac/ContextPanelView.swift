@@ -67,7 +67,7 @@ final class ContextPanelViewController: NSViewController {
         if !fill.slices.isEmpty { column.addArrangedSubview(bands()) }
         column.addArrangedSubview(facts())
         let source = RowKit.label(
-            fill.source, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+            fill.source, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
         source.lineBreakMode = .byWordWrapping
         source.maximumNumberOfLines = 0
         column.addArrangedSubview(source)
@@ -115,7 +115,7 @@ final class ContextPanelViewController: NSViewController {
             labelWithAttributedString: NSAttributedString(
                 string: (fill.percent == nil ? Localized.text("tokens") : Localized.text("in use"))
                     .uppercased(),
-                attributes: MacTheme.Ramp.attributes(.metricLabel, color: MacTheme.Color.tertiaryLabel)))
+                attributes: MacTheme.Ramp.attributes(.metricLabel, color: MacTheme.Color.secondaryLabel)))
         let centre = NSStackView(views: [share, caption])
         centre.orientation = .vertical
         centre.alignment = .centerX
@@ -222,7 +222,7 @@ final class ContextPanelViewController: NSViewController {
                 slice.label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
             let share = RowKit.label(
                 StatusFacts.share(slice.share), font: MacTheme.Ramp.font(.panelFootnote),
-                color: MacTheme.Color.tertiaryLabel)
+                color: MacTheme.Color.secondaryLabel)
             share.setContentHuggingPriority(.required, for: .horizontal)
             let count = RowKit.label(
                 StatusFacts.tokens(slice.tokens), font: MacTheme.Ramp.font(.cardTitle),
@@ -246,7 +246,7 @@ final class ContextPanelViewController: NSViewController {
             let caption = NSTextField(
                 labelWithAttributedString: NSAttributedString(
                     string: fact.label.uppercased(),
-                    attributes: MacTheme.Ramp.attributes(.metricLabel, color: MacTheme.Color.tertiaryLabel)))
+                    attributes: MacTheme.Ramp.attributes(.metricLabel, color: MacTheme.Color.secondaryLabel)))
             caption.translatesAutoresizingMaskIntoConstraints = false
             let cell = NSStackView(views: [
                 RowKit.label(fact.value, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label),
@@ -279,7 +279,7 @@ final class ContextPanelViewController: NSViewController {
         if let trailing {
             views.append(
                 RowKit.label(
-                    trailing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+                    trailing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
         }
         let row = NSStackView(views: views)
         row.orientation = .horizontal
