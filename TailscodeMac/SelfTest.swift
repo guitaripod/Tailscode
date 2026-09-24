@@ -1143,6 +1143,25 @@ enum SelfTest {
         try expect(cell.showsQuickActions, "a hovered chat row offers its verbs")
         cell.setHovered(nil)
         try expect(!cell.showsQuickActions, "and puts its age back when the pointer leaves")
+
+        let now = Date()
+        let answer = ChatMessage(
+            id: "hover-probe", role: .assistant, agentType: .claudeCode,
+            parts: [
+                MessagePart(id: "a", kind: .text("First **paragraph**.")),
+                MessagePart(id: "b", kind: .reasoning("not for copying")),
+                MessagePart(id: "c", kind: .text("Second.")),
+            ], createdAt: now)
+        try expect(
+            MessageHoverBar.words(of: answer) == "First **paragraph**.\n\nSecond.",
+            "a message's Copy is its words as written, thoughts left out")
+        try expect(
+            MessageHoverBar.stamp(now, now: now) == now.formatted(date: .omitted, time: .shortened),
+            "a message written today is stamped with its time alone")
+        try expect(
+            MessageHoverBar.stamp(now.addingTimeInterval(-3 * 86_400), now: now).count
+                > MessageHoverBar.stamp(now, now: now).count,
+            "and an older one says which day")
         return checks
     }
 

@@ -59,6 +59,7 @@ final class TranscriptViewController: NSViewController {
 
     private let context = TranscriptContext()
     private let rowBuilder = TranscriptRowBuilder()
+    private let hoverBar = MessageHoverBar()
     private let identityLabel = NSTextField(labelWithString: "")
     private var identityGlass: NSView?
     /// What a slot took off the screen when it claimed the pane, so putting a conversation back
@@ -243,6 +244,13 @@ final class TranscriptViewController: NSViewController {
 
         configureFindBar()
         container.addSubview(findBar)
+
+        hoverBar.install(in: container, over: scrollView, canvas: canvas)
+        hoverBar.locate = { [weak self] point in self?.messageTarget(at: point) }
+        hoverBar.message = { [weak self] id in self?.lastState?.messages.first { $0.id == id } }
+        hoverBar.offersUndo = { [weak self] id in self?.context.offersUndo?(id) ?? false }
+        hoverBar.undo = { [weak self] id in self?.context.confirmUndo?(id) }
+        hoverBar.toast = { [weak self] text in self?.onToast?(text) }
 
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -581,6 +589,7 @@ final class TranscriptViewController: NSViewController {
 
     func open(_ entry: SessionEntry, backend: any CodingAgentBackend) {
         clearSlot()
+        hoverBar.dismiss()
         guard self.entry?.session.id != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
         onStopWatch?(SessionPinStore.key(entry.profileID, entry.session.id))
@@ -880,6 +889,7 @@ final class TranscriptViewController: NSViewController {
             return
         }
         guard furnitureHidden.isEmpty else { return }
+        hoverBar.dismiss()
         furnitureHidden = view.subviews.filter { subview in
             subview !== identityGlass && subview !== page && !subview.isHidden
                 && !isVideoSlot(subview)
@@ -2661,6 +2671,7 @@ final class TranscriptViewController: NSViewController {
 
     private func showPlaceholder(_ text: String) {
         dismissChooser()
+        hoverBar.dismiss()
         if placeholderShown, currentPlaceholder == text { return }
         currentPlaceholder = text
         tearDownAllRows()
@@ -2808,7 +2819,67 @@ final class TranscriptViewController: NSViewController {
         }
         syncJumpPill()
         scheduleImageSweep()
+        hoverBar.refresh()
         if edit.complete, !findBar.isHidden { runFind(retarget: false) }
+    }
+
+    /// The message under a point on the page and every row it is drawn as: a prompt with the
+    /// pictures that went with it, or an answer's words, code and tables. Rows that are the agent
+    /// working — a thought, a tool call, a card — have headers of their own and no capsule.
+    private func messageTarget(at point: NSPoint) -> MessageHoverBar.Target? {
+        guard !placeholderShown, let index = rowIndex(atCanvasY: point.y),
+            let owner = messageOwner(of: renderedRows[index])
+        else { return nil }
+        var first = index
+        while first > 0, messageOwner(of: renderedRows[first - 1])?.id == owner.id { first -= 1 }
+        var last = index
+        while last + 1 < min(renderedRows.count, rowViews.count),
+            messageOwner(of: renderedRows[last + 1])?.id == owner.id
+        {
+            last += 1
+        }
+        var block: NSRect?
+        for row in first...last where rowViews[row].superview != nil {
+            let frame = rowViews[row].convert(rowViews[row].bounds, to: canvas)
+            block = block.map { $0.union(frame) } ?? frame
+        }
+        guard let block else { return nil }
+        return MessageHoverBar.Target(messageID: owner.id, isPrompt: owner.prompt, block: block)
+    }
+
+    /// Which message a row draws, when it draws one's words. An answer's rows are keyed by the
+    /// message and the part they came from, so the message is the one whose id leads the key.
+    private func messageOwner(of row: TranscriptRow) -> (id: String, prompt: Bool)? {
+        switch row.kind {
+        case .userText(_, let messageID): return (messageID, true)
+        case .file(_, let mine, let messageID): return mine ? (messageID, true) : nil
+        case .agentProse, .codeBlock, .table, .tableDraft:
+            guard let message = lastState?.messages.last(where: { row.key.hasPrefix($0.id + ":") })
+            else { return nil }
+            return (message.id, false)
+        default: return nil
+        }
+    }
+
+    /// The row standing at a height on the page, found by halving: the rows stand top-down in the
+    /// order they are kept, so a pointer's row is a search rather than a walk.
+    private func rowIndex(atCanvasY y: CGFloat) -> Int? {
+        var low = 0
+        var high = min(rowViews.count, renderedRows.count) - 1
+        while low <= high {
+            let middle = (low + high) / 2
+            let view = rowViews[middle]
+            guard view.superview != nil else { return nil }
+            let frame = view.convert(view.bounds, to: canvas)
+            if y < frame.minY {
+                high = middle - 1
+            } else if y > frame.maxY {
+                low = middle + 1
+            } else {
+                return middle
+            }
+        }
+        return nil
     }
 
     /// A chat opened is shown the moment the rows the window actually holds are up, rather than
@@ -3476,6 +3547,7 @@ final class TranscriptViewController: NSViewController {
 
     @objc private func scrollBoundsChanged() {
         scheduleImageSweep()
+        hoverBar.refresh()
         guard !isAutoScrolling else { return }
         followClock = nil
         guard canvasHold == nil else {
