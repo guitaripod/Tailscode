@@ -12,9 +12,6 @@
 
 Free is the whole core with one server; **Pro** is a one-time $14.99 purchase for unlimited servers, concurrent Live Activities and the delegate board.
 
-
-
-
 ## What it does
 
 - **Every turn, live** — thinking, tool calls, subagents in place, diffs in the code's own colours, pictures the agent looked at. Prose is written out at an even pace, never re-wrapping under you.
@@ -28,10 +25,9 @@ Free is the whole core with one server; **Pro** is a one-time $14.99 purchase fo
 - **Desktops** — tiling splits with vim-grade verbs, a terminal, file tree, browser and video panes, a global chord that summons quick ask from any program, vim in the composer.
 - **Eight themes with two faces each**, one typography ramp, ten languages, Liquid Glass where the platform draws it.
 
-
 ## Parity is a build gate
 
-`TailscodeCore/Sources/TailscodeCore/Parity.swift` declares `AppCapability` — one case per user-facing capability, 149 today, each with a toolkit-free spec — and every client answers every case in its own `Parity.swift` with an exhaustive switch and no `default`. Adding a capability is a compile error in all three clients until each says what it does about it: `.implemented(anchor)`, `.partial`, `.gap(reason)`, `.notApplicable(reason)`, or on the Mac `.varies(direct:appStore:)`, because the ad-hoc build and the sandboxed App Store build are allowed different answers.
+`TailscodeCore/Sources/TailscodeCore/Parity.swift` declares `AppCapability` — one case per user-facing capability, each with a toolkit-free spec — and every client answers every case in its own `Parity.swift` with an exhaustive switch and no `default`. Adding a capability is a compile error in all three clients until each says what it does about it: `.implemented(anchor)`, `.partial`, `.gap(reason)`, `.notApplicable(reason)`, or on the Mac `.varies(direct:appStore:)`, because the ad-hoc build and the sandboxed App Store build are allowed different answers.
 
 `scripts/parity.sh` prints the matrix and greps every claimed anchor inside that client's own tree, reading `#if TAILSCODE_MAS` the way the compiler does so the store column cannot claim code it compiles out. It runs as a Claude Code Stop hook, and both desktops assert it under `--selftest`.
 
@@ -40,7 +36,7 @@ $ scripts/parity.sh
 capability                 iOS         linux       mac         mac-store
 sessionSections            ok          ok          ok          ok
 ...
-526/596 implemented, 15 partial, 18 gaps, 37 n/a
+560/648 implemented, 16 partial, 32 gaps, 40 n/a
 PARITY_OK
 ```
 
@@ -108,7 +104,7 @@ TailscodeCore/       Shared, toolkit-free: parity registry, themes + typography,
                      streaming, activity + presence, spend + analytics + trophies, git,
                      model fleet + quotas, splits + pane targets, slash + shortcuts,
                      quick ask + summon, image + video generation, design board, update
-                     ledger, stores, demo world — 83 test files, 1,089 @Test functions
+                     ledger, stores, demo world, and the tests for all of it
 Tailscode/           iPhone and iPad UIKit client — connection, chat, home board, usage,
                      settings, Live Activity + widgets, push
 TailscodeMac/        AppKit client — tiling, Liquid Glass, Metal presence orb, SelfTest
@@ -120,7 +116,7 @@ packaging/           Flatpak manifest, Arch PKGBUILDs, desktop entry, icons, met
 scripts/             Parity gate, packaging, dev loops, release, App Store Connect
 ```
 
-Programmatic UIKit and AppKit, GTK4 through C shims, Swift 6 strict concurrency, no SwiftUI outside the widgets, no web views in the app. All networking, streaming and state live in [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit); the clients render `ConversationState` and forward intent.
+Programmatic UIKit and AppKit, GTK4 through C shims, Swift 6 strict concurrency, no SwiftUI outside the widgets. All networking, streaming and state live in [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit); the clients render `ConversationState` and forward intent.
 
 ## Related projects
 
