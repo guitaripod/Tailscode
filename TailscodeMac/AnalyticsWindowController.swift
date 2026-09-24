@@ -43,6 +43,7 @@ final class AnalyticsWindowController: NSWindowController {
         window.contentViewController = host
         paintedDark = window.effectiveAppearance.isDark
         window.center()
+        placed = window.rememberFrame(as: "TailscodeAnalytics")
         windowPicker.selectedSegment =
             UsageWindow.allCases.firstIndex(of: UsageWindow.current) ?? 0
         windowPicker.target = self
@@ -63,7 +64,8 @@ final class AnalyticsWindowController: NSWindowController {
     /// itself sitting at `contentMinSize` — the hero fills it and the month's shape, which is the
     /// whole reason to open this, starts below the fold.
     func present() {
-        if let window, !window.isVisible, let screen = window.screen ?? NSScreen.main {
+        if let window, !window.isVisible, !placed, let screen = window.screen ?? NSScreen.main {
+            placed = true
             let room = screen.visibleFrame
             let size = NSSize(
                 width: min(Self.openingSize.width, room.width - 80),
@@ -80,6 +82,10 @@ final class AnalyticsWindowController: NSWindowController {
     }
 
     private static let openingSize = NSSize(width: 760, height: 980)
+
+    /// Whether the window has a size somebody chose — a remembered one, or the one it opened at
+    /// the first time. Only a window with neither is given the opening size.
+    private var placed = false
 
     private func makeContent() -> NSView {
         column.spacing = MacTheme.Spacing.m
@@ -313,7 +319,7 @@ final class AnalyticsWindowController: NSWindowController {
             labels.spacing = MacTheme.Spacing.m
             for day in analytics.weekdays {
                 let bar = AnalyticsBar(fill: MacTheme.Color.info)
-                bar.speak("\(day.label) · \(day.money)")
+                bar.speak([day.label, day.money].compactMap { $0 }.joined(separator: " · "))
                 bar.toolTip = day.money
                 NSLayoutConstraint.activate([
                     bar.widthAnchor.constraint(equalToConstant: Self.weekdayBarWidth),
@@ -349,7 +355,8 @@ final class AnalyticsWindowController: NSWindowController {
             for hour in analytics.hours {
                 let zero = hour.turns <= 0
                 let bar = AnalyticsBar(fill: zero ? MacTheme.Color.separator : MacTheme.Color.info)
-                bar.toolTip = "\(hour.label):00 · " + Localized.text("%d turns", hour.turns)
+                bar.toolTip = Localized.text(
+                    "%@:00 · %@", hour.label, Localized.text("%d turns", hour.turns))
                 bar.speak(bar.toolTip)
                 NSLayoutConstraint.activate([
                     bar.widthAnchor.constraint(equalToConstant: 14),

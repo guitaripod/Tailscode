@@ -48,6 +48,7 @@ final class AttachmentChips: NSView {
             chip.imagePosition = .imageTrailing
             chip.imageHugsTitle = true
             chip.cell?.lineBreakMode = .byTruncatingMiddle
+            chip.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             chip.toolTip = Localized.text("Remove %@", attachment.name)
             chip.setAccessibilityLabel(Localized.text("Remove %@", attachment.name))
             chip.translatesAutoresizingMaskIntoConstraints = false

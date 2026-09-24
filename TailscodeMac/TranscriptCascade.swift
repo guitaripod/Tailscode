@@ -232,15 +232,17 @@ extension TranscriptViewController {
             let label = Self.streamedLabel(in: rowViews[index], kind: renderedRows[index].kind),
             let tail = cascade.tail(for: key)
         else { return false }
+        let rendered: NSAttributedString
         switch renderedRows[index].kind {
-        case .agentProse(_, let rendered):
-            label.attributedStringValue = tail.paint(rendered, settled: MacTheme.Color.label)
-        case .codeBlock(let language, let body):
-            label.attributedStringValue = tail.paint(
-                Self.codeRendering(body, language: language), settled: MacTheme.Color.label)
-        default:
-            return false
+        case .agentProse(_, let prose): rendered = prose
+        case .codeBlock(let language, let body): rendered = Self.codeRendering(body, language: language)
+        default: return false
         }
+        let prose = label as? RowKit.ProseLabel
+        prose?.holdsMeasure = rendered === waveMeasured
+        label.attributedStringValue = tail.paint(rendered, settled: MacTheme.Color.label)
+        prose?.holdsMeasure = false
+        waveMeasured = rendered
         cascade.landed()
         if canvasHold != nil {
             recomputeFreshCanvas()

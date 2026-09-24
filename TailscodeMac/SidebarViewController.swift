@@ -245,7 +245,7 @@ final class SidebarViewController: NSViewController {
     func refresh() async {
         ServerDirectory.shared.reload()
         let (fresh, down) = await ServerDirectory.shared.entries(knownDirectories: recentDirectories)
-        if !fresh.isEmpty { SessionListCache.save(fresh) }
+        if !fresh.isEmpty { SessionListCache.scheduleSave(fresh) }
         await SavedChatSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
         SavedChatStore.reconcile(with: fresh)
         applyEntries(fresh, unreachable: down)
@@ -462,10 +462,23 @@ final class SidebarViewController: NSViewController {
     }
 
     func notePresenceChanged() {
-        let presence = presenceSource?() ?? [:]
-        guard presence != lastPresence else { return }
-        render()
+        guard !presenceRenderPending else { return }
+        presenceRenderPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.presenceSettle) { [weak self] in
+            guard let self else { return }
+            self.presenceRenderPending = false
+            let presence = self.presenceSource?() ?? [:]
+            guard presence != self.lastPresence else { return }
+            self.render()
+        }
     }
+
+    /// A pane reports its state on every token it streams, and each report used to redraw every
+    /// row in the list — a thousand of them across five machines — whenever the step it was on
+    /// moved. The badge is read at a glance rather than watched, so reports landing close together
+    /// are answered once.
+    private var presenceRenderPending = false
+    private static let presenceSettle: TimeInterval = 0.25
 
     func setArchiveShown(_ shown: Bool) {
         guard showingArchive != shown else { return }
@@ -508,7 +521,11 @@ final class SidebarViewController: NSViewController {
         ) { [weak self] title in
             guard !title.isEmpty else { return }
             Task { [weak self] in
-                try? await backend.renameSession(sessionID, title: title)
+                do {
+                    try await backend.renameSession(sessionID, title: title)
+                } catch {
+                    self?.onNotice?(Localized.text("Couldn't rename this conversation."))
+                }
                 await self?.refresh()
             }
         }
@@ -533,7 +550,10 @@ final class SidebarViewController: NSViewController {
 
     func fork(entry: SessionEntry, backend: any CodingAgentBackend) {
         Task { [weak self] in
-            guard let session = try? await backend.forkSession(entry.session.id) else { return }
+            guard let session = try? await backend.forkSession(entry.session.id) else {
+                self?.onNotice?(Localized.text("Couldn't fork this conversation."))
+                return
+            }
             let forked = SessionEntry(
                 profileID: entry.profileID, profileName: entry.profileName, host: entry.host,
                 backendType: entry.backendType, session: session)
@@ -584,7 +604,7 @@ final class SidebarViewController: NSViewController {
             next.append(entry)
             next.sort { $0.session.updatedAt > $1.session.updatedAt }
             entries = next
-            if !next.isEmpty { SessionListCache.save(next) }
+            if !next.isEmpty { SessionListCache.scheduleSave(next) }
             render()
         case .remove(let id):
             entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
@@ -631,6 +651,7 @@ final class SidebarViewController: NSViewController {
         let needle = filter.lowercased()
         let presence = presenceSource?() ?? [:]
         lastPresence = presence
+        let pins = Set(SessionPinStore.all())
         var models = entries.filter { !pendingDeletes.contains(ChatSelection.key($0)) }.map {
             SessionRowModel(
                 entry: $0,
@@ -638,8 +659,7 @@ final class SidebarViewController: NSViewController {
                     ServerLabel.display(name: $0.profileName, backend: $0.backendType)),
                 unread: unread($0.session.id, $0.session.updatedAt),
                 saved: saved.contains($0.session.id),
-                pinned: SessionPinStore.contains(
-                    profileID: $0.profileID, sessionID: $0.session.id),
+                pinned: pins.contains(SessionPinStore.key($0.profileID, $0.session.id)),
                 presence: presence[ChatSelection.key($0)] ?? .unobserved,
                 observedAt: ServerDirectory.shared.lastHeard[
                     ServerLabel.display(name: $0.profileName, backend: $0.backendType)])
@@ -1180,11 +1200,15 @@ final class SidebarViewController: NSViewController {
     @objc private func rowClicked() {
         let index = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
         guard index >= 0, index < rows.count else { return }
-        if index < visible.count,
-            NSApp.currentEvent?.modifierFlags.contains(.shift) == true,
-            rows[index].isChat
-        {
+        let modifiers = NSApp.currentEvent?.modifierFlags ?? []
+        if index < visible.count, modifiers.contains(.shift), rows[index].isChat {
             selection.rangeSelect(visible[index], in: visible)
+            lastSidebar = nil
+            render()
+            return
+        }
+        if index < visible.count, modifiers.contains(.command), rows[index].isChat {
+            toggleMark(visible[index])
             lastSidebar = nil
             render()
             return
@@ -1295,6 +1319,20 @@ extension SidebarViewController: NSTableViewDelegate {
         switch rows[row] {
         case .session, .tab: return true
         default: return false
+        }
+    }
+
+    /// Typing a chat's first letters walks to it, the way every list on the Mac answers a name.
+    /// The rows are drawn by hand rather than through a cell's text field, so the table is told
+    /// which words each row stands for; the headings and links between them stand for nothing.
+    func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int)
+        -> String?
+    {
+        guard row >= 0, row < rows.count else { return nil }
+        switch rows[row] {
+        case .session(let model, _, _): return model.title
+        case .tab(let model, _): return model.title
+        default: return nil
         }
     }
 

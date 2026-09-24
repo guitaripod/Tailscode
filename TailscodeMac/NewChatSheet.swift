@@ -57,7 +57,10 @@ final class NewChatSheet: NSObject {
     nonisolated static let localAddresses: Set<String> = {
         var hosts: Set<String> = ["127.0.0.1", "localhost", "::1"]
         var name = [CChar](repeating: 0, count: 256)
-        if gethostname(&name, 255) == 0 { hosts.insert(String(cString: name).lowercased()) }
+        if gethostname(&name, 255) == 0 {
+            let bytes = name.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+            hosts.insert(String(decoding: bytes, as: UTF8.self).lowercased())
+        }
         if let address = TailnetStatusMac.localAddress() { hosts.insert(address.lowercased()) }
         #if !TAILSCODE_MAS
             for binary in [
@@ -309,6 +312,9 @@ final class NewChatSheet: NSObject {
     private func installMonitor() {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.sheet else { return event }
+            if (self.field.currentEditor() as? NSTextView)?.hasMarkedText() == true {
+                return event
+            }
             if self.phase != .asking { return self.statusKey(event) }
             guard let chord = MacKeys.chord(for: event),
                 let command = NewChatChooser.command(for: chord, mode: self.chooser.mode)

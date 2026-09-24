@@ -77,7 +77,18 @@ enum TaskBoardView {
         label.lineBreakMode = .byWordWrapping
         label.maximumNumberOfLines = 0
         label.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+        label.setAccessibilityLabel(spoken(item.status, text))
         return label
+    }
+
+    /// What VoiceOver says for a line: its words and where it stands, which the row shows only as a
+    /// glyph, a tint and a line struck through.
+    private static func spoken(_ status: TaskBoard.Status, _ text: String) -> String {
+        switch status {
+        case .completed: return Localized.text("%@, done", text)
+        case .inProgress: return Localized.text("%@, in progress", text)
+        case .pending: return Localized.text("%@, to do", text)
+        }
     }
 }
 

@@ -162,6 +162,12 @@ final class PromptEditor: NSView {
 
     var hasFocus: Bool { window?.firstResponder === textView }
 
+    /// Whether an input method is still composing in the box — a Japanese or Chinese candidate
+    /// open, a Korean syllable not yet committed. Return, Escape, Tab and the arrows belong to the
+    /// input method until then: a Return that sent the message instead of committing the
+    /// candidate made the box unusable in three of the languages the app speaks.
+    var isComposing: Bool { textView.hasMarkedText() }
+
     /// Where the popover that completes a command hangs from, and where a surface measures the
     /// box for anything it draws beside it.
     var fieldView: NSView { fieldContainer }

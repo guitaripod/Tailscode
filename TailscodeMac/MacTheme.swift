@@ -366,6 +366,7 @@ enum MacTheme {
     /// Liquid Glass, used the way the system uses it: floating controls above content — the
     /// composer, the status capsule, the jump button — are glass; the content they float over is
     /// flat and opaque. Glass never sits on glass, and prose never sits on glass.
+    @MainActor
     static func glass(around content: NSView, cornerRadius: CGFloat = Radius.card) -> NSGlassEffectView {
         let view = NSGlassEffectView()
         view.cornerRadius = cornerRadius
@@ -374,6 +375,7 @@ enum MacTheme {
         return view
     }
 
+    @MainActor
     static func tintedGlass(
         around content: NSView, tint: NSColor, cornerRadius: CGFloat = Radius.card
     ) -> NSGlassEffectView {
@@ -384,6 +386,7 @@ enum MacTheme {
 
     /// Neighbouring glass shapes that should read as one wet surface — the composer row's field
     /// and buttons — go in a container, which also lets the system merge them when they touch.
+    @MainActor
     static func glassGroup(spacing: CGFloat = Spacing.s) -> NSGlassEffectContainerView {
         let view = NSGlassEffectContainerView()
         view.spacing = spacing

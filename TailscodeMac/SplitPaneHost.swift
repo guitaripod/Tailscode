@@ -366,6 +366,10 @@ final class SplitPaneHost: NSViewController {
             treeRoot.removeFromParent()
             treeRoot.view.removeFromSuperview()
         }
+        for splitView in splitViews.values {
+            NotificationCenter.default.removeObserver(
+                self, name: NSSplitView.didResizeSubviewsNotification, object: splitView)
+        }
         splitViews = [:]
         splitItems = [:]
         splitLeaves = [:]

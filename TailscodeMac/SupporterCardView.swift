@@ -27,6 +27,7 @@ final class SupporterCardView: NSView {
         mark.contentTintColor = MacTheme.Color.accent
         title.lineBreakMode = .byTruncatingTail
         title.translatesAutoresizingMaskIntoConstraints = false
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         body.isSelectable = false
         body.translatesAutoresizingMaskIntoConstraints = false
         body.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

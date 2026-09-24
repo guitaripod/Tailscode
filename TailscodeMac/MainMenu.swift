@@ -39,9 +39,18 @@ final class MainMenu: NSObject {
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Settings…"), #selector(settings), ","))
         menu.addItem(.separator())
+        let services = NSMenu(title: Localized.text("Services"))
+        menu.addItem(submenu(Localized.text("Services"), services))
+        NSApp.servicesMenu = services
+        menu.addItem(.separator())
         menu.addItem(
             withTitle: Localized.text("Hide Tailscode"), action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h")
+        system(
+            menu, Localized.text("Hide Others"),
+            #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option])
+        system(menu, Localized.text("Show All"), #selector(NSApplication.unhideAllApplications(_:)))
+        menu.addItem(.separator())
         menu.addItem(
             withTitle: Localized.text("Quit Tailscode"),
             action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -51,6 +60,7 @@ final class MainMenu: NSObject {
     private func makeFileMenu() -> NSMenuItem {
         let menu = NSMenu(title: Localized.text("File"))
         menu.addItem(item(Localized.text("New Chat"), #selector(newChat), "n"))
+        menu.addItem(item(Localized.text("Quick Ask…"), #selector(quickAsk), ""))
         menu.addItem(.separator())
         menu.addItem(
             withTitle: Localized.text("Close"), action: #selector(NSWindow.performClose(_:)),
@@ -66,12 +76,91 @@ final class MainMenu: NSObject {
         menu.addItem(withTitle: Localized.text("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         menu.addItem(withTitle: Localized.text("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         menu.addItem(withTitle: Localized.text("Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        system(
+            menu, Localized.text("Paste and Match Style"),
+            #selector(NSTextView.pasteAsPlainText(_:)), "V", [.command, .option])
+        system(menu, Localized.text("Delete"), #selector(NSText.delete(_:)))
         menu.addItem(
             withTitle: Localized.text("Select All"), action: #selector(NSText.selectAll(_:)),
             keyEquivalent: "a")
         menu.addItem(.separator())
-        menu.addItem(item(Localized.text("Find in Conversation"), #selector(find), "f"))
+        let finding = NSMenu(title: Localized.text("Find"))
+        finding.addItem(item(Localized.text("Find in Conversation"), #selector(find), "f"))
+        finding.addItem(item(Localized.text("Find Next"), #selector(findNext), "g"))
+        finding.addItem(item(Localized.text("Find Previous"), #selector(findPrevious), "G"))
+        menu.addItem(submenu(Localized.text("Find"), finding))
+        menu.addItem(.separator())
+        menu.addItem(submenu(Localized.text("Spelling and Grammar"), spellingMenu()))
+        menu.addItem(submenu(Localized.text("Substitutions"), substitutionsMenu()))
+        menu.addItem(submenu(Localized.text("Transformations"), transformationsMenu()))
+        menu.addItem(submenu(Localized.text("Speech"), speechMenu()))
         return holder(menu)
+    }
+
+    /// The text services every Mac text field answers — a prompt, a rename, a path — routed to
+    /// whichever field is typing, as AppKit's own menus route them. The app's own defaults turn
+    /// the rewrites off (see `AppDelegate.typeWhatIsTyped`), and this is where a person turns one
+    /// back on for themselves.
+    private func spellingMenu() -> NSMenu {
+        let menu = NSMenu(title: Localized.text("Spelling and Grammar"))
+        system(
+            menu, Localized.text("Show Spelling and Grammar"),
+            #selector(NSText.showGuessPanel(_:)), ":")
+        system(
+            menu, Localized.text("Check Document Now"), #selector(NSText.checkSpelling(_:)), ";")
+        menu.addItem(.separator())
+        system(
+            menu, Localized.text("Check Spelling While Typing"),
+            #selector(NSTextView.toggleContinuousSpellChecking(_:)))
+        system(
+            menu, Localized.text("Check Grammar With Spelling"),
+            #selector(NSTextView.toggleGrammarChecking(_:)))
+        system(
+            menu, Localized.text("Correct Spelling Automatically"),
+            #selector(NSTextView.toggleAutomaticSpellingCorrection(_:)))
+        return menu
+    }
+
+    private func substitutionsMenu() -> NSMenu {
+        let menu = NSMenu(title: Localized.text("Substitutions"))
+        system(
+            menu, Localized.text("Show Substitutions"),
+            #selector(NSTextView.orderFrontSubstitutionsPanel(_:)))
+        menu.addItem(.separator())
+        system(
+            menu, Localized.text("Smart Copy/Paste"),
+            #selector(NSTextView.toggleSmartInsertDelete(_:)))
+        system(
+            menu, Localized.text("Smart Quotes"),
+            #selector(NSTextView.toggleAutomaticQuoteSubstitution(_:)))
+        system(
+            menu, Localized.text("Smart Dashes"),
+            #selector(NSTextView.toggleAutomaticDashSubstitution(_:)))
+        system(
+            menu, Localized.text("Smart Links"),
+            #selector(NSTextView.toggleAutomaticLinkDetection(_:)))
+        system(
+            menu, Localized.text("Data Detectors"),
+            #selector(NSTextView.toggleAutomaticDataDetection(_:)))
+        system(
+            menu, Localized.text("Text Replacement"),
+            #selector(NSTextView.toggleAutomaticTextReplacement(_:)))
+        return menu
+    }
+
+    private func transformationsMenu() -> NSMenu {
+        let menu = NSMenu(title: Localized.text("Transformations"))
+        system(menu, Localized.text("Make Upper Case"), #selector(NSResponder.uppercaseWord(_:)))
+        system(menu, Localized.text("Make Lower Case"), #selector(NSResponder.lowercaseWord(_:)))
+        system(menu, Localized.text("Capitalize"), #selector(NSResponder.capitalizeWord(_:)))
+        return menu
+    }
+
+    private func speechMenu() -> NSMenu {
+        let menu = NSMenu(title: Localized.text("Speech"))
+        system(menu, Localized.text("Start Speaking"), #selector(NSTextView.startSpeaking(_:)))
+        system(menu, Localized.text("Stop Speaking"), #selector(NSTextView.stopSpeaking(_:)))
+        return menu
     }
 
     private func makeChatMenu() -> NSMenuItem {
@@ -146,12 +235,20 @@ final class MainMenu: NSObject {
         menu.addItem(item(Localized.text("Even Out Splits"), #selector(equalizeSplits), ""))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Zoom In"), #selector(zoomIn), "+"))
+        let unshifted = item(Localized.text("Zoom In"), #selector(zoomIn), "=")
+        unshifted.isHidden = true
+        unshifted.allowsKeyEquivalentWhenHidden = true
+        menu.addItem(unshifted)
         menu.addItem(item(Localized.text("Zoom Out"), #selector(zoomOut), "-"))
         menu.addItem(item(Localized.text("Actual Size"), #selector(zoomReset), "0"))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("The month in numbers"), #selector(monthInNumbers), ""))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Shortcuts Cheatsheet"), #selector(cheatsheet), "/"))
+        menu.addItem(.separator())
+        system(
+            menu, Localized.text("Enter Full Screen"), #selector(NSWindow.toggleFullScreen(_:)),
+            "f", [.command, .control])
         return holder(menu)
     }
 
@@ -180,9 +277,20 @@ final class MainMenu: NSObject {
 
     private func makeHelpMenu() -> NSMenuItem {
         let menu = NSMenu(title: Localized.text("Help"))
+        menu.addItem(item(Localized.text("Tailscode Support"), #selector(support), ""))
         menu.addItem(item(Localized.text("Keyboard Shortcuts"), #selector(cheatsheet), ""))
+        menu.addItem(.separator())
+        menu.addItem(item(Localized.text("Report an Issue…"), #selector(reportIssue), ""))
+        menu.addItem(item(Localized.text("Privacy Policy"), #selector(privacy), ""))
         NSApp.helpMenu = menu
         return holder(menu)
+    }
+
+    /// Where a person goes for help, the same pages the phone's settings link to.
+    private enum Link {
+        static let support = URL(string: "https://midgarcorp.cc/tailscode/support")!
+        static let privacy = URL(string: "https://midgarcorp.cc/tailscode/privacy")!
+        static let issue = URL(string: "https://github.com/guitaripod/Tailscode/issues/new")!
     }
 
     /// The forge's keyboard route, which stays alongside the toolbar control rather than being the
@@ -221,6 +329,23 @@ final class MainMenu: NSObject {
         return holder
     }
 
+    private func submenu(_ title: String, _ menu: NSMenu) -> NSMenuItem {
+        let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        holder.submenu = menu
+        return holder
+    }
+
+    /// An item AppKit answers through the responder chain — the text field that is typing, the
+    /// window that is key, the application — rather than this menu.
+    private func system(
+        _ menu: NSMenu, _ title: String, _ action: Selector, _ key: String = "",
+        _ modifiers: NSEvent.ModifierFlags = [.command]
+    ) {
+        let entry = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        if !key.isEmpty { entry.keyEquivalentModifierMask = modifiers }
+        menu.addItem(entry)
+    }
+
     private func item(
         _ title: String, _ action: Selector, _ key: String,
         _ modifiers: NSEvent.ModifierFlags = [.command]
@@ -240,48 +365,61 @@ final class MainMenu: NSObject {
         return entry
     }
 
+    /// A verb about the conversations acts in the window that holds them, so a window that was
+    /// closed is brought back first: the menu bar stays when the window goes.
+    private func run(_ action: KeyAction) {
+        if hub.window?.isVisible != true { hub.showWindow(nil) }
+        _ = hub.perform(action)
+    }
+
+    @objc private func quickAsk() { hub.summonQuickAsk() }
+    @objc private func findNext() { hub.transcript.stepFind(by: 1) }
+    @objc private func findPrevious() { hub.transcript.stepFind(by: -1) }
+    @objc private func support() { NSWorkspace.shared.open(Link.support) }
+    @objc private func reportIssue() { NSWorkspace.shared.open(Link.issue) }
+    @objc private func privacy() { NSWorkspace.shared.open(Link.privacy) }
     @objc private func settings() { hub.presentPreferences() }
     @objc private func pro() { hub.presentPro() }
     @objc private func software() { hub.presentUpdates() }
-    @objc private func newChat() { hub.perform(.newChat) }
-    @objc private func find() { hub.perform(.findInConversation) }
-    @objc private func send() { hub.perform(.send) }
+    @objc private func newChat() { run(.newChat) }
+    @objc private func find() { run(.findInConversation) }
+    @objc private func send() { run(.send) }
     @objc private func stop() { hub.transcript.stopTurn() }
-    @objc private func toggleSaved() { hub.perform(.toggleSaved) }
-    @objc private func toggleArchived() { hub.perform(.archiveSelected) }
-    @objc private func toggleUnread() { hub.perform(.toggleUnreadSelected) }
-    @objc private func rename() { hub.perform(.renameSelected) }
-    @objc private func fork() { hub.perform(.forkSelected) }
-    @objc private func copySessionID() { hub.perform(.copySessionID) }
-    @objc private func copyProjectPath() { hub.perform(.copyProjectPath) }
-    @objc private func deleteChat() { hub.perform(.deleteSelected) }
-    @objc private func toggleMarked() { hub.perform(.toggleMarked) }
-    @objc private func markAll() { hub.perform(.toggleMarkAll) }
-    @objc private func toggleSidebar() { hub.perform(.toggleSidebar) }
+    @objc private func toggleSaved() { run(.toggleSaved) }
+    @objc private func toggleArchived() { run(.archiveSelected) }
+    @objc private func toggleUnread() { run(.toggleUnreadSelected) }
+    @objc private func rename() { run(.renameSelected) }
+    @objc private func fork() { run(.forkSelected) }
+    @objc private func copySessionID() { run(.copySessionID) }
+    @objc private func copyProjectPath() { run(.copyProjectPath) }
+    @objc private func deleteChat() { run(.deleteSelected) }
+    @objc private func toggleMarked() { run(.toggleMarked) }
+    @objc private func markAll() { run(.toggleMarkAll) }
+    @objc private func toggleSidebar() { run(.toggleSidebar) }
     #if !TAILSCODE_MAS
-        @objc private func toggleTerminal() { hub.perform(.toggleTerminal) }
+        @objc private func toggleTerminal() { run(.toggleTerminal) }
     #endif
-    @objc private func toggleArchiveView() { hub.perform(.toggleArchiveView) }
+    @objc private func toggleArchiveView() { run(.toggleArchiveView) }
     @objc private func videoForge() { hub.presentForge() }
 
     @objc private func openDelegate() { hub.presentDelegate() }
-    @objc private func zoomIn() { hub.perform(.zoomIn) }
-    @objc private func zoomOut() { hub.perform(.zoomOut) }
-    @objc private func zoomReset() { hub.perform(.zoomReset) }
-    @objc private func cheatsheet() { hub.perform(.toggleHelp) }
+    @objc private func zoomIn() { run(.zoomIn) }
+    @objc private func zoomOut() { run(.zoomOut) }
+    @objc private func zoomReset() { run(.zoomReset) }
+    @objc private func cheatsheet() { run(.toggleHelp) }
     @objc private func monthInNumbers() { hub.presentAnalytics() }
-    @objc private func nextChat() { hub.perform(.selectNext) }
-    @objc private func previousChat() { hub.perform(.selectPrevious) }
-    @objc fileprivate func splitRight() { hub.perform(.splitPane(.horizontal)) }
-    @objc fileprivate func splitDown() { hub.perform(.splitPane(.vertical)) }
-    @objc fileprivate func closeSplit() { hub.perform(.closeSplit) }
-    @objc fileprivate func zoomSplit() { hub.perform(.zoomSplit) }
-    @objc fileprivate func focusSplitLeft() { hub.perform(.focusSplit(.left)) }
-    @objc fileprivate func focusSplitRight() { hub.perform(.focusSplit(.right)) }
-    @objc fileprivate func focusSplitUp() { hub.perform(.focusSplit(.up)) }
-    @objc fileprivate func focusSplitDown() { hub.perform(.focusSplit(.down)) }
-    @objc fileprivate func exchangeSplit() { hub.perform(.exchangeSplit) }
-    @objc fileprivate func equalizeSplits() { hub.perform(.equalizeSplits) }
+    @objc private func nextChat() { run(.selectNext) }
+    @objc private func previousChat() { run(.selectPrevious) }
+    @objc fileprivate func splitRight() { run(.splitPane(.horizontal)) }
+    @objc fileprivate func splitDown() { run(.splitPane(.vertical)) }
+    @objc fileprivate func closeSplit() { run(.closeSplit) }
+    @objc fileprivate func zoomSplit() { run(.zoomSplit) }
+    @objc fileprivate func focusSplitLeft() { run(.focusSplit(.left)) }
+    @objc fileprivate func focusSplitRight() { run(.focusSplit(.right)) }
+    @objc fileprivate func focusSplitUp() { run(.focusSplit(.up)) }
+    @objc fileprivate func focusSplitDown() { run(.focusSplit(.down)) }
+    @objc fileprivate func exchangeSplit() { run(.exchangeSplit) }
+    @objc fileprivate func equalizeSplits() { run(.equalizeSplits) }
 }
 
 extension MainMenu: NSMenuItemValidation {
@@ -299,6 +437,9 @@ extension MainMenu: NSMenuItemValidation {
         ]
         if let action = menuItem.action, treeVerbs.contains(action) {
             return hub.splitPanes.paneCount > 1
+        }
+        if menuItem.action == #selector(findNext) || menuItem.action == #selector(findPrevious) {
+            return hub.window?.isVisible == true && hub.transcript.canStepFind
         }
         let marked = hub.sidebar.markedCount
         let chatVerbs: Set<Selector> = [

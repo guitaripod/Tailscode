@@ -21,6 +21,7 @@ import TailscodeCore
         private var historyIndex = 0
         private var directory: String?
         private var runTask: Task<Void, Never>?
+        private var interrupted = false
         private let runningProcess = OSAllocatedUnfairLock<Process?>(uncheckedState: nil)
 
         init() {
@@ -172,18 +173,46 @@ import TailscodeCore
                 process?.terminate()
                 process = nil
             }
+            interrupted = false
             let holder = runningProcess
             runTask = Task { [weak self] in
                 let result = await Task.detached { Self.shell(command, in: cwd, holding: holder) }
                     .value
                 guard !Task.isCancelled else { return }
                 guard let self else { return }
-                guard !result.isEmpty else {
+                if !result.isEmpty {
+                    self.appendLine(result, color: MacTheme.Color.label)
+                } else if !self.interrupted {
                     self.appendLine(
                         Localized.text("(no output)"), color: MacTheme.Color.tertiaryLabel)
-                    return
                 }
-                self.appendLine(result, color: MacTheme.Color.label)
+                if self.interrupted {
+                    self.interrupted = false
+                    self.appendLine("^C", color: MacTheme.Color.tertiaryLabel)
+                }
+            }
+        }
+
+        /// ⌃C: the command running now is interrupted the way a terminal interrupts one, and what
+        /// it printed before it stopped is still shown. Before this a command that would not end —
+        /// a server, a watcher, a `sleep` — could only be stopped by typing another one.
+        func interrupt() {
+            let signalled = runningProcess.withLockUnchecked { process -> Bool in
+                guard let running = process, running.isRunning else { return false }
+                running.interrupt()
+                return true
+            }
+            if signalled { interrupted = true }
+        }
+
+        /// Whatever is still running goes with the app. A process outlives the app that started
+        /// it, so a build or a server run from here would otherwise go on after the window closed,
+        /// with nothing left on screen that could stop it.
+        func stopRunning() {
+            runTask?.cancel()
+            runningProcess.withLockUnchecked { process in
+                process?.terminate()
+                process = nil
             }
         }
 
@@ -235,7 +264,25 @@ import TailscodeCore
                 NSAttributedString(
                     string: text.hasSuffix("\n") ? text : text + "\n",
                     attributes: [.font: font, .foregroundColor: color]))
+            trimScrollback(storage)
             output.scrollToEndOfDocument(nil)
+        }
+
+        /// How much of the log the pane keeps, like a terminal's scrollback. A log that only grew
+        /// laid out every line it had ever printed each time it scrolled, and one `cat` of a large
+        /// file was enough to make the pane itself slow.
+        private static let scrollback = 400_000
+
+        /// Drops the oldest whole lines once the log passes the scrollback, so what is left starts
+        /// at the beginning of a line rather than halfway through one.
+        private func trimScrollback(_ storage: NSTextStorage) {
+            let excess = storage.length - Self.scrollback
+            guard excess > 0 else { return }
+            let text = storage.string as NSString
+            let newline = text.range(
+                of: "\n", range: NSRange(location: excess, length: text.length - excess))
+            let cut = newline.location == NSNotFound ? excess : newline.location + 1
+            storage.deleteCharacters(in: NSRange(location: 0, length: cut))
         }
 
         private func stepHistory(_ delta: Int) {

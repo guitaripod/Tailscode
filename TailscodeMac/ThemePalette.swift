@@ -20,7 +20,7 @@ enum ThemePalette {
 
     nonisolated(unsafe) private static var colours: [Key: NSColor] = [:]
     nonisolated(unsafe) private static var palettes: [String: Palette] = [:]
-    nonisolated(unsafe) private static let lock = NSLock()
+    private static let lock = NSLock()
 
     static func palette(themeID: String, dark: Bool) -> Palette? {
         guard themeID != ThemeSelection.systemID else { return nil }

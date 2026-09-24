@@ -12,7 +12,15 @@ final class FindBar: NSView {
 
     private let field = NSSearchField()
     private let countLabel = NSTextField(labelWithString: "")
-    private lazy var fieldWidth = field.widthAnchor.constraint(equalToConstant: 220)
+    /// The field's width when there is room for it. It gives way before the window does: the bar
+    /// is laid out beside the pane's name even while both are hidden, and a width it insisted on
+    /// held every chat window hundreds of points wider than anybody asked for.
+    private lazy var fieldWidth: NSLayoutConstraint = {
+        let width = field.widthAnchor.constraint(equalToConstant: 220)
+        width.priority = .init(490)
+        return width
+    }()
+    private lazy var fieldFloor = field.widthAnchor.constraint(greaterThanOrEqualToConstant: 110)
     private var scale = MacTheme.UIScale.factor
 
     var query: String { field.stringValue }
@@ -26,6 +34,7 @@ final class FindBar: NSView {
         field.sendsSearchStringImmediately = true
         field.translatesAutoresizingMaskIntoConstraints = false
         fieldWidth.isActive = true
+        fieldFloor.isActive = true
 
         countLabel.textColor = MacTheme.Color.onGlassSecondary
         applyScale()
@@ -76,6 +85,7 @@ final class FindBar: NSView {
     /// that share a width — stepping 1/12 to 2/12 must not slide the capsule and its buttons.
     private func applyScale() {
         fieldWidth.constant = 220 * scale
+        fieldFloor.constant = 110 * scale
         field.font = MacTheme.Ramp.font(.panelLabel)
         countLabel.font = MacTheme.Ramp.font(.metricDetail)
     }

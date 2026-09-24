@@ -22,6 +22,17 @@ final class ToastPresenter {
         drain()
     }
 
+    /// The capsule is seen and never focused, so VoiceOver is told the sentence outright — a
+    /// "Copied" or a reason something could not happen is the whole of what the action said back.
+    private func announce(_ text: String, from host: NSView) {
+        NSAccessibility.post(
+            element: host.window ?? host, notification: .announcementRequested,
+            userInfo: [
+                .announcement: text,
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ])
+    }
+
     /// A pane whose view has not loaded yet has no anchor to hang a capsule on, and what is queued
     /// waits for the next one rather than being thrown away — the confirmations this presenter
     /// carries are sentences, so the capsule wraps rather than cutting one off mid-word.
@@ -50,6 +61,7 @@ final class ToastPresenter {
         ])
         let glass = MacTheme.glass(around: padded, cornerRadius: 18)
         host.addSubview(glass)
+        announce(text, from: host)
         NSLayoutConstraint.activate([
             glass.centerXAnchor.constraint(equalTo: host.centerXAnchor),
             glass.bottomAnchor.constraint(equalTo: above, constant: -MacTheme.Spacing.m),

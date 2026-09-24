@@ -31,6 +31,16 @@ enum MacCLI {
         "--shot", "--shot-delay", "--shot-size", "--tree", "--tree-constraints", "--open",
         "--version", "--help", "-h",
     ]
+
+    /// Whether an argument is a flag this CLI was never taught. A single dash and a capital —
+    /// `-AppleLanguages (de)`, `-NSDocumentRevisionsDebugMode YES` — is a default for AppKit's own
+    /// argument domain, which Xcode passes on every run and a translator uses to see a language,
+    /// so it is the frameworks' to read rather than a typo to refuse.
+    static func isStray(_ argument: String) -> Bool {
+        guard argument.hasPrefix("-"), !knownOptions.contains(argument) else { return false }
+        let head = argument.dropFirst().first
+        return argument.hasPrefix("--") || !(head?.isUppercase ?? false)
+    }
 }
 
 /// `TailscodeMac --connect <address> [--password <pw>] [--name <label>] [--opencode] [--omp]`
@@ -117,9 +127,7 @@ if CommandLine.arguments.contains("--help") || CommandLine.arguments.contains("-
     exit(0)
 }
 
-if let stray = CommandLine.arguments.dropFirst().first(where: {
-    $0.hasPrefix("-") && !MacCLI.knownOptions.contains($0)
-}) {
+if let stray = CommandLine.arguments.dropFirst().first(where: MacCLI.isStray) {
     print("unknown option \(stray)\n\n\(MacCLI.usage)")
     exit(2)
 }

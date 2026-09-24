@@ -361,7 +361,7 @@ enum CascadeEntrance {
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 view.animator().alphaValue = 1
             } completionHandler: {
-                view.alphaValue = 1
+                MainActor.assumeIsolated { view.alphaValue = 1 }
             }
         }
     }

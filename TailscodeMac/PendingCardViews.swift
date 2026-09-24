@@ -191,8 +191,28 @@ enum PendingCards {
 
     /// The card keeps its collector alive: buttons hold it weakly so the card's subtree owns
     /// exactly one strong reference, released when the card leaves the transcript.
+    ///
+    /// Every line stays inside the card's padding. A stack aligned to its leading edge only keeps
+    /// a line inside its own border, so a question long enough to wrap wrapped at the border and
+    /// an option too long to fit held the whole window wider instead of truncating.
     final class CardView: NSStackView {
         var retainedCollector: AnswerCollector?
+
+        override func addArrangedSubview(_ view: NSView) {
+            super.addArrangedSubview(view)
+            keepInside(view)
+        }
+
+        override func insertArrangedSubview(_ view: NSView, at index: Int) {
+            super.insertArrangedSubview(view, at: index)
+            keepInside(view)
+        }
+
+        private func keepInside(_ view: NSView) {
+            view.trailingAnchor.constraint(
+                lessThanOrEqualTo: trailingAnchor, constant: -edgeInsets.right
+            ).isActive = true
+        }
     }
 
     /// Selections for a multi-question or multi-select ask, kept next to the buttons that show

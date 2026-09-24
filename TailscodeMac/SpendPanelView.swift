@@ -65,6 +65,9 @@ final class SpendPanelViewController: NSViewController {
             container.widthAnchor.constraint(equalToConstant: 400),
             scroll.heightAnchor.constraint(lessThanOrEqualToConstant: 560),
         ])
+        let fit = scroll.heightAnchor.constraint(equalTo: column.heightAnchor)
+        fit.priority = .defaultHigh
+        fit.isActive = true
         view = container
     }
 

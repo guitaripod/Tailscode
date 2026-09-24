@@ -158,7 +158,12 @@ final class ChooserRowView: NSView {
         }
     }
 
-    override func mouseDown(with event: NSEvent) {
+    override func mouseDown(with event: NSEvent) {}
+
+    /// The row answers the release, and only a release still over it, so a press dragged away is
+    /// taken back the way every other row in the app lets it be.
+    override func mouseUp(with event: NSEvent) {
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         onClick?()
     }
 

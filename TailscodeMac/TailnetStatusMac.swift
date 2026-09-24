@@ -335,7 +335,7 @@ final class TailnetRemedyView: NSView {
                     let text = seen
                     if let url = Self.loginURL(in: text) {
                         seen = ""
-                        await MainActor.run { NSWorkspace.shared.open(url) }
+                        _ = await MainActor.run { NSWorkspace.shared.open(url) }
                     }
                     await MainActor.run {
                         self?.narrate(text.trimmingCharacters(in: .whitespacesAndNewlines))

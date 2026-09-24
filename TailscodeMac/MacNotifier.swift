@@ -12,7 +12,6 @@ final class MacNotifier: NSObject {
 
     var onOpen: ((String) -> Void)?
     private var watch = ActivityWatch()
-    private var authorizationAsked = false
 
     static var notifyTurnComplete: Bool {
         UserDefaults.standard.object(forKey: "pref.notify.turnComplete") as? Bool ?? true
@@ -94,7 +93,6 @@ final class MacNotifier: NSObject {
     }
 
     private func send(_ alert: ActivityAlert) {
-        requestAuthorizationIfNeeded()
         let face = alert.reason.face
         let content = UNMutableNotificationContent()
         content.title = alert.title
@@ -114,8 +112,7 @@ final class MacNotifier: NSObject {
         if let attachment = Self.faceAttachment(face) {
             content.attachments = [attachment]
         }
-        UNUserNotificationCenter.current().add(
-            UNNotificationRequest(identifier: alert.identifier, content: content, trigger: nil))
+        deliver(UNNotificationRequest(identifier: alert.identifier, content: content, trigger: nil))
     }
 
     /// A delegate run's notice, under the same switches a conversation's alerts answer to: a wait
@@ -127,7 +124,6 @@ final class MacNotifier: NSObject {
         case .asks: guard Self.notifyNeedsYou else { return }
         case .passed, .failed: guard Self.notifyTurnComplete else { return }
         }
-        requestAuthorizationIfNeeded()
         let face: AlertFace = notice.kind == .asks ? .needsApproval : .turnEnded
         let content = UNMutableNotificationContent()
         content.title = notice.title
@@ -138,8 +134,7 @@ final class MacNotifier: NSObject {
         if let attachment = Self.faceAttachment(face) {
             content.attachments = [attachment]
         }
-        UNUserNotificationCenter.current().add(
-            UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+        deliver(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }
 
     /// The alert's face as a thumbnail, so a glance at a stack of banners separates the finished
@@ -183,16 +178,31 @@ final class MacNotifier: NSObject {
         }
     }
 
-    /// The system prompt appears the first time something is actually worth saying — never at
-    /// launch, and never in a headless run.
-    private func requestAuthorizationIfNeeded() {
-        guard !authorizationAsked else { return }
-        authorizationAsked = true
-        let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
-            guard settings.authorizationStatus == .notDetermined else { return }
-            center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    /// Hands a notification to macOS once it may be shown. The system prompt appears the first
+    /// time something is actually worth saying — never at launch, and never in a headless run — and
+    /// the alert that raised it waits for the answer rather than being added while the question is
+    /// still on screen, where it was dropped in silence and never arrived.
+    private func deliver(_ request: UNNotificationRequest) {
+        let parcel = Parcel(request: request)
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) {
+                    granted, _ in
+                    guard granted else { return }
+                    UNUserNotificationCenter.current().add(parcel.request)
+                }
+            case .denied:
+                return
+            default:
+                UNUserNotificationCenter.current().add(parcel.request)
+            }
         }
+    }
+
+    /// A request is immutable once built, so it crosses to the notification center's queue as is.
+    private struct Parcel: @unchecked Sendable {
+        let request: UNNotificationRequest
     }
 
     /// Proves the whole delivery path from Preferences — authorization, banner, sound — which is

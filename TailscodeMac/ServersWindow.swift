@@ -74,9 +74,11 @@ final class ServersWindow: NSWindowController {
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = Localized.text("Servers")
         window.isReleasedWhenClosed = false
+        window.contentMinSize = NSSize(width: 480, height: 440)
         super.init(window: window)
         window.contentView = makeContent()
         window.center()
+        window.rememberFrame(as: "TailscodeServers")
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         NotificationCenter.default.addObserver(
@@ -333,7 +335,7 @@ final class ServersWindow: NSWindowController {
             title: ServerRestart.confirmTitle(profile.name),
             body: ServerRestart.confirmBody(workingTurns: 0),
             confirmLabel: ServerRestart.action
-        ) {
+        ) { [weak self] in
             Task { [weak self] in
                 guard
                     let backend = ServerDirectory.shared.backend(for: profile),

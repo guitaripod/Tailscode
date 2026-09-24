@@ -5,6 +5,13 @@ import TailscodeCore
 /// The NSEvent half of the shared shortcut system: one canonical key-code space (GDK's, because
 /// the registry was born there), so `~/.config/tailscode/keybindings.json` means the same thing
 /// on this Mac as on the Linux desktop.
+/// A view pressed from the keyboard with Space or Return once Full Keyboard Access makes it a stop
+/// in the Tab loop — a row that opens, a picture that opens its viewer. The window's key monitor
+/// sees those keys before the view does, and would spend them on the chat list's own Space and
+/// Return.
+@MainActor
+protocol KeyboardPressable: NSView {}
+
 enum MacKeys {
     /// Command is deliberately absent: ⌘ chords belong to the menu bar, where macOS makes them
     /// discoverable and rebindable on its own. The registry speaks ctrl, shift and option.

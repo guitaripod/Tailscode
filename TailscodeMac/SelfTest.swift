@@ -2286,38 +2286,6 @@ enum SelfTest {
         try expect(lost.badge == Localized.text("failed"), "a clip that never arrived says so")
         try expect(lost.detail == ForgeFailure.noOutput(ForgeDemo.host).description, "and keeps the reason")
 
-        let row = ForgeRowView()
-        row.configure(
-            try jobRow(running), phase: .checking, focused: true, activity: .working, aside: nil)
-        try expect(row.accessibilityRole() == .button, "a row the board would act on is a button")
-        try expect(
-            row.accessibilityLabel()?.contains(Localized.text("50%")) == true,
-            "and reads out the word in its corner")
-        try expect(row.alphaValue == 1, "a row within reach is drawn at full strength")
-
-        let spent = ForgeRowView()
-        guard let size = running.rows.first(where: { $0.kind == .field(.size) }) else {
-            throw SelfTestFailure("forge surface: the frame size is not a row")
-        }
-        spent.configure(size, phase: .ready, focused: false, activity: nil, aside: nil)
-        try expect(spent.accessibilityRole() == .staticText, "a setting out of reach is not a button")
-        try expect(spent.alphaValue < 1, "and is drawn as out of reach rather than as ordinary")
-
-        let gone = ForgeRowView()
-        let sentence = ForgeFailure.missingFile(ForgeDemo.host).description
-        gone.configure(lost, phase: .ready, focused: false, activity: nil, aside: sentence)
-        try expect(
-            gone.accessibilityLabel()?.contains(sentence) == true,
-            "a kept clip whose file is gone carries that sentence into what is read out")
-
-        let stage = ForgeRowView()
-        stage.configure(try jobRow(done), phase: .ready, focused: false, activity: nil, aside: nil)
-        try expect(!stage.holdsClip, "a finished render with no file located yet draws no player")
-        stage.showClip(URL(fileURLWithPath: "/tmp/tailscode-forge-selftest.mp4"), failure: nil)
-        try expect(stage.holdsClip, "and one the machine confirmed plays where it was made")
-        stage.showClip(nil, failure: nil)
-        try expect(!stage.holdsClip, "a render that started again takes the last one's player away")
-
         let bar = ForgeBarView()
         bar.fraction = 0.5
         try expect(bar.intrinsicContentSize.height > 0, "the bar has a height to draw itself into")

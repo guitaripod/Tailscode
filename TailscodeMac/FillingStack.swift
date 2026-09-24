@@ -29,14 +29,20 @@ final class AppearanceView: NSView {
 final class FillingStack: NSStackView {
     private var fills: [ObjectIdentifier: [NSLayoutConstraint]] = [:]
     private let topDown: Bool
+    private let stretches: Bool
 
-    /// - Parameter topDown: whether the column's own coordinates run down from its top edge, like
-    ///   the page it is laid out on. An `NSStackView` is not flipped: the rows it arranges land
-    ///   top to bottom either way, but a frame read in its coordinates is measured up from its
-    ///   bottom edge. A column that is somebody's page — the transcript, where a row's place is
-    ///   compared with a clip whose origin is the top — has to be asked the other way up.
-    init(topDown: Bool) {
+    /// - Parameters:
+    ///   - topDown: whether the column's own coordinates run down from its top edge, like the page
+    ///     it is laid out on. An `NSStackView` is not flipped: the rows it arranges land top to
+    ///     bottom either way, but a frame read in its coordinates is measured up from its bottom
+    ///     edge. A column that is somebody's page — the transcript, where a row's place is compared
+    ///     with a clip whose origin is the top — has to be asked the other way up.
+    ///   - stretches: whether every row is as wide as the column, or only never wider than it. A
+    ///     card's lines keep their own width — a link stays the size of its words — but a sentence
+    ///     in one has to wrap inside the card's padding rather than run to its border.
+    init(topDown: Bool, stretches: Bool = true) {
         self.topDown = topDown
+        self.stretches = stretches
         super.init(frame: .zero)
         orientation = .vertical
         alignment = .leading
@@ -74,10 +80,18 @@ final class FillingStack: NSStackView {
         super.removeArrangedSubview(view)
     }
 
+    /// A row taken out with `removeFromSuperview` never passes through `removeArrangedSubview`, and
+    /// the transcript takes rows out that way thousands of times a session: its pins are let go
+    /// here too, or the table of them grows by two constraints for every row ever drawn.
+    override func willRemoveSubview(_ subview: NSView) {
+        release(subview)
+        super.willRemoveSubview(subview)
+    }
+
     override func setViews(_ views: [NSView], in gravity: NSStackView.Gravity) {
         for view in arrangedSubviews { release(view) }
         super.setViews(views, in: gravity)
-        for view in views { fill(view) }
+        for view in arrangedSubviews { fill(view) }
     }
 
     override var edgeInsets: NSEdgeInsets {
@@ -92,7 +106,10 @@ final class FillingStack: NSStackView {
         release(view)
         let pins = [
             view.leadingAnchor.constraint(equalTo: leadingAnchor, constant: edgeInsets.left),
-            view.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -edgeInsets.right),
+            stretches
+                ? view.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -edgeInsets.right)
+                : view.trailingAnchor.constraint(
+                    lessThanOrEqualTo: trailingAnchor, constant: -edgeInsets.right),
         ]
         NSLayoutConstraint.activate(pins)
         fills[ObjectIdentifier(view)] = pins

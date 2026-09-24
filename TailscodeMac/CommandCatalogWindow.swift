@@ -44,9 +44,19 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
         window.contentView = makeContent()
         window.initialFirstResponder = searchField
         window.center()
+        window.rememberFrame(as: "TailscodeCommands")
         rebuild()
         NotificationCenter.default.addObserver(
             self, selector: #selector(closed), name: NSWindow.willCloseNotification, object: window)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
+    }
+
+    /// Rows are drawn in the theme they were built under, so a theme picked while the catalog is
+    /// open draws them again rather than waiting for the next keystroke in the search field.
+    @objc private func repaint() {
+        emptyLabel.textColor = MacTheme.Color.secondaryLabel
+        tableView.reloadData()
     }
 
     @available(*, unavailable)

@@ -130,7 +130,8 @@ enum ImageRowView {
         let thumbHeight = CGFloat(ImagePreview.deskBound(ImagePreview.deskHeight, mine: mine))
         let name =
             reference.filename
-            ?? reference.path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "file"
+            ?? reference.path.map { URL(fileURLWithPath: $0, isDirectory: false).lastPathComponent }
+            ?? "file"
         let isImage = (reference.mime ?? "").hasPrefix("image/")
         guard isImage else {
             return RowKit.label(
@@ -146,7 +147,7 @@ enum ImageRowView {
             let scale = min(
                 thumbWidth / CGFloat(max(1, entry.pixelWidth)),
                 thumbHeight / CGFloat(max(1, entry.pixelHeight)), 1)
-            let imageView = NSImageView(image: entry.image)
+            let imageView = PictureView(image: entry.image)
             imageView.imageScaling = .scaleProportionallyUpOrDown
             imageView.wantsLayer = true
             imageView.layer?.cornerRadius = 6
@@ -161,6 +162,8 @@ enum ImageRowView {
             let open = context.openImage
             imageView.addGestureRecognizer(
                 ClickRelay { open?(key, name) })
+            imageView.onPress = { open?(key, name) }
+            imageView.setAccessibilityRole(.button)
             imageView.setAccessibilityLabel(Localized.text("Open %@", name))
             imageView.toolTip = Localized.text("Open %@", name)
             column.addArrangedSubview(imageView)
@@ -186,6 +189,40 @@ enum ImageRowView {
             context.requestImage?(reference, key)
         }
         return column
+    }
+
+    /// A thumbnail that opens the way a button does: clicked, pressed with Space or Return once Full
+    /// Keyboard Access puts it in the Tab loop, or pressed by VoiceOver. A picture that only a
+    /// mouse could open was a picture a keyboard user could see and never reach.
+    final class PictureView: NSImageView, KeyboardPressable {
+        var onPress: (() -> Void)?
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override var acceptsFirstResponder: Bool { NSApp.isFullKeyboardAccessEnabled }
+        override var canBecomeKeyView: Bool { NSApp.isFullKeyboardAccessEnabled }
+        override var focusRingMaskBounds: NSRect { bounds }
+
+        override func drawFocusRingMask() {
+            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+        }
+
+        override func keyDown(with event: NSEvent) {
+            guard [49, 36, 76].contains(event.keyCode), let onPress else {
+                return super.keyDown(with: event)
+            }
+            onPress()
+        }
+
+        override func accessibilityPerformPress() -> Bool {
+            onPress?()
+            return onPress != nil
+        }
     }
 
     /// A click gesture that carries its closure, for image views built in static functions.
@@ -403,7 +440,7 @@ final class ImageViewer: NSObject {
     /// — would otherwise open as an interpolated smear at whatever the cap allows, and offer "1:1"
     /// as though the view it replaced were not already a zoom.
     private func applyMagnification() {
-        zoomButton.title = oneToOne ? Localized.text("Fit") : "1:1"
+        zoomButton.title = oneToOne ? Localized.text("Fit") : Localized.text("1:1")
         guard imageView.image != nil, imageView.frame.width > 0, imageView.frame.height > 0 else {
             return
         }
@@ -489,7 +526,19 @@ class FloatingWindow: NSWindow {
         Self.open.append(self)
     }
 
+    /// The name every window of one kind remembers its size and place under, so the next one opens
+    /// where the last was left rather than at a size somebody already had to fix once.
+    private var frameMemory: String?
+
+    /// Puts the window where the last one of its kind was left, and says whether there was one.
+    @discardableResult
+    func restoreFrame(named name: String) -> Bool {
+        frameMemory = name
+        return setFrameUsingName(name)
+    }
+
     override func close() {
+        if let frameMemory { saveFrame(usingName: frameMemory) }
         super.close()
         Self.open.removeAll { $0 === self }
     }

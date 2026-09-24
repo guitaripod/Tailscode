@@ -17,6 +17,11 @@ final class ShareCardPanel {
     private let styles = NSPopUpButton()
     private var style = CardStyleSelection.current
     private var renderGeneration = 0
+    /// The card at the look on screen and at full density, as the three ways out hand it over.
+    /// Begun with the preview so a press usually finds it finished, and drawn under the same
+    /// light as the preview, so what leaves is what was shown even if the Mac changed appearance
+    /// while the sheet was up.
+    private var outgoing: Task<Data?, Never>?
     private weak var shareAnchor: NSView?
 
     private static let previewWidth: CGFloat = 560
@@ -116,8 +121,12 @@ final class ShareCardPanel {
         let generation = renderGeneration
         let share = share
         let style = style
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        outgoing = Task.detached(priority: .userInitiated) {
+            AnalyticsCardRenderer.png(share, dark: dark, style: style)?.data
+        }
         Task.detached(priority: .userInitiated) {
-            let rendered = AnalyticsCardRenderer.png(share, scale: 1, dark: true, style: style)
+            let rendered = AnalyticsCardRenderer.png(share, scale: 1, dark: dark, style: style)
             let image = rendered.flatMap { NSImage(data: $0.data) }
             await MainActor.run { [weak self] in
                 guard let self, generation == self.renderGeneration, let image else { return }
@@ -128,44 +137,61 @@ final class ShareCardPanel {
         }
     }
 
-    private func rendered() -> (data: Data, image: NSImage, filename: String)? {
-        AnalyticsCardRenderer.png(share, style: style)
+    /// Hands the finished card to `use` once it is drawn, off the main thread, so a press never
+    /// stalls the sheet on a Retina render.
+    private func withCard(_ use: @escaping @MainActor (Data) -> Void) {
+        guard let outgoing else { return }
+        Task { @MainActor in
+            guard let data = await outgoing.value else { return }
+            use(data)
+        }
     }
 
     private func copyCard() {
-        guard let rendered = rendered() else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.writeObjects([rendered.image])
-        pasteboard.setString(share.plainText, forType: .string)
+        withCard { [share] data in
+            guard let image = NSImage(data: data) else { return }
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.writeObjects([image])
+            pasteboard.setString(share.plainText, forType: .string)
+        }
     }
 
     private func saveCard() {
-        guard let rendered = rendered() else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = rendered.filename
-        panel.allowedContentTypes = [.png]
-        panel.beginSheetModal(for: sheet) { response in
-            guard response == .OK, let url = panel.url else { return }
-            try? rendered.data.write(to: url, options: .atomic)
+        withCard { [weak self] data in
+            guard let self else { return }
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = share.filename
+            panel.allowedContentTypes = [.png]
+            panel.beginSheetModal(for: sheet) { [weak self] response in
+                guard response == .OK, let url = panel.url else { return }
+                do {
+                    try data.write(to: url, options: .atomic)
+                } catch {
+                    guard let sheet = self?.sheet else { return }
+                    NSAlert(error: error).beginSheetModal(for: sheet)
+                }
+            }
         }
     }
 
     private func shareCard() {
-        guard let rendered = rendered() else { return }
-        var items: [Any] = [share.plainText]
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("shared-analytics", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(rendered.filename)
-        if (try? rendered.data.write(to: url, options: .atomic)) != nil {
-            items.insert(url, at: 0)
-        } else {
-            items.insert(rendered.image, at: 0)
+        withCard { [weak self] data in
+            guard let self, let source = shareAnchor ?? sheet.contentView else { return }
+            var items: [Any] = [share.plainText]
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("shared-analytics", isDirectory: true)
+            try? FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(share.filename, isDirectory: false)
+            if (try? data.write(to: url, options: .atomic)) != nil {
+                items.insert(url, at: 0)
+            } else if let image = NSImage(data: data) {
+                items.insert(image, at: 0)
+            }
+            let picker = NSSharingServicePicker(items: items)
+            picker.show(relativeTo: source.bounds, of: source, preferredEdge: .minY)
         }
-        let picker = NSSharingServicePicker(items: items)
-        guard let source = shareAnchor ?? sheet.contentView else { return }
-        picker.show(relativeTo: source.bounds, of: source, preferredEdge: .minY)
     }
 
     private func close() {

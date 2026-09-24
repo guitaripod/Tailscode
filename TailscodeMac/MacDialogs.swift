@@ -262,7 +262,7 @@ enum MacDialogs {
         cancel.keyEquivalent = "\u{1b}"
         let confirm = RowKit.ActionButton(title: facts.confirmTitle) {
             [weak requestField, weak referenceField, weak notesField, weak counts] in
-            func text(_ entry: NSTextField?) -> String {
+            @MainActor func text(_ entry: NSTextField?) -> String {
                 entry?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             }
             let count = (counts?.selectedSegment ?? 0) + DesignBrief.minimumCount

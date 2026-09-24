@@ -362,6 +362,23 @@ final class ClickRow: NSView {
         layer?.backgroundColor = nil
     }
 
+    /// With Full Keyboard Access on, every file and commit is a stop in the Tab loop and Space or
+    /// Return opens its diff — the only road to a diff was the mouse or VoiceOver.
+    override var acceptsFirstResponder: Bool { NSApp.isFullKeyboardAccessEnabled }
+    override var canBecomeKeyView: Bool { NSApp.isFullKeyboardAccessEnabled }
+    override var focusRingMaskBounds: NSRect { bounds }
+
+    override func drawFocusRingMask() {
+        NSBezierPath(
+            roundedRect: bounds, xRadius: MacTheme.Radius.control, yRadius: MacTheme.Radius.control
+        ).fill()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard [49, 36, 76].contains(event.keyCode) else { return super.keyDown(with: event) }
+        action()
+    }
+
     override func mouseUp(with event: NSEvent) {
         guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         action()
@@ -378,6 +395,9 @@ final class ClickRow: NSView {
 @MainActor
 final class GitDiffWindowController: NSWindowController {
     private let load: @Sendable () async -> String?
+    /// Told when the window closes, so whoever keeps it alive lets it go: a diff read once used to
+    /// stay in memory, patch and all, until the app quit.
+    var onClose: (() -> Void)?
     /// The patch, set without wrapping, because a diff line folded at the window's edge stops
     /// being a diff line. Reaching the rest of a long one is `maxSize` as much as
     /// `isHorizontallyResizable`: the flag alone lets the view grow only up to a bound AppKit
@@ -414,6 +434,13 @@ final class GitDiffWindowController: NSWindowController {
         scroll.autohidesScrollers = false
         window.contentView = scroll
         window.center()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(closing), name: NSWindow.willCloseNotification, object: window)
+    }
+
+    @objc private func closing() {
+        onClose?()
+        onClose = nil
     }
 
     @available(*, unavailable)

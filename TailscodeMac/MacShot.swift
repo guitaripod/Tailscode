@@ -118,7 +118,7 @@ enum MacShot {
         if view.isHidden { facts.append("hidden") }
         if view.alphaValue != 1 { facts.append(String(format: "alpha=%.2f", view.alphaValue)) }
         if view.hasAmbiguousLayout { facts.append("AMBIGUOUS") }
-        if view.translatesAutoresizingMaskIntoConstraints, !(view is NSWindow) {
+        if view.translatesAutoresizingMaskIntoConstraints {
             facts.append("autoresizing")
         }
         if let stack = view as? NSStackView {

@@ -87,8 +87,12 @@ final class MacProStore {
         )
     }
 
-    func purchase(_ product: Product) async throws -> PurchaseOutcome {
-        let result = try await product.purchase(confirmIn: NSApplication.shared.keyWindow ?? NSWindow())
+    /// - Parameter window: the window the purchase was asked for from, which is where StoreKit
+    ///   hangs its confirmation. Read from whatever happened to be key, a purchase started as a
+    ///   sheet or a popover closed could find no window at all and confirm into one never shown.
+    func purchase(_ product: Product, in window: NSWindow?) async throws -> PurchaseOutcome {
+        let host = window ?? NSApplication.shared.keyWindow ?? NSApplication.shared.mainWindow
+        let result = try await product.purchase(confirmIn: host ?? NSWindow())
         switch result {
         case .success(let verification):
             guard case .verified(let transaction) = verification else {

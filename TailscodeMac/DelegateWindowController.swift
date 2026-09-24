@@ -56,6 +56,22 @@ final class DelegateWindowController: NSWindowController {
     private var selectedHost: String?
     private var selectedRun: String?
     private var wantsFirstRun = false
+    private var drawn: Drawn?
+
+    /// What each column was last built from. A live run streams its story in as desk changes
+    /// several times a second, and a column rebuilt from identical rows costs a layout pass and a
+    /// flicker for nothing, so a column is rebuilt only when what it shows has changed — and every
+    /// one of them when the theme or the type scale did, since both are baked into the rows.
+    private struct Drawn: Equatable {
+        var scale: CGFloat
+        var setup: String?
+        var tiers: [DelegateTierLine]
+        var runs: [DelegateRunStory]
+        var selected: String?
+        var empty: String
+        var stats: [DelegateStatRow]
+        var promotions: [String]
+    }
     private var wantsCompose = false
 
     init() {
@@ -65,9 +81,11 @@ final class DelegateWindowController: NSWindowController {
         window.title = DelegateEntryPoint.title
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 820, height: 520)
+        MacTheme.Chrome.adopt(window)
         super.init(window: window)
         window.contentView = makeContent()
         window.center()
+        window.rememberFrame(as: "TailscodeDelegate")
         passwordButton.setAction { [weak self] in self?.askPassword() }
         newButton.setAction { [weak self] in self?.compose() }
         NotificationCenter.default.addObserver(
@@ -243,7 +261,10 @@ final class DelegateWindowController: NSWindowController {
         render()
     }
 
-    @objc private func repaint() { render() }
+    @objc private func repaint() {
+        drawn = nil
+        render()
+    }
 
     private func render() {
         guard let host = selectedHost else {
@@ -262,9 +283,43 @@ final class DelegateWindowController: NSWindowController {
         noteLabel.isHidden = board.note == nil
         passwordButton.isHidden = desk.isDemo(host: host) || !(reach.asksForPassword || desk.password(host: host) != nil)
 
+        let next = Drawn(
+            scale: MacTheme.UIScale.factor,
+            setup: DelegateSetup.isWanted(board: board, known: desk.isKnown(host: host)) ? serverName : nil,
+            tiers: board.tierLines, runs: board.runStories, selected: selectedRun,
+            empty: board.isReady ? board.emptyLine : "", stats: board.statRows,
+            promotions: board.promotions)
+        let last = drawn?.scale == next.scale ? drawn : nil
+        drawn = next
+        func changed<Part: Equatable>(_ part: KeyPath<Drawn, Part>) -> Bool {
+            guard let last else { return true }
+            return last[keyPath: part] != next[keyPath: part]
+        }
+
+        if changed(\.setup) {
+            rebuildSetup(wanted: next.setup != nil)
+        }
+        if changed(\.tiers) {
+            rebuildTiers(next.tiers)
+        }
+        if changed(\.runs) || changed(\.selected) || changed(\.empty) {
+            rebuildRuns(next)
+        }
+        if changed(\.stats) || changed(\.promotions) {
+            rebuildStats(next)
+        }
+
+        if let selectedRun, let story = board.story(for: selectedRun) {
+            runView.show(story, tiers: board.tierOrder, host: host, desk: desk)
+        } else {
+            runView.showNothing(board.isReady ? DelegateEntryPoint.subtitle : reach.line)
+        }
+    }
+
+    private func rebuildSetup(wanted: Bool) {
         setupColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        setupColumn.isHidden = !DelegateSetup.isWanted(board: board, known: desk.isKnown(host: host))
-        if !setupColumn.isHidden {
+        setupColumn.isHidden = !wanted
+        if wanted {
             setupColumn.addArrangedSubview(MacDialogs.sectionHeader(DelegateSetup.title.uppercased()))
             let lead = RowKit.wrapping(DelegateSetup.lead(serverName: serverName), font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.secondaryLabel)
             setupColumn.addArrangedSubview(lead)
@@ -284,44 +339,43 @@ final class DelegateWindowController: NSWindowController {
                 command.widthAnchor.constraint(equalTo: setupColumn.widthAnchor).isActive = true
             }
         }
+    }
 
+    private func rebuildTiers(_ lines: [DelegateTierLine]) {
         tiersColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for line in board.tierLines {
+        for line in lines {
             let label = RowKit.label(
                 "\(line.tier) · \(line.model)  \(line.detail)", font: MacTheme.Ramp.font(.rowDetail),
                 color: line.tone == .quiet ? MacTheme.Color.secondaryLabel : line.tone.color)
             label.lineBreakMode = .byTruncatingMiddle
             tiersColumn.addArrangedSubview(label)
         }
+    }
 
+    private func rebuildRuns(_ drawn: Drawn) {
         runsColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let stories = board.runStories
-        if stories.isEmpty {
-            emptyLabel.stringValue = board.isReady ? board.emptyLine : ""
+        if drawn.runs.isEmpty {
+            emptyLabel.stringValue = drawn.empty
             runsColumn.addArrangedSubview(emptyLabel)
         }
-        for story in stories {
-            let row = DelegateRunRow(story: story, selected: story.runID == selectedRun)
+        for story in drawn.runs {
+            let row = DelegateRunRow(story: story, selected: story.runID == drawn.selected)
             row.onClick = { [weak self] in self?.select(runID: story.runID) }
             runsColumn.addArrangedSubview(row)
         }
+    }
 
+    private func rebuildStats(_ drawn: Drawn) {
         statsColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for stat in board.statRows {
+        for stat in drawn.stats {
             statsColumn.addArrangedSubview(
                 RowKit.label(
                     "\(stat.taskClass) · \(stat.tier)  \(stat.rateText) · \(stat.line)",
                     font: MacTheme.Ramp.font(.rowMeta), color: MacTheme.Color.secondaryLabel))
         }
-        for hint in board.promotions {
+        for hint in drawn.promotions {
             let label = RowKit.wrapping(hint, font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.mark)
             statsColumn.addArrangedSubview(label)
-        }
-
-        if let selectedRun, let story = board.story(for: selectedRun) {
-            runView.show(story, tiers: board.tierOrder, host: host, desk: desk)
-        } else {
-            runView.showNothing(board.isReady ? DelegateEntryPoint.subtitle : reach.line)
         }
     }
 
@@ -612,6 +666,34 @@ final class MacLadderView: NSView {
         override func mouseDown(with event: NSEvent) {
             onClick?(event.modifierFlags.contains(.shift))
         }
+
+        /// A rung the composer lets a person pick is a stop in the Tab loop with Full Keyboard
+        /// Access on: Space or Return picks it the way a click does, and with Shift the way a
+        /// Shift-click does. The ladder was the one part of a packet only a mouse could set.
+        override var acceptsFirstResponder: Bool {
+            onClick != nil && NSApp.isFullKeyboardAccessEnabled
+        }
+        override var canBecomeKeyView: Bool { acceptsFirstResponder }
+        override var focusRingMaskBounds: NSRect { bounds }
+
+        override func drawFocusRingMask() {
+            NSBezierPath(
+                roundedRect: bounds, xRadius: MacTheme.Radius.control,
+                yRadius: MacTheme.Radius.control
+            ).fill()
+        }
+
+        override func keyDown(with event: NSEvent) {
+            guard let onClick, [49, 36, 76].contains(event.keyCode) else {
+                return super.keyDown(with: event)
+            }
+            onClick(event.modifierFlags.contains(.shift))
+        }
+
+        override func accessibilityPerformPress() -> Bool {
+            onClick?(false)
+            return onClick != nil
+        }
     }
 }
 
@@ -878,7 +960,10 @@ final class DelegateApprovalBar: NSView {
 /// The packet form as a sheet over the delegate window.
 @MainActor
 final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDelegate {
-    private static var active: DelegateComposerSheet?
+    /// Every composer on screen, each kept alive by this list until its sheet ends. One slot held
+    /// only the newest, so a second composer queued behind the first left the first one with
+    /// nothing keeping it.
+    private static var active: [DelegateComposerSheet] = []
 
     private let sheet: NSWindow
     private let host: String
@@ -904,8 +989,8 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
 
     static func present(on window: NSWindow, host: String, serverName: String, draft: DelegateDraft? = nil, onStarted: @escaping (String) -> Void) {
         let made = DelegateComposerSheet(host: host, serverName: serverName, draft: draft, onStarted: onStarted)
-        active = made
-        window.beginSheet(made.sheet) { _ in Self.active = nil }
+        active.append(made)
+        window.beginSheet(made.sheet) { _ in Self.active.removeAll { $0 === made } }
     }
 
     private let legendLabel = NSTextField(wrappingLabelWithString: "")
@@ -922,6 +1007,8 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
             styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         sheet.title = DelegateComposerWords.title
         sheet.isReleasedWhenClosed = false
+        sheet.contentMinSize = NSSize(width: 520, height: 560)
+        MacTheme.Chrome.adopt(sheet)
         super.init()
         sheet.contentView = makeContent(board: board)
         render()
@@ -1030,6 +1117,7 @@ final class DelegateComposerSheet: NSObject, NSTextViewDelegate, NSTextFieldDele
         column.addArrangedSubview(cautions)
         column.addArrangedSubview(problems)
         let cancel = RowKit.ActionButton(title: Localized.text("Cancel")) { [weak self] in self?.close() }
+        cancel.keyEquivalent = "\u{1b}"
         sendButton.setAction { [weak self] in self?.send() }
         sendButton.keyEquivalent = "\r"
         let spacer = NSView()

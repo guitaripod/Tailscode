@@ -5,16 +5,16 @@ import TailscodeCore
 /// turns points into pixels at a Retina scale.
 enum AnalyticsCardRenderer {
     static func png(
-        _ share: AnalyticsShare, scale: CGFloat = 2, dark: Bool? = nil,
+        _ share: AnalyticsShare, scale: CGFloat = 2, dark: Bool,
         style: CardStyle = CardStyleSelection.current
     ) -> (data: Data, image: NSImage, filename: String)? {
-        let isDark =
-            dark
-            ?? (NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
-        let palette = style.palette(dark: isDark)
+        let palette = style.palette(dark: dark)
         let card = AnalyticsShare.Card(
             blocks: share.card.blocks, palette: palette, height: share.card.height)
         let logical = NSSize(width: AnalyticsShare.Card.width, height: card.height)
+        if scale > 1.1, let sharp = dense(card, logical: logical, scale: scale) {
+            return (sharp.data, sharp.image, share.filename)
+        }
         let image = NSImage(size: logical, flipped: true) { _ in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
             paint(card: card, in: ctx)
@@ -25,32 +25,35 @@ enum AnalyticsCardRenderer {
             let rep = NSBitmapImageRep(data: tiff),
             let data = rep.representation(using: .png, properties: [:])
         else { return nil }
-        // Retina density: redraw into a high-res bitmap so Messages/AirDrop get a sharp PNG.
-        if scale > 1.1 {
-            let pixelWidth = Int((logical.width * scale).rounded())
-            let pixelHeight = Int((logical.height * scale).rounded())
-            guard
-                let hi = NSBitmapImageRep(
-                    bitmapDataPlanes: nil, pixelsWide: pixelWidth, pixelsHigh: pixelHeight,
-                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
-            else { return (data, image, share.filename) }
-            hi.size = logical
-            NSGraphicsContext.saveGraphicsState()
-            if let bitmap = NSGraphicsContext(bitmapImageRep: hi) {
-                let flipped = topDownContext(over: bitmap.cgContext, height: logical.height)
-                NSGraphicsContext.current = flipped
-                flipped.imageInterpolation = .high
-                paint(card: card, in: flipped.cgContext)
-            }
-            NSGraphicsContext.restoreGraphicsState()
-            if let hiData = hi.representation(using: .png, properties: [:]) {
-                let hiImage = NSImage(size: logical)
-                hiImage.addRepresentation(hi)
-                return (hiData, hiImage, share.filename)
-            }
-        }
         return (data, image, share.filename)
+    }
+
+    /// The card painted straight into a bitmap `scale` times its size, so Messages and AirDrop
+    /// show sharp type rather than a logical-size picture scaled up. Nil only when the bitmap
+    /// cannot be made, which leaves the caller its logical-size card.
+    private static func dense(
+        _ card: AnalyticsShare.Card, logical: NSSize, scale: CGFloat
+    ) -> (data: Data, image: NSImage)? {
+        guard
+            let hi = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: Int((logical.width * scale).rounded()),
+                pixelsHigh: Int((logical.height * scale).rounded()),
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        else { return nil }
+        hi.size = logical
+        NSGraphicsContext.saveGraphicsState()
+        if let bitmap = NSGraphicsContext(bitmapImageRep: hi) {
+            let flipped = topDownContext(over: bitmap.cgContext, height: logical.height)
+            NSGraphicsContext.current = flipped
+            flipped.imageInterpolation = .high
+            paint(card: card, in: flipped.cgContext)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        guard let data = hi.representation(using: .png, properties: [:]) else { return nil }
+        let image = NSImage(size: logical)
+        image.addRepresentation(hi)
+        return (data, image)
     }
 
     /// A bitmap's origin is bottom-left, and `paint` counts y downward. The transform alone
@@ -61,20 +64,6 @@ enum AnalyticsCardRenderer {
         cg.translateBy(x: 0, y: height)
         cg.scaleBy(x: 1, y: -1)
         return NSGraphicsContext(cgContext: cg, flipped: true)
-    }
-
-    static func temporaryFile(_ share: AnalyticsShare) -> URL? {
-        guard let rendered = png(share) else { return nil }
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("shared-analytics", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(rendered.filename)
-        do {
-            try rendered.data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            return nil
-        }
     }
 
     private static func paint(card: AnalyticsShare.Card, in ctx: CGContext) {

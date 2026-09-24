@@ -63,7 +63,29 @@ final class DesignBoardWindowController: NSWindowController {
         let host = NSViewController(nibName: nil, bundle: nil)
         host.view = makeContent()
         window.contentViewController = host
+        if !window.rememberFrame(as: "TailscodeDesignBoard") { window.center() }
         render()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(closing), name: NSWindow.willCloseNotification, object: window)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
+    }
+
+    /// A closed board lets its page go. The window outlives its closing, and WebKit runs a mock's
+    /// scripts and animations for as long as the view exists — a board looked at once kept working
+    /// off screen until the app quit. Opening it again draws the page afresh.
+    @objc private func closing() {
+        frame.subviews.forEach { $0.removeFromSuperview() }
+        webView = nil
+        drawn = nil
+    }
+
+    /// The two lines set once when the board was built are coloured again with everything else;
+    /// the notes beside them are rebuilt, which colours them from the theme that is on now.
+    @objc private func repaint() {
+        subtitleLabel.textColor = MacTheme.Color.secondaryLabel
+        footnote.textColor = MacTheme.Color.tertiaryLabel
+        renderNotes()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

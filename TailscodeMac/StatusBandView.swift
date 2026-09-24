@@ -32,6 +32,7 @@ final class StatusBandView: NSView {
         stack.edgeInsets = NSEdgeInsets(
             top: 5, left: MacTheme.Spacing.m, bottom: 5, right: MacTheme.Spacing.m)
         stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.setClippingResistancePriority(.defaultLow, for: .horizontal)
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -97,10 +98,22 @@ final class StatusBandView: NSView {
             animate(segment)
             index += 1
         }
+        for (rank, segment) in segments.enumerated() {
+            guard let view = widgets[segment.id] else { continue }
+            stack.setVisibilityPriority(Self.visibility(rank: rank), for: view)
+        }
 
+        noticeLabel.font = MacTheme.Ramp.font(.segment)
+        noticeLabel.textColor = MacTheme.Color.onGlassSecondary
         noticeLabel.stringValue = notice ?? ""
         noticeLabel.isHidden = notice?.isEmpty != false
         hasContent = !segments.isEmpty || notice?.isEmpty == false
+    }
+
+    /// A pane too narrow for every fact drops them from the end rather than holding the window
+    /// wide: the facts lead with what the conversation is doing, and the phase is never dropped.
+    private static func visibility(rank: Int) -> NSStackView.VisibilityPriority {
+        rank == 0 ? .mustHold : NSStackView.VisibilityPriority(rawValue: Float(max(1, 900 - rank)))
     }
 
     private static func kindTag(_ segment: StatusFacts.Segment) -> String {

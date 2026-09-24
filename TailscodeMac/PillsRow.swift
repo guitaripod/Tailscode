@@ -37,7 +37,8 @@ final class PillsRow: NSView {
     /// The composer's three lanes, worn as the segmented control a Mac walks modes with. On a
     /// desk each lane is a surface — chat is this pane, ask is the summoned question window,
     /// video is the forge sheet — so a press is a door, and the selection springs back to chat
-    /// because this row never stops being a conversation's.
+    /// because this row never stops being a conversation's. It is the first thing the row lets go
+    /// of in a narrow pane, since both doors are also in the menu bar with keys of their own.
     private let laneControl = NSSegmentedControl(
         labels: PillsRow.offeredLanes.map(\.word), trackingMode: .momentary, target: nil,
         action: nil)
@@ -126,6 +127,8 @@ final class PillsRow: NSView {
         row.alignment = .centerY
         row.spacing = MacTheme.Spacing.s
         row.translatesAutoresizingMaskIntoConstraints = false
+        row.setClippingResistancePriority(.init(400), for: .horizontal)
+        row.setVisibilityPriority(.detachOnlyIfNecessary, for: laneControl)
         addSubview(row)
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -297,9 +300,21 @@ final class DialPill: NSButton {
     }
 
     /// A clock that ticks for a pill nobody can see is a clock for nothing: the shimmer follows
-    /// the window in and out.
+    /// the window in and out, and in and out of sight — a window in the Dock, closed away or
+    /// covered by another one is still a window, and the rainbow went on turning in it.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(
+            self, name: NSWindow.didChangeOcclusionStateNotification, object: nil)
+        if let window {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(sightChanged),
+                name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        }
+        syncShimmer()
+    }
+
+    @objc private func sightChanged() {
         syncShimmer()
     }
 
@@ -371,7 +386,9 @@ final class DialPill: NSButton {
     }
 
     private func syncShimmer() {
-        guard let face, face.isPower, window != nil, EffortHeat.motionAllowed else {
+        guard let face, face.isPower, let window, window.occlusionState.contains(.visible),
+            EffortHeat.motionAllowed
+        else {
             stopShimmer()
             return
         }

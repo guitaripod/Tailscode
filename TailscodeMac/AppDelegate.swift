@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menu: MainMenu?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.typeWhatIsTyped()
         NSApp.setActivationPolicy(.regular)
         Self.forgetTheKeysForPanesThisCopyLacks()
         #if TAILSCODE_MAS
@@ -115,6 +116,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// composer is written before the process goes.
     func applicationWillTerminate(_ notification: Notification) {
         stashDrafts()
+        main?.prepareToQuit()
+    }
+
+    /// Everything typed into this app is read by a machine — a prompt, a path, a shell command, an
+    /// address — and a curly quote, an em dash or an autocorrected word is a different command.
+    /// AppKit hands every text view the person's system-wide choices for those rewrites, so this
+    /// app's own defaults say no to them once; a choice made later in Edit ▸ Substitutions is the
+    /// app's own and is left alone.
+    private static func typeWhatIsTyped() {
+        let domain = Bundle.main.bundleIdentifier ?? "com.guitaripod.tailscode"
+        let held = UserDefaults.standard.persistentDomain(forName: domain) ?? [:]
+        for key in [
+            "NSAutomaticQuoteSubstitutionEnabled", "NSAutomaticDashSubstitutionEnabled",
+            "NSAutomaticTextReplacementEnabled", "NSAutomaticSpellingCorrectionEnabled",
+        ] where held[key] == nil {
+            UserDefaults.standard.set(false, forKey: key)
+        }
     }
 
     private func stashDrafts() {
@@ -122,16 +140,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DraftStore.flush()
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Closing the window puts the conversations away rather than ending them. A turn still running
+    /// finishes and says so in a notification, the quick-ask chord keeps working from any app, and
+    /// the Dock icon brings the same window back with every pane where it was — the way a chat
+    /// app on the Mac behaves. Quitting is ⌘Q.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// Closing the window is closing the app — unless a settings, servers or analytics window is
-    /// keeping the process alive, in which case the conversations have just gone somewhere with no
-    /// way back: there is no File ▸ New Window to rebuild the hub from. The Dock icon is that way
-    /// back, and it is the only one.
+    /// The Dock icon is the way back to a window that was closed: there is no File ▸ New Window to
+    /// rebuild the hub from.
     func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows: Bool
     ) -> Bool {
         main?.showWindow(nil)
         return true
+    }
+
+    /// What the Dock icon offers besides the windows it already lists: a new chat and a question,
+    /// each reachable while every window is closed.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        let chat = NSMenuItem(
+            title: Localized.text("New Chat"), action: #selector(dockNewChat), keyEquivalent: "")
+        chat.target = self
+        menu.addItem(chat)
+        let ask = NSMenuItem(
+            title: Localized.text("Quick Ask…"), action: #selector(dockQuickAsk), keyEquivalent: "")
+        ask.target = self
+        menu.addItem(ask)
+        return menu
+    }
+
+    @objc private func dockNewChat() {
+        main?.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        _ = main?.perform(.newChat)
+    }
+
+    @objc private func dockQuickAsk() {
+        main?.summonQuickAsk()
     }
 }

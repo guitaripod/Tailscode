@@ -22,6 +22,7 @@ final class UpdateWindowController: NSWindowController {
         super.init(window: window)
         window.contentView = board.view
         window.center()
+        window.rememberFrame(as: "TailscodeUpdates")
     }
 
     @available(*, unavailable)

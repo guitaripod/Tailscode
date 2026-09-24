@@ -543,6 +543,11 @@ private final class DialModelRowView: NSView {
         onPress?()
     }
 
+    override func accessibilityPerformPress() -> Bool {
+        onPress?()
+        return onPress != nil
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         bounds.contains(convert(point, from: superview)) ? self : nil
     }
@@ -656,6 +661,11 @@ private final class DialRungView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         onPress?()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onPress?()
+        return onPress != nil
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {

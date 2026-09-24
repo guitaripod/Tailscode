@@ -895,14 +895,21 @@ final class UsageWindowController: NSWindowController {
         super.init(window: window)
         window.contentViewController = panel
         window.center()
+        placed = window.rememberFrame(as: "TailscodeUsage")
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Opens at the size the board was drawn for, and asks the providers again on every showing.
+    /// Whether the window has a size somebody chose — a remembered one, or the one it opened at
+    /// the first time. Only a window with neither is given the size the board was drawn for.
+    private var placed = false
+
+    /// Opens at the size the board was drawn for the first time, where it was left every time
+    /// after, and asks the providers again on every showing.
     func present() {
-        if let window, !window.isVisible, let screen = window.screen ?? NSScreen.main {
+        if let window, !window.isVisible, !placed, let screen = window.screen ?? NSScreen.main {
+            placed = true
             let room = screen.visibleFrame
             let size = NSSize(
                 width: min(UsagePanelViewController.openingSize.width, room.width - 80),

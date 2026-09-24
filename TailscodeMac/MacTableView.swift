@@ -113,6 +113,10 @@ final class MacTableView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
         build()
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(
+            Localized.text("Table, %d columns, %d rows", table.header.count, table.rows.count))
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

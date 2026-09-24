@@ -40,10 +40,19 @@ final class CompletionPopover: NSView {
             glass.topAnchor.constraint(equalTo: topAnchor),
             glass.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The highlighted row's wash is a colour baked into a layer, so a theme or appearance that
+    /// changes while the list is open draws the list again.
+    @objc private func repaint() {
+        guard !isHidden else { return }
+        renderCompletion(presentation, cursor: cursor)
+    }
 
     var isShowing: Bool { !isHidden }
 
@@ -265,5 +274,10 @@ private final class CompletionRowView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         pick(index)
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        pick(index)
+        return true
     }
 }

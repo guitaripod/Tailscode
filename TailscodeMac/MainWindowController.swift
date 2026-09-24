@@ -73,6 +73,8 @@ final class MainWindowController: NSWindowController {
             backing: .buffered, defer: false)
         window.title = "Tailscode"
         window.isReleasedWhenClosed = false
+        window.contentMinSize = Self.smallestUsable
+        window.collectionBehavior.insert(.fullScreenPrimary)
         MacTheme.Chrome.adopt(window)
         super.init(window: window)
         wireChildren()
@@ -110,6 +112,12 @@ final class MainWindowController: NSWindowController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The smallest window a chat still reads in: the chat list at its own minimum beside a
+    /// conversation wide enough for the composer's row of pills, and tall enough for the composer
+    /// with a few lines of transcript above it. The window had no floor at all, so it could be
+    /// dragged down until nothing in it fit.
+    private static let smallestUsable = NSSize(width: 640, height: 420)
 
     func open(_ entry: SessionEntry) {
         sidebar.open(entry)
@@ -518,6 +526,9 @@ final class MainWindowController: NSWindowController {
                 self?.gitPopover?.close()
                 let window = GitDiffWindowController(title: title, subtitle: subtitle, load: load)
                 self?.gitDiffWindows.append(window)
+                window.onClose = { [weak self, weak window] in
+                    self?.gitDiffWindows.removeAll { $0 === window }
+                }
                 window.present()
             })
         let popover = NSPopover()
@@ -1156,9 +1167,20 @@ final class MainWindowController: NSWindowController {
     private func publishWidgetSnapshot() {
         #if !TAILSCODE_MAS
             guard !lastQuotas.isEmpty else { return }
-            UsageWidgetStore.writeLive(lastQuotas.map(\.1))
+            let quotas = lastQuotas.map(\.1)
+            Self.widgetWrites.async { UsageWidgetStore.writeLive(quotas) }
         #endif
     }
+
+    #if !TAILSCODE_MAS
+        /// Where the widget's snapshot is written: off the main thread, one write at a time. The
+        /// snapshot sits in the app group behind a file lock, and a copy signed ad hoc reaches that
+        /// group only once the person has answered macOS's "access data from other apps" prompt —
+        /// until then `open` does not return, and a window waiting on it is a window that has
+        /// stopped answering from the first quota poll of the launch.
+        private static let widgetWrites = DispatchQueue(
+            label: "com.guitaripod.tailscode.widget-snapshot", qos: .utility)
+    #endif
 
     /// The numbers move on the poll's cadence; the words about them move on their own, so a reset
     /// counted down two minutes at a time does not read as a clock that has stopped and an age
@@ -1438,9 +1460,35 @@ final class MainWindowController: NSWindowController {
         #endif
     }
 
+    private func interruptTerminal() {
+        #if !TAILSCODE_MAS
+            terminalPane.interrupt()
+        #endif
+    }
+
+    /// The last thing the app does before it goes: the shell pane's command is stopped rather than
+    /// left running with no window to stop it from, and the chat list's cache — written a few
+    /// seconds behind the listing so a busy turn does not write it on every status — is written
+    /// now, because the few seconds may never come.
+    func prepareToQuit() {
+        #if !TAILSCODE_MAS
+            terminalPane.stopRunning()
+        #endif
+        SessionListCache.flushPendingSave()
+    }
+
     private func handle(_ event: NSEvent) -> NSEvent? {
+        if window?.firstResponder is KeyboardPressable, [49, 36, 76].contains(event.keyCode) {
+            return event
+        }
         if let verdict = composerKey(event) { return verdict ? nil : event }
         guard let chord = MacKeys.chord(for: event) else { return event }
+        if terminalHasFocus, chord.control, !chord.shift, !chord.alt,
+            chord.keyval == UInt32(UInt8(ascii: "c"))
+        {
+            interruptTerminal()
+            return nil
+        }
         let context = keyContext()
         if context == .normal, focused == .transcript, pendingChords.isEmpty,
             transcript.handleChooserChord(chord)
@@ -1487,6 +1535,7 @@ final class MainWindowController: NSWindowController {
         splitPanes.focus(pane, grabKeyboard: false)
         focused = .transcript
         let composer = pane.composer
+        guard !composer.editorIsComposing else { return false }
         let isReturn = event.keyCode == 36 || event.keyCode == 76
         if event.modifierFlags.contains(.command) {
             if isReturn {
@@ -1706,9 +1755,11 @@ final class MainWindowController: NSWindowController {
         NSAnimationContext.runAnimationGroup(
             { _ in item.animator().isCollapsed = !shown },
             completionHandler: { [weak self] in
-                guard let self, shown else { return }
-                self.applyStoredDividers()
-                if pane == .terminal { self.focus(.terminal) }
+                MainActor.assumeIsolated {
+                    guard let self, shown else { return }
+                    self.applyStoredDividers()
+                    if pane == .terminal { self.focus(.terminal) }
+                }
             })
     }
 
@@ -1878,6 +1929,7 @@ final class MainWindowController: NSWindowController {
         panel.isFloatingPanel = true
         panel.becomesKeyOnlyIfNeeded = false
         panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
         let content = makeCheatsheetContent()
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true

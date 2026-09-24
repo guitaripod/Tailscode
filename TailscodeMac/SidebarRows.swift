@@ -604,7 +604,7 @@ final class SidebarMissedCell: NSView {
         detail.stringValue = Localized.text(
             "%@ · %@ ago", item.kindLabel,
             StatusFacts.age(Date().timeIntervalSince(item.at)))
-        setAccessibilityLabel("\(item.title) — \(item.kindLabel)")
+        setAccessibilityLabel(Localized.text("%@ — %@", item.title, item.kindLabel))
     }
 }
 

@@ -44,6 +44,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
         window.center()
+        window.rememberFrame(as: "TailscodeSettings")
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         #if !TAILSCODE_MAS
@@ -612,6 +613,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         popUp.selectItem(at: min(selected, max(0, options.count - 1)))
         popUp.target = self
         popUp.action = action
+        popUp.setAccessibilityLabel(title)
         popUp.setContentHuggingPriority(.required, for: .horizontal)
         let filler = NSView()
         filler.setContentHuggingPriority(.init(1), for: .horizontal)

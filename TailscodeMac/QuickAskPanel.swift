@@ -109,6 +109,7 @@ final class QuickAskPanel: NSPanel {
         title = Localized.text("Quick ask")
         isFloatingPanel = true
         isReleasedWhenClosed = false
+        collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
 
         editor.widthAnchor.constraint(greaterThanOrEqualToConstant: 600).isActive = true
         editor.onChanged = { [weak self] in
@@ -220,7 +221,9 @@ final class QuickAskPanel: NSPanel {
     /// open its keys arrive at the popover's own window, so nothing here sees them.
     private func installMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self, !self.asking else { return event }
+            guard let self, event.window === self, !self.asking, !self.editor.isComposing else {
+                return event
+            }
             let flags = event.modifierFlags
             let control = flags.contains(.control)
             let shift = flags.contains(.shift)
@@ -228,7 +231,9 @@ final class QuickAskPanel: NSPanel {
             let isReturn = event.keyCode == 36 || event.keyCode == 76
             if self.completion.isShowing, self.handleCompletionKey(event) { return nil }
             if self.handleDialKey(event) { return nil }
-            if event.keyCode == 48, !control, !flags.contains(.command), !option {
+            if event.keyCode == 48, !control, !flags.contains(.command), !option,
+                self.servers.count > 1
+            {
                 self.cycleServer(by: shift ? -1 : 1)
                 return nil
             }
@@ -609,7 +614,7 @@ final class QuickAskPanel: NSPanel {
         catalogWatch = Task { [weak self] in
             guard let self else { return }
             let server = self.targetServer
-            guard let backend = await ServerDirectory.shared.backend(for: server) else { return }
+            guard let backend = ServerDirectory.shared.backend(for: server) else { return }
             for await reading in ModelCatalogWatch.readings(
                 profileID: server.id, backend: backend)
             {

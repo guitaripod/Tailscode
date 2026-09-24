@@ -84,8 +84,10 @@ final class ModelChooserSheet: NSObject {
         chooser = ModelChooser(sources: sources, selected: selected, quotas: quotas)
         self.onPick = onPick
         sheet = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 620),
-            styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+            contentRect: NSRect(origin: .zero, size: Self.rememberedSize),
+            styleMask: [.titled, .fullSizeContentView, .resizable], backing: .buffered,
+            defer: false)
+        sheet.contentMinSize = Self.smallest
         super.init()
 
         let content = NSView()
@@ -199,6 +201,25 @@ final class ModelChooserSheet: NSObject {
     private func teardown() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        if let size = sheet.contentView?.frame.size {
+            UserDefaults.standard.set(NSStringFromSize(size), forKey: Self.sizeKey)
+        }
+    }
+
+    private static let sizeKey = "tailscode.mac.modelChooser.size"
+    private static let smallest = NSSize(width: 520, height: 420)
+
+    /// Two hundred models read better on a tall sheet, so the sheet can be dragged bigger and
+    /// opens next time at the size it was left.
+    private static var rememberedSize: NSSize {
+        guard let saved = UserDefaults.standard.string(forKey: sizeKey) else {
+            return NSSize(width: 620, height: 620)
+        }
+        let size = NSSizeFromString(saved)
+        let room = NSScreen.main?.visibleFrame.size ?? size
+        return NSSize(
+            width: min(max(size.width, smallest.width), max(room.width - 80, smallest.width)),
+            height: min(max(size.height, smallest.height), max(room.height - 80, smallest.height)))
     }
 
     /// A catalog that arrived while the sheet is open: the list, the summary and the machine strip
@@ -584,7 +605,7 @@ private final class MachineChip: NSButton {
 
     /// A right click asks what is behind the chip rather than choosing it.
     override func rightMouseDown(with event: NSEvent) {
-        guard let onInfo else { return super.rightMouseDown(with: event) }
+        guard onInfo != nil else { return super.rightMouseDown(with: event) }
         let menu = NSMenu()
         let item = NSMenuItem(
             title: Localized.text("About %@…", title), action: #selector(info), keyEquivalent: "")

@@ -43,6 +43,7 @@ import TailscodeCore
                 groups.topAnchor.constraint(equalTo: clip.topAnchor),
                 groups.widthAnchor.constraint(equalTo: clip.widthAnchor),
             ])
+            MediaImageStore.shared.listen(self) { [weak self] url in self?.pictureArrived(url) }
         }
 
         @available(*, unavailable)
@@ -75,7 +76,6 @@ import TailscodeCore
                 }
                 groups.addArrangedSubview(stack)
             }
-            MediaImageStore.shared.onStored = { [weak self] url in self?.pictureArrived(url) }
         }
 
         /// Brings the cursor back into view after a key moved it — a board taller than its pane is the

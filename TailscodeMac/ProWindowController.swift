@@ -28,12 +28,24 @@ final class ProWindowController: NSWindowController {
         window.contentViewController = NSViewController(nibName: nil, bundle: nil)
         window.contentViewController?.view = makeContent()
         window.center()
+        window.rememberFrame(as: "TailscodePro")
         NotificationCenter.default.addObserver(
             self, selector: #selector(proChanged), name: MacProStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// A colour handed to a label is the theme it was handed under, and this window lives for the
+    /// whole session — so a theme picked while it is open rebuilds the page around the buttons it
+    /// already has, which keep their titles, their prices and whatever the status line was saying.
+    @objc private func repaint() {
+        column.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        window?.contentViewController?.view = makeContent()
+        status.textColor = MacTheme.Color.secondaryLabel
+    }
 
     func present() {
         showWindow(nil)
@@ -146,7 +158,7 @@ final class ProWindowController: NSWindowController {
         status.stringValue = ""
         Task {
             do {
-                switch try await MacProStore.shared.purchase(product) {
+                switch try await MacProStore.shared.purchase(product, in: window) {
                 case .success:
                     status.stringValue = Localized.text("Thank you ♥")
                 case .pending:

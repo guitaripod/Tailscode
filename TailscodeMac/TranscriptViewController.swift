@@ -118,6 +118,9 @@ final class TranscriptViewController: NSViewController {
     private var enteredRows: Set<String> = []
     /// The row the wave last had its hands on, kept until it has actually been handed back whole.
     var lastStreamedKey: String?
+    /// The rendering the wave last painted in full. A frame that paints the same rendering again
+    /// changes its colours and nothing else, so the label is repainted without being measured.
+    var waveMeasured: NSAttributedString?
     /// A row the wave gave up on. It is not taken back: restarting a reveal that already snapped to
     /// whole would rewind the answer under the reader.
     var abandoned: String?
@@ -129,7 +132,6 @@ final class TranscriptViewController: NSViewController {
     /// held: a turn can end and the next one start writing before a failed settle has landed.
     var repairKey: String?
     private(set) var lastFullRows: [TranscriptRow] = []
-    private var lastFullCount = 0
     private var windowLimit = 400
     private var rowTailMessages = 300
     var placeholderShown = true
@@ -161,6 +163,9 @@ final class TranscriptViewController: NSViewController {
     private var sessionRows: [String: [TranscriptRow]] = [:]
     private var sessionRowOrder: [String] = []
     private var inFlightImages: Set<String> = []
+    /// Pictures this chat could not get — the server refused them, or the bytes would not decode —
+    /// so a row rebuilt on every streamed token does not ask for them again. Forgotten with the chat.
+    private var refusedImages: Set<String> = []
     /// Pictures a row has asked for and the transcript has not yet judged worth fetching: held here
     /// until the reader is within a screen of the row that wants them.
     private var wantedImages: [String: FileReference] = [:]
@@ -197,6 +202,7 @@ final class TranscriptViewController: NSViewController {
     private var notice: String?
     private var tickerTask: Task<Void, Never>?
     private var workflowRuns: [WorkflowRun] = []
+    private let workflowFold = WorkflowRunFold()
     private var agentStreamTask: Task<Void, Never>?
     private var agentStreamSessionID: String?
 
@@ -299,6 +305,7 @@ final class TranscriptViewController: NSViewController {
         identityLabel.font = MacTheme.Ramp.font(.paneIdentity)
         identityLabel.textColor = MacTheme.Color.onGlassSecondary
         identityLabel.lineBreakMode = .byTruncatingMiddle
+        identityLabel.setContentCompressionResistancePriority(.init(300), for: .horizontal)
         let strip = NSStackView(views: [identityLabel])
         strip.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.xs, left: MacTheme.Spacing.s, bottom: MacTheme.Spacing.xs,
@@ -417,10 +424,12 @@ final class TranscriptViewController: NSViewController {
                     clip.animator().setBoundsOrigin(target)
                 },
                 completionHandler: { [weak self] in
-                    guard let self else { return }
-                    self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
-                    self.isAutoScrolling = false
-                    self.landFreshCanvas()
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
+                        self.isAutoScrolling = false
+                        self.landFreshCanvas()
+                    }
                 })
         }
     }
@@ -596,6 +605,7 @@ final class TranscriptViewController: NSViewController {
         context.subagentRows = [:]
         context.agentFacts = [:]
         inFlightImages = []
+        refusedImages = []
         inFlightSubagents = []
         pending.removeAll()
         interruptionPress = nil
@@ -611,7 +621,6 @@ final class TranscriptViewController: NSViewController {
         windowLimit = 400
         rowTailMessages = 300
         lastFullRows = []
-        lastFullCount = 0
         lastStreamedKey = nil
         stopTailRepair()
         abandoned = nil
@@ -641,7 +650,6 @@ final class TranscriptViewController: NSViewController {
         if let remembered = sessionRows[entry.session.id] {
             placeholderShown = true
             lastFullRows = remembered
-            lastFullCount = remembered.count
             let limit = max(windowLimit, Self.transcriptWindowPreference)
             applyRows(remembered.count > limit ? Array(remembered.suffix(limit)) : remembered)
         } else {
@@ -717,7 +725,18 @@ final class TranscriptViewController: NSViewController {
     func reconnect() {
         guard let conversation else { return }
         Task { await conversation.reconnect() }
+        if factsReadAt.map({ Date().timeIntervalSince($0) > Self.factsShelfLife }) ?? true {
+            refreshTurnFacts()
+        }
     }
+
+    /// When the band's facts — the branch, the spend, the agents — were last asked for. A chat that
+    /// was idle when the Mac slept is still idle when it wakes, and only a running turn polls, so
+    /// coming back used to leave the band as stale as it was the night before; coming back to the
+    /// app is also something a person does dozens of times an hour, so a fresh reading is left
+    /// alone.
+    private var factsReadAt: Date?
+    private static let factsShelfLife: TimeInterval = 60
 
     /// The strip that says whose conversation this pane is — only worth its line once a second
     /// pane exists, so a lone pane stays exactly the window it always was.
@@ -902,6 +921,7 @@ final class TranscriptViewController: NSViewController {
             onBackgroundWatch?(previousConversation, previousEntry)
         }
         composer.stashDraft()
+        composer.stopWatching()
         cascade.release()
         stopTailRepair()
         forgetHeldRows()
@@ -917,6 +937,12 @@ final class TranscriptViewController: NSViewController {
         agentStreamTask?.cancel()
         agentStreamTask = nil
         agentStreamSessionID = nil
+        resumeClock?.cancel()
+        resumeClock = nil
+        retryWake?.cancel()
+        retryWake = nil
+        captionWake?.cancel()
+        captionWake = nil
     }
 
     /// Empties the pane deliberately — a deleted or unresolvable session leaves an explanation,
@@ -928,7 +954,6 @@ final class TranscriptViewController: NSViewController {
         backend = nil
         lastState = nil
         lastFullRows = []
-        lastFullCount = 0
         lastStreamedKey = nil
         stopTailRepair()
         abandoned = nil
@@ -1233,7 +1258,9 @@ final class TranscriptViewController: NSViewController {
                 else { return nil }
                 let itemName =
                     reference.filename
-                    ?? reference.path.map { URL(fileURLWithPath: $0).lastPathComponent }
+                    ?? reference.path.map {
+                        URL(fileURLWithPath: $0, isDirectory: false).lastPathComponent
+                    }
                     ?? "image"
                 return ImageViewer.Item(key: row.key, name: itemName, reference: reference)
             }
@@ -1821,8 +1848,6 @@ final class TranscriptViewController: NSViewController {
         armRetryWake(state.retry, now: Date())
         if state.revert == nil, revertOperation != .restoring { revertComposerFill = nil }
         let shown = docked(echoed(confirmed), state: state)
-        let appended = max(0, shown.count - lastFullCount)
-        lastFullCount = shown.count
         let limit = max(windowLimit, Self.transcriptWindowPreference)
         let windowed = shown.count > limit ? Array(shown.suffix(limit)) : shown
         let hiddenCount = shown.count - windowed.count
@@ -1838,8 +1863,7 @@ final class TranscriptViewController: NSViewController {
                     ? Localized.text("Nothing here yet. Say something.")
                     : Localized.text("Loading…"))
         } else {
-            applyRows(
-                pacedByCascade(windowed, running: state.status == .running), appended: appended)
+            applyRows(pacedByCascade(windowed, running: state.status == .running))
             settleStreamedTail(in: windowed)
             paintCascade()
         }
@@ -2293,6 +2317,7 @@ final class TranscriptViewController: NSViewController {
     /// waiting for a turn tick meant its account, its usage and its branch never arrived at all.
     private func refreshTurnFacts() {
         guard let backend, let entry else { return }
+        factsReadAt = Date()
         startAgentStreamIfAvailable()
         let sessionID = entry.session.id
         let skipAgents = agentStreamSessionID == sessionID && agentStreamTask != nil
@@ -2358,7 +2383,7 @@ final class TranscriptViewController: NSViewController {
     /// ``TranscriptContext/workflowNow``.
     private func refreshWorkflowRuns() {
         guard let state = lastState else { return }
-        let runs = WorkflowRunAssembly.runs(messages: state.messages, agents: agents)
+        let runs = workflowFold.runs(messages: state.messages, agents: agents)
         if runs != workflowRuns {
             var byCall: [String: WorkflowRun] = [:]
             for run in runs { byCall[run.id] = run }
@@ -2726,7 +2751,7 @@ final class TranscriptViewController: NSViewController {
     /// past which an arrival is treated as a fill rather than as growth.
     private static let rowChunk = 40
 
-    private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
+    private func applyRows(_ rows: [TranscriptRow]) {
         assert(
             Set(rows.map(\.key)).count == rows.count,
             "the transcript handed one key to two rows")
@@ -2745,7 +2770,6 @@ final class TranscriptViewController: NSViewController {
             pendingReveal = true
         }
         let stick = (initialFill || followsBottom) && canvasHold == nil
-        let growth = initialFill || canvasHold != nil ? 0 : appended
 
         let edit = preservingScroll { editRows(rows) }
         repaintChangedRows(rows, from: edit.start)
@@ -3358,8 +3382,13 @@ final class TranscriptViewController: NSViewController {
     /// Disk first, tailnet second: a picture this machine has ever shown comes back in one frame,
     /// and only a genuinely new one crosses the network — then joins the cache. The decode
     /// happens off the main actor, because a large PNG decoded on the UI loop is a visible freeze.
+    ///
+    /// A picture stays asked-for only while it is on its way. Once it lands the memory cache owns
+    /// it, and that cache is shared by every pane and bounded — a picture it lets go is asked for
+    /// again from disk when its row next wants it, rather than sitting on an empty frame until the
+    /// chat is reopened.
     private func fetchImage(_ reference: FileReference, key: String) {
-        guard !inFlightImages.contains(key) else { return }
+        guard !inFlightImages.contains(key), !refusedImages.contains(key) else { return }
         inFlightImages.insert(key)
         let backend = backend
         Task { [weak self] in
@@ -3370,10 +3399,16 @@ final class TranscriptViewController: NSViewController {
                     await Task.detached { ImageDisk.save(fetched, for: reference) }.value
                 }
             }
-            guard let bytes = data else { return }
-            let decodeTask = Task.detached { ImageStore.decode(bytes) }
-            guard let decoded = await decodeTask.value else { return }
+            var decoded: DecodedImage?
+            if let bytes = data {
+                decoded = await Task.detached { ImageStore.decode(bytes) }.value
+            }
             guard let self else { return }
+            self.inFlightImages.remove(key)
+            guard let decoded else {
+                self.refusedImages.insert(key)
+                return
+            }
             ImageStore.shared.store(decoded, forKey: key)
             self.replaceRows { $0.key == key }
         }
@@ -3578,15 +3613,40 @@ final class TranscriptViewController: NSViewController {
         findMatches = renderedRows.indices.filter {
             renderedRows[$0].searchText.lowercased().contains(needle)
         }
-        if retarget { findCursor = 0 }
+        if retarget {
+            findCursor = 0
+            findStepAfterWidening = false
+        }
+        if findStepAfterWidening, !findMatches.isEmpty {
+            findStepAfterWidening = false
+            findCursor = findMatches.count - 1
+            updateFindCount()
+            applyFindHighlight(scroll: true)
+            return
+        }
         if findCursor >= findMatches.count { findCursor = max(0, findMatches.count - 1) }
         updateFindCount()
         guard !findMatches.isEmpty else { return }
         applyFindHighlight(scroll: retarget)
     }
 
-    private func stepFind(by delta: Int) {
-        guard !findMatches.isEmpty else { return }
+    /// Whether the find bar is up with something to step through, for the menu's Find Next.
+    var canStepFind: Bool {
+        !findBar.isHidden && (!findMatches.isEmpty || earlierFindHits() > 0)
+    }
+
+    /// A step asked for while every match sits in rows the window has not drawn: the window widens
+    /// to take them in, and the step lands on the nearest one once they are laid out. The count
+    /// used to say "3 in earlier rows" while Next and Previous did nothing at all.
+    private var findStepAfterWidening = false
+
+    func stepFind(by delta: Int) {
+        guard !findMatches.isEmpty else {
+            guard earlierFindHits() > 0 else { return }
+            findStepAfterWidening = true
+            showEarlierRows()
+            return
+        }
         let count = findMatches.count
         findCursor = ((findCursor + delta) % count + count) % count
         updateFindCount()
@@ -3601,18 +3661,21 @@ final class TranscriptViewController: NSViewController {
             findBar.setCount("\(findCursor + 1)/\(findMatches.count)")
             return
         }
-        let needle = findBar.query.lowercased()
-        let shown = Set(renderedRows.map(\.key))
-        let earlier =
-            needle.isEmpty
-            ? 0
-            : lastFullRows.filter {
-                !shown.contains($0.key) && $0.searchText.lowercased().contains(needle)
-            }.count
+        let earlier = earlierFindHits()
         findBar.setCount(
             earlier > 0
                 ? Localized.text("%@ in earlier rows", "\(earlier)")
                 : Localized.text("No matches"))
+    }
+
+    /// Matches in rows the conversation holds and the window has not drawn.
+    private func earlierFindHits() -> Int {
+        let needle = findBar.query.lowercased()
+        guard !needle.isEmpty else { return 0 }
+        let shown = Set(renderedRows.map(\.key))
+        return lastFullRows.filter {
+            !shown.contains($0.key) && $0.searchText.lowercased().contains(needle)
+        }.count
     }
 
     /// Marks the current match with a subtle accent ring, and on an explicit jump scrolls it to
@@ -3727,11 +3790,14 @@ final class TranscriptViewController: NSViewController {
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = title
         window.contentView = column
-        if let host = view.window {
-            window.setFrameOrigin(
-                NSPoint(x: host.frame.midX - 380, y: host.frame.midY - 300))
-        } else {
-            window.center()
+        window.contentMinSize = NSSize(width: 420, height: 280)
+        if !window.restoreFrame(named: "TailscodeReader") {
+            if let host = view.window {
+                window.setFrameOrigin(
+                    NSPoint(x: host.frame.midX - 380, y: host.frame.midY - 300))
+            } else {
+                window.center()
+            }
         }
         window.makeKeyAndOrderFront(nil)
     }

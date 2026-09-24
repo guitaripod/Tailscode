@@ -720,6 +720,7 @@ struct TranscriptRow: Hashable {
             guard let column = host.value else { return }
             let fresh = RowKit.codeLines(body, language: language, expanded: opened)
             column.removeArrangedSubview(lines)
+            lines.removeFromSuperview()
             column.insertArrangedSubview(fresh, at: 1)
             lines = fresh
             button.value?.title = TranscriptBlocks.fold(body, expanded: opened).toggleLabel ?? ""
@@ -746,6 +747,9 @@ struct TranscriptRow: Hashable {
         column.addArrangedSubview(RowKit.hairline())
 
         let card = RowKit.compactionCard(story, tint: MacTheme.Color.accent)
+        card.setAccessibilityElement(true)
+        card.setAccessibilityRole(.group)
+        card.setAccessibilityLabel("\(story.title). \(story.detail)")
 
         if let kept = story.keptFraction {
             let track = RowKit.Ground(frame: .zero)
@@ -1146,9 +1150,7 @@ enum RowKit {
     /// The shape every stated-outcome card in the transcript wears: a symbol in its tint, the
     /// fact, and the sentence under it.
     static func card(symbol: String, title: String, detail: String, tint: NSColor) -> NSStackView {
-        let card = NSStackView()
-        card.orientation = .vertical
-        card.alignment = .leading
+        let card = FillingStack(topDown: false, stretches: false)
         card.spacing = MacTheme.Spacing.s
         card.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
@@ -1198,13 +1200,94 @@ enum RowKit {
     }
 
     static func attributedLabel(_ text: NSAttributedString) -> NSTextField {
-        let label = NSTextField(wrappingLabelWithString: "")
+        let label = ProseLabel(wrappingLabelWithString: "")
         label.attributedStringValue = text
         label.isSelectable = true
         label.allowsEditingTextAttributes = true
         label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
+    }
+
+    /// The label prose is set in.
+    ///
+    /// It points at its links: a hand over a link says the words go somewhere, which an I-beam over
+    /// coloured words does not. And it can be repainted without being measured again, which is what
+    /// the wave does to the answer being written on every frame — the words and their fonts are the
+    /// ones already measured and only their colours move, but a text field told its value changed
+    /// asks for its size again, and the whole transcript's layout ran at the display's rate.
+    final class ProseLabel: NSTextField {
+        /// Set while a repaint changes colours and nothing else.
+        var holdsMeasure = false
+        private var linkFrames: (width: CGFloat, links: [(rect: NSRect, target: URL?)])?
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override var attributedStringValue: NSAttributedString {
+            didSet { linkFrames = nil }
+        }
+
+        override func invalidateIntrinsicContentSize() {
+            guard !holdsMeasure else { return }
+            super.invalidateIntrinsicContentSize()
+        }
+
+        override func resetCursorRects() {
+            super.resetCursorRects()
+            for link in links() { addCursorRect(link.rect, cursor: .pointingHand) }
+        }
+
+        /// The link drawn under a point in this label's own coordinates, if there is one.
+        func link(at point: NSPoint) -> URL? {
+            links().first { $0.rect.contains(point) }?.target
+        }
+
+        /// Where the links are drawn and where each goes, laid out the way the cell lays out its
+        /// text and kept until the words or the width change.
+        private func links() -> [(rect: NSRect, target: URL?)] {
+            let area = cell?.titleRect(forBounds: bounds) ?? bounds
+            if let linkFrames, linkFrames.width == area.width { return linkFrames.links }
+            let text = attributedStringValue
+            var ranges: [(NSRange, URL?)] = []
+            text.enumerateAttribute(.link, in: NSRange(location: 0, length: text.length)) {
+                value, range, _ in
+                guard let value else { return }
+                ranges.append((range, value as? URL ?? (value as? String).flatMap(URL.init)))
+            }
+            var found: [(rect: NSRect, target: URL?)] = []
+            if !ranges.isEmpty, area.width > 0 {
+                let storage = NSTextStorage(attributedString: text)
+                let layout = NSLayoutManager()
+                let container = NSTextContainer(
+                    size: NSSize(width: area.width, height: .greatestFiniteMagnitude))
+                layout.addTextContainer(container)
+                storage.addLayoutManager(layout)
+                for (range, target) in ranges {
+                    let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+                    layout.enumerateEnclosingRects(
+                        forGlyphRange: glyphs,
+                        withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+                        in: container
+                    ) { rect, _ in
+                        let top = area.minY + rect.minY
+                        found.append(
+                            (
+                                NSRect(
+                                    x: area.minX + rect.minX,
+                                    y: self.isFlipped ? top : self.bounds.height - top - rect.height,
+                                    width: rect.width, height: rect.height), target
+                            ))
+                    }
+                }
+            }
+            linkFrames = (area.width, found)
+            return found
+        }
     }
 
     /// A ground that answers the appearance it is being drawn under. A layer takes a `CGColor`,
@@ -1565,7 +1648,7 @@ enum RowKit {
 /// collapse hidden, so reopening is free. `onToggle` also receives the row itself, because the
 /// one thing a caller cannot reconstruct from a key is where on screen the clicked header is.
 @MainActor
-final class DisclosureRow: NSView {
+final class DisclosureRow: NSView, KeyboardPressable {
     private let stack = FillingStack()
     private let makeBody: () -> NSView
     private let onToggle: (Bool, DisclosureRow) -> Void
@@ -1597,15 +1680,44 @@ final class DisclosureRow: NSView {
         header.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(toggle)))
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        if let title = (header as? NSTextField)?.stringValue, !title.isEmpty {
-            setAccessibilityLabel(title)
-        }
+        let spoken = Self.spoken(header)
+        if !spoken.isEmpty { setAccessibilityLabel(spoken) }
         setAccessibilityExpanded(false)
         if expanded { reveal() }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// Every word the header shows, in the order it shows them. A tool's header is a row of labels
+    /// — the tool, what it touched, how it ended — and naming the row only when its header was one
+    /// label left the commonest row in a transcript unnamed to VoiceOver.
+    private static func spoken(_ view: NSView) -> String {
+        guard !view.isHidden else { return "" }
+        if let field = view as? NSTextField { return field.stringValue }
+        let parts = (view as? NSStackView)?.arrangedSubviews ?? view.subviews
+        return parts.map(spoken).filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
+    /// With Full Keyboard Access on, a row is a stop in the Tab loop and Space or Return opens it;
+    /// without it a click keeps meaning what it always meant, and the composer keeps the keyboard.
+    override var acceptsFirstResponder: Bool { NSApp.isFullKeyboardAccessEnabled }
+    override var canBecomeKeyView: Bool { NSApp.isFullKeyboardAccessEnabled }
+    override var focusRingMaskBounds: NSRect { bounds }
+
+    override func drawFocusRingMask() {
+        NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard [49, 36, 76].contains(event.keyCode) else { return super.keyDown(with: event) }
+        toggle()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        toggle()
+        return true
+    }
 
     @objc private func toggle() {
         if let body {
@@ -1629,6 +1741,7 @@ final class DisclosureRow: NSView {
     /// needs, since tearing the row down twenty times a second is the flicker, not the counting.
     func restate(header text: String) {
         (stack.arrangedSubviews.first as? NSTextField)?.stringValue = text
+        setAccessibilityLabel(text)
     }
 
     /// The body restated, when it happens to be open already.
@@ -1691,6 +1804,21 @@ final class PromptRow: NSView {
     override func menu(for event: NSEvent) -> NSMenu? {
         guard context.offersUndo?(messageID) == true else { return nil }
         let menu = NSMenu()
+        if let target = link(under: event) {
+            let open = NSMenuItem(
+                title: Localized.text("Open Link"), action: #selector(openLink(_:)),
+                keyEquivalent: "")
+            open.target = self
+            open.representedObject = target
+            menu.addItem(open)
+            let copy = NSMenuItem(
+                title: Localized.text("Copy Link"), action: #selector(copyLink(_:)),
+                keyEquivalent: "")
+            copy.target = self
+            copy.representedObject = target
+            menu.addItem(copy)
+            menu.addItem(.separator())
+        }
         let item = NSMenuItem(
             title: RevertReading.actionTitle, action: #selector(undo), keyEquivalent: "")
         item.target = self
@@ -1716,6 +1844,35 @@ final class PromptRow: NSView {
 
     @objc private func undo() {
         context.confirmUndo?(messageID)
+    }
+
+    /// The link under a right-click, when it landed on one. The message's own menu answers every
+    /// right-click on the row, and a link in the words would otherwise have lost Open and Copy.
+    private func link(under event: NSEvent) -> URL? {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let label = hitLabel(at: point, in: self) else { return nil }
+        return label.link(at: label.convert(point, from: self))
+    }
+
+    private func hitLabel(at point: NSPoint, in view: NSView) -> RowKit.ProseLabel? {
+        for child in view.subviews.reversed() where !child.isHidden {
+            let local = child.convert(point, from: view)
+            guard child.bounds.contains(local) else { continue }
+            if let label = child as? RowKit.ProseLabel { return label }
+            if let found = hitLabel(at: local, in: child) { return found }
+        }
+        return nil
+    }
+
+    @objc private func openLink(_ sender: NSMenuItem) {
+        guard let target = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.open(target)
+    }
+
+    @objc private func copyLink(_ sender: NSMenuItem) {
+        guard let target = sender.representedObject as? URL else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(target.absoluteString, forType: .string)
     }
 
     @objc private func copyWords() {

@@ -29,15 +29,24 @@ final class MediaImageStore {
     /// both sources anyway, so the worst a reset costs is one more attempt each.
     private var refused: Set<String> = []
 
-    /// The board's ear while it is on screen: a row whose picture was still being fetched repaints
-    /// the moment it lands. One listener, held by whichever board rendered last — every other board
-    /// picks the picture up from memory on its next render, so nothing is lost, only delayed.
-    var onStored: ((String) -> Void)?
+    /// Every board's ear: a row whose picture was still being fetched repaints the moment it lands,
+    /// in each video pane that shows one — a second empty slot otherwise sat on blank frames until
+    /// something re-rendered it. Held weakly by the board that asked, so a closed pane drops out.
+    private var listeners: [ObjectIdentifier: Listener] = [:]
+
+    private struct Listener {
+        weak var owner: AnyObject?
+        let hear: (String) -> Void
+    }
 
     private init() {}
 
     func image(for url: String) -> NSImage? {
         entries[url]
+    }
+
+    func listen(_ owner: AnyObject, _ hear: @escaping (String) -> Void) {
+        listeners[ObjectIdentifier(owner)] = Listener(owner: owner, hear: hear)
     }
 
     /// Asks for a picture the board wants but does not have. Guarded by the in-flight set, because
@@ -74,7 +83,8 @@ final class MediaImageStore {
     /// released — its bytes are still on disk, one frame away.
     private func store(_ image: NSImage, for url: String) {
         entries[url] = image
-        onStored?(url)
+        listeners = listeners.filter { $0.value.owner != nil }
+        for listener in listeners.values { listener.hear(url) }
         order.removeAll { $0 == url }
         order.append(url)
         while order.count > Self.capacity {

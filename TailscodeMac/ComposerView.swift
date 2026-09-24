@@ -139,6 +139,7 @@ final class ComposerView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     var editorHasFocus: Bool { editor.hasFocus }
+    var editorIsComposing: Bool { editor.isComposing }
 
     var vimEnabled: Bool { Self.vimPreferred }
     var vimMode: VimMode { vim.mode }
@@ -331,6 +332,14 @@ final class ComposerView: NSView {
         DraftStore.flush()
     }
 
+    /// A closing pane stops asking its server for models. The watch retries for as long as the
+    /// server is down, so a pane closed on an unreachable machine would otherwise keep knocking
+    /// every thirty seconds for the rest of the session.
+    func stopWatching() {
+        catalogWatch?.cancel()
+        catalogWatch = nil
+    }
+
     func applyVim(_ key: VimKey) {
         let outcome = vim.handle(key, text: editor.text, cursor: editor.cursor)
         switch outcome {
@@ -462,11 +471,10 @@ final class ComposerView: NSView {
         let directory = entry.session.directory
         catalogWatch?.cancel()
         catalogWatch = Task { [weak self] in
-            guard let self else { return }
             for await reading in ModelCatalogWatch.readings(
                 profileID: profileID, backend: backend)
             {
-                guard self.entry?.session.id == sessionID else { return }
+                guard let self, self.entry?.session.id == sessionID else { return }
                 self.modelsByProfile[profileID] = reading.models
                 self.reachableByProfile[profileID] = reading.reachable
                 self.models = reading.models
@@ -491,7 +499,9 @@ final class ComposerView: NSView {
     private func refreshPills() {
         let destination = [
             entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) },
-            entry?.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent },
+            entry?.session.directory.map {
+                URL(fileURLWithPath: $0, isDirectory: true).lastPathComponent
+            },
         ].compactMap { $0 }.joined(separator: " · ")
         pills.setDestination(destination)
         let face = ModelDial.face(

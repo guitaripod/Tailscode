@@ -260,6 +260,10 @@ final class ForgeChipWrap: NSView {
     var onPick: ((ForgeField, String) -> Void)?
     private let stack = FillingStack()
     private var board = ForgeBoard()
+    /// What the chips were last drawn from. A render's progress re-renders the studio several times
+    /// a second while none of the settings can change, so the row is only rebuilt when a chip would
+    /// read differently.
+    private var drawn: (rows: [ForgeRow], focus: String?, scale: CGFloat)?
 
     init() {
         super.init(frame: .zero)
@@ -279,11 +283,17 @@ final class ForgeChipWrap: NSView {
 
     func render(_ board: ForgeBoard) {
         self.board = board
+        let fields = ForgeStudio.chips
+        let shown = fields.compactMap { field in board.rows.first { $0.kind == .field(field) } }
+        let scale = MacTheme.UIScale.factor
+        if let drawn, drawn.rows == shown, drawn.focus == board.focused?.id, drawn.scale == scale {
+            return
+        }
+        drawn = (shown, board.focused?.id, scale)
         for view in stack.arrangedSubviews {
             stack.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
-        let fields = ForgeStudio.chips
         let stride = 3
         var index = 0
         while index < fields.count {
@@ -332,9 +342,12 @@ final class ForgeChipButton: NSButton {
     private let name = NSTextField(labelWithString: "")
     private let value = NSTextField(labelWithString: "")
     private let pill = NSTextField(labelWithString: "")
+    private var focused = false
 
     init() {
         super.init(frame: .zero)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(paint), name: MacTheme.Chrome.didRepaint, object: nil)
         isBordered = false
         bezelStyle = .shadowlessSquare
         wantsLayer = true
@@ -369,6 +382,20 @@ final class ForgeChipButton: NSButton {
         name.isHidden = detail.isEmpty
         value.stringValue = title
         value.lineBreakMode = .byClipping
+        self.focused = focused
+        paint()
+        setAccessibilityLabel("\(detail), \(title)")
+        setAccessibilityRole(.button)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        paint()
+    }
+
+    /// A chip's ground is a layer colour resolved under one light, and the row is only rebuilt when
+    /// a setting changes, so the chip repaints itself when the light or the theme does.
+    @objc private func paint() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor =
                 focused
@@ -377,8 +404,6 @@ final class ForgeChipButton: NSButton {
             layer?.borderWidth = focused ? 1 : 0
             layer?.borderColor = MacTheme.Color.accent.cgColor
         }
-        setAccessibilityLabel("\(detail), \(title)")
-        setAccessibilityRole(.button)
     }
 
     @objc private func fire() { onPress?() }
@@ -390,6 +415,8 @@ final class ForgeFilmstrip: NSView {
     var onClipMenu: ((ForgeEntry, NSView, NSPoint) -> Void)?
     private let scroll = NSScrollView()
     private let row = NSStackView()
+    /// What the strip was last drawn from, so a progress tick that changes no clip rebuilds no card.
+    private var drawn: (rows: [ForgeRow], gone: [String?], focus: String?, scale: CGFloat)?
 
     init() {
         super.init(frame: .zero)
@@ -415,16 +442,22 @@ final class ForgeFilmstrip: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func render(_ board: ForgeBoard, gone: (ForgeEntry) -> String?) {
+        let rows = board.sections.first { $0.id == ForgeBoard.historyID }?.rows ?? []
+        let marks = rows.map { $0.entry.flatMap(gone) }
+        let scale = MacTheme.UIScale.factor
+        if let drawn, drawn.rows == rows, drawn.gone == marks, drawn.focus == board.focused?.id,
+            drawn.scale == scale
+        {
+            return
+        }
+        drawn = (rows, marks, board.focused?.id, scale)
         for view in row.arrangedSubviews {
             row.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
-        guard let section = board.sections.first(where: { $0.id == ForgeBoard.historyID }) else {
-            return
-        }
-        for (offset, item) in section.rows.enumerated() {
+        for (offset, item) in rows.enumerated() {
             let card = ForgeFilmCard()
-            card.render(item, gone: item.entry.flatMap(gone), focused: item.id == board.focused?.id)
+            card.render(item, gone: marks[offset], focused: item.id == board.focused?.id)
             card.onPress = { [weak self] in self?.onActivate?(offset) }
             if let entry = item.entry {
                 card.onMenu = { [weak self, weak card] point in
@@ -445,9 +478,12 @@ final class ForgeFilmCard: NSView {
     var onMenu: ((NSPoint) -> Void)?
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    private var focused = false
 
     init() {
         super.init(frame: .zero)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(paint), name: MacTheme.Chrome.didRepaint, object: nil)
         wantsLayer = true
         layer?.cornerRadius = MacTheme.Radius.control
         title.font = MacTheme.Ramp.font(.rowTitle)
@@ -479,15 +515,27 @@ final class ForgeFilmCard: NSView {
         title.stringValue = row.title
         detail.stringValue = gone ?? row.detail
         detail.textColor = gone == nil ? MacTheme.Color.tertiaryLabel : MacTheme.Color.danger
+        self.focused = focused
+        paint()
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("\(row.title), \(gone ?? row.detail)")
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        paint()
+    }
+
+    /// The card's ground is a layer colour resolved under one light, and the strip is only rebuilt
+    /// when a clip changes, so the card repaints itself when the light or the theme does.
+    @objc private func paint() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor =
                 focused
                 ? MacTheme.Color.accent.withAlphaComponent(0.18).cgColor
                 : MacTheme.Color.canvasRaised.cgColor
         }
-        setAccessibilityElement(true)
-        setAccessibilityRole(.button)
-        setAccessibilityLabel("\(row.title), \(gone ?? row.detail)")
     }
 
     override func mouseDown(with event: NSEvent) {}
@@ -497,5 +545,50 @@ final class ForgeFilmCard: NSView {
     }
     override func rightMouseDown(with event: NSEvent) {
         onMenu?(convert(event.locationInWindow, from: nil))
+    }
+}
+
+/// The render's own bar, drawn only where the board handed a fraction over. Submitting and queueing
+/// carry none on purpose — there is nothing honest to fill — so those states get the word in the
+/// corner and no bar at all rather than a bar that has not moved for twelve seconds.
+@MainActor
+final class ForgeBarView: NSView {
+    var fraction: Double = 0 {
+        didSet {
+            guard fraction != oldValue else { return }
+            needsDisplay = true
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.init(1), for: .horizontal)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: 5 * MacTheme.UIScale.factor)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let radius = bounds.height / 2
+        let track = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
+        MacTheme.Color.canvasRaised.setFill()
+        track.fill()
+        let width = bounds.width * CGFloat(min(max(fraction, 0), 1))
+        guard width > 0 else { return }
+        let filled = NSRect(
+            x: bounds.minX, y: bounds.minY, width: max(width, bounds.height),
+            height: bounds.height)
+        MacTheme.Color.accent.setFill()
+        NSBezierPath(roundedRect: filled, xRadius: radius, yRadius: radius).fill()
     }
 }
