@@ -344,7 +344,7 @@ enum MacDialogs {
 }
 
 private final class TopAnchoredClipView: NSClipView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 }
 
 /// A one-line field whose text belongs to a box rather than to the sheet it is standing in: it

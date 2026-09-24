@@ -3806,7 +3806,7 @@ final class TranscriptViewController: NSViewController {
 /// A clip view whose origin is the top, so a transcript grows downwards like a terminal instead
 /// of upwards like a default AppKit document.
 private final class FlippedClipView: NSClipView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 }
 
 /// Forwards drag-destination events to the transcript so the tiling host can treat every pane as

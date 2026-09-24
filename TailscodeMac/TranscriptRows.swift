@@ -1683,7 +1683,7 @@ enum RowKit {
     }
 
     final class FlippedClip: NSClipView {
-        override var isFlipped: Bool { true }
+        nonisolated override var isFlipped: Bool { true }
     }
 }
 

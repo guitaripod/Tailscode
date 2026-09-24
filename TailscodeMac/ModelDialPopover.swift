@@ -702,5 +702,5 @@ private final class DialRungView: NSView {
 /// opens on its first row.
 @MainActor
 private final class FlippedStackView: NSStackView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 }

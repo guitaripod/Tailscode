@@ -63,7 +63,7 @@ final class FillingStack: NSStackView {
         fatalError("init(coder:) is not available")
     }
 
-    override var isFlipped: Bool { topDown }
+    nonisolated override var isFlipped: Bool { topDown }
 
     override func addArrangedSubview(_ view: NSView) {
         super.addArrangedSubview(view)
