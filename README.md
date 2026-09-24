@@ -65,7 +65,7 @@ Exhaustiveness forces disclosure, not implementation — `.gap("later")` compile
 
 **iPhone and Mac** — [App Store](https://apps.apple.com/app/tailscode/id6791660932); one purchase covers both. The Mac can also be built ad-hoc, unsandboxed: `scripts/install-macapp.sh` replaces `/Applications/Tailscode.app`.
 
-**Arch** — [tailscode](https://aur.archlinux.org/packages/tailscode) builds the `v1.57` tag; [tailscode-git](https://aur.archlinux.org/packages/tailscode-git) tracks master.
+**Arch** — [tailscode](https://aur.archlinux.org/packages/tailscode) builds the `v1.60` tag; [tailscode-git](https://aur.archlinux.org/packages/tailscode-git) tracks master.
 
 ```bash
 paru -S tailscode

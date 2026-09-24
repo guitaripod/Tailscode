@@ -69,6 +69,20 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.60" date="2026-09-24">
+      <description>
+        <p>Quick Ask opens on your machine&#x27;s own models, and long chats draw their tool rows faster.</p>
+        <p>Fixes:</p>
+        <ul>
+          <li>Quick Ask&#x27;s model menu lists the models of the machine it is aimed at when you have not picked one yet, instead of only Server default.</li>
+          <li>Pointing Quick Ask at another machine stops following the previous machine&#x27;s models.</li>
+        </ul>
+        <p>Faster:</p>
+        <ul>
+          <li>A folded run of tool calls counts the lines its edits changed without reading every tool&#x27;s whole output, so long chats draw their tool rows faster.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.59" date="2026-09-24">
       <description>
         <p>Mac servers ask for Full Disk Access once, and streaming answers take less work.</p>
