@@ -124,7 +124,9 @@ final class SidebarViewController: NSViewController {
     private var holdGeneration = 0
     private static let pointerHoldCeiling: TimeInterval = 1.2
     private var refreshTask: Task<Void, Never>?
-    private var listStreamTasks: [Task<Void, Never>] = []
+    /// One live listing per server, keyed by the profile it was opened for, so a server removed,
+    /// re-added or re-addressed gets its stream replaced rather than kept.
+    private var listStreams: [String: (profile: ConnectionProfile, task: Task<Void, Never>)] = [:]
     private var suppressSelectionSync = false
     private var menuModel: SessionRowModel?
     /// The remembered split a context menu was opened on, held for the same reason `menuModel` is.
@@ -233,7 +235,7 @@ final class SidebarViewController: NSViewController {
     override func viewDidAppear() {
         super.viewDidAppear()
         startRefreshing()
-        startListStreamsIfNeeded()
+        syncListStreams()
     }
 
     override func viewDidDisappear() {
@@ -244,6 +246,7 @@ final class SidebarViewController: NSViewController {
 
     func refresh() async {
         ServerDirectory.shared.reload()
+        syncListStreams()
         let (fresh, down) = await ServerDirectory.shared.entries(knownDirectories: recentDirectories)
         if !fresh.isEmpty { SessionListCache.scheduleSave(fresh) }
         await SavedChatSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
@@ -574,24 +577,33 @@ final class SidebarViewController: NSViewController {
 
     /// A proto-2 bridge pushes list changes the moment they happen; the 10-second poll survives
     /// only as reachability detection and as the whole story for older servers.
-    private func startListStreamsIfNeeded() {
-        guard listStreamTasks.isEmpty else { return }
-        for profile in ServerDirectory.shared.profiles {
+    ///
+    /// The streams follow the profiles rather than the launch. Opened once, a stream outlived its
+    /// server's removal: a machine removed and added again kept speaking under the old profile's
+    /// id, so every turn it ran upserted a second copy of the conversation into the list.
+    private func syncListStreams() {
+        let profiles = ServerDirectory.shared.profiles
+        for (id, stream) in listStreams where !profiles.contains(stream.profile) {
+            stream.task.cancel()
+            listStreams[id] = nil
+        }
+        for profile in profiles where listStreams[profile.id] == nil {
             guard let backend = ServerDirectory.shared.backend(for: profile),
                 let streaming = backend as? SessionListStreaming
             else { continue }
-            listStreamTasks.append(
-                Task { [weak self] in
-                    guard let changes = await streaming.sessionListChanges() else { return }
-                    for await change in changes {
-                        guard let self, !Task.isCancelled else { return }
-                        self.applyListChange(change, profile: profile)
-                    }
-                })
+            let task = Task { [weak self] in
+                guard let changes = await streaming.sessionListChanges() else { return }
+                for await change in changes {
+                    guard let self, !Task.isCancelled else { return }
+                    self.applyListChange(change, profile: profile)
+                }
+            }
+            listStreams[profile.id] = (profile, task)
         }
     }
 
     private func applyListChange(_ change: SessionListChange, profile: ConnectionProfile) {
+        guard listStreams[profile.id]?.profile == profile else { return }
         switch change {
         case .upsert(let session):
             let entry = SessionEntry(

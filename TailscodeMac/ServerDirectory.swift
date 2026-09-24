@@ -28,8 +28,17 @@ final class ServerDirectory {
         reload()
     }
 
+    /// Re-reads the profiles, keeping the backend of every server whose profile did not change.
+    /// The chat list reloads on every sweep, and dropping every backend each time handed each
+    /// sweep fresh connections and an empty transcript cache, and left the list's live streams
+    /// talking to backends nobody else held.
     func reload() {
-        backends = [:]
+        let before = profiles
+        defer {
+            backends = backends.filter { id, _ in
+                profiles.first { $0.id == id } == before.first { $0.id == id }
+            }
+        }
         if let (profile, password) = Self.environmentProfile() {
             profiles = [profile]
             ephemeralPasswords = [profile.id: password].compactMapValues { $0 }
@@ -103,6 +112,7 @@ final class ServerDirectory {
             throw ProRequired()
         }
         try store.save(profile, password: password)
+        backends[profile.id] = nil
         if isDemoMode { leaveDemoMode() } else { reload() }
     }
 
