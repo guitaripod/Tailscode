@@ -130,7 +130,8 @@ enum Kit {
     /// wait a turn sits out, winds a conversation back to a message with the way back open, and
     /// lets opencode 2 report its own cut-off turns and session usage. 0.33.0 reads what a Mac
     /// server's agents are allowed to touch — Full Disk Access — and asks it to open the pane.
-    static let version = Version(0, 33, 0)
+    /// 0.33.1 finds a password an ad-hoc Mac build saved.
+    static let version = Version(0, 33, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
