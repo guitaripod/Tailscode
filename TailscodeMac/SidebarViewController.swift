@@ -669,6 +669,8 @@ final class SidebarViewController: NSViewController {
             holdRender()
             return
         }
+        let interval = Pace.signposter.beginInterval("list")
+        defer { Pace.signposter.endInterval("list", interval) }
         let savedChats = SavedChatStore.all()
         let saved = Set(savedChats.map(\.sessionID))
         let unread = SessionSeenStore.unreadEvaluator()

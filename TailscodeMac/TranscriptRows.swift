@@ -1777,6 +1777,8 @@ final class DisclosureRow: NSView, KeyboardPressable {
     }
 
     private func toggle() {
+        let interval = Pace.signposter.beginInterval("expand")
+        defer { Pace.signposter.endInterval("expand", interval) }
         if let body {
             body.isHidden = !body.isHidden
             setAccessibilityExpanded(!body.isHidden)

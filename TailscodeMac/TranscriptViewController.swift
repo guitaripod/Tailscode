@@ -592,6 +592,7 @@ final class TranscriptViewController: NSViewController {
         hoverBar.dismiss()
         guard self.entry?.session.id != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
+        beginOpenJourney()
         onStopWatch?(SessionPinStore.key(entry.profileID, entry.session.id))
         keepPage(of: self.entry)
         let previousEntry = self.entry
@@ -661,6 +662,7 @@ final class TranscriptViewController: NSViewController {
         if let kept = keptPages.removeValue(forKey: pageKey) {
             keptOrder.removeAll { $0 == pageKey }
             restorePage(kept)
+            endOpenJourney(as: "kept")
         } else if let remembered = sessionRows[entry.session.id] {
             placeholderShown = true
             lastFullRows = remembered
@@ -1847,6 +1849,8 @@ final class TranscriptViewController: NSViewController {
     /// four hundred rows and a multi-second lockup for four thousand. The rest waits behind one
     /// button that widens the window — the full rows are kept, so nothing is refetched.
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
+        let interval = Pace.signposter.beginInterval("apply")
+        defer { Pace.signposter.endInterval("apply", interval) }
         noteHapticEdges(state: state, rows: rows)
         lastState = state
         if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
@@ -2825,6 +2829,7 @@ final class TranscriptViewController: NSViewController {
         if revealing {
             pendingReveal = false
             canvas.alphaValue = 1
+            endOpenJourney(as: "tail")
         }
         syncJumpPill()
         scheduleImageSweep()
@@ -2889,6 +2894,26 @@ final class TranscriptViewController: NSViewController {
             }
         }
         return nil
+    }
+
+    /// The click on a chat and the moment its words are on screen, measured end to end: from the
+    /// open to the first batch revealed, or to a kept page put back. A chat that opens on its
+    /// placeholder keeps the journey going until its rows arrive, because that wait is the one a
+    /// person sat through.
+    private var openJourney: (started: CFTimeInterval, interval: OSSignpostIntervalState)?
+
+    private func beginOpenJourney() {
+        if let journey = openJourney { Pace.signposter.endInterval("open", journey.interval) }
+        openJourney = (CACurrentMediaTime(), Pace.signposter.beginInterval("open"))
+    }
+
+    private func endOpenJourney(as kind: StaticString) {
+        guard let journey = openJourney else { return }
+        openJourney = nil
+        Pace.signposter.endInterval("open", journey.interval)
+        let elapsed = Int((CACurrentMediaTime() - journey.started) * 1000)
+        Pace.log.notice(
+            "journey open \(elapsed, privacy: .public)ms \(kind, privacy: .public) rows=\(self.renderedRows.count, privacy: .public)")
     }
 
     /// A chat opened is shown the moment the rows the window actually holds are up, rather than
