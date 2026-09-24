@@ -1587,7 +1587,10 @@ public struct ModelChooser: Sendable, Equatable {
 
     /// What a menu offers a device that has picked nothing yet. There is no history to show and an
     /// empty menu teaches nothing, so it opens on the models the machines run themselves — the ones
-    /// that cost nothing to try — one per model rather than one per server offering it.
+    /// that cost nothing to try — one per model rather than one per server offering it. A fleet
+    /// that runs nothing itself (a Claude bridge serves only Anthropic's models) opens on the aimed
+    /// machine's own catalog instead, because a menu holding nothing but "Server default" read as
+    /// a machine with no models at all.
     private static func seedUntouched(
         _ candidates: [ModelCandidate], admit: (ModelCandidate?) -> Void
     ) {
@@ -1596,6 +1599,8 @@ public struct ModelChooser: Sendable, Equatable {
             guard seen.insert(candidate.name.lowercased()).inserted else { continue }
             admit(candidate)
         }
+        guard seen.isEmpty else { return }
+        for candidate in candidates where !candidate.isElsewhere { admit(candidate) }
     }
 
     public static func shortlist(
@@ -1879,6 +1884,23 @@ public enum ModelChooserCheck {
         expect(
             untouched.count == 1 && untouched.first?.name == "Qwen3",
             "a device that has picked nothing opens on what the machines run themselves, once per model")
+
+        let hosted = ModelSource(
+            profileID: "bridge", name: "bridge", backend: .claudeCode,
+            models: [
+                ModelInfo(id: "opus", name: "Opus", providerID: "anthropic"),
+                ModelInfo(id: "sonnet", name: "Sonnet", providerID: "anthropic"),
+            ],
+            isCurrent: true, allowsServerDefault: true, acceptsAnyModelID: true)
+        let elsewhere = ModelSource(
+            profileID: "other", name: "other", backend: .claudeCode,
+            models: [ModelInfo(id: "haiku", name: "Haiku", providerID: "anthropic")],
+            isCurrent: false, allowsServerDefault: true, acceptsAnyModelID: true)
+        let hostedOnly = ModelChooser.shortlist(
+            sources: [hosted, elsewhere], selected: nil, limit: 8, recents: [], favorites: [])
+        expect(
+            hostedOnly.map(\.name) == ["Opus", "Sonnet"],
+            "a fleet that runs nothing itself opens on the aimed machine's own models, not an empty menu")
 
         fleet.search("claude-opus-4-5-20260101")
         expect(fleet.emptyResult == nil, "a name the catalog lacks is not the end of the list")

@@ -62,6 +62,7 @@ final class QuickAskPanel: NSPanel {
     private var dialPopover: ModelDialPopover?
     private var dialClosedAt: Date?
     private var catalogWatch: Task<Void, Never>?
+    private var watchedServerID: String?
     private var commandFetch: Task<Void, Never>?
     private let onAsk:
         (String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void)
@@ -608,8 +609,13 @@ final class QuickAskPanel: NSPanel {
 
     /// The catalog is asked once per aim, in the background: a server that has never been
     /// opened has an empty cache, and a model chip hidden for that read as "this server has
-    /// no models" when the truth was only that nobody had asked yet.
+    /// no models" when the truth was only that nobody had asked yet. Once per aim is the whole
+    /// contract — every reading redraws the aim, and a redraw that restarted the watch was a watch
+    /// whose first reading restarted it again, rebuilding the open dial under the pointer faster
+    /// than a click could land on a row.
     private func watchCatalog() {
+        guard watchedServerID != targetServer.id else { return }
+        watchedServerID = targetServer.id
         catalogWatch?.cancel()
         catalogWatch = Task { [weak self] in
             guard let self else { return }
@@ -627,6 +633,7 @@ final class QuickAskPanel: NSPanel {
 
     private func openModelDirectoryNow() {
         let server = targetServer
+        watchedServerID = server.id
         catalogWatch?.cancel()
         catalogWatch = Task { [weak self] in
             guard let self else { return }

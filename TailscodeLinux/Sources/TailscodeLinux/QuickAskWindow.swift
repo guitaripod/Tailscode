@@ -582,7 +582,7 @@ final class QuickAskWindow: @unchecked Sendable {
     private func watchCatalog() {
         catalogWatch?.cancel()
         let server = targetServer
-        Task { [weak self] in
+        catalogWatch = Task { [weak self] in
             let profiles = await ServerDirectory.shared.profiles()
             guard let profile = profiles.first(where: { $0.id == server.id }),
                 let backend = await ServerDirectory.shared.backend(for: profile)
