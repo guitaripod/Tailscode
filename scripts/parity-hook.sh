@@ -11,5 +11,12 @@ problems=$(./scripts/parity.sh --check 2>&1)
 if [[ $? -ne 0 ]]; then
   detail=$(printf '%s' "$problems" | head -12 | tr '\n' ' ' | sed 's/"/\\"/g')
   printf '{"decision": "block", "reason": "The parity manifests are invalid — fix them before stopping (scripts/parity.sh): %s"}\n' "$detail"
+  exit 0
+fi
+
+stale=$(./scripts/readme-check.sh 2>&1)
+if [[ $? -ne 0 ]]; then
+  detail=$(printf '%s' "$stale" | head -8 | tr '\n' ' ' | sed 's/"/\\"/g')
+  printf '{"decision": "block", "reason": "Remove the version numbers from README.md before stopping (scripts/readme-check.sh): %s"}\n' "$detail"
 fi
 exit 0
