@@ -1544,6 +1544,26 @@ enum SelfTest {
             PresenceOrbView().frameRate == Int(ActivityTuning.frameRate),
             "and the creature at the foot of the sidebar is drawn at it, not at the panel's rate")
 
+        let badge = ActivityBadgeView(pointSize: 11)
+        badge.frame = NSRect(x: 0, y: 60, width: 16, height: 16)
+        window.contentView?.addSubview(badge)
+        badge.show(ActivityIcon(symbol: "terminal", glyph: "•", tone: .live, motion: .working), spoken: nil)
+        let breath = badge.symbolLayer?.animation(forKey: "pulse.light")
+        try expect(
+            (breath != nil) == moving && breath.map { $0.preferredFrameRateRange == tempo } ?? true,
+            "a breathing badge's light is a lap the render server keeps, at the tempo")
+        badge.show(ActivityIcon(symbol: "gearshape", glyph: "◐", tone: .live, motion: .turning), spoken: nil)
+        try expect(
+            (badge.symbolLayer?.animation(forKey: "pulse.turn") != nil) == moving
+                && badge.symbolLayer?.animation(forKey: "pulse.light") == nil,
+            "a sweeping badge turns its symbol's layer rather than drawing it again every frame")
+        try expect(
+            badge.symbolLayer.map { $0.anchorPoint == CGPoint(x: 0.5, y: 0.5) } ?? false,
+            "about its centre, so the symbol turns in place rather than orbiting its corner")
+        badge.show(ActivityIcon(symbol: "checkmark", glyph: "✓", tone: .quiet, motion: .still), spoken: nil)
+        try expect(!badge.isMoving, "and a settled badge carries nothing that moves")
+        badge.removeFromSuperview()
+
         let card = PendingCards.compacting(startedAt: Date(), waiting: false) { _ in }
         guard let carried = sweepBar(in: card) else {
             throw SelfTestFailure(

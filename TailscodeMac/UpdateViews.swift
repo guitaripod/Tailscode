@@ -589,8 +589,8 @@ private final class FactRow: NSView {
 ///
 /// A sweep is a rotation here rather than a cycle of glyphs, because this client draws pictures.
 /// The symbol turns inside a holder this view frames by hand, the way every other sweeping badge
-/// on this desk does: `frameCenterRotation` is about a view's centre and autolayout would undo it
-/// on the next pass, so the thing that turns is never the thing autolayout places.
+/// on this desk does: the holder's layer turns about its centre on the render server, and
+/// autolayout never places the thing that turns.
 @MainActor
 final class UpdateMarkView: NSView {
     private let holder = NSView()
@@ -602,12 +602,13 @@ final class UpdateMarkView: NSView {
         self.pointSize = pointSize
         super.init(frame: .zero)
         imageView.imageScaling = .scaleProportionallyDown
+        holder.wantsLayer = true
         holder.addSubview(imageView)
         addSubview(holder)
         setContentHuggingPriority(.required, for: .horizontal)
         setContentCompressionResistancePriority(.required, for: .horizontal)
         translatesAutoresizingMaskIntoConstraints = false
-        pulse.onTurn = { [weak self] degrees in self?.holder.frameCenterRotation = degrees }
+        pulse.turning = holder
     }
 
     @available(*, unavailable)
@@ -621,17 +622,14 @@ final class UpdateMarkView: NSView {
 
     override func layout() {
         super.layout()
-        let rotation = holder.frameCenterRotation
-        holder.frameCenterRotation = 0
         holder.frame = bounds
         imageView.frame = holder.bounds
-        holder.frameCenterRotation = rotation
+        pulse.recenter()
     }
 
     func apply(_ icon: ActivityIcon?) {
         guard let icon else {
             imageView.image = nil
-            holder.frameCenterRotation = 0
             pulse.apply(nil)
             return
         }
@@ -639,7 +637,6 @@ final class UpdateMarkView: NSView {
             .withSymbolConfiguration(
                 NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold))
         imageView.contentTintColor = icon.tone.color
-        if !icon.motion.isAnimated { holder.frameCenterRotation = 0 }
         pulse.apply(icon)
     }
 

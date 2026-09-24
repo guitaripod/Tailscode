@@ -93,12 +93,16 @@ extension CALayer {
 
 /// A hand on any view: it holds the state's motion and applies it to whatever the view shows.
 ///
-/// The clock is `CADisplayLink` on the view's own display, and the phase is read from that clock
-/// rather than counted from a start, so a segment that appears mid-turn arrives already in time
-/// with the row that has been breathing since the turn began. What a frame may change is the
-/// alpha and — only for a state that sweeps — the one leading glyph, whose four frames are the
-/// same width; nothing here re-measures, because a status band that reflows every frame is worse
-/// than one that does not move.
+/// Light and turning are laid on the view's layer and kept by the render server, so a row breathing
+/// in the list costs the app nothing per frame: the swell is the vocabulary's own arithmetic
+/// (`ActivityMotion.intensity`), sampled over one period and anchored to the most recent whole
+/// period of absolute time, so a segment that appears mid-turn arrives already in time with the row
+/// that has been breathing since the turn began, and every mark on the screen breathes as one hand.
+/// A symbol that sweeps turns its layer rather than its frame — turning a frame made AppKit draw
+/// the symbol again on every frame of every turn, which was most of what an idle window spent.
+/// Only the one leading glyph of a text mark that sweeps is a frame the app itself has to change,
+/// so only that keeps a display link, on the view's own display; its four frames are the same
+/// width, and nothing here re-measures.
 @MainActor
 final class ActivityPulse {
     private weak var view: NSView?
@@ -108,10 +112,12 @@ final class ActivityPulse {
     private var lastFrame = ""
     private var icon: ActivityIcon?
     private let onFrame: ((String) -> Void)?
-    /// For a view that can turn rather than swap glyphs: degrees, once a frame, only while the
-    /// state sweeps. A symbol turning is what a cycle of quarter-filled circles means in a client
-    /// that draws pictures instead of text.
-    var onTurn: ((CGFloat) -> Void)?
+    /// The view that turns while the state sweeps, for a mark that draws a picture rather than a
+    /// cycle of glyphs. It is framed by hand inside its mark, and its layer turns about its centre.
+    weak var turning: NSView?
+
+    private static let lightKey = "pulse.light"
+    private static let turnKey = "pulse.turn"
 
     init(view: NSView, onFrame: ((String) -> Void)? = nil) {
         self.view = view
@@ -138,8 +144,8 @@ final class ActivityPulse {
     }
 
     /// Re-applying the state a view is already wearing is a no-op: the band re-renders every
-    /// second while a turn runs, and tearing the clock down and building it again each time is how
-    /// a swell turns into a stutter.
+    /// second while a turn runs, and laying the motion on again each time is how a swell turns
+    /// into a stutter.
     func apply(_ icon: ActivityIcon?) {
         guard icon != self.icon else { return }
         self.icon = icon
@@ -147,36 +153,103 @@ final class ActivityPulse {
             stop()
             motion = .still
             cycle = []
-            view?.alphaValue = 1
             return
         }
         motion = icon.motion.honoring(reduceMotion: !Self.motionAllowed)
         cycle = icon.cycle
         lastFrame = ""
-        guard motion.isAnimated else {
-            stop()
-            view?.alphaValue = 1
-            return
-        }
         start()
     }
 
     func stop() {
         link?.invalidate()
         link = nil
+        view?.layer?.removeAnimation(forKey: Self.lightKey)
+        turning?.layer?.removeAnimation(forKey: Self.turnKey)
         view?.alphaValue = 1
     }
 
+    /// Whether anything is moving, for a harness that proves a settled mark holds still.
+    var isMoving: Bool {
+        link != nil || view?.layer?.animation(forKey: Self.lightKey) != nil
+            || turning?.layer?.animation(forKey: Self.turnKey) != nil
+    }
+
     private func start() {
-        guard link == nil, let view, view.window != nil else { return }
-        let link = view.displayLink(target: self, selector: #selector(step))
-        link.runAtActivityTempo()
-        link.add(to: .current, forMode: .common)
-        self.link = link
+        stop()
+        guard motion.isAnimated, let view, view.window != nil else { return }
+        let now = CACurrentMediaTime()
+        switch motion {
+        case .breath(let pulse), .heartbeat(let pulse):
+            view.wantsLayer = true
+            guard let layer = view.layer else { return }
+            layer.setRepeatingMotion(
+                light(period: pulse.period, samples: 64, from: now, on: layer),
+                forKey: Self.lightKey, meaning: motion)
+        case .sweep(let period):
+            if let turning {
+                turning.wantsLayer = true
+                recenter()
+                if let layer = turning.layer {
+                    layer.setRepeatingMotion(
+                        turn(period: period, from: now, on: layer), forKey: Self.turnKey,
+                        meaning: motion)
+                }
+            }
+            if onFrame != nil, !cycle.isEmpty {
+                let link = view.displayLink(target: self, selector: #selector(step))
+                link.runAtActivityTempo()
+                link.add(to: .current, forMode: .common)
+                self.link = link
+            }
+        case .still:
+            break
+        }
+    }
+
+    /// One period of the swell, sampled from the vocabulary's own arithmetic and begun at the most
+    /// recent whole period of absolute time, which is what keeps every mark in phase.
+    private func light(period: TimeInterval, samples: Int, from now: CFTimeInterval, on layer: CALayer)
+        -> CAKeyframeAnimation
+    {
+        let origin = (now / period).rounded(.down) * period
+        let lap = CAKeyframeAnimation(keyPath: "opacity")
+        lap.values = (0...samples).map {
+            NSNumber(value: motion.intensity(at: origin + period * Double($0) / Double(samples)))
+        }
+        lap.keyTimes = (0...samples).map { NSNumber(value: Double($0) / Double(samples)) }
+        lap.calculationMode = .linear
+        lap.duration = period
+        lap.repeatCount = .infinity
+        lap.beginTime = layer.convertTime(origin, from: nil)
+        return lap
+    }
+
+    /// One whole turn a period, clockwise, begun where every other turning mark's turn begins.
+    private func turn(period: TimeInterval, from now: CFTimeInterval, on layer: CALayer)
+        -> CABasicAnimation
+    {
+        let origin = (now / period).rounded(.down) * period
+        let lap = CABasicAnimation(keyPath: "transform.rotation.z")
+        lap.fromValue = 0
+        lap.toValue = -2 * Double.pi
+        lap.timingFunction = CAMediaTimingFunction(name: .linear)
+        lap.duration = period
+        lap.repeatCount = .infinity
+        lap.beginTime = layer.convertTime(origin, from: nil)
+        return lap
+    }
+
+    /// Puts the turning layer's pivot back at its centre. AppKit returns a view's anchor to its
+    /// corner whenever it frames the view again, and a symbol turning about its corner orbits.
+    func recenter() {
+        guard let turning, let layer = turning.layer else { return }
+        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        layer.position = CGPoint(x: turning.frame.midX, y: turning.frame.midY)
     }
 
     /// Called when the view lands in or leaves a window: a badge on a scrolled-away row keeps no
-    /// clock running, and one scrolled back into view picks the swell up where everything else is.
+    /// motion running, and one scrolled back into view picks the swell up where everything else is.
     func windowChanged() {
         guard motion.isAnimated else { return }
         view?.window == nil ? stop() : start()
@@ -187,12 +260,9 @@ final class ActivityPulse {
             stop()
             return
         }
-        let time = link.timestamp
-        view.alphaValue = motion.intensity(at: time)
-        if let onTurn {
-            onTurn(CGFloat(-motion.rotation(at: time) * 180 / .pi))
+        guard let frame = motion.frame(at: link.timestamp, of: cycle), frame != lastFrame else {
+            return
         }
-        guard let frame = motion.frame(at: time, of: cycle), frame != lastFrame else { return }
         lastFrame = frame
         onFrame?(frame)
     }
@@ -242,8 +312,8 @@ final class ActivityMarkLabel: NSTextField {
 @MainActor
 final class ActivityBadgeView: NSView {
     /// The symbol lives in a frame-positioned holder rather than a constrained one, because a
-    /// sweeping state turns it with `frameCenterRotation` — which is about the view's centre, and
-    /// which autolayout would undo on its next pass.
+    /// sweeping state turns the holder's layer about its centre, and autolayout placing the thing
+    /// that turns would move the pivot out from under it on its next pass.
     private let holder = NSView()
     private let imageView = NSImageView()
     private lazy var pulse = ActivityPulse(view: holder)
@@ -279,14 +349,20 @@ final class ActivityBadgeView: NSView {
     private(set) var icon: ActivityIcon?
     private var spoken: String?
 
+    /// Whether the badge is moving at all, and what its symbol's layer is carrying — for a harness
+    /// that proves the motion is the render server's rather than a clock of the app's own.
+    var isMoving: Bool { pulse.isMoving }
+    var symbolLayer: CALayer? { holder.layer }
+
     init(pointSize: CGFloat = 11) {
         self.pointSize = pointSize
         super.init(frame: .zero)
         wantsLayer = true
         imageView.imageScaling = .scaleProportionallyDown
+        holder.wantsLayer = true
         holder.addSubview(imageView)
         addSubview(holder)
-        pulse.onTurn = { [weak self] degrees in self?.holder.frameCenterRotation = degrees }
+        pulse.turning = holder
     }
 
     @available(*, unavailable)
@@ -298,11 +374,9 @@ final class ActivityBadgeView: NSView {
 
     override func layout() {
         super.layout()
-        let rotation = holder.frameCenterRotation
-        holder.frameCenterRotation = 0
         holder.frame = bounds
         imageView.frame = holder.bounds
-        holder.frameCenterRotation = rotation
+        pulse.recenter()
     }
 
     override func viewDidMoveToWindow() {
@@ -314,13 +388,11 @@ final class ActivityBadgeView: NSView {
         guard let icon else {
             imageView.image = nil
             isHidden = true
-            holder.frameCenterRotation = 0
             pulse.apply(nil)
             setAccessibilityElement(false)
             return
         }
         isHidden = false
-        holder.frameCenterRotation = 0
         let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
         imageView.image = NSImage(systemSymbolName: icon.symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)
