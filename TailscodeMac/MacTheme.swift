@@ -23,6 +23,12 @@ enum MacTheme {
         }
         static var separator: NSColor { ThemePalette.color(\.rule, system: .separatorColor) }
         static var canvas: NSColor { ThemePalette.color(\.canvas, system: .textBackgroundColor) }
+        /// What a window is filled with beneath everything it holds. The sidebar is Liquid Glass,
+        /// and glass shows what is behind it — a window left on the system grey kept the chat list
+        /// grey under every theme while the transcript beside it wore the palette.
+        static var windowGround: NSColor {
+            ThemePalette.color(\.canvas, system: .windowBackgroundColor)
+        }
         /// Every raised content surface: cards, code blocks, gauge tracks, chips.
         static var canvasRaised: NSColor {
             ThemePalette.color(\.canvasRaised, system: .quaternarySystemFill)
@@ -352,12 +358,19 @@ enum MacTheme {
             ThemePalette.invalidate()
             NSApp?.appearance = appearance
             for window in NSApp?.windows ?? [] { window.appearance = appearance }
+            for window in adopted.allObjects { window.backgroundColor = Color.windowGround }
             NotificationCenter.default.post(name: didRepaint, object: nil)
         }
 
+        /// Only the app's own windows take the ground. `NSApp.windows` also holds popovers, menus
+        /// and the system's own panels, whose fill is their material and must stay theirs.
         static func adopt(_ window: NSWindow) {
             window.appearance = appearance
+            window.backgroundColor = Color.windowGround
+            adopted.add(window)
         }
+
+        private static let adopted = NSHashTable<NSWindow>.weakObjects()
 
         /// Which of the theme's two faces to wear. Nothing pinned is `nil`, which is AppKit's own
         /// way of saying "follow the system" — and the palette face is then read back off the
