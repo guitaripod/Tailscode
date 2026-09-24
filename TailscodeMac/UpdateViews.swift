@@ -686,6 +686,7 @@ final class UpdateFooterView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(clicked)))
+        HoverPlate.attach(to: self)
         NotificationCenter.default.addObserver(
             self, selector: #selector(changed), name: MacUpdateWatch.didChange, object: nil)
         NotificationCenter.default.addObserver(
@@ -721,6 +722,8 @@ final class UpdateFooterView: NSView {
         onOpen?()
         return true
     }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     @objc private func changed() {
         render()

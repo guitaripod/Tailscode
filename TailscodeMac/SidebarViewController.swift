@@ -128,6 +128,11 @@ final class SidebarViewController: NSViewController {
     /// re-added or re-addressed gets its stream replaced rather than kept.
     private var listStreams: [String: (profile: ConnectionProfile, task: Task<Void, Never>)] = [:]
     private var suppressSelectionSync = false
+    /// The row the pointer is resting on, which wears a ground and — for a chat — its verbs. The
+    /// list is watched through one tracking area for the whole table rather than one per row, and
+    /// the row is read again whenever the list scrolls or redraws under a pointer standing still.
+    private var hoveredRow = -1
+    private lazy var hoverWatch = SidebarHoverWatch { [weak self] in self?.refreshHover() }
     private var menuModel: SessionRowModel?
     /// The remembered split a context menu was opened on, held for the same reason `menuModel` is.
     private var menuTab: SplitTabRow?
@@ -154,6 +159,7 @@ final class SidebarViewController: NSViewController {
         tableView.delegate = self
         tableView.target = self
         tableView.action = #selector(rowClicked)
+        hoverWatch.watch(tableView, scrolling: scrollView)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("main"))
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
@@ -793,6 +799,60 @@ final class SidebarViewController: NSViewController {
             tableView.reloadData()
         }
         reselect()
+        refreshHover()
+    }
+
+    /// Reads which row the pointer is over and puts the ground and the verbs there — after a
+    /// move, a scroll, or a redraw that put a different chat under a pointer standing still.
+    private func refreshHover() {
+        let row = hoverWatch.row(in: tableView)
+        let pressable = row >= 0 && row < rows.count && rows[row].isPressable
+        setHoveredRow(pressable ? row : -1, force: row == hoveredRow)
+    }
+
+    private func setHoveredRow(_ row: Int, force: Bool = false) {
+        guard row != hoveredRow || force else { return }
+        if hoveredRow >= 0, hoveredRow < tableView.numberOfRows, hoveredRow != row {
+            (tableView.rowView(atRow: hoveredRow, makeIfNecessary: false) as? SidebarRowView)?
+                .isHovered = false
+            (tableView.view(atColumn: 0, row: hoveredRow, makeIfNecessary: false)
+                as? SidebarSessionCell)?.setHovered(nil)
+        }
+        hoveredRow = row
+        guard row >= 0, row < tableView.numberOfRows else { return }
+        (tableView.rowView(atRow: row, makeIfNecessary: false) as? SidebarRowView)?.isHovered = true
+        (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarSessionCell)?
+            .setHovered(quickState(for: row))
+    }
+
+    /// Which way each of a chat row's verbs would go, read from the stores at the moment the
+    /// pointer arrives. Nil for anything that is not a single chat.
+    private func quickState(for row: Int) -> SidebarQuickState? {
+        guard row >= 0, row < rows.count, case .session(let model, _, _) = rows[row] else {
+            return nil
+        }
+        let entry = model.entry
+        return SidebarQuickState(
+            pinned: SessionPinStore.contains(profileID: entry.profileID, sessionID: entry.session.id),
+            saved: SavedChatStore.contains(entry),
+            archived: ArchivedChatStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id))
+    }
+
+    /// A verb pressed on a row: the same stores the context menu writes, and for the ellipsis the
+    /// context menu itself, opened under the button that asked for it.
+    private func performQuickAction(_ action: SidebarQuickAction, on entry: SessionEntry, from view: NSView) {
+        switch action {
+        case .pin: togglePinned(entry)
+        case .save: toggleSaved(entry)
+        case .archive: toggleArchived(entry)
+        case .more:
+            guard let row = rowIndex(of: entry.session.id) else { return }
+            let menu = NSMenu()
+            fillRowMenu(menu, row: row)
+            guard !menu.items.isEmpty else { return }
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 4), in: view)
+        }
     }
 
     /// The same rows in the same places, some of them saying something new: an age that crossed a
@@ -1311,7 +1371,7 @@ extension SidebarViewController: NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int)
         -> NSView?
     {
-        SidebarCellFactory.view(
+        let view = SidebarCellFactory.view(
             for: rows[row], in: tableView,
             onClearMissed: { [weak self] in self?.clearMissed() },
             onOpenMember: { [weak self] tab, index in
@@ -1325,6 +1385,20 @@ extension SidebarViewController: NSTableViewDelegate {
                 SessionSeenStore.markSeen(entry.entry.session.id)
                 self.onGoToMember?(entry.entry)
             })
+        if let cell = view as? SidebarSessionCell, case .session(let model, _, _) = rows[row] {
+            let entry = model.entry
+            cell.onQuickAction = { [weak self] action, sender in
+                self?.performQuickAction(action, on: entry, from: sender)
+            }
+            cell.setHovered(row == hoveredRow ? quickState(for: row) : nil)
+        }
+        return view
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let view = SidebarRowView()
+        view.isHovered = row == hoveredRow
+        return view
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
@@ -1372,10 +1446,14 @@ extension SidebarViewController: NSMenuDelegate {
     /// rename, fork and delete happens on the way, so an unreachable server's row still offers
     /// what works offline.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        fillRowMenu(menu, row: tableView.clickedRow)
+    }
+
+    /// The menu for one row, whether a right-click opened it or the row's ellipsis did.
+    private func fillRowMenu(_ menu: NSMenu, row: Int) {
         menu.removeAllItems()
         menuModel = nil
         menuBackend = nil
-        let row = tableView.clickedRow
         guard row >= 0, row < rows.count else { return }
         if case .tab(let model, _) = rows[row] {
             buildTabMenu(menu, for: model)

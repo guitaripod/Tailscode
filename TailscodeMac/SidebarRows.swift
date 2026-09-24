@@ -42,6 +42,52 @@ enum SidebarRow: Equatable {
         default: return false
         }
     }
+
+    /// Whether a press on the row does something, which is what earns it a ground under the
+    /// pointer. A heading, a banner and an empty list's sentence are read, not pressed.
+    var isPressable: Bool {
+        switch self {
+        case .banner, .header, .empty, .missedHeader: return false
+        default: return true
+        }
+    }
+}
+
+/// The verbs a chat row offers to a pointer resting on it, without a right-click: the ones
+/// somebody reaches for most, and the way into the rest.
+enum SidebarQuickAction {
+    case pin
+    case save
+    case archive
+    case more
+}
+
+/// Which way each verb would go if pressed now, read when the pointer arrives rather than kept on
+/// the row, because the stores can change under a row that is not being redrawn.
+struct SidebarQuickState: Equatable {
+    var pinned: Bool
+    var saved: Bool
+    var archived: Bool
+}
+
+/// A row that comes up under the pointer. The ground is the cell's own shape — the same rounded
+/// rectangle a marked row is washed in — so a hovered row and a marked one read as the same kind
+/// of fact at two strengths, and a selected row keeps the system's selection to itself.
+@MainActor
+final class SidebarRowView: NSTableRowView {
+    var isHovered = false {
+        didSet { if isHovered != oldValue { needsDisplay = true } }
+    }
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        super.drawBackground(in: dirtyRect)
+        guard isHovered, !isSelected else { return }
+        let shape = numberOfColumns > 0 ? (view(atColumn: 0) as? NSView)?.frame ?? bounds : bounds
+        NSColor.labelColor.withAlphaComponent(0.06).setFill()
+        NSBezierPath(
+            roundedRect: shape, xRadius: MacTheme.Radius.control, yRadius: MacTheme.Radius.control
+        ).fill()
+    }
 }
 
 /// Builds and recycles the table's cells, so the view controller stays about data and the cells
@@ -148,6 +194,14 @@ final class SidebarSessionCell: NSView {
     private var glyphWidth: NSLayoutConstraint?
     private var badgeWidth: NSLayoutConstraint?
     private var badgeHeight: NSLayoutConstraint?
+    /// The verbs a resting pointer is offered, standing where the age was: the one thing on the
+    /// row nobody needs while deciding what to do with it.
+    private let actions = NSStackView()
+    /// The title and the detail give way to the verbs while they are up, rather than running
+    /// underneath them.
+    private var actionRoom: [NSLayoutConstraint] = []
+    private var quickState: SidebarQuickState?
+    var onQuickAction: ((SidebarQuickAction, NSView) -> Void)?
 
     init() {
         super.init(frame: .zero)
@@ -194,6 +248,17 @@ final class SidebarSessionCell: NSView {
         self.badgeHeight = badgeHeight
         let titleFloor = title.widthAnchor.constraint(greaterThanOrEqualToConstant: 72)
         titleFloor.priority = .defaultHigh
+        let titleEnd = titleRow.trailingAnchor.constraint(equalTo: age.leadingAnchor, constant: -6)
+        titleEnd.priority = .init(999)
+        actions.orientation = .horizontal
+        actions.spacing = 2
+        actions.isHidden = true
+        actions.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(actions)
+        actionRoom = [
+            titleRow.trailingAnchor.constraint(lessThanOrEqualTo: actions.leadingAnchor, constant: -4),
+            detail.trailingAnchor.constraint(lessThanOrEqualTo: actions.leadingAnchor, constant: -4),
+        ]
         NSLayoutConstraint.activate([
             badge.centerXAnchor.constraint(equalTo: glyph.centerXAnchor),
             badge.centerYAnchor.constraint(equalTo: glyph.centerYAnchor, constant: 1),
@@ -204,8 +269,10 @@ final class SidebarSessionCell: NSView {
             glyphWidth,
             titleFloor,
             titleRow.leadingAnchor.constraint(equalTo: glyph.trailingAnchor, constant: 4),
-            titleRow.trailingAnchor.constraint(equalTo: age.leadingAnchor, constant: -6),
+            titleEnd,
             titleRow.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            actions.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            actions.centerYAnchor.constraint(equalTo: centerYAnchor),
             age.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             age.firstBaselineAnchor.constraint(equalTo: detail.firstBaselineAnchor),
             detail.leadingAnchor.constraint(equalTo: titleRow.leadingAnchor),
@@ -217,6 +284,72 @@ final class SidebarSessionCell: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The verbs come up with the pointer and go with it. `state` says which way each would go —
+    /// pinned shows the way out of the pin — and nil puts the age back.
+    func setHovered(_ state: SidebarQuickState?) {
+        guard state != quickState else { return }
+        quickState = state
+        guard let state else {
+            actions.isHidden = true
+            age.isHidden = false
+            NSLayoutConstraint.deactivate(actionRoom)
+            return
+        }
+        let verbs: [(SidebarQuickAction, String, String)] = [
+            (.pin, state.pinned ? "pin.slash" : "pin",
+             state.pinned ? Localized.text("Unpin") : Localized.text("Pin")),
+            (.save, state.saved ? "bookmark.fill" : "bookmark",
+             state.saved ? Localized.text("Unsave") : Localized.text("Save")),
+            (.archive, state.archived ? "tray.and.arrow.up" : "archivebox",
+             state.archived ? Localized.text("Unarchive") : Localized.text("Archive")),
+            (.more, "ellipsis", Localized.text("More")),
+        ]
+        actions.setViews(verbs.map { Self.quickButton($0.0, symbol: $0.1, tip: $0.2, cell: self) }, in: .leading)
+        age.isHidden = true
+        actions.isHidden = false
+        NSLayoutConstraint.activate(actionRoom)
+    }
+
+    /// Whether the verbs are up, for a harness that proves they come and go with the pointer.
+    var showsQuickActions: Bool { !actions.isHidden }
+
+    private static func quickButton(
+        _ action: SidebarQuickAction, symbol: String, tip: String, cell: SidebarSessionCell
+    ) -> NSButton {
+        let button = QuickButton { [weak cell] sender in cell?.onQuickAction?(action, sender) }
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)?
+            .withSymbolConfiguration(
+                NSImage.SymbolConfiguration(
+                    pointSize: (11 * MacTheme.UIScale.factor).rounded(), weight: .medium))
+        button.toolTip = tip
+        button.setAccessibilityLabel(tip)
+        return button
+    }
+
+    /// A borderless glyph that does not take the keyboard from the list it sits in.
+    private final class QuickButton: NSButton {
+        private let handler: (NSView) -> Void
+
+        init(handler: @escaping (NSView) -> Void) {
+            self.handler = handler
+            super.init(frame: .zero)
+            isBordered = false
+            imagePosition = .imageOnly
+            refusesFirstResponder = true
+            contentTintColor = MacTheme.Color.onGlassSecondary
+            target = self
+            action = #selector(fire)
+            translatesAutoresizingMaskIntoConstraints = false
+            let side = (18 * MacTheme.UIScale.factor).rounded()
+            widthAnchor.constraint(equalToConstant: side).isActive = true
+            heightAnchor.constraint(equalToConstant: side).isActive = true
+        }
+
+        @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+        @objc private func fire() { handler(self) }
+    }
 
     /// The width of the column the state is read in, held to the type scale: a well nailed to 16pt
     /// clips the very glyphs it exists to show once the ramp is stepped up, and leaves the symbol
@@ -951,4 +1084,49 @@ final class SidebarMessageCell: NSView {
             label.alignment = .center
         }
     }
+}
+
+/// One watch over the whole list, per the lesson every Mac app with a long outline learns: a
+/// tracking area per row costs the scroll and the redraw, while one area on the table's visible
+/// rect costs a lookup per move. It also answers the moves nobody makes — a scroll or a redraw
+/// that slides a different row under a pointer standing still.
+@MainActor
+final class SidebarHoverWatch: NSResponder {
+    private let onChange: () -> Void
+    private weak var scrollView: NSScrollView?
+
+    init(onChange: @escaping () -> Void) {
+        self.onChange = onChange
+        super.init()
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func watch(_ tableView: NSTableView, scrolling scrollView: NSScrollView) {
+        self.scrollView = scrollView
+        tableView.addTrackingArea(
+            NSTrackingArea(
+                rect: .zero,
+                options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self, userInfo: nil))
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView)
+    }
+
+    /// The row under the pointer, or -1 when the pointer is anywhere but over the list.
+    func row(in tableView: NSTableView) -> Int {
+        guard let window = tableView.window, let scrollView else { return -1 }
+        let location = window.mouseLocationOutsideOfEventStream
+        let inClip = scrollView.contentView.convert(location, from: nil)
+        guard scrollView.contentView.bounds.contains(inClip) else { return -1 }
+        return tableView.row(at: tableView.convert(location, from: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onChange() }
+    override func mouseMoved(with event: NSEvent) { onChange() }
+    override func mouseExited(with event: NSEvent) { onChange() }
+
+    @objc private func scrolled() { onChange() }
 }

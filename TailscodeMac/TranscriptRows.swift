@@ -820,6 +820,7 @@ struct TranscriptRow: Hashable {
         guard !send.isCommand, let edit = context.editQueued else { return column }
         let id = send.id
         column.addGestureRecognizer(RowKit.PressGesture { edit(id) })
+        HoverPlate.attach(to: column)
         return column
     }
 
@@ -1700,19 +1701,25 @@ enum RowKit {
 @MainActor
 final class DisclosureRow: NSView, KeyboardPressable {
     private let stack = FillingStack()
+    private let header: NSView
+    private let press: PressSurface
     private let makeBody: () -> NSView
     private let onToggle: (Bool, DisclosureRow) -> Void
     private var body: NSView?
 
     /// The header this row was built around, for a restate that writes into its labels.
-    var headerView: NSView? { stack.arrangedSubviews.first }
+    var headerView: NSView? { header }
     /// The body, if it has ever been opened — hidden while collapsed, never discarded.
     var bodyView: NSView? { body }
+    /// The header's pressable surface, for a harness that proves it answers the pointer.
+    var headerSurface: PressSurface { press }
 
     init(
         header: NSView, expanded: Bool, onToggle: @escaping (Bool, DisclosureRow) -> Void,
         makeBody: @escaping () -> NSView
     ) {
+        self.header = header
+        self.press = PressSurface(content: header)
         self.makeBody = makeBody
         self.onToggle = onToggle
         super.init(frame: .zero)
@@ -1726,8 +1733,8 @@ final class DisclosureRow: NSView, KeyboardPressable {
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-        stack.addArrangedSubview(header)
-        header.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(toggle)))
+        stack.addArrangedSubview(press)
+        press.onPress = { [weak self] in self?.toggle() }
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         let spoken = Self.spoken(header)
@@ -1769,7 +1776,7 @@ final class DisclosureRow: NSView, KeyboardPressable {
         return true
     }
 
-    @objc private func toggle() {
+    private func toggle() {
         if let body {
             body.isHidden = !body.isHidden
             setAccessibilityExpanded(!body.isHidden)
@@ -1790,7 +1797,7 @@ final class DisclosureRow: NSView, KeyboardPressable {
     /// The header restated without rebuilding the row — what a thought counting its own words
     /// needs, since tearing the row down twenty times a second is the flicker, not the counting.
     func restate(header text: String) {
-        (stack.arrangedSubviews.first as? NSTextField)?.stringValue = text
+        (header as? NSTextField)?.stringValue = text
         setAccessibilityLabel(text)
     }
 

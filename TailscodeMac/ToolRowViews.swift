@@ -420,6 +420,7 @@ final class ClickToCopyLabel: NSTextField {
         toolTip = Localized.text("Click to copy")
         translatesAutoresizingMaskIntoConstraints = false
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        HoverPlate.attach(to: self)
     }
 
     @available(*, unavailable)

@@ -94,6 +94,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkPointerFeedback()
+            report("pointer: \(checks) claims hold — what can be pressed answers before the press")
+        } catch {
+            report("pointer: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkSubagentRow()
             report("subagent row: \(checks) claims hold — the clock stops with the call")
         } catch {
@@ -1042,6 +1050,99 @@ enum SelfTest {
         placed[0].isHidden = false
         root.layoutSubtreeIfNeeded()
         try expect(top(placed[2]) == placed[0].frame.height + 12, "and takes it back when shown")
+        return checks
+    }
+
+    /// What can be pressed answers the pointer before the press: a thought's header comes up under
+    /// the pointer, deepens on the press, opens on a release over it and not on one dragged away,
+    /// and takes the first click on a window that is not in front; a borderless button takes a
+    /// plate and gives it back; and a chat row trades its age for its verbs while it is hovered.
+    private static func checkPointerFeedback() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("pointer case failed: \(label)") }
+            checks += 1
+        }
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 300))
+        let window = NSWindow(
+            contentRect: root.frame, styleMask: [.borderless], backing: .buffered, defer: true)
+        window.contentView = root
+        func event(_ type: NSEvent.EventType, at point: NSPoint) -> NSEvent? {
+            switch type {
+            case .mouseEntered, .mouseExited:
+                return NSEvent.enterExitEvent(
+                    with: type, location: point, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                    trackingNumber: 0, userData: nil)
+            default:
+                return NSEvent.mouseEvent(
+                    with: type, location: point, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                    clickCount: 1, pressure: 1)
+            }
+        }
+
+        var opened = 0
+        let row = DisclosureRow(
+            header: RowKit.label(
+                "thought", font: MacTheme.Ramp.font(.toolName), color: MacTheme.Color.label),
+            expanded: false, onToggle: { open, _ in if open { opened += 1 } }
+        ) {
+            RowKit.label("body", font: MacTheme.Ramp.font(.cardBody), color: MacTheme.Color.label)
+        }
+        row.frame = NSRect(x: 20, y: 200, width: 400, height: 40)
+        root.addSubview(row)
+        root.layoutSubtreeIfNeeded()
+        let surface = row.headerSurface
+        let inside = surface.convert(NSPoint(x: surface.bounds.midX, y: surface.bounds.midY), to: nil)
+        let outside = NSPoint(x: 5, y: 5)
+
+        try expect(surface.acceptsFirstMouse(for: nil), "a header takes the first click on a window behind")
+        try expect(
+            surface.hitTest(surface.convert(inside, from: nil).applying(.identity)) != nil
+                && root.hitTest(root.convert(inside, from: nil)) === surface,
+            "a press anywhere on the header is a press on the header")
+        try expect(surface.plateLevel == .rest, "a header nobody points at wears nothing")
+        if let entered = event(.mouseEntered, at: inside) { surface.mouseEntered(with: entered) }
+        try expect(surface.plateLevel == .hover, "the pointer arriving brings the plate up")
+        if let down = event(.leftMouseDown, at: inside) { surface.mouseDown(with: down) }
+        try expect(surface.plateLevel == .press, "the button going down deepens it at once")
+        if let up = event(.leftMouseUp, at: outside) { surface.mouseUp(with: up) }
+        try expect(opened == 0 && row.bodyView == nil, "a press dragged away and let go opens nothing")
+        if let down = event(.leftMouseDown, at: inside) { surface.mouseDown(with: down) }
+        if let up = event(.leftMouseUp, at: inside) { surface.mouseUp(with: up) }
+        try expect(opened == 1 && row.bodyView != nil, "a release over the header opens the body")
+        try expect(surface.plateLevel == .hover, "and the plate settles back to the pointer")
+        if let exited = event(.mouseExited, at: outside) { surface.mouseExited(with: exited) }
+        try expect(surface.plateLevel == .rest, "the pointer leaving takes it away")
+
+        let button = RowKit.linkButton("copy") {}
+        button.frame = NSRect(x: 20, y: 20, width: 60, height: 20)
+        root.addSubview(button)
+        HoverPlate.attach(to: button)
+        HoverPlate.simulate(true, on: button)
+        try expect(HoverPlate.isShowing(on: button), "a borderless button takes a plate under the pointer")
+        HoverPlate.simulate(false, on: button)
+        try expect(!HoverPlate.isShowing(on: button), "and gives it back")
+        button.isEnabled = false
+        HoverPlate.simulate(true, on: button)
+        try expect(!HoverPlate.isShowing(on: button), "a button that cannot be pressed never offers to be")
+
+        let session = AgentSession(
+            id: "pointer-probe", agentType: .claudeCode, title: "pointer probe",
+            directory: "/tmp/pointer", createdAt: Date(), updatedAt: Date())
+        let entry = SessionEntry(
+            profileID: "probe", profileName: "probe", host: "probe", backendType: .claudeCode,
+            session: session)
+        let cell = SidebarSessionCell()
+        cell.configure(
+            with: SessionRowModel(entry: entry, unreachable: false, unread: false, saved: false),
+            marked: false)
+        try expect(!cell.showsQuickActions, "a chat row nobody points at shows its age")
+        cell.setHovered(SidebarQuickState(pinned: false, saved: true, archived: false))
+        try expect(cell.showsQuickActions, "a hovered chat row offers its verbs")
+        cell.setHovered(nil)
+        try expect(!cell.showsQuickActions, "and puts its age back when the pointer leaves")
         return checks
     }
 

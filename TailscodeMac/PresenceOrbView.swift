@@ -196,6 +196,8 @@ final class PresenceOrbView: NSView {
 
     @objc private func clicked() { onOpen?() }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     /// The touch is a click gesture, which the accessibility layer never sees — so a role of button
     /// would otherwise announce a control that nothing but a mouse could press.
     override func accessibilityPerformPress() -> Bool {

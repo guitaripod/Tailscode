@@ -88,6 +88,7 @@ final class ChooserRowView: NSView {
         layer?.cornerRadius = MacTheme.Radius.control
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
+        HoverPlate.attach(to: self, placement: .over, radius: MacTheme.Radius.control)
 
         number.font = MacTheme.Ramp.font(.rowNote)
         number.textColor = MacTheme.Color.tertiaryLabel
@@ -157,6 +158,8 @@ final class ChooserRowView: NSView {
             titleRow.addArrangedSubview(Self.pill(badge.text, tint: tint))
         }
     }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {}
 

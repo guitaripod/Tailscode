@@ -163,6 +163,9 @@ enum ImageRowView {
             imageView.addGestureRecognizer(
                 ClickRelay { open?(key, name) })
             imageView.onPress = { open?(key, name) }
+            HoverPlate.attach(
+                to: imageView, placement: .behind(NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)),
+                radius: 9)
             imageView.setAccessibilityRole(.button)
             imageView.setAccessibilityLabel(Localized.text("Open %@", name))
             imageView.toolTip = Localized.text("Open %@", name)
@@ -207,6 +210,8 @@ enum ImageRowView {
         override var acceptsFirstResponder: Bool { NSApp.isFullKeyboardAccessEnabled }
         override var canBecomeKeyView: Bool { NSApp.isFullKeyboardAccessEnabled }
         override var focusRingMaskBounds: NSRect { bounds }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
         override func drawFocusRingMask() {
             NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()

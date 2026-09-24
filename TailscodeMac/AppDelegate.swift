@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = MainWindowController()
         controller.showWindow(nil)
         main = controller
+        PointerSweep.install()
         let menu = MainMenu(hub: controller)
         menu.install()
         self.menu = menu
