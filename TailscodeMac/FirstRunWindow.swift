@@ -427,12 +427,89 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
             username: ProbeSweep.username(for: verified.agent))
         do {
             try ServerDirectory.shared.save(profile, password: password.isEmpty ? nil : password)
-            onSaved()
-            window?.close()
+            finishOrAskPermissions(profile: profile)
         } catch {
             diagnosisLabel.stringValue = Localized.text(
                 "Could not save: %@",
                 (error as? AgentError)?.errorDescription ?? error.localizedDescription)
         }
+    }
+
+    /// The machine just saved may be a Mac still missing a grant it needs to work anywhere in the
+    /// person's files — the checklist asks about that once, here, before first run calls itself
+    /// finished. A server too old for the route, a non-Mac, or one that already has everything
+    /// finishes exactly as it always did.
+    private func finishOrAskPermissions(profile: ConnectionProfile) {
+        guard
+            let backend = ServerDirectory.shared.backend(for: profile)
+                as? any PermissionReportingBackend
+        else {
+            onSaved()
+            window?.close()
+            return
+        }
+        Task { [weak self] in
+            let permissions = try? await backend.machinePermissions()
+            guard let self, !self.closed else { return }
+            guard MachinePermissionReading.needsAttention(permissions) else {
+                self.onSaved()
+                self.window?.close()
+                return
+            }
+            self.showPermissionsStep(backend: backend, permissions: permissions)
+        }
+    }
+
+    /// First run's fourth step: the same checklist the servers window carries per server, with
+    /// one way past it that never blocks — nothing breaks without the grant, it only asks more.
+    private func showPermissionsStep(
+        backend: any PermissionReportingBackend, permissions: MachinePermissions?
+    ) {
+        let column = NSStackView()
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = MacTheme.Spacing.s
+        column.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
+        column.translatesAutoresizingMaskIntoConstraints = false
+
+        let title = RowKit.label(
+            MachinePermissionReading.setupTitle, font: MacTheme.Ramp.font(.panelTitle),
+            color: MacTheme.Color.label)
+        column.addArrangedSubview(title)
+        let detail = RowKit.wrapping(
+            permissions.map(MachinePermissionReading.setupDetail)
+                ?? MachinePermissionReading.setupTitle,
+            font: MacTheme.Ramp.font(.panelDetail), color: MacTheme.Color.secondaryLabel)
+        column.addArrangedSubview(detail)
+        detail.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
+
+        let permissionsView = MachinePermissionsView(
+            backend: backend, showsHeader: false, initial: permissions)
+        permissionsView.onGranted = { [weak self] in
+            Task { [weak self] in
+                try? await Task.sleep(for: MachinePermissionReading.doneLinger)
+                guard let self, !self.closed else { return }
+                self.onSaved()
+                self.window?.close()
+            }
+        }
+        column.addArrangedSubview(permissionsView)
+        permissionsView.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40)
+            .isActive = true
+
+        let skip = RowKit.ActionButton(title: MachinePermissionReading.skip) { [weak self] in
+            self?.onSaved()
+            self?.window?.close()
+        }
+        let actions = NSStackView(views: [RowKit.spacer(), skip])
+        actions.orientation = .horizontal
+        actions.translatesAutoresizingMaskIntoConstraints = false
+        column.addArrangedSubview(actions)
+        actions.trailingAnchor.constraint(equalTo: column.trailingAnchor, constant: -20)
+            .isActive = true
+
+        window?.title = MachinePermissionReading.setupTitle
+        window?.contentView = MacDialogs.scrollColumn(holding: column)
+        window?.makeFirstResponder(nil)
     }
 }

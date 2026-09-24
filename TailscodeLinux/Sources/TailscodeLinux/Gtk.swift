@@ -201,6 +201,13 @@ enum Gtk {
         }
     }
 
+    /// A `Duration` as the millisecond count ``after(_:_:)`` wants.
+    static func milliseconds(_ duration: Duration) -> UInt32 {
+        let components = duration.components
+        let whole = components.seconds * 1000 + components.attoseconds / 1_000_000_000_000_000
+        return UInt32(clamping: whole)
+    }
+
     /// Runs `work` on the GLib main context after a delay — the timed cousin of ``onMain(_:)``.
     static func after(_ milliseconds: UInt32, _ work: @escaping @Sendable () -> Void) {
         let box = Unmanaged.passRetained(Box(work)).toOpaque()

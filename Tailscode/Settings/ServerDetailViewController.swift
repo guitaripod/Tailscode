@@ -7,7 +7,7 @@ import UIKit
 final class ServerDetailViewController: UIViewController {
     private var profile: ConnectionProfile
 
-    private enum Section: Int, CaseIterable { case info, status, software, defaults, delegate, actions }
+    private enum Section: Int, CaseIterable { case info, status, software, permissions, defaults, delegate, actions }
     private enum Item: Hashable {
         case value(label: String, value: String)
         case status(String)
@@ -16,6 +16,7 @@ final class ServerDetailViewController: UIViewController {
         case test
         case software
         case updateCenter
+        case permissions
         case makeDefault
         case isDefault
         case defaultModel
@@ -35,6 +36,9 @@ final class ServerDetailViewController: UIViewController {
     private var backend: (any CodingAgentBackend)?
     private var modelChoice = ModelChoice()
     private var auth: ServerAuth?
+    private var permissions: MachinePermissions?
+    private var permissionRequesting: MachinePermissions.Grant.Kind?
+    private var permissionPollTask: Task<Void, Never>?
 
     /// The reading this screen's software card renders, from the one ledger every surface renders
     /// from. Never this screen's own words and never its own asking: a press goes to
@@ -71,6 +75,16 @@ final class ServerDetailViewController: UIViewController {
         Task { await refresh() }
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        startPermissionPollingIfNeeded()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        stopPermissionPolling()
+    }
+
     @objc private func deskChanged() { reconfigure([.delegate]) }
 
     /// An answer landed for some machine — possibly this one, possibly from a sweep started on
@@ -99,6 +113,10 @@ final class ServerDetailViewController: UIViewController {
             self?.configure(cell, item)
         }
         let software = UICollectionView.CellRegistration<UpdateCardCell, Item> {
+            [weak self] cell, _, _ in
+            self?.configure(cell)
+        }
+        let permissions = UICollectionView.CellRegistration<MachinePermissionsCardCell, Item> {
             [weak self] cell, _, _ in
             self?.configure(cell)
         }
@@ -131,12 +149,17 @@ final class ServerDetailViewController: UIViewController {
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, item in
-            guard item == .software else {
+            switch item {
+            case .software:
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: software, for: indexPath, item: item)
+            case .permissions:
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: permissions, for: indexPath, item: item)
+            default:
                 return collectionView.dequeueConfiguredReusableCell(
                     using: cell, for: indexPath, item: item)
             }
-            return collectionView.dequeueConfiguredReusableCell(
-                using: software, for: indexPath, item: item)
         }
         dataSource.supplementaryViewProvider = { collectionView, kind, indexPath in
             let registration = kind == UICollectionView.elementKindSectionFooter ? footer : header
@@ -148,6 +171,8 @@ final class ServerDetailViewController: UIViewController {
     private func footerText(_ section: Section) -> String? {
         switch section {
         case .software:
+            return nil
+        case .permissions:
             return nil
         case .defaults:
             return String(
@@ -166,6 +191,7 @@ final class ServerDetailViewController: UIViewController {
         case .info: return String(localized: "Server")
         case .status: return String(localized: "Health")
         case .software: return String(localized: "Software")
+        case .permissions: return permissions.map(MachinePermissionReading.sectionTitle)
         case .defaults: return String(localized: "Defaults")
         case .delegate: return DelegateEntryPoint.title
         case .actions, .none: return nil
@@ -216,7 +242,7 @@ final class ServerDetailViewController: UIViewController {
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "antenna.radiowaves.left.and.right")
             content.imageProperties.tintColor = Theme.Color.accent
-        case .software:
+        case .software, .permissions:
             break
         case .updateCenter:
             content.text = String(localized: "All software updates")
@@ -288,6 +314,14 @@ final class ServerDetailViewController: UIViewController {
             guard let self, let cell, let reading = self.reading else { return }
             UpdatePress.setAutomation(enabled, for: reading, card: cell.card, from: self)
         }
+    }
+
+    /// The checklist for whatever this Mac's grants are missing, rendered from the one reading
+    /// every surface renders from and driven by this screen's own polling task.
+    private func configure(_ cell: MachinePermissionsCardCell) {
+        guard let permissions else { return }
+        cell.permissionsView.onRequest = { [weak self] kind in self?.requestPermission(kind) }
+        cell.permissionsView.apply(permissions, local: false, requesting: permissionRequesting)
     }
 
     /// The sign-in is the server's, so it is presented over this screen rather than pushed: it
@@ -432,7 +466,8 @@ final class ServerDetailViewController: UIViewController {
 
     private func applySnapshot() {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
-        snapshot.appendSections(Section.allCases)
+        let showsPermissions = MachinePermissionReading.isShown(permissions)
+        snapshot.appendSections(Section.allCases.filter { $0 != .permissions || showsPermissions })
         var info: [Item] = [
             .value(label: String(localized: "Backend"), value: profile.backend.displayName),
             .value(label: String(localized: "Host"), value: profile.baseURL.host ?? "—"),
@@ -463,6 +498,10 @@ final class ServerDetailViewController: UIViewController {
         snapshot.appendItems(statusItems, toSection: .status)
 
         if !isDemo { snapshot.appendItems([.software, .updateCenter], toSection: .software) }
+
+        if showsPermissions {
+            snapshot.appendItems([.permissions], toSection: .permissions)
+        }
 
         var defaults: [Item] = [
             ConnectionController.shared.activeProfileID == profile.id ? .isDefault : .makeDefault
@@ -518,6 +557,13 @@ final class ServerDetailViewController: UIViewController {
             }
             if profile.backend == .claudeCode, !isDemo {
                 auth = try? await (backend as? any AuthenticatingBackend)?.authStatus()
+                permissions = try? await (backend as? any PermissionReportingBackend)?
+                    .machinePermissions()
+                #if DEBUG
+                    if ProcessInfo.processInfo.environment["TAILSCODE_FAKE_PERMISSION_WAIT"] != nil {
+                        permissions?.requestedAt = Date()
+                    }
+                #endif
             }
         } catch {
             statusText = String(localized: "Unreachable")
@@ -525,6 +571,7 @@ final class ServerDetailViewController: UIViewController {
         }
         checkSoftware()
         applySnapshot()
+        startPermissionPollingIfNeeded()
         #if DEBUG
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SIGNIN"] != nil,
                 presentedViewController == nil
@@ -549,6 +596,71 @@ final class ServerDetailViewController: UIViewController {
                 }
             #endif
         }
+    }
+
+    /// The press: ask the machine to open its own Privacy & Security pane, log what happened, and
+    /// start the poll that notices the switch without a refresh gesture.
+    private func requestPermission(_ kind: MachinePermissions.Grant.Kind) {
+        guard let backend = backend as? any PermissionReportingBackend else { return }
+        permissionRequesting = kind
+        reconfigure([.permissions])
+        Theme.Haptics.tap()
+        AppLogger.connection.info("requesting \(kind.rawValue) on \(profile.name)")
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if let updated = try await backend.requestMachinePermission(kind) {
+                    self.permissions = updated
+                }
+                self.permissionRequesting = nil
+                self.reconfigure([.permissions])
+                self.startPermissionPollingIfNeeded()
+            } catch {
+                self.permissionRequesting = nil
+                self.reconfigure([.permissions])
+                AppLogger.connection.error(
+                    "permission request failed on \(self.profile.name): \(error)")
+                self.presentToast(MachinePermissionReading.requestFailed)
+            }
+        }
+    }
+
+    private func startPermissionPollingIfNeeded() {
+        guard let permissions, MachinePermissionReading.isWaiting(permissions),
+            permissionPollTask == nil
+        else { return }
+        permissionPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: MachinePermissionReading.pollInterval)
+                guard !Task.isCancelled, let self else { return }
+                await self.pollPermissions()
+            }
+        }
+    }
+
+    private func stopPermissionPolling() {
+        permissionPollTask?.cancel()
+        permissionPollTask = nil
+    }
+
+    private func pollPermissions() async {
+        guard let backend = backend as? any PermissionReportingBackend else {
+            stopPermissionPolling()
+            return
+        }
+        guard let updated = try? await backend.machinePermissions() else { return }
+        let wasWaiting = permissions.map { MachinePermissionReading.isWaiting($0) } ?? false
+        permissions = updated
+        reconfigure([.permissions])
+        if wasWaiting, updated.isComplete {
+            Theme.Haptics.success()
+            AppLogger.connection.info("permission granted on \(profile.name)")
+        }
+        if !MachinePermissionReading.isWaiting(updated) { stopPermissionPolling() }
+    }
+
+    private func presentToast(_ message: String) {
+        ToastView(message: message).flash(in: view, above: view.safeAreaLayoutGuide.bottomAnchor)
     }
 
     private func presentEditor() {

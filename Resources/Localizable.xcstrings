@@ -223196,6 +223196,1371 @@
           }
         }
       }
+    },
+    "Mac permissions": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac-Berechtigungen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac permissions"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permisos del Mac"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorisations du Mac"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permessi del Mac"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Macの権限"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac 권한"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permissões do Mac"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac 权限"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac 權限"
+          }
+        }
+      }
+    },
+    "Permissions on %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berechtigungen auf %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permissions on %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permisos en %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorisations sur %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permessi su %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@の権限"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@의 권한"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permissões em %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上的权限"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上的權限"
+          }
+        }
+      }
+    },
+    "Full Disk Access": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Festplattenvollzugriff"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full Disk Access"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acceso total al disco"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accès complet au disque"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accesso completo al disco"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フルディスクアクセス"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전체 디스크 접근 권한"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acesso Total ao Disco"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完全磁盘访问权限"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整磁碟取用權"
+          }
+        }
+      }
+    },
+    "Lets agents read and write your Documents, Desktop, Downloads and other apps' files. Without it, macOS stops a turn at a dialog on the Mac's screen, where nobody is looking.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erlaubt Agenten, deine Dokumente, deinen Schreibtisch, Downloads und die Dateien anderer Apps zu lesen und zu schreiben. Ohne diese Berechtigung stoppt macOS einen Durchlauf an einem Dialog auf dem Bildschirm des Mac — wo niemand hinschaut."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lets agents read and write your Documents, Desktop, Downloads and other apps' files. Without it, macOS stops a turn at a dialog on the Mac's screen, where nobody is looking."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permite que los agentes lean y escriban en tus Documentos, Escritorio, Descargas y los archivos de otras apps. Sin este permiso, macOS detiene un turno en un cuadro de diálogo en la pantalla del Mac, donde nadie está mirando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permet aux agents de lire et d'écrire dans vos Documents, Bureau, Téléchargements et les fichiers d'autres apps. Sans cela, macOS arrête un tour sur une boîte de dialogue affichée sur l'écran du Mac, où personne ne regarde."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consente agli agenti di leggere e scrivere nei tuoi Documenti, Scrivania, Download e nei file di altre app. Senza questo permesso, macOS blocca un turno su una finestra di dialogo sullo schermo del Mac, dove nessuno guarda."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントが書類、デスクトップ、ダウンロードや他のアプリのファイルを読み書きできるようになります。これがないと、macOSは誰も見ていないMacの画面上のダイアログでターンを止めてしまいます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 문서, 데스크탑, 다운로드 및 다른 앱의 파일을 읽고 쓸 수 있게 합니다. 이 권한이 없으면 macOS는 아무도 보고 있지 않은 Mac 화면의 대화 상자에서 작업을 멈춥니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permite que os agentes leiam e gravem em seus Documentos, Área de Trabalho, Downloads e arquivos de outros apps. Sem isso, o macOS interrompe uma rodada em uma caixa de diálogo na tela do Mac, onde ninguém está olhando."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许智能体读写你的文稿、桌面、下载项以及其他 App 的文件。没有此权限，macOS 会在 Mac 屏幕上一个没人看的对话框前把回合卡住。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允許代理程式讀寫你的文件、桌面、下載項目和其他 App 的檔案。沒有這項權限，macOS 會在 Mac 螢幕上一個沒人在看的對話框前把回合卡住。"
+          }
+        }
+      }
+    },
+    "On": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attivato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オン"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "켜짐"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ativado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟"
+          }
+        }
+      }
+    },
+    "Agents can work anywhere in your files": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenten können überall in deinen Dateien arbeiten"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agents can work anywhere in your files"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los agentes pueden trabajar en cualquier parte de tus archivos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les agents peuvent travailler partout dans vos fichiers"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli agenti possono lavorare ovunque nei tuoi file"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントはあなたのファイルのどこでも作業できます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 당신의 파일 어디에서든 작업할 수 있습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os agentes podem trabalhar em qualquer lugar dos seus arquivos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能体可以在你的任意文件中工作"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理可以在你的任何檔案中工作"
+          }
+        }
+      }
+    },
+    "%@ is off — agents will stop at dialogs on the Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ist aus — Agenten bleiben an Dialogen auf dem Mac hängen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is off — agents will stop at dialogs on the Mac"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ está desactivado — los agentes se detendrán en cuadros de diálogo en el Mac"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ est désactivé — les agents s'arrêteront sur des boîtes de dialogue sur le Mac"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ è disattivato — gli agenti si fermeranno su finestre di dialogo sul Mac"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ はオフです — エージェントはMac上のダイアログで止まります"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 꺼짐 — 에이전트가 Mac의 대화 상자에서 멈춥니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ está desativado — os agentes vão parar em caixas de diálogo no Mac"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已关闭 — 智能体会卡在 Mac 上的对话框前"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已關閉 — 代理會卡在 Mac 上的對話框前"
+          }
+        }
+      }
+    },
+    "Open System Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemeinstellungen öffnen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open System Settings"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Ajustes del Sistema"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir Réglages Système"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri Impostazioni di Sistema"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システム設定を開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시스템 설정 열기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Ajustes do Sistema"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开系统设置"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打開系統設定"
+          }
+        }
+      }
+    },
+    "Open on %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf %@ öffnen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open on %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir en %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir sur %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri su %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@で開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에서 열기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir em %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上打开"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上打開"
+          }
+        }
+      }
+    },
+    "Open on the Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf dem Mac öffnen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open on the Mac"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir en el Mac"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir sur le Mac"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri sul Mac"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Macで開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac에서 열기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir no Mac"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Mac 上打开"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Mac 上打開"
+          }
+        }
+      }
+    },
+    "System Settings is open at Privacy & Security → Full Disk Access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemeinstellungen ist bei Datenschutz & Sicherheit → Festplattenvollzugriff geöffnet."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System Settings is open at Privacy & Security → Full Disk Access."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes del Sistema está abierto en Privacidad y seguridad → Acceso total al disco."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réglages Système est ouvert sur Confidentialité et sécurité → Accès complet au disque."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impostazioni di Sistema è aperto su Privacy e sicurezza → Accesso completo al disco."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システム設定はプライバシーとセキュリティ → フルディスクアクセスで開いています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시스템 설정이 개인정보 보호 및 보안 → 전체 디스크 접근 권한에서 열려 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os Ajustes do Sistema estão abertos em Privacidade e segurança → Acesso Total ao Disco."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统设置已打开，位于隐私与安全性 → 完全磁盘访问权限。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系統設定已打開，位於隱私權與安全性 → 完整磁碟取用權。"
+          }
+        }
+      }
+    },
+    "System Settings is open on %@ at Privacy & Security → Full Disk Access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemeinstellungen ist auf %@ bei Datenschutz & Sicherheit → Festplattenvollzugriff geöffnet."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System Settings is open on %@ at Privacy & Security → Full Disk Access."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes del Sistema está abierto en %@ en Privacidad y seguridad → Acceso total al disco."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réglages Système est ouvert sur %@ sur Confidentialité et sécurité → Accès complet au disque."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impostazioni di Sistema è aperto su %@ su Privacy e sicurezza → Accesso completo al disco."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ でシステム設定がプライバシーとセキュリティ → フルディスクアクセスで開いています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에서 시스템 설정이 개인정보 보호 및 보안 → 전체 디스크 접근 권한에서 열려 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os Ajustes do Sistema estão abertos em %@ em Privacidade e segurança → Acesso Total ao Disco."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统设置已在 %@ 上打开，位于隐私与安全性 → 完全磁盘访问权限。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系統設定已在 %@ 上打開，位於隱私權與安全性 → 完整磁碟取用權。"
+          }
+        }
+      }
+    },
+    "System Settings is open on the Mac at Privacy & Security → Full Disk Access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemeinstellungen ist auf dem Mac bei Datenschutz & Sicherheit → Festplattenvollzugriff geöffnet."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System Settings is open on the Mac at Privacy & Security → Full Disk Access."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes del Sistema está abierto en el Mac en Privacidad y seguridad → Acceso total al disco."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réglages Système est ouvert sur le Mac sur Confidentialité et sécurité → Accès complet au disque."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impostazioni di Sistema è aperto sul Mac su Privacy e sicurezza → Accesso completo al disco."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Macでシステム設定がプライバシーとセキュリティ → フルディスクアクセスで開いています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac에서 시스템 설정이 개인정보 보호 및 보안 → 전체 디스크 접근 권한에서 열려 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os Ajustes do Sistema estão abertos no Mac em Privacidade e segurança → Acesso Total ao Disco."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统设置已在 Mac 上打开，位于隐私与安全性 → 完全磁盘访问权限。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系統設定已在 Mac 上打開，位於隱私權與安全性 → 完整磁碟取用權。"
+          }
+        }
+      }
+    },
+    "If %@ is in the list, switch it on. If not, drag it in from the Finder window beside it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn %@ in der Liste steht, schalte es ein. Falls nicht, ziehe es aus dem Finder-Fenster daneben hinein."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "If %@ is in the list, switch it on. If not, drag it in from the Finder window beside it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si %@ está en la lista, actívalo. Si no, arrástralo desde la ventana del Finder que está al lado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si %@ figure dans la liste, activez-le. Sinon, faites-le glisser depuis la fenêtre du Finder juste à côté."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se %@ è nell'elenco, attivalo. In caso contrario, trascinalo dalla finestra del Finder accanto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リストに %@ があればオンにします。なければ、隣のFinderウインドウからドラッグして追加します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목록에 %@가 있으면 켜세요. 없다면 옆에 있는 Finder 창에서 끌어다 놓으세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se %@ estiver na lista, ative-o. Se não estiver, arraste-o da janela do Finder ao lado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果列表里有 %@，把它打开。如果没有，从旁边的 Finder 窗口把它拖进去。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果清單裡有 %@，把它打開。如果沒有，從旁邊的 Finder 視窗把它拖進去。"
+          }
+        }
+      }
+    },
+    "macOS asks for your password or Touch ID. This screen notices when it's on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS fragt nach deinem Passwort oder Touch ID. Dieser Bildschirm bemerkt, wenn es aktiviert ist."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS asks for your password or Touch ID. This screen notices when it's on."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS te pedirá tu contraseña o Touch ID. Esta pantalla se da cuenta en cuanto esté activado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS vous demande votre mot de passe ou Touch ID. Cet écran remarque dès que c'est activé."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS chiederà la tua password o il Touch ID. Questa schermata se ne accorge non appena è attivo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOSがパスワードまたはTouch IDを求めます。オンになると、この画面が気づきます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS가 암호나 Touch ID를 요청합니다. 켜지면 이 화면이 바로 알아챕니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O macOS vai pedir sua senha ou Touch ID. Esta tela percebe assim que estiver ativado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 会要求输入密码或使用 Touch ID。它一打开，这个界面就会察觉到。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 會要求輸入密碼或使用 Touch ID。它一打開，這個畫面就會察覺到。"
+          }
+        }
+      }
+    },
+    "Done — agents on %@ can work anywhere in your files.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fertig — Agenten auf %@ können überall in deinen Dateien arbeiten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done — agents on %@ can work anywhere in your files."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listo — los agentes en %@ pueden trabajar en cualquier parte de tus archivos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminé — les agents sur %@ peuvent travailler partout dans vos fichiers."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fatto — gli agenti su %@ possono lavorare ovunque nei tuoi file."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完了 — %@ 上のエージェントはあなたのファイルのどこでも作業できます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "완료 — %@의 에이전트가 당신의 파일 어디에서든 작업할 수 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pronto — os agentes em %@ podem trabalhar em qualquer lugar dos seus arquivos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成 — %@ 上的智能体可以在你的任意文件中工作。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成 — %@ 上的代理可以在你的任何檔案中工作。"
+          }
+        }
+      }
+    },
+    "Done — agents can work anywhere in your files.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fertig — Agenten können überall in deinen Dateien arbeiten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done — agents can work anywhere in your files."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listo — los agentes pueden trabajar en cualquier parte de tus archivos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminé — les agents peuvent travailler partout dans vos fichiers."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fatto — gli agenti possono lavorare ovunque nei tuoi file."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完了 — エージェントはあなたのファイルのどこでも作業できます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "완료 — 에이전트가 당신의 파일 어디에서든 작업할 수 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pronto — os agentes podem trabalhar em qualquer lugar dos seus arquivos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成 — 智能体可以在你的任意文件中工作。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成 — 代理可以在你的任何檔案中工作。"
+          }
+        }
+      }
+    },
+    "The Mac didn't open System Settings. Open Privacy & Security → Full Disk Access on it and add claude-bridge.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Mac hat die Systemeinstellungen nicht geöffnet. Öffne dort Datenschutz & Sicherheit → Festplattenvollzugriff und füge claude-bridge hinzu."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Mac didn't open System Settings. Open Privacy & Security → Full Disk Access on it and add claude-bridge."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El Mac no abrió Ajustes del Sistema. Ábrelos ahí en Privacidad y seguridad → Acceso total al disco y añade claude-bridge."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le Mac n'a pas ouvert Réglages Système. Ouvrez-le sur Confidentialité et sécurité → Accès complet au disque et ajoutez claude-bridge."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il Mac non ha aperto Impostazioni di Sistema. Aprile lì su Privacy e sicurezza → Accesso completo al disco e aggiungi claude-bridge."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Macがシステム設定を開きませんでした。Mac上でプライバシーとセキュリティ → フルディスクアクセスを開き、claude-bridgeを追加してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac가 시스템 설정을 열지 못했습니다. Mac에서 개인정보 보호 및 보안 → 전체 디스크 접근 권한을 열고 claude-bridge를 추가하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Mac não abriu os Ajustes do Sistema. Abra-os nele em Privacidade e segurança → Acesso Total ao Disco e adicione o claude-bridge."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac 没有打开系统设置。在 Mac 上打开隐私与安全性 → 完全磁盘访问权限，然后添加 claude-bridge。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac 沒有打開系統設定。在 Mac 上打開隱私權與安全性 → 完整磁碟取用權，然後加入 claude-bridge。"
+          }
+        }
+      }
+    },
+    "Let agents into your files": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenten Zugriff auf deine Dateien geben"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Let agents into your files"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deja que los agentes accedan a tus archivos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laissez les agents accéder à vos fichiers"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consenti agli agenti di accedere ai tuoi file"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントにファイルへのアクセスを許可"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트에게 파일 접근을 허용하세요"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deixe os agentes acessarem seus arquivos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让智能体进入你的文件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讓代理進入你的檔案"
+          }
+        }
+      }
+    },
+    "%@ is a Mac, and macOS asks before anything reads your folders. One switch lets agents work there without stopping at a dialog nobody sees.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ist ein Mac, und macOS fragt nach, bevor irgendetwas deine Ordner liest. Ein Schalter lässt Agenten dort arbeiten, ohne an einem Dialog hängen zu bleiben, den niemand sieht."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is a Mac, and macOS asks before anything reads your folders. One switch lets agents work there without stopping at a dialog nobody sees."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ es un Mac, y macOS pregunta antes de que algo lea tus carpetas. Un interruptor permite que los agentes trabajen ahí sin detenerse en un cuadro de diálogo que nadie ve."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ est un Mac, et macOS demande une confirmation avant que quoi que ce soit lise vos dossiers. Un seul interrupteur permet aux agents d'y travailler sans s'arrêter sur une boîte de dialogue que personne ne voit."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ è un Mac, e macOS chiede conferma prima che qualcosa legga le tue cartelle. Un interruttore consente agli agenti di lavorare lì senza fermarsi su una finestra di dialogo che nessuno vede."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ はMacで、macOSは何かがフォルダを読み取る前に確認を求めます。1つのスイッチで、誰も見ていないダイアログで止まることなく、エージェントがそこで作業できるようになります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@는 Mac이고, macOS는 무언가가 폴더를 읽기 전에 항상 확인을 요청합니다. 스위치 하나로 아무도 보지 않는 대화 상자에서 멈추지 않고 에이전트가 그곳에서 작업할 수 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ é um Mac, e o macOS pergunta antes que qualquer coisa leia suas pastas. Um interruptor permite que os agentes trabalhem lá sem parar em uma caixa de diálogo que ninguém vê."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 是一台 Mac，macOS 会在任何程序读取你的文件夹前先询问。打开一个开关，就能让智能体在那里工作，而不会卡在一个没人看的对话框前。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 是一台 Mac，macOS 會在任何程式讀取你的檔案夾前先詢問。打開一個開關，就能讓代理在那裡工作，而不會卡在一個沒人看的對話框前。"
+          }
+        }
+      }
+    },
+    "This server is a Mac, and macOS asks before anything reads your folders. One switch lets agents work there without stopping at a dialog nobody sees.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Server ist ein Mac, und macOS fragt nach, bevor irgendetwas deine Ordner liest. Ein Schalter lässt Agenten dort arbeiten, ohne an einem Dialog hängen zu bleiben, den niemand sieht."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server is a Mac, and macOS asks before anything reads your folders. One switch lets agents work there without stopping at a dialog nobody sees."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este servidor es un Mac, y macOS pregunta antes de que algo lea tus carpetas. Un interruptor permite que los agentes trabajen ahí sin detenerse en un cuadro de diálogo que nadie ve."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce serveur est un Mac, et macOS demande une confirmation avant que quoi que ce soit lise vos dossiers. Un seul interrupteur permet aux agents d'y travailler sans s'arrêter sur une boîte de dialogue que personne ne voit."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo server è un Mac, e macOS chiede conferma prima che qualcosa legga le tue cartelle. Un interruttore consente agli agenti di lavorare lì senza fermarsi su una finestra di dialogo che nessuno vede."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このサーバーはMacで、macOSは何かがフォルダを読み取る前に確認を求めます。1つのスイッチで、誰も見ていないダイアログで止まることなく、エージェントがそこで作業できるようになります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 서버는 Mac이고, macOS는 무언가가 폴더를 읽기 전에 항상 확인을 요청합니다. 스위치 하나로 아무도 보지 않는 대화 상자에서 멈추지 않고 에이전트가 그곳에서 작업할 수 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este servidor é um Mac, e o macOS pergunta antes que qualquer coisa leia suas pastas. Um interruptor permite que os agentes trabalhem lá sem parar em uma caixa de diálogo que ninguém vê."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台服务器是一台 Mac，macOS 会在任何程序读取你的文件夹前先询问。打开一个开关，就能让智能体在那里工作，而不会卡在一个没人看的对话框前。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台伺服器是一台 Mac，macOS 會在任何程式讀取你的檔案夾前先詢問。打開一個開關，就能讓代理在那裡工作，而不會卡在一個沒人看的對話框前。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

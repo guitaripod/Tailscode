@@ -352,6 +352,22 @@ final class ServerManager: @unchecked Sendable {
             slots.account = account
             slots.accountActions = accountActions
             adw_expander_row_add_row(ptr(row), account)
+
+            let permissionsBox = MachinePermissionsBox(local: false)
+            slots.permissionsBox = permissionsBox
+            permissionsBox.onRequest = { [weak self] kind in
+                self?.requestPermission(kind, profileID: profile.id)
+            }
+            let wrapper = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            Gtk.margins(wrapper, top: 10, bottom: 10, leading: 12, trailing: 12)
+            gtk_box_append(ptr(wrapper), permissionsBox.widget)
+            gtk_widget_set_visible(wrapper, 0)
+            let permissionsRow = adw_preferences_row_new()!
+            gtk_list_box_row_set_child(ptr(permissionsRow), wrapper)
+            gtk_list_box_row_set_activatable(ptr(permissionsRow), 0)
+            gtk_list_box_row_set_selectable(ptr(permissionsRow), 0)
+            slots.permissionsWrapper = wrapper
+            adw_expander_row_add_row(ptr(row), permissionsRow)
         }
 
         if isDemo || isEnvironment {
@@ -463,6 +479,7 @@ final class ServerManager: @unchecked Sendable {
         if !isDemo { UpdateWatch.recheck(.server(profileID: profile.id)) }
         if profile.backend == .claudeCode && !isDemo {
             checkAccount(profile)
+            checkPermissions(profile)
         }
         return row
     }
@@ -602,6 +619,71 @@ final class ServerManager: @unchecked Sendable {
                     }
                 }
             ])
+    }
+
+    /// Whether the Mac this server runs on has given its agents Full Disk Access — read without
+    /// ever raising a prompt, so a Linux desktop across the room can watch the checklist without
+    /// waking anything on the Mac.
+    private func checkPermissions(_ profile: ConnectionProfile) {
+        let id = profile.id
+        Task { [weak self] in
+            guard
+                let backend = await ServerDirectory.shared.backend(for: profile)
+                    as? any PermissionReportingBackend
+            else { return }
+            guard
+                let permissions = await Self.within(15, { try? await backend.machinePermissions() })
+            else { return }
+            Gtk.onMain { [weak self] in self?.renderPermissions(permissions, profileID: id) }
+        }
+    }
+
+    private func renderPermissions(_ permissions: MachinePermissions, profileID: String) {
+        guard let slots = rows[profileID], let wrapper = slots.permissionsWrapper,
+            let box = slots.permissionsBox
+        else { return }
+        guard MachinePermissionReading.isShown(permissions) else {
+            gtk_widget_set_visible(wrapper, 0)
+            return
+        }
+        box.apply(permissions)
+        gtk_widget_set_visible(wrapper, 1)
+        schedulePermissionPoll(profileID: profileID, waiting: MachinePermissionReading.isWaiting(permissions))
+    }
+
+    /// The press: asks the Mac to open its own System Settings pane, then reads the grant back —
+    /// the switch itself is always the person's, on whichever screen they are holding.
+    private func requestPermission(_ kind: MachinePermissions.Grant.Kind, profileID: String) {
+        guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
+        Task { [weak self] in
+            guard
+                let backend = await ServerDirectory.shared.backend(for: profile)
+                    as? any PermissionReportingBackend
+            else { return }
+            guard
+                let permissions = await Self.within(
+                    15, { try? await backend.requestMachinePermission(kind) })
+            else {
+                Gtk.onMain { [weak self] in self?.rows[profileID]?.permissionsBox?.showRequestFailed() }
+                return
+            }
+            Gtk.onMain { [weak self] in self?.renderPermissions(permissions, profileID: profileID) }
+        }
+    }
+
+    /// The steps stay on screen until the switch is noticed, so this asks again every
+    /// `MachinePermissionReading.pollInterval` while it is waiting on one — and stops the moment
+    /// the row is gone, rather than polling a window nobody has open.
+    private func schedulePermissionPoll(profileID: String, waiting: Bool) {
+        guard waiting, let slots = rows[profileID], !slots.permissionPollPending else { return }
+        slots.permissionPollPending = true
+        Gtk.after(Gtk.milliseconds(MachinePermissionReading.pollInterval)) { [weak self] in
+            self?.rows[profileID]?.permissionPollPending = false
+            guard let self, self.window != nil, self.rows[profileID] != nil,
+                let profile = self.profiles.first(where: { $0.id == profileID })
+            else { return }
+            self.checkPermissions(profile)
+        }
     }
 
 
@@ -1038,6 +1120,7 @@ final class ServerManager: @unchecked Sendable {
         }
         if profile.backend == .claudeCode, !profile.id.hasPrefix(DemoWorld.profilePrefix) {
             checkAccount(profile)
+            checkPermissions(profile)
         }
     }
 
@@ -1294,6 +1377,11 @@ private final class ServerRow {
     var softwareCard: UpdateCardView?
     var account: UnsafeMutablePointer<GtkWidget>?
     var accountActions: UnsafeMutablePointer<GtkWidget>?
+    /// The Full Disk Access checklist, embedded the same way the software card is — kept here so
+    /// a poll that lands a second later writes into exactly this row's box.
+    var permissionsBox: MachinePermissionsBox?
+    var permissionsWrapper: UnsafeMutablePointer<GtkWidget>?
+    var permissionPollPending = false
     var address: UnsafeMutablePointer<GtkWidget>?
     var name: UnsafeMutablePointer<GtkWidget>?
     var password: UnsafeMutablePointer<GtkWidget>?

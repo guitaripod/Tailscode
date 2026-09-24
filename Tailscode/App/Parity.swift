@@ -109,6 +109,7 @@ enum ParityManifest {
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
         case .serverAccess: return .implemented("ServerAccessReading")
         case .serverSignIn: return .implemented("ServerSignInViewController")
+        case .machinePermissions: return .implemented("MachinePermissionsView")
         case .serverSelfUpdate: return .implemented("UpdateMonitor.perform")
         case .serverRestart: return .implemented("confirmRestart")
         case .serverAutoUpdate: return .implemented("UpdateMonitor.setAutoUpdate")

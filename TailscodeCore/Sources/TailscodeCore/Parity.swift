@@ -121,6 +121,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case connectDiagnosis
     case serverAccess
     case serverSignIn
+    case machinePermissions
     case serverSelfUpdate
     case serverAutoUpdate
     case serverRestart
@@ -632,6 +633,10 @@ public enum CapabilityRegistry {
             id: .serverSignIn, area: "servers", title: "Split browser sign-in",
             spec:
                 "claude auth login runs on the server's pseudo-terminal; this machine opens the URL and returns the code."),
+        CapabilityDefinition(
+            id: .machinePermissions, area: "servers", title: "A Mac server asks for its grants once",
+            spec:
+                "A Mac asks a person before a process reads their Documents, Desktop, Downloads or another app's data, on the Mac's own screen, and a bridge is a daemon nobody is watching — so a grant never given is a turn stalled behind a dialog across the room. The bridge reads its own grants without ever raising a prompt (GET /permissions: Full Disk Access, judged by whether a child it starts can open the privacy database) and can open the pane that gives one (POST /permissions/request: System Settings at Privacy & Security → Full Disk Access, with its binary shown in Finder beside it), and it is signed ad hoc under a requirement that names it rather than its bytes, so the grant survives updates. The client owes the checklist apps show on first run, worded once in MachinePermissionReading: where a server is explained, a row per grant — what it is for in the words of what goes wrong without it, on or off, and the one press that opens it on that Mac (Open System Settings when the client is on that same Mac); after the press, the steps — where to look, what to drag or switch, that the screen will notice — while the client asks again every two seconds and replaces them with done the moment the switch is on. First run adds the same step to its checklist when the machine it just reached is a Mac missing a grant, skippable, because nothing breaks without it — the Mac only asks more. A Linux machine, an opencode server and a bridge too old for the route show nothing, never an error."),
         CapabilityDefinition(
             id: .serverSelfUpdate, area: "servers", title: "The app updates the server",
             spec:

@@ -867,7 +867,7 @@ final class ServerSetupViewController: UIViewController {
             try ConnectionController.shared.save(profile, password: password)
             AppLogger.connection.info("connected to \(agent.displayName) as \(name)")
             Theme.Haptics.success()
-            celebrate { [weak self] in self?.onConnected?() }
+            celebrate { [weak self] in self?.checkMachinePermissions(profile: profile, agent: agent) }
         } catch is ConnectionController.ProRequired {
             Theme.Haptics.warning()
             setVerification(
@@ -904,6 +904,35 @@ final class ServerSetupViewController: UIViewController {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(450))
             completion()
+        }
+    }
+
+    /// A Mac claude-bridge is asked for its grants once, right after the machine is reached, so a
+    /// missing Full Disk Access is a step in this checklist rather than a turn stalling later
+    /// behind a dialog nobody is watching.
+    private func checkMachinePermissions(profile: ConnectionProfile, agent: AgentType) {
+        guard agent == .claudeCode else {
+            onConnected?()
+            return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            guard
+                let backend = ConnectionController.shared.makeBackend(for: profile)
+                    as? any PermissionReportingBackend
+            else {
+                self.onConnected?()
+                return
+            }
+            let permissions = try? await backend.machinePermissions()
+            guard MachinePermissionReading.needsAttention(permissions), let permissions else {
+                self.onConnected?()
+                return
+            }
+            let step = MachinePermissionsStepViewController(
+                backend: backend, profileName: profile.name, permissions: permissions)
+            step.onFinished = { [weak self] in self?.onConnected?() }
+            self.navigationController?.pushViewController(step, animated: true)
         }
     }
 

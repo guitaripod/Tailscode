@@ -299,6 +299,12 @@ final class ServersWindow: NSWindowController {
             access.isHidden = true
             lines.addArrangedSubview(access)
             checkAccess(profile, into: access)
+
+            if let permissionsBackend = ServerDirectory.shared.backend(for: profile)
+                as? any PermissionReportingBackend
+            {
+                lines.addArrangedSubview(MachinePermissionsView(backend: permissionsBackend))
+            }
         }
 
         let remove = NSButton(title: Localized.text("Remove"), target: self, action: #selector(removeTapped))

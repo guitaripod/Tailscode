@@ -48,6 +48,15 @@ final class FirstRunDialog: @unchecked Sendable {
     private var verified: (url: URL, agent: AgentType, version: String?)?
     private var scan: DiscoveryPanel?
 
+    /// The fourth requirement, shown only when the Mac just reached needs a grant its agents can't
+    /// give themselves — hidden until `finish(profile:)` knows there is something to ask.
+    private let permissionsStepArea = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+    private var permissionsPollPending = false
+    private let permissionsStepTitle = Gtk.label("", css: "row-title", selectable: false)
+    private let permissionsDetailLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
+    private let permissionsBox = MachinePermissionsBox(local: false)
+    private var permissionsBackend: (any PermissionReportingBackend)?
+
     /// Minted before the command is shown, so the line a person copies onto the other machine and
     /// the password this app will send are the same string. iOS has always done this; Linux handed
     /// over the bare installer and then asked the user to go and find what it had generated.
@@ -157,6 +166,29 @@ final class FirstRunDialog: @unchecked Sendable {
         gtk_box_append(ptr(content), diagnosisLabel)
         gtk_widget_set_visible(diagnosisActions, 0)
         gtk_box_append(ptr(content), diagnosisActions)
+
+        let permissionsHeader = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(permissionsHeader), Gtk.label("4 ·", css: "dim", selectable: false))
+        gtk_box_append(ptr(permissionsHeader), permissionsStepTitle)
+        gtk_box_append(ptr(permissionsStepArea), permissionsHeader)
+        Gtk.margins(permissionsDetailLabel, leading: 22)
+        gtk_box_append(ptr(permissionsStepArea), permissionsDetailLabel)
+        let permissionsWrapper = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.margins(permissionsWrapper, top: 6, leading: 22)
+        gtk_box_append(ptr(permissionsWrapper), permissionsBox.widget)
+        gtk_box_append(ptr(permissionsStepArea), permissionsWrapper)
+        let skipPermissions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.margins(skipPermissions, top: 6, leading: 22)
+        gtk_box_append(
+            ptr(skipPermissions),
+            Gtk.button(MachinePermissionReading.skip, css: ["flat"]) { [self] in
+                Gtk.onMain { [self] in if let window = self.window { Dialogs.close(window) } }
+            })
+        gtk_box_append(ptr(permissionsStepArea), skipPermissions)
+        Gtk.margins(permissionsStepArea, top: 8)
+        gtk_widget_set_visible(permissionsStepArea, 0)
+        gtk_box_append(ptr(content), permissionsStepArea)
+        permissionsBox.onRequest = { [self] kind in requestPermission(kind) }
 
         // The demo is the only thing that works with no infrastructure at all, so it reads as an
         // offer rather than as a consolation: somebody who cannot finish setup tonight still gets
@@ -648,12 +680,111 @@ final class FirstRunDialog: @unchecked Sendable {
     private func finish(profile: ConnectionProfile) async {
         let backend = await Self.signedOutBackend(profile)
         onSaved()
+        guard let backend else {
+            await checkPermissions(profile: profile)
+            return
+        }
+        showSignedOut(backend, profile: profile)
+    }
+
+    /// The Mac just reached may need a grant its agents can't give themselves — checked once the
+    /// account step has nothing left to ask, so the checklist never stalls on two questions at
+    /// once. A server that isn't a Claude Code Mac, or one too old for the route, closes as before.
+    private func checkPermissions(profile: ConnectionProfile) async {
+        guard profile.backend == .claudeCode,
+            let backend = await ServerDirectory.shared.backend(for: profile)
+                as? any PermissionReportingBackend,
+            let permissions = await Self.within(15, { try? await backend.machinePermissions() }),
+            MachinePermissionReading.needsAttention(permissions)
+        else {
+            Gtk.onMain { [self] in
+                guard !closed else { return }
+                if let window { Dialogs.close(window) }
+            }
+            return
+        }
+        permissionsBackend = backend
         Gtk.onMain { [self] in
             guard !closed else { return }
-            guard let backend else {
-                if let window { Dialogs.close(window) }
+            gtk_label_set_text(op(permissionsStepTitle), MachinePermissionReading.setupTitle)
+            gtk_label_set_text(op(permissionsDetailLabel), MachinePermissionReading.setupDetail(permissions))
+            permissionsBox.apply(permissions)
+            gtk_widget_set_visible(permissionsStepArea, 1)
+            schedulePermissionsPoll(waiting: MachinePermissionReading.isWaiting(permissions))
+        }
+    }
+
+    private func requestPermission(_ kind: MachinePermissions.Grant.Kind) {
+        guard let backend = permissionsBackend else { return }
+        Task { [self] in
+            guard
+                let permissions = await Self.within(
+                    15, { try? await backend.requestMachinePermission(kind) })
+            else {
+                Gtk.onMain { [self] in permissionsBox.showRequestFailed() }
                 return
             }
+            Gtk.onMain { [self] in
+                guard !closed else { return }
+                permissionsBox.apply(permissions)
+                schedulePermissionsPoll(waiting: MachinePermissionReading.isWaiting(permissions))
+            }
+        }
+    }
+
+    /// Asks again every `MachinePermissionReading.pollInterval` while a grant is waiting on the
+    /// switch, and stops the moment the window is gone.
+    private func schedulePermissionsPoll(waiting: Bool) {
+        guard waiting, !closed, !permissionsPollPending else { return }
+        permissionsPollPending = true
+        Gtk.after(Gtk.milliseconds(MachinePermissionReading.pollInterval)) { [self] in
+            permissionsPollPending = false
+            guard !closed, let backend = permissionsBackend else { return }
+            Task { [self] in
+                guard
+                    let permissions = await Self.within(15, { try? await backend.machinePermissions() })
+                else { return }
+                Gtk.onMain { [self] in
+                    guard !closed else { return }
+                    permissionsBox.apply(permissions)
+                    if permissions.isComplete {
+                        closeAfterGrant()
+                    } else {
+                        schedulePermissionsPoll(waiting: MachinePermissionReading.isWaiting(permissions))
+                    }
+                }
+            }
+        }
+    }
+
+    /// The switch landed: `done` stays long enough to be read, then first run finishes by itself.
+    private func closeAfterGrant() {
+        Gtk.after(Gtk.milliseconds(MachinePermissionReading.doneLinger)) { [self] in
+            guard !closed, let window else { return }
+            Dialogs.close(window)
+        }
+    }
+
+    /// Nothing on this screen may wait forever — the same deadline the Servers window races every
+    /// ask against.
+    private static func within<T: Sendable>(
+        _ seconds: Int, _ work: @escaping @Sendable () async -> T?
+    ) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await work() }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(seconds))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    private func showSignedOut(_ backend: any AuthenticatingBackend, profile: ConnectionProfile) {
+        Gtk.onMain { [self] in
+            guard !closed else { return }
             gtk_label_set_text(
                 op(diagnosisLabel),
                 Localized.text(
