@@ -78,6 +78,17 @@ final class ServerDetailViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         startPermissionPollingIfNeeded()
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_SCROLL_PERMISSIONS"] != nil {
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(1))
+                    guard let self, let indexPath = self.dataSource.indexPath(for: .permissions)
+                    else { return }
+                    self.collectionView.scrollToItem(
+                        at: indexPath, at: .centeredVertically, animated: false)
+                }
+            }
+        #endif
     }
 
     override func viewDidDisappear(_ animated: Bool) {
