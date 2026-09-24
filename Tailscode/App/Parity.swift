@@ -135,6 +135,7 @@ enum ParityManifest {
         case .newPaneChooser: return .notApplicable("no split panes on a phone; a new conversation starts from the chat list, which already spans every server")
         case .chatDragToPane: return .notApplicable("no panes to drag a chat into; the list opens a chat into the one conversation surface a phone has")
         case .clickToActivate: return .notApplicable("a touch has no ambiguity to resolve: one conversation fills the screen, so there is no unfocused pane or second region a tap could mean instead")
+        case .pointerFeedback: return .gap("an iPad with a trackpad has a pointer to answer: rows, disclosures and cards want UIPointerInteraction and a message a hover toolbar; on a phone the same verbs stay a long-press away")
         case .uiScale: return .implemented("Theme")
         case .typeRamp: return .implemented("Theme.Ramp")
         case .themePicker: return .implemented("ThemePickerViewController")

@@ -56,6 +56,10 @@ layout, the shortcut engine, and current-chat state (`currentEntry`, `currentBac
 | `TerminalPane.swift` | the bottom terminal pane: `$SHELL -lc` one command at a time in the conversation's directory, ↑/↓ history, honest notice line, `ownsFocus` feeding the `.terminal` key context |
 | `ServerDirectory.swift` | profiles + backends (+ `delete(id:)`, `entries()` with unreachable) |
 | `TranscriptViewController.swift`, `TranscriptRows.swift`, `MacMarkdown.swift`, `ToolRowViews.swift`, `PendingCardViews.swift`, `ImageStore.swift`, `FindBar.swift` | the conversation |
+| `TranscriptColumn.swift` | the rows, placed by frame so no constraint joins one row to another — never put the transcript back in a stack view |
+| `MessageHoverBar.swift`, `ConversationWarmer.swift` | a message's verbs for a resting pointer; a chat started on hover or press before its click lands |
+| `PointerFeedback.swift` | `PointerPlate`, `PressSurface` (a pressable that is not a control), `HoverPlate` and `PointerSweep` (every button's plate) |
+| `TranscriptBench.swift`, `Pace.swift` | `--bench <transcript.json …>` and the signposts plus `journey open` log that say where the time goes |
 | `ComposerView.swift`, `CompletionPopover.swift`, `PillsRow.swift`, `ModelDialPopover.swift`, `AttachmentChips.swift` | writing — `PillsRow` carries the one dial pill for model and effort (`DialPill` + `EffortMeterView`, wheel steps the level), `ModelDialPopover` is the dial opened: models beside the effort ladder over Core's `ModelDialState` |
 | `StatusBandView.swift`, `UsageViews.swift`, `ToastPresenter.swift` | status, usage, toasts |
 | `ServersWindow.swift`, `SignInSheet.swift`, `NewChatSheet.swift`, `MacDialogs.swift`, `PreferencesWindow.swift` | server management, dialogs, settings |

@@ -138,6 +138,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case newPaneChooser
     case chatDragToPane
     case clickToActivate
+    case pointerFeedback
     case uiScale
     case typeRamp
     case themePicker
@@ -722,6 +723,11 @@ public enum CapabilityRegistry {
             id: .clickToActivate, area: "app", title: "Pressing something activates it",
             spec:
                 "Where the pointer goes down is what the keyboard is working in. A press anywhere inside a pane — transcript, prompt box, status band, pill, permission card, chooser, either button — makes that pane the focused one: the accent moves, the window chrome (title, file tree, terminal, remembered session) follows, and the ctrl+w verbs work from there. It happens before the widget under the pointer acts, so a control in a background pane commands its own conversation rather than whichever pane the eye had left behind, and the press keeps its ordinary meaning — nothing is swallowed and keyboard focus lands exactly where the click put it, never grabbed on its behalf. The same rule holds for the regions beside the tree: pressing in the chat list, the file tree or the terminal makes that the keyboard's region, so Tab cycles from where the hand is. A press on a divider, on chrome outside the tree, or in the pane that is already focused changes nothing."),
+        CapabilityDefinition(
+            id: .pointerFeedback, area: "app",
+            title: "What can be pressed answers the pointer before the press",
+            spec:
+                "A window where nothing answers until it is clicked reads slower than it is, and a click on something that gave no sign it would take one lands as a surprise. So everything pressable answers a pointer resting on it: a chat row, a thought's or a tool call's header, an agent's card, a picture and every button come up on a plate of the platform's own ink at low strength — never a palette colour, because a hover is neither motion nor affirmation and it lands on glass as often as on the canvas — deepen the moment the button goes down, and act when it comes up over the thing pressed, never when a press dragged away is let go. On a desk that fronts one window at a time, the first click on a window that is not in front lands on what it was aimed at rather than only bringing the window forward, for anything that destroys nothing. A chat row the pointer rests on trades its age for its commonest verbs — pin, save, archive and its own menu — and a message offers its own with the time it was written: Copy, which is the words as written without the thoughts, and, on a prompt a server can wind back to, Undo from here through the same confirmation. A list is watched through one tracking area rather than one per row, so the pointer costs a lookup per move."),
         CapabilityDefinition(
             id: .uiScale, area: "app", title: "Type scale",
             spec: "Reading size is adjustable and persists under tailscode.uiScale (or the platform's own type system)."),

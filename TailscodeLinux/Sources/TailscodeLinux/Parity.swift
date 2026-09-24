@@ -135,6 +135,10 @@ enum ParityManifest {
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("acceptChatDrops")
         case .clickToActivate: return .implemented("onPressCapture")
+        case .pointerFeedback:
+            return .partial(
+                "session-row:hover",
+                missing: "rows, disclosures and flat buttons answer hover through CSS; a hovered chat row's verbs and a hovered message's Copy and Undo are still only on the right-click")
         case .uiScale: return .implemented("UIScale")
         case .typeRamp: return .implemented("TypeCSS")
         case .themePicker: return .implemented("MatrixTheme")
