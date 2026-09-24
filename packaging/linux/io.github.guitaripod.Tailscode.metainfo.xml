@@ -69,6 +69,20 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.59" date="2026-09-24">
+      <description>
+        <p>Mac servers ask for Full Disk Access once, and streaming answers take less work.</p>
+        <p>Mac servers:</p>
+        <ul>
+          <li>A server running on a Mac shows whether its agents have Full Disk Access. Without it, macOS stops a turn at a permission dialog on the Mac&#x27;s screen, where nobody is looking.</li>
+          <li>One click opens System Settings at Full Disk Access on that Mac, with claude-bridge shown in Finder beside it, and Tailscode notices the moment the switch is on. The first-run dialog asks once when the server it reaches is a Mac; Not now skips it. Needs claude-bridge 1.12.</li>
+        </ul>
+        <p>Faster:</p>
+        <ul>
+          <li>Streaming answers take less work per word in chats with many workflow runs.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.57" date="2026-09-24">
       <description>
         <p>The quick ask no longer crashes, and the Software Updates window stays open.</p>

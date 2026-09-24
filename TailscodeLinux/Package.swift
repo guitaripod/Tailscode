@@ -128,8 +128,9 @@ enum Kit {
     /// connection pool per set of deadlines, and sends every refresh read at once.
     /// 0.32.0 draws what opencode 2 writes for the reader as transcript notes, names the provider
     /// wait a turn sits out, winds a conversation back to a message with the way back open, and
-    /// lets opencode 2 report its own cut-off turns and session usage.
-    static let version = Version(0, 32, 0)
+    /// lets opencode 2 report its own cut-off turns and session usage. 0.33.0 reads what a Mac
+    /// server's agents are allowed to touch — Full Disk Access — and asks it to open the pane.
+    static let version = Version(0, 33, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
