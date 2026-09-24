@@ -268,6 +268,12 @@ const char *tailscode_markup_text(const char *markup);
 guint tailscode_add_tick(GtkWidget *widget, void (*handler)(void *), void *data);
 void tailscode_remove_tick(GtkWidget *widget, guint id);
 
+/// The same clock for a caller that cannot promise to outlive it. `data` is a retained box the
+/// clock owns and releases when it goes — lifted, torn down with its widget, or ended by `handler`
+/// answering FALSE — so an owner released while its clock still runs is a clock that takes itself
+/// off on the next frame rather than one that calls into freed memory.
+guint tailscode_add_owned_tick(GtkWidget *widget, gboolean (*handler)(void *), void *data);
+
 /// How many of those clocks this process is holding right now. Every frame in this client comes
 /// from one of them, so the number is the whole of what the app is asking the compositor to redraw
 /// — which is what makes a claim about a lap being taken off, or never stacked on its predecessor,

@@ -26,6 +26,17 @@ final class RepeatingMotion {
     private let holding: Bool
     private var widget: UnsafeMutablePointer<GtkWidget>?
     private var tick: UInt = 0
+    /// What the frame clock holds in place of the lap: a clock outlives whatever let go of it, so
+    /// it must never hold the lap itself. A lap released while it turns leaves the link empty, and
+    /// the clock's next frame takes the clock off instead of calling into freed memory. The clock
+    /// owns the link and lets it go when it ends, which is how an empty `link` here says the clock
+    /// is gone — lifted, ended, or torn down with a widget that no longer exists to be asked.
+    private weak var link: Link?
+
+    private final class Link {
+        weak var motion: RepeatingMotion?
+        init(_ motion: RepeatingMotion) { self.motion = motion }
+    }
 
     /// - Parameter holding: whether the lap keeps a reference on the widget it runs on. A surface
     ///   that owns its own drawing area does, because a pane can be torn down between frames and
@@ -44,7 +55,7 @@ final class RepeatingMotion {
 
     /// Whether a lap is turning right now, for a harness that has to prove a claim about it rather
     /// than watch it — a still frame and a moving one are the same picture in any screenshot.
-    var isTurning: Bool { tick != 0 }
+    var isTurning: Bool { tick != 0 && link != nil }
 
     /// Lays the lap on the widget's own frame clock, or leaves the widget perfectly still because
     /// the desk asked for that, and says which it did.
@@ -58,24 +69,33 @@ final class RepeatingMotion {
     ) -> Bool {
         lift()
         guard meaning.honoring(reduceMotion: !Self.allowed).isAnimated else { return false }
+        _ = Gtk.releaseInstalled
         if holding { g_object_ref(UnsafeMutableRawPointer(widget)) }
         self.widget = widget
+        let link = Link(self)
+        self.link = link
         tick = UInt(
-            tailscode_add_tick(
+            tailscode_add_owned_tick(
                 widget,
                 { raw in
-                    guard let raw else { return }
-                    Unmanaged<RepeatingMotion>.fromOpaque(raw).takeUnretainedValue().step()
-                }, Unmanaged.passUnretained(self).toOpaque()))
+                    guard let raw,
+                        let motion = Unmanaged<Link>.fromOpaque(raw).takeUnretainedValue().motion
+                    else { return 0 }
+                    motion.step()
+                    return 1
+                }, Unmanaged.passRetained(link).toOpaque()))
         return true
     }
 
     /// Takes the lap off the widget it was laid on, which is not always the widget a surface would
-    /// name today — a pane re-parents, and the callback belongs to whatever held the clock.
+    /// name today — a pane re-parents, and the callback belongs to whatever held the clock. A clock
+    /// that has already gone is not asked for again: a mark's widget can be torn down under it, and
+    /// reaching into a widget that no longer exists is a crash rather than a tidy-up.
     func lift() {
         guard let widget else { return }
-        if tick != 0 { tailscode_remove_tick(widget, guint(tick)) }
+        if tick != 0, link != nil { tailscode_remove_tick(widget, guint(tick)) }
         tick = 0
+        link = nil
         self.widget = nil
         if holding { g_object_unref(UnsafeMutableRawPointer(widget)) }
     }
@@ -96,12 +116,12 @@ final class RepeatingMotion {
             }, box)
     }
 
-    /// A lap that holds its widget has to take itself off, because nothing else is going to. One
-    /// that lives on its widget is outlived by nothing: that widget's own teardown drops every
-    /// callback on it, and reaching into a widget already being finalized is a crash rather than a
-    /// tidy-up.
+    /// A lap let go of takes its clock with it, whichever way it was laid. One that lives on its
+    /// widget is usually outlived by nothing — that widget's own teardown ends every clock on it,
+    /// and `lift` then finds nothing left to ask for — but a surface that replaces its lap while
+    /// the widget stays up is the other case, and a clock left behind there would keep asking the
+    /// compositor for frames on the lap's behalf.
     deinit {
-        guard holding else { return }
         lift()
     }
 }

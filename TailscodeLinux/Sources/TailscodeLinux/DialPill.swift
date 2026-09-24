@@ -48,6 +48,7 @@ final class DialPill: @unchecked Sendable {
             Gtk.onMain { onStep(dy < 0 ? 1 : -1) }
             return true
         }
+        RepeatingMotion.watch(effortLabel) { [weak self] in self?.relayShimmer() }
     }
 
     func open() {
@@ -75,11 +76,10 @@ final class DialPill: @unchecked Sendable {
             powerWord = word
             shimmerPhase = -1
             gtk_label_set_markup(op(effortLabel), ModelDialPopover.rainbowMarkup(word))
-            startShimmer()
+            shimmer.lay(on: effortLabel, meaning: .working)
         } else {
             powerWord = nil
-            shimmerMotion?.lift()
-            shimmerMotion = nil
+            shimmer.lift()
             gtk_label_set_text(op(effortLabel), face.effortWord ?? "")
         }
         Gtk.removeChildren(of: meterSlot)
@@ -94,23 +94,37 @@ final class DialPill: @unchecked Sendable {
         if face.isServer { gtk_widget_add_css_class(button, "dial-pill-server") }
     }
 
+    /// The one lap the pill ever runs. A pill is drawn again whenever what it names changes — a
+    /// quick ask draws it once when it opens and again when the aimed machine's models arrive — and
+    /// a lap made fresh for every drawing released the one still turning with its clock still on
+    /// the label, which then called into freed memory on the next frame. So the pill keeps one,
+    /// and laying it again takes the old clock off first.
+    private lazy var shimmer = RepeatingMotion(holding: false) { [weak self] in
+        self?.shimmerStep()
+    }
+
     /// One step of the rainbow every ninety milliseconds, read off the monotonic clock rather
     /// than counted, so a dropped frame costs a frame and not the rhythm; the markup is rewritten
     /// only when the step actually changes, which keeps a pill that is merely on screen cheap.
-    private func startShimmer() {
-        let motion = RepeatingMotion(holding: false) { [weak self] in
-            guard let self, let word = self.powerWord else { return }
-            let phase = Int(g_get_monotonic_time() / 90_000) % max(1, word.count)
-            guard phase != self.shimmerPhase else { return }
-            self.shimmerPhase = phase
-            gtk_label_set_markup(
-                op(self.effortLabel), ModelDialPopover.rainbowMarkup(word, phase: phase))
-        }
-        shimmerMotion = motion
-        motion.lay(on: effortLabel, meaning: .working)
+    private func shimmerStep() {
+        guard let word = powerWord else { return }
+        let phase = Int(g_get_monotonic_time() / 90_000) % max(1, word.count)
+        guard phase != shimmerPhase else { return }
+        shimmerPhase = phase
+        gtk_label_set_markup(op(effortLabel), ModelDialPopover.rainbowMarkup(word, phase: phase))
     }
 
-    private var shimmerMotion: RepeatingMotion?
+    /// The desk changing its mind about movement mid-wait: a shimmering word stops where it
+    /// stands and is drawn whole, and one that was held still starts to travel.
+    private func relayShimmer() {
+        guard let word = powerWord, !shimmer.lay(on: effortLabel, meaning: .working) else { return }
+        shimmerPhase = -1
+        gtk_label_set_markup(op(effortLabel), ModelDialPopover.rainbowMarkup(word))
+    }
+
+    /// Whether the power's word is travelling right now, for a harness that has to prove the pill
+    /// holds one clock however many times it is drawn.
+    var isShimmering: Bool { shimmer.isTurning }
 
     static let modelTintClasses: [String] =
         ModelTint.Family.allCases.map(ModelTint.cssClass) + (0..<12).map { "model-hue-\($0)" }

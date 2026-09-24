@@ -2807,6 +2807,54 @@ public enum SelfTest {
             !lap.lay(on: subject, meaning: .still) && tailscode_live_ticks() == moving,
             "a meaning the vocabulary calls still never moves, whatever the desk allows")
 
+        var released: RepeatingMotion? = RepeatingMotion(holding: false) {}
+        released?.lay(on: subject)
+        try expect(
+            released?.isTurning == true && tailscode_live_ticks() == moving + 1,
+            "a lap laid on a mark it does not hold turns like any other")
+        released = nil
+        try expect(
+            tailscode_live_ticks() == moving,
+            "and let go of while it turns it takes its clock with it, rather than leaving the"
+                + " frame clock calling into a lap that no longer exists")
+
+        let doomed = gtk_label_new("·")!
+        g_object_ref_sink(UnsafeMutableRawPointer(doomed))
+        let orphaned = RepeatingMotion(holding: false) {}
+        orphaned.lay(on: doomed)
+        g_object_unref(UnsafeMutableRawPointer(doomed))
+        try expect(
+            !orphaned.isTurning && tailscode_live_ticks() == moving,
+            "a mark torn down under its lap ends the clock with it, and the lap can tell")
+        orphaned.lift()
+        try expect(
+            tailscode_live_ticks() == moving,
+            "so lifting it afterwards asks nothing of a widget that is gone")
+
+        let pill = DialPill(
+            dial: ModelDialPopover(
+                makeState: {
+                    ModelDialState(
+                        sources: [], selected: nil, effort: nil, options: [], modelWord: "")
+                }, onPick: { _ in }, onEffort: { _ in }, onOpenCatalog: {}),
+            onStep: { _ in })
+        let ladder = ["low", "medium", "high", "xhigh", "max", Ultracode.effortLevel]
+        let power = ModelDial.face(
+            modelWord: "Opus", effort: Ultracode.effortLevel, options: ladder)
+        pill.render(power, modelTint: nil)
+        pill.render(power, modelTint: nil)
+        pill.render(power, modelTint: nil)
+        try expect(
+            pill.isShimmering && tailscode_live_ticks() == moving + 1,
+            "a pill drawn on the power three times — the quick ask draws it when it opens and"
+                + " again when the aimed machine's models arrive — holds one clock, never one per"
+                + " drawing with the earlier ones left calling into freed laps")
+        pill.render(
+            ModelDial.face(modelWord: "Opus", effort: "high", options: ladder), modelTint: nil)
+        try expect(
+            !pill.isShimmering && tailscode_live_ticks() == moving,
+            "and drawn off the power it holds none")
+
         let aura = AuraPainter()
         aura.setActive(true)
         try expect(aura.isTurning, "the aura turns for as long as the tier stays picked")

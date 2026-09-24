@@ -1108,37 +1108,61 @@ void tailscode_set_animations_enabled(gboolean enabled) {
 
 typedef struct {
     void (*handler)(void *);
+    gboolean (*owned)(void *);
     void *data;
 } TailscodeTick;
+
+static int tailscode_tick_count = 0;
 
 static gboolean tailscode_tick_trampoline(
     GtkWidget *widget, GdkFrameClock *clock, gpointer raw) {
     (void)widget;
     (void)clock;
     TailscodeTick *box = raw;
+    if (box->owned) return box->owned(box->data) ? G_SOURCE_CONTINUE : G_SOURCE_REMOVE;
     box->handler(box->data);
     return G_SOURCE_CONTINUE;
 }
 
-static void tailscode_tick_free(gpointer raw) { g_free(raw); }
+/// Every road a clock leaves by ends here — lifted, torn down with its widget, or ended by its own
+/// handler — so this is where the count comes down, and where an owned clock lets go of its box.
+static void tailscode_tick_free(gpointer raw) {
+    TailscodeTick *box = raw;
+    if (!box) return;
+    if (box->owned && box->data && tailscode_box_release) tailscode_box_release(box->data);
+    tailscode_tick_count -= 1;
+    g_free(box);
+}
 
-static int tailscode_tick_count = 0;
-
-guint tailscode_add_tick(GtkWidget *widget, void (*handler)(void *), void *data) {
-    if (!widget) return 0;
-    TailscodeTick *box = g_new0(TailscodeTick, 1);
-    box->handler = handler;
-    box->data = data;
+static guint tailscode_add_tick_box(GtkWidget *widget, TailscodeTick *box) {
     guint id = gtk_widget_add_tick_callback(
         widget, tailscode_tick_trampoline, box, tailscode_tick_free);
     if (id != 0) tailscode_tick_count += 1;
     return id;
 }
 
+guint tailscode_add_tick(GtkWidget *widget, void (*handler)(void *), void *data) {
+    if (!widget) return 0;
+    TailscodeTick *box = g_new0(TailscodeTick, 1);
+    box->handler = handler;
+    box->data = data;
+    return tailscode_add_tick_box(widget, box);
+}
+
+guint tailscode_add_owned_tick(GtkWidget *widget, gboolean (*handler)(void *), void *data) {
+    if (!widget) {
+        if (data && tailscode_box_release) tailscode_box_release(data);
+        return 0;
+    }
+    TailscodeTick *box = g_new0(TailscodeTick, 1);
+    box->owned = handler;
+    box->data = data;
+    return tailscode_add_tick_box(widget, box);
+}
+
 void tailscode_remove_tick(GtkWidget *widget, guint id) {
     if (!widget || id == 0) return;
     gtk_widget_remove_tick_callback(widget, id);
-    tailscode_tick_count -= 1;
 }
 
 int tailscode_live_ticks(void) { return tailscode_tick_count; }
