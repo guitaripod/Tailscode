@@ -104,8 +104,8 @@ public enum MachinePermissionReading {
         return [
             place,
             Localized.text(
-                "If %@ is in the list, switch it on. If not, drag it in from the Finder window beside it.",
-                binary),
+                "Drag %@ from the Finder window beside it into the list. If the list already shows %@ switched on, that is an older build: select it, press −, then drag this one in.",
+                binary, binary),
             Localized.text("macOS asks for your password or Touch ID. This screen notices when it's on."),
         ]
     }

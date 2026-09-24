@@ -224042,67 +224042,67 @@
         }
       }
     },
-    "If %@ is in the list, switch it on. If not, drag it in from the Finder window beside it.": {
+    "Drag %@ from the Finder window beside it into the list. If the list already shows %@ switched on, that is an older build: select it, press −, then drag this one in.": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wenn %@ in der Liste steht, schalte es ein. Falls nicht, ziehe es aus dem Finder-Fenster daneben hinein."
+            "value": "Zieh %@ aus dem Finder-Fenster daneben in die Liste. Zeigt die Liste %@ schon eingeschaltet, ist das ein älterer Build: Wähl ihn aus, klick auf −, und zieh dann diesen hinein."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "If %@ is in the list, switch it on. If not, drag it in from the Finder window beside it."
+            "value": "Drag %@ from the Finder window beside it into the list. If the list already shows %@ switched on, that is an older build: select it, press −, then drag this one in."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Si %@ está en la lista, actívalo. Si no, arrástralo desde la ventana del Finder que está al lado."
+            "value": "Arrastra %@ desde la ventana del Finder de al lado a la lista. Si la lista ya muestra %@ activado, es una versión anterior: selecciónala, pulsa − y arrastra esta."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Si %@ figure dans la liste, activez-le. Sinon, faites-le glisser depuis la fenêtre du Finder juste à côté."
+            "value": "Faites glisser %@ depuis la fenêtre du Finder à côté dans la liste. Si la liste affiche déjà %@ activé, c'est une ancienne version : sélectionnez-la, cliquez sur −, puis faites glisser celle-ci."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se %@ è nell'elenco, attivalo. In caso contrario, trascinalo dalla finestra del Finder accanto."
+            "value": "Trascina %@ dalla finestra del Finder accanto nell'elenco. Se l'elenco mostra già %@ attivo, è una build precedente: selezionala, premi −, poi trascina questa."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "リストに %@ があればオンにします。なければ、隣のFinderウインドウからドラッグして追加します。"
+            "value": "横の Finder ウインドウから %@ をリストにドラッグします。リストにすでに %@ がオンで表示されている場合、それは古いビルドです。選択して − を押してから、こちらをドラッグしてください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "목록에 %@가 있으면 켜세요. 없다면 옆에 있는 Finder 창에서 끌어다 놓으세요."
+            "value": "옆의 Finder 윈도우에서 %@을(를) 목록으로 드래그하세요. 목록에 %@이(가) 이미 켜져 있다면 이전 빌드입니다. 선택하고 −를 누른 다음 이것을 드래그하세요."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se %@ estiver na lista, ative-o. Se não estiver, arraste-o da janela do Finder ao lado."
+            "value": "Arraste %@ da janela do Finder ao lado para a lista. Se a lista já mostrar %@ ativado, é uma versão anterior: selecione-a, clique em − e arraste esta."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "如果列表里有 %@，把它打开。如果没有，从旁边的 Finder 窗口把它拖进去。"
+            "value": "将旁边访达窗口中的 %@ 拖入列表。如果列表中已显示 %@ 且已打开，那是旧版本：选中它，按 −，然后将这个拖进去。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "如果清單裡有 %@，把它打開。如果沒有，從旁邊的 Finder 視窗把它拖進去。"
+            "value": "將旁邊 Finder 視窗中的 %@ 拖入列表。如果列表中已顯示 %@ 且已開啟，那是舊版本：選取它，按 −，然後將這個拖進去。"
           }
         }
       }
