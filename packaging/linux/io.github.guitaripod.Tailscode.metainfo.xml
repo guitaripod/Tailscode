@@ -69,6 +69,18 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.57" date="2026-09-24">
+      <description>
+        <p>The quick ask no longer crashes, and the Software Updates window stays open.</p>
+        <p>Fixes:</p>
+        <ul>
+          <li>The quick ask (Ctrl+Alt+A) no longer crashes the app a few seconds after it opens when the machine it is aimed at is set to ultracode.</li>
+          <li>The Software Updates window no longer crashes when a machine&#x27;s card moves, for example when a restarting bridge stops answering.</li>
+          <li>A Restart pressed while a server is already restarting follows it back to the version it loads, and a server that doesn&#x27;t answer says so instead of printing error codes.</li>
+          <li>The travelling rainbow on an ultracode model pill stops when the desktop turns animations off, and starts again when they come back.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.56" date="2026-09-24">
       <description>
         <p>Undo from here, and provider waits that explain themselves.</p>

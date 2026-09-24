@@ -49,8 +49,8 @@ targetTemplates:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.56"
-        CURRENT_PROJECT_VERSION: "161"
+        MARKETING_VERSION: "1.57"
+        CURRENT_PROJECT_VERSION: "162"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         SWIFT_EMIT_LOC_STRINGS: YES
@@ -146,8 +146,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.56"
-        CURRENT_PROJECT_VERSION: "161"
+        MARKETING_VERSION: "1.57"
+        CURRENT_PROJECT_VERSION: "162"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -212,8 +212,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.widget
-        MARKETING_VERSION: "1.56"
-        CURRENT_PROJECT_VERSION: "161"
+        MARKETING_VERSION: "1.57"
+        CURRENT_PROJECT_VERSION: "162"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -256,8 +256,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
-        MARKETING_VERSION: "1.56"
-        CURRENT_PROJECT_VERSION: "161"
+        MARKETING_VERSION: "1.57"
+        CURRENT_PROJECT_VERSION: "162"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -310,8 +310,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.macwidget
-        MARKETING_VERSION: "1.56"
-        CURRENT_PROJECT_VERSION: "161"
+        MARKETING_VERSION: "1.57"
+        CURRENT_PROJECT_VERSION: "162"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -337,7 +337,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Tailscode
-        CURRENT_PROJECT_VERSION: "161"
+        CURRENT_PROJECT_VERSION: "162"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TAILSCODE_MAS"
         CODE_SIGN_ENTITLEMENTS: TailscodeMac/TailscodeMac-Store.entitlements
         ENABLE_APP_SANDBOX: YES
