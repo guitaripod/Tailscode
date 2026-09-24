@@ -1180,12 +1180,18 @@ enum RowKit {
         return card
     }
 
+    /// A one-line label truncates rather than holds the window open. Left at AppKit's 750 its
+    /// whole line is a width the window has to make room for — a prompt quoted in full is tens of
+    /// thousands of points, and the window grew to fit it — so it resists just below the priority
+    /// a window keeps its size at, which still ranks it over every label a caller lowered on
+    /// purpose.
     static func label(_ text: String, font: NSFont, color: NSColor) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = font
         label.textColor = color
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentCompressionResistancePriority(MacTheme.Layout.belowWindowSize, for: .horizontal)
         return label
     }
 

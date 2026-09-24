@@ -38,6 +38,8 @@ enum MacShot {
 
     /// The size to draw at. A window nobody has ever resized opens at its smallest useful size,
     /// which is not the shape anyone actually works in.
+    /// With `--open`, it is the surface that is drawn at this size, once it is up — which is how a
+    /// window is checked at its narrowest.
     static var size: NSSize? {
         let arguments = CommandLine.arguments
         guard let index = arguments.firstIndex(of: "--shot-size"), index + 1 < arguments.count
@@ -64,7 +66,8 @@ enum MacShot {
     }
 
     /// `--tree-constraints` adds the horizontal constraints acting on every stack and every
-    /// ambiguous view, which is what tells a missing constraint apart from a losing one.
+    /// ambiguous view, which is what tells a missing constraint apart from a losing one, and the
+    /// narrowest width each view will allow — the number that says which one holds a window wide.
     static var wantsConstraints: Bool { CommandLine.arguments.contains("--tree-constraints") }
 
     /// `--open <surface>` — which window to put in front of the picture. The main window is what a
@@ -82,10 +85,15 @@ enum MacShot {
     static func schedule() {
         guard path != nil || treePath != nil else { return }
         Task { @MainActor in
-            if let size, let window = NSApp.windows.first(where: { $0.contentView != nil }) {
+            if let size, surface == nil, let window = NSApp.windows.first(where: { $0.contentView != nil }) {
                 window.setContentSize(size)
             }
             try? await Task.sleep(for: delay)
+            if let size, surface != nil, let window = surfaceWindow() {
+                window.setContentSize(size)
+                window.layoutIfNeeded()
+                try? await Task.sleep(for: .milliseconds(500))
+            }
             if let treePath { dumpTree(to: treePath) }
             if let path { capture(to: path) }
             exit(0)
@@ -118,8 +126,16 @@ enum MacShot {
         if view.isHidden { facts.append("hidden") }
         if view.alphaValue != 1 { facts.append(String(format: "alpha=%.2f", view.alphaValue)) }
         if view.hasAmbiguousLayout { facts.append("AMBIGUOUS") }
+        let natural = view.intrinsicContentSize.width
+        if natural != NSView.noIntrinsicMetric, natural > (wantsConstraints ? 200 : 1000) {
+            let resists = view.contentCompressionResistancePriority(for: .horizontal).rawValue
+            facts.append(String(format: "natural=%.0f resists=%.0f", natural, resists))
+        }
         if view.translatesAutoresizingMaskIntoConstraints {
             facts.append("autoresizing")
+        }
+        if wantsConstraints, !view.translatesAutoresizingMaskIntoConstraints {
+            facts.append(String(format: "fits=%.0f", view.fittingSize.width))
         }
         if let stack = view as? NSStackView {
             facts.append(
@@ -169,15 +185,24 @@ enum MacShot {
             format: "(%.1f,%.1f %.1f×%.1f)", rect.origin.x, rect.origin.y, rect.width, rect.height)
     }
 
-    private static func capture(to path: String) {
+    /// The window `--open` put in front: a popover's child window, else the frontmost one that is
+    /// not the chat window. A surface that opens as a window becomes AppKit's main window itself,
+    /// so the chat window is told apart by its name rather than by `mainWindow`.
+    private static func surfaceWindow() -> NSWindow? {
         let ordered = NSApp.orderedWindows.filter { $0.isVisible && $0.contentView != nil }
         let floating = NSApp.windows.filter {
             $0.isVisible && $0.contentView != nil && !ordered.contains($0)
         }
+        return floating.last ?? ordered.first(where: { $0.frameAutosaveName != "TailscodeMain" })
+            ?? ordered.first
+    }
+
+    private static func capture(to path: String) {
+        let ordered = NSApp.orderedWindows.filter { $0.isVisible && $0.contentView != nil }
         let front =
             surface == nil
             ? NSApp.keyWindow ?? NSApp.mainWindow ?? ordered.first
-            : floating.last ?? ordered.first(where: { $0 !== NSApp.mainWindow }) ?? ordered.first
+            : surfaceWindow()
         guard let window = front,
             let view = window.contentView,
             let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)

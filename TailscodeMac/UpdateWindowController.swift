@@ -17,12 +17,28 @@ final class UpdateWindowController: NSWindowController {
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = Localized.text("Software Updates")
         window.isReleasedWhenClosed = false
-        window.contentMinSize = NSSize(width: 480, height: 320)
+        window.contentMinSize = NSSize(width: 420, height: 320)
         MacTheme.Chrome.adopt(window)
         super.init(window: window)
-        window.contentView = board.view
+        window.contentView = Self.holder(for: board.view)
         window.center()
         window.rememberFrame(as: "TailscodeUpdates")
+    }
+
+    /// A content view laid out by constraints is one the window fits itself to, and a column of
+    /// wrapping labels fits as narrow as its narrowest button — the window opened a hundred and
+    /// thirty points wide. Held in a plain view, the board fills whatever size the window is.
+    private static func holder(for board: NSView) -> NSView {
+        let holder = NSView()
+        board.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(board)
+        NSLayoutConstraint.activate([
+            board.leadingAnchor.constraint(equalTo: holder.leadingAnchor),
+            board.trailingAnchor.constraint(equalTo: holder.trailingAnchor),
+            board.topAnchor.constraint(equalTo: holder.topAnchor),
+            board.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
+        ])
+        return holder
     }
 
     @available(*, unavailable)
@@ -74,11 +90,6 @@ final class UpdateBoardViewController: NSViewController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// A window whose content comes from a view controller sizes itself by fitting that view's own
-    /// constraints, the one time it is installed — and a scroll view full of wrapping labels has no
-    /// width of its own to offer that fit, so it settles on whatever the narrowest legal wrap is.
-    /// The column's floor below is what gives that first fit a real number to land on; the window's
-    /// own `contentMinSize` is what stops a person dragging past it afterwards.
     override func loadView() {
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(
@@ -99,7 +110,6 @@ final class UpdateBoardViewController: NSViewController {
             column.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
             column.topAnchor.constraint(equalTo: clip.topAnchor),
             column.widthAnchor.constraint(equalTo: clip.widthAnchor),
-            column.widthAnchor.constraint(greaterThanOrEqualToConstant: 560),
         ])
         view = scroll
 

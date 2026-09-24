@@ -200,6 +200,15 @@ enum MacTheme {
         }
     }
 
+    enum Layout {
+        /// Just under the priority a window holds its size at. A preference that outranks the
+        /// window is a width the window must grow to honour — a meter's 2pt floor against a share
+        /// of a thousandth asked for a track fifty thousand points wide, and got it — so anything
+        /// that is a wish rather than a floor sits here, where the window wins and it gives way.
+        static let belowWindowSize = NSLayoutConstraint.Priority(
+            NSLayoutConstraint.Priority.windowSizeStayPut.rawValue - 1)
+    }
+
     enum Spacing {
         static let xs: CGFloat = 4
         static let s: CGFloat = 8

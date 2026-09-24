@@ -15,7 +15,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     private let windowLabel = NSTextField(labelWithString: "")
     private let hapticLabel = NSTextField(labelWithString: "")
     private let summonButton = NSButton(title: "", target: nil, action: nil)
-    private let summonState = NSTextField(labelWithString: "")
+    private let summonState = NSTextField(wrappingLabelWithString: "")
     private var summonRecorder: Any?
     private var hapticStop = -1
     private let watchAccounts = NSStackView()
@@ -38,9 +38,10 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         self.onReloadShortcuts = onReloadShortcuts
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
-            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = Localized.text("Settings")
         window.isReleasedWhenClosed = false
+        window.contentMinSize = NSSize(width: 420, height: 320)
         super.init(window: window)
         window.delegate = self
         window.center()
@@ -615,6 +616,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         popUp.action = action
         popUp.setAccessibilityLabel(title)
         popUp.setContentHuggingPriority(.required, for: .horizontal)
+        popUp.setContentCompressionResistancePriority(MacTheme.Layout.belowWindowSize, for: .horizontal)
         let filler = NSView()
         filler.setContentHuggingPriority(.init(1), for: .horizontal)
         let row = NSStackView(views: [label, filler, popUp])
@@ -723,6 +725,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         detail.textColor = MacTheme.Color.secondaryLabel
         detail.lineBreakMode = .byWordWrapping
         detail.maximumNumberOfLines = 0
+        detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let column = NSStackView(views: [row, detail])
         column.orientation = .vertical
         column.alignment = .leading

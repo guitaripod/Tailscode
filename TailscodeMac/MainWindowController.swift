@@ -571,6 +571,7 @@ final class MainWindowController: NSWindowController {
         case "updates": presentUpdates()
         case "preferences", "prefs": presentPreferences()
         case "analytics": presentAnalytics()
+        case "usage", "quotas": presentUsageWindow()
         case "newchat": presentNewChat()
         case "quickask": presentQuickAsk()
         case "cheatsheet", "shortcuts": presentCheatsheet()

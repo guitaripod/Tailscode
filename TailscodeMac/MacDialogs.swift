@@ -338,7 +338,12 @@ enum MacDialogs {
             wraps ? NSTextField(wrappingLabelWithString: text) : NSTextField(labelWithString: text)
         label.font = MacTheme.Ramp.font(.panelFootnote)
         label.textColor = MacTheme.Color.secondaryLabel
-        if !wraps { label.lineBreakMode = .byTruncatingMiddle }
+        if wraps {
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        } else {
+            label.lineBreakMode = .byTruncatingMiddle
+            label.setContentCompressionResistancePriority(MacTheme.Layout.belowWindowSize, for: .horizontal)
+        }
         return label
     }
 }

@@ -84,6 +84,7 @@ enum UsageFormat {
             track.widthAnchor.constraint(equalToConstant: width),
             track.heightAnchor.constraint(equalToConstant: height),
             bar.leadingAnchor.constraint(equalTo: track.leadingAnchor),
+            bar.trailingAnchor.constraint(lessThanOrEqualTo: track.trailingAnchor),
             bar.topAnchor.constraint(equalTo: track.topAnchor),
             bar.bottomAnchor.constraint(equalTo: track.bottomAnchor),
             bar.widthAnchor.constraint(equalToConstant: (clamped * width).rounded()),
@@ -109,7 +110,7 @@ enum UsageFormat {
         track.addSubview(bar)
         let proportional = bar.widthAnchor.constraint(
             equalTo: track.widthAnchor, multiplier: clamped)
-        proportional.priority = .defaultHigh
+        proportional.priority = MacTheme.Layout.belowWindowSize
         NSLayoutConstraint.activate([
             track.heightAnchor.constraint(equalToConstant: height),
             bar.leadingAnchor.constraint(equalTo: track.leadingAnchor),
@@ -335,7 +336,7 @@ final class UsagePanelViewController: NSViewController {
     private let leadSwitch = NSButton(
         checkboxWithTitle: Localized.text("Lead with the tightest"), target: nil, action: nil)
 
-    static let openingSize = NSSize(width: 780, height: 760)
+    static let openingSize = NSSize(width: 720, height: 680)
 
     init(
         initial: [(String, UsageQuota)],
@@ -890,7 +891,7 @@ final class UsageWindowController: NSWindowController {
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = Localized.text("Usage")
         window.isReleasedWhenClosed = false
-        window.contentMinSize = NSSize(width: 560, height: 320)
+        window.contentMinSize = NSSize(width: 520, height: 320)
         MacTheme.Chrome.adopt(window)
         super.init(window: window)
         window.contentViewController = panel

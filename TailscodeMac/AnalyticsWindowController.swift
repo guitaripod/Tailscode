@@ -35,7 +35,7 @@ final class AnalyticsWindowController: NSWindowController {
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = UsageWindow.current.surfaceTitle
         window.isReleasedWhenClosed = false
-        window.contentMinSize = NSSize(width: 560, height: 320)
+        window.contentMinSize = NSSize(width: 440, height: 320)
         MacTheme.Chrome.adopt(window)
         super.init(window: window)
         let host = NSViewController(nibName: nil, bundle: nil)
@@ -81,7 +81,7 @@ final class AnalyticsWindowController: NSWindowController {
         reload()
     }
 
-    private static let openingSize = NSSize(width: 760, height: 980)
+    private static let openingSize = NSSize(width: 640, height: 820)
 
     /// Whether the window has a size somebody chose — a remembered one, or the one it opened at
     /// the first time. Only a window with neither is given the opening size.
@@ -432,13 +432,16 @@ final class AnalyticsWindowController: NSWindowController {
             let row = NSStackView()
             row.orientation = .horizontal
             row.alignment = .top
-            row.distribution = .fillEqually
+            row.distribution = .fill
             row.spacing = MacTheme.Spacing.s
             for record in pair { row.addArrangedSubview(recordCard(record)) }
             if pair.count == 1 {
                 let filler = NSView()
                 filler.translatesAutoresizingMaskIntoConstraints = false
                 row.addArrangedSubview(filler)
+            }
+            if let first = row.arrangedSubviews.first, let second = row.arrangedSubviews.last {
+                first.widthAnchor.constraint(equalTo: second.widthAnchor).isActive = true
             }
             views.append(row)
             index += 2
@@ -607,10 +610,11 @@ final class AnalyticsWindowController: NSWindowController {
         track.addSubview(fill)
         let proportional = fill.widthAnchor.constraint(
             equalTo: track.widthAnchor, multiplier: min(max(share, 0), 1))
-        proportional.priority = .defaultHigh
+        proportional.priority = MacTheme.Layout.belowWindowSize
         NSLayoutConstraint.activate([
             track.heightAnchor.constraint(equalToConstant: 6),
             fill.leadingAnchor.constraint(equalTo: track.leadingAnchor),
+            fill.trailingAnchor.constraint(lessThanOrEqualTo: track.trailingAnchor),
             fill.topAnchor.constraint(equalTo: track.topAnchor),
             fill.bottomAnchor.constraint(equalTo: track.bottomAnchor),
             proportional,

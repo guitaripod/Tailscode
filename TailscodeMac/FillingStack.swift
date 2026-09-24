@@ -102,11 +102,15 @@ final class FillingStack: NSStackView {
         }
     }
 
+    /// A row that refuses to grow — a button hugging its title at required — is only kept inside
+    /// the column rather than stretched across it. Stretched, the two required constraints could
+    /// only agree by making the column, and with it the window, as narrow as that one button.
     private func fill(_ view: NSView) {
         release(view)
+        let stretch = stretches && view.contentHuggingPriority(for: .horizontal) < .required
         let pins = [
             view.leadingAnchor.constraint(equalTo: leadingAnchor, constant: edgeInsets.left),
-            stretches
+            stretch
                 ? view.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -edgeInsets.right)
                 : view.trailingAnchor.constraint(
                     lessThanOrEqualTo: trailingAnchor, constant: -edgeInsets.right),
