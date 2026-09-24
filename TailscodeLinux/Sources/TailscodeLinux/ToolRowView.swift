@@ -69,8 +69,7 @@ enum ToolRowView {
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(header), label)
 
-        let added = calls.compactMap { $0.summary.diffStats?.added }.reduce(0, +)
-        let removed = calls.compactMap { $0.summary.diffStats?.removed }.reduce(0, +)
+        let (added, removed) = ToolDiff.tally(calls)
         if added > 0 {
             gtk_box_append(ptr(header), Gtk.label("+\(added)", css: "diff-add", selectable: false))
         }

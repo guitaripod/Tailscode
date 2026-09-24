@@ -22,6 +22,23 @@ public enum ToolDiff {
         return lines.isEmpty ? nil : lines
     }
 
+    /// What a run of calls changed, in lines — the tally a folded run wears beside its tools.
+    ///
+    /// Only an edit or a write can have changed a file, so every other call is passed over on its
+    /// name alone. Building a whole summary strips the markup off the call's whole output, and a
+    /// run header used to ask that of every call it held, twice, each time the row was built: more
+    /// than half of what drawing a transcript cost went to shell output nobody was counting.
+    public static func tally(_ calls: [ToolCall]) -> (added: Int, removed: Int) {
+        var added = 0
+        var removed = 0
+        for call in calls where call.summaryKind == .fileEdit || call.summaryKind == .fileWrite {
+            guard let stats = call.summary.diffStats else { continue }
+            added += stats.added
+            removed += stats.removed
+        }
+        return (added, removed)
+    }
+
     /// The language of the file the call edits, read from its own path, so the diff's lines can
     /// carry the file's syntax colours and not just their red and green.
     public static func language(for call: ToolCall) -> String? {

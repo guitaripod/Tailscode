@@ -71,8 +71,7 @@ enum ToolRowView {
             .joined(separator: " ")
         header.addArrangedSubview(detailLabel(names))
 
-        let added = calls.compactMap { $0.summary.diffStats?.added }.reduce(0, +)
-        let removed = calls.compactMap { $0.summary.diffStats?.removed }.reduce(0, +)
+        let (added, removed) = ToolDiff.tally(calls)
         if added > 0 {
             header.addArrangedSubview(
                 RowKit.label(

@@ -86,6 +86,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkTranscriptColumn()
+            report("transcript column: \(checks) claims hold — rows stand alone and stack as a stack would")
+        } catch {
+            report("transcript column: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkSubagentRow()
             report("subagent row: \(checks) claims hold — the clock stops with the call")
         } catch {
@@ -940,6 +948,100 @@ enum SelfTest {
         try expect(
             last.maxY == page.bounds.height,
             "so the prompt at the foot of the conversation reads as its foot, not its head")
+        return checks
+    }
+
+    /// The transcript lays its rows out by hand so that no constraint joins one row to another, and
+    /// the hand has to agree with the stack it replaced: rows top-down at the stack's spacing and as
+    /// tall as the same rows in a stack, a row that grows pushing the rest down, an opened body
+    /// making room for itself, a row taken out leaving with its host and closing its gap, and a
+    /// hidden row taking no room until it shows again.
+    private static func checkTranscriptColumn() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else {
+                throw SelfTestFailure("transcript column case failed: \(label)")
+            }
+            checks += 1
+        }
+        let sentence = String(repeating: "A sentence long enough to wrap across the page. ", count: 9)
+        func rows() -> [NSView] {
+            let fixed = NSView()
+            fixed.translatesAutoresizingMaskIntoConstraints = false
+            fixed.heightAnchor.constraint(equalToConstant: 40).isActive = true
+            let disclosure = DisclosureRow(
+                header: RowKit.label(
+                    "thought", font: MacTheme.Ramp.font(.toolName), color: MacTheme.Color.label),
+                expanded: false, onToggle: { _, _ in }
+            ) {
+                RowKit.wrapping(
+                    sentence, font: MacTheme.Ramp.font(.cardBody), color: MacTheme.Color.label)
+            }
+            return [RowKit.attributedLabel(MacMarkdown.render(sentence)), fixed, disclosure]
+        }
+        func staged(_ column: NSView) -> NSView {
+            let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 800))
+            let window = NSWindow(
+                contentRect: root.frame, styleMask: [.borderless], backing: .buffered, defer: true)
+            window.contentView = root
+            column.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(column)
+            NSLayoutConstraint.activate([
+                column.topAnchor.constraint(equalTo: root.topAnchor),
+                column.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+                column.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            ])
+            return root
+        }
+        let stack = FillingStack(topDown: true)
+        stack.spacing = 12
+        let stackRoot = staged(stack)
+        let stacked = rows()
+        for row in stacked { stack.addArrangedSubview(row) }
+        stackRoot.layoutSubtreeIfNeeded()
+
+        let column = TranscriptColumn()
+        column.spacing = 12
+        let root = staged(column)
+        let placed = rows()
+        for row in placed { column.addArrangedSubview(row) }
+        root.layoutSubtreeIfNeeded()
+        func top(_ view: NSView) -> CGFloat { view.convert(view.bounds, to: column).minY }
+
+        try expect(
+            top(placed[0]) == 0 && top(placed[1]) == placed[0].frame.height + 12
+                && top(placed[2]) == top(placed[1]) + 52,
+            "rows stand top-down at the spacing")
+        try expect(
+            zip(stacked, placed).allSatisfy { abs($0.frame.height - $1.frame.height) < 0.5 },
+            "each row is as tall as it is in a stack")
+        try expect(
+            abs(column.intrinsicContentSize.height - stack.fittingSize.height) < 1,
+            "the column is as tall as the stack")
+
+        let below = top(placed[2])
+        (placed[0] as? NSTextField)?.attributedStringValue = MacMarkdown.render(sentence + sentence)
+        root.layoutSubtreeIfNeeded()
+        try expect(top(placed[2]) > below, "a row that grows moves every row under it")
+
+        let closed = column.intrinsicContentSize.height
+        _ = (placed[2] as? DisclosureRow)?.accessibilityPerformPress()
+        root.layoutSubtreeIfNeeded()
+        try expect(column.intrinsicContentSize.height > closed, "an opened body makes room for itself")
+
+        placed[1].removeFromSuperview()
+        root.layoutSubtreeIfNeeded()
+        try expect(
+            column.arrangedSubviews.count == 2 && column.subviews.count == 2,
+            "a row taken out leaves with its host")
+        try expect(top(placed[2]) == placed[0].frame.height + 12, "and its gap closes")
+
+        placed[0].isHidden = true
+        root.layoutSubtreeIfNeeded()
+        try expect(top(placed[2]) == 0, "a hidden row takes no room")
+        placed[0].isHidden = false
+        root.layoutSubtreeIfNeeded()
+        try expect(top(placed[2]) == placed[0].frame.height + 12, "and takes it back when shown")
         return checks
     }
 

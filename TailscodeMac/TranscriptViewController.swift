@@ -39,7 +39,7 @@ final class TranscriptViewController: NSViewController {
 
     private let scrollView = NSScrollView()
     private let canvas = TranscriptViewController.page()
-    private let rowsStack = FillingStack()
+    private let rowColumn = TranscriptColumn()
     private let pendingStack = FillingStack()
     private let earlierButton = RowKit.ActionButton(title: "") {}
     private let statusBand = StatusBandView()
@@ -1072,8 +1072,8 @@ final class TranscriptViewController: NSViewController {
     }
 
     private func configureCanvas() {
-        rowsStack.spacing = MacTheme.Spacing.m
-        rowsStack.translatesAutoresizingMaskIntoConstraints = false
+        rowColumn.spacing = MacTheme.Spacing.m
+        rowColumn.translatesAutoresizingMaskIntoConstraints = false
 
         pendingStack.spacing = MacTheme.Spacing.s
         pendingStack.translatesAutoresizingMaskIntoConstraints = false
@@ -1089,7 +1089,7 @@ final class TranscriptViewController: NSViewController {
             right: MacTheme.Spacing.xl)
         canvas.translatesAutoresizingMaskIntoConstraints = false
         canvas.addArrangedSubview(earlierButton)
-        canvas.addArrangedSubview(rowsStack)
+        canvas.addArrangedSubview(rowColumn)
         canvas.addArrangedSubview(pendingStack)
     }
 
@@ -2775,6 +2775,7 @@ final class TranscriptViewController: NSViewController {
         repaintChangedRows(rows, from: edit.start)
         if canvasHold != nil { recomputeFreshCanvas() }
         fillComplete = edit.complete
+        let revealing = pendingReveal && edit.start + renderedRows.count >= rows.count
         if !edit.complete {
             if stick { followsBottom = true }
             if !isFillingInChunks {
@@ -2794,12 +2795,32 @@ final class TranscriptViewController: NSViewController {
         }
 
         if stick {
-            setFollowing(true)
+            if revealing || !edit.complete {
+                settleOnTail()
+            } else {
+                setFollowing(true)
+            }
             schedulePinCorrector()
+        }
+        if revealing {
+            pendingReveal = false
+            canvas.alphaValue = 1
         }
         syncJumpPill()
         scheduleImageSweep()
         if edit.complete, !findBar.isHidden { runFind(retarget: false) }
+    }
+
+    /// A chat opened is shown the moment the rows the window actually holds are up, rather than
+    /// once the whole conversation has been built behind them: the tail is one batch, and the
+    /// batches above it used to keep the pane blank for half a second while nothing on screen was
+    /// waiting for them. Everything that lands above the tail afterwards lands off screen, so the
+    /// page is laid out and put back on its end in the same pass as each batch — a pin left to a
+    /// later hop would let one frame show the column pushed down by the rows that just arrived.
+    private func settleOnTail() {
+        followsBottom = true
+        view.layoutSubtreeIfNeeded()
+        pinToBottom()
     }
 
     /// A click is a press and a release, and a row rebuilt between the two never becomes one.
@@ -2943,7 +2964,7 @@ final class TranscriptViewController: NSViewController {
             let row = rows[index]
             let rowView = row.makeView(context: context)
             let at = min(index, rowViews.count)
-            rowsStack.insertArrangedSubview(rowView, at: at)
+            rowColumn.insertArrangedSubview(rowView, at: at)
             rowViews.insert(rowView, at: at)
             renderedRows.insert(row, at: at)
             let firstSight = enteredRows.insert(row.key).inserted
@@ -3016,7 +3037,7 @@ final class TranscriptViewController: NSViewController {
             var inserted: [NSView] = []
             for row in rows[from..<start] {
                 let rowView = row.makeView(context: context)
-                rowsStack.insertArrangedSubview(rowView, at: position)
+                rowColumn.insertArrangedSubview(rowView, at: position)
                 inserted.append(rowView)
                 enteredRows.insert(row.key)
                 position += 1
@@ -3063,7 +3084,7 @@ final class TranscriptViewController: NSViewController {
         let entering = rowsAnnounceArrival
         for row in rows {
             let rowView = row.makeView(context: context)
-            rowsStack.addArrangedSubview(rowView)
+            rowColumn.addArrangedSubview(rowView)
             let firstSight = enteredRows.insert(row.key).inserted
             if entering, firstSight, row.key != cascade.key, row.announcesArrival {
                 CascadeEntrance.animate(rowView)
@@ -3196,7 +3217,7 @@ final class TranscriptViewController: NSViewController {
                 if rowViews[index] === highlightedView { clearFindHighlight() }
                 rowViews[index].removeFromSuperview()
                 let rowView = renderedRows[index].makeView(context: context)
-                rowsStack.insertArrangedSubview(rowView, at: index)
+                rowColumn.insertArrangedSubview(rowView, at: index)
                 rowViews[index] = rowView
             }
         }
@@ -3544,9 +3565,9 @@ final class TranscriptViewController: NSViewController {
         isAutoScrolling = false
     }
 
-    /// Runs after the current layout pass has settled, so the pixels always match the intent.
-    /// It is also the moment a freshly-filled transcript is revealed: built invisible, it first
-    /// appears already settled at the bottom rather than sliding into place.
+    /// Runs after the current layout pass has settled, so the pixels always match the intent. A
+    /// fill still hidden when it completes is revealed here, already settled at the bottom rather
+    /// than sliding into place — `applyRows` shows it from its tail first, so this is the net.
     private func schedulePinCorrector() {
         guard !pinScheduled else { return }
         pinScheduled = true

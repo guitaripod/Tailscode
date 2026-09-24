@@ -23,13 +23,14 @@ enum MacCLI {
           TailscodeMac --shot <path>            draw the window to a PNG (--shot-delay, --shot-size)
           TailscodeMac --tree <path>            write every view's frame and ambiguity to a file
           TailscodeMac --open <surface>         open a named window first (servers, preferences, …)
+          TailscodeMac --bench <transcript.json …>  time what cached transcripts cost to show
           TailscodeMac --version
         """
 
     static let knownOptions: Set<String> = [
         "--selftest", "--connect", "--password", "--name", "--opencode", "--omp", "--demo",
         "--shot", "--shot-delay", "--shot-size", "--tree", "--tree-constraints", "--open",
-        "--version", "--help", "-h",
+        "--bench", "--version", "--help", "-h",
     ]
 
     /// Whether an argument is a flag this CLI was never taught. A single dash and a capital —
@@ -111,6 +112,10 @@ enum Connect {
 /// an uninstalled store makes every account read as signed out, which is a feature quietly missing
 /// rather than a failure.
 MediaAccounts.install(KeychainSecretStore())
+
+if TranscriptBench.isRequested {
+    TranscriptBench.run()
+}
 
 if SelfTest.isRequested {
     Task { await SelfTest.run() }
