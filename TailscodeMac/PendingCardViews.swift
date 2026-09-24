@@ -91,6 +91,8 @@ enum PendingCards {
                 }
                 row.bezelStyle = .rounded
                 row.font = MacTheme.Ramp.font(.option)
+                row.cell?.lineBreakMode = .byTruncatingTail
+                row.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
                 row.toolTip =
                     option.description.isEmpty
                     ? option.label : "\(option.label)\n\(option.description)"

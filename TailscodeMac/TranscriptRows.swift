@@ -1211,15 +1211,21 @@ enum RowKit {
 
     /// The label prose is set in.
     ///
-    /// It points at its links: a hand over a link says the words go somewhere, which an I-beam over
-    /// coloured words does not. And it can be repainted without being measured again, which is what
-    /// the wave does to the answer being written on every frame — the words and their fonts are the
-    /// ones already measured and only their colours move, but a text field told its value changed
-    /// asks for its size again, and the whole transcript's layout ran at the display's rate.
+    /// Its links behave the way links do in any Mac text, whichever backend the chat is on: a hand
+    /// over one, a click that opens it when released, and a right-click that offers to open or
+    /// copy it — rather than depending on the text field's editor having taken the press, and on
+    /// the one message menu that offered link items existing only where a chat can be wound back.
+    /// And it can be repainted without being measured again, which is what the wave
+    /// does to the answer being written on every frame — the words and their fonts are the ones
+    /// already measured and only their colours move, but a text field told its value changed asks
+    /// for its size again, and the whole transcript's layout ran at the display's rate.
     final class ProseLabel: NSTextField {
         /// Set while a repaint changes colours and nothing else.
         var holdsMeasure = false
         private var linkFrames: (width: CGFloat, links: [(rect: NSRect, target: URL?)])?
+        /// The link a press landed on, opened only if the release lands on it too, so a press
+        /// dragged away is taken back.
+        private var pressedLink: URL?
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
@@ -1245,6 +1251,44 @@ enum RowKit {
         /// The link drawn under a point in this label's own coordinates, if there is one.
         func link(at point: NSPoint) -> URL? {
             links().first { $0.rect.contains(point) }?.target
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            let target = link(at: convert(event.locationInWindow, from: nil))
+            guard event.clickCount == 1, !event.modifierFlags.contains(.control), let target else {
+                pressedLink = nil
+                return super.mouseDown(with: event)
+            }
+            pressedLink = target
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            guard let pressed = pressedLink else { return super.mouseUp(with: event) }
+            pressedLink = nil
+            guard link(at: convert(event.locationInWindow, from: nil)) == pressed else { return }
+            NSWorkspace.shared.open(pressed)
+        }
+
+        override func menu(for event: NSEvent) -> NSMenu? {
+            guard let target = link(at: convert(event.locationInWindow, from: nil)) else {
+                return super.menu(for: event)
+            }
+            let menu = NSMenu()
+            for item in Self.linkItems(target) { menu.addItem(item) }
+            return menu
+        }
+
+        /// Open Link and Copy Link for one address, for every menu that can open over a link.
+        static func linkItems(_ target: URL) -> [NSMenuItem] {
+            [
+                ClosureMenuItem(title: Localized.text("Open Link")) {
+                    NSWorkspace.shared.open(target)
+                },
+                ClosureMenuItem(title: Localized.text("Copy Link")) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(target.absoluteString, forType: .string)
+                },
+            ]
         }
 
         /// Where the links are drawn and where each goes, laid out the way the cell lays out its
@@ -1805,18 +1849,7 @@ final class PromptRow: NSView {
         guard context.offersUndo?(messageID) == true else { return nil }
         let menu = NSMenu()
         if let target = link(under: event) {
-            let open = NSMenuItem(
-                title: Localized.text("Open Link"), action: #selector(openLink(_:)),
-                keyEquivalent: "")
-            open.target = self
-            open.representedObject = target
-            menu.addItem(open)
-            let copy = NSMenuItem(
-                title: Localized.text("Copy Link"), action: #selector(copyLink(_:)),
-                keyEquivalent: "")
-            copy.target = self
-            copy.representedObject = target
-            menu.addItem(copy)
+            for item in RowKit.ProseLabel.linkItems(target) { menu.addItem(item) }
             menu.addItem(.separator())
         }
         let item = NSMenuItem(
@@ -1862,17 +1895,6 @@ final class PromptRow: NSView {
             if let found = hitLabel(at: local, in: child) { return found }
         }
         return nil
-    }
-
-    @objc private func openLink(_ sender: NSMenuItem) {
-        guard let target = sender.representedObject as? URL else { return }
-        NSWorkspace.shared.open(target)
-    }
-
-    @objc private func copyLink(_ sender: NSMenuItem) {
-        guard let target = sender.representedObject as? URL else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(target.absoluteString, forType: .string)
     }
 
     @objc private func copyWords() {
