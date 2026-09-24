@@ -78,6 +78,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkTranscriptPage()
+            report("transcript page: \(checks) claims hold — a row's place is read from the top")
+        } catch {
+            report("transcript page: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkSubagentRow()
             report("subagent row: \(checks) claims hold — the clock stops with the call")
         } catch {
@@ -892,6 +900,46 @@ enum SelfTest {
             "so the row opened while it was a lone call is still open once it is a run")
         context.expanded.set("run:m1:p1", open: false)
         try expect(!context.isExpanded("run:m1:p1"), "and closing it closes it")
+        return checks
+    }
+
+    /// Where a row stands on the transcript's page is read in the page's own coordinates, and every
+    /// reader of that number — the prompt that rises, the rows a reflow keeps still, the pictures
+    /// near the reader, a find hit — compares it with a clip whose origin is the top. A stack view
+    /// measures up from its bottom, and a page built from one read a prompt sent at the foot of a
+    /// long conversation as standing near its head: every send scrolled the transcript to the top.
+    /// So the page the transcript builds is laid out here, a row at a time, and read back.
+    private static func checkTranscriptPage() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("transcript page case failed: \(label)") }
+            checks += 1
+        }
+        let page = TranscriptViewController.page()
+        let rows = (0..<3).map { _ -> NSView in
+            let row = NSView()
+            row.translatesAutoresizingMaskIntoConstraints = false
+            row.heightAnchor.constraint(equalToConstant: 120).isActive = true
+            page.addArrangedSubview(row)
+            return row
+        }
+        page.spacing = 10
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 800))
+        host.addSubview(page)
+        NSLayoutConstraint.activate([
+            page.topAnchor.constraint(equalTo: host.topAnchor),
+            page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+        ])
+        host.layoutSubtreeIfNeeded()
+        let tops = rows.map { $0.convert($0.bounds, to: page).minY }
+        try expect(
+            tops == [0, 130, 260],
+            "each row reads as far from the top of the page as it is drawn, \(tops)")
+        let last = rows[2].convert(rows[2].bounds, to: page)
+        try expect(
+            last.maxY == page.bounds.height,
+            "so the prompt at the foot of the conversation reads as its foot, not its head")
         return checks
     }
 

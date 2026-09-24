@@ -28,22 +28,36 @@ final class AppearanceView: NSView {
 /// same whether AppKit's gravity areas or these pins are what positioned a row.
 final class FillingStack: NSStackView {
     private var fills: [ObjectIdentifier: [NSLayoutConstraint]] = [:]
+    private let topDown: Bool
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+    /// - Parameter topDown: whether the column's own coordinates run down from its top edge, like
+    ///   the page it is laid out on. An `NSStackView` is not flipped: the rows it arranges land
+    ///   top to bottom either way, but a frame read in its coordinates is measured up from its
+    ///   bottom edge. A column that is somebody's page — the transcript, where a row's place is
+    ///   compared with a clip whose origin is the top — has to be asked the other way up.
+    init(topDown: Bool) {
+        self.topDown = topDown
+        super.init(frame: .zero)
         orientation = .vertical
         alignment = .leading
         translatesAutoresizingMaskIntoConstraints = false
     }
 
+    override convenience init(frame frameRect: NSRect) {
+        self.init(topDown: false)
+        frame = frameRect
+    }
+
     convenience init(views: [NSView]) {
-        self.init(frame: .zero)
+        self.init(topDown: false)
         for view in views { addArrangedSubview(view) }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) {
         fatalError("init(coder:) is not available")
     }
+
+    override var isFlipped: Bool { topDown }
 
     override func addArrangedSubview(_ view: NSView) {
         super.addArrangedSubview(view)

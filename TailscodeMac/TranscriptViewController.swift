@@ -38,7 +38,7 @@ final class TranscriptViewController: NSViewController {
     var onDragPerform: ((NSDraggingInfo) -> Bool)?
 
     private let scrollView = NSScrollView()
-    private let canvas = FillingStack()
+    private let canvas = TranscriptViewController.page()
     private let rowsStack = FillingStack()
     private let pendingStack = FillingStack()
     private let earlierButton = RowKit.ActionButton(title: "") {}
@@ -1034,6 +1034,16 @@ final class TranscriptViewController: NSViewController {
     private static var transcriptWindowPreference: Int {
         let stored = UserDefaults.standard.integer(forKey: "tailscode.transcriptWindow")
         return stored == 0 ? 400 : min(5000, max(50, stored))
+    }
+
+    /// The page, read top-down. Every place this controller asks where a row stands — the prompt
+    /// that rises to the top, the rows a reflow keeps still, the pictures near the reader, a find
+    /// hit, a disclosure opened, the newest agent — compares that row's frame in the page with a
+    /// clip whose origin is the top. Measured up from the bottom instead, as a stack view
+    /// measures, a prompt sent at the foot of a long conversation read as standing near its head,
+    /// and the rise scrolled the whole transcript to the top.
+    static func page() -> FillingStack {
+        FillingStack(topDown: true)
     }
 
     private func configureCanvas() {
