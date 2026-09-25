@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menu: MainMenu?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppLogger.lifecycle.info("launch: Tailscode \(MacCLI.version)")
+        ReviewPromptPolicy.migrateIfNeeded()
         Self.typeWhatIsTyped()
         NSApp.setActivationPolicy(.regular)
         Self.forgetTheKeysForPanesThisCopyLacks()
@@ -103,7 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// app is the moment to re-dial the stream and re-list the chats.
     func applicationDidBecomeActive(_ notification: Notification) {
         main?.handleDidBecomeActive()
-        MacReviewPrompt.shared.returnedToFinishedWork()
+        MacReviewPrompt.shared.appDidBecomeActive()
     }
 
     /// Switching away is the ordinary way this app stops being asked, and the one people do

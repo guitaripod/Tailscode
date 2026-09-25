@@ -75,9 +75,6 @@ final class MacNotifier: NSObject {
     /// someone looks.
     private func deliver(_ alerts: [ActivityAlert]) {
         guard !NSApp.isActive else { return }
-        if alerts.contains(where: { $0.reason == .turnEnded }) {
-            MacReviewPrompt.shared.turnFinishedWhileAway()
-        }
         var raised: [ActivityAlert] = []
         for alert in alerts {
             switch alert.reason {

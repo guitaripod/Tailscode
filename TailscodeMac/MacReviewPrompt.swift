@@ -4,51 +4,59 @@ import TailscodeCore
 
 /// The one place the Mac asks for a review — the phone's `ReviewPromptCoordinator`, shape for
 /// shape. The policy is Core's (`ReviewPromptPolicy`); this object only carries it out with the
-/// platform's own call, debouncing each trigger so the ask lands on the person reading the
-/// answer rather than on the frame it arrived, or the frame the app came back to the front.
+/// platform's own call, debounced behind the success that earned it and checked all over again
+/// right before it fires so it never lands on a launch, a background app, or a window with a
+/// sheet over it.
 @MainActor
 final class MacReviewPrompt {
     static let shared = MacReviewPrompt()
 
     private var pending: Task<Void, Never>?
-    private var finishedWhileAway = false
 
-    func turnCompleted() {
-        schedule(after: .seconds(5)) { ReviewPromptPolicy.recordSuccessfulTurn() }
+    func turnCompleted(now: Date = Date()) {
+        guard ReviewPromptPolicy.recordSuccess(now: now) else { return }
+        scheduleAsk()
     }
 
-    func trophyEarned() {
-        pending?.cancel()
-        askIfDue { ReviewPromptPolicy.noteTrophyEarned() }
+    /// Every activation re-checks the pure policy: a success recorded while the app was not the
+    /// active one still gets asked about once someone is here to see the sheet.
+    func appDidBecomeActive() {
+        guard ReviewPromptPolicy.isDue() else { return }
+        scheduleAsk()
     }
 
-    /// A turn reached its end while the app was not active: the return, not this moment, is
-    /// the one worth asking on.
-    func turnFinishedWhileAway() {
-        finishedWhileAway = true
-    }
-
-    /// Called on every activation; only one that follows a turn finished while away asks.
-    func returnedToFinishedWork() {
-        guard finishedWhileAway else { return }
-        finishedWhileAway = false
-        schedule(after: .seconds(3)) { ReviewPromptPolicy.noteReturnedToFinishedWork() }
-    }
-
-    private func schedule(after delay: Duration, _ evaluation: @escaping @MainActor () -> Bool) {
+    private func scheduleAsk() {
         pending?.cancel()
         pending = Task { [weak self] in
-            try? await Task.sleep(for: delay)
+            try? await Task.sleep(for: .milliseconds(1500))
             guard let self, !Task.isCancelled else { return }
-            self.askIfDue(evaluation)
+            self.askIfEligible()
         }
     }
 
-    private func askIfDue(_ evaluation: () -> Bool) {
-        guard evaluation() else { return }
-        guard let host = NSApp.keyWindow?.contentViewController ?? NSApp.mainWindow?.contentViewController
-        else { return }
+    private func askIfEligible() {
+        guard ReviewPromptPolicy.isDue() else {
+            AppLogger.ui.info("review: skipped (not due)")
+            return
+        }
+        guard NSApp.isActive else {
+            AppLogger.ui.info("review: skipped (not foreground-active)")
+            return
+        }
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
+            AppLogger.ui.info("review: skipped (no active window)")
+            return
+        }
+        guard window.attachedSheet == nil else {
+            AppLogger.ui.info("review: skipped (blocking UI on screen)")
+            return
+        }
+        guard let host = window.contentViewController else {
+            AppLogger.ui.info("review: skipped (no window host)")
+            return
+        }
         ReviewPromptPolicy.markAsked()
+        AppLogger.ui.info("review: asking (#\(ReviewPromptPolicy.askDates.count))")
         AppStore.requestReview(in: host)
     }
 }

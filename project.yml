@@ -23,6 +23,8 @@ targetTemplates:
       - path: Tailscode/Usage/UsageWidgetStore.swift
       - path: Tailscode/Usage/UsageWidgetWriter.swift
       - path: Tailscode/Usage/UsagePushPayload.swift
+      - path: Tailscode/Logging/AppLogger.swift
+      - path: Tailscode/Logging/LogFileWriter.swift
       - path: Resources/Localizable.xcstrings
         buildPhase: resources
     dependencies:

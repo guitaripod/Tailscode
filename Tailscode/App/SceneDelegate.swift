@@ -61,7 +61,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         PushRegistrar.reregisterIfNeeded()
         UpdateMonitor.checkIfDue()
         HapticEngine.shared.prepare()
-        ReviewPromptCoordinator.shared.returnedToFinishedWork()
+        ReviewPromptCoordinator.shared.appDidBecomeActive()
     }
 
     /// The last point at which a task handed to `TurnWaitCenter`'s background session starts like

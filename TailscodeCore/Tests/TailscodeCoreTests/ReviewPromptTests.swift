@@ -10,8 +10,9 @@ extension DeviceStores {
     @Suite("Review prompt policy", .serialized)
     struct ReviewPromptTests {
         private static let keys = [
-            ReviewPromptPolicy.turnsKey,
-            ReviewPromptPolicy.lastAskedKey,
+            ReviewPromptPolicy.successCountKey,
+            ReviewPromptPolicy.askDatesKey,
+            ReviewPromptPolicy.successCountAtLastAskKey,
         ]
 
         private func withCleanStore(_ body: () -> Void) {
@@ -28,69 +29,166 @@ extension DeviceStores {
             }
         }
 
-        private static func seed(turns: Int) {
-            UserDefaults.standard.set(turns, forKey: ReviewPromptPolicy.turnsKey)
+        private static func seed(successes: Int) {
+            UserDefaults.standard.set(successes, forKey: ReviewPromptPolicy.successCountKey)
         }
 
-        @Test("Below the turn threshold nothing is due, and every success still counts")
-        func turnThreshold() {
+        @Test("Nothing is due at one success")
+        func noAskAtOneSuccess() {
+            withCleanStore {
+                #expect(!ReviewPromptPolicy.recordSuccess(now: Date()))
+                #expect(ReviewPromptPolicy.successCount == 1)
+            }
+        }
+
+        @Test("The first ask is due the moment a second success lands")
+        func askAtTwoSuccesses() {
             withCleanStore {
                 let now = Date()
-                for _ in 1..<ReviewPromptPolicy.minimumTurns {
-                    #expect(!ReviewPromptPolicy.recordSuccessfulTurn(now: now))
+                #expect(!ReviewPromptPolicy.recordSuccess(now: now))
+                #expect(ReviewPromptPolicy.recordSuccess(now: now))
+            }
+        }
+
+        @Test("No re-ask before fourteen days, even with successes to spare")
+        func noReaskBeforeCooldown() {
+            withCleanStore {
+                let now = Date()
+                Self.seed(successes: 2)
+                ReviewPromptPolicy.markAsked(now: now)
+                #expect(
+                    !ReviewPromptPolicy.recordSuccess(
+                        now: now.addingTimeInterval(13 * 24 * 60 * 60)))
+                Self.seed(successes: ReviewPromptPolicy.successCount + 10)
+                #expect(
+                    !ReviewPromptPolicy.recordSuccess(
+                        now: now.addingTimeInterval(13 * 24 * 60 * 60)))
+            }
+        }
+
+        @Test("No re-ask before three fresh successes, even once fourteen days have passed")
+        func noReaskBeforeFreshSuccesses() {
+            withCleanStore {
+                let now = Date()
+                Self.seed(successes: 2)
+                ReviewPromptPolicy.markAsked(now: now)
+                let later = now.addingTimeInterval(20 * 24 * 60 * 60)
+                #expect(!ReviewPromptPolicy.recordSuccess(now: later))
+                #expect(!ReviewPromptPolicy.recordSuccess(now: later))
+            }
+        }
+
+        @Test("A re-ask is due once both the cooldown and three fresh successes have passed")
+        func reaskAfterBothGatesClear() {
+            withCleanStore {
+                let now = Date()
+                Self.seed(successes: 2)
+                ReviewPromptPolicy.markAsked(now: now)
+                let later = now.addingTimeInterval(15 * 24 * 60 * 60)
+                #expect(!ReviewPromptPolicy.recordSuccess(now: later))
+                #expect(!ReviewPromptPolicy.recordSuccess(now: later))
+                #expect(ReviewPromptPolicy.recordSuccess(now: later))
+            }
+        }
+
+        @Test("Never a fourth ask inside the same rolling year")
+        func neverAFourthAskWithinAYear() {
+            withCleanStore {
+                let start = Date()
+                Self.seed(successes: 2)
+                #expect(ReviewPromptPolicy.recordSuccess(now: start))
+                ReviewPromptPolicy.markAsked(now: start)
+
+                var when = start
+                for _ in 0..<2 {
+                    when = when.addingTimeInterval(15 * 24 * 60 * 60)
+                    #expect(!ReviewPromptPolicy.recordSuccess(now: when))
+                    #expect(!ReviewPromptPolicy.recordSuccess(now: when))
+                    #expect(ReviewPromptPolicy.recordSuccess(now: when))
+                    ReviewPromptPolicy.markAsked(now: when)
                 }
-                #expect(ReviewPromptPolicy.successfulTurns == ReviewPromptPolicy.minimumTurns - 1)
-                #expect(ReviewPromptPolicy.recordSuccessfulTurn(now: now))
+                #expect(ReviewPromptPolicy.askDates.count == 3)
+
+                Self.expectCappedRegardlessOfFreshSuccesses(
+                    now: start.addingTimeInterval(300 * 24 * 60 * 60))
             }
         }
 
-        @Test("A brand-new install is due the moment enough turns have succeeded")
-        func noAgeGate() {
-            withCleanStore {
-                Self.seed(turns: ReviewPromptPolicy.minimumTurns - 1)
-                #expect(ReviewPromptPolicy.recordSuccessfulTurn(now: Date()))
+        /// Plenty of fresh successes and the cooldown both clear at this point, but three asks
+        /// already sit inside the trailing year, so a fourth stays refused regardless of how
+        /// many more successes land.
+        private static func expectCappedRegardlessOfFreshSuccesses(now: Date) {
+            for _ in 0..<5 {
+                #expect(!ReviewPromptPolicy.recordSuccess(now: now))
             }
         }
 
-        @Test("One ask per cooldown, then the gate opens again")
-        func cooldown() {
+        @Test("A fourth ask is allowed once the oldest of the three ages out of the year")
+        func fourthAskOnceOldestAgesOut() {
             withCleanStore {
-                let now = Date()
-                Self.seed(turns: ReviewPromptPolicy.minimumTurns)
-                #expect(ReviewPromptPolicy.recordSuccessfulTurn(now: now))
-                ReviewPromptPolicy.markAsked(now: now)
+                let start = Date()
+                Self.seed(successes: 2)
+                #expect(ReviewPromptPolicy.recordSuccess(now: start))
+                ReviewPromptPolicy.markAsked(now: start)
+
+                var when = start
+                for _ in 0..<2 {
+                    when = when.addingTimeInterval(15 * 24 * 60 * 60)
+                    #expect(!ReviewPromptPolicy.recordSuccess(now: when))
+                    #expect(!ReviewPromptPolicy.recordSuccess(now: when))
+                    #expect(ReviewPromptPolicy.recordSuccess(now: when))
+                    ReviewPromptPolicy.markAsked(now: when)
+                }
+                #expect(ReviewPromptPolicy.askDates.count == 3)
+
+                Self.expectDueOnceCooldownAndFreshSuccessesClear(
+                    now: start.addingTimeInterval(366 * 24 * 60 * 60))
+            }
+        }
+
+        /// The oldest of the three (`start`) is now more than a year back, so the cap no longer
+        /// counts it — but the ordinary cooldown and fresh-success floor still apply on top of
+        /// that, measured from the third ask.
+        private static func expectDueOnceCooldownAndFreshSuccessesClear(now: Date) {
+            #expect(!ReviewPromptPolicy.recordSuccess(now: now))
+            #expect(!ReviewPromptPolicy.recordSuccess(now: now))
+            #expect(ReviewPromptPolicy.recordSuccess(now: now))
+        }
+
+        private static let legacyTurnsKey = "tailscode.review.successfulTurns"
+        private static let legacyLastAskedKey = "tailscode.review.lastAsked"
+
+        @Test("Migrating from the old mechanism carries the count over and the old ask counts toward the cap")
+        func migratesFromLegacyKeys() {
+            withCleanStore {
+                let defaults = UserDefaults.standard
+                let askedAt = Date().addingTimeInterval(-10 * 24 * 60 * 60)
+                defaults.set(7, forKey: Self.legacyTurnsKey)
+                defaults.set(askedAt.timeIntervalSince1970, forKey: Self.legacyLastAskedKey)
+                defer {
+                    defaults.removeObject(forKey: Self.legacyTurnsKey)
+                    defaults.removeObject(forKey: Self.legacyLastAskedKey)
+                }
+
+                ReviewPromptPolicy.migrateIfNeeded()
+
+                #expect(ReviewPromptPolicy.successCount == 7)
+                #expect(ReviewPromptPolicy.askDates.count == 1)
                 #expect(
-                    !ReviewPromptPolicy.recordSuccessfulTurn(
-                        now: now.addingTimeInterval(ReviewPromptPolicy.askCooldown - 60)))
-                #expect(
-                    ReviewPromptPolicy.recordSuccessfulTurn(
-                        now: now.addingTimeInterval(ReviewPromptPolicy.askCooldown + 60)))
+                    abs(
+                        ReviewPromptPolicy.askDates[0].timeIntervalSince1970
+                            - askedAt.timeIntervalSince1970) < 1)
+                #expect(defaults.object(forKey: Self.legacyTurnsKey) == nil)
+                #expect(defaults.object(forKey: Self.legacyLastAskedKey) == nil)
+                Self.expectMigratedAskCountsTowardCooldown(askedAt: askedAt)
             }
         }
 
-        @Test("A trophy waives the turn count entirely, but not the cooldown")
-        func trophyWaivesTurns() {
-            withCleanStore {
-                let now = Date()
-                #expect(ReviewPromptPolicy.noteTrophyEarned(now: now))
-                ReviewPromptPolicy.markAsked(now: now)
-                #expect(!ReviewPromptPolicy.noteTrophyEarned(now: now.addingTimeInterval(60)))
-            }
-        }
-
-        @Test("Returning to finished work is due after two successful turns, not five")
-        func returnToFinishedWork() {
-            withCleanStore {
-                let now = Date()
-                #expect(!ReviewPromptPolicy.noteReturnedToFinishedWork(now: now))
-                Self.seed(turns: ReviewPromptPolicy.minimumTurnsForReturn - 1)
-                #expect(!ReviewPromptPolicy.noteReturnedToFinishedWork(now: now))
-                Self.seed(turns: ReviewPromptPolicy.minimumTurnsForReturn)
-                #expect(ReviewPromptPolicy.noteReturnedToFinishedWork(now: now))
-                #expect(!ReviewPromptPolicy.recordSuccessfulTurn(now: now))
-                ReviewPromptPolicy.markAsked(now: now)
-                #expect(!ReviewPromptPolicy.noteReturnedToFinishedWork(now: now.addingTimeInterval(60)))
-            }
+        /// The migrated ask is a real ask, not a fresh install's clean slate: ten days past it,
+        /// still inside the fourteen-day cooldown, nothing is due even with successes to spare.
+        private static func expectMigratedAskCountsTowardCooldown(askedAt: Date) {
+            #expect(
+                !ReviewPromptPolicy.recordSuccess(now: askedAt.addingTimeInterval(10 * 24 * 60 * 60)))
         }
     }
 }

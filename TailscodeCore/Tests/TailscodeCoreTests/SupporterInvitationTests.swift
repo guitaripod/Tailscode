@@ -70,7 +70,7 @@ extension DeviceStores {
 
         @Test("The keys are its own, not the review prompt's")
         func ownKeys() {
-            #expect(SupporterInvitation.turnsKey != ReviewPromptPolicy.turnsKey)
+            #expect(SupporterInvitation.turnsKey != ReviewPromptPolicy.successCountKey)
         }
 
         @Test("The primary action carries the price only when the store gave one")
