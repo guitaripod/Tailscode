@@ -59,7 +59,9 @@ enum Kit {
     /// lets opencode 2 report its own cut-off turns and session usage. 0.33.0 reads what a Mac
     /// server's agents are allowed to touch — Full Disk Access — and asks it to open the pane.
     /// 0.33.2 keeps an ad-hoc Mac build's secrets in a file only its user can read.
-    static let version = Version(0, 33, 2)
+    /// 0.34.0 waits on a turn from another process: a side-effect-free request a background
+    /// URLSession can hold until the turn ends, and whether a bridge can really push.
+    static let version = Version(0, 34, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
