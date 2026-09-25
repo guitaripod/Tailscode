@@ -17,7 +17,11 @@ public enum TurnWaitAvailability: Sendable, Equatable {
     case serverTooOld(product: String)
     /// opencode 1.x has no route to wait on at all — a generation gap, not a version behind.
     case openCodeGeneration
-    /// Not yet asked, or the last ask could not be told apart from a server that is merely slow.
+    /// Tried just now and could not tell whether the server supports this at all — a transport
+    /// failure, an auth problem, or anything else that says nothing about the server's age or
+    /// generation. Never confused with `unknown`: this device did ask.
+    case unreachable
+    /// Not yet asked.
     case unknown
 
     /// The one line a server row or its detail screen wears about this. Never claims a wake the
@@ -32,6 +36,9 @@ public enum TurnWaitAvailability: Sendable, Equatable {
                 "Update %@ to be told when a turn ends while Tailscode is closed.", product)
         case .openCodeGeneration:
             return Localized.text("opencode 1.x can't be waited on. opencode 2 can.")
+        case .unreachable:
+            return Localized.text(
+                "Tailscode couldn't reach this server to find out whether it can be waited on.")
         case .unknown:
             return Localized.text("Tailscode hasn't checked yet whether this server can be waited on.")
         }
@@ -60,5 +67,6 @@ public enum TurnWaitFooters {
     public static let forceQuit = Localized.text(
         "Swiping Tailscode away stops the wait until you open it again.")
     public static let privacy = Localized.text(
-        "Tailscode waits on your servers directly. Nothing passes through Midgar or Apple.")
+        "The wait itself runs straight over your tailnet. None of it passes through Midgar or Apple."
+    )
 }

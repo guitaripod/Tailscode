@@ -39,10 +39,20 @@ struct TurnWaitReadingTests {
         #expect(!reading.canWait)
     }
 
+    @Test("a server this device tried and failed to reach says so, never reading as unasked")
+    func unreachable() {
+        let reading = TurnWaitAvailability.unreachable
+        #expect(
+            reading.sentence
+                == "Tailscode couldn't reach this server to find out whether it can be waited on.")
+        #expect(!reading.canWait)
+    }
+
     @Test("every state but waits refuses to arm")
     func onlyWaitsCanWait() {
         let all: [TurnWaitAvailability] = [
-            .waits, .serverTooOld(product: "claude-bridge"), .openCodeGeneration, .unknown,
+            .waits, .serverTooOld(product: "claude-bridge"), .openCodeGeneration, .unreachable,
+            .unknown,
         ]
         #expect(all.filter(\.canWait) == [.waits])
     }
@@ -61,6 +71,7 @@ struct TurnWaitReadingTests {
         #expect(TurnWaitFooters.forceQuit == "Swiping Tailscode away stops the wait until you open it again.")
         #expect(
             TurnWaitFooters.privacy
-                == "Tailscode waits on your servers directly. Nothing passes through Midgar or Apple.")
+                == "The wait itself runs straight over your tailnet. None of it passes through Midgar or Apple."
+        )
     }
 }

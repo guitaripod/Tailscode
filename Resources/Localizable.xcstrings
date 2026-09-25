@@ -225148,13 +225148,91 @@
         }
       }
     },
-    "Tailscode waits on your servers directly. Nothing passes through Midgar or Apple.": {
+    "The wait itself runs straight over your tailnet. None of it passes through Midgar or Apple.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tailscode waits on your servers directly. Nothing passes through Midgar or Apple."
+            "value": "The wait itself runs straight over your tailnet. None of it passes through Midgar or Apple."
+          }
+        }
+      }
+    },
+    "Tailscode couldn't reach this server to find out whether it can be waited on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode couldn't reach this server to find out whether it can be waited on."
+          }
+        }
+      }
+    },
+    "When closed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When closed"
+          }
+        }
+      }
+    },
+    "Background App Refresh": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background App Refresh"
+          }
+        }
+      }
+    },
+    "Off — tap to open iOS Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off — tap to open iOS Settings"
+          }
+        }
+      }
+    },
+    "background app refresh wait turn ends closed": {
+      "comment": "search keywords",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "background app refresh wait turn ends closed"
+          }
+        }
+      }
+    },
+    "Approvals and turn alerts are raised by this device while it is watching a session, and by a side-effect-free wait each server holds open while the app is closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approvals and turn alerts are raised by this device while it is watching a session, and by a side-effect-free wait each server holds open while the app is closed."
+          }
+        }
+      }
+    },
+    "Push from a bridge with a key configured reaches you the same way.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push from a bridge with a key configured reaches you the same way."
           }
         }
       }

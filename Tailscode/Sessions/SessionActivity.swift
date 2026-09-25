@@ -135,8 +135,11 @@ final class SessionActivity {
             retained[sessionID] = nil
         }
         let previous = statuses[sessionID] ?? .idle
-        if status == .running, previous != .running, UIApplication.shared.applicationState != .active {
-            TurnWaitCenter.shared.arm(profileID: profileID, sessionID: sessionID, backend: keepAlive.backend)
+        if status == .running, previous != .running {
+            TurnEndGate.reset(profileID: profileID, sessionID: sessionID)
+            if UIApplication.shared.applicationState != .active {
+                TurnWaitCenter.shared.arm(profileID: profileID, sessionID: sessionID, backend: keepAlive.backend)
+            }
         }
         guard previous != status else {
             if status != .idle { postLiveTick() }
@@ -153,12 +156,16 @@ final class SessionActivity {
                 recordMissed(
                     identifier: "done:\(sessionID)", profileID: profileID, sessionID: sessionID,
                     title: title, body: body)
-            } else {
+            } else if TurnEndGate.claim(profileID: profileID, sessionID: sessionID) {
                 NotificationManager.notify(
                     kind: .turnComplete,
                     title: title, body: body,
                     identifier: "done:\(sessionID)",
                     sessionID: sessionID, profileID: profileID, activity: .turnEnded)
+            } else {
+                AppLogger.lifecycle.info(
+                    "turn ended locally but already claimed by the background wait; skipping duplicate banner for session=\(sessionID)"
+                )
             }
         }
         NotificationCenter.default.post(name: Self.didChange, object: nil)

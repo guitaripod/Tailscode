@@ -471,9 +471,11 @@ final class SettingsViewController: UIViewController {
         case .notifications:
             let base = String(
                 localized:
-                    "Approvals and turn alerts are raised by this device while it is watching a session, and by a side-effect-free wait each server holds open while the app is closed. Push from a bridge with a key configured reaches you the same way."
+                    "Approvals and turn alerts are raised by this device while it is watching a session, and by a side-effect-free wait each server holds open while the app is closed."
             )
-            return "\(base) \(TurnWaitFooters.forceQuit) \(TurnWaitFooters.privacy)"
+            let push = String(
+                localized: "Push from a bridge with a key configured reaches you the same way.")
+            return "\(base) \(TurnWaitFooters.privacy) \(push) \(TurnWaitFooters.forceQuit)"
         case .usage:
             return String(
                 localized:

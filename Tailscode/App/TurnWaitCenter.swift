@@ -37,6 +37,15 @@ final class TurnWaitCenter {
         let armedAt: Date
     }
 
+    /// A profile's answer to "can this be waited on at all", held only long enough to be worth
+    /// skipping a retry over — a transient misdiagnosis (a rotated password, a session that
+    /// happened to be deleted, a tunnel hiccup mid-probe) must not read as a permanent fact about
+    /// the server's age for the rest of the process's life.
+    private struct UnsupportedMark {
+        let support: TurnWaitSupport
+        let markedAt: Date
+    }
+
     private let sessionDelegate = TurnWaitSessionDelegate()
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
@@ -54,8 +63,17 @@ final class TurnWaitCenter {
     /// can both pass the `armed[key] == nil` check across the `await`s in between and open two
     /// wait requests for one turn.
     private var arming: Set<String> = []
-    private var unsupportedProfiles: Set<String> = []
+    private var unsupportedProfiles: [String: UnsupportedMark] = [:]
+    /// How long an unsupported mark stands before the next `arm()` is allowed to ask again — long
+    /// enough that a genuinely old server isn't reprobed on every backgrounding, short enough that
+    /// a server updated or a password fixed mid-session recovers within the hour rather than
+    /// needing a relaunch.
+    private static let unsupportedRecheckInterval: TimeInterval = 30 * 60
     private var retriedOnce: Set<String> = []
+    /// Keys this device cancelled on purpose, from `cancel(sessionID:)` — the completion that
+    /// follows is expected and carries no news, whatever error it completes with, and must never
+    /// be read as a transport failure worth retrying.
+    private var cancelling: Set<String> = []
     private var pendingSystemCompletion: (() -> Void)?
     private var inFlight: [Task<Void, Never>] = []
 
@@ -81,8 +99,6 @@ final class TurnWaitCenter {
         pendingSystemCompletion = completion
         start()
     }
-
-    // MARK: Arming
 
     /// Every conversation this device is driving whose turn the server has confirmed is running,
     /// most recently active first.
@@ -112,9 +128,15 @@ final class TurnWaitCenter {
     /// or pressed against the cap is left alone. Safe to call for a turn seen running while the app
     /// is not active from anywhere: arming twice for the same turn is exactly what idempotent means
     /// here.
+    ///
+    /// Every call that actually spawns the arming `Task` holds one background-task assertion for
+    /// the whole of it — the synchronous decision here through `armAsync` reaching `task.resume()`
+    /// or bailing out — because `arm()` only ever runs while the app is backgrounding or already
+    /// backgrounded, exactly where the system is free to suspend this process the moment this
+    /// method returns, before the `Task` it just spawned gets a chance to run at all.
     func arm(profileID: String, sessionID: String, backend: any CodingAgentBackend) {
         let key = Self.key(profileID, sessionID)
-        guard armed[key] == nil, !arming.contains(key), !unsupportedProfiles.contains(profileID)
+        guard armed[key] == nil, !arming.contains(key), !isUnsupported(profileID: profileID)
         else { return }
         guard armed.count + arming.count < Self.maxConcurrentWaits else {
             AppLogger.lifecycle.info(
@@ -122,9 +144,14 @@ final class TurnWaitCenter {
             return
         }
         arming.insert(key)
+        let box = BackgroundTaskBox()
+        box.identifier = UIApplication.shared.beginBackgroundTask(withName: "TurnWaitCenter.arm") {
+            MainActor.assumeIsolated { box.end() }
+        }
         inFlight.append(
             Task { [weak self] in
                 await self?.armAsync(profileID: profileID, sessionID: sessionID, backend: backend)
+                box.end()
             })
     }
 
@@ -152,16 +179,18 @@ final class TurnWaitCenter {
         }
         task.taskDescription = description
         armed[key] = Armed(task: task, armedAt: info.armedAt)
-        retriedOnce.remove(key)
         task.resume()
         AppLogger.connection.info("turnwait armed profile=\(profileID) session=\(sessionID)")
     }
 
     /// The conversation was watched to its end from here, so the wait held for it is redundant —
     /// cancelled rather than left to complete on its own and risk a second, later notification.
+    /// Marked in `cancelling` first: the completion this cancellation produces carries no news
+    /// (whatever error it lands with) and must never be read as a transport failure worth retrying.
     func cancel(sessionID: String) {
         for key in armed.keys where key.hasSuffix("|\(sessionID)") {
             let profileID = Self.profileID(fromKey: key)
+            cancelling.insert(key)
             armed.removeValue(forKey: key)?.task.cancel()
             AppLogger.lifecycle.info(
                 "turnwait cancelled profile=\(profileID) session=\(sessionID) (seen ending locally)"
@@ -169,14 +198,25 @@ final class TurnWaitCenter {
         }
     }
 
+    /// Never latches `.undetermined`: a transport failure, a 401, a 5xx or an undecodable status
+    /// says nothing about the server's age and must be asked again at the next real opportunity,
+    /// not remembered as if it were a fact. A genuine determination stands for
+    /// `unsupportedRecheckInterval` before the next `arm()` is allowed to re-probe it.
     private func markUnsupported(profileID: String, support: TurnWaitSupport) {
-        guard !unsupportedProfiles.contains(profileID) else { return }
-        unsupportedProfiles.insert(profileID)
+        guard support != .undetermined else { return }
+        unsupportedProfiles[profileID] = UnsupportedMark(support: support, markedAt: Date())
         AppLogger.connection.info(
             "turnwait unsupported profile=\(profileID) reason=\(Self.describe(support))")
     }
 
-    // MARK: Completion
+    private func isUnsupported(profileID: String) -> Bool {
+        guard let mark = unsupportedProfiles[profileID] else { return false }
+        guard Date().timeIntervalSince(mark.markedAt) < Self.unsupportedRecheckInterval else {
+            unsupportedProfiles.removeValue(forKey: profileID)
+            return false
+        }
+        return true
+    }
 
     fileprivate func registerCompletion(
         description: String?, status: Int, headers: [String: String], data: Data, error: Error?
@@ -196,7 +236,14 @@ final class TurnWaitCenter {
             AppLogger.connection.error("turnwait completion carried no task info (status=\(status))")
             return
         }
-        armed.removeValue(forKey: Self.key(info.profileID, info.sessionID))
+        let key = Self.key(info.profileID, info.sessionID)
+        armed.removeValue(forKey: key)
+        guard cancelling.remove(key) == nil else {
+            AppLogger.lifecycle.info(
+                "turnwait completion for a wait this device cancelled on purpose profile=\(info.profileID) session=\(info.sessionID); not re-arming"
+            )
+            return
+        }
         guard
             let profile = ConnectionController.shared.profiles.first(where: {
                 $0.id == info.profileID
@@ -214,10 +261,18 @@ final class TurnWaitCenter {
         do {
             let result = try await backend.turnWaitResult(
                 status: status, headers: headers, body: data, sessionID: info.sessionID)
+            retriedOnce.remove(key)
+            unsupportedProfiles.removeValue(forKey: info.profileID)
             await apply(result, info: info, profile: profile, backend: backend)
         } catch let agentError as AgentError {
-            if case .http(let code, _) = agentError, code == 401 || code == 404 {
-                markUnsupported(profileID: info.profileID, support: .serverTooOld)
+            if case .http(let code, _) = agentError, code == 404 {
+                AppLogger.connection.info(
+                    "turnwait session gone (404) profile=\(info.profileID) session=\(info.sessionID); dropping without marking the server unsupported"
+                )
+            } else if case .http(let code, _) = agentError, code == 401 {
+                AppLogger.connection.info(
+                    "turnwait auth failure (401) profile=\(info.profileID) session=\(info.sessionID); will try again once credentials are current, not marking the server unsupported"
+                )
             } else {
                 AppLogger.connection.error(
                     "turnwait result error profile=\(info.profileID) session=\(info.sessionID): \(agentError)"
@@ -299,13 +354,22 @@ final class TurnWaitCenter {
                 endedAt: result.endedAt),
             title: result.title, onScreen: onScreen)
 
-        if result.state == .ended, PushRegistrar.covers(profileID: info.profileID) {
+        let (kind, identifier, reason) = Self.notification(for: result, sessionID: info.sessionID)
+
+        if Self.pushAlreadyCovers(profileID: info.profileID) {
             AppLogger.lifecycle.info(
-                "turnwait ended profile=\(info.profileID) session=\(info.sessionID); the bridge's own push covers it"
+                "turnwait \(result.state) profile=\(info.profileID) session=\(info.sessionID); the bridge's own push covers it"
             )
             recordMissedIfAway(
-                identifier: "done:\(info.sessionID)", profileID: info.profileID,
-                sessionID: info.sessionID, title: title, body: body, reason: .turnEnded)
+                identifier: identifier, profileID: info.profileID,
+                sessionID: info.sessionID, title: title, body: body, reason: reason)
+            return
+        }
+
+        guard TurnEndGate.claim(profileID: info.profileID, sessionID: info.sessionID) else {
+            AppLogger.lifecycle.info(
+                "turnwait profile=\(info.profileID) session=\(info.sessionID) already claimed by the live-stream path; skipping"
+            )
             return
         }
 
@@ -316,7 +380,6 @@ final class TurnWaitCenter {
             return
         }
 
-        let (kind, identifier, reason) = Self.notification(for: result, sessionID: info.sessionID)
         NotificationManager.notify(
             kind: kind, title: title, body: body, identifier: identifier,
             sessionID: info.sessionID, profileID: info.profileID, activity: reason)
@@ -324,14 +387,27 @@ final class TurnWaitCenter {
             "turnwait posted for profile=\(info.profileID) session=\(info.sessionID) (\(result.state))")
     }
 
+    /// Whether a bridge's own remote push already covers this profile's turn endings — every one
+    /// of them, since claude-bridge posts its alert unconditionally whenever a turn finishes,
+    /// question or approval included, never only when it reaches a plain finish.
+    private static func pushAlreadyCovers(profileID: String) -> Bool {
+        PushRegistrar.covers(profileID: profileID)
+    }
+
+    /// `.needsYou` always posts as an open-only question, whatever the ending: the `/wait` wire
+    /// contract carries no `PermissionRequest`, so an approval notification here could never give
+    /// its own Approve/Deny buttons anything to act on. The body still says "Awaiting your
+    /// approval" rather than a generic question line — that comes from `LiveActivityDetail
+    /// .approval`'s own line in `complete(_:info:profile:)`, not from the kind chosen here.
     private static func notification(for result: TurnWaitResult, sessionID: String) -> (
         NotificationManager.Kind, String, MissedActivity.Reason
     ) {
-        switch (result.state, result.ending) {
-        case (.needsYou, .approval):
-            return (.approval, "turnwait-approval:\(sessionID)", .needsApproval)
-        case (.needsYou, _):
-            return (.question, "turnwait-question:\(sessionID)", .needsAnswer)
+        switch result.state {
+        case .needsYou:
+            let isApproval = result.ending == .approval
+            let identifier = isApproval ? "turnwait-approval:\(sessionID)" : "turnwait-question:\(sessionID)"
+            let reason: MissedActivity.Reason = isApproval ? .needsApproval : .needsAnswer
+            return (.question, identifier, reason)
         default:
             let reason: MissedActivity.Reason = result.ending == .failed ? .turnFailed : .turnEnded
             return (.turnComplete, "done:\(sessionID)", reason)
@@ -353,9 +429,11 @@ final class TurnWaitCenter {
         ])
     }
 
-    /// Whether this session already has a delivered notification raised since the wait was armed —
-    /// the in-process live-stream path and this background wait can both notice the same ending,
-    /// and only one of them may say so.
+    /// A secondary guard behind `TurnEndGate`, for a completion this process did not itself
+    /// witness arm — a system-relaunched process reading a wait its predecessor started. `TurnEndGate`
+    /// is the one that actually keeps the in-process live-stream path and this background wait from
+    /// both notifying for the same ending: this check is `await`-suspended and non-atomic against a
+    /// concurrent writer, so it alone was never enough.
     private func alreadyNotified(sessionID: String, since: Date) async -> Bool {
         let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
         return delivered.contains { notice in
@@ -363,8 +441,6 @@ final class TurnWaitCenter {
                 && notice.request.content.userInfo["sessionID"] as? String == sessionID
         }
     }
-
-    // MARK: Background wake bookkeeping
 
     fileprivate func finishBackgroundEvents() {
         guard let completion = pendingSystemCompletion else { return }
@@ -382,8 +458,6 @@ final class TurnWaitCenter {
         }
     }
 
-    // MARK: Diagnostics
-
     var armedDescriptions: [String] {
         armed.keys.sorted().map { $0.replacingOccurrences(of: "|", with: " → ") }
     }
@@ -393,8 +467,6 @@ final class TurnWaitCenter {
         return
             "\(lastCompletion.sessionID) — \(lastCompletion.state) at \(lastCompletion.at.formatted(date: .omitted, time: .shortened))"
     }
-
-    // MARK: Encoding
 
     private static func key(_ profileID: String, _ sessionID: String) -> String {
         "\(profileID)|\(sessionID)"
@@ -435,6 +507,7 @@ final class TurnWaitCenter {
         case .serverTooOld: return "serverTooOld"
         case .unavailable(.generation): return "unavailable(generation)"
         case .unavailable(.none): return "unavailable(none)"
+        case .undetermined: return "undetermined"
         }
     }
 }
@@ -444,14 +517,42 @@ extension TurnWaitAvailability {
     /// version this capability shipped in, so this mapping lives here rather than there.
     /// `.unavailable(.none)` is the protocol-extension default for a backend that never overrides
     /// any of this (nothing this app talks to takes that road today), read as `.unknown` since
-    /// Core's vocabulary has no case for "no server to wait on at all".
+    /// Core's vocabulary has no case for "no server to wait on at all". `.undetermined` reads as
+    /// `.unreachable` rather than `.unknown`: this device did ask, and "hasn't checked yet" would
+    /// be false for a check that was tried and failed.
     static func from(_ support: TurnWaitSupport, agent: AgentType) -> TurnWaitAvailability {
         switch support {
         case .supported: return .waits
         case .serverTooOld: return .serverTooOld(product: UpdateProduct.name(for: agent))
         case .unavailable(.generation): return .openCodeGeneration
         case .unavailable(.none): return .unknown
+        case .undetermined: return .unreachable
         }
+    }
+}
+
+/// The synchronous, in-process record of which turn endings have already been announced. Shared
+/// between `TurnWaitCenter`'s background wait and `SessionActivity`'s own live-stream watch — the
+/// two witnesses that can both notice the same turn end within the same brief backgrounding
+/// window — this is what an `await`-ed `UNUserNotificationCenter` query alone cannot promise:
+/// there is no suspension point between the check and the claim for the other witness to land in.
+@MainActor
+enum TurnEndGate {
+    private static var claimed: Set<String> = []
+
+    /// The first witness to this turn's ending wins the right to notify; every later witness for
+    /// the same session — the live stream and the background wait noticing within moments of each
+    /// other — must stay silent.
+    static func claim(profileID: String, sessionID: String) -> Bool {
+        let key = "\(profileID)|\(sessionID)"
+        guard !claimed.contains(key) else { return false }
+        claimed.insert(key)
+        return true
+    }
+
+    /// Cleared the moment a fresh turn starts, so the ending after this one is announced again.
+    static func reset(profileID: String, sessionID: String) {
+        claimed.remove("\(profileID)|\(sessionID)")
     }
 }
 
