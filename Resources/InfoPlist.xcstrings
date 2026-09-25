@@ -4,16 +4,16 @@
     "NSLocalNetworkUsageDescription": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network."
-          }
-        },
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Tailscode verbindet sich mit Coding-Agent-Servern, die du auf deinen eigenen Rechnern betreibst — auch mit denen in deinem lokalen Netzwerk."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network."
           }
         },
         "es": {
@@ -44,6 +44,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tailscode는 사용자의 컴퓨터에서 직접 실행하는 코딩 에이전트 서버에 연결하며, 여기에는 로컬 네트워크의 서버도 포함됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode łączy się z serwerami agentów kodowania, które uruchamiasz na własnych komputerach — również tych w twojej sieci lokalnej."
           }
         },
         "pt-BR": {
@@ -111,6 +117,12 @@
             "value": "대화의 사진을 사진 보관함에 저장합니다."
           }
         },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisuj zdjęcia z rozmowy w bibliotece zdjęć."
+          }
+        },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
@@ -134,16 +146,16 @@
     "NSPhotoLibraryUsageDescription": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Attach images from your library to a prompt."
-          }
-        },
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Bilder aus deiner Mediathek an einen Prompt anhängen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attach images from your library to a prompt."
           }
         },
         "es": {
@@ -176,6 +188,12 @@
             "value": "보관함의 이미지를 프롬프트에 첨부합니다."
           }
         },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Załączaj obrazy z biblioteki zdjęć do promptu."
+          }
+        },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
@@ -199,16 +217,16 @@
     "New Chat": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New Chat"
-          }
-        },
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Neuer Chat"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Chat"
           }
         },
         "es": {
@@ -239,6 +257,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "새 채팅"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nowa rozmowa"
           }
         },
         "pt-BR": {
