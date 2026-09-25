@@ -5,8 +5,9 @@ import TailscodeCore
 /// The one place the Mac asks for a review — the phone's `ReviewPromptCoordinator`, shape for
 /// shape. The policy is Core's (`ReviewPromptPolicy`); this object only carries it out with the
 /// platform's own call, debounced behind the success that earned it and checked all over again
-/// right before it fires so it never lands on a launch, a background app, or a window with a
-/// sheet over it.
+/// right before it fires so it never lands on a launch, a window with a sheet over it, or the
+/// purchase window itself — the app's one window, so a sheet on it is the only "blocking UI"
+/// a key check can see, and the Pro window is a second window rather than a sheet.
 @MainActor
 final class MacReviewPrompt {
     static let shared = MacReviewPrompt()
@@ -49,6 +50,10 @@ final class MacReviewPrompt {
         }
         guard window.attachedSheet == nil else {
             AppLogger.ui.info("review: skipped (blocking UI on screen)")
+            return
+        }
+        guard !(window.windowController is ProWindowController) else {
+            AppLogger.ui.info("review: skipped (purchase window on screen)")
             return
         }
         guard let host = window.contentViewController else {
