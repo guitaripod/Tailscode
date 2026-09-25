@@ -161,24 +161,29 @@ public enum DemoWorld {
             upstream: "origin/reconnect-backoff", ahead: 2, behind: 0,
             changes: [
                 GitChange(
-                    path: "Sources/Pulse/Socket/Reconnect.swift", index: "M", insertions: 64,
-                    deletions: 0, stagedInsertions: 64, stagedDeletions: 12),
+                    path: "Sources/Pulse/Socket/Reconnect.swift", index: "M",
+                    stagedInsertions: 7, stagedDeletions: 2),
                 GitChange(
-                    path: "Sources/Pulse/Socket/Backoff.swift", worktree: "M", insertions: 31,
-                    deletions: 4),
+                    path: "Sources/Pulse/Socket/Backoff.swift", worktree: "M", insertions: 2,
+                    deletions: 1),
                 GitChange(
-                    path: "Tests/PulseTests/ReconnectTests.swift", worktree: "M", insertions: 88,
-                    deletions: 6),
+                    path: "Tests/PulseTests/ReconnectTests.swift", worktree: "M", insertions: 8,
+                    deletions: 2),
                 GitChange(
                     path: "Sources/Pulse/Socket/Jitter.swift", worktree: "?", untracked: true,
-                    insertions: 41, bytes: 1_204),
+                    insertions: 17, bytes: 373),
             ],
             commits: [
                 ("Hold the socket open across a suspend", "you", 900),
                 ("Give the reconnect its own clock", "you", 26_000),
                 ("Log every drop with the reason the peer gave", "you", 88_000),
             ]),
-        gitPatches: ["Sources/Pulse/Socket/Backoff.swift": demoBackoffPatch])
+        gitPatches: [
+            "Sources/Pulse/Socket/Reconnect.swift": demoReconnectPatch,
+            "Sources/Pulse/Socket/Backoff.swift": demoBackoffPatch,
+            "Tests/PulseTests/ReconnectTests.swift": demoReconnectTestsPatch,
+            "Sources/Pulse/Socket/Jitter.swift": demoJitterPatch,
+        ])
 
 
     /// Thirty plausible days for the demo screenshots: a working rhythm with quiet weekends, a
@@ -913,20 +918,98 @@ public enum DemoWorld {
             }, changedTotal: changes.count)
     }
 
+    private static let demoReconnectPatch = """
+        diff --git a/Sources/Pulse/Socket/Reconnect.swift b/Sources/Pulse/Socket/Reconnect.swift
+        index 7c02e5d..b41f9a0 100644
+        --- a/Sources/Pulse/Socket/Reconnect.swift
+        +++ b/Sources/Pulse/Socket/Reconnect.swift
+        @@ -4,13 +4,18 @@ import Foundation
+         final class ReconnectScheduler {
+             private let backoff: Backoff
+        +    private let jitter: JitterSource
+             private var failures = 0
+
+        -    init(backoff: Backoff = Backoff(base: 0.4, ceiling: 30)) {
+        +    init(
+        +        backoff: Backoff = Backoff(base: 0.4, ceiling: 30),
+        +        jitter: JitterSource = SystemJitter()
+        +    ) {
+                 self.backoff = backoff
+        +        self.jitter = jitter
+             }
+
+             func nextDelay() -> TimeInterval {
+        -        let delay = backoff.delay(afterFailures: failures) * Double.random(in: 0.6...1.4)
+        +        let delay = backoff.delay(afterFailures: failures) * jitter.factor(in: 0.6...1.4)
+                 failures += 1
+                 return delay
+             }
+        """
+
     private static let demoBackoffPatch = """
         diff --git a/Sources/Pulse/Socket/Backoff.swift b/Sources/Pulse/Socket/Backoff.swift
         index 4b1c0a2..9d21f77 100644
         --- a/Sources/Pulse/Socket/Backoff.swift
         +++ b/Sources/Pulse/Socket/Backoff.swift
-        @@ -12,9 +12,12 @@ struct Backoff {
+        @@ -12,6 +12,7 @@ struct Backoff {
              let ceiling: TimeInterval
 
              func delay(afterFailures failures: Int) -> TimeInterval {
         -        min(ceiling, base * pow(2, Double(failures)))
-        +        let doubled = min(ceiling, base * pow(2, Double(failures)))
-        +        return doubled * Double.random(in: 0.7...1.0)
+        +        let exponent = Double(min(failures, 16))
+        +        return min(ceiling, base * pow(2, exponent))
              }
          }
+        """
+
+    private static let demoReconnectTestsPatch = """
+        diff --git a/Tests/PulseTests/ReconnectTests.swift b/Tests/PulseTests/ReconnectTests.swift
+        index 51d0c3e..e2a7f18 100644
+        --- a/Tests/PulseTests/ReconnectTests.swift
+        +++ b/Tests/PulseTests/ReconnectTests.swift
+        @@ -8,8 +8,14 @@ import Testing
+         struct ReconnectTests {
+             @Test func backoffStaysUnderTheCeiling() {
+        -        let scheduler = ReconnectScheduler()
+        +        let scheduler = ReconnectScheduler(jitter: FixedJitter(value: 1.0))
+                 let delays = (0..<6).map { _ in scheduler.nextDelay() }
+        -        #expect(delays[0] < 0.5)
+        +        #expect(delays[0] == 0.4)
+        +        #expect(delays[1] == 0.8)
+                 #expect(delays.allSatisfy { $0 <= 30 })
+             }
+        +
+        +    @Test func worstCaseJitterStaysBounded() {
+        +        let scheduler = ReconnectScheduler(jitter: FixedJitter(value: 1.4))
+        +        #expect(scheduler.nextDelay() == 0.4 * 1.4)
+        +    }
+         }
+        """
+
+    private static let demoJitterPatch = """
+        diff --git a/Sources/Pulse/Socket/Jitter.swift b/Sources/Pulse/Socket/Jitter.swift
+        new file mode 100644
+        index 0000000..3e8b1d4
+        --- /dev/null
+        +++ b/Sources/Pulse/Socket/Jitter.swift
+        @@ -0,0 +1,17 @@
+        +import Foundation
+        +
+        +protocol JitterSource: Sendable {
+        +    func factor(in range: ClosedRange<Double>) -> Double
+        +}
+        +
+        +struct SystemJitter: JitterSource {
+        +    func factor(in range: ClosedRange<Double>) -> Double {
+        +        Double.random(in: range)
+        +    }
+        +}
+        +
+        +struct FixedJitter: JitterSource {
+        +    let value: Double
+        +
+        +    func factor(in _: ClosedRange<Double>) -> Double { value }
+        +}
         """
 
     private static func assistant(
