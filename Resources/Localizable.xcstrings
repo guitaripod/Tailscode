@@ -225085,10 +225085,64 @@
     "Tells this iPhone when a turn ends, straight over your tailnet.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sagt diesem iPhone direkt über dein Tailnet, wenn ein Zug endet."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Tells this iPhone when a turn ends, straight over your tailnet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le dice a este iPhone cuándo termina un turno, directamente por tu tailnet."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indique à cet iPhone la fin d'un tour, directement via votre tailnet."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comunica a questo iPhone quando un turno finisce, direttamente tramite il tuo tailnet."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターンが終わったことを、tailnet 経由で直接この iPhone に伝えます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "턴이 끝나면 tailnet을 통해 이 iPhone에 직접 알려줍니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avisa este iPhone quando um turno termina, direto pela sua tailnet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接通过你的 tailnet，在回合结束时通知这台 iPhone。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接透過你的 tailnet，在回合結束時通知這台 iPhone。"
           }
         }
       }
@@ -225096,10 +225150,64 @@
     "Update %@ to be told when a turn ends while Tailscode is closed.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisiere %1$@, um benachrichtigt zu werden, wenn ein Zug endet, während Tailscode geschlossen ist."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Update %@ to be told when a turn ends while Tailscode is closed."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualiza %1$@ para que te avisen cuando un turno termine mientras Tailscode está cerrada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettez à jour %1$@ pour être averti quand un tour se termine alors que Tailscode est fermée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna %1$@ per essere avvisato quando un turno finisce mentre Tailscode è chiusa."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode を閉じている間にターンが終わったことを知らせてもらうには、%1$@ を更新してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode를 닫아 둔 동안 턴이 끝났을 때 알림을 받으려면 %1$@을(를) 업데이트하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualize o %1$@ para ser avisado quando um turno terminar com o Tailscode fechado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新 %1$@，以便在 Tailscode 关闭期间回合结束时收到通知。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新 %1$@，以便在 Tailscode 關閉期間回合結束時收到通知。"
           }
         }
       }
@@ -225107,10 +225215,64 @@
     "opencode 1.x can't be waited on. opencode 2 can.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf opencode 1.x kann nicht gewartet werden. Auf opencode 2 schon."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "opencode 1.x can't be waited on. opencode 2 can."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se puede esperar en opencode 1.x. En opencode 2, sí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d'attendre sur opencode 1.x. Sur opencode 2, oui."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è possibile attendere su opencode 1.x. Su opencode 2 sì."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 1.x では待機できません。opencode 2 なら可能です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 1.x는 기다릴 수 없습니다. opencode 2는 가능합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não é possível aguardar no opencode 1.x. No opencode 2, sim."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 1.x 无法等待。opencode 2 可以。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 1.x 無法等待。opencode 2 可以。"
           }
         }
       }
@@ -225118,10 +225280,64 @@
     "Tailscode hasn't checked yet whether this server can be waited on.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode hat noch nicht geprüft, ob auf diesen Server gewartet werden kann."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Tailscode hasn't checked yet whether this server can be waited on."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode aún no ha comprobado si se puede esperar en este servidor."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode n'a pas encore vérifié si on peut attendre sur ce serveur."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode non ha ancora verificato se è possibile attendere su questo server."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このサーバで待機できるかどうか、Tailscode はまだ確認していません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 서버를 기다릴 수 있는지 Tailscode가 아직 확인하지 않았습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscode ainda não verificou se é possível aguardar neste servidor."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 尚未检查此服务器是否支持等待。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 尚未檢查此伺服器是否支援等待。"
           }
         }
       }
@@ -225129,10 +225345,64 @@
     "Background App Refresh is off for Tailscode, so a turn that ends while it's closed stays silent until you open it.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Hintergrundaktualisierung ist für Tailscode deaktiviert. Ein Zug, der endet, während die App geschlossen ist, bleibt daher stumm, bis du sie öffnest."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Background App Refresh is off for Tailscode, so a turn that ends while it's closed stays silent until you open it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La actualización en segundo plano está desactivada para Tailscode, así que un turno que termina mientras está cerrada permanece en silencio hasta que la abras."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'actualisation en arrière-plan est désactivée pour Tailscode. Un tour qui se termine pendant qu'elle est fermée reste donc silencieux jusqu'à ce que vous l'ouvriez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'aggiornamento app in background è disattivato per Tailscode, quindi un turno che finisce mentre è chiusa resta silenzioso finché non la apri."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode の「Appのバックグラウンド更新」がオフになっているため、アプリを閉じている間にターンが終わっても、開くまで通知されません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode의 백그라운드 앱 새로고침이 꺼져 있어, 앱을 닫아 둔 동안 턴이 끝나도 앱을 열기 전까지는 알림이 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Atualização em Segundo Plano está desativada para o Tailscode, então um turno que termina enquanto ele está fechado fica em silêncio até você abri-lo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 的后台应用刷新已关闭，因此在应用关闭期间回合结束也不会有提示，直到你打开它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 的背景App重新整理已關閉，因此在應用程式關閉期間回合結束也不會有提示，直到你打開它。"
           }
         }
       }
@@ -225140,10 +225410,64 @@
     "Swiping Tailscode away stops the wait until you open it again.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn du Tailscode aus der App-Übersicht entfernst, wird das Warten gestoppt, bis du die App wieder öffnest."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Swiping Tailscode away stops the wait until you open it again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deslizar para cerrar Tailscode detiene la espera hasta que la vuelvas a abrir."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Balayer Tailscode pour la fermer arrête l'attente jusqu'à ce que vous la rouvriez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se rimuovi Tailscode dalle app recenti, l'attesa si interrompe finché non la riapri."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App スイッチャーで Tailscode をスワイプして閉じると、再び開くまで待機が止まります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode를 위로 스와이프해서 종료하면 다시 열 때까지 대기가 멈춥니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deslizar para fechar o Tailscode interrompe a espera até você abri-lo de novo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在多任务界面上滑关闭 Tailscode 会停止等待，直到你再次打开它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在多工畫面上滑關閉 Tailscode 會停止等待，直到你再次打開它。"
           }
         }
       }
@@ -225151,10 +225475,64 @@
     "The wait itself runs straight over your tailnet. None of it passes through Midgar or Apple.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Warten selbst läuft direkt über dein Tailnet. Nichts davon läuft über Midgar oder Apple."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "The wait itself runs straight over your tailnet. None of it passes through Midgar or Apple."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La espera en sí se realiza directamente a través de tu tailnet. Nada de ello pasa por Midgar ni por Apple."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'attente elle-même passe directement par votre tailnet. Rien ne transite par Midgar ni par Apple."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'attesa vera e propria avviene direttamente tramite il tuo tailnet. Niente passa da Midgar o da Apple."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待機処理自体は tailnet 経由で直接行われます。Midgar や Apple を経由することはありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대기 자체는 tailnet을 통해 직접 이루어집니다. Midgar나 Apple을 거치지 않습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A própria espera acontece direto pela sua tailnet. Nada disso passa pela Midgar ou pela Apple."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待过程本身直接通过你的 tailnet 进行，完全不经过 Midgar 或 Apple。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待過程本身直接透過你的 tailnet 進行，完全不經過 Midgar 或 Apple。"
           }
         }
       }
@@ -225162,10 +225540,64 @@
     "Tailscode couldn't reach this server to find out whether it can be waited on.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode konnte diesen Server nicht erreichen, um herauszufinden, ob auf ihn gewartet werden kann."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Tailscode couldn't reach this server to find out whether it can be waited on."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode no pudo conectarse a este servidor para averiguar si se puede esperar en él."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode n'a pas pu joindre ce serveur pour savoir si on peut y attendre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode non è riuscita a raggiungere questo server per scoprire se è possibile attendere su di esso."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode はこのサーバに到達できず、待機できるかどうかを確認できませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode가 이 서버에 연결하지 못해 기다릴 수 있는지 확인하지 못했습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscode não conseguiu se conectar a este servidor para saber se é possível aguardar nele."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 无法连接此服务器，因此无法确认是否支持等待。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 無法連線這台伺服器，因此無法確認是否支援等待。"
           }
         }
       }
@@ -225173,10 +225605,64 @@
     "When closed": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn geschlossen"
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "When closed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al estar cerrada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une fois fermée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando è chiusa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリを閉じているとき"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "앱이 닫혀 있을 때"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando fechado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭时"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉時"
           }
         }
       }
@@ -225184,10 +225670,64 @@
     "Background App Refresh": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hintergrundaktualisierung"
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Background App Refresh"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualización en segundo plano"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualisation en arrière-plan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiornamento app in background"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appのバックグラウンド更新"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "백그라운드 앱 새로고침"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualização em Segundo Plano"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "后台应用刷新"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "背景App重新整理"
           }
         }
       }
@@ -225195,10 +225735,64 @@
     "Off — tap to open iOS Settings": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aus — zum Öffnen der iOS-Einstellungen tippen"
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Off — tap to open iOS Settings"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desactivada — toca para abrir los Ajustes de iOS"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Désactivée — touchez pour ouvrir les réglages iOS"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disattivato — tocca per aprire Impostazioni iOS"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オフ — タップして iOS の設定を開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "꺼짐 — 눌러서 iOS 설정 열기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desativado — toque para abrir os Ajustes do iOS"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭 — 轻点打开 iOS 设置"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已關閉 — 輕點開啟 iOS 設定"
           }
         }
       }
@@ -225207,10 +225801,64 @@
       "comment": "search keywords",
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hintergrundaktualisierung warten zug ende geschlossen"
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "background app refresh wait turn ends closed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "actualización segundo plano esperar turno termina cerrada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "actualisation arrière-plan attente tour fin fermée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "aggiornamento background attesa turno fine chiusa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "バックグラウンド更新 待機 ターン 終了 閉じる"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "백그라운드 새로고침 대기 턴 종료 닫힘"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "atualização segundo plano espera turno termina fechado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "后台刷新 等待 回合 结束 关闭"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "背景重新整理 等待 回合 結束 關閉"
           }
         }
       }
@@ -225218,10 +225866,64 @@
     "Approvals and turn alerts are raised by this device while it is watching a session, and by a side-effect-free wait each server holds open while the app is closed.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Freigaben und Zugbenachrichtigungen werden von diesem Gerät ausgelöst, solange es eine Sitzung beobachtet, sowie durch ein nebenwirkungsfreies Warten, das jeder Server offen hält, während die App geschlossen ist."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Approvals and turn alerts are raised by this device while it is watching a session, and by a side-effect-free wait each server holds open while the app is closed."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las aprobaciones y las alertas de turno las genera este dispositivo mientras observa una sesión, y también una espera sin efectos secundarios que cada servidor mantiene abierta mientras la app está cerrada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les approbations et les alertes de tour sont déclenchées par cet appareil pendant qu'il surveille une session, ainsi que par une attente sans effet de bord que chaque serveur maintient ouverte pendant que l'appli est fermée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le approvazioni e gli avvisi di turno vengono generati da questo dispositivo mentre osserva una sessione, e da un'attesa priva di effetti collaterali che ogni server mantiene aperta mentre l'app è chiusa."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "承認とターンの通知は、このデバイスがセッションを監視している間に発生するものと、アプリを閉じている間も各サーバが保持し続ける副作用のない待機によるものがあります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "승인 및 턴 알림은 이 기기가 세션을 지켜보는 동안 발생하거나, 앱이 닫혀 있는 동안 각 서버가 부작용 없이 유지하는 대기를 통해 발생합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As aprovações e os alertas de turno são gerados por este dispositivo enquanto ele observa uma sessão, e também por uma espera sem efeitos colaterais que cada servidor mantém aberta enquanto o app está fechado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批准和回合提醒，一部分来自本设备在监看会话期间发出的通知，另一部分来自应用关闭期间各服务器保持的无副作用等待。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "核准和回合提醒，一部分來自本裝置在監看工作階段期間發出的通知，另一部分來自應用程式關閉期間各伺服器保持的無副作用等待。"
           }
         }
       }
@@ -225229,10 +225931,64 @@
     "Push from a bridge with a key configured reaches you the same way.": {
       "extractionState": "manual",
       "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push von einer Bridge mit konfiguriertem Schlüssel erreicht dich auf demselben Weg."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Push from a bridge with a key configured reaches you the same way."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El push de un bridge con una clave configurada te llega de la misma manera."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le push d'un bridge avec une clé configurée vous parvient de la même façon."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il push da un bridge con una chiave configurata ti raggiunge nello stesso modo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キーが設定された bridge からのプッシュも、同じ方法で届きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "키가 설정된 bridge의 푸시도 같은 방식으로 전달됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O push de um bridge com uma chave configurada chega a você da mesma forma."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置了密钥的 bridge 发来的推送，也会以同样的方式送达。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定了金鑰的 bridge 傳來的推播，也會以同樣的方式送達。"
           }
         }
       }
