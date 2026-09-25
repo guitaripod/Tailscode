@@ -63,5 +63,67 @@
   ],
   "ipad_headline_swap": {
     "on your phone": "on your iPad"
-  }
+  },
+  "ipad": [
+    {
+      "master": "01-live",
+      "slug": "01-one-workspace",
+      "headline": "Claude Code, opencode, Oh My Pi — one workspace",
+      "subline": "Every machine and every chat beside the conversation, over your own tailnet."
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve-remote",
+      "headline": "Approve the risky command from anywhere",
+      "subline": "Allow once, always, or deny — mid-turn, with the list still in view."
+    },
+    {
+      "master": "04-question",
+      "slug": "03-answer-blockers",
+      "headline": "When it needs you, it asks",
+      "subline": "The chat that is waiting says so in the list. Answer with a tap."
+    },
+    {
+      "master": "02-work",
+      "slug": "04-agent-fanout",
+      "headline": "A fan-out of agents, at a glance",
+      "subline": "Subagents and their plan dock inside the turn that spawned them."
+    },
+    {
+      "master": "05-subagents",
+      "slug": "05-real-work",
+      "headline": "Every command, with its real output",
+      "subline": "Open any agent's work right where it happened."
+    },
+    {
+      "master": "13-diff",
+      "slug": "06-repo-truth",
+      "headline": "Read the diff before you trust it",
+      "subline": "Branch, staged, changed — the real patch, straight from the machine."
+    },
+    {
+      "master": "08-usage",
+      "slug": "07-quota-board",
+      "headline": "Every quota, before the wall",
+      "subline": "Each provider's tightest window and its reset clock, read from your machines."
+    },
+    {
+      "master": "14-analytics",
+      "slug": "08-month-in-numbers",
+      "headline": "The month in numbers",
+      "subline": "Every turn priced, every machine and model counted."
+    },
+    {
+      "master": "15-delegate",
+      "slug": "09-delegate-ladder",
+      "headline": "Hand the task down the ladder",
+      "subline": "A cheaper model tries first, a verifier judges, you approve the climb."
+    },
+    {
+      "master": "11-focus",
+      "slug": "10-whole-screen",
+      "headline": "Or give it the whole screen",
+      "subline": "Hide the columns with one tap — compaction reads as a seam, not a mystery."
+    }
+  ]
 }

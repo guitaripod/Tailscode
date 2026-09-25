@@ -9,9 +9,11 @@ brand accent behind it.
 
 The iPhone and iPad captions live in marketing/captions/<locale>.json, one file
 per store locale, so the same panel is told in every language the listing
-carries; the Mac set is en-US only and its captions stay in this file.
+carries; the Mac set is en-US only and its captions stay in this file. The iPad
+is photographed in landscape as the workspace it is, so a locale may carry an
+`ipad` manifest of its own; one that does not retells the iPhone's.
 
-Masters:  marketing/appstore/iphone/*.png (1320x2868) and marketing/appstore/ipad/*.png for
+Masters:  marketing/appstore/iphone/*.png (1320x2868) and marketing/appstore/ipad/*.png (2752x2064) for
           en-US; marketing/appstore/l10n/<locale>/iphone/*.png for every other locale;
           Resources/Screenshots/mac/*.png (2880x1800)
 Panels:   marketing/appstore/panels/{iphone,ipad,mac}/*.png for en-US,
@@ -64,15 +66,21 @@ def locales():
 
 
 def captions(locale):
-    """The iPhone manifest for one locale, and the substitution that retells panel 1 for the iPad."""
+    """One locale's caption book."""
     with open(os.path.join(CAPTIONS, locale + ".json")) as f:
-        book = json.load(f)
-    panels = [(p["master"], p["slug"], p["headline"], p["subline"]) for p in book["iphone"]]
-    return panels, book.get("ipad_headline_swap", {})
+        return json.load(f)
 
 
-def ipad_manifest(panels, swap):
-    return [(m, s, swap_all(h, swap), sub) for m, s, h, sub in panels]
+def manifest(entries):
+    return [(p["master"], p["slug"], p["headline"], p["subline"]) for p in entries]
+
+
+def ipad_manifest(book):
+    """The iPad's own panels where the locale wrote them, else the iPhone's retold for the iPad."""
+    if "ipad" in book:
+        return manifest(book["ipad"])
+    swap = book.get("ipad_headline_swap", {})
+    return [(m, s, swap_all(h, swap), sub) for m, s, h, sub in manifest(book["iphone"])]
 
 
 def swap_all(text, swap):
@@ -196,48 +204,21 @@ def compose_iphone(master, slug, headline, subline):
     return canvas.convert("RGB").crop((0, 0, W, H))
 
 
-def content_window(shot, window_h):
-    """The vertical crop of the master that actually shows something.
-
-    An iPad screen is taller than its content: a chat pins to the bottom, Home
-    fills from the top, and a fixed anchor turns one of them into a black band.
-    Score each row by how much it varies, then keep the window that carries the
-    most ink - ties go to the top, so a full screen keeps its status bar.
-    """
-    if shot.height <= window_h:
-        return shot
-    probe = shot.convert("L").resize((48, shot.height))
-    rows = list(probe.getdata())
-    activity = []
-    for y in range(shot.height):
-        row = rows[y * 48:(y + 1) * 48]
-        mean = sum(row) / 48
-        activity.append(sum(abs(v - mean) for v in row))
-    prefix = [0]
-    for a in activity:
-        prefix.append(prefix[-1] + a)
-    best_top, best_sum = 0, -1
-    for top in range(0, shot.height - window_h + 1, 8):
-        s = prefix[top + window_h] - prefix[top]
-        if s > best_sum:
-            best_top, best_sum = top, s
-    return shot.crop((0, best_top, shot.width, best_top + window_h))
-
-
 def compose_ipad(master, slug, headline, subline):
-    W, H = 2064, 2752
+    """The landscape workspace, whole: the claim centred above it and the screen scaled to the
+    room the claim leaves, so no column of the three is cropped away."""
+    W, H = 2752, 2064
     canvas = gradient(W, H).convert("RGBA")
-    glow(canvas, (W // 2, -470), 1400, 26)
-    end = text_block(canvas, 150, 232, headline, subline, 163, 80, 64, "left", W)
-    y = max(1030, end + 110)
-    scale_w = 1776
+    glow(canvas, (W // 2, -520), 1500, 26)
+    end = text_block(canvas, 0, 104, headline, subline, 112, 56, 26, "center", W)
+    y = end + 72
     source = Image.open(master).convert("RGB")
-    window_h = round((H - y - 96) * source.width / scale_w)
-    shot = rounded(content_window(source, window_h), 84, scale_w)
+    scale_w = round((H - y - 84) * source.width / source.height)
+    shot = rounded(source, 56, scale_w)
     x = (W - shot.width) // 2
-    shadow_under(canvas, [x + 12, y + 38, x + shot.width - 12, min(H, y + shot.height + 24)], 84)
+    shadow_under(canvas, [x + 12, y + 30, x + shot.width - 12, y + shot.height + 20], 56)
     canvas.paste(shot.convert("RGB"), (x, y), shot.split()[3])
-    return canvas.convert("RGB").crop((0, 0, W, H))
+    return canvas.convert("RGB")
 
 
 def compose_mac(master, slug, headline, subline):
@@ -270,14 +251,14 @@ def emit(label, source_dir, folder, manifest, compose):
 
 
 def emit_locale(locale, platform):
-    panels, swap = captions(locale)
+    book = captions(locale)
     source = masters_dir(locale, platform)
     if not os.path.isdir(source):
         print(f"  {locale}/{platform}: no masters at {source}, skipped")
         return
-    manifest = panels if platform == "iphone" else ipad_manifest(panels, swap)
+    panels = manifest(book["iphone"]) if platform == "iphone" else ipad_manifest(book)
     compose = compose_iphone if platform == "iphone" else compose_ipad
-    emit(f"{locale}/{platform}", source, panels_dir(locale, platform), manifest, compose)
+    emit(f"{locale}/{platform}", source, panels_dir(locale, platform), panels, compose)
 
 
 def main():

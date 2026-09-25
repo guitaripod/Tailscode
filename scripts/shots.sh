@@ -6,7 +6,7 @@
 # screen on screen by itself, so the set is reproducible and reviewable.
 #
 #   scripts/shots.sh                 # all shots (iPhone masters)
-#   scripts/shots.sh --ipad          # the same set on a 13" iPad
+#   scripts/shots.sh --ipad          # the landscape workspace set on a 13" iPad
 #   scripts/shots.sh 07-home 08-usage
 #   TAILSCODE_SHOT_LOCALE=de-DE scripts/shots.sh   # the app in German, to marketing/appstore/l10n/de-DE/iphone
 set -euo pipefail
@@ -22,6 +22,7 @@ if [ "${1:-}" = "--ipad" ]; then
   DEVICE_NAME=TailscodeShotsPad
   DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB
   OUT="$ROOT/marketing/appstore/ipad"
+  IPAD=1
 fi
 if [ "$LOCALE" != "en-US" ]; then
   OUT="$ROOT/marketing/appstore/l10n/$LOCALE/$( [ "$DEVICE_NAME" = TailscodeShotsPad ] && echo ipad || echo iphone )"
@@ -68,6 +69,25 @@ SHOTS=(
   "setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_FAKE_TAILNET=up|6"
 )
 
+# The iPad is photographed as the workspace it is, in landscape: the device boots upright and
+# cannot be turned from a script, so TAILSCODE_WINDOW lays the window out a quarter turned (and
+# drops the status bar it would wear down its side), the capture is turned back, and
+# TAILSCODE_WORKSPACE_WALK presses the sidebar's rows on a clock.
+if [ -n "${IPAD:-}" ]; then
+  SHOTS=(
+    "01-live|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1|16"
+    "03-approval|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c3|14"
+    "04-question|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-opencode/demo-o2|13"
+    "02-work|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2|11"
+    "05-subagents|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_OPEN_AGENTS=first|14"
+    "13-diff|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1 TAILSCODE_OPEN_GIT=diff|17"
+    "08-usage|--demo|TAILSCODE_WORKSPACE_WALK=5:usage|10"
+    "14-analytics|--demo|TAILSCODE_WORKSPACE_WALK=5:analytics|11"
+    "15-delegate|--demo|TAILSCODE_WORKSPACE_WALK=5:delegate=studio|12"
+    "11-focus|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c4,8:hide|13"
+  )
+fi
+
 boot_device() {
   local id
   id=$(xcrun simctl list devices | awk -F'[()]' -v n="$DEVICE_NAME" '$0 ~ "    "n" \\(" {print $2; exit}')
@@ -106,10 +126,12 @@ capture() {
   local device=$1 name=$2 args=$3 envs=$4 delay=$5
   xcrun simctl terminate "$device" "$BUNDLE" >/dev/null 2>&1 || true
   local prefixed=(FOO=bar)
+  [ -n "${IPAD:-}" ] && prefixed+=(SIMCTL_CHILD_TAILSCODE_WINDOW=1376x1032 SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
   for pair in $envs; do prefixed+=("SIMCTL_CHILD_${pair}"); done
   env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
   sleep "$delay"
   xcrun simctl io "$device" screenshot "$OUT/$name.png" >/dev/null 2>&1
+  [ -n "${IPAD:-}" ] && sips -r 270 "$OUT/$name.png" >/dev/null
   echo "  $name.png"
 }
 
@@ -123,6 +145,7 @@ install_fresh "$DEVICE" "$APP"
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name args envs delay <<<"$shot"
   if [ $# -gt 0 ] && [[ ! " $* " == *" $name "* ]]; then continue; fi
+  if [ -n "${IPAD:-}" ]; then install_fresh "$DEVICE" "$APP"; fi
   case "$name" in welcome | setup) install_fresh "$DEVICE" "$APP" ;; esac
   capture "$DEVICE" "$name" "$args" "$envs" "$delay"
 done

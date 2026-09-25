@@ -66,6 +66,20 @@ final class WorkspaceSplitViewController: UISplitViewController {
         #endif
     }
 
+    #if DEBUG
+        /// A window turned a quarter by `TAILSCODE_WINDOW` would wear the portrait status bar
+        /// down its side, so a photographed landscape workspace goes without one.
+        override var prefersStatusBarHidden: Bool { isTurnedForVerification }
+
+        override var childForStatusBarHidden: UIViewController? {
+            isTurnedForVerification ? nil : super.childForStatusBarHidden
+        }
+
+        private var isTurnedForVerification: Bool {
+            view.window.map { !$0.transform.isIdentity } ?? false
+        }
+    #endif
+
     override func viewIsAppearing(_ animated: Bool) {
         super.viewIsAppearing(animated)
         arrange(collapsed: isCollapsed)
@@ -428,6 +442,12 @@ final class WorkspaceSplitViewController: UISplitViewController {
             case "saved": showSaved()
             case "archived": showArchived()
             case "usage": show(place: UsageViewController())
+            case "analytics": show(place: AnalyticsViewController(analytics: nil))
+            case "delegate":
+                let profile = ConnectionController.shared.profiles.first { $0.name == argument }
+                guard let profile else { return }
+                showHome(animated: false)
+                DelegateGate.open(from: home, profile: profile)
             case "home": showHome()
             case "search": beginSearch()
             case "hide", "show": toggleColumns()

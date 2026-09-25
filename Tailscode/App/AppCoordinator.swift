@@ -139,6 +139,7 @@ final class AppCoordinator: NSObject {
             window.bounds = CGRect(x: 0, y: 0, width: sides[0], height: sides[1])
             window.center = CGPoint(x: screen.midX, y: screen.midY)
             if sides[0] > screen.width { window.transform = CGAffineTransform(rotationAngle: .pi / 2) }
+            window.rootViewController?.setNeedsStatusBarAppearanceUpdate()
         }
 
         /// Opens the video surface with the board put into one named state, so every face it has
