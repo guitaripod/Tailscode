@@ -4,16 +4,16 @@
     "NSLocalNetworkUsageDescription": {
       "extractionState": "manual",
       "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode verbindet sich mit Coding-Agent-Servern, die du auf deinen eigenen Rechnern betreibst — auch mit denen in deinem lokalen Netzwerk."
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode verbindet sich mit Coding-Agent-Servern, die du auf deinen eigenen Rechnern betreibst — auch mit denen in deinem lokalen Netzwerk."
           }
         },
         "es": {
@@ -146,16 +146,16 @@
     "NSPhotoLibraryUsageDescription": {
       "extractionState": "manual",
       "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bilder aus deiner Mediathek an einen Prompt anhängen."
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Attach images from your library to a prompt."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder aus deiner Mediathek an einen Prompt anhängen."
           }
         },
         "es": {
@@ -217,16 +217,16 @@
     "New Chat": {
       "extractionState": "manual",
       "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neuer Chat"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "New Chat"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer Chat"
           }
         },
         "es": {

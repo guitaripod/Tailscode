@@ -4,16 +4,16 @@
     "NSLocalNetworkUsageDescription": {
       "extractionState": "manual",
       "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Widgets von Tailscode lesen die aktuelle Nutzung von Coding-Agent-Servern, die du betreibst — auch von denen in deinem lokalen Netzwerk."
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Tailscode's widgets read live usage from coding-agent servers you run, including ones on your local network."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Widgets von Tailscode lesen die aktuelle Nutzung von Coding-Agent-Servern, die du betreibst — auch von denen in deinem lokalen Netzwerk."
           }
         },
         "es": {
