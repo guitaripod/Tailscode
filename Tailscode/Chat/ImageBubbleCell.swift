@@ -73,6 +73,7 @@ final class ImageBubbleCell: UICollectionViewCell {
         imageView.isAccessibilityElement = true
         imageView.accessibilityTraits = [.image, .button]
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.answersPointer(cornerRadius: Theme.Radius.bubble)
         caption.font = Theme.Ramp.font(.panelFootnote)
         caption.adjustsFontForContentSizeCategory = true
         caption.textColor = Theme.Color.secondaryLabel

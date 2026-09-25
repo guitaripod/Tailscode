@@ -279,7 +279,7 @@ final class ForgeSetupViewController: UIViewController {
 
     /// Forgetting the machine in force stops renders going anywhere at all, so it is asked rather
     /// than done — the words are Core's, and the way out is the platform's own.
-    private func confirmForget(_ renderer: ForgeRenderer) {
+    private func confirmForget(_ renderer: ForgeRenderer, source: UIView) {
         let sheet = UIAlertController(
             title: ForgeSetup.forgetTitle, message: renderer.detail, preferredStyle: .actionSheet)
         sheet.addAction(
@@ -287,7 +287,8 @@ final class ForgeSetupViewController: UIViewController {
                 self?.forget(renderer)
             })
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        sheet.popoverPresentationController?.sourceView = view
+        sheet.popoverPresentationController?.sourceView = source
+        sheet.popoverPresentationController?.sourceRect = source.bounds
         present(sheet, animated: true)
     }
 
@@ -421,7 +422,7 @@ final class ForgeSetupViewController: UIViewController {
         for renderer in setup.known {
             let row = ForgeRendererRow(renderer: renderer, current: setup.isCurrent(renderer))
             row.onUse = { [weak self] in self?.use(renderer) }
-            row.onForget = { [weak self] in self?.confirmForget(renderer) }
+            row.onForget = { [weak self] source in self?.confirmForget(renderer, source: source) }
             knownStack.addArrangedSubview(row)
         }
     }
@@ -507,7 +508,7 @@ final class ForgeSetupViewController: UIViewController {
 @MainActor
 private final class ForgeRendererRow: UIControl {
     var onUse: (() -> Void)?
-    var onForget: (() -> Void)?
+    var onForget: ((UIView) -> Void)?
 
     init(renderer: ForgeRenderer, current: Bool) {
         super.init(frame: .zero)
@@ -555,7 +556,7 @@ private final class ForgeRendererRow: UIControl {
         forget.accessibilityLabel = ForgeSetup.forgetTitle
         forget.setContentHuggingPriority(.required, for: .horizontal)
         forget.translatesAutoresizingMaskIntoConstraints = false
-        forget.addAction(UIAction { [weak self] _ in self?.onForget?() }, for: .touchUpInside)
+        forget.addAction(UIAction { [weak self] _ in self?.onForget?(forget) }, for: .touchUpInside)
 
         let row = UIStackView(arrangedSubviews: [icon, words, badge])
         row.axis = .horizontal
@@ -580,7 +581,8 @@ private final class ForgeRendererRow: UIControl {
         accessibilityValue = ForgeRenderer.badge(current: current)
         accessibilityCustomActions = [
             UIAccessibilityCustomAction(name: ForgeSetup.forgetTitle) { [weak self] _ in
-                self?.onForget?()
+                guard let self else { return false }
+                self.onForget?(self)
                 return true
             }
         ]

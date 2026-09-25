@@ -27,6 +27,7 @@ final class LinkEmbedCell: UICollectionViewCell {
         card.layer.cornerRadius = Theme.Radius.card
         card.layer.cornerCurve = .continuous
         card.translatesAutoresizingMaskIntoConstraints = false
+        card.answersPointer(cornerRadius: Theme.Radius.card)
 
         iconView.contentMode = .scaleAspectFit
         iconView.tintColor = UIColor(white: 0.5, alpha: 1)

@@ -13,12 +13,19 @@ enum SceneRouting {
     }
 
     static func openInNewWindow(_ url: URL) {
-        let activity = NSUserActivity(activityType: activityType)
-        activity.userInfo = [urlKey: url.absoluteString]
-        let request = UISceneSessionActivationRequest(userActivity: activity)
+        let request = UISceneSessionActivationRequest(userActivity: activity(for: url))
         UIApplication.shared.activateSceneSession(for: request) { error in
             AppLogger.lifecycle.error("new window refused: \(error.localizedDescription)")
         }
+    }
+
+    /// The activity a new window is made from, whether a menu asked for it or a row was dragged
+    /// out of the list to the edge of the screen.
+    static func activity(for url: URL, title: String? = nil) -> NSUserActivity {
+        let activity = NSUserActivity(activityType: activityType)
+        activity.userInfo = [urlKey: url.absoluteString]
+        activity.title = title
+        return activity
     }
 
     static func url(from activity: NSUserActivity) -> URL? {

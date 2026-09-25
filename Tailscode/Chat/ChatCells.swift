@@ -1177,6 +1177,7 @@ final class ActivityGroupCell: UICollectionViewCell {
 
         toggle.translatesAutoresizingMaskIntoConstraints = false
         toggle.addTarget(self, action: #selector(toggleTapped(_:event:)), for: .touchUpInside)
+        toggle.answersPointer(cornerRadius: Theme.Radius.card)
 
         contentView.addSubview(container)
         [tile, summaryLabel, liveMark, chevron, stack, toggle].forEach(container.addSubview)
@@ -1280,6 +1281,7 @@ final class ActivityGroupCell: UICollectionViewCell {
             : (failed ? Theme.Color.warning : Theme.Color.accent).withAlphaComponent(0.12)
         container.layer.cornerRadius = isCompact ? 12 : Theme.Radius.card
         glass.layer.cornerRadius = container.layer.cornerRadius
+        toggle.answersPointer(cornerRadius: container.layer.cornerRadius)
         summaryLabel.font = Theme.Ramp.font(isCompact ? .toolName : .cardTitle)
         summaryLabel.textColor = failed ? Theme.Color.warning : Theme.Color.secondaryLabel
 

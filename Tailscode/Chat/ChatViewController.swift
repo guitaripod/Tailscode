@@ -167,6 +167,13 @@ final class ChatViewController: UIViewController {
     private var cascadeRepair: Task<Void, Never>?
 
     var sessionID: String { viewModel.session.id }
+    var contextID: String { viewModel.contextID }
+
+    /// Set by the iPad's workspace while it carries this chat from its column to the one-stack
+    /// arrangement or back. Leaving one navigation stack for another is not the reader leaving the
+    /// conversation, so the stream, the enhancement in flight and the binding all stay; the chat
+    /// clears the mark itself when it is on screen again.
+    var isChangingColumns = false
 
     /// A question handed to this conversation from somewhere else — a quick ask that minted it, or
     /// one aimed at the chat this device is already looking at.
@@ -362,6 +369,7 @@ final class ChatViewController: UIViewController {
         AppLogger.chat.info(
             "chat appeared session=\(viewModel.session.id) title=\(viewModel.displayTitle)")
         viewModel.isOnScreen = true
+        isChangingColumns = false
         if UIApplication.shared.applicationState == .active {
             AppActivityController.shared.seen(viewModel.session.id)
         }
@@ -507,13 +515,23 @@ final class ChatViewController: UIViewController {
         flushDraft()
         SessionSeenStore.markSeen(viewModel.session.id)
         viewModel.stopSubagentTracking()
-        if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true {
-            viewModel.isBound = false
-            if !viewModel.isBusy { viewModel.stop() }
-            enhancement.cancel()
-            enhanceOverlay?.removeFromSuperview()
-            enhanceOverlay = nil
+        if !isChangingColumns,
+            isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true
+        {
+            releaseConversation()
         }
+    }
+
+    /// The reader has left this conversation: it stops being bound, stops streaming unless a turn
+    /// is still out, and drops an enhancement in flight. A chat that leaves the screen says so
+    /// through its own disappearance; one a stack drops while it was buried under another never
+    /// appears or disappears, so whoever drops it has to say so here.
+    func releaseConversation() {
+        viewModel.isBound = false
+        if !viewModel.isBusy { viewModel.stop() }
+        enhancement.cancel()
+        enhanceOverlay?.removeFromSuperview()
+        enhanceOverlay = nil
     }
 
     /// The chat title is the conversation's own name; auto-generated
@@ -4077,8 +4095,7 @@ final class ChatViewController: UIViewController {
                     backend: viewModel.backend, session: session, contextID: viewModel.contextID,
                     serverName: viewModel.serverName)
                 Theme.Haptics.success()
-                navigationController?.pushViewController(
-                    ChatViewController(viewModel: forked), animated: true)
+                showConversation(ChatViewController(viewModel: forked))
             } catch {
                 presentToast(String(localized: "Couldn't fork this conversation."))
             }
@@ -4403,6 +4420,7 @@ final class ChatViewController: UIViewController {
         }
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = composer
+        sheet.popoverPresentationController?.sourceRect = composer.bounds
         present(sheet, animated: true)
     }
 
@@ -4467,6 +4485,7 @@ final class ChatViewController: UIViewController {
         }
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = composer
+        sheet.popoverPresentationController?.sourceRect = composer.bounds
         present(sheet, animated: true)
     }
 
@@ -4544,7 +4563,7 @@ final class ChatViewController: UIViewController {
             return
         }
         let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        sheet.popoverPresentationController?.sourceView = view
+        sheet.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.last
         present(sheet, animated: true)
     }
 
@@ -5498,6 +5517,7 @@ extension ChatViewController: UICollectionViewDelegate {
             }
         }
         guard let text = messageText(for: id), !text.isEmpty else { return nil }
+        let source = collectionView.cellForItem(at: indexPath) ?? collectionView
         let revertMessage = chatMessage(for: id).flatMap { message in
             RevertReading.offersUndo(on: message, capabilities: viewModel.backend.capabilities)
                 ? message : nil
@@ -5535,7 +5555,7 @@ extension ChatViewController: UICollectionViewDelegate {
                     title: String(localized: "Share"),
                     image: UIImage(systemName: "square.and.arrow.up")
                 ) { _ in
-                    self?.shareText(text)
+                    self?.shareText(text, from: source)
                 })
             if let revertMessage {
                 actions.append(
@@ -5653,9 +5673,10 @@ extension ChatViewController: UICollectionViewDelegate {
         return lines.joined(separator: "\n")
     }
 
-    private func shareText(_ text: String) {
+    private func shareText(_ text: String, from source: UIView) {
         let sheet = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-        sheet.popoverPresentationController?.sourceView = view
+        sheet.popoverPresentationController?.sourceView = source
+        sheet.popoverPresentationController?.sourceRect = source.bounds
         present(sheet, animated: true)
     }
 
@@ -5728,7 +5749,7 @@ extension ChatViewController: ImageBubbleCellDelegate {
             UIAction(
                 title: String(localized: "Save to Files"),
                 image: UIImage(systemName: "folder")
-            ) { [weak self] _ in self?.exportToFiles(payload) },
+            ) { [weak self] _ in self?.exportToFiles(payload, from: cell) },
             UIAction(
                 title: String(localized: "Share"),
                 image: UIImage(systemName: "square.and.arrow.up")
@@ -5778,12 +5799,15 @@ extension ChatViewController: ImageBubbleCellDelegate {
         }
     }
 
-    private func exportToFiles(_ payload: ImagePayload) {
+    private func exportToFiles(_ payload: ImagePayload, from source: UIView) {
         guard let url = ImageExport.temporaryFile(payload) else {
             presentToast(String(localized: "Couldn't export the picture."))
             return
         }
-        present(UIDocumentPickerViewController(forExporting: [url], asCopy: true), animated: true)
+        let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+        picker.popoverPresentationController?.sourceView = source
+        picker.popoverPresentationController?.sourceRect = source.bounds
+        present(picker, animated: true)
     }
 
     private func shareImage(_ payload: ImagePayload, from source: UIView) {
@@ -5798,7 +5822,7 @@ extension ChatViewController: ImageBubbleCellDelegate {
 extension ChatViewController: TextBubbleCellDelegate {
     func textBubbleCell(_ cell: TextBubbleCell, didTapLink url: URL) {
         if let path = TextBubbleCell.path(fromActionURL: url) {
-            presentPathActions(path)
+            presentPathActions(path, from: cell)
             return
         }
         openWebLink(url)
@@ -5835,7 +5859,7 @@ extension ChatViewController: TextBubbleCellDelegate {
         present(sheet, animated: true)
     }
 
-    private func presentPathActions(_ path: String) {
+    private func presentPathActions(_ path: String, from source: UIView) {
         Theme.Haptics.tap()
         let sheet = UIAlertController(title: path, message: nil, preferredStyle: .actionSheet)
         sheet.addAction(
@@ -5850,7 +5874,8 @@ extension ChatViewController: TextBubbleCellDelegate {
                 self?.composer.appendPath(path)
             })
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        sheet.popoverPresentationController?.sourceView = composer
+        sheet.popoverPresentationController?.sourceView = source
+        sheet.popoverPresentationController?.sourceRect = source.bounds
         present(sheet, animated: true)
     }
 }
@@ -5928,6 +5953,9 @@ extension ChatViewController: KeyActionHost {
             viewModel.respond(to: permission, decision: .reject)
         case .toggleHelp:
             ShortcutCheatsheetViewController.present(from: self)
+        case .toggleSidebar:
+            guard let workspace else { return false }
+            workspace.toggleColumns()
         default:
             return false
         }

@@ -65,6 +65,9 @@ final class AppCoordinator: NSObject {
         #endif
         route(animated: false)
         window.makeKeyAndVisible()
+        #if DEBUG
+            sizeWindowForVerificationIfAsked()
+        #endif
         UpdateMonitor.checkIfDue()
         if let parked = PendingRoute.take() { deliver(parked) }
         #if DEBUG
@@ -118,10 +121,24 @@ final class AppCoordinator: NSObject {
         }
 
         private func openUsageForDebug() {
-            guard let nav = window.rootViewController as? UINavigationController else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                nav.pushViewController(UsageViewController(), animated: false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.home?.navigationController?.pushViewController(
+                    UsageViewController(), animated: false)
             }
+        }
+
+        /// `TAILSCODE_WINDOW=1376x1032` lays the window out at that size, turned a quarter when it
+        /// is wider than the screen, because a simulator in windowed mode refuses a programmatic
+        /// rotation and no simctl command resizes a window — this is how the wide arrangements are
+        /// photographed on a device that boots upright.
+        private func sizeWindowForVerificationIfAsked() {
+            guard let spec = ProcessInfo.processInfo.environment["TAILSCODE_WINDOW"] else { return }
+            let sides = spec.split(separator: "x").compactMap { Double($0) }
+            guard sides.count == 2 else { return }
+            let screen = window.windowScene?.screen.bounds ?? window.bounds
+            window.bounds = CGRect(x: 0, y: 0, width: sides[0], height: sides[1])
+            window.center = CGPoint(x: screen.midX, y: screen.midY)
+            if sides[0] > screen.width { window.transform = CGAffineTransform(rotationAngle: .pi / 2) }
         }
 
         /// Opens the video surface with the board put into one named state, so every face it has
@@ -142,9 +159,9 @@ final class AppCoordinator: NSObject {
         }
 
         private func openAnalyticsForDebug() {
-            guard let nav = window.rootViewController as? UINavigationController else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                nav.pushViewController(AnalyticsViewController(analytics: nil), animated: false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.home?.navigationController?.pushViewController(
+                    AnalyticsViewController(analytics: nil), animated: false)
             }
         }
 
@@ -354,9 +371,23 @@ final class AppCoordinator: NSObject {
         }
     }
 
-    private var home: HomeViewController? {
-        (window.rootViewController as? UINavigationController)?
-            .viewControllers.first as? HomeViewController
+    /// The one Home this window has, held rather than found: on an iPad it moves between the
+    /// conversation column and the one-stack arrangement as the window changes width, so no path
+    /// through the view hierarchy reaches it every time.
+    private var home: HomeViewController? { showingMain ? mainHome : nil }
+    private weak var mainHome: HomeViewController?
+
+    /// What iPadOS keeps for this window when it puts it away: the conversation it was showing,
+    /// so a window the system brings back opens on that chat rather than on Home. Each window of
+    /// an iPad is its own place, and one showing a conversation is expected to be found showing it
+    /// again; the phone launches to Home by design and keeps nothing.
+    func restorationActivity() -> NSUserActivity? {
+        guard showingMain,
+            let workspace = window.rootViewController as? WorkspaceSplitViewController,
+            let id = workspace.openConversationID,
+            let url = SceneRouting.sessionURL(id)
+        else { return nil }
+        return SceneRouting.activity(for: url)
     }
 
     /// Opens Settings at a given section, so anything that finds a broken setting
@@ -417,11 +448,18 @@ final class AppCoordinator: NSObject {
         return nav
     }
 
+    /// The phone's app is one stack with Home at its root. The iPad's is the workspace, whose
+    /// columns fold back into that same stack whenever the window is too narrow for them.
     private func makeMain() -> UIViewController {
         let home = HomeViewController()
+        mainHome = home
         home.onOpenSettings = { [weak self, weak home] in
             guard let self, let home else { return }
             self.presentSettings(from: home.navigationController ?? home)
+        }
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return WorkspaceSplitViewController(
+                home: home, startsCollapsed: window.traitCollection.horizontalSizeClass == .compact)
         }
         let nav = UINavigationController(rootViewController: home)
         nav.navigationBar.prefersLargeTitles = true

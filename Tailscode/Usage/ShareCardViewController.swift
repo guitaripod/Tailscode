@@ -162,7 +162,6 @@ final class ShareCardViewController: UIViewController {
         }
         let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
         sheet.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItem
-        sheet.popoverPresentationController?.sourceView = view
         Theme.Haptics.success()
         present(sheet, animated: true)
     }

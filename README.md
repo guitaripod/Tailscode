@@ -22,6 +22,7 @@ Free is the whole core with one server; **Pro** is a one-time $14.99 purchase fo
 - **Delegate** — hand a packet down a ladder of cheaper models on the server and get a verified patch back.
 - **Image and video** — describe a clip or paint from a reference on a tailnet machine running ComfyUI (Linux and iPhone paint; the Mac renders video only).
 - **iPhone** — Lock Screen and Dynamic Island Live Activities pushed by claude-bridge, quota widgets and Control Center tiles, a home board, quick ask from the icon, haptics with meaning, on-device prompt enhance.
+- **iPad** — a sidebar of places, servers and pinned chats beside the chat list and the conversation, folding into the phone's single stack whenever the window narrows and back without closing anything; drag a chat out for a window of its own.
 - **Desktops** — tiling splits with vim-grade verbs, a terminal, file tree, browser and video panes, a global chord that summons quick ask from any program, vim in the composer.
 - **Eight themes with two faces each**, one typography ramp, ten languages, Liquid Glass where the platform draws it.
 
@@ -36,7 +37,7 @@ $ scripts/parity.sh
 capability                 iOS         linux       mac         mac-store
 sessionSections            ok          ok          ok          ok
 ...
-560/648 implemented, 16 partial, 32 gaps, 40 n/a
+564/652 implemented, 19 partial, 31 gaps, 38 n/a
 PARITY_OK
 ```
 

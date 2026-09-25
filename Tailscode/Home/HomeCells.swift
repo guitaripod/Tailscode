@@ -84,6 +84,7 @@ final class MissedActivityCell: GlassCardCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        answersPointer(cornerRadius: Theme.Radius.card)
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -420,6 +421,7 @@ final class LiveSessionCell: GlassCardCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        answersPointer(cornerRadius: Theme.Radius.card)
         dot.translatesAutoresizingMaskIntoConstraints = false
 
         stateLabel.font = Theme.Ramp.font(.pill)
@@ -522,6 +524,7 @@ final class ProjectCell: GlassCardCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        answersPointer(cornerRadius: Theme.Radius.card)
         iconBackground.layer.cornerRadius = 8
         iconBackground.layer.cornerCurve = .continuous
         iconBackground.translatesAutoresizingMaskIntoConstraints = false
@@ -586,6 +589,7 @@ final class ServerAlertCell: GlassCardCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        answersPointer(cornerRadius: Theme.Radius.card)
         iconView.image = UIImage(
             systemName: "exclamationmark.triangle.fill",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
@@ -735,6 +739,7 @@ final class RecentSessionCell: GlassCardCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        answersPointer(cornerRadius: Theme.Radius.card)
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -992,6 +997,7 @@ final class QuotaCardCell: GlassCardCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        answersPointer(cornerRadius: Theme.Radius.card)
         providerLabel.font = Theme.Ramp.font(.cardTitle)
         providerLabel.textColor = Theme.Color.label
         providerLabel.translatesAutoresizingMaskIntoConstraints = false

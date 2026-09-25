@@ -20,6 +20,7 @@ final class ImageMarkButton: UIButton {
                 systemName: ImageGenEntryPoint.symbol,
                 withConfiguration: UIImage.SymbolConfiguration(textStyle: .body)), for: .normal)
         accessibilityLabel = ImageGenEntryPoint.accessibilityLabel(painting: false)
+        isPointerInteractionEnabled = true
         mark.isUserInteractionEnabled = false
         mark.translatesAutoresizingMaskIntoConstraints = false
         addSubview(mark)

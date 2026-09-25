@@ -122,6 +122,7 @@ enum ParityManifest {
                 "the column is gone: a tree of the server's files beside a conversation is a second way to say something the composer already says better with @, and nobody reached for it on either desk")
         case .gitState: return .implemented("GitPanel")
         case .terminalPane: return .implemented("TerminalPane")
+        case .listBesideConversation: return .implemented("makeSidebarPane")
         case .splitPanes: return .implemented("SplitHost")
         case .videoSlot: return .implemented("VideoPane")
         case .watchDirectory: return .implemented("WatchBoard.make")

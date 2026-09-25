@@ -383,6 +383,7 @@ final class SettingsGearButton: UIButton {
                 systemName: "gearshape",
                 withConfiguration: UIImage.SymbolConfiguration(textStyle: .body)), for: .normal)
         accessibilityLabel = String(localized: "Settings")
+        isPointerInteractionEnabled = true
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

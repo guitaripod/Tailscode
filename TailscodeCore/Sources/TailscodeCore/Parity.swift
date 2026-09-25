@@ -134,6 +134,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case fileBrowser
     case gitState
     case terminalPane
+    case listBesideConversation
     case splitPanes
     case newPaneChooser
     case chatDragToPane
@@ -707,6 +708,10 @@ public enum CapabilityRegistry {
             id: .terminalPane, area: "app", title: "A shell beside the conversation",
             spec:
                 "Run shell commands in the conversation's working directory with history, from the same window as the chat."),
+        CapabilityDefinition(
+            id: .listBesideConversation, area: "app", title: "The chat list beside the conversation",
+            spec:
+                "A window with room for both keeps the list of conversations beside the one that is open, rather than making the list a screen the conversation covers: choosing a row puts that conversation beside the list in place of the last, the row of the conversation on screen stays marked, and the list keeps its scroll, search and filter while conversations change beside it. The list can be put away to give the conversation the whole width and brought back, by the same chord that shows and hides it everywhere. Where a window can be made too narrow for both, the two fold into one stack — the list, and the conversation over it — and widening the window spreads them out again with the same conversation, stream, scroll and unsent words still open; nothing that was open is closed by a resize."),
         CapabilityDefinition(
             id: .splitPanes, area: "app", title: "Tiling split panes",
             spec:

@@ -112,7 +112,7 @@ final class HomeViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Tailscode"
+        title = workspace == nil ? "Tailscode" : String(localized: "Home")
         navigationItem.largeTitleDisplayMode = .always
         view.backgroundColor = Theme.Color.groupedBackground
         settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
@@ -574,6 +574,11 @@ final class HomeViewController: UIViewController {
     /// each rebuilding `leftBarButtonItems` from what they found there fought: whichever ran last
     /// won, and the other's item vanished.
     private func updateLeftBarItems() {
+        guard workspace == nil else {
+            navigationItem.leftBarButtonItems =
+                ConnectionController.shared.isDemoMode && !Self.demoBadgeHidden ? [demoBadge()] : []
+            return
+        }
         var items = [settingsItem]
         if let chip = UpdateLedger.rollup().chip {
             updateChip.apply(chip)
@@ -663,6 +668,7 @@ final class HomeViewController: UIViewController {
         let servers = viewModel.servers
         let state = servers.map { "\($0.id)|\($0.name)|\($0.backend.rawValue)" }
             .joined(separator: "\u{1}") + "\u{1}image=\(ImageGenDoor.current().isOpen)"
+            + "\u{1}columns=\(workspace != nil)"
         guard state != appliedComposeButtonState else { return }
         appliedComposeButtonState = state
         let compose = UIImage(systemName: "square.and.pencil")
@@ -686,6 +692,10 @@ final class HomeViewController: UIViewController {
                 })
         }
         composeItem.accessibilityLabel = String(localized: "New chat")
+        guard workspace == nil else {
+            navigationItem.rightBarButtonItems = [composeItem]
+            return
+        }
         var items = [composeItem, videoItem]
         if ImageGenDoor.current().isOpen { items.append(imageItem) }
         items.append(delegateItem(for: servers))
@@ -1086,7 +1096,7 @@ final class HomeViewController: UIViewController {
         let recent = viewModel.entries.filter {
             !shown.contains($0.session.id)
                 && !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id))
-        }.prefix(6)
+        }.prefix(workspace == nil ? 6 : 0)
         if !recent.isEmpty {
             snapshot.appendSections([.recent])
             snapshot.appendItems(
@@ -1097,7 +1107,7 @@ final class HomeViewController: UIViewController {
                                 entry: $0, unread: isUnread($0.session.id, $0.session.updatedAt)))
                     }, in: .recent),
                 toSection: .recent)
-        } else if !hasLoadedOnce, !viewModel.servers.isEmpty {
+        } else if !hasLoadedOnce, !viewModel.servers.isEmpty, workspace == nil {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
@@ -1432,7 +1442,7 @@ final class HomeViewController: UIViewController {
         /// turns for the better part of a second.
         let previousTop = (nav.topViewController as? ChatViewController)?.sessionID ?? "-"
         let chat = ChatViewController(viewModel: chatViewModel)
-        nav.pushViewController(chat, animated: presentedViewController == nil)
+        showConversation(chat, animated: presentedViewController == nil)
         AppLogger.session.info(
             "openChat push session=\(entry.session.id) title=\(entry.session.title) top=\(previousTop) reused=\(reused != nil)")
         if let question { chat.deliver(question.send, attachments: question.attachments) }
@@ -1451,7 +1461,33 @@ final class HomeViewController: UIViewController {
 
     func pushSaved() {
         Theme.Haptics.tap()
+        if let workspace { return workspace.showSaved() }
         navigationController?.pushViewController(SavedChatsViewController(), animated: true)
+    }
+
+    /// The iPad's workspace moved Home between its conversation column and the phone's single
+    /// stack. Beside a sidebar, the bar keeps only what the sidebar does not already offer and the
+    /// board is called Home, the name of the row that brings it back.
+    func workspaceDidRearrange() {
+        guard isViewLoaded else { return }
+        title = workspace == nil ? "Tailscode" : String(localized: "Home")
+        updateLeftBarItems()
+        updateComposeButton()
+        applySnapshot()
+    }
+
+    /// New Chat from anywhere the workspace offers it: one server aims the box at it, more than one
+    /// focuses the box with the server it was last aimed at, whose chip is the one question left.
+    func beginNewChat() {
+        guard let profile = viewModel.servers.first else {
+            presentServerSetup()
+            return
+        }
+        if viewModel.servers.count == 1 {
+            startChat(on: profile)
+        } else {
+            focusComposer()
+        }
     }
 
     #if DEBUG
@@ -1524,6 +1560,9 @@ final class HomeViewController: UIViewController {
     #endif
 
     private func pushChats(filterProfileID: String? = nil) {
+        if let workspace {
+            return workspace.showChats(filterProfileID.map { .profile($0) } ?? .all)
+        }
         navigationController?.pushViewController(
             SessionListViewController(filterProfileID: filterProfileID), animated: true)
     }
@@ -1533,10 +1572,13 @@ final class HomeViewController: UIViewController {
     /// chrome and in the card's long-press.
     private func openProjectBoard(for card: ProjectCard) {
         Theme.Haptics.tap()
-        navigationController?.pushViewController(
-            SessionListViewController(
-                scope: ProjectScope(profileID: card.profileID, directory: card.directory)),
-            animated: true)
+        let board = SessionListViewController(
+            scope: ProjectScope(profileID: card.profileID, directory: card.directory))
+        if let workspace {
+            board.showsAsColumn = true
+            return workspace.push(list: board)
+        }
+        navigationController?.pushViewController(board, animated: true)
     }
 
     /// One gesture puts the box in the ask lane — the icon's jump list, the Control Center tile,
@@ -1662,6 +1704,7 @@ final class HomeViewController: UIViewController {
     }
 
     func pushUsage() {
+        if let workspace { return workspace.show(place: UsageViewController()) }
         navigationController?.pushViewController(UsageViewController(), animated: true)
     }
 
@@ -3656,13 +3699,20 @@ extension HomeViewController: KeyActionHost {
                 composerBar.focus()
             }
         case .search:
-            pushChats()
+            if let workspace { workspace.beginSearch() } else { pushChats() }
         case .selectNext, .selectPrevious, .selectFirst, .selectLast, .openSelected:
-            pushChats()
+            if let workspace { workspace.focusList(then: action) } else { pushChats() }
         case .toggleArchiveView:
             Theme.Haptics.tap()
-            navigationController?.pushViewController(
-                ArchivedChatsViewController(), animated: true)
+            if let workspace {
+                workspace.showArchived()
+            } else {
+                navigationController?.pushViewController(
+                    ArchivedChatsViewController(), animated: true)
+            }
+        case .toggleSidebar:
+            guard let workspace else { return false }
+            workspace.toggleColumns()
         case .insert:
             composerBar.focus()
         case .quickAsk:

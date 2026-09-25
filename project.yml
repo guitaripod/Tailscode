@@ -120,6 +120,8 @@ targets:
           - UIApplicationShortcutItemType: com.guitaripod.tailscode.ask
             UIApplicationShortcutItemTitle: Quick Ask
             UIApplicationShortcutItemIconSymbolName: sparkle
+        NSUserActivityTypes:
+          - com.guitaripod.tailscode.route
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations:

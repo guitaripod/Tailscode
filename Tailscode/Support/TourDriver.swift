@@ -87,12 +87,18 @@
 
         private init(window: UIWindow) { self.window = window }
 
+        private var workspace: WorkspaceSplitViewController? {
+            window.rootViewController as? WorkspaceSplitViewController
+        }
+
+        /// The stack that holds Home and the conversation: the phone's only one, or on an iPad
+        /// whichever the workspace is showing — its conversation column or its one-stack fold.
         private var nav: UINavigationController? {
-            window.rootViewController as? UINavigationController
+            workspace?.tourStack ?? window.rootViewController as? UINavigationController
         }
 
         private var home: HomeViewController? {
-            nav?.viewControllers.first as? HomeViewController
+            workspace?.home ?? nav?.viewControllers.first as? HomeViewController
         }
 
         private var chat: ChatViewController? {
@@ -101,6 +107,7 @@
 
         private var list: SessionListViewController? {
             nav?.viewControllers.compactMap { $0 as? SessionListViewController }.last
+                ?? (workspace?.isShowingColumns == true ? workspace?.chatList : nil)
         }
 
         private var presentedNav: UINavigationController? {

@@ -25,7 +25,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             let url = SceneRouting.url(from: activity)
         {
             coordinator.handle(url)
+        } else if connectionOptions.urlContexts.isEmpty, connectionOptions.shortcutItem == nil,
+            let restored = session.stateRestorationActivity,
+            let url = SceneRouting.url(from: restored)
+        {
+            coordinator.handle(url)
         }
+    }
+
+    func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {
+        coordinator?.restorationActivity()
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {

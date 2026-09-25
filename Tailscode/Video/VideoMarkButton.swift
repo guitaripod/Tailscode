@@ -21,6 +21,7 @@ final class VideoMarkButton: UIButton {
                 systemName: ForgeEntryPoint.symbol,
                 withConfiguration: UIImage.SymbolConfiguration(textStyle: .body)), for: .normal)
         accessibilityLabel = ForgeEntryPoint.accessibilityLabel(rendering: false)
+        isPointerInteractionEnabled = true
         mark.isUserInteractionEnabled = false
         mark.translatesAutoresizingMaskIntoConstraints = false
         addSubview(mark)

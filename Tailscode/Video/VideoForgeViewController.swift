@@ -432,6 +432,7 @@ final class VideoForgeViewController: UIViewController {
         }
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = cell
+        sheet.popoverPresentationController?.sourceRect = cell.bounds
         present(sheet, animated: true)
     }
 

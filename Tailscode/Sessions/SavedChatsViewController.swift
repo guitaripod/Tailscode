@@ -323,8 +323,7 @@ final class SavedChatsViewController: UIViewController {
             ?? ChatViewModel(
                 backend: backend, session: session, contextID: row.chat.profileID,
                 serverName: row.chat.profileName)
-        navigationController?.pushViewController(
-            ChatViewController(viewModel: chatViewModel), animated: true)
+        showConversation(ChatViewController(viewModel: chatViewModel))
     }
 
     /// A saved chat whose conversation is gone can only be tidied away, so say so

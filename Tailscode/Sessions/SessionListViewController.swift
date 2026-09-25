@@ -8,7 +8,7 @@ import UIKit
 /// chat is scroll-or-search instead of expand-and-hunt.
 @MainActor
 final class SessionListViewController: UIViewController {
-    private enum ChatFilter: Equatable {
+    enum ChatFilter: Equatable {
         case all, live, profile(String)
     }
 
@@ -23,8 +23,32 @@ final class SessionListViewController: UIViewController {
     private let selectionBar = Theme.Glass.view()
     private let selectionStack = UIStackView()
     private var bulkButtons: [BulkChatAction: UIButton] = [:]
-    private var filter: ChatFilter
+    private(set) var filter: ChatFilter
     private let scope: ProjectScope?
+    private var chipBarHeight: NSLayoutConstraint!
+    private var chipBarTop: NSLayoutConstraint!
+    private var listEdges: [NSLayoutConstraint] = []
+    private var columnEdges: [NSLayoutConstraint] = []
+    private var openKey: String?
+
+    /// Told whenever the listing this screen draws moves, so the side of an iPad's window can say
+    /// what the list knows without asking any server itself.
+    var onListingChange: (() -> Void)?
+
+    /// Whether this list is the column beside an open conversation rather than a screen of its
+    /// own. A column's rows open beside it, so they drop the push chevron and keep the open chat
+    /// marked; its scope is chosen by the sidebar, so the chips that would repeat it step aside.
+    var showsAsColumn = false {
+        didSet {
+            guard showsAsColumn != oldValue, isViewLoaded else { return }
+            applyColumnMode()
+        }
+    }
+
+    var isUnscopedList: Bool { scope == nil }
+
+    /// The list every stack already reaches from Home: no project, no filter.
+    var isPlainListing: Bool { scope == nil && filter == .all }
     private var hasAppeared = false
     private var hasLoadedOnce = false
     private var searchQuery = ""
@@ -59,15 +83,17 @@ final class SessionListViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = scope?.name ?? String(localized: "Chats")
         navigationItem.largeTitleDisplayMode = .never
+        updateTitle()
         view.backgroundColor = Theme.Color.groupedBackground
         configureSearch()
         configureChipBar()
         configureCollectionView()
         configureSelectionBar()
+        configureEdges()
         configureDataSource()
         bind()
+        applyColumnMode()
         collectionView.showsWork(true)
         NotificationCenter.default.addObserver(
             self, selector: #selector(appDidBecomeActive),
@@ -194,12 +220,15 @@ final class SessionListViewController: UIViewController {
         composeItem.accessibilityLabel =
             scope.map { String(localized: "New chat in \($0.name)") }
             ?? String(localized: "New chat")
-        let saved = UIBarButtonItem(
-            image: UIImage(systemName: "bookmark"),
-            primaryAction: UIAction { [weak self] _ in self?.pushSaved() })
-        saved.accessibilityLabel = String(localized: "Saved chats")
-        var items = [composeItem, saved]
-        if archivedCount() > 0 {
+        var items = [composeItem]
+        if !showsAsColumn {
+            let saved = UIBarButtonItem(
+                image: UIImage(systemName: "bookmark"),
+                primaryAction: UIAction { [weak self] _ in self?.pushSaved() })
+            saved.accessibilityLabel = String(localized: "Saved chats")
+            items.append(saved)
+        }
+        if !showsAsColumn, archivedCount() > 0 {
             let archived = UIBarButtonItem(
                 image: UIImage(systemName: "archivebox"),
                 primaryAction: UIAction { [weak self] _ in self?.pushArchived() })
@@ -238,11 +267,13 @@ final class SessionListViewController: UIViewController {
 
     private func pushSaved() {
         Theme.Haptics.tap()
+        if let workspace { return workspace.showSaved() }
         navigationController?.pushViewController(SavedChatsViewController(), animated: true)
     }
 
     private func pushArchived() {
         Theme.Haptics.tap()
+        if let workspace { return workspace.showArchived() }
         navigationController?.pushViewController(ArchivedChatsViewController(), animated: true)
     }
 
@@ -262,11 +293,14 @@ final class SessionListViewController: UIViewController {
         unreachableLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(unreachableLabel)
 
+        chipBarTop = chipBar.topAnchor.constraint(
+            equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.s)
+        chipBarHeight = chipBar.heightAnchor.constraint(equalToConstant: 36)
         NSLayoutConstraint.activate([
-            chipBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.s),
+            chipBarTop,
             chipBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             chipBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            chipBar.heightAnchor.constraint(equalToConstant: 36),
+            chipBarHeight,
             chipStack.topAnchor.constraint(equalTo: chipBar.contentLayoutGuide.topAnchor),
             chipStack.bottomAnchor.constraint(equalTo: chipBar.contentLayoutGuide.bottomAnchor),
             chipStack.leadingAnchor.constraint(equalTo: chipBar.contentLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
@@ -274,8 +308,8 @@ final class SessionListViewController: UIViewController {
             chipStack.heightAnchor.constraint(equalTo: chipBar.frameLayoutGuide.heightAnchor),
 
             unreachableLabel.topAnchor.constraint(equalTo: chipBar.bottomAnchor, constant: Theme.Spacing.xs),
-            unreachableLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
-            unreachableLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+            unreachableLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: view.trailingAnchor, constant: -Theme.Spacing.l),
         ])
     }
 
@@ -340,14 +374,159 @@ final class SessionListViewController: UIViewController {
     }
 
     private func setFilter(_ newFilter: ChatFilter) {
-        filter = filter == newFilter ? .all : newFilter
+        show(filter: filter == newFilter ? .all : newFilter)
+    }
+
+    /// Narrows the list to exactly this filter. The chips toggle one off again when it is pressed
+    /// twice; a filter chosen from somewhere else — the sidebar, a Home card — is taken as said.
+    func show(filter newFilter: ChatFilter) {
+        guard newFilter != filter else { return }
+        filter = newFilter
+        guard isViewLoaded else { return }
+        updateTitle()
         rebuildChips()
         applySnapshot()
     }
 
+    /// A column names the scope the sidebar gave it; the phone's list is always Chats, because
+    /// the chips right under the title already say which of them are showing.
+    private func updateTitle() {
+        if let scope {
+            title = scope.name
+            return
+        }
+        guard showsAsColumn else {
+            title = String(localized: "Chats")
+            return
+        }
+        switch filter {
+        case .all: title = String(localized: "All Chats")
+        case .live: title = String(localized: "Live Now")
+        case .profile(let id):
+            title = viewModel.servers.first { $0.id == id }?.name ?? String(localized: "Chats")
+        }
+    }
+
+    /// A column's view runs on under the floating sidebar, and a list whose cells did too laid
+    /// their trailing marks out against a width the sidebar was covering — a state pill came out
+    /// centred in a slot a third its size, over the row's age and past the column's edge. So a
+    /// column's rows start where the column can be seen, and only its background runs beneath.
+    private func applyColumnMode() {
+        view.backgroundColor = showsAsColumn ? Theme.Color.background : Theme.Color.groupedBackground
+        NSLayoutConstraint.deactivate(showsAsColumn ? listEdges : columnEdges)
+        NSLayoutConstraint.activate(showsAsColumn ? columnEdges : listEdges)
+        collectionView.setCollectionViewLayout(makeLayout(), animated: false)
+        chipBar.isHidden = showsAsColumn && scope == nil
+        chipBarHeight.constant = chipBar.isHidden ? 0 : 36
+        chipBarTop.constant = chipBar.isHidden ? 0 : Theme.Spacing.s
+        updateTitle()
+        updateComposeButton()
+        refreshVisibleRows()
+        clearSelectedRows()
+        syncOpenMark(revealing: true)
+    }
+
+    /// Marks the row whose conversation is open beside the list, and nothing when none is.
+    func markOpen(_ key: String?) {
+        guard key != openKey else { return }
+        openKey = key
+        syncOpenMark(revealing: true)
+    }
+
+    /// A chat opened from somewhere other than this list — a Home card, a notification, the
+    /// sidebar's pins — is scrolled into view once, when it opens; a listing that moves while it
+    /// is open never drags the list back to it.
+    ///
+    /// The mark is the list's selection, which the keyboard cursor moves too, so it is only put
+    /// back when it moved or was lost — a listing refresh must neither drag the cursor back to the
+    /// open row nor, on a phone, clear the row the cursor is on.
+    private func syncOpenMark(revealing: Bool = false) {
+        guard isViewLoaded, dataSource != nil, showsAsColumn, !isSelecting else { return }
+        let selected = collectionView.indexPathsForSelectedItems ?? []
+        guard revealing || selected.isEmpty else { return }
+        let wanted = openKey.flatMap { key in
+            visibleEntries.first { ChatSelection.key($0) == key }
+        }.flatMap { dataSource.indexPath(for: $0) }
+        for indexPath in selected where indexPath != wanted {
+            collectionView.deselectItem(at: indexPath, animated: false)
+        }
+        guard let wanted else { return }
+        if !selected.contains(wanted) {
+            collectionView.selectItem(at: wanted, animated: false, scrollPosition: [])
+        }
+        if revealing, !collectionView.indexPathsForVisibleItems.contains(wanted) {
+            collectionView.scrollToItem(at: wanted, at: .centeredVertically, animated: true)
+        }
+    }
+
+    /// Clears every row's selection — leaving the column, where it marked the open chat, or
+    /// starting to mark rows for a bulk verb, where it would read as one of the marks.
+    private func clearSelectedRows() {
+        for indexPath in collectionView.indexPathsForSelectedItems ?? [] {
+            collectionView.deselectItem(at: indexPath, animated: false)
+        }
+    }
+
+    func beginSearch() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.searchController.isActive = true
+            self.searchController.searchBar.searchTextField.becomeFirstResponder()
+        }
+    }
+
+    /// Opens a chat the listing holds by its pin key — the sidebar's pinned rows.
+    func open(key: String) {
+        guard let entry = viewModel.entries.first(where: { ChatSelection.key($0) == key }) else {
+            return
+        }
+        SessionSeenStore.markSeen(entry.session.id)
+        openChat(for: entry)
+    }
+
     private func configureCollectionView() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
+        collectionView.backgroundColor = .clear
+        collectionView.delegate = self
+        collectionView.dragDelegate = self
+        collectionView.refreshControl = refreshControl
+        refreshControl.addTarget(self, action: #selector(refresh), for: .valueChanged)
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(collectionView)
+        NSLayoutConstraint.activate([
+            collectionView.topAnchor.constraint(equalTo: unreachableLabel.bottomAnchor, constant: Theme.Spacing.xs),
+            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+    }
+
+    /// The two ways the list meets the sides of its view: flush to the edges as the phone has it,
+    /// or inside the safe area when it is a column whose view runs on under the floating sidebar.
+    /// `applyColumnMode` activates one set and never both.
+    private func configureEdges() {
+        listEdges = [
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            unreachableLabel.leadingAnchor.constraint(
+                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+            selectionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+        ]
+        columnEdges = [
+            collectionView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            unreachableLabel.leadingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            selectionBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+        ]
+    }
+
+    /// The phone's list is inset cards under prominent headings; a column beside a conversation
+    /// is a plain run of rows under quiet ones, because at a third of a window the cards' margins
+    /// are the title's missing words.
+    private func makeLayout() -> UICollectionViewCompositionalLayout {
+        var config = UICollectionLayoutListConfiguration(
+            appearance: showsAsColumn ? .plain : .insetGrouped)
         config.headerMode = .supplementary
+        if showsAsColumn { config.headerTopPadding = Theme.Spacing.s }
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             guard let self, !self.isSelecting,
                 let entry = self.dataSource.itemIdentifier(for: indexPath)
@@ -410,20 +589,7 @@ final class SessionListViewController: UIViewController {
             save.backgroundColor = Theme.Color.warning
             return UISwipeActionsConfiguration(actions: [save])
         }
-        let layout = UICollectionViewCompositionalLayout.readableList(using: config)
-        collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = .clear
-        collectionView.delegate = self
-        collectionView.refreshControl = refreshControl
-        refreshControl.addTarget(self, action: #selector(refresh), for: .valueChanged)
-        collectionView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(collectionView)
-        NSLayoutConstraint.activate([
-            collectionView.topAnchor.constraint(equalTo: unreachableLabel.bottomAnchor, constant: Theme.Spacing.xs),
-            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
+        return .readableList(using: config)
     }
 
     /// The verbs a held selection can be given, on a bar of their own at the bottom of the list.
@@ -447,7 +613,6 @@ final class SessionListViewController: UIViewController {
         selectionBar.contentView.addSubview(selectionStack)
         view.addSubview(selectionBar)
         NSLayoutConstraint.activate([
-            selectionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             selectionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             selectionBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             selectionStack.topAnchor.constraint(
@@ -500,6 +665,7 @@ final class SessionListViewController: UIViewController {
         updateComposeButton()
         updateSelectionBar()
         refreshVisibleRows()
+        if selecting { clearSelectedRows() } else { syncOpenMark(revealing: true) }
     }
 
     private func updateSelectionBar() {
@@ -693,7 +859,9 @@ final class SessionListViewController: UIViewController {
             guard let self else { return }
             let sections = self.dataSource.snapshot().sectionIdentifiers
             guard sections.indices.contains(indexPath.section) else { return }
-            var content = UIListContentConfiguration.prominentInsetGroupedHeader()
+            var content = self.showsAsColumn
+                ? UIListContentConfiguration.header()
+                : UIListContentConfiguration.prominentInsetGroupedHeader()
             content.text = sections[indexPath.section].title
             view.contentConfiguration = content
         }
@@ -732,11 +900,17 @@ final class SessionListViewController: UIViewController {
         content.imageToTextPadding = Theme.Spacing.m
         cell.contentConfiguration = content
 
-        var background = UIBackgroundConfiguration.listCell()
-        if isSelecting, selection.contains(entry) {
-            background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.18)
+        let marked = isSelecting && selection.contains(entry)
+        let column = showsAsColumn
+        cell.configurationUpdateHandler = { cell, state in
+            var background = UIBackgroundConfiguration.listCell().updated(for: state)
+            if marked {
+                background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.18)
+            } else if column, state.isSelected {
+                background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.14)
+            }
+            cell.backgroundConfiguration = background
         }
-        cell.backgroundConfiguration = background
 
         var accessories: [UICellAccessory] = [Self.ageAccessory(facets.age)]
         if isSelecting {
@@ -757,9 +931,10 @@ final class SessionListViewController: UIViewController {
         } else if row.unread {
             accessories.append(Self.dot(Theme.Color.accent))
         }
-        if !isSelecting { accessories.append(.disclosureIndicator()) }
+        if !isSelecting, !showsAsColumn { accessories.append(.disclosureIndicator()) }
         cell.accessories = accessories
         cell.accessibilityValue = Self.spoken(row, marked: isSelecting && selection.contains(entry))
+        cell.answersPointer(cornerRadius: showsAsColumn ? 0 : Theme.Radius.control)
     }
 
     /// What a row says out loud: the mark first while selecting, because in an editing mode
@@ -849,6 +1024,24 @@ final class SessionListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(pinDidChange),
             name: SessionPinStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(connectionsDidChange),
+            name: ConnectionController.didChange, object: nil)
+    }
+
+    /// Settings added, removed or renamed a server. A list that lives as long as its window —
+    /// the iPad's column — has to follow that the way Home does, rebuilding its backends in
+    /// place rather than showing the servers it was made with.
+    @objc private func connectionsDidChange() {
+        viewModel.refreshSources()
+        if case .profile(let id) = filter, !viewModel.servers.contains(where: { $0.id == id }) {
+            filter = .all
+        }
+        updateTitle()
+        rebuildChips()
+        updateComposeButton()
+        applySnapshot()
+        Task { await viewModel.load() }
     }
 
     @objc private func pinDidChange() {
@@ -992,6 +1185,8 @@ final class SessionListViewController: UIViewController {
         clampKeyCursor()
         updateSelectionBar()
         updateEmptyState(itemCount: snapshot.numberOfItems)
+        syncOpenMark()
+        onListingChange?()
     }
 
     /// A cursor that outlived the row it pointed at must land somewhere real, not address a row a
@@ -1170,44 +1365,12 @@ final class SessionListViewController: UIViewController {
                     customView: badge, placement: .trailing(displayed: .always),
                     maintainsFixedSize: true))
         }
-        let color = activity.icon.tone.color
-        let label = UILabel()
-        label.text = pill.text
-        label.font = Theme.Ramp.font(.pill)
-        label.adjustsFontForContentSizeCategory = true
-        label.textColor = color
-        label.sizeToFit()
-        let padH: CGFloat = 7
-        let padV: CGFloat = 3
-        let margin: CGFloat = 8
-        let glyphWidth: CGFloat = 15
-        let capsule = UIView(
-            frame: CGRect(
-                x: margin, y: 0, width: label.bounds.width + glyphWidth + padH * 2,
-                height: label.bounds.height + padV * 2))
-        badge.frame = CGRect(
-            x: padH - 1, y: 0, width: glyphWidth, height: capsule.bounds.height)
-        label.frame.origin = CGPoint(x: padH + glyphWidth, y: padV)
-        capsule.addSubview(badge)
-        capsule.addSubview(label)
-        capsule.backgroundColor = UIColor { traits in
-            color.withAlphaComponent(0.15)
-                .blended(over: Theme.Color.secondaryBackground, traits: traits)
-        }
-        capsule.layer.cornerRadius = capsule.bounds.height / 2
-        capsule.layer.cornerCurve = .continuous
-        capsule.isAccessibilityElement = true
-        capsule.accessibilityLabel = activity.spoken
-        badge.isAccessibilityElement = false
-        let wrapper = UIView(
-            frame: CGRect(
-                x: 0, y: 0, width: capsule.bounds.width + margin + 6,
-                height: capsule.bounds.height))
-        wrapper.addSubview(capsule)
+        let capsule = RowStatePill(
+            activity: activity, text: pill.text, color: activity.icon.tone.color)
         return .customView(
             configuration: .init(
-                customView: wrapper, placement: .trailing(displayed: .always),
-                maintainsFixedSize: true))
+                customView: capsule, placement: .trailing(displayed: .always),
+                reservedLayoutWidth: .custom(capsule.frame.width), maintainsFixedSize: true))
     }
 
     @objc private func refresh() { Task { await viewModel.load() } }
@@ -1241,8 +1404,9 @@ final class SessionListViewController: UIViewController {
     /// plain pop, so the whole list is exactly where it was.
     private func openProjectBoard(_ scope: ProjectScope) {
         Theme.Haptics.tap()
-        navigationController?.pushViewController(
-            SessionListViewController(scope: scope), animated: true)
+        let board = SessionListViewController(scope: scope)
+        board.showsAsColumn = showsAsColumn
+        navigationController?.pushViewController(board, animated: true)
     }
 
     /// A result opens the conversation it names, on the server it happened on. The listing may not
@@ -1262,7 +1426,7 @@ final class SessionListViewController: UIViewController {
             present(alert, animated: true)
             return
         }
-        navigationController?.popViewController(animated: false)
+        if !showsAsColumn { navigationController?.popViewController(animated: false) }
         SessionSeenStore.markSeen(entry.session.id)
         openChat(for: entry)
     }
@@ -1275,8 +1439,7 @@ final class SessionListViewController: UIViewController {
             ?? ChatViewModel(
                 backend: backend, session: entry.session, contextID: entry.profileID,
                 serverName: entry.profileName)
-        let chat = ChatViewController(viewModel: chatViewModel)
-        navigationController?.pushViewController(chat, animated: true)
+        showConversation(ChatViewController(viewModel: chatViewModel))
     }
 
     #if DEBUG
@@ -1314,7 +1477,7 @@ final class SessionListViewController: UIViewController {
 
 extension SessionListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        collectionView.deselectItem(at: indexPath, animated: true)
+        if !showsAsColumn || isSelecting { collectionView.deselectItem(at: indexPath, animated: true) }
         guard let entry = dataSource.itemIdentifier(for: indexPath) else { return }
         keyCursor = visibleEntries.firstIndex(of: entry)
         guard !isSelecting else {
@@ -1885,6 +2048,9 @@ extension SessionListViewController: KeyActionHost {
             openProjectBoard(ProjectScope(of: entry))
         case .toggleHelp:
             ShortcutCheatsheetViewController.present(from: self)
+        case .toggleSidebar:
+            guard let workspace else { return false }
+            workspace.toggleColumns()
         default:
             return false
         }
@@ -1921,3 +2087,118 @@ extension SessionListViewController: KeyActionHost {
         return viewModel.servers.first { $0.id == remembered } ?? viewModel.servers.first
     }
 }
+
+extension SessionListViewController {
+    /// What the side of an iPad's window shows beside this list: each server with how many of its
+    /// conversations are running and whether it answered, the pinned chats in pin order wearing
+    /// their own faces, and how many chats are archived. Built from the listing already held and
+    /// the same readings the rows use, so the sidebar and the list can never disagree.
+    func digest() -> ChatListDigest {
+        let archived = ArchivedChatStore.all()
+        let unreachable = Set(viewModel.unreachable)
+        let live = viewModel.entries.filter(isLive)
+        let unread = SessionSeenStore.unreadEvaluator()
+        let pinned = viewModel.entries
+            .compactMap { entry in
+                SessionPinStore.rank(profileID: entry.profileID, sessionID: entry.session.id)
+                    .map { (rank: $0, entry: entry) }
+            }
+            .sorted { $0.rank < $1.rank }
+            .map { pin in
+                let row = rowModel(for: pin.entry, saved: [], unreachable: unreachable)
+                return ChatListDigest.Pinned(
+                    key: ChatSelection.key(pin.entry), title: pin.entry.session.title,
+                    backend: pin.entry.backendType, activity: row.state.activity,
+                    unread: unread(pin.entry.session.id, pin.entry.session.updatedAt))
+            }
+        return ChatListDigest(
+            servers: viewModel.servers.map { profile in
+                ChatListDigest.Server(
+                    id: profile.id, name: profile.name, backend: profile.backend,
+                    live: live.count { $0.profileID == profile.id },
+                    unreachable: unreachable.contains(profile.id))
+            },
+            live: live.count,
+            archived: viewModel.entries.count {
+                archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id))
+            },
+            pinned: pinned)
+    }
+}
+
+/// A row lifted out of the list and dropped beside the window opens that conversation in a window
+/// of its own — the iPad's gesture for "both of these at once", on the same route the context
+/// menu's Open in New Window takes.
+extension SessionListViewController: UICollectionViewDragDelegate {
+    func collectionView(
+        _ collectionView: UICollectionView, itemsForBeginning session: UIDragSession,
+        at indexPath: IndexPath
+    ) -> [UIDragItem] {
+        guard !isSelecting, SceneRouting.supportsMultipleWindows,
+            let entry = dataSource.itemIdentifier(for: indexPath),
+            let url = SceneRouting.sessionURL(entry.session.id)
+        else { return [] }
+        let provider = NSItemProvider()
+        provider.registerObject(SceneRouting.activity(for: url, title: entry.session.title), visibility: .all)
+        let item = UIDragItem(itemProvider: provider)
+        item.localObject = entry
+        return [item]
+    }
+}
+
+/// A row's state in words, worn as a capsule: the activity badge and the pill's text on a wash of
+/// the state's own colour. The capsule is laid out by Auto Layout and measured once, as it is made,
+/// and the cell is told to reserve exactly that width: a custom accessory left to the standard
+/// reservation is centred in a slot a third its size, which put the pill over the row's age and
+/// past the trailing edge of any row narrower than a wide phone's.
+private final class RowStatePill: UIView {
+    private let capsule = UIView()
+
+    init(activity: ActivityKind, text: String, color: UIColor) {
+        super.init(frame: .zero)
+        let badge = ActivityBadgeView(pointSize: 11)
+        badge.activity = activity
+        badge.isAccessibilityElement = false
+        let label = UILabel()
+        label.text = text
+        label.font = Theme.Ramp.font(.pill)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = color
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let row = UIStackView(arrangedSubviews: [badge, label])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 1
+        row.translatesAutoresizingMaskIntoConstraints = false
+        capsule.translatesAutoresizingMaskIntoConstraints = false
+        capsule.backgroundColor = UIColor { traits in
+            color.withAlphaComponent(0.15)
+                .blended(over: Theme.Color.secondaryBackground, traits: traits)
+        }
+        capsule.layer.cornerCurve = .continuous
+        capsule.addSubview(row)
+        addSubview(capsule)
+        NSLayoutConstraint.activate([
+            capsule.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            capsule.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            capsule.topAnchor.constraint(equalTo: topAnchor),
+            capsule.bottomAnchor.constraint(equalTo: bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: capsule.leadingAnchor, constant: 6),
+            row.trailingAnchor.constraint(equalTo: capsule.trailingAnchor, constant: -7),
+            row.topAnchor.constraint(equalTo: capsule.topAnchor, constant: 3),
+            row.bottomAnchor.constraint(equalTo: capsule.bottomAnchor, constant: -3),
+            badge.widthAnchor.constraint(equalToConstant: 15),
+        ])
+        isAccessibilityElement = true
+        accessibilityLabel = activity.spoken
+        frame = CGRect(origin: .zero, size: systemLayoutSizeFitting(UIView.layoutFittingCompressedSize))
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        capsule.layer.cornerRadius = capsule.bounds.height / 2
+    }
+}
+

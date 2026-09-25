@@ -34,6 +34,7 @@ final class DesignBoardCell: UICollectionViewCell {
         card.layer.cornerRadius = Theme.Radius.card
         card.layer.cornerCurve = .continuous
         card.translatesAutoresizingMaskIntoConstraints = false
+        card.answersPointer(cornerRadius: Theme.Radius.card)
         contentView.addSubview(card)
 
         icon.contentMode = .scaleAspectFit

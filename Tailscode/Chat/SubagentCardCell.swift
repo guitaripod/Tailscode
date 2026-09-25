@@ -152,6 +152,7 @@ final class SubagentGroupCell: UICollectionViewCell {
 
         toggle.translatesAutoresizingMaskIntoConstraints = false
         toggle.addTarget(self, action: #selector(toggleTapped), for: .touchUpInside)
+        toggle.answersPointer(cornerRadius: Theme.Radius.card)
 
         contentView.addSubview(container)
         [rail, iconView, column, mark, chevron, toggle].forEach(container.addSubview)
@@ -319,6 +320,7 @@ final class SubagentCardCell: UICollectionViewCell {
 
         toggle.translatesAutoresizingMaskIntoConstraints = false
         toggle.addTarget(self, action: #selector(toggleTapped(_:event:)), for: .touchUpInside)
+        toggle.answersPointer(cornerRadius: Theme.Radius.card)
 
         contentView.addSubview(container)
         [rail, iconView, column, chevron, toggle].forEach(container.addSubview)

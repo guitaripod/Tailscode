@@ -291,11 +291,13 @@ final class DelegateRunViewController: UIViewController {
         }
     }
 
-    private func cancel() {
+    private func cancel(source: UIView) {
         let alert = UIAlertController(
             title: String(localized: "Cancel this run?"),
             message: String(localized: "The attempt out on the machine finishes on its own; nothing after it starts."),
             preferredStyle: .actionSheet)
+        alert.popoverPresentationController?.sourceView = source
+        alert.popoverPresentationController?.sourceRect = source.bounds
         alert.addAction(UIAlertAction(title: String(localized: "Cancel the run"), style: .destructive) { [weak self] _ in
             guard let self else { return }
             Task { [weak self] in
@@ -322,7 +324,7 @@ extension DelegateRunViewController: UICollectionViewDelegate {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
         switch item {
-        case .cancel: cancel()
+        case .cancel: cancel(source: collectionView.cellForItem(at: indexPath) ?? collectionView)
         case .step(let id): if let step = nextStep(id) { performNextStep(step) }
         default: break
         }

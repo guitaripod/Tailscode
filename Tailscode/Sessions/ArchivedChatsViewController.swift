@@ -209,8 +209,7 @@ final class ArchivedChatsViewController: UIViewController {
             ?? ChatViewModel(
                 backend: backend, session: entry.session, contextID: entry.profileID,
                 serverName: entry.profileName)
-        navigationController?.pushViewController(
-            ChatViewController(viewModel: chatViewModel), animated: true)
+        showConversation(ChatViewController(viewModel: chatViewModel))
     }
 }
 

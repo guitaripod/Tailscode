@@ -147,7 +147,9 @@ final class KeyBridge {
     /// desktops; everything else has an iOS answer somewhere.
     static func handledOnIOS(_ action: KeyAction) -> Bool {
         switch action {
-        case .focus, .cycleForward, .cycleBackward, .toggleSidebar, .toggleFiles,
+        case .toggleSidebar:
+            return UIDevice.current.userInterfaceIdiom == .pad
+        case .focus, .cycleForward, .cycleBackward, .toggleFiles,
             .toggleTerminal, .zoomIn, .zoomOut, .zoomReset, .splitPane, .closeSplit,
             .focusSplit, .zoomSplit, .equalizeSplits, .exchangeSplit:
             return false

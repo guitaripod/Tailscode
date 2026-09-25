@@ -28,7 +28,11 @@ enum ParityManifest {
         case .forkSession: return .implemented("forkConversation")
         case .transcriptSearch: return .implemented("TranscriptSearchViewController")
         case .listFilter: return .implemented("filteredEntries")
-        case .autoOpenLastSession: return .notApplicable("the phone launches to the Home board by design; Live cards and deep links reopen work")
+        case .autoOpenLastSession:
+            return .partial(
+                "restorationActivity",
+                missing:
+                    "only an iPad window the system restores reopens the conversation it was showing; the phone launches to the Home board by design, where Live cards and deep links reopen work")
         case .liveListUpdates: return .implemented("startStreams")
         case .rowContextActions: return .implemented("sessionMenu")
         case .rowSnippet: return .implemented("agentTask")
@@ -131,11 +135,20 @@ enum ParityManifest {
         case .imageLivePreview: return .implemented("sketch")
         case .watchDirectory: return .notApplicable("the board is what an empty video slot shows instead of a text box, and a phone has no slot to show it in; a full-screen browser of what is on would be a different app, not this capability")
         case .watchAccounts: return .notApplicable("nothing on a phone reads a follow list — there is no board and no slot to put one in, so an account here would sign in to feed a surface that does not exist")
+        case .listBesideConversation: return .implemented("WorkspaceSplitViewController")
         case .splitPanes: return .notApplicable("one conversation fills a phone; a tiling tree presumes a desktop's width and the OS owns window arrangement")
         case .newPaneChooser: return .notApplicable("no split panes on a phone; a new conversation starts from the chat list, which already spans every server")
         case .chatDragToPane: return .notApplicable("no panes to drag a chat into; the list opens a chat into the one conversation surface a phone has")
-        case .clickToActivate: return .notApplicable("a touch has no ambiguity to resolve: one conversation fills the screen, so there is no unfocused pane or second region a tap could mean instead")
-        case .pointerFeedback: return .gap("an iPad with a trackpad has a pointer to answer: rows, disclosures and cards want UIPointerInteraction and a message a hover toolbar; on a phone the same verbs stay a long-press away")
+        case .clickToActivate:
+            return .partial(
+                "columnPressed",
+                missing:
+                    "an iPad window holds one conversation, so there is no pane tree for a press to focus, no accent to move and no ctrl+w verbs to aim; what a press does do is make the column it lands in — sidebar, chat list or conversation — the keyboard's region, before the control under it acts and without taking the keyboard from a field in that same column")
+        case .pointerFeedback:
+            return .partial(
+                "answersPointer",
+                missing:
+                    "rows, cards, thought and tool headers, pictures and buttons answer a pointer with the system's hover plate, but a chat row the pointer rests on keeps its age rather than trading it for pin, save and archive, and a message's Copy and Undo stay in its long-press menu instead of a hover bar")
         case .uiScale: return .implemented("Theme")
         case .typeRamp: return .implemented("Theme.Ramp")
         case .themePicker: return .implemented("ThemePickerViewController")
