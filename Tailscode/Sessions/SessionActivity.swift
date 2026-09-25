@@ -98,6 +98,13 @@ final class SessionActivity {
         return viewModel
     }
 
+    /// The conversations this device is driving whose turn the server has confirmed is running
+    /// right now — the ones worth holding a background wait open for. A turn already waiting on
+    /// the person needs no wait of its own: it has its own approval/question notification already.
+    var runningConversations: [ChatViewModel] {
+        retained.values.filter { statuses[$0.session.id] == .running }
+    }
+
     /// What a session this device is driving is doing right now ("Running
     /// Edit"), for Home's live cards. Nil for sessions running elsewhere — their
     /// transcripts aren't streaming here, so nothing beyond liveness is known.
@@ -128,17 +135,21 @@ final class SessionActivity {
             retained[sessionID] = nil
         }
         let previous = statuses[sessionID] ?? .idle
+        if status == .running, previous != .running, UIApplication.shared.applicationState != .active {
+            TurnWaitCenter.shared.arm(profileID: profileID, sessionID: sessionID, backend: keepAlive.backend)
+        }
         guard previous != status else {
             if status != .idle { postLiveTick() }
             return
         }
         statuses[sessionID] = status
         if status == .idle, previous != .idle {
+            TurnWaitCenter.shared.cancel(sessionID: sessionID)
             if UIApplication.shared.applicationState != .active {
                 ReviewPromptCoordinator.shared.turnFinishedWhileAway()
             }
             let body = String(localized: "Your agent finished.")
-            if remotePushCovers(profileID: profileID) {
+            if PushRegistrar.covers(profileID: profileID) {
                 recordMissed(
                     identifier: "done:\(sessionID)", profileID: profileID, sessionID: sessionID,
                     title: title, body: body)
@@ -204,16 +215,5 @@ final class SessionActivity {
         guard let current = statuses[sessionID], current != .idle else { return }
         statuses[sessionID] = .idle
         NotificationCenter.default.post(name: Self.didChange, object: nil)
-    }
-
-    /// A bridge that acked this launch's device token pushes its own turn-end
-    /// alert, so the local one would duplicate it; opencode servers and bridges
-    /// that never acked still rely on the local notification.
-    private func remotePushCovers(profileID: String) -> Bool {
-        guard
-            let profile = ConnectionController.shared.profiles.first(where: { $0.id == profileID }),
-            profile.backend == .claudeCode
-        else { return false }
-        return PushRegistrar.ackedBridgeURLs.contains(profile.baseURL)
     }
 }

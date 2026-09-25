@@ -175,6 +175,7 @@ final class SettingsViewController: UIViewController {
         case tailnetToken
         case tailnetScan
         case notificationPermission
+        case backgroundRefresh
         case toggle(Toggle)
         case pushState(String)
         case testNotification
@@ -359,7 +360,7 @@ final class SettingsViewController: UIViewController {
             let status = await NotificationManager.authorizationStatus()
             guard let self else { return }
             self.notificationStatus = status
-            self.reconfigure([.notificationPermission, .tailnetStatus])
+            self.reconfigure([.notificationPermission, .backgroundRefresh, .tailnetStatus])
         }
     }
 
@@ -468,10 +469,11 @@ final class SettingsViewController: UIViewController {
                     "Every server in Tailscode is reached over your tailnet. The API token is only used to list your devices during discovery."
             )
         case .notifications:
-            return String(
+            let base = String(
                 localized:
-                    "Approvals and turn alerts are raised by this device while it is watching a session. Push from servers is what reaches you after the app is closed."
+                    "Approvals and turn alerts are raised by this device while it is watching a session, and by a side-effect-free wait each server holds open while the app is closed. Push from a bridge with a key configured reaches you the same way."
             )
+            return "\(base) \(TurnWaitFooters.forceQuit) \(TurnWaitFooters.privacy)"
         case .usage:
             return String(
                 localized:
@@ -603,6 +605,14 @@ final class SettingsViewController: UIViewController {
             content.imageProperties.tintColor = color
             content.image = UIImage(systemName: symbol)
             if notificationStatus != .authorized { cell.accessories = [.disclosureIndicator()] }
+        case .backgroundRefresh:
+            let (detail, color, symbol, actionable) = backgroundRefreshDetail()
+            content.text = String(localized: "Background App Refresh")
+            content.secondaryText = detail
+            content.secondaryTextProperties.color = color
+            content.imageProperties.tintColor = color
+            content.image = UIImage(systemName: symbol)
+            if actionable { cell.accessories = [.disclosureIndicator()] }
         case .toggle(let toggle):
             content.text = toggle.title
             if let subtitle = toggle.subtitle {
@@ -780,6 +790,26 @@ final class SettingsViewController: UIViewController {
         }
     }
 
+    /// Whether this is a fact or a fault: on and available reads as plain status, denied or
+    /// restricted is the one thing standing between a person and a wake this app cannot promise
+    /// any other way, so it wears the warning tone and the tap that fixes it.
+    private func backgroundRefreshDetail() -> (String, UIColor, String, actionable: Bool) {
+        switch UIApplication.shared.backgroundRefreshStatus {
+        case .available:
+            return (
+                String(localized: "On"), Theme.Color.secondaryLabel,
+                "arrow.triangle.2.circlepath", false
+            )
+        case .denied, .restricted:
+            return (
+                String(localized: "Off — tap to open iOS Settings"), Theme.Color.warning,
+                "arrow.triangle.2.circlepath.circle.fill", true
+            )
+        @unknown default:
+            return (String(localized: "Unknown"), Theme.Color.secondaryLabel, "questionmark.circle", false)
+        }
+    }
+
     private func pushDetail(_ state: PushRegistrar.State) -> String {
         switch state {
         case .registered: return String(localized: "Registered")
@@ -913,8 +943,9 @@ final class SettingsViewController: UIViewController {
         if ConnectionController.shared.isDemoMode { connectionItems.append(.leaveDemo) }
 
         var notificationItems: [Item] = [
-            .notificationPermission, .toggle(.notifyTurnComplete), .toggle(.notifyApprovals),
-            .toggle(.notifyUsage), .toggle(.liveActivities), .toggle(.serverPush),
+            .notificationPermission, .backgroundRefresh, .toggle(.notifyTurnComplete),
+            .toggle(.notifyApprovals), .toggle(.notifyUsage), .toggle(.liveActivities),
+            .toggle(.serverPush),
         ]
         notificationItems += pushCapableProfiles.map { Item.pushState($0.id) }
         notificationItems.append(.testNotification)
@@ -1044,6 +1075,10 @@ final class SettingsViewController: UIViewController {
         case .notificationPermission:
             return String(
                 localized: "notifications permission authorization alerts allow",
+                comment: "search keywords")
+        case .backgroundRefresh:
+            return String(
+                localized: "background app refresh wait turn ends closed",
                 comment: "search keywords")
         case .toggle(let toggle): return "\(toggle.title) \(toggle.subtitle ?? "")"
         case .pushState(let id):
@@ -1291,6 +1326,10 @@ extension SettingsViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(editor, animated: true)
         case .notificationPermission:
             handlePermissionTap()
+        case .backgroundRefresh:
+            guard backgroundRefreshDetail().actionable else { return }
+            Theme.Haptics.tap()
+            NotificationManager.openSystemSettings()
         case .pushState:
             Theme.Haptics.tap()
             PushRegistrar.reregisterIfNeeded()

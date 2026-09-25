@@ -17,10 +17,27 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
         NotificationManager.registerCategories()
         AppActivityController.shared.adoptStanding()
+        TurnWaitCenter.shared.start()
         UsageBackgroundRefresh.register()
         UsageBackgroundRefresh.schedule()
         application.registerForRemoteNotifications()
         return true
+    }
+
+    /// The system relaunched or resumed this process to deliver what a background `URLSession`
+    /// finished while it wasn't running — one or more armed turn waits, in practice. The
+    /// completion handler is `TurnWaitCenter`'s own to call, once every wait this wake delivered
+    /// has become a notification, a settled Live Activity and a diagnostics line.
+    func application(
+        _ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        guard identifier == TurnWaitCenter.sessionIdentifier else {
+            completionHandler()
+            return
+        }
+        AppLogger.lifecycle.info("handleEventsForBackgroundURLSession: \(identifier)")
+        TurnWaitCenter.shared.awaitBackgroundEvents(completion: completionHandler)
     }
 
     func application(

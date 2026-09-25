@@ -31,11 +31,29 @@ enum PushRegistrar {
 
     private(set) static var states: [URL: State] = [:]
 
+    /// Whether a bridge that accepted this device's token actually holds an APNs client behind
+    /// it, read from `registerDeviceTokenReceipt`'s own answer rather than assumed from the bare
+    /// success of registering. Absent for a bridge that predates the receipt — that is not the
+    /// same as `false`, and `covers(profileID:)` reads it that way.
+    private(set) static var delivers: [URL: Bool] = [:]
+
     static var ackedBridgeURLs: Set<URL> {
         Set(states.filter { $0.value == .registered }.keys)
     }
 
     static func state(for baseURL: URL) -> State { states[baseURL] ?? .unknown }
+
+    /// Whether a bridge's own remote push already announces this profile's turn endings, so a
+    /// local fallback would only duplicate it. Registered with no verdict on `delivers` — an
+    /// older bridge that predates the field — keeps today's behaviour and still reads as covered;
+    /// only a bridge that says outright it holds no APNs client breaks coverage.
+    static func covers(profileID: String) -> Bool {
+        guard
+            let profile = ConnectionController.shared.profiles.first(where: { $0.id == profileID }),
+            profile.backend == .claudeCode, states[profile.baseURL] == .registered
+        else { return false }
+        return delivers[profile.baseURL] != false
+    }
 
     static var hasToken: Bool { UserDefaults.standard.string(forKey: tokenKey) != nil }
 
@@ -66,6 +84,7 @@ enum PushRegistrar {
 
     static func unregister(from backend: any CodingAgentBackend, baseURL: URL, name: String) {
         states.removeValue(forKey: baseURL)
+        delivers.removeValue(forKey: baseURL)
         guard let token = UserDefaults.standard.string(forKey: tokenKey) else { return }
         let registration = DevicePushRegistration(token: token, environment: environment)
         Task {
@@ -82,6 +101,7 @@ enum PushRegistrar {
             let name = entry.profile.name
             let baseURL = entry.profile.baseURL
             states.removeValue(forKey: baseURL)
+            delivers.removeValue(forKey: baseURL)
             Task {
                 if (try? await backend.unregisterDeviceToken(registration)) != nil {
                     AppLogger.connection.info("push: device token unregistered from \(name)")
@@ -122,11 +142,15 @@ enum PushRegistrar {
             let baseURL = entry.profile.baseURL
             Task {
                 do {
-                    try await backend.registerDeviceToken(registration)
+                    let receipt = try await backend.registerDeviceTokenReceipt(registration)
                     states[baseURL] = .registered
-                    AppLogger.connection.info("push: device token registered with \(name)")
+                    delivers[baseURL] = receipt.delivers
+                    AppLogger.connection.info(
+                        "push: device token registered with \(name) (delivers=\(receipt.delivers.map(String.init) ?? "unknown"))"
+                    )
                 } catch {
                     states[baseURL] = Self.classify(error)
+                    delivers.removeValue(forKey: baseURL)
                     AppLogger.connection.error(
                         "push: registration with \(name) failed: \(error.localizedDescription)")
                 }

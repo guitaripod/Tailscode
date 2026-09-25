@@ -37,6 +37,15 @@ enum DiagnosticsReport {
         lines.append("Server pushes: \(AppPreferences.pushAlertsEnabled)")
         lines.append("Live Activities: \(AppPreferences.liveActivitiesEnabled)")
         lines.append("APNs token: \(PushRegistrar.hasToken ? "received" : "not received")")
+        lines.append(
+            "Background App Refresh: \(Self.describe(UIApplication.shared.backgroundRefreshStatus))")
+
+        lines.append("")
+        lines.append("[Turn wait]")
+        let armed = TurnWaitCenter.shared.armedDescriptions
+        lines.append(armed.isEmpty ? "none armed" : "armed: \(armed.joined(separator: ", "))")
+        lines.append(
+            "Last completion: \(TurnWaitCenter.shared.lastCompletionDescription ?? "none yet")")
 
         lines.append("")
         lines.append("[Servers]")
@@ -93,6 +102,15 @@ enum DiagnosticsReport {
         case .denied: return "denied"
         case .notDetermined: return "not determined"
         case .ephemeral: return "ephemeral"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private static func describe(_ status: UIBackgroundRefreshStatus) -> String {
+        switch status {
+        case .available: return "available"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
         @unknown default: return "unknown"
         }
     }

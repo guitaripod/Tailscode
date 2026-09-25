@@ -11,6 +11,7 @@ final class ServerDetailViewController: UIViewController {
     private enum Item: Hashable {
         case value(label: String, value: String)
         case status(String)
+        case turnWaitAvailability
         case pushState
         case account(signedIn: Bool)
         case test
@@ -39,6 +40,7 @@ final class ServerDetailViewController: UIViewController {
     private var permissions: MachinePermissions?
     private var permissionRequesting: MachinePermissions.Grant.Kind?
     private var permissionPollTask: Task<Void, Never>?
+    private var turnWaitAvailability: TurnWaitAvailability = .unknown
 
     /// The reading this screen's software card renders, from the one ledger every surface renders
     /// from. Never this screen's own words and never its own asking: a press goes to
@@ -222,6 +224,11 @@ final class ServerDetailViewController: UIViewController {
             content.text = String(localized: "Status")
             content.secondaryText = text
             content.prefersSideBySideTextAndSecondaryText = true
+        case .turnWaitAvailability:
+            content.text = String(localized: "When closed")
+            content.secondaryText = turnWaitAvailability.sentence
+            content.secondaryTextProperties.color =
+                turnWaitAvailability == .waits ? Theme.Color.secondaryLabel : Theme.Color.warning
         case .pushState:
             let state = PushRegistrar.state(for: profile.baseURL)
             content.text = String(localized: "Push notifications")
@@ -501,6 +508,7 @@ final class ServerDetailViewController: UIViewController {
         snapshot.appendItems(info, toSection: .info)
 
         var statusItems: [Item] = [.status(statusText)]
+        if !isDemo { statusItems.append(.turnWaitAvailability) }
         if profile.backend == .claudeCode, !isDemo {
             statusItems.append(.pushState)
             if let auth { statusItems.append(.account(signedIn: auth.loggedIn)) }
@@ -563,6 +571,9 @@ final class ServerDetailViewController: UIViewController {
             serverAccess = health.access
             ServerHealthMonitor.record(health.healthy, for: profile.id)
             sessionCount = (try? await backend.listAllSessions(knownDirectories: []))?.count
+            if !isDemo {
+                turnWaitAvailability = .from(await backend.turnWaitSupport(), agent: profile.backend)
+            }
             if profile.backend == .openCode {
                 modelCount = try? await backend.availableModels().count
             }

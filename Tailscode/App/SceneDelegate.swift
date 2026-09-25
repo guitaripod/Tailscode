@@ -64,6 +64,13 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         ReviewPromptCoordinator.shared.returnedToFinishedWork()
     }
 
+    /// The last point at which a task handed to `TurnWaitCenter`'s background session starts like
+    /// a foreground request rather than a merely discretionary one — after this, arming has to
+    /// wait for whatever the system feels like giving it.
+    func sceneWillResignActive(_ scene: UIScene) {
+        TurnWaitCenter.shared.armForBackground()
+    }
+
     func sceneDidEnterBackground(_ scene: UIScene) {
         UsageBackgroundRefresh.schedule()
         HapticEngine.shared.relinquish()
