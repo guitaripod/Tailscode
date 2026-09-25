@@ -151,6 +151,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case activityNotifications
     case missedActivity
     case liveActivity
+    case turnEndWhileAway
     case videoSlot
     case watchDirectory
     case watchAccounts
@@ -779,6 +780,10 @@ public enum CapabilityRegistry {
             id: .liveActivity, area: "app", title: "A turn you can follow with the phone locked",
             spec:
                 "A turn this device starts is followed on the Lock Screen and in the Dynamic Island, and the card says what the chat's own status surface says — thinking, writing, the tool out on the machine wearing that tool's own symbol, compacting, and a turn stopped for the person, which leads every other card — with the turn's clock beside it. The words are named rather than written: the app and claude-bridge both stamp a LiveActivityDetail and the facts it is made from, and the widget writes the words in the reader's language, so a card a server pushed while the phone slept reads exactly as well as one the app drew. An ending is news until it has been read, so a card never vanishes when the work stops: it settles in place — how the turn ended (done, with what it did and what the machine is still carrying for it; the question it stopped to ask; a failure; a cut-off; an answer that came back empty), how long it ran and how long ago it ended — and stays in the Dynamic Island and on the Lock Screen until the conversation is opened, which is what reads it. A turn that ends under the reader's eyes leaves nothing behind. The conversation's next turn takes the same card back rather than stacking a second one, whether this device sent it, a queued message drained, or the machine began one itself, which the server announces by push. A card nobody came for leaves the Dynamic Island after LiveActivityLinger.island and the Lock Screen after LiveActivityLinger.lockScreen, on the device's clock and the server's alike; a relaunch adopts the cards already standing instead of sweeping them away; and several at once rank by what they say — waiting on the person, then moving, then gone wrong, then finished."),
+        CapabilityDefinition(
+            id: .turnEndWhileAway, area: "app", title: "A turn that ends while the app is closed still says so",
+            spec:
+                "A turn a person started can outlast the seconds the phone stays in front, and the owner decided this app never leans on a relay for that news — Midgar's own push key is a thing only the first-party bridge holds, so a relay would tell an App Store person nothing while quietly telling everyone else. So the phone itself holds a side-effect-free, fully authorised, idempotent wait open on the server directly, arms it while still in front, and asks nothing of any address in between. When the wait resolves — the turn ended, or it stopped to ask the person something — the phone that is woken for it posts the same local notification the in-app path would have posted, settles the Live Activity with the same LiveActivityDetail the in-app path would have written, and records the same MissedActivity entry, so a turn answered from the background reads exactly like one watched live rather than through a second, thinner vocabulary. Nothing here claims more than the mechanism can promise: Background App Refresh being off, or the app being force-quit, or the OS never scheduling a discretionary task, all mean silence until the app is opened, and the words that explain the capability say exactly that rather than promising a wake the platform reserves the right to skip."),
         CapabilityDefinition(
             id: .homeQuickActions, area: "app", title: "Home screen quick actions",
             spec:

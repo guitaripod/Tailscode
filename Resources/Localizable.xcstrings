@@ -225081,6 +225081,83 @@
           }
         }
       }
+    },
+    "Tells this iPhone when a turn ends, straight over your tailnet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tells this iPhone when a turn ends, straight over your tailnet."
+          }
+        }
+      }
+    },
+    "Update %@ to be told when a turn ends while Tailscode is closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update %@ to be told when a turn ends while Tailscode is closed."
+          }
+        }
+      }
+    },
+    "opencode 1.x can't be waited on. opencode 2 can.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 1.x can't be waited on. opencode 2 can."
+          }
+        }
+      }
+    },
+    "Tailscode hasn't checked yet whether this server can be waited on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode hasn't checked yet whether this server can be waited on."
+          }
+        }
+      }
+    },
+    "Background App Refresh is off for Tailscode, so a turn that ends while it's closed stays silent until you open it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background App Refresh is off for Tailscode, so a turn that ends while it's closed stays silent until you open it."
+          }
+        }
+      }
+    },
+    "Swiping Tailscode away stops the wait until you open it again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swiping Tailscode away stops the wait until you open it again."
+          }
+        }
+      }
+    },
+    "Tailscode waits on your servers directly. Nothing passes through Midgar or Apple.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode waits on your servers directly. Nothing passes through Midgar or Apple."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

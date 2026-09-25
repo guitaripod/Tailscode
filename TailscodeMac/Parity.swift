@@ -246,6 +246,9 @@ enum ParityManifest {
         case .hapticFeedback: return .partial("MacHaptics", missing: "the trackpad cannot compose: three canned patterns stand in for the recipes, so strength gates which beats survive but never how hard one lands, and a cue is felt only while a hand is on the trackpad")
         case .missedActivity: return .implemented("ActivityInbox.ordered")
         case .liveActivity: return .notApplicable("ActivityKit is the iPhone's: a Mac app has no Lock Screen card or Dynamic Island to publish into, and a turn ending on this desk is said by the notifier and the status band")
+        case .turnEndWhileAway:
+            return .notApplicable(
+                "a running Mac app is never suspended by the OS the way iOS suspends a backgrounded one — sandboxing (the App Store copy) narrows what the process may touch, not whether the process keeps running, so both copies keep their sockets and their event loop open and MacNotifier already says a turn ended the moment it does; only quitting stops that, and a quit process has nothing a background wait could wake, which is the same fact liveActivity answers and the reason .varies is not warranted here")
         case .usageWidgets:
             return .varies(
                 direct: .partial(

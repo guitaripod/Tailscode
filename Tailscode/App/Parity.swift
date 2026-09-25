@@ -166,6 +166,9 @@ enum ParityManifest {
         case .activityNotifications: return .implemented("NotificationManager")
         case .missedActivity: return .implemented("MissedActivityCell")
         case .liveActivity: return .implemented("AppActivityController")
+        case .turnEndWhileAway:
+            return .gap(
+                "the background wait owner (TurnWaitCenter) is not built yet — arming a wait on sceneWillResignActive, decoding it on wake, and posting through NotificationManager/AppActivityController/ActivityInbox from a background URLSession completion still has to land before this reads .implemented")
         case .hapticFeedback: return .implemented("HapticEngine")
         case .homeQuickActions: return .implemented("HomeQuickActions")
         case .usageWidgets: return .implemented("WidgetGlance")
