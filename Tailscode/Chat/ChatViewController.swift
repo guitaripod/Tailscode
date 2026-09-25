@@ -85,6 +85,7 @@ final class ChatViewController: UIViewController {
     private weak var transcriptDismissTap: UITapGestureRecognizer?
     private var answeredQuestionIDs: Set<String> = []
     private var lastNotifiedQuestionID: String?
+    private var lastBannerQuestionID: String?
     private var availableModels: [ModelInfo] = []
     private var modelsReachable: Bool?
     private var modelPicker: ModelPickerViewController?
@@ -2550,7 +2551,9 @@ final class ChatViewController: UIViewController {
             lastHapticPermissionID = permission.id
             Theme.Haptics.needsYou()
         }
-        if let permission = pendingPermission, permission.id != lastNotifiedPermissionID {
+        if let permission = pendingPermission, permission.id != lastNotifiedPermissionID,
+            claimsNeedsYouBanner()
+        {
             lastNotifiedPermissionID = permission.id
             NotificationManager.notify(
                 kind: .approval,
@@ -2563,6 +2566,9 @@ final class ChatViewController: UIViewController {
         if let question = pendingQuestion, question.id != lastNotifiedQuestionID {
             lastNotifiedQuestionID = question.id
             Theme.Haptics.needsYou()
+        }
+        if let question = pendingQuestion, question.id != lastBannerQuestionID, claimsNeedsYouBanner() {
+            lastBannerQuestionID = question.id
             NotificationManager.notify(
                 kind: .question,
                 title: viewModel.alertTitle,
@@ -2732,6 +2738,13 @@ final class ChatViewController: UIViewController {
         presentToast(RevertReading.undoingTitle)
         requestedRevertID = message.id
         viewModel.revert(to: message.id)
+    }
+
+    /// A question or an approval ends this turn's wait for the person, and the background wait
+    /// armed for the session may have announced that same ending already; whichever witness claims
+    /// it first is the one that speaks.
+    private func claimsNeedsYouBanner() -> Bool {
+        TurnEndGate.claim(profileID: viewModel.contextID, sessionID: viewModel.session.id)
     }
 
     private func updateBanner(for state: ConversationState) {

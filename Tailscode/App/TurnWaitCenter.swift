@@ -75,7 +75,7 @@ final class TurnWaitCenter {
     /// be read as a transport failure worth retrying.
     private var cancelling: Set<String> = []
     private var pendingSystemCompletion: (() -> Void)?
-    private var inFlight: [Task<Void, Never>] = []
+    private var inFlight: [UUID: Task<Void, Never>] = [:]
 
     private(set) var lastCompletion: (sessionID: String, title: String?, state: String, at: Date)?
 
@@ -148,11 +148,21 @@ final class TurnWaitCenter {
         box.identifier = UIApplication.shared.beginBackgroundTask(withName: "TurnWaitCenter.arm") {
             MainActor.assumeIsolated { box.end() }
         }
-        inFlight.append(
-            Task { [weak self] in
-                await self?.armAsync(profileID: profileID, sessionID: sessionID, backend: backend)
-                box.end()
-            })
+        track { [weak self] in
+            await self?.armAsync(profileID: profileID, sessionID: sessionID, backend: backend)
+            box.end()
+        }
+    }
+
+    /// Runs one piece of arming or completion work and keeps a handle to it only while it runs, so
+    /// `finishBackgroundEvents` can wait for whatever is still going without the list growing for
+    /// the life of a process that is never woken for a background-session event.
+    private func track(_ work: @escaping @MainActor () async -> Void) {
+        let id = UUID()
+        inFlight[id] = Task { [weak self] in
+            await work()
+            self?.inFlight[id] = nil
+        }
     }
 
     private func armAsync(profileID: String, sessionID: String, backend: any CodingAgentBackend) async {
@@ -221,12 +231,11 @@ final class TurnWaitCenter {
     fileprivate func registerCompletion(
         description: String?, status: Int, headers: [String: String], data: Data, error: Error?
     ) {
-        inFlight.append(
-            Task { [weak self] in
-                await self?.taskDidComplete(
-                    description: description, status: status, headers: headers, data: data,
-                    error: error)
-            })
+        track { [weak self] in
+            await self?.taskDidComplete(
+                description: description, status: status, headers: headers, data: data,
+                error: error)
+        }
     }
 
     private func taskDidComplete(
@@ -445,8 +454,7 @@ final class TurnWaitCenter {
     fileprivate func finishBackgroundEvents() {
         guard let completion = pendingSystemCompletion else { return }
         pendingSystemCompletion = nil
-        let handles = inFlight
-        inFlight.removeAll()
+        let handles = Array(inFlight.values)
         let box = BackgroundTaskBox()
         box.identifier = UIApplication.shared.beginBackgroundTask(withName: "TurnWaitCenter.finish") {
             MainActor.assumeIsolated { box.end() }

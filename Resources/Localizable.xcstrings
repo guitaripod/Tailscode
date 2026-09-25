@@ -10153,6 +10153,71 @@
         }
       }
     },
+    "A bridge set up with a push key also sends its own alert, which travels through Apple like any push.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Bridge mit eingerichtetem Push-Schlüssel sendet zusätzlich eine eigene Benachrichtigung, die wie jeder Push über Apple läuft."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A bridge set up with a push key also sends its own alert, which travels through Apple like any push."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un bridge configurado con una clave de push también envía su propia alerta, que pasa por Apple como cualquier push."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un bridge configuré avec une clé de push envoie aussi sa propre alerte, qui transite par Apple comme tout push."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un bridge configurato con una chiave push invia anche un proprio avviso, che passa da Apple come qualsiasi push."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プッシュキーを設定したブリッジは独自の通知も送信し、これは他のプッシュと同様に Apple を経由します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "푸시 키가 설정된 브리지는 자체 알림도 보내며, 이 알림은 다른 푸시와 마찬가지로 Apple을 거칩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um bridge configurado com uma chave de push também envia seu próprio alerta, que passa pela Apple como qualquer push."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置了推送密钥的 bridge 还会发送自己的提醒，它和其他推送一样经过 Apple。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定了推播金鑰的 bridge 也會傳送自己的提醒，它和其他推播一樣經過 Apple。"
+          }
+        }
+      }
+    },
     "A build made here, past anything published. Nothing to install.": {
       "extractionState": "manual",
       "localizations": {
@@ -10214,6 +10279,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "本機建置的版本，比任何已發布的版本都新。沒有可安裝的內容。"
+          }
+        }
+      }
+    },
+    "Approvals and turn alerts come from this device while it watches a session, and, once the app is closed, from a wait each server holds open for it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Freigaben und Zugbenachrichtigungen kommen von diesem Gerät, solange es eine Sitzung beobachtet, und nach dem Schließen der App von einem Warten, das jeder Server dafür offen hält."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approvals and turn alerts come from this device while it watches a session, and, once the app is closed, from a wait each server holds open for it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las aprobaciones y las alertas de turno vienen de este dispositivo mientras observa una sesión y, cuando la app está cerrada, de una espera que cada servidor mantiene abierta para él."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les approbations et les alertes de tour viennent de cet appareil pendant qu'il surveille une session et, une fois l'appli fermée, d'une attente que chaque serveur maintient ouverte pour lui."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le approvazioni e gli avvisi di turno arrivano da questo dispositivo mentre osserva una sessione e, quando l'app è chiusa, da un'attesa che ogni server tiene aperta per lui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "承認とターンの通知は、このデバイスがセッションを監視している間はデバイス自身から、アプリを閉じた後は各サーバがこのデバイスのために保持する待機から届きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "승인 및 턴 알림은 이 기기가 세션을 지켜보는 동안에는 기기에서, 앱이 닫힌 후에는 각 서버가 이 기기를 위해 열어 두는 대기에서 옵니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As aprovações e os alertas de turno vêm deste dispositivo enquanto ele observa uma sessão e, depois que o app é fechado, de uma espera que cada servidor mantém aberta para ele."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批准和回合提醒在本设备监看会话时由设备自身发出；应用关闭后，则来自各服务器为它保持的等待。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "核准和回合提醒在本裝置監看工作階段時由裝置本身發出；應用程式關閉後，則來自各伺服器為它保持的等待。"
           }
         }
       }
@@ -15804,71 +15934,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "核准與提問"
-          }
-        }
-      }
-    },
-    "Approvals and turn alerts are raised by this device while it is watching a session. Push from servers is what reaches you after the app is closed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Freigaben und Zug-Hinweise löst dieses Gerät aus, solange es eine Sitzung beobachtet. Push von Servern erreicht dich, nachdem die App geschlossen wurde."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Approvals and turn alerts are raised by this device while it is watching a session. Push from servers is what reaches you after the app is closed."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Las aprobaciones y los avisos de turno los emite este dispositivo mientras observa una sesión. Las notificaciones push de los servidores te llegan cuando la app está cerrada."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Les approbations et les alertes de tour sont émises par cet appareil tant qu’il observe une session. Les notifications push des serveurs vous atteignent une fois l’app fermée."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Le approvazioni e gli avvisi di turno vengono generati da questo dispositivo mentre osserva una sessione. I push dai server ti raggiungono dopo la chiusura dell’app."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "承認とターン通知は、このデバイスがセッションを監視している間に発行されます。App を閉じた後に届くのはサーバからのプッシュです。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "승인 및 턴 알림은 이 기기가 세션을 지켜보는 동안 발생합니다. 앱이 닫힌 뒤에는 서버 푸시가 알려 줍니다."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "As aprovações e os alertas de turno são emitidos por este dispositivo enquanto ele observa uma sessão. O push dos servidores é o que chega até você depois que o app é fechado."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当此设备正在关注会话时，由它发出批准和回合提醒。App 关闭后，则由服务器推送通知你。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "當此裝置正在關注工作階段時，由它發出核准與回合提醒。App 關閉後，則由伺服器推播通知你。"
           }
         }
       }
@@ -225859,136 +225924,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "背景重新整理 等待 回合 結束 關閉"
-          }
-        }
-      }
-    },
-    "Approvals and turn alerts are raised by this device while it is watching a session, and by a side-effect-free wait each server holds open while the app is closed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Freigaben und Zugbenachrichtigungen werden von diesem Gerät ausgelöst, solange es eine Sitzung beobachtet, sowie durch ein nebenwirkungsfreies Warten, das jeder Server offen hält, während die App geschlossen ist."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Approvals and turn alerts are raised by this device while it is watching a session, and by a side-effect-free wait each server holds open while the app is closed."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Las aprobaciones y las alertas de turno las genera este dispositivo mientras observa una sesión, y también una espera sin efectos secundarios que cada servidor mantiene abierta mientras la app está cerrada."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Les approbations et les alertes de tour sont déclenchées par cet appareil pendant qu'il surveille une session, ainsi que par une attente sans effet de bord que chaque serveur maintient ouverte pendant que l'appli est fermée."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Le approvazioni e gli avvisi di turno vengono generati da questo dispositivo mentre osserva una sessione, e da un'attesa priva di effetti collaterali che ogni server mantiene aperta mentre l'app è chiusa."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "承認とターンの通知は、このデバイスがセッションを監視している間に発生するものと、アプリを閉じている間も各サーバが保持し続ける副作用のない待機によるものがあります。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "승인 및 턴 알림은 이 기기가 세션을 지켜보는 동안 발생하거나, 앱이 닫혀 있는 동안 각 서버가 부작용 없이 유지하는 대기를 통해 발생합니다."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "As aprovações e os alertas de turno são gerados por este dispositivo enquanto ele observa uma sessão, e também por uma espera sem efeitos colaterais que cada servidor mantém aberta enquanto o app está fechado."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "批准和回合提醒，一部分来自本设备在监看会话期间发出的通知，另一部分来自应用关闭期间各服务器保持的无副作用等待。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "核准和回合提醒，一部分來自本裝置在監看工作階段期間發出的通知，另一部分來自應用程式關閉期間各伺服器保持的無副作用等待。"
-          }
-        }
-      }
-    },
-    "Push from a bridge with a key configured reaches you the same way.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Push von einer Bridge mit konfiguriertem Schlüssel erreicht dich auf demselben Weg."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Push from a bridge with a key configured reaches you the same way."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "El push de un bridge con una clave configurada te llega de la misma manera."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Le push d'un bridge avec une clé configurée vous parvient de la même façon."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Il push da un bridge con una chiave configurata ti raggiunge nello stesso modo."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "キーが設定された bridge からのプッシュも、同じ方法で届きます。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "키가 설정된 bridge의 푸시도 같은 방식으로 전달됩니다."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "O push de um bridge com uma chave configurada chega a você da mesma forma."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "配置了密钥的 bridge 发来的推送，也会以同样的方式送达。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "設定了金鑰的 bridge 傳來的推播，也會以同樣的方式送達。"
           }
         }
       }
