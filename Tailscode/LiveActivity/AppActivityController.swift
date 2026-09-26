@@ -17,6 +17,11 @@ import UIKit
 /// settles a turn that ended in a pocket and takes the card back for a turn another machine
 /// started — so every decision reads what the card last showed rather than what this process last
 /// wrote, except while one of this process's own writes is still in flight.
+///
+/// A card is read, and so taken down, only where a person can be reading it: its conversation on
+/// screen in the app in front. That is this controller's to know (`shown`/`hidden`) rather than
+/// each caller's to guess, because the app merely being open says nothing about which chat it is
+/// showing. A turn somebody stopped is not news to them, so its card goes at once.
 @MainActor
 final class AppActivityController {
     typealias State = ChatActivityAttributes.ContentState
@@ -42,6 +47,10 @@ final class AppActivityController {
     private var entries: [String: Entry] = [:]
     private var pendingWork: [String: Task<Void, Never>] = [:]
     private var pendingTokens: [String: UUID] = [:]
+    /// Every surface showing a conversation and which one, held weakly and asked whether it is in
+    /// a window when it matters, so a surface torn down without saying goodbye reads as gone.
+    private let readers = NSMapTable<UIViewController, NSString>(
+        keyOptions: .weakMemory, valueOptions: .strongMemory)
 
     /// How long a live card may go unheard from before it admits it is waiting for news.
     private static let staleAfter: TimeInterval = 1800
@@ -84,6 +93,14 @@ final class AppActivityController {
         sessionID: String, sessionTitle: String, serverName: String,
         onPushToken: PushTokenSink? = nil
     ) -> Bool {
+        guard AppPreferences.liveActivitiesEnabled else {
+            AppLogger.chat.info("Live Activity disabled in settings")
+            return false
+        }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            AppLogger.chat.info("Live Activity not authorized")
+            return false
+        }
         if isTracking(sessionID), var entry = entries[sessionID] {
             let startedAt = Date()
             let state = Self.liveState(
@@ -101,14 +118,6 @@ final class AppActivityController {
             }
             AppLogger.chat.info("Live Activity taken back for \(sessionID)")
             return true
-        }
-        guard AppPreferences.liveActivitiesEnabled else {
-            AppLogger.chat.info("Live Activity disabled in settings")
-            return false
-        }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            AppLogger.chat.info("Live Activity not authorized")
-            return false
         }
         if let lingering = entries[sessionID] {
             dismiss(sessionID, lingering)
@@ -158,11 +167,21 @@ final class AppActivityController {
 
     /// What a running turn is doing now. A card that had settled is taken back — its conversation
     /// began another turn, sent from here or anywhere else — and its clock starts from the prompt
-    /// that began it.
+    /// that began it. Only a turn that began after the card settled can do that: a running state
+    /// that arrives late for the turn that already ended — a stream catching up after the phone
+    /// slept, a resync replaying what it held — is not a new turn, and must not stand the card
+    /// back up over an ending the bridge already told it about.
     func update(sessionID: String, reading: LiveActivityReading, title: String?) {
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
         if let title, !title.isEmpty { entry.title = title }
         let shown = current(sessionID, entry)
+        if let endedAt = shown.endedAt {
+            guard let began = reading.startedAt, began > endedAt else {
+                entries[sessionID] = entry
+                return
+            }
+            AppLogger.chat.info("Live Activity taken back by a turn begun elsewhere for \(sessionID)")
+        }
         let revived = shown.isSettled
         let startedAt = revived ? min(reading.startedAt ?? Date(), Date()) : shown.startedAt
         let toolCount = revived ? reading.toolCount : max(shown.toolCount, reading.toolCount)
@@ -184,7 +203,9 @@ final class AppActivityController {
         let alert: AlertConfiguration? =
             becameWaiting
             ? AlertConfiguration(
-                title: LocalizedStringResource("Approval needed"),
+                title: reading.detail == .question
+                    ? LocalizedStringResource("The agent has a question")
+                    : LocalizedStringResource("Approval needed"),
                 body: LocalizedStringResource(
                     "\(entry.title ?? entry.activity.attributes.sessionTitle) is waiting for you."),
                 sound: .default)
@@ -193,11 +214,17 @@ final class AppActivityController {
     }
 
     /// The turn ended: the card settles on how, and stays for somebody to read it. One that ends
-    /// with its conversation on screen has been read already and goes at once.
-    func settle(sessionID: String, reading: LiveActivityReading, title: String?, onScreen: Bool) {
+    /// with its conversation on screen has been read already, and one somebody stopped was never
+    /// news; both go at once.
+    func settle(sessionID: String, reading: LiveActivityReading, title: String?) {
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
-        if onScreen, UIApplication.shared.applicationState == .active {
+        if isBeingRead(sessionID) {
             AppLogger.chat.info("Live Activity read as it ended for \(sessionID)")
+            dismiss(sessionID, entry)
+            return
+        }
+        if reading.detail == .cancelled {
+            AppLogger.chat.info("Live Activity ended with its stopped turn for \(sessionID)")
             dismiss(sessionID, entry)
             return
         }
@@ -217,6 +244,11 @@ final class AppActivityController {
             title: entry.title, symbol: face.symbol, tone: face.tone.rawValue,
             detail: reading.detail.rawValue,
             background: reading.background > 0 ? reading.background : nil)
+        guard !(shown.isSettled && Self.sameFacts(state, shown)) else {
+            entries[sessionID] = entry
+            scheduleRetirement(sessionID, settledAt: endedAt)
+            return
+        }
         entry.state = state
         entry.pushedAt = now
         entries[sessionID] = entry
@@ -236,10 +268,37 @@ final class AppActivityController {
     }
 
     /// Takes the conversation's card down at once, whatever it says — a send the person stopped
-    /// before it went.
+    /// before it went, or a conversation that no longer exists.
     func withdraw(_ sessionID: String) {
         guard let entry = entries[sessionID] else { return }
         dismiss(sessionID, entry)
+    }
+
+    /// Takes every card down — Live Activities were just turned off in Settings, and a card left
+    /// standing would go on following its conversation's turns regardless.
+    func withdrawAll() {
+        for (sessionID, entry) in entries { dismiss(sessionID, entry) }
+    }
+
+    /// A surface began showing the conversation.
+    func shown(_ sessionID: String, in surface: UIViewController) {
+        readers.setObject(sessionID as NSString, forKey: surface)
+    }
+
+    /// A surface stopped showing whatever conversation it was showing.
+    func hidden(_ surface: UIViewController) {
+        readers.removeObject(forKey: surface)
+    }
+
+    /// Whether a person is looking at the conversation this moment: on screen, in the app in
+    /// front. A chat left on screen under the Lock Screen is not being read.
+    private func isBeingRead(_ sessionID: String) -> Bool {
+        guard UIApplication.shared.applicationState == .active else { return false }
+        let surfaces = readers.keyEnumerator().allObjects.compactMap { $0 as? UIViewController }
+        return surfaces.contains { surface in
+            readers.object(forKey: surface) as String? == sessionID
+                && surface.viewIfLoaded?.window != nil
+        }
     }
 
     /// The conversation has a better name than the card started with.
@@ -382,6 +441,7 @@ final class AppActivityController {
                     return
                 }
                 let hex = Self.hex(token)
+                guard hex != entry.pushToken else { continue }
                 entry.pushToken = hex
                 self.entries[sessionID] = entry
                 if let sink = entry.onPushToken {

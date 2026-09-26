@@ -369,7 +369,7 @@ final class ChatViewController: UIViewController {
         super.viewDidAppear(animated)
         AppLogger.chat.info(
             "chat appeared session=\(viewModel.session.id) title=\(viewModel.displayTitle)")
-        viewModel.isOnScreen = true
+        AppActivityController.shared.shown(viewModel.session.id, in: self)
         isChangingColumns = false
         if UIApplication.shared.applicationState == .active {
             AppActivityController.shared.seen(viewModel.session.id)
@@ -511,7 +511,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        viewModel.isOnScreen = false
+        AppActivityController.shared.hidden(self)
         cascade.release()
         flushDraft()
         SessionSeenStore.markSeen(viewModel.session.id)

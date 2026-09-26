@@ -158,7 +158,9 @@ final class SettingsViewController: UIViewController {
             case .serverPush:
                 AppPreferences.pushAlertsEnabled = value
                 PushRegistrar.applyPreference()
-            case .liveActivities: AppPreferences.liveActivitiesEnabled = value
+            case .liveActivities:
+                AppPreferences.liveActivitiesEnabled = value
+                if !value { AppActivityController.shared.withdrawAll() }
             case .presenceOrb: PresenceOrbSetting.setEnabled(value)
             }
         }

@@ -795,9 +795,6 @@ final class ChatViewModel {
     /// Whether the turn this chat last watched has been put to rest on the Lock Screen already, so
     /// a conversation that sits idle is not settled again on every state it streams.
     private var cardSettled = false
-    /// Whether this conversation is the one on screen. A turn that ends under the reader's eyes
-    /// has been read as it ended, and leaves no card behind.
-    var isOnScreen = false
 
     private func reconcileOptimisticState(with state: ConversationState) {
         if state.status == .running { optimisticThinking = false }
@@ -833,15 +830,14 @@ final class ChatViewModel {
         turnSawRunning = false
         cards.settle(
             sessionID: session.id, reading: LiveActivityReading.settled(from: state),
-            title: cardTitle, onScreen: isOnScreen)
+            title: cardTitle)
     }
 
     /// Settles the card on an outcome this device decided rather than one the server reported.
     private func settleCard(_ detail: LiveActivityDetail) {
         cardSettled = true
         AppActivityController.shared.settle(
-            sessionID: session.id, reading: LiveActivityReading(detail: detail), title: cardTitle,
-            onScreen: isOnScreen)
+            sessionID: session.id, reading: LiveActivityReading(detail: detail), title: cardTitle)
     }
 
     private var cardTitle: String? {

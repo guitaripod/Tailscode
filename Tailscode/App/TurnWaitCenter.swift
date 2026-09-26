@@ -355,13 +355,12 @@ final class TurnWaitCenter {
         let background = result.background ?? 0
         let body = detail.line(tool: nil, toolCount: toolCount, background: background)
         let title = MissedActivity.name(title: result.title ?? "", latestPrompt: nil)
-        let onScreen = UIApplication.shared.applicationState == .active
         AppActivityController.shared.settle(
             sessionID: info.sessionID,
             reading: LiveActivityReading(
                 detail: detail, toolCount: toolCount, background: background,
                 endedAt: result.endedAt),
-            title: result.title, onScreen: onScreen)
+            title: result.title)
 
         let (kind, identifier, reason) = Self.notification(for: result, sessionID: info.sessionID)
 

@@ -470,6 +470,7 @@ final class SessionListViewModel {
     /// top of the list for a session no server has any more. Never leaves a local store pointing
     /// at a chat that is gone.
     private func forgetLocally(_ entry: SessionEntry) {
+        AppActivityController.shared.withdraw(entry.session.id)
         SavedChatStore.remove(profileID: entry.profileID, sessionID: entry.session.id)
         if ArchivedChatStore.contains(profileID: entry.profileID, sessionID: entry.session.id) {
             ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
