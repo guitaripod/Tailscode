@@ -484,11 +484,11 @@ final class HomeViewController: UIViewController {
             self, selector: #selector(boardDidChange),
             name: QuotaBoardStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(sceneDidActivate),
-            name: UIApplication.didBecomeActiveNotification, object: nil)
+            self, selector: #selector(sceneDidActivate(_:)),
+            name: UIScene.didActivateNotification, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(sceneWillResign),
-            name: UIApplication.willResignActiveNotification, object: nil)
+            self, selector: #selector(sceneWillResign(_:)),
+            name: UIScene.willDeactivateNotification, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(connectionsDidChange),
             name: ConnectionController.didChange, object: nil)
@@ -538,14 +538,34 @@ final class HomeViewController: UIViewController {
         Task { await load(.user) }
     }
 
-    @objc private func sceneDidActivate() {
+    /// This board's own window going active or inactive, not the app's. The app supports more
+    /// than one window on iPad, so `UIApplication.didBecomeActive`/`willResignActive` fire once
+    /// for the whole process and say nothing about *this* scene — a second Tailscode window
+    /// taking focus never quiets this one's clock, and a window that regains focus without the
+    /// app itself ever having left the foreground never restarts it. `SceneDelegate` already
+    /// answers the equivalent per-scene callbacks for everything else; this filters the
+    /// notification form of the same signal down to the scene this view actually lives in.
+    private func ownsScene(_ note: Notification) -> Bool {
+        guard let scene = note.object as? UIScene else { return true }
+        return scene === viewIfLoaded?.window?.windowScene
+    }
+
+    @objc private func sceneDidActivate(_ note: Notification) {
+        guard ownsScene(note) else { return }
         Task { await load(.user) }
         startLiveRefresh()
     }
 
-    @objc private func sceneWillResign() {
+    @objc private func sceneWillResign(_ note: Notification) {
+        guard ownsScene(note) else { return }
         stopLiveRefresh()
         flushState()
+    }
+
+    /// Whether this screen's own window is the one actually in front, read at the scene's own
+    /// granularity rather than the app's — the check `startClockTick`/`startLiveRefresh` gate on.
+    private var isSceneForeground: Bool {
+        viewIfLoaded?.window?.windowScene?.activationState == .foregroundActive
     }
 
     /// Everything this screen writes on a trailing edge, taken now — the debounce window is not
@@ -762,9 +782,7 @@ final class HomeViewController: UIViewController {
     /// is genuinely counting: an unreachable host's frozen age has nothing to say every second, and
     /// a board of idle chats has no reason to wake the CPU at all.
     private func startClockTick() {
-        guard clockTickTask == nil, viewIfLoaded?.window != nil,
-            UIApplication.shared.applicationState == .active
-        else { return }
+        guard clockTickTask == nil, viewIfLoaded?.window != nil, isSceneForeground else { return }
         clockTickTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
@@ -798,9 +816,7 @@ final class HomeViewController: UIViewController {
 
     private func startLiveRefresh() {
         startClockTick()
-        guard liveRefreshTask == nil, viewIfLoaded?.window != nil,
-            UIApplication.shared.applicationState == .active
-        else { return }
+        guard liveRefreshTask == nil, viewIfLoaded?.window != nil, isSceneForeground else { return }
         liveRefreshTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let interval = self?.liveRefreshInterval else { return }
