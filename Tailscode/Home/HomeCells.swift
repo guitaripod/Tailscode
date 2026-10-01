@@ -418,6 +418,7 @@ final class LiveSessionCell: GlassCardCell {
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
     private var presence: LiveCard.Presence?
+    private var shownIsStale = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -468,6 +469,12 @@ final class LiveSessionCell: GlassCardCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// Home's board reconfigures a live card once a second purely to advance its age digits — by
+    /// design, so "3s" becomes "4s" without waiting on the next poll. The state pill is a different
+    /// fact and must not restate itself on that same beat: a label and a colour set to what they
+    /// already are is a mark "restated once a second", which `ActivityBadgeView` elsewhere in this
+    /// file refuses for exactly this reason. So the pill only touches paint when `presence` or
+    /// `isStale` actually moved, never when only the age ticked underneath it.
     func configure(_ card: LiveCard) {
         titleLabel.text = card.title
         detailLabel.attributedText = ModelChipText.line(
@@ -479,10 +486,12 @@ final class LiveSessionCell: GlassCardCell {
         let state: String =
             card.isStale ? String(localized: "NO SIGNAL") : card.presence.word
         dot.activity = activity
-        applyPresence(
-            color: activity.icon.tone.color, state: state,
-            animated: presence != nil && presence != card.presence)
+        let changed = presence == nil || presence != card.presence || shownIsStale != card.isStale
+        if changed {
+            applyPresence(color: activity.icon.tone.color, state: state, animated: presence != nil)
+        }
         presence = card.presence
+        shownIsStale = card.isStale
         accessibilityLabel = String(
             localized: "\(state): \(card.title), \(card.detail), \(card.age) ago")
         isAccessibilityElement = true
@@ -492,6 +501,7 @@ final class LiveSessionCell: GlassCardCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         presence = nil
+        shownIsStale = false
         dot.prepareForReuse()
     }
 
