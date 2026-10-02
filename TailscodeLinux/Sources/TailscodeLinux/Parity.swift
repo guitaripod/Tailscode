@@ -160,6 +160,7 @@ enum ParityManifest {
         case .gameCenter: return .notApplicable("Game Center is Apple's account system, and this client cannot sign into it — there is no dashboard to open and nowhere to report a percentage; the trophies' arithmetic lives in Core, but a case with no account behind it would be a scoreboard nobody else can see, and the month's numbers are already usageAnalytics's parity")
         case .projectBoard: return .implemented("toggleProjectScope")
         case .quickAsk: return .implemented("QuickAskWindow")
+        case .quickAskClipboard: return .implemented("renderCopied")
         case .summonAnywhere: return .implemented("Summon")
         case .designBoards: return .implemented("DesignBoardWindow")
         case .linkEmbeds: return .gap("transcript links render as touchable text; the preview card owes a GTK widget and a metadata fetcher, which the iOS LinkEmbedCell already carries and Core can share once it exists")

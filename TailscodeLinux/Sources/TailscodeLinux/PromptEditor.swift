@@ -74,6 +74,17 @@ final class PromptEditor: @unchecked Sendable {
         modeFrame = widget
     }
 
+    /// Which overlay wears the ultracode aura. The light belongs on the edge a person reads as the
+    /// box, so a surface that frames the editor together with its buttons hands that frame's
+    /// overlay over, and the ring goes around all of it instead of drawing a second box inside.
+    func wearAura(on overlay: UnsafeMutablePointer<GtkWidget>) {
+        let ring = aura.widget
+        g_object_ref(UnsafeMutableRawPointer(ring))
+        gtk_overlay_remove_overlay(op(widget), ring)
+        gtk_overlay_add_overlay(op(overlay), ring)
+        g_object_unref(UnsafeMutableRawPointer(ring))
+    }
+
     var text: String {
         let buffer = gtk_text_view_get_buffer(ptr(textView))
         var start = GtkTextIter()
@@ -219,6 +230,18 @@ final class PromptEditor: @unchecked Sendable {
             guard let self else { return }
             self.measuring = false
             self.measure()
+        }
+        settleAfterLayout()
+    }
+
+    /// A text view validates the lines of a document written whole in its own idle passes, and
+    /// until they are validated it reports the height of the lines it has already laid out. Words
+    /// arriving a keystroke at a time are measured again by the next keystroke; a document set in
+    /// one write (a starter, an errand with the clipboard under it, a restored draft) has no next
+    /// keystroke, so the box is measured once more after the view has laid the document out.
+    private func settleAfterLayout() {
+        Gtk.after(80) { [weak self] in
+            Gtk.onMain { [weak self] in self?.measure() }
         }
     }
 

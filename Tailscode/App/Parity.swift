@@ -175,6 +175,7 @@ enum ParityManifest {
         case .gameCenter: return .implemented("GameCenterCoordinator")
         case .projectBoard: return .implemented("openProjectBoard")
         case .quickAsk: return .implemented("HomeComposerBar")
+        case .quickAskClipboard: return .notApplicable("the phone's quick ask is the Home composer's lane rather than a surface summoned over other apps, and iOS raises its paste alert for any read the person did not start, so copied things reach a question through the system's own paste menu")
         case .summonAnywhere: return .notApplicable("iOS gives no app a key from the whole system — there is no chord to claim and nothing to press it in, since another app is the whole screen; the phone's share of asking from outside the app is the icon's jump list and the Control Center tile, which quickAsk already carries")
         case .updateCenter: return .implemented("UpdateCenterViewController")
         case .designBoards: return .implemented("DesignBoardViewController")

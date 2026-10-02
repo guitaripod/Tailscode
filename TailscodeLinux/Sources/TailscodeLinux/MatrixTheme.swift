@@ -497,7 +497,7 @@ enum MatrixTheme {
         .ask-field {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);
-            border-radius: 12px;
+            border-radius: 6px;
             padding: 6px 10px;
         }
         .ask-field:focus-within {
@@ -603,6 +603,63 @@ enum MatrixTheme {
             opacity: 0.75;
         }
         .ask-row:hover .ask-keycap { color: \(accent); border-color: alpha(\(accent), 0.55); opacity: 1; }
+        .ask-tile {
+            padding: 9px 10px 9px 9px;
+            border: 1px solid alpha(\(textDim), 0.16);
+            border-radius: 8px;
+            background-color: alpha(\(text), 0.025);
+            background-image: none;
+            box-shadow: none;
+            outline: none;
+        }
+        .ask-tile:hover { border-color: alpha(\(accent), 0.55); background-color: alpha(\(accent), 0.08); }
+        .ask-tile:active { background-color: alpha(\(accent), 0.16); }
+        .ask-tile-glyph {
+            \(t(.rowTitleStrong))
+            color: \(accent);
+            background-color: alpha(\(accent), 0.12);
+            border-radius: 7px;
+            min-width: 30px;
+            min-height: 30px;
+        }
+        .ask-tile:hover .ask-tile-glyph { background-color: alpha(\(accent), 0.22); }
+        .ask-tile-title { \(t(.rowTitleStrong)) color: \(text); }
+        .ask-tile-detail { \(t(.rowDetail)) color: \(textDim); opacity: 0.72; }
+        .ask-tile:hover .ask-tile-detail { opacity: 0.9; }
+        .ask-tile .ask-keycap { padding: 0 5px; }
+        .ask-tile:hover .ask-keycap { color: \(accent); border-color: alpha(\(accent), 0.55); opacity: 1; }
+        .ask-copied {
+            padding: 10px 12px 12px 12px;
+            border: 1px solid alpha(\(accent), 0.30);
+            border-left: 3px solid \(accent);
+            border-radius: 8px;
+            background-color: alpha(\(accent), 0.06);
+        }
+        .ask-copied-head { \(t(.sectionLabel)) color: \(accent); }
+        .ask-copied-close {
+            \(t(.chip))
+            color: \(textDim);
+            min-height: 0;
+            min-width: 0;
+            padding: 0 6px;
+            border-radius: 6px;
+        }
+        .ask-copied-close:hover { color: \(text); background-color: alpha(\(text), 0.08); }
+        .ask-copied-preview { \(t(.rowDetail)) color: \(text); opacity: 0.8; }
+        .ask-errand {
+            \(t(.chip))
+            color: \(text);
+            padding: 3px 8px 3px 10px;
+            border-radius: 999px;
+            border: 1px solid alpha(\(accent), 0.35);
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+        }
+        .ask-errand:hover { border-color: \(accent); background-color: alpha(\(accent), 0.14); }
+        .ask-errand:active { background-color: alpha(\(accent), 0.22); }
+        .ask-errand-glyph { color: \(accent); }
+        .ask-errand .ask-keycap { padding: 0 4px; }
 
         .tree-row { \(t(.treeRow)) color: \(text); }
         .tree-dir { color: \(info); \(t(.treeRow)) }

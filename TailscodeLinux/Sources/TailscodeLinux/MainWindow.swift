@@ -397,6 +397,8 @@ final class MainWindow: @unchecked Sendable {
                     QuickAskWindow.open?.driveGo()
                 case "askstarter":
                     QuickAskWindow.open?.driveStarter((Int(argument) ?? 1) - 1)
+                case "askpick":
+                    QuickAskWindow.open?.drivePick((Int(argument) ?? 1) - 1)
                 case "up":
                     self.activePane.scroll(by: -(Double(argument) ?? 200))
                 case "down":

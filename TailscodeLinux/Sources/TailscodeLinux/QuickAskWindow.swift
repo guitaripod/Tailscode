@@ -19,7 +19,9 @@ import TailscodeCore
 /// `alt+v` takes the clipboard's picture, offered only where the aim can read them; the empty
 /// window argues for itself with `QuickAskStarters` — `alt+1…9`, or a click — and hands back the
 /// last few questions asked on this machine, so the blank entry is a way into everything the
-/// agent can do instead of a text field with a placeholder.
+/// agent can do instead of a text field with a placeholder. Something new on the clipboard leads
+/// the empty window as a card of its own (`QuickAskClipboard`), because a question summoned from
+/// anywhere is most often about the thing just copied.
 final class QuickAskWindow: @unchecked Sendable {
     nonisolated(unsafe) private(set) static var open: QuickAskWindow?
 
@@ -58,6 +60,11 @@ final class QuickAskWindow: @unchecked Sendable {
     private let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)
     private var attachments: [PendingAttachment] = []
     private var offered: [QuickAskStarter] = []
+    /// What the clipboard held the last time it was read, kept whole so an errand pastes exactly
+    /// what the card showed.
+    private var copiedOffer: ClipboardOffer?
+    private var copied: QuickAskCopied?
+    private var picks: [Pick] = []
     private var pastedImageCount = 0
     private var asking = false
     private var summonWatch: NSObjectProtocol?
@@ -150,7 +157,7 @@ final class QuickAskWindow: @unchecked Sendable {
         Gtk.addClass(aimStrip, "ask-aim")
         gtk_widget_set_valign(send, GTK_ALIGN_END)
         chips = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+        starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
 
         /// The window wears the desktop's own bar rather than a row of its own that has to be
         /// read as one: the name of the thing is in the title, the machine it will ask is the
@@ -180,9 +187,12 @@ final class QuickAskWindow: @unchecked Sendable {
         gtk_box_append(ptr(field), editor.widget)
         gtk_box_append(ptr(field), vimBadge)
         gtk_box_append(ptr(field), send)
+        let frame = gtk_overlay_new()!
+        gtk_overlay_set_child(op(frame), field)
+        editor.wearAura(on: frame)
         buildAimStrip()
         gtk_box_append(ptr(column), aimStrip)
-        gtk_box_append(ptr(column), field)
+        gtk_box_append(ptr(column), frame)
         gtk_box_append(ptr(column), chips)
         gtk_box_append(ptr(column), hint)
         gtk_box_append(ptr(column), starters)
@@ -280,8 +290,10 @@ final class QuickAskWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.pasteFromClipboard() }
                 return true
             }
-            guard let digit = Keymap.digit(keyval), digit > 0 else { return false }
-            Gtk.onMain { [weak self] in self?.pickStarter(at: digit - 1) }
+            guard let digit = Keymap.digit(keyval), digit > 0,
+                gtk_widget_get_visible(self.starters) != 0
+            else { return false }
+            Gtk.onMain { [weak self] in self?.pick(at: digit - 1) }
             return true
         }
         Gtk.connect(UnsafeMutableRawPointer(window), "destroy") {
@@ -300,7 +312,19 @@ final class QuickAskWindow: @unchecked Sendable {
             }
         }
 
+        /// A Wayland clipboard answers only a window that has the keyboard, and the chord that
+        /// opened this one often arrives a frame before the compositor hands it over, so the
+        /// clipboard is read again the moment the window is the active one.
+        Gtk.onNotify(UnsafeMutableRawPointer(window), property: "is-active") {
+            Gtk.onMain {
+                guard let open = QuickAskWindow.open, gtk_window_is_active(ptr(open.window)) != 0
+                else { return }
+                open.readCopied()
+            }
+        }
+
         refreshTarget()
+        readCopied()
         watchCatalog()
         restoreDraft()
         updateVimBadge()
@@ -627,16 +651,18 @@ final class QuickAskWindow: @unchecked Sendable {
     /// What the keys do, said once under the box. Which key sends is the person's own setting, so
     /// the line reads it rather than asserting Enter — and it always names the one that writes a
     /// line break, because a box that grows is worth nothing to somebody who does not know how to
-    /// put a paragraph in it.
+    /// put a paragraph in it. The picks wear only their digit, so the modifier is said here once.
     private static func keysHint(machines: Int) -> String {
         let sending =
             Preferences.sendOnReturn
             ? Localized.text("Enter sends · shift+enter for a new line")
             : Localized.text("Ctrl+enter sends · enter for a new line")
+        let picking = Localized.text(" · alt+number picks")
         guard machines > 1 else {
-            return sending + Localized.text(" · esc closes")
+            return sending + picking + Localized.text(" · esc closes")
         }
-        return sending + Localized.text(" · tab moves the machine · esc closes")
+        return sending + Localized.text(" · tab moves the machine") + picking
+            + Localized.text(" · esc closes")
     }
 
     /// The bar's second line teaches the thing a person cannot discover from inside this window:
@@ -752,37 +778,54 @@ final class QuickAskWindow: @unchecked Sendable {
         gtk_label_set_text(op(hint), text)
     }
 
-    /// The empty window's argument for itself: what this thing can be asked to do, offered
-    /// against what the aim can take, and the last few questions asked here. It gets out of the
-    /// way the moment there is a question and comes back if the entry is emptied again.
+    /// What a number chord picks, in the order the picks are drawn: the copied thing's errands
+    /// first, because a summon with something new on the clipboard is most likely about it, and the
+    /// starters after them.
+    private enum Pick {
+        case errand(QuickAskClipboardErrand)
+        case starter(Int)
+    }
+
+    /// The empty window's argument for itself: what was just copied and what can be done with it,
+    /// what this thing can be asked to do, offered against what the aim can take, and the last few
+    /// questions asked here. It gets out of the way the moment there is a question and comes back
+    /// if the entry is emptied again.
     private func renderStarters() {
         Gtk.removeChildren(of: starters)
         offered = QuickAskStarters.offered(for: abilities)
-        gtk_box_append(ptr(starters), section(Localized.text("Try")))
+        copied = copiedOffer.flatMap(reading)
+        let errands = copied?.errands ?? []
+        picks = errands.map(Pick.errand) + offered.indices.map(Pick.starter)
+        if let copied { gtk_box_append(ptr(starters), renderCopied(copied)) }
+        gtk_box_append(ptr(starters), section(QuickAskWords.offer))
+        let grid = gtk_grid_new()!
+        gtk_grid_set_column_homogeneous(ptr(grid), 1)
+        gtk_grid_set_row_homogeneous(ptr(grid), 1)
+        gtk_grid_set_row_spacing(ptr(grid), 6)
+        gtk_grid_set_column_spacing(ptr(grid), 6)
         for (index, starter) in offered.enumerated() {
-            gtk_box_append(
-                ptr(starters),
-                row(
-                    glyph: starter.glyph, title: starter.title, detail: starter.detail,
-                    keycap: index < 9 ? "alt+\(index + 1)" : nil
-                ) { [weak self] in
-                    Gtk.onMain { [weak self] in self?.pickStarter(at: index) }
-                })
+            let tile = self.tile(starter, keycap: Self.keycap(at: errands.count + index)) {
+                [weak self] in
+                Gtk.onMain { [weak self] in self?.pickStarter(at: index) }
+            }
+            gtk_grid_attach(ptr(grid), tile, Int32(index % 2), Int32(index / 2), 1, 1)
         }
+        gtk_box_append(ptr(starters), grid)
         let asked = QuickAskRecents.asks(among: recents, profileID: targetServer.id)
         guard !asked.isEmpty else {
             refreshStarterVisibility()
             return
         }
-        gtk_box_append(ptr(starters), section(Localized.text("Asked here")))
+        gtk_box_append(ptr(starters), section(QuickAskWords.asked))
         for entry in asked {
             let title = AgentSession.isPlaceholderTitle(entry.session.title)
-                ? Localized.text("Untitled question") : entry.session.title
+                ? QuickAskWords.untitled : entry.session.title
             gtk_box_append(
                 ptr(starters),
-                row(
-                    glyph: "↻", title: title, detail: Localized.text("asked %@ ago", SessionRowModel.age(of: entry.session.updatedAt)),
-                    keycap: nil
+                recentRow(
+                    title: title,
+                    age: Localized.text(
+                        "asked %@ ago", SessionRowModel.age(of: entry.session.updatedAt))
                 ) { [weak self] in
                     Gtk.onMain { [weak self] in self?.resume(entry) }
                 })
@@ -790,40 +833,130 @@ final class QuickAskWindow: @unchecked Sendable {
         refreshStarterVisibility()
     }
 
-    private func section(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
-        Gtk.label(text, css: "ask-section", selectable: false)
+    /// The number a pick answers to, worn on the pick itself. Only the digit: the footer of every
+    /// desktop surface already says which modifier, and nine copies of "alt+" are nine copies of
+    /// the same fact.
+    private static func keycap(at index: Int) -> String? {
+        index < 9 ? "\(index + 1)" : nil
     }
 
-    /// One row, built rather than written: the glyph keeps its own column so every title starts at
-    /// the same place, the detail is the quieter half of the same line, and the key that would do
-    /// this without the mouse sits at the end wearing the shape of a key.
-    private func row(
-        glyph: String, title: String, detail: String, keycap: String?,
+    /// What was copied, as one card above the starters: what it is, a glimpse of it, and a chip per
+    /// errand. The close button is how a person says the clipboard is not what this question is
+    /// about, and it is remembered, so the same thing is not offered again on the next summon.
+    private func renderCopied(_ copied: QuickAskCopied) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        Gtk.addClass(card, "ask-copied")
+        let head = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let headline = whole(Gtk.label(copied.headline, css: "ask-copied-head", selectable: false))
+        gtk_widget_set_hexpand(headline, 1)
+        gtk_label_set_xalign(op(headline), 0)
+        gtk_box_append(ptr(head), headline)
+        let aside = Gtk.button("✕", css: ["flat", "ask-copied-close"]) {
+            Gtk.onMain { QuickAskWindow.open?.setCopiedAside() }
+        }
+        gtk_widget_set_tooltip_text(aside, QuickAskWords.setAside)
+        gtk_box_append(ptr(head), aside)
+        gtk_box_append(ptr(card), head)
+        if let preview = copied.preview {
+            let glimpse = Gtk.label(preview, css: "ask-copied-preview", wrap: true, selectable: false)
+            gtk_label_set_lines(op(glimpse), 2)
+            gtk_label_set_ellipsize(op(glimpse), PANGO_ELLIPSIZE_END)
+            gtk_label_set_xalign(op(glimpse), 0)
+            gtk_box_append(ptr(card), glimpse)
+        }
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        for (index, errand) in copied.errands.enumerated() {
+            gtk_box_append(
+                ptr(row),
+                errandChip(errand, keycap: Self.keycap(at: index)) {
+                    Gtk.onMain { QuickAskWindow.open?.pickErrand(errand) }
+                })
+        }
+        gtk_box_append(ptr(card), row)
+        return card
+    }
+
+    private func errandChip(
+        _ errand: QuickAskClipboardErrand, keycap: String?,
         onClick: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "ask-errand")
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        gtk_box_append(ptr(line), whole(Gtk.label(errand.glyph, css: "ask-errand-glyph", selectable: false)))
+        gtk_box_append(ptr(line), whole(Gtk.label(errand.title, css: "ask-errand-title", selectable: false)))
+        if let keycap {
+            gtk_box_append(ptr(line), whole(Gtk.label(keycap, css: "ask-keycap", selectable: false)))
+        }
+        gtk_button_set_child(ptr(button), line)
+        gtk_widget_set_tooltip_text(button, errand.prompt)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
+        return button
+    }
+
+    private func section(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label(text, css: "ask-section", selectable: false)
+        gtk_label_set_xalign(op(label), 0)
+        return label
+    }
+
+    /// One starter as a tile of a two-column grid: the glyph set in a tinted square so the column
+    /// of them reads as a set of things to do, the title over its quieter detail, and the number
+    /// that picks it in the corner. Two columns hold the whole catalog in half the height a list
+    /// of rows took, which is the difference between a window that arrives over the work and one
+    /// that covers it.
+    private func tile(
+        _ starter: QuickAskStarter, keycap: String?, onClick: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "ask-tile")
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
+        let mark = whole(Gtk.label(starter.glyph, css: "ask-tile-glyph", selectable: false))
+        gtk_label_set_xalign(op(mark), 0.5)
+        gtk_widget_set_valign(mark, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(line), mark)
+        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_widget_set_hexpand(words, 1)
+        gtk_widget_set_valign(words, GTK_ALIGN_CENTER)
+        let title = Gtk.label(starter.title, css: "ask-tile-title", selectable: false)
+        gtk_label_set_xalign(op(title), 0)
+        gtk_box_append(ptr(words), title)
+        let note = Gtk.label(starter.detail, css: "ask-tile-detail", selectable: false)
+        gtk_label_set_ellipsize(op(note), PANGO_ELLIPSIZE_END)
+        gtk_label_set_xalign(op(note), 0)
+        gtk_box_append(ptr(words), note)
+        gtk_box_append(ptr(line), words)
+        if let keycap {
+            let cap = whole(Gtk.label(keycap, css: "ask-keycap", selectable: false))
+            gtk_widget_set_valign(cap, GTK_ALIGN_START)
+            gtk_box_append(ptr(line), cap)
+        }
+        gtk_button_set_child(ptr(button), line)
+        gtk_widget_set_tooltip_text(button, starter.detail)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
+        return button
+    }
+
+    /// A question already asked, on one line: what it was, and how long ago at the far end.
+    private func recentRow(
+        title: String, age: String, onClick: @escaping @Sendable () -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
         Gtk.addClass(button, "ask-row")
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-        let mark = whole(Gtk.label(glyph, css: "ask-glyph", selectable: false))
+        let mark = whole(Gtk.label("↻", css: "ask-glyph", selectable: false))
         gtk_label_set_xalign(op(mark), 0.5)
         gtk_label_set_width_chars(op(mark), 2)
-        gtk_widget_set_valign(mark, GTK_ALIGN_BASELINE)
         gtk_box_append(ptr(line), mark)
-        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        gtk_widget_set_hexpand(words, 1)
-        gtk_widget_set_halign(words, GTK_ALIGN_START)
-        gtk_box_append(
-            ptr(words), whole(Gtk.label(title, css: "ask-row-title", selectable: false)))
-        let note = Gtk.label(detail, css: "ask-row-detail", selectable: false)
-        gtk_label_set_ellipsize(op(note), PANGO_ELLIPSIZE_END)
-        gtk_box_append(ptr(words), note)
-        gtk_box_append(ptr(line), words)
-        if let keycap {
-            let cap = whole(Gtk.label(keycap, css: "ask-keycap", selectable: false))
-            gtk_widget_set_valign(cap, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(line), cap)
-        }
+        let name = Gtk.label(title, css: "ask-row-title", selectable: false)
+        gtk_label_set_ellipsize(op(name), PANGO_ELLIPSIZE_END)
+        gtk_label_set_xalign(op(name), 0)
+        gtk_widget_set_hexpand(name, 1)
+        gtk_box_append(ptr(line), name)
+        gtk_box_append(ptr(line), whole(Gtk.label(age, css: "ask-row-detail", selectable: false)))
         gtk_button_set_child(ptr(button), line)
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
         return button
@@ -839,6 +972,69 @@ final class QuickAskWindow: @unchecked Sendable {
         return label
     }
 
+    /// The card for what the clipboard holds, read against the aim in force: a picture copied for
+    /// a model that cannot see one is no card at all.
+    private func reading(of offer: ClipboardOffer) -> QuickAskCopied? {
+        guard let held = QuickAskClipboard.holding(of: offer) else { return nil }
+        return QuickAskClipboard.reading(
+            holding: held.holding, fingerprint: held.fingerprint, abilities: abilities)
+    }
+
+    /// Reads the clipboard whole and redraws the empty window only when what it offers changed,
+    /// so the second read the activation triggers costs nothing on screen.
+    private func readCopied() {
+        guard !asking else { return }
+        Gtk.readClipboard { [weak self] offer in
+            Gtk.onMain { [weak self] in
+                guard let self, !self.asking else { return }
+                let before = self.copied?.fingerprint
+                self.copiedOffer = offer.isEmpty ? nil : offer
+                let after = self.copiedOffer.flatMap(self.reading)?.fingerprint
+                guard before != after else { return }
+                self.renderStarters()
+                self.fitToContents()
+            }
+        }
+    }
+
+    /// An errand is the first half of a sentence, the same as a starter: the instruction lands in
+    /// the entry and the clipboard follows it through the paste the entry already does, so a page
+    /// of log still becomes the file it already is, and the person sends it.
+    private func pickErrand(_ errand: QuickAskClipboardErrand) {
+        guard !asking, editor.text.isEmpty, attachments.isEmpty, let copied,
+            let offer = copiedOffer
+        else { return }
+        QuickAskClipboardMemory.settle(copied.fingerprint)
+        let plan = PasteIntake.plan(for: offer, abilities: abilities, alreadyNamed: pastedImageCount)
+        pastedImageCount = plan.named
+        write(errand.opening + (plan.text ?? ""))
+        if !plan.attachments.isEmpty {
+            attachments.append(contentsOf: plan.attachments)
+            renderAttachments()
+        }
+        if let notice = plan.notices.first { setHint(notice) }
+        renderStarters()
+        editor.focus()
+        AppLog.write(.ui, "ASK copied=\(errand.id)")
+    }
+
+    private func setCopiedAside() {
+        guard let copied else { return }
+        QuickAskClipboardMemory.settle(copied.fingerprint)
+        renderStarters()
+        fitToContents()
+        editor.focus()
+        AppLog.write(.ui, "ASK copied set aside")
+    }
+
+    private func pick(at index: Int) {
+        guard picks.indices.contains(index) else { return }
+        switch picks[index] {
+        case .errand(let errand): pickErrand(errand)
+        case .starter(let starter): pickStarter(at: starter)
+        }
+    }
+
     /// The rows are the empty state and nothing more, and a window that kept their height after
     /// they left would be a pane of dead space under the question: the toplevel is asked for its
     /// natural height again every time they come or go.
@@ -852,9 +1048,12 @@ final class QuickAskWindow: @unchecked Sendable {
 
     /// The window is exactly as tall as what is in it, which means it has to be asked again every
     /// time that changes: a box that grew inside a window that did not would write the question
-    /// off the bottom edge of its own surface.
+    /// off the bottom edge of its own surface. Asking for the natural height (-1) a second time is
+    /// no change at all to GTK, so a window that had grown kept its height after the card or the
+    /// box under it shrank; asking for a single pixel lets the content's own minimum decide, in
+    /// both directions, every time.
     private func fitToContents() {
-        gtk_window_set_default_size(ptr(window), 720, -1)
+        gtk_window_set_default_size(ptr(window), 720, 1)
     }
 
     /// A starter is the first half of a sentence, never a question the app asked on somebody's
@@ -968,6 +1167,7 @@ final class QuickAskWindow: @unchecked Sendable {
         refreshStarterVisibility()
         setHint(QuickAskComposition.waitingTitle(server: targetServer.name))
         let server = targetServer
+        let onOffer = copied?.fingerprint
         let send = QuickAskSend.decide(
             text: text, commands: commands,
             resolvesFromPromptText: promptTextGrammar[server.id] == true)
@@ -977,6 +1177,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 guard let self else { return }
                 guard let failure else {
                     QuickAskDefaults.record(profileID: server.id)
+                    if let onOffer { QuickAskClipboardMemory.settle(onOffer) }
                     DraftStore.clear(.quickAsk(profileID: server.id))
                     AppLog.write(.ui, "ASK sent server=\(server.name)")
                     self.close()
@@ -1005,6 +1206,10 @@ final class QuickAskWindow: @unchecked Sendable {
 
     func driveStarter(_ index: Int) {
         pickStarter(at: index)
+    }
+
+    func drivePick(_ index: Int) {
+        pick(at: index)
     }
 
     private func close() {

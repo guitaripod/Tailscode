@@ -60,45 +60,45 @@ public enum QuickAskStarters {
             detail: Localized.text("A straight answer, no project"),
             prompt: Localized.text("Explain ")),
         QuickAskStarter(
-            id: "web", symbol: "globe", glyph: "@",
+            id: "web", symbol: "globe", glyph: "⊕",
             title: Localized.text("Search the web"),
             detail: Localized.text("Checked now, not remembered"),
             prompt: Localized.text("Search the web for ")),
         QuickAskStarter(
-            id: "image", symbol: "wand.and.sparkles", glyph: "*",
+            id: "image", symbol: "wand.and.sparkles", glyph: "✦",
             title: Localized.text("Make a picture"),
             detail: Localized.text("It comes back in the transcript"),
             prompt: Localized.text("Generate an image of ")),
         QuickAskStarter(
-            id: "photo", symbol: "photo", glyph: "[",
+            id: "photo", symbol: "photo", glyph: "▣",
             title: Localized.text("Ask about a picture"),
             detail: Localized.text("Attach one and ask what it is"),
             prompt: Localized.text("What is in this picture? "),
             opens: .photos, needs: .vision),
         QuickAskStarter(
-            id: "camera", symbol: "camera", glyph: "(",
+            id: "camera", symbol: "camera", glyph: "◉",
             title: Localized.text("Point the camera at it"),
             detail: Localized.text("Shoot it, then ask"),
             prompt: Localized.text("What am I looking at? "),
             opens: .camera, needs: .camera),
         QuickAskStarter(
-            id: "file", symbol: "doc.text", glyph: "#",
+            id: "file", symbol: "doc.text", glyph: "▤",
             title: Localized.text("Read a file"),
             detail: Localized.text("Up to 8 MB, sent with the question"),
             prompt: Localized.text("Read this and tell me "),
             opens: .files, needs: .attachments),
         QuickAskStarter(
-            id: "draft", symbol: "square.and.pencil", glyph: "~",
+            id: "draft", symbol: "square.and.pencil", glyph: "✎",
             title: Localized.text("Draft a message"),
             detail: Localized.text("Words meant for someone else"),
             prompt: Localized.text("Draft a message that ")),
         QuickAskStarter(
-            id: "translate", symbol: "character.bubble", glyph: "&",
+            id: "translate", symbol: "character.bubble", glyph: "⇄",
             title: Localized.text("Translate something"),
             detail: Localized.text("Paste it under the line"),
             prompt: Localized.text("Translate this into English:\n")),
         QuickAskStarter(
-            id: "code", symbol: "chevron.left.forwardslash.chevron.right", glyph: "$",
+            id: "code", symbol: "chevron.left.forwardslash.chevron.right", glyph: "{}",
             title: Localized.text("Write a snippet"),
             detail: Localized.text("Small enough to read at a glance"),
             prompt: Localized.text("Write a snippet that ")),
@@ -346,6 +346,7 @@ public enum QuickAskWords {
     public static var asked: String { Localized.text("Asked here") }
     public static var untitled: String { Localized.text("Untitled question") }
     public static var noServers: String { Localized.text("Add a server to ask anything") }
+    public static var setAside: String { Localized.text("Not this") }
 }
 
 /// What the surface is doing with the question in it. The words are the whole point: a quick ask

@@ -16,6 +16,8 @@ import TailscodeCore
 /// offered only where the aim can read it. The empty panel argues for itself with
 /// `QuickAskStarters` (⌘1…⌘9, or a click) and hands back the last few questions asked on this
 /// machine, so the blank field is a way into everything the agent can do instead of a text box.
+/// Something newly copied leads the empty panel as a card of its own (`QuickAskClipboard`),
+/// because a question summoned from anywhere is most often about the thing just copied.
 ///
 /// Which machine answers is the first thing on the panel rather than a chip found by hovering:
 /// every server is a segment of one strip, named and wearing its agent's symbol, the aimed one
@@ -50,6 +52,11 @@ final class QuickAskPanel: NSPanel {
     private let recents: [SessionEntry]
     private var attachments: [PendingAttachment] = []
     private var offered: [QuickAskStarter] = []
+    /// What the pasteboard was last seen holding, as far as it could be told without reading it,
+    /// and the change count that names it.
+    private var clipboard: (holding: QuickAskClipboardHolding, fingerprint: String)?
+    private var copied: QuickAskCopied?
+    private var picks: [Pick] = []
     private var commands: [AgentCommand] = []
     private var completionMatches: [SlashMatch] = []
     private var completionCursor = 0
@@ -150,7 +157,7 @@ final class QuickAskPanel: NSPanel {
 
         starters.orientation = .vertical
         starters.alignment = .leading
-        starters.spacing = 2
+        starters.spacing = QuickAskTiles.spacing
 
         chips.onRemove = { [weak self] id in
             guard let self else { return }
@@ -176,6 +183,7 @@ final class QuickAskPanel: NSPanel {
         column.registerForDraggedTypes([.fileURL, .png, .tiff])
         contentView = column
         status.widthAnchor.constraint(equalTo: editor.widthAnchor).isActive = true
+        clipboard = Self.detectClipboard()
         refreshAim()
         refreshCommands()
         installMonitor()
@@ -183,6 +191,13 @@ final class QuickAskPanel: NSPanel {
     }
 
     override var canBecomeKey: Bool { true }
+
+    /// The pasteboard is looked at again whenever the panel comes back to the front, since the
+    /// thing a person copies is often copied with the panel already open behind them.
+    override func becomeKey() {
+        super.becomeKey()
+        readCopied()
+    }
 
     override func cancelOperation(_ sender: Any?) {
         close()
@@ -437,6 +452,20 @@ final class QuickAskPanel: NSPanel {
     /// The clipboard, whatever it is holding: a screenshot or a file copied in the Finder becomes
     /// a chip, and words are handed back to AppKit so undo and selection stay the system's.
     private func takeClipboard() -> Bool {
+        let plan = PasteIntake.plan(
+            for: pasteboardOffer(), abilities: abilities, alreadyNamed: pastedImageCount)
+        pastedImageCount = plan.named
+        if let notice = plan.notices.first { setStatus(notice) }
+        guard plan.text == nil else { return false }
+        guard !plan.attachments.isEmpty else { return !plan.notices.isEmpty }
+        attachments.append(contentsOf: plan.attachments)
+        syncAttachments()
+        return true
+    }
+
+    /// The pasteboard whole, in the one shape a paste is decided against: copied files first, then
+    /// a picture, then words, the order a person means them in.
+    private func pasteboardOffer() -> ClipboardOffer {
         let pasteboard = NSPasteboard.general
         var offer = ClipboardOffer()
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
@@ -449,15 +478,7 @@ final class QuickAskPanel: NSPanel {
         if offer.paths.isEmpty, offer.image == nil {
             offer.text = pasteboard.string(forType: .string)
         }
-        let plan = PasteIntake.plan(
-            for: offer, abilities: abilities, alreadyNamed: pastedImageCount)
-        pastedImageCount = plan.named
-        if let notice = plan.notices.first { setStatus(notice) }
-        guard plan.text == nil else { return false }
-        guard !plan.attachments.isEmpty else { return !plan.notices.isEmpty }
-        attachments.append(contentsOf: plan.attachments)
-        syncAttachments()
-        return true
+        return offer
     }
 
     /// The panel's own chords: a number picks the errand under it, ⌘⇧V takes the pasteboard's
@@ -476,7 +497,7 @@ final class QuickAskPanel: NSPanel {
         guard !starters.isHidden, let characters = event.charactersIgnoringModifiers,
             let digit = Int(characters), digit > 0
         else { return super.performKeyEquivalent(with: event) }
-        pickStarter(at: digit - 1)
+        pick(at: digit - 1)
         return true
     }
 
@@ -760,38 +781,155 @@ final class QuickAskPanel: NSPanel {
                     : Localized.text("Enter sends, tab switches server, esc closes")))
     }
 
-    /// The empty panel's argument for itself: what this thing can be asked to do, offered against
-    /// what the aim can take, and the last few questions asked here. It gets out of the way the
-    /// moment there is a question and comes back if the field is emptied again.
+    /// What a number chord picks, in the order the picks are drawn: the copied thing's errands
+    /// first, because a summon with something new on the pasteboard is most likely about it, and
+    /// the starters after them.
+    private enum Pick {
+        case errand(QuickAskClipboardErrand)
+        case starter(Int)
+    }
+
+    /// The empty panel's argument for itself: what was just copied and what can be done with it,
+    /// what this thing can be asked to do, offered against what the aim can take, and the last few
+    /// questions asked here. It gets out of the way the moment there is a question and comes back
+    /// if the field is emptied again.
     private func renderStarters() {
         starters.arrangedSubviews.forEach { $0.removeFromSuperview() }
         offered = QuickAskStarters.offered(for: abilities)
-        starters.addArrangedSubview(sectionLabel(Localized.text("Try")))
-        for (index, starter) in offered.enumerated() {
-            let shortcut = index < 9 ? "   ⌘\(index + 1)" : ""
-            let row = RowKit.ActionButton(
-                title: "\(starter.title) — \(starter.detail)\(shortcut)"
-            ) { [weak self] in
-                self?.pickStarter(at: index)
+        copied = clipboard.flatMap {
+            QuickAskClipboard.reading(
+                holding: $0.holding, fingerprint: $0.fingerprint, abilities: abilities)
+        }
+        let errands = copied?.errands ?? []
+        picks = errands.map(Pick.errand) + offered.indices.map(Pick.starter)
+        if let copied {
+            fill(
+                QuickAskCopiedCard(
+                    copied: copied, shortcuts: errands.indices.map(Self.shortcut),
+                    onErrand: { [weak self] errand in self?.pickErrand(errand) },
+                    onSetAside: { [weak self] in self?.setCopiedAside() }))
+        }
+        starters.addArrangedSubview(sectionLabel(QuickAskWords.offer))
+        for first in stride(from: 0, to: offered.count, by: 2) {
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = QuickAskTiles.spacing
+            for index in first..<min(first + 2, offered.count) {
+                row.addArrangedSubview(
+                    QuickAskTiles.tile(
+                        offered[index], shortcut: Self.shortcut(at: errands.count + index)
+                    ) { [weak self] in
+                        self?.pickStarter(at: index)
+                    })
             }
-            row.bezelStyle = .inline
-            row.controlSize = .small
-            row.font = MacTheme.Ramp.font(.panelFootnote)
-            starters.addArrangedSubview(row)
+            if row.arrangedSubviews.count == 1 { row.addArrangedSubview(NSView()) }
+            fill(row)
         }
         let asked = QuickAskRecents.asks(among: recents, profileID: targetServer.id)
         guard !asked.isEmpty else { return }
-        starters.addArrangedSubview(sectionLabel(Localized.text("Asked here")))
+        starters.addArrangedSubview(sectionLabel(QuickAskWords.asked))
         for entry in asked {
             let title = AgentSession.isPlaceholderTitle(entry.session.title)
-                ? Localized.text("Untitled question") : entry.session.title
-            let row = RowKit.ActionButton(title: "↻  \(title)") { [weak self] in
-                self?.resume(entry)
-            }
-            row.bezelStyle = .inline
-            row.controlSize = .small
-            row.font = MacTheme.Ramp.font(.panelFootnote)
-            starters.addArrangedSubview(row)
+                ? QuickAskWords.untitled : entry.session.title
+            fill(
+                QuickAskTiles.recent(
+                    title: title,
+                    age: Localized.text(
+                        "asked %@ ago", SessionRowModel.age(of: entry.session.updatedAt))
+                ) { [weak self] in
+                    self?.resume(entry)
+                })
+        }
+    }
+
+    /// Everything in the empty panel runs the field's full width, so the tiles, the card and the
+    /// rows line up under the box they are offering to fill.
+    private func fill(_ view: NSView) {
+        starters.addArrangedSubview(view)
+        view.widthAnchor.constraint(equalTo: editor.widthAnchor).isActive = true
+    }
+
+    private static func shortcut(at index: Int) -> String? {
+        index < 9 ? "⌘\(index + 1)" : nil
+    }
+
+    private static func pasteboardFingerprint() -> String {
+        "pasteboard:\(NSPasteboard.general.changeCount)"
+    }
+
+    /// What the pasteboard holds, told from its types and its change count alone. Reading the
+    /// contents of a pasteboard another app wrote raises the system's paste alert, and a summon
+    /// that asked permission every time it opened would be a summon nobody kept, so the words are
+    /// read for the glimpse only where the person has already allowed it, and otherwise when an
+    /// errand is picked.
+    private static func detectClipboard()
+        -> (holding: QuickAskClipboardHolding, fingerprint: String)?
+    {
+        let pasteboard = NSPasteboard.general
+        let types = pasteboard.types ?? []
+        let holding: QuickAskClipboardHolding
+        if types.contains(.fileURL) {
+            holding = .files([])
+        } else if types.contains(.png) || types.contains(.tiff) {
+            holding = .picture
+        } else if types.contains(.string) {
+            holding = .text(
+                pasteboard.accessBehavior == .alwaysAllow
+                    ? pasteboard.string(forType: .string) : nil)
+        } else {
+            return nil
+        }
+        return (holding, pasteboardFingerprint())
+    }
+
+    private func readCopied() {
+        guard !asking, clipboard?.fingerprint != Self.pasteboardFingerprint() else { return }
+        clipboard = Self.detectClipboard()
+        renderStarters()
+        resize()
+    }
+
+    /// An errand is the first half of a sentence, the same as a starter: the instruction lands in
+    /// the field and the pasteboard follows it through the paste the field already does, so a page
+    /// of log still becomes the file it already is, and the person sends it. A pasteboard that
+    /// changed since the card was drawn redraws the card instead of pasting something it never
+    /// showed.
+    private func pickErrand(_ errand: QuickAskClipboardErrand) {
+        guard !asking, editor.text.isEmpty, attachments.isEmpty, let copied else { return }
+        guard copied.fingerprint == Self.pasteboardFingerprint() else {
+            readCopied()
+            return
+        }
+        QuickAskClipboardMemory.settle(copied.fingerprint)
+        let plan = PasteIntake.plan(
+            for: pasteboardOffer(), abilities: abilities, alreadyNamed: pastedImageCount)
+        pastedImageCount = plan.named
+        editor.setText(errand.opening + (plan.text ?? ""), caretAtEnd: true)
+        if !plan.attachments.isEmpty {
+            attachments.append(contentsOf: plan.attachments)
+            syncAttachments()
+        }
+        if let notice = plan.notices.first { setStatus(notice) }
+        renderStarters()
+        refreshStarterVisibility()
+        editor.focus()
+        resize()
+    }
+
+    private func setCopiedAside() {
+        guard let copied else { return }
+        QuickAskClipboardMemory.settle(copied.fingerprint)
+        renderStarters()
+        resize()
+        editor.focus()
+    }
+
+    private func pick(at index: Int) {
+        guard picks.indices.contains(index) else { return }
+        switch picks[index] {
+        case .errand(let errand): pickErrand(errand)
+        case .starter(let starter): pickStarter(at: starter)
         }
     }
 
@@ -946,6 +1084,7 @@ final class QuickAskPanel: NSPanel {
         let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard QuickAskComposition.canSend(text: text, attachments: attachments.count) else { return }
         let server = targetServer
+        let onOffer = copied?.fingerprint
         let send = QuickAskSend.decide(
             text: text, commands: commands,
             resolvesFromPromptText: ServerDirectory.shared.backend(for: server)?
@@ -963,6 +1102,7 @@ final class QuickAskPanel: NSPanel {
             guard let self else { return }
             guard let failure else {
                 QuickAskDefaults.record(profileID: server.id)
+                if let onOffer { QuickAskClipboardMemory.settle(onOffer) }
                 DraftStore.clear(.quickAsk(profileID: server.id))
                 self.close()
                 return
