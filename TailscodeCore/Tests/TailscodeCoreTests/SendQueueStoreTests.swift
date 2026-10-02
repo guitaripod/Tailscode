@@ -28,16 +28,26 @@ struct SendQueueStoreTests {
 
     @Test("Draining waits for the turn, the compaction, the last failure and the editor")
     func drainRule() {
-        var state = ConversationState()
+        var state = ConversationState(status: .idle)
         #expect(SendQueueDrain.mayDrain(state))
         #expect(!SendQueueDrain.mayDrain(state, editing: true))
         state.status = .running
         #expect(!SendQueueDrain.mayDrain(state))
     }
 
+    @Test("A chat reopened before the server has said whether its turn ended does not drain")
+    func unknownStatusHoldsTheQueue() {
+        var state = ConversationState()
+        #expect(state.status == .unknown)
+        #expect(!SendQueueDrain.mayDrain(state))
+        #expect(!SendQueueDrain.mayDrain(state, handoff: TurnHandoff()))
+        state.status = .idle
+        #expect(SendQueueDrain.mayDrain(state))
+    }
+
     @Test("A send holds the queue until its turn is seen running")
     func handoffHoldsUntilRunning() {
-        var state = ConversationState()
+        var state = ConversationState(status: .idle)
         var handoff = TurnHandoff()
         handoff.begin(after: state)
         #expect(!SendQueueDrain.mayDrain(state, handoff: handoff))
@@ -80,7 +90,7 @@ struct SendQueueStoreTests {
 
     @Test("A turn that never comes stops holding the queue, and a failed send ends the hold")
     func handoffGivesUp() {
-        let state = ConversationState()
+        let state = ConversationState(status: .idle)
         let start = Date()
         var handoff = TurnHandoff()
         handoff.begin(after: state, now: start)

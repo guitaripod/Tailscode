@@ -152,7 +152,7 @@ public enum SendQueueStore {
 /// chat's turn ends, whichever chat is on screen.
 public enum SendQueueDrain {
     public static func mayDrain(_ state: ConversationState, editing: Bool = false) -> Bool {
-        state.status != .running && state.compaction?.isRunning != true
+        state.status.isSettled && state.compaction?.isRunning != true
             && state.lastFailure == nil && !editing
     }
 
@@ -163,6 +163,14 @@ public enum SendQueueDrain {
     ) -> Bool {
         !handoff.isOpen && mayDrain(state, editing: editing)
     }
+}
+
+extension BackendStatus {
+    /// Whether the server has said there is no turn open. `unknown` is a conversation nobody has
+    /// told anything yet — the state a chat is in when it is reopened from the cache, a moment
+    /// before its first read says whether the turn it was left running has ended — and a queue
+    /// that takes it for idle sends its waiting message into a turn that is still going.
+    var isSettled: Bool { self == .idle || self == .stable }
 }
 
 /// The stretch between a send leaving this device and the server saying the turn it began is
