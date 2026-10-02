@@ -1376,7 +1376,9 @@ final class TranscriptViewController: NSViewController {
         let send = QueuedSend(text: text, model: model, effort: effort, attachments: attachments)
         // A prompt written while a turn runs is held here, not handed over: a message you can
         // still change is worth more than a message one place further along.
-        if lastState?.status == .running || lastState?.compaction?.isRunning == true {
+        if lastState?.status == .running || lastState?.compaction?.isRunning == true
+            || handoff.isOpen
+        {
             queue.append(send)
             MacHaptics.shared.play(.send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
@@ -1384,6 +1386,7 @@ final class TranscriptViewController: NSViewController {
             return
         }
         MacHaptics.shared.play(.send)
+        openHandoff()
         let userMessages = lastState?.messages.count { $0.role == .user } ?? 0
         let row: UUID
         if let reusing, pending.restart(id: reusing, userMessages: userMessages) != nil {
@@ -1421,7 +1424,8 @@ final class TranscriptViewController: NSViewController {
     /// never while the composer is holding one open for rewriting: sending it out from under the
     /// person editing it is the one thing the queue exists to prevent.
     private func drainQueue() {
-        guard let state = lastState, SendQueueDrain.mayDrain(state, editing: editingQueued != nil),
+        guard let state = lastState,
+            SendQueueDrain.mayDrain(state, editing: editingQueued != nil, handoff: handoff),
             !queue.isEmpty, !draining
         else { return }
         draining = true
@@ -1439,6 +1443,23 @@ final class TranscriptViewController: NSViewController {
     /// sending re-applies. Re-rendering from inside the render is what makes a transcript write
     /// itself twice — the second pass adopts the tail the first one is still revealing.
     private var draining = false
+
+    /// The stretch after a send during which the server still reads idle. The queue waits it out,
+    /// or every message written during a turn goes at once and the agent answers only the last.
+    private var handoff = TurnHandoff()
+    private var handoffWakeGeneration = 0
+
+    private func openHandoff() {
+        handoff.begin(after: lastState)
+        handoffWakeGeneration += 1
+        let token = handoffWakeGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + TurnHandoff.patience + 1) { [weak self] in
+            guard let self, self.handoffWakeGeneration == token, self.handoff.isOpen,
+                let state = self.lastState
+            else { return }
+            self.apply(state: state, rows: self.lastFullRows)
+        }
+    }
 
     /// Opens a waiting message for rewriting. It keeps its place in the queue; only sending
     /// replaces it.
@@ -1468,6 +1489,7 @@ final class TranscriptViewController: NSViewController {
     /// the words were written, says it did not go, and offers to send them again — which is a
     /// better answer than pushing them back into a composer the reader has to notice.
     private func markSendFailed(_ row: UUID, error: Error) {
+        handoff.end()
         let reason = AgentErrorText.readable(error)
         pending.mark(id: row, .failed(reason: reason))
         armResume(row: row, reason: reason)
@@ -1757,7 +1779,7 @@ final class TranscriptViewController: NSViewController {
             text: arguments, model: choice.model, effort: choice.effort,
             kind: .command(name: "compact", arguments: arguments))
         if lastState?.status == .running || lastState?.compaction?.isRunning == true
-            || !queue.isEmpty
+            || !queue.isEmpty || handoff.isOpen
         {
             queue.append(send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
@@ -1773,6 +1795,7 @@ final class TranscriptViewController: NSViewController {
     private func runCommand(_ send: QueuedSend) {
         guard let conversation, case .command(let name, let arguments) = send.kind else { return }
         SlashRecents.record(name)
+        openHandoff()
         Task { [weak self] in
             do {
                 try await conversation.run(
@@ -1780,6 +1803,7 @@ final class TranscriptViewController: NSViewController {
                     arguments: arguments.isEmpty ? nil : arguments, model: send.model,
                     reasoningEffort: send.effort)
             } catch {
+                self?.handoff.end()
                 self?.onToast?(AgentErrorText.readable(error))
             }
         }
@@ -1896,6 +1920,7 @@ final class TranscriptViewController: NSViewController {
         updateStatus()
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
+        handoff.observe(state, sendsInFlight: pending.hasInFlight)
         drainQueue()
     }
 

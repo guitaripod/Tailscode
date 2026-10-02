@@ -1448,6 +1448,7 @@ final class ChatPane: @unchecked Sendable {
         updateStatus()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
         scheduleRetryWake()
+        handoff.observe(state, sendsInFlight: pending.hasInFlight)
         drainQueue(state)
     }
 
@@ -1542,8 +1543,9 @@ final class ChatPane: @unchecked Sendable {
     /// never while the composer is holding one open for rewriting: sending it out from under the
     /// person editing it is the one thing the queue exists to prevent.
     private func drainQueue(_ state: ConversationState) {
-        guard SendQueueDrain.mayDrain(state, editing: editingQueued != nil), !queue.isEmpty,
-            let conversation
+        guard
+            SendQueueDrain.mayDrain(state, editing: editingQueued != nil, handoff: handoff),
+            !queue.isEmpty, let conversation
         else { return }
         guard !draining else { return }
         draining = true
@@ -1563,6 +1565,25 @@ final class ChatPane: @unchecked Sendable {
     /// sending re-applies.
     private var draining = false
 
+    /// The stretch after a send during which the server still reads idle. The queue waits it out,
+    /// or every message written during a turn goes at once and the agent answers only the last.
+    private var handoff = TurnHandoff()
+    private var handoffWakeGeneration = 0
+
+    private func openHandoff() {
+        handoff.begin(after: lastState)
+        handoffWakeGeneration += 1
+        let token = handoffWakeGeneration
+        Gtk.after(UInt32((TurnHandoff.patience + 1) * 1000)) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, self.handoffWakeGeneration == token, self.handoff.isOpen else {
+                    return
+                }
+                self.redrawPending()
+            }
+        }
+    }
+
     /// A compaction is a turn like any other, so one asked for while a turn runs waits behind
     /// it rather than cutting it off — oh-my-pi aborts the active turn for a compaction, and
     /// every server refuses two turns at once. It is queued as the command it is, so the
@@ -1580,7 +1601,7 @@ final class ChatPane: @unchecked Sendable {
 
     private func enqueueOrRun(_ send: QueuedSend, through conversation: AgentConversation) {
         guard lastState?.status != .running, lastState?.compaction?.isRunning != true,
-            queue.isEmpty
+            queue.isEmpty, !handoff.isOpen
         else {
             queue.append(send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
@@ -1603,7 +1624,10 @@ final class ChatPane: @unchecked Sendable {
                     arguments: arguments.isEmpty ? nil : arguments, model: send.model,
                     reasoningEffort: send.effort)
             } catch {
-                Gtk.onMain { [weak self] in self?.setNotice(AgentErrorText.readable(error)) }
+                Gtk.onMain { [weak self] in
+                    self?.handoff.end()
+                    self?.setNotice(AgentErrorText.readable(error))
+                }
             }
         }
     }
@@ -1611,6 +1635,7 @@ final class ChatPane: @unchecked Sendable {
     private func deliver(
         _ send: QueuedSend, through conversation: AgentConversation, reusing row: UUID? = nil
     ) {
+        openHandoff()
         if send.isCommand {
             runCommand(send, through: conversation)
             return
@@ -1643,6 +1668,7 @@ final class ChatPane: @unchecked Sendable {
                 // A send that never left is not a silence: the row keeps the words and says so.
                 Gtk.onMain { [weak self] in
                     guard let self else { return }
+                    self.handoff.end()
                     let reason = AgentErrorText.readable(error)
                     self.pending.mark(id: id, .failed(reason: reason))
                     self.armResume(row: id, reason: reason)

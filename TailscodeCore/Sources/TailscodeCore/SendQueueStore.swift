@@ -155,4 +155,59 @@ public enum SendQueueDrain {
         state.status != .running && state.compaction?.isRunning != true
             && state.lastFailure == nil && !editing
     }
+
+    /// The same rule for a surface that sends from the desk: nothing goes while the last send is
+    /// still becoming a turn, because the server reads idle for that whole stretch.
+    public static func mayDrain(
+        _ state: ConversationState, editing: Bool = false, handoff: TurnHandoff
+    ) -> Bool {
+        !handoff.isOpen && mayDrain(state, editing: editing)
+    }
+}
+
+/// The stretch between a send leaving this device and the server saying the turn it began is
+/// running.
+///
+/// The server reads idle for all of it — the prompt is echoed into the transcript a beat before
+/// the status moves — and a queue that asks only whether a turn is running takes that beat for a
+/// finished turn and sends the next waiting message into it, then the next, until every message
+/// written during one turn has gone out at once. A backend that folds whatever is waiting into one
+/// pass (opencode does) then answers the last of them and never the rest. Each send therefore
+/// holds the queue until the turn is seen running, or has visibly answered without ever being
+/// seen to, or ``patience`` has run out on a turn that never came.
+public struct TurnHandoff: Sendable, Equatable {
+    /// How long a send may wait to become a turn before the queue stops waiting for it.
+    public static let patience: TimeInterval = 45
+
+    private var openedAt: Date?
+    private var baseline = 0
+
+    public init() {}
+
+    public var isOpen: Bool { openedAt != nil }
+
+    public mutating func begin(after state: ConversationState?, now: Date = Date()) {
+        openedAt = now
+        baseline = state?.messages.count ?? 0
+    }
+
+    public mutating func end() {
+        openedAt = nil
+    }
+
+    /// Closes the handoff once the conversation shows the turn: running, or an assistant message
+    /// newer than the send with no send of this device's still on its way.
+    public mutating func observe(
+        _ state: ConversationState, sendsInFlight: Bool, now: Date = Date()
+    ) {
+        guard let openedAt else { return }
+        let answered =
+            !sendsInFlight && state.messages.count > baseline
+            && state.messages.last?.role == .assistant
+        if state.status == .running || state.compaction?.isRunning == true || answered
+            || now.timeIntervalSince(openedAt) > Self.patience
+        {
+            end()
+        }
+    }
 }

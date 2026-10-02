@@ -1104,11 +1104,17 @@ final class MainWindow: @unchecked Sendable {
         let id = UUID()
         let task = Task { [weak self] in
             var lastReading: SessionPresence = .running(nil)
+            var handoff = TurnHandoff()
             while !Task.isCancelled {
                 let stream = await conversation.states()
                 for await state in stream {
                     guard let self else { return }
-                    if await Self.drainHeld(conversation, entry: entry, state: state) { continue }
+                    handoff.observe(state, sendsInFlight: false)
+                    if await Self.drainHeld(
+                        conversation, entry: entry, state: state, handoff: &handoff)
+                    {
+                        continue
+                    }
                     let reading = SessionPresence.reading(state, step: nil)
                     let changed = reading != lastReading
                     lastReading = reading
@@ -1138,18 +1144,21 @@ final class MainWindow: @unchecked Sendable {
     /// that wrote it may be showing something else by now. Answers whether a message went, so
     /// the watch knows the turn is not over.
     private static func drainHeld(
-        _ conversation: AgentConversation, entry: SessionEntry, state: ConversationState
+        _ conversation: AgentConversation, entry: SessionEntry, state: ConversationState,
+        handoff: inout TurnHandoff
     ) async -> Bool {
-        guard SendQueueDrain.mayDrain(state) else { return false }
+        guard SendQueueDrain.mayDrain(state, handoff: handoff) else { return false }
         var held = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
         guard let next = held.takeFirst() else { return false }
         SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
+        handoff.begin(after: state)
         do {
             try await conversation.send(
                 next.text, model: next.model, reasoningEffort: next.effort,
                 attachments: next.attachments)
             return true
         } catch {
+            handoff.end()
             held.requeueAtHead(next)
             SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
             return false
