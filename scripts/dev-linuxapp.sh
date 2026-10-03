@@ -76,10 +76,18 @@ start_display() {
 
 # A private session bus, because the app is single-instance per bus name: on the desktop's own bus
 # a dev launch would remote-activate the installed app the person is using instead of starting.
+# Whatever the bus activates (a portal and its KDE backend, kglobalaccel) inherits the bus's own
+# environment rather than the app's, so the bus is started on the harness display with the
+# harness home: started from the desktop's environment, the portal drew its grant dialog on the
+# person's screen and wrote into their real config.
 start_bus() {
     if alive bus && [ -s "$STATE/bus.addr" ]; then return 0; fi
     rm -f "$STATE/bus.addr" "$STATE/bus.pid"
-    dbus-daemon --session --fork --print-address=3 --print-pid=4 \
+    mkdir -p "$STATE/home" "$CONFIG_HOME" "$DATA_HOME"
+    env -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u XDG_CURRENT_DESKTOP -u KDE_FULL_SESSION \
+        DISPLAY="$DEV_DISPLAY" GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb XDG_SESSION_TYPE=x11 \
+        HOME="$STATE/home" XDG_CONFIG_HOME="$CONFIG_HOME" XDG_DATA_HOME="$DATA_HOME" \
+        dbus-daemon --session --fork --print-address=3 --print-pid=4 \
         3>"$STATE/bus.addr" 4>"$STATE/bus.pid"
     [ -s "$STATE/bus.addr" ] || die "no session bus"
 }

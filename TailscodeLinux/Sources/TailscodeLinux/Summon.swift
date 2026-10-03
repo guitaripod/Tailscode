@@ -68,6 +68,10 @@ final class Summon: @unchecked Sendable {
             publish(.off)
             return
         }
+        guard DesktopGuard.mayClaimMachineKeys else {
+            publish(.unavailable("The development harness never asks the desktop for a key. Set TAILSCODE_DEV_SUMMON=1 to try it."))
+            return
+        }
         let chord = SummonSettings.chord
         if case .refused(let reason) = SummonJudge.judge(chord, on: .linux) {
             publish(.unavailable(reason))

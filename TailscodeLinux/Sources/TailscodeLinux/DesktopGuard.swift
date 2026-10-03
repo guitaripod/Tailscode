@@ -25,8 +25,14 @@ enum DesktopGuard {
         executablePath.contains("/.build/")
     }
 
-    private static var isHarnessed: Bool {
+    static var isHarnessed: Bool {
         ProcessInfo.processInfo.environment[harnessVariable]?.isEmpty == false
+    }
+
+    /// A key taken from the whole machine is the desktop's to grant, and the desktop asks the
+    /// person in a dialog on their own screen — so a harnessed build never asks unless told to.
+    static var mayClaimMachineKeys: Bool {
+        !isHarnessed || ProcessInfo.processInfo.environment["TAILSCODE_DEV_SUMMON"] == "1"
     }
 
     private static var isOverridden: Bool {
