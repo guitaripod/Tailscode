@@ -309,7 +309,7 @@ struct DelegateTests {
         #expect(DelegateProGate.allows(isPro: false, sells: true) == false)
         #expect(DelegateProGate.allows(isPro: true, sells: true))
         #expect(DelegateProGate.allows(isPro: false, sells: false))
-        #expect(ProOffer.perks.contains { $0.symbol == DelegateEntryPoint.symbol })
+        #expect(ProOffer.perks.last?.symbol == DelegateEntryPoint.symbol)
     }
 
     @Test("Every event kind prints a line except the ones this app cannot read")

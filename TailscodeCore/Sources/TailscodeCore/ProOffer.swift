@@ -45,7 +45,6 @@ public enum ProOffer: Sendable {
                 symbol: "server.rack",
                 text: Localized.text(
                     "Connect unlimited servers — one unified session list across every machine on your tailnet")),
-            DelegateProGate.perk,
             Perk(
                 symbol: "iphone.and.macbook",
                 text: Localized.text(
@@ -53,6 +52,7 @@ public enum ProOffer: Sendable {
             Perk(
                 symbol: "heart.fill",
                 text: Localized.text("Supporter badge, and a say in what gets built next")),
+            DelegateProGate.perk,
         ]
     }
 

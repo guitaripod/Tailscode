@@ -112,7 +112,7 @@ final class ProUpgradeViewController: UIViewController {
         stack.setCustomSpacing(Theme.Spacing.xl, after: heroContainer)
 
         let delegatePerk = (DelegateProGate.perk.symbol, DelegateProGate.perk.text)
-        for (symbol, text) in [delegatePerk] + [
+        for (symbol, text) in [
             (
                 "server.rack",
                 String(
@@ -130,7 +130,7 @@ final class ProUpgradeViewController: UIViewController {
                 "heart.fill",
                 String(localized: "Supporter badge, and a say in what gets built next")
             ),
-        ] {
+        ] + [delegatePerk] {
             stack.addArrangedSubview(featureRow(symbol: symbol, text: text))
         }
 

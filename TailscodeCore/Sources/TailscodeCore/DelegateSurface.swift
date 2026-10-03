@@ -23,10 +23,10 @@ public enum DelegateEntryPoint {
     public static var newPacketTitle: String { Localized.text("New packet") }
 }
 
-/// What Pro has to do with it. Delegation is the feature that costs the project its machines and
-/// its evenings, so on the clients that sell Pro it is the paywall's door: a free copy sees the
-/// board's pitch and the purchase, never a half of the feature. A client with no store sells
-/// nothing and gates nothing.
+/// What Pro has to do with it. Delegation is part of Pro on the clients that sell it, and its least
+/// prominent selling point: it is listed last among the perks and never leads the general sheet.
+/// A free copy that walks into it sees the board's pitch and the purchase, never a half of the
+/// feature. A client with no store sells nothing and gates nothing.
 public enum DelegateProGate {
     /// The demo world is not the real thing, so it is never behind the price: a copy that has not
     /// bought Pro still works the whole feature on the scripted machines.
