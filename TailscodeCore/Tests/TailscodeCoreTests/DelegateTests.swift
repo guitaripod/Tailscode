@@ -175,10 +175,10 @@ struct DelegateTests {
         #expect(story.status == .passed)
         #expect(story.ladder.rungs.map(\.state) == [.failed, .passed, .pending])
         #expect(story.ladder.lit?.tier == "t2")
-        #expect(story.subtitle == "Passed at t2 after 1 escalation(s) · 2 files")
+        #expect(story.subtitle == "Passed at t2 after 1 escalation · 2 files")
         #expect(story.activity == nil)
-        #expect(story.badge == "t2")
-        #expect(story.lines.last?.text.hasPrefix("passed at t2 · 1 escalation(s) · 60.0s") == true)
+        #expect(story.badge == "Applied")
+        #expect(story.lines.last?.text.hasPrefix("Passed at t2 · 1 escalation · 60.0s") == true)
     }
 
     @Test("A replayed sequence is folded once")

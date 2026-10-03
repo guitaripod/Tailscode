@@ -641,14 +641,16 @@ final class MainWindowController: NSWindowController {
 
     /// The dispatcher's window, one per app. A store copy without Pro meets the unlock instead,
     /// because delegation is the door the purchase is sold through.
-    func presentDelegate() {
+    func presentDelegate(handoff: DelegateHandoff? = nil) {
         guard MacDelegateGate.isOpen else {
             presentPro()
             return
         }
         MacDelegateGate.watchNotices()
         if delegateWindow == nil { delegateWindow = DelegateWindowController() }
+        delegateWindow?.chatSource = { [weak self] in self?.sidebar.allEntries ?? [] }
         delegateWindow?.present()
+        if let handoff { delegateWindow?.compose(handoff: handoff) }
     }
 
     /// The unlock, opened by hand — from the menu, or from the one gate that asks for it.
@@ -2280,6 +2282,12 @@ extension MainWindowController: NSMenuDelegate {
                     subtitle: Localized.text("Irreversible, takes minutes")
                 ) { [weak self] in
                     self?.transcript.presentCompactPreflight()
+                })
+        }
+        if !entry.host.isEmpty {
+            menu.addItem(
+                actionsItem(DelegateHandoff.menuTitle, subtitle: DelegateHandoff.details) { [weak self] in
+                    self?.transcript.handOff(goal: "")
                 })
         }
         if capabilities.supportsClearing {

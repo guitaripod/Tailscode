@@ -2,23 +2,28 @@ import CodingAgentKit
 import TailscodeCore
 import UIKit
 
-/// One machine's dispatcher as a screen: whether it answers, the ladder it holds, every run it
-/// remembers with the live ones folding as they go, and what the numbers say. Every word is
-/// `DelegateBoard`'s; this controller draws rows and forwards taps to the desk.
+/// One machine's dispatcher as a screen: New packet first, the ladder it holds as one row of joined
+/// rungs with what the table suggests under it, and every run it remembers grouped by what it asks
+/// of the reader. Every word is `DelegateBoard`'s; this controller draws rows and forwards taps.
 @MainActor
 final class DelegateBoardViewController: UIViewController {
-    private enum Section: Int, CaseIterable { case status, setup, tiers, runs, stats }
+    private enum Section: Hashable {
+        case top
+        case setup
+        case ladder
+        case runs(DelegateRunSection.Kind)
+    }
+
     private enum Item: Hashable {
-        case note
+        case compose
         case status
         case password
         case setupLead
         case setup(String)
-        case tier(String)
+        case ladder
+        case hint(Int)
         case run(String)
         case empty
-        case stat(String)
-        case hint(Int)
     }
 
     private let host: String
@@ -29,6 +34,10 @@ final class DelegateBoardViewController: UIViewController {
     private var board: DelegateBoard { desk.board(host: host, serverName: serverName) }
     private var reach: DelegateReach { desk.reach[host] ?? .unknown }
     private var copiedStep: String?
+    private var sections: [DelegateRunSection] = []
+    private let ladderView = DelegateBoardLadderView()
+    private lazy var composeView = makeComposeView()
+    private let composeNote = UILabel()
 
     init(host: String, serverName: String) {
         self.host = host
@@ -81,6 +90,24 @@ final class DelegateBoardViewController: UIViewController {
         let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
             self?.configure(cell, item)
         }
+        let runCell = UICollectionView.CellRegistration<DelegateRunRowCell, Item> { [weak self] cell, _, item in
+            guard case .run(let runID) = item, let row = self?.row(runID) else { return }
+            cell.show(row)
+        }
+        let hostCell = UICollectionView.CellRegistration<DelegateHostCell, Item> { [weak self] cell, _, item in
+            guard let self else { return }
+            switch item {
+            case .compose:
+                self.composeNote.text = self.board.note ?? DelegateEntryPoint.subtitle
+                cell.place(self.composeView)
+                cell.backgroundConfiguration = .clear()
+            case .ladder:
+                self.ladderView.show(self.board.ladderRungs)
+                cell.place(self.ladderView)
+            default:
+                break
+            }
+        }
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
         ) { [weak self] view, _, indexPath in
@@ -89,11 +116,31 @@ final class DelegateBoardViewController: UIViewController {
             view.contentConfiguration = content
         }
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { collectionView, indexPath, item in
-            collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: item)
+            switch item {
+            case .run: return collectionView.dequeueConfiguredReusableCell(using: runCell, for: indexPath, item: item)
+            case .compose, .ladder: return collectionView.dequeueConfiguredReusableCell(using: hostCell, for: indexPath, item: item)
+            default: return collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: item)
+            }
         }
         dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
             collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
         }
+    }
+
+    /// The primary action and the board's one standing sentence, outside any card.
+    private func makeComposeView() -> UIView {
+        let button = PrimaryButton(title: DelegateEntryPoint.newPacketTitle)
+        button.configuration?.image = UIImage(systemName: "plus")
+        button.configuration?.imagePadding = Theme.Spacing.s
+        button.addAction(UIAction { [weak self] _ in self?.compose() }, for: .touchUpInside)
+        composeNote.font = Theme.Ramp.font(.cardBody)
+        composeNote.textColor = Theme.Color.secondaryLabel
+        composeNote.numberOfLines = 0
+        composeNote.adjustsFontForContentSizeCategory = true
+        let column = UIStackView(arrangedSubviews: [button, composeNote])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.s
+        return column
     }
 
     private func pulled() {
@@ -108,45 +155,63 @@ final class DelegateBoardViewController: UIViewController {
         }
     }
 
+    private func row(_ runID: String) -> DelegateRunRow? {
+        for section in sections {
+            if let row = section.rows.first(where: { $0.runID == runID }) { return row }
+        }
+        return nil
+    }
+
     private func sectionTitle(at index: Int) -> String? {
         switch dataSource.snapshot().sectionIdentifiers[safe: index] {
-        case .status: return serverName
+        case .top:
+            if #available(iOS 26.0, *) { return nil }
+            return board.subtitle
         case .setup: return DelegateSetup.title
-        case .tiers: return String(localized: "Ladder")
-        case .runs: return String(localized: "Runs")
-        case .stats: return String(localized: "Pass rates")
+        case .ladder: return DelegateComposerWords.ladderLabel
+        case .runs(let kind): return sections.first { $0.kind == kind }?.title
         case .none: return nil
         }
     }
 
     private func applySnapshot() {
         let board = board
+        if #available(iOS 26.0, *) { navigationItem.subtitle = board.subtitle }
+        sections = board.isReady ? board.sections() : []
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
-        snapshot.appendSections([.status])
-        var status: [Item] = board.note == nil ? [.status] : [.note, .status]
-        if reach.asksForPassword || (desk.password(host: host) != nil && !desk.isDemo(host: host)) { status.append(.password) }
-        snapshot.appendItems(status.reduce(into: [Item]()) { if !$0.contains($1) { $0.append($1) } }, toSection: .status)
+        snapshot.appendSections([.top])
+        var top: [Item] = board.isReady ? [.compose] : [.status]
+        if reach.asksForPassword || (desk.password(host: host) != nil && !desk.isDemo(host: host)) { top.append(.password) }
+        snapshot.appendItems(top, toSection: .top)
         if DelegateSetup.isWanted(board: board, known: desk.isKnown(host: host)) {
             snapshot.appendSections([.setup])
             snapshot.appendItems([.setupLead] + DelegateSetup.steps.map { .setup($0.id) }, toSection: .setup)
         }
         if !board.tiers.isEmpty {
-            snapshot.appendSections([.tiers])
-            snapshot.appendItems(board.tierLines.map { .tier($0.tier) }, toSection: .tiers)
+            snapshot.appendSections([.ladder])
+            snapshot.appendItems([.ladder] + board.promotions.indices.map { .hint($0) }, toSection: .ladder)
         }
         if board.isReady {
-            snapshot.appendSections([.runs])
-            let runs = board.runStories.map { Item.run($0.runID) }
-            snapshot.appendItems(runs.isEmpty ? [.empty] : runs, toSection: .runs)
+            if sections.isEmpty {
+                snapshot.appendSections([.runs(.earlier)])
+                snapshot.appendItems([.empty], toSection: .runs(.earlier))
+            }
+            for section in sections {
+                snapshot.appendSections([.runs(section.kind)])
+                snapshot.appendItems(section.rows.map { .run($0.runID) }, toSection: .runs(section.kind))
+            }
         }
-        if !board.stats.isEmpty {
-            snapshot.appendSections([.stats])
-            snapshot.appendItems(board.statRows.map { .stat($0.id) }, toSection: .stats)
-            snapshot.appendItems(board.promotions.indices.map { .hint($0) }, toSection: .stats)
-        }
-        let reconfigure = snapshot.itemIdentifiers.filter { dataSource.snapshot().itemIdentifiers.contains($0) }
-        snapshot.reconfigureItems(reconfigure)
+        let existing = Set(dataSource.snapshot().itemIdentifiers)
+        snapshot.reconfigureItems(snapshot.itemIdentifiers.filter { existing.contains($0) })
         dataSource.apply(snapshot, animatingDifferences: false)
+        for header in collectionView.visibleSupplementaryViews(ofKind: UICollectionView.elementKindSectionHeader) {
+            guard let header = header as? UICollectionViewListCell,
+                let indexPath = collectionView.indexPath(forSupplementaryView: header)
+            else { continue }
+            var content = UIListContentConfiguration.header()
+            content.text = sectionTitle(at: indexPath.section)
+            header.contentConfiguration = content
+        }
     }
 
     private func configure(_ cell: UICollectionViewListCell, _ item: Item) {
@@ -154,17 +219,11 @@ final class DelegateBoardViewController: UIViewController {
         cell.accessories = []
         let board = board
         switch item {
-        case .note:
-            content.text = board.note
-            content.textProperties.numberOfLines = 0
-            content.textProperties.font = Theme.Ramp.font(.rowNote)
-            content.textProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(systemName: "play.circle")
-            content.imageProperties.tintColor = Theme.Color.special
         case .status:
             content.text = board.statusLine
             content.secondaryText = reach.isAnswering || board.statusLine == reach.line ? DelegateEntryPoint.subtitle : reach.line
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.secondaryTextProperties.numberOfLines = 0
             content.image = UIImage(systemName: DelegateEntryPoint.symbol)
             content.imageProperties.tintColor = (reach == .unknown ? board.statusTone : reach.tone).color
             if board.phase == .checking { cell.accessories = [.working()] }
@@ -197,48 +256,19 @@ final class DelegateBoardViewController: UIViewController {
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "key")
             content.imageProperties.tintColor = Theme.Color.accent
-        case .tier(let tier):
-            guard let line = board.tierLines.first(where: { $0.tier == tier }) else { break }
-            content.text = line.label.isEmpty ? line.tier : "\(line.tier) · \(line.label)"
-            content.secondaryText = line.model
-            content.secondaryTextProperties.font = Theme.Ramp.font(.code)
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            cell.accessories = [.label(text: line.detail, options: .init(tintColor: line.tone.color))]
-        case .run(let runID):
-            guard let story = board.story(for: runID) else { break }
-            content.text = story.headline
-            content.textProperties.numberOfLines = 2
-            content.secondaryText = story.subtitle
-            content.secondaryTextProperties.numberOfLines = 2
-            content.secondaryTextProperties.color = story.tone == .quiet ? Theme.Color.secondaryLabel : story.tone.color
-            var accessories: [UICellAccessory] = []
-            if let badge = story.badge {
-                accessories.append(.label(text: badge, options: .init(tintColor: story.tone.color)))
-            }
-            if let activity = story.activity {
-                let badge = ActivityBadgeView()
-                badge.show(activity.icon, spoken: nil)
-                accessories.append(.customView(configuration: .init(customView: badge, placement: .trailing())))
-            }
-            accessories.append(.disclosureIndicator())
-            cell.accessories = accessories
-            cell.accessibilityLabel = "\(story.headline). \(story.subtitle)"
-        case .empty:
-            content.text = board.emptyLine
-            content.textProperties.color = Theme.Color.secondaryLabel
-            content.textProperties.numberOfLines = 0
-        case .stat(let id):
-            guard let row = board.statRows.first(where: { $0.id == id }) else { break }
-            content.text = "\(row.taskClass) · \(row.tier)"
-            content.secondaryText = row.line
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            cell.accessories = [.label(text: row.rateText, options: .init(tintColor: row.rate >= 0.9 ? Theme.Color.success : (row.rate <= 0.3 ? Theme.Color.danger : Theme.Color.secondaryLabel)))]
         case .hint(let index):
             content.text = board.promotions[safe: index]
             content.textProperties.numberOfLines = 0
             content.textProperties.font = Theme.Ramp.font(.rowNote)
+            content.textProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: "lightbulb")
             content.imageProperties.tintColor = Theme.Color.special
+        case .empty:
+            content.text = board.emptyLine
+            content.textProperties.color = Theme.Color.secondaryLabel
+            content.textProperties.numberOfLines = 0
+        case .compose, .ladder, .run:
+            break
         }
         cell.contentConfiguration = content
     }
@@ -250,15 +280,7 @@ final class DelegateBoardViewController: UIViewController {
 
     func compose() {
         Theme.Haptics.tap()
-        let composer = DelegateComposerViewController(host: host, serverName: serverName)
-        composer.onStarted = { [weak self] runID in
-            guard let self else { return }
-            self.navigationController?.pushViewController(
-                DelegateRunViewController(host: self.host, serverName: self.serverName, runID: runID), animated: true)
-        }
-        let nav = UINavigationController(rootViewController: composer)
-        nav.navigationBar.prefersLargeTitles = false
-        present(nav, animated: true)
+        DelegateGate.presentComposer(from: self, host: host, serverName: serverName, draft: nil)
     }
 
     /// One command onto the clipboard, and the row says so for a moment.
@@ -311,7 +333,7 @@ extension DelegateBoardViewController: UICollectionViewDelegate {
             compose()
         case .setup(let id):
             copySetupCommand(id)
-        case .tier, .stat, .hint, .note, .setupLead:
+        case .compose, .ladder, .hint, .setupLead:
             break
         }
     }

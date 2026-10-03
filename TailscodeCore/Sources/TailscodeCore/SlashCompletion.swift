@@ -116,17 +116,22 @@ public enum SlashStage: Sendable, Equatable {
 public enum SlashDispatch: Sendable, Equatable {
     case compactPreflight(instruction: String)
     case designPreflight(request: String)
+    /// `/delegate` opens the packet composer for this chat's machine and repository, with the
+    /// words after the slash as the goal — a packet is a surface this app writes, not a turn.
+    case delegatePreflight(goal: String)
     case run(command: AgentCommand, arguments: String?)
     case plainText
 
     public static let designWord = "design"
+    public static let delegateWord = "delegate"
 
     public static func decide(
         text: String,
         commands: [AgentCommand],
         supportsCompaction: Bool,
         resolvesFromPromptText: Bool,
-        supportsDesign: Bool = false
+        supportsDesign: Bool = false,
+        supportsDelegate: Bool = false
     ) -> SlashDispatch {
         let (name, arguments): (String, String)
         switch SlashStage.of(text) {
@@ -143,6 +148,9 @@ public enum SlashDispatch: Sendable, Equatable {
         }
         if name == designWord, supportsDesign {
             return .designPreflight(request: arguments)
+        }
+        if name == delegateWord, supportsDelegate {
+            return .delegatePreflight(goal: arguments)
         }
         guard let command = commands.first(where: { $0.name == name }), !resolvesFromPromptText
         else { return .plainText }

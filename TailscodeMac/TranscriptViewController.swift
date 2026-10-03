@@ -1159,6 +1159,9 @@ final class TranscriptViewController: NSViewController {
         composer.onDesignRequested = { [weak self] request in
             self?.presentDesignPreflight(request: request)
         }
+        composer.onDelegateRequested = { [weak self] goal in
+            self?.handOff(goal: goal)
+        }
         composer.onStop = { [weak self] in self?.stopTurn() }
         composer.onLane = { [weak self] lane in
             guard let self,
@@ -1707,6 +1710,19 @@ final class TranscriptViewController: NSViewController {
                 return
             }
         }
+    }
+
+    /// Opens the packet composer on this chat's machine, with the words as the goal and the chat's
+    /// own directory as the repository. The road goes through the same gate as every other door.
+    func handOff(goal: String) {
+        guard let entry, !entry.host.isEmpty,
+            let host = view.window?.windowController as? MainWindowController
+        else { return }
+        let handoff = DelegateHandoff(
+            host: entry.host, serverName: entry.profileName, goal: goal,
+            repo: entry.session.directory ?? "")
+        AppLogger.session.info("delegate handoff from session \(entry.session.id) to \(entry.host)")
+        host.presentDelegate(handoff: handoff)
     }
 
     /// What a board turned out to be, so its card names it rather than its folder. Asked once per

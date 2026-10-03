@@ -155,6 +155,56 @@ public enum DelegateWords {
         count == 1 ? Localized.text("1 file") : Localized.text("%d files", count)
     }
 
+    public static func escalations(_ count: Int) -> String {
+        count == 1 ? Localized.text("1 escalation") : Localized.text("%d escalations", count)
+    }
+
+    /// "after 1 escalation" / "after 3 escalations", for the line that says where a run passed.
+    public static func afterEscalations(_ count: Int) -> String {
+        count == 1 ? Localized.text("after 1 escalation") : Localized.text("after %d escalations", count)
+    }
+
+    /// What a run's summary adds that its other lines do not: the worker's own claim after the
+    /// daemon's file count on a pass ("2 files: the no-op test passes"), the error itself on a run
+    /// that broke, and nothing for the ladder phrases a timeline already tells.
+    public static func summaryClaim(_ summary: String, status: DelegateRunStatus) -> String? {
+        let line = summary.components(separatedBy: "\n").first?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard !line.isEmpty else { return nil }
+        if status == .error { return line }
+        guard status == .passed else { return nil }
+        guard let colon = line.firstIndex(of: ":") else { return nil }
+        let head = line[..<colon]
+        guard head.contains("file"), head.split(separator: " ").first.flatMap({ Int($0) }) != nil else { return nil }
+        let claim = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+        return claim.isEmpty ? nil : claim
+    }
+
+    /// The end of a verifier's or worker's output — where the reason is — trimmed of blank lines
+    /// and kept to what a row can show.
+    public static func tail(_ text: String, lines limit: Int = 12) -> String? {
+        let kept = text.components(separatedBy: "\n")
+            .map { $0.replacingOccurrences(of: "\t", with: "    ") }
+            .reversed()
+            .drop { $0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .reversed()
+        guard !kept.isEmpty else { return nil }
+        return kept.suffix(limit).joined(separator: "\n")
+    }
+
+    /// A model the way a rung can show it: the provider's prefix off ("llama-swap/qwen3.8-27b"
+    /// reads "qwen3.8-27b"), since the rung's own label already says where it runs.
+    public static func shortModel(_ model: String) -> String {
+        guard let slash = model.lastIndex(of: "/") else { return model }
+        let tail = model[model.index(after: slash)...]
+        return tail.isEmpty ? model : String(tail)
+    }
+
+    /// A repository the way a row can name it: its last directory.
+    public static func repoName(_ repo: String) -> String {
+        let trimmed = repo.hasSuffix("/") ? String(repo.dropLast()) : repo
+        return trimmed.split(separator: "/").last.map(String.init) ?? repo
+    }
+
     public static func tokens(_ count: Int) -> String {
         if count >= 1_000_000 { return String(format: "%.1fM", Double(count) / 1_000_000) }
         if count >= 1_000 { return String(format: "%.1fk", Double(count) / 1_000) }

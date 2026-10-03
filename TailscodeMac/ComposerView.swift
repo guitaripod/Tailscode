@@ -12,6 +12,9 @@ final class ComposerView: NSView {
     var onRunCommand: ((AgentCommand, String?, ModelSelection?, String?) -> Void)?
     var onCompactRequested: ((String) -> Void)?
     var onDesignRequested: ((String) -> Void)?
+    /// `/delegate`, with the words after it as the goal: the pane hands the task to its machine's
+    /// dispatcher.
+    var onDelegateRequested: ((String) -> Void)?
     var onStop: (() -> Void)?
     var onLane: ((QuickAskLane) -> Void)?
     /// ↑ from an empty box: the pane takes its last waiting message back for rewriting, and says
@@ -29,13 +32,17 @@ final class ComposerView: NSView {
 
     var attachmentCount: Int { attachments.count }
     var availableCommands: [AgentCommand] {
-        CommandCatalogStore.forComposer(commands, supportsDesign: supportsDesign)
+        CommandCatalogStore.forComposer(
+            commands, supportsDesign: supportsDesign, supportsDelegate: supportsDelegate)
     }
 
     /// Whether a design board could be read back at all. The brief is only worth spending a turn on
     /// where this server hands files over — otherwise the mocks would be written somewhere no
     /// client could ever open them.
     var supportsDesign: Bool { backend?.capabilities.supportsFileBrowsing == true }
+
+    /// A chat whose machine is known by name can hand a task to that machine's dispatcher.
+    var supportsDelegate: Bool { entry.map { !$0.host.isEmpty } ?? false }
 
     private let editor = PromptEditor(placeholder: Localized.text("Message… (/ for commands)"))
     private let sendButton = NSButton()
@@ -761,9 +768,18 @@ final class ComposerView: NSView {
                     self?.onDesignRequested?("")
                 })
         }
+        if supportsDelegate {
+            rows.append(
+                PillsRow.MenuRow(
+                    "/delegate", subtitle: CommandCatalogStore.delegateCommand.details
+                ) { [weak self] in
+                    self?.onDelegateRequested?("")
+                })
+        }
         for command in commands
         where command.name != "compact" && command.name != "goal"
             && !(supportsDesign && command.name == SlashDispatch.designWord)
+            && !(supportsDelegate && command.name == SlashDispatch.delegateWord)
         {
             let insertion = command.takesArguments ? "/\(command.name) " : "/\(command.name)"
             rows.append(
@@ -785,13 +801,16 @@ final class ComposerView: NSView {
             text: text, commands: availableCommands,
             supportsCompaction: backend?.capabilities.supportsCompaction != false,
             resolvesFromPromptText: backend?.resolvesCommandsFromPromptText == true,
-            supportsDesign: supportsDesign)
+            supportsDesign: supportsDesign, supportsDelegate: supportsDelegate)
         {
         case .compactPreflight(let instruction):
             onCompactRequested?(instruction)
             return true
         case .designPreflight(let request):
             onDesignRequested?(request)
+            return true
+        case .delegatePreflight(let goal):
+            onDelegateRequested?(goal)
             return true
         case .run(let command, let arguments):
             SlashRecents.record(command.name)

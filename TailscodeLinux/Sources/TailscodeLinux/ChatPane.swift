@@ -3346,9 +3346,15 @@ final class ChatPane: @unchecked Sendable {
                      self.host?.presentDesignPreflight(for: self, request: "")
                  } }))
         }
+        if supportsDelegate {
+            rows.append(
+                ("/delegate", CommandCatalogStore.delegateCommand.details,
+                 { [weak self] in Gtk.onMain { [weak self] in self?.handOff(goal: "") } }))
+        }
         for command in commands
         where command.name != "compact" && command.name != "goal"
             && !(supportsDesign && command.name == SlashDispatch.designWord)
+            && !(supportsDelegate && command.name == SlashDispatch.delegateWord)
         {
             let insertion = command.takesArguments ? "/\(command.name) " : "/\(command.name)"
             rows.append(
@@ -3392,6 +3398,11 @@ final class ChatPane: @unchecked Sendable {
                      guard let self else { return }
                      self.host?.presentCompactPreflight(for: self)
                  } }))
+        }
+        if supportsDelegate {
+            rows.append(
+                (DelegateHandoff.menuTitle, DelegateHandoff.details,
+                 { [weak self] in Gtk.onMain { [weak self] in self?.handOff(goal: "") } }))
         }
         if !commands.isEmpty {
             rows.append(
@@ -4175,9 +4186,22 @@ final class ChatPane: @unchecked Sendable {
     /// could ever open them.
     var supportsDesign: Bool { backend?.capabilities.supportsFileBrowsing == true }
 
-    /// The catalog a composer offers here: the server's own, plus the word this app answers.
+    /// A chat whose machine is known by name can hand a task to that machine's dispatcher.
+    var supportsDelegate: Bool { entry.map { !$0.host.isEmpty } ?? false }
+
+    /// The catalog a composer offers here: the server's own, plus the words this app answers.
     var composerCommands: [AgentCommand] {
-        CommandCatalogStore.forComposer(commands, supportsDesign: supportsDesign)
+        CommandCatalogStore.forComposer(commands, supportsDesign: supportsDesign, supportsDelegate: supportsDelegate)
+    }
+
+    /// Opens the packet composer on this chat's machine, with the words as the goal and the chat's
+    /// own directory as the repository.
+    func handOff(goal: String) {
+        guard let entry else { return }
+        let handoff = DelegateHandoff(
+            host: entry.host, serverName: entry.profileName, goal: goal, repo: entry.session.directory ?? "")
+        AppLog.write(.session, "delegate handoff from session \(entry.session.id) to \(entry.host)")
+        host?.presentDelegate(handoff: handoff)
     }
 
     /// What a board turned out to be, so its card names it rather than its folder. Asked once per
@@ -4910,13 +4934,16 @@ final class ChatPane: @unchecked Sendable {
             text: text, commands: composerCommands,
             supportsCompaction: backend?.capabilities.supportsCompaction != false,
             resolvesFromPromptText: backend?.resolvesCommandsFromPromptText == true,
-            supportsDesign: supportsDesign)
+            supportsDesign: supportsDesign, supportsDelegate: supportsDelegate)
         {
         case .compactPreflight(let instruction):
             host?.presentCompactPreflight(for: self, initialInstruction: instruction)
             return true
         case .designPreflight(let request):
             host?.presentDesignPreflight(for: self, request: request)
+            return true
+        case .delegatePreflight(let goal):
+            handOff(goal: goal)
             return true
         case .run(let command, let arguments):
             guard let conversation else { return false }

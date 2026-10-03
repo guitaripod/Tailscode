@@ -16,6 +16,9 @@ public struct DelegateDraft: Sendable, Equatable {
     public var mode: DelegateMode
     public var effort: DelegateEffort?
     public var repo: String
+    /// Hold a passing patch for a person to read before it lands. On by default: a phone that
+    /// started a run is rarely in front of the tree it would land in.
+    public var review: Bool
 
     public init(capabilities: DelegateCapabilities?, repo: String = "") {
         let classes = capabilities?.classes ?? []
@@ -30,6 +33,7 @@ public struct DelegateDraft: Sendable, Equatable {
         mode = .normal
         effort = nil
         self.repo = repo
+        review = true
     }
 
     /// A draft of a packet that already ran, for the next attempt at the same task.
@@ -45,6 +49,7 @@ public struct DelegateDraft: Sendable, Equatable {
         mode = packet.mode ?? .normal
         effort = packet.effort
         repo = packet.repo ?? ""
+        review = true
     }
 
     public var pathList: [String] { Self.list(paths) }
@@ -94,6 +99,20 @@ public struct DelegateDraft: Sendable, Equatable {
         let current = verify.trimmingCharacters(in: .whitespaces)
         guard current.isEmpty || current == previous else { return }
         verify = capabilities?.policy(for: name)?.verify ?? ""
+    }
+
+    /// The plan in one line, for the composer's folded section: the class, the range it resolves
+    /// to, and what judges it.
+    public func planSummary(capabilities: DelegateCapabilities?, tierOrder: [String]) -> String {
+        let plan = plan(capabilities: capabilities, tierOrder: tierOrder)
+        var parts = [taskClass]
+        if let start = plan.start, let ceiling = plan.ceiling {
+            parts.append(start == ceiling ? start : "\(start) → \(ceiling)")
+        }
+        if mode != .normal { parts.append(DelegateWords.mode(mode).lowercased()) }
+        let verifier = verify.trimmingCharacters(in: .whitespaces)
+        parts.append(verifier.isEmpty ? Localized.text("no verifier") : verifier)
+        return parts.joined(separator: " · ")
     }
 
     /// Where this packet will start and how far it may climb once the daemon fills every blank
@@ -255,6 +274,21 @@ public enum DelegateComposerWords {
     public static var sendTitle: String { Localized.text("Run packet") }
     public static var sendingTitle: String { Localized.text("Starting…") }
     public static var cautionsTitle: String { Localized.text("Before it goes") }
+    public static var reviewLabel: String { Localized.text("Review before it lands") }
+    public static var reviewHelp: String {
+        Localized.text("The patch waits for you to read it; nothing touches the tree until you apply it.")
+    }
+    public static var reviewUnsupported: String {
+        Localized.text("This machine's dispatcher applies a passing patch as it lands. delegate 0.4 can hold it for review.")
+    }
+    public static var planLabel: String { Localized.text("Plan") }
+    public static var planHelp: String {
+        Localized.text("Class, ladder, verifier and the rest. The class fills anything you leave alone.")
+    }
+    public static var repoChoicesLabel: String { Localized.text("Recent repositories") }
+    public static var pathsOptional: String {
+        Localized.text("Optional. Without paths the worker may change any file, and the composer says so.")
+    }
     public static var classHelp: String {
         Localized.text("A class is the daemon's own table: where a blank packet starts, how far it may climb, and what judges it.")
     }

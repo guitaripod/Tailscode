@@ -19,7 +19,7 @@ Free is the whole core with one server; **Pro** is a one-time $14.99 purchase fo
 - **Every machine, one list** — sessions across all your servers grouped by machine with live status; pin, archive, search inside transcripts across servers; a tailnet radar that finds the agent servers on your devices.
 - **Models and money** — one chooser over every provider, per-prompt model and effort, session spend, the month's analytics merged across machines, quota walls scoped to their provider, Game Center trophies on Apple.
 - **Compaction is a seam you can read**; `/design` opens a mock-up board; slash commands complete from the server's own catalog; the repo is read (branch, drift, diffs), never operated.
-- **Delegate** — hand a packet down a ladder of cheaper models on the server and get a verified patch back.
+- **Delegate** — hand a packet down a ladder of cheaper models on the server (from the board or straight from a chat with `/delegate`) and get a verified patch back, held for you to read and apply.
 - **Image and video** — describe a clip or paint from a reference on a tailnet machine running ComfyUI (Linux and iPhone paint; the Mac renders video only).
 - **iPhone** — Lock Screen and Dynamic Island Live Activities pushed by claude-bridge, a turn that ends while the app is closed still says so (the phone holds a wait on the server over the tailnet, no relay), quota widgets and Control Center tiles, a home board, quick ask from the icon, haptics with meaning, on-device prompt enhance.
 - **iPad** — a sidebar of places, servers and pinned chats beside the chat list and the conversation, folding into the phone's single stack whenever the window narrows and back without closing anything; drag a chat out for a window of its own.

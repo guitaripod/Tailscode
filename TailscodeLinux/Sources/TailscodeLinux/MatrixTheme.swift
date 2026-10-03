@@ -200,6 +200,56 @@ enum MatrixTheme {
         .delegate-tone-danger { color: \(danger); }
         .delegate-tone-quiet { color: \(textDim); }
         .delegate-rung { border: 1px solid alpha(\(textDim), 0.3); border-radius: 8px; }
+        .dg-headline { \(t(.headline)) color: \(text); }
+        button.dg-primary { \(t(.control)) padding: 8px 18px; border-radius: 10px; }
+        button.dg-action, menubutton.dg-action > button { \(t(.control)) padding: 6px 14px; border-radius: 10px; }
+        .dg-danger-text, .dg-danger-text label { color: \(danger); }
+        .dg-facts { \(t(.rowMeta)) color: \(textDim); }
+        .dg-section { \(t(.sectionLabel)) color: \(textDim); }
+        .dg-note { \(t(.rowDetail)) color: \(textDim); }
+        .dg-lead { border-radius: 12px; padding: 14px 16px; border-left: 3px solid \(textDim); }
+        .dg-lead-live { background-color: alpha(\(accent), 0.07); border-left-color: \(accent); }
+        .dg-lead-attention { background-color: alpha(\(warn), 0.08); border-left-color: \(warn); }
+        .dg-lead-danger { background-color: alpha(\(danger), 0.08); border-left-color: \(danger); }
+        .dg-lead-quiet { background-color: alpha(\(textDim), 0.06); border-left-color: alpha(\(textDim), 0.5); }
+        .dg-lead-title { \(t(.cardTitle)) color: \(text); }
+        .dg-lead-caption { \(t(.rowMeta)) color: \(textDim); }
+        .dg-lead-body { \(t(.cardBody)) color: \(text); }
+        .dg-lead-output {
+            \(t(.toolOutput)) color: \(text); background-color: alpha(\(canvas), 0.55);
+            border-radius: 8px; padding: 8px 10px;
+        }
+        .dg-rung {
+            background-color: \(canvasRaised); border: 1px solid alpha(\(textDim), 0.22);
+            border-radius: 10px; padding: 10px 12px;
+        }
+        .dg-rung-lit { border-color: \(accent); background-color: alpha(\(accent), 0.08); }
+        .dg-rung-failed { border-color: alpha(\(danger), 0.6); }
+        .dg-rung-held { border-color: \(warn); background-color: alpha(\(warn), 0.06); }
+        .dg-rung-off { opacity: 0.45; }
+        .dg-rung-label { \(t(.panelLabel)) color: \(text); }
+        .dg-rung-model { \(t(.rowMeta)) color: \(textDim); }
+        .dg-rung-note { \(t(.rowStamp)) color: \(textDim); }
+        .dg-rung-link { color: alpha(\(textDim), 0.45); }
+        .dg-pip { min-width: 7px; min-height: 7px; border-radius: 4px; background-color: alpha(\(textDim), 0.3); }
+        .dg-pip-lit { background-color: \(accent); }
+        .dg-pip-failed { background-color: \(danger); }
+        .dg-pip-held { background-color: \(warn); }
+        .dg-pip-off { background-color: alpha(\(textDim), 0.1); }
+        .dg-row-meta { \(t(.rowStamp)) color: \(textDim); }
+        .dg-file { border-radius: 8px; padding: 6px 10px; }
+        .dg-file:hover { background-color: alpha(\(accent), 0.08); }
+        .dg-file-name { \(t(.treeRow)) color: \(text); }
+        .dg-file-folder { \(t(.treePath)) color: \(textDim); }
+        .dg-added { \(t(.rowStamp)) color: \(accent); }
+        .dg-removed { \(t(.rowStamp)) color: \(danger); }
+        .dg-timeline-detail {
+            \(t(.toolOutput)) color: \(textDim); border-left: 2px solid alpha(\(textDim), 0.3);
+            padding-left: 10px;
+        }
+        .dg-choice { border-radius: 8px; padding: 6px 10px; }
+        .dg-choice-name { \(t(.rowTitle)) color: \(text); }
+        .dg-choice-detail { \(t(.rowStamp)) color: \(textDim); }
         .dim { color: \(textDim); }
         .attachment { color: \(info); \(t(.attachment)) }
         .status-line {

@@ -2,21 +2,22 @@ import CodingAgentKit
 import TailscodeCore
 import UIKit
 
-/// One run: its ladder, its story as the daemon tells it, every attempt, and the two answers a
-/// gated rung waits for. The past is read from the daemon's record and the present streams in on
-/// the same fold, so reopening a run finds it exactly where it is.
+/// One run as `DelegateRunReading` tells it: the goal and its facts, the one thing that matters
+/// now, the ladder, exactly one primary action with the rest beside it, the patch's files and the
+/// timeline. The past is read from the daemon's record and the present streams in on the same
+/// fold, so reopening a run finds it exactly where it is.
 @MainActor
 final class DelegateRunViewController: UIViewController {
-    private enum Section: Int, CaseIterable { case ladder, approval, story, attempts, actions }
+    private enum Section: Hashable { case head, lead, ladder, primary, actions, files, timeline }
     private enum Item: Hashable {
+        case head
+        case lead
         case ladder
-        case approval
-        case line(Int)
-        case attempt(Int)
-        case cancel
+        case primary
+        case action(String)
         case replay
-        case applied
-        case step(String)
+        case file(String)
+        case line(Int)
     }
 
     private let host: String
@@ -26,7 +27,14 @@ final class DelegateRunViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private var followsBottom = true
-    private var story: DelegateRunStory? { desk.board(host: host, serverName: serverName).story(for: runID) }
+    private var askedPatch = false
+    private var delivering = false
+    private var reading: DelegateRunReading?
+    private let headView = DelegateRunHeadView()
+    private let leadView = DelegateLeadView()
+    private let primaryView = DelegatePrimaryActionView()
+
+    private var board: DelegateBoard { desk.board(host: host, serverName: serverName) }
 
     init(host: String, serverName: String, runID: String) {
         self.host = host
@@ -39,9 +47,13 @@ final class DelegateRunViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = story?.headline ?? DelegateEntryPoint.title
+        title = DelegateEntryPoint.title
         navigationItem.largeTitleDisplayMode = .never
         view.backgroundColor = Theme.Color.groupedBackground
+        primaryView.onPress = { [weak self] in
+            guard let self, let primary = self.reading?.primary else { return }
+            self.perform(primary.kind, source: self.primaryView)
+        }
         configure()
         NotificationCenter.default.addObserver(
             self, selector: #selector(deskChanged), name: DelegateDesk.didChange, object: nil)
@@ -50,13 +62,12 @@ final class DelegateRunViewController: UIViewController {
     }
 
     @objc private func deskChanged() {
-        title = story?.headline ?? title
         applySnapshot()
     }
 
     #if DEBUG
         /// `TAILSCODE_DELEGATE_SCROLL=1` lands on the run's last rows, so a simulator can be
-        /// photographed with the next moves in view.
+        /// photographed with the timeline in view.
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             guard ProcessInfo.processInfo.environment["TAILSCODE_DELEGATE_SCROLL"] == "1" else { return }
@@ -71,6 +82,14 @@ final class DelegateRunViewController: UIViewController {
     private func configure() {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         config.headerMode = .supplementary
+        config.itemSeparatorHandler = { [weak self] indexPath, separator in
+            var separator = separator
+            if self?.dataSource.snapshot().sectionIdentifiers[safe: indexPath.section] == .timeline {
+                separator.topSeparatorVisibility = .hidden
+                separator.bottomSeparatorVisibility = .hidden
+            }
+            return separator
+        }
         let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -79,17 +98,41 @@ final class DelegateRunViewController: UIViewController {
         view.addSubview(collectionView)
 
         let ladderCell = UICollectionView.CellRegistration<LadderCell, Item> { [weak self] cell, _, _ in
-            guard let story = self?.story else { return }
-            cell.show(story.ladder)
+            guard let ladder = self?.reading?.ladder else { return }
+            cell.show(ladder)
         }
-        let approvalCell = UICollectionView.CellRegistration<DelegateApprovalCell, Item> { [weak self] cell, _, _ in
-            guard let self, let pending = self.story?.pendingApproval else { return }
-            cell.show(tier: pending.tier, reason: pending.reason) { [weak self] approved in
-                self?.decide(approved)
+        let hostCell = UICollectionView.CellRegistration<DelegateHostCell, Item> { [weak self] cell, _, item in
+            guard let self, let reading = self.reading else { return }
+            switch item {
+            case .head:
+                self.headView.show(reading)
+                cell.place(self.headView)
+                cell.backgroundConfiguration = .clear()
+            case .lead:
+                guard let lead = reading.lead else { return }
+                self.leadView.show(lead)
+                cell.place(self.leadView)
+                var background = UIBackgroundConfiguration.listGroupedCell()
+                background.backgroundColor = lead.tone == .quiet
+                    ? Theme.Color.groupedSurface : lead.tone.color.withAlphaComponent(0.12)
+                cell.backgroundConfiguration = background
+            case .primary:
+                guard let primary = reading.primary else { return }
+                self.primaryView.show(primary, busy: self.delivering)
+                cell.place(self.primaryView)
+                cell.backgroundConfiguration = .clear()
+            default:
+                break
             }
         }
         let listCell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
             self?.configure(cell, item)
+        }
+        let lineCell = UICollectionView.CellRegistration<DelegateTimelineCell, Item> { [weak self] cell, _, item in
+            guard case .line(let seq) = item, let timeline = self?.reading?.timeline,
+                let line = timeline.first(where: { $0.seq == seq })
+            else { return }
+            cell.show(line, first: timeline.first?.seq == seq, last: timeline.last?.seq == seq)
         }
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
@@ -101,7 +144,8 @@ final class DelegateRunViewController: UIViewController {
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { collectionView, indexPath, item in
             switch item {
             case .ladder: return collectionView.dequeueConfiguredReusableCell(using: ladderCell, for: indexPath, item: item)
-            case .approval: return collectionView.dequeueConfiguredReusableCell(using: approvalCell, for: indexPath, item: item)
+            case .head, .lead, .primary: return collectionView.dequeueConfiguredReusableCell(using: hostCell, for: indexPath, item: item)
+            case .line: return collectionView.dequeueConfiguredReusableCell(using: lineCell, for: indexPath, item: item)
             default: return collectionView.dequeueConfiguredReusableCell(using: listCell, for: indexPath, item: item)
             }
         }
@@ -112,157 +156,249 @@ final class DelegateRunViewController: UIViewController {
 
     private func sectionTitle(at index: Int) -> String? {
         switch dataSource.snapshot().sectionIdentifiers[safe: index] {
-        case .ladder: return story.map { DelegateWords.status($0.status) }
-        case .approval: return String(localized: "Waiting for you")
-        case .story: return String(localized: "Story")
-        case .attempts: return String(localized: "Attempts")
-        case .actions, .none: return nil
+        case .files: return reading?.filesTitle
+        case .timeline: return DelegateRunReading.timelineTitle
+        default: return nil
         }
     }
 
     private func applySnapshot() {
-        guard let story else { return }
+        let board = board
+        guard let reading = board.reading(for: runID) else { return }
+        self.reading = reading
+        if board.story(for: runID)?.status == .passed, board.patches[runID] == nil, !askedPatch {
+            askedPatch = true
+            Task { [weak self] in
+                guard let self else { return }
+                do { try await self.desk.patch(runID: self.runID, host: self.host) } catch {
+                    AppLogger.ui.error("delegate patch for \(self.runID) unread: \(error.localizedDescription)")
+                }
+            }
+        }
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
+        snapshot.appendSections([.head])
+        snapshot.appendItems([.head], toSection: .head)
+        if reading.lead != nil {
+            snapshot.appendSections([.lead])
+            snapshot.appendItems([.lead], toSection: .lead)
+        }
         snapshot.appendSections([.ladder])
         snapshot.appendItems([.ladder], toSection: .ladder)
-        if story.needsApproval {
-            snapshot.appendSections([.approval])
-            snapshot.appendItems([.approval], toSection: .approval)
+        if reading.primary != nil {
+            snapshot.appendSections([.primary])
+            snapshot.appendItems([.primary], toSection: .primary)
         }
-        if !story.lines.isEmpty {
-            snapshot.appendSections([.story])
-            snapshot.appendItems(story.lines.map { .line($0.seq) }, toSection: .story)
+        var actions = reading.secondary.map { Item.action($0.id) }
+        if !reading.replayTiers.isEmpty { actions.append(.replay) }
+        if !actions.isEmpty {
+            snapshot.appendSections([.actions])
+            snapshot.appendItems(actions, toSection: .actions)
         }
-        if !story.attempts.isEmpty {
-            snapshot.appendSections([.attempts])
-            snapshot.appendItems(story.attempts.indices.map { .attempt($0) }, toSection: .attempts)
+        if !reading.files.isEmpty {
+            snapshot.appendSections([.files])
+            snapshot.appendItems(reading.files.map { .file($0.path) }, toSection: .files)
         }
-        snapshot.appendSections([.actions])
-        var actions: [Item] = []
-        if !story.appliedFiles.isEmpty { actions.append(.applied) }
-        if story.isLive { actions.append(.cancel) }
-        for step in story.nextSteps(tierOrder: desk.board(host: host, serverName: serverName).tierOrder) {
-            actions.append(.step(step.id))
+        if !reading.timeline.isEmpty {
+            snapshot.appendSections([.timeline])
+            snapshot.appendItems(reading.timeline.map { .line($0.seq) }, toSection: .timeline)
         }
-        if !story.isLive { actions.append(.replay) }
-        snapshot.appendItems(actions, toSection: .actions)
         let existing = dataSource.snapshot().itemIdentifiers
         snapshot.reconfigureItems(snapshot.itemIdentifiers.filter { existing.contains($0) })
         let grew = snapshot.itemIdentifiers.count > existing.count
         dataSource.apply(snapshot, animatingDifferences: false)
-        if grew, followsBottom, story.isLive, let last = story.lines.last {
-            if let indexPath = dataSource.indexPath(for: .line(last.seq)) {
-                collectionView.scrollToItem(at: indexPath, at: .bottom, animated: true)
-            }
+        refreshHeaders()
+        if grew, followsBottom, reading.isLive, let last = reading.timeline.last,
+            let indexPath = dataSource.indexPath(for: .line(last.seq))
+        {
+            collectionView.scrollToItem(at: indexPath, at: .bottom, animated: true)
         }
     }
 
+    private func refreshHeaders() {
+        for header in collectionView.visibleSupplementaryViews(ofKind: UICollectionView.elementKindSectionHeader) {
+            guard let header = header as? UICollectionViewListCell,
+                let indexPath = collectionView.indexPath(forSupplementaryView: header)
+            else { continue }
+            var content = UIListContentConfiguration.header()
+            content.text = sectionTitle(at: indexPath.section)
+            header.contentConfiguration = content
+        }
+    }
+
+    private func action(_ id: String) -> DelegateRunAction? {
+        reading?.secondary.first { $0.id == id }
+    }
+
     private func configure(_ cell: UICollectionViewListCell, _ item: Item) {
-        guard let story else { return }
+        guard let reading else { return }
         var content = cell.defaultContentConfiguration()
         cell.accessories = []
         switch item {
-        case .line(let seq):
-            guard let line = story.lines.first(where: { $0.seq == seq }) else { break }
-            content.text = line.text
-            content.textProperties.numberOfLines = 0
-            content.textProperties.font = Theme.Ramp.font(line.isProgress ? .rowMeta : .rowDetail)
-            content.textProperties.color = line.isProgress ? Theme.Color.tertiaryLabel : (line.tone == .quiet ? Theme.Color.label : line.tone.color)
-            content.directionalLayoutMargins.leading = line.isProgress ? Theme.Spacing.xl : Theme.Spacing.l
-        case .attempt(let index):
-            guard let attempt = story.attempts[safe: index] else { break }
-            content.text = DelegateRunStory.attemptLine(attempt)
-            content.textProperties.color = DelegateWords.tone(attempt.status) == .quiet ? Theme.Color.label : DelegateWords.tone(attempt.status).color
-            var lines: [String] = []
-            if let model = story.currentModel[attempt.tier] { lines.append(model) }
-            lines.append(Localized.text("%@ in · %@ out", DelegateWords.tokens(attempt.tokensIn), DelegateWords.tokens(attempt.tokensOut)))
-            if !attempt.changedFiles.isEmpty { lines.append(attempt.changedFiles.joined(separator: ", ")) }
-            if attempt.status != .pass, !attempt.verifyTail.isEmpty {
-                lines.append(attempt.verifyTail.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: "\n").suffix(6).joined(separator: "\n"))
-            }
-            if !attempt.workerSummary.isEmpty, attempt.status == .pass {
-                lines.append(String(attempt.workerSummary.prefix(400)))
-            }
-            content.secondaryText = lines.joined(separator: "\n")
-            content.secondaryTextProperties.numberOfLines = 0
-            content.secondaryTextProperties.font = Theme.Ramp.font(.code)
+        case .action(let id):
+            guard let action = action(id) else { break }
+            let ink = action.role == .destructive ? Theme.Color.danger : Theme.Color.accent
+            content.text = action.title
+            content.textProperties.color = ink
+            content.secondaryText = action.detail
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-        case .applied:
-            content.text = Localized.text("Applied %@ to the working tree, unstaged", DelegateWords.files(story.appliedFiles.count))
-            content.secondaryText = story.appliedFiles.joined(separator: "\n")
             content.secondaryTextProperties.numberOfLines = 0
-            content.secondaryTextProperties.font = Theme.Ramp.font(.code)
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(systemName: "checkmark.circle")
-            content.imageProperties.tintColor = Theme.Color.success
-        case .cancel:
-            content.text = String(localized: "Cancel this run")
-            content.textProperties.color = Theme.Color.danger
-            content.image = UIImage(systemName: "xmark.circle")
-            content.imageProperties.tintColor = Theme.Color.danger
+            content.image = UIImage(systemName: Self.symbol(action.kind))
+            content.imageProperties.tintColor = ink
         case .replay:
-            content.text = String(localized: "Replay on another tier")
-            content.secondaryText = String(localized: "The same packet, started where you choose")
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.text = DelegateRunReading.replayMenuTitle
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "arrow.counterclockwise")
             content.imageProperties.tintColor = Theme.Color.accent
-            cell.accessories = [.customView(configuration: .init(customView: replayButton(), placement: .trailing()))]
-        case .step(let id):
-            guard let step = nextStep(id) else { break }
-            content.text = step.title
-            content.secondaryText = step.detail
+            cell.accessories = [.popUpMenu(replayMenu(reading.replayTiers))]
+        case .file(let path):
+            guard let file = reading.files.first(where: { $0.path == path }) else { break }
+            content.text = file.name
+            content.textProperties.font = Theme.Ramp.font(.treeRow)
+            content.secondaryText = file.folder.isEmpty ? nil : file.folder
+            content.secondaryTextProperties.font = Theme.Ramp.font(.treePath)
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.secondaryTextProperties.numberOfLines = 0
-            content.textProperties.color = Theme.Color.accent
-            switch step.kind {
-            case .replay: content.image = UIImage(systemName: "arrow.up.forward.circle")
-            case .duplicate: content.image = UIImage(systemName: "doc.on.doc")
+            content.image = UIImage(systemName: "doc.text")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
+            var accessories: [UICellAccessory] = []
+            if let counts = Self.counts(file) {
+                accessories.append(.customView(configuration: .init(customView: counts, placement: .trailing())))
             }
-            content.imageProperties.tintColor = Theme.Color.accent
-        case .ladder, .approval:
+            accessories.append(.disclosureIndicator())
+            cell.accessories = accessories
+            cell.accessibilityLabel = [file.path, file.counts].compactMap { $0 }.joined(separator: ", ")
+        case .head, .lead, .ladder, .primary, .line:
             break
         }
         cell.contentConfiguration = content
     }
 
-    private func nextStep(_ id: String) -> DelegateNextStep? {
-        story?.nextSteps(tierOrder: desk.board(host: host, serverName: serverName).tierOrder).first { $0.id == id }
-    }
-
-    /// One of the run's own next moves: the same packet on the rung it names, or a fresh packet
-    /// opened from this one's words.
-    private func performNextStep(_ step: DelegateNextStep) {
-        switch step.kind {
-        case .replay(let tier):
-            replay(tier: tier)
-        case .duplicate:
-            guard let packet = story?.packet else { return }
-            Theme.Haptics.tap()
-            let composer = DelegateComposerViewController(host: host, serverName: serverName, draft: DelegateDraft(packet: packet))
-            composer.onStarted = { [weak self] runID in
-                guard let self else { return }
-                self.navigationController?.pushViewController(
-                    DelegateRunViewController(host: self.host, serverName: self.serverName, runID: runID), animated: true)
-            }
-            let nav = UINavigationController(rootViewController: composer)
-            nav.navigationBar.prefersLargeTitles = false
-            present(nav, animated: true)
+    private static func symbol(_ kind: DelegateRunAction.Kind) -> String {
+        switch kind {
+        case .approve, .apply: return "checkmark.circle"
+        case .hold: return "pause.circle"
+        case .discard: return "trash"
+        case .cancel: return "xmark.circle"
+        case .replay: return "arrow.up.forward.circle"
+        case .duplicate: return "doc.on.doc"
         }
     }
 
-    private func replayButton() -> UIButton {
-        let button = UIButton(configuration: .plain())
-        button.showsMenuAsPrimaryAction = true
-        var config = UIButton.Configuration.plain()
-        config.image = UIImage(systemName: "chevron.up.chevron.down", withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
-        config.baseForegroundColor = Theme.Color.secondaryLabel
-        button.configuration = config
-        let tiers = desk.board(host: host, serverName: serverName).tierOrder
-        button.menu = UIMenu(title: String(localized: "Start at"), children: tiers.map { tier in
-            UIAction(title: tier) { [weak self] _ in self?.replay(tier: tier) }
+    /// "+12 −3" in the colours a diff gutter wears, or the one word a binary file gets.
+    private static func counts(_ file: DelegateFileRow) -> UILabel? {
+        guard let counts = file.counts else { return nil }
+        let label = UILabel()
+        label.font = Theme.Ramp.font(.rowMeta)
+        guard let added = file.added, let removed = file.removed, counts.hasPrefix("+") else {
+            label.text = counts
+            label.textColor = Theme.Color.secondaryLabel
+            return label
+        }
+        let text = NSMutableAttributedString(string: "+\(added)", attributes: [.foregroundColor: Theme.Color.success])
+        if removed > 0 {
+            text.append(NSAttributedString(string: " −\(removed)", attributes: [.foregroundColor: Theme.Color.danger]))
+        }
+        label.attributedText = text
+        return label
+    }
+
+    private func replayMenu(_ tiers: [String]) -> UIMenu {
+        let labels = Dictionary(board.tiers.map { ($0.tier, $0.label) }, uniquingKeysWith: { first, _ in first })
+        return UIMenu(title: DelegateRunReading.replayMenuTitle, children: tiers.map { tier in
+            let label = labels[tier] ?? ""
+            return UIAction(title: tier, subtitle: label.isEmpty ? nil : label) { [weak self] _ in
+                self?.replay(tier: tier)
+            }
         })
-        return button
+    }
+
+    private func perform(_ kind: DelegateRunAction.Kind, source: UIView) {
+        switch kind {
+        case .approve: decide(true)
+        case .hold: decide(false)
+        case .apply: apply(source: source)
+        case .discard: confirmDiscard(source: source)
+        case .cancel: cancel(source: source)
+        case .replay(let tier): replay(tier: tier)
+        case .duplicate:
+            guard let packet = board.story(for: runID)?.packet else { return }
+            Theme.Haptics.tap()
+            DelegateGate.presentComposer(from: self, host: host, serverName: serverName, draft: DelegateDraft(packet: packet))
+        }
+    }
+
+    /// Applying lands files in a tree a chat may be writing to right now; that chat is named before
+    /// the press rather than discovered after it.
+    private func apply(source: UIView) {
+        let repo = reading?.repo ?? ""
+        let chats = DelegateChatFootprint.from(SessionListCache.load(), host: host)
+        let cautions = DelegateApplyCheck.cautions(repo: repo, chats: chats)
+        guard cautions.isEmpty else {
+            Theme.Haptics.warning()
+            let alert = UIAlertController(
+                title: DelegateApplyCheck.confirmTitle, message: cautions.joined(separator: "\n\n"), preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+            alert.addAction(UIAlertAction(title: DelegateApplyCheck.confirmAction, style: .default) { [weak self] _ in
+                self?.deliver(apply: true)
+            })
+            present(alert, animated: true)
+            return
+        }
+        deliver(apply: true)
+    }
+
+    private func confirmDiscard(source: UIView) {
+        let alert = UIAlertController(
+            title: String(localized: "Discard this patch?"),
+            message: String(localized: "The tree never sees it. The patch stays readable on this run."),
+            preferredStyle: .actionSheet)
+        alert.popoverPresentationController?.sourceView = source
+        alert.popoverPresentationController?.sourceRect = source.bounds
+        alert.addAction(UIAlertAction(title: String(localized: "Discard"), style: .destructive) { [weak self] _ in
+            self?.deliver(apply: false)
+        })
+        alert.addAction(UIAlertAction(title: String(localized: "Keep it"), style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func deliver(apply: Bool) {
+        guard !delivering else { return }
+        delivering = true
+        apply ? Theme.Haptics.send() : Theme.Haptics.warning()
+        applySnapshot()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if apply {
+                    try await self.desk.apply(runID: self.runID, host: self.host)
+                } else {
+                    try await self.desk.discard(runID: self.runID, host: self.host)
+                }
+                AppLogger.ui.info("delegate run \(self.runID) \(apply ? "applied" : "discarded") on \(self.host)")
+                Theme.Haptics.success()
+            } catch {
+                AppLogger.ui.error("delegate run \(self.runID) \(apply ? "apply" : "discard") refused: \(error.localizedDescription)")
+                Theme.Haptics.error()
+                DelegateRefusalViewController.present(DelegateRefusal(error), from: self)
+            }
+            self.delivering = false
+            self.applySnapshot()
+        }
+    }
+
+    private func openFile(_ file: DelegateFileRow) {
+        Theme.Haptics.tap()
+        let runID = runID
+        let host = host
+        let path = file.path
+        let viewer = GitDiffViewController(
+            title: file.name, subtitle: file.path,
+            load: { try await DelegateRunViewController.filePatch(runID: runID, host: host, path: path) })
+        navigationController?.pushViewController(viewer, animated: true)
+    }
+
+    private static func filePatch(runID: String, host: String, path: String) async throws -> String? {
+        let patch = try await DelegateGate.desk.patch(runID: runID, host: host)
+        return DelegatePatch.files(patch).first { $0.path == path }?.patch
     }
 
     private func replay(tier: String) {
@@ -271,8 +407,7 @@ final class DelegateRunViewController: UIViewController {
             guard let self else { return }
             do {
                 let started = try await self.desk.replay(runID: self.runID, host: self.host, tier: tier, ceiling: nil)
-                self.navigationController?.pushViewController(
-                    DelegateRunViewController(host: self.host, serverName: self.serverName, runID: started), animated: true)
+                DelegateGate.showRun(started, host: self.host, serverName: self.serverName, from: self)
             } catch {
                 self.fail(String(localized: "The replay did not start"), error)
             }
@@ -320,13 +455,24 @@ final class DelegateRunViewController: UIViewController {
 }
 
 extension DelegateRunViewController: UICollectionViewDelegate {
+    func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
+        switch dataSource.itemIdentifier(for: indexPath) {
+        case .action, .replay, .file: return true
+        default: return false
+        }
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
+        let source = collectionView.cellForItem(at: indexPath) ?? collectionView
         switch item {
-        case .cancel: cancel(source: collectionView.cellForItem(at: indexPath) ?? collectionView)
-        case .step(let id): if let step = nextStep(id) { performNextStep(step) }
-        default: break
+        case .action(let id):
+            if let action = action(id) { perform(action.kind, source: source) }
+        case .file(let path):
+            if let file = reading?.files.first(where: { $0.path == path }) { openFile(file) }
+        default:
+            break
         }
     }
 
@@ -336,7 +482,208 @@ extension DelegateRunViewController: UICollectionViewDelegate {
     }
 }
 
-/// The ladder as a row of the run, read-only, wearing the story's states.
+/// One line of the run's timeline, set tight like a log: tone-coloured, a worker's progress indented
+/// and quiet, and a failed attempt's own output under its line.
+final class DelegateTimelineCell: UICollectionViewListCell {
+    private let text = UILabel()
+    private let detail = UILabel()
+    private let detailBlock = UIView()
+    private var indent: NSLayoutConstraint!
+    private var top: NSLayoutConstraint!
+    private var bottom: NSLayoutConstraint!
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        text.numberOfLines = 0
+        text.adjustsFontForContentSizeCategory = true
+        detail.numberOfLines = 0
+        detail.font = Theme.Ramp.font(.toolOutput)
+        detail.textColor = Theme.Color.secondaryLabel
+        detail.adjustsFontForContentSizeCategory = true
+        detail.translatesAutoresizingMaskIntoConstraints = false
+        let bar = UIView()
+        bar.backgroundColor = Theme.Color.separator
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        detailBlock.addSubview(bar)
+        detailBlock.addSubview(detail)
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: detailBlock.topAnchor),
+            bar.bottomAnchor.constraint(equalTo: detailBlock.bottomAnchor),
+            bar.leadingAnchor.constraint(equalTo: detailBlock.leadingAnchor, constant: 2),
+            bar.widthAnchor.constraint(equalToConstant: 2),
+            detail.topAnchor.constraint(equalTo: detailBlock.topAnchor),
+            detail.bottomAnchor.constraint(equalTo: detailBlock.bottomAnchor),
+            detail.leadingAnchor.constraint(equalTo: bar.trailingAnchor, constant: Theme.Spacing.s),
+            detail.trailingAnchor.constraint(equalTo: detailBlock.trailingAnchor),
+        ])
+        let column = UIStackView(arrangedSubviews: [text, detailBlock])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.xs
+        column.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(column)
+        indent = column.leadingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.leadingAnchor)
+        top = column.topAnchor.constraint(equalTo: contentView.topAnchor)
+        bottom = column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+        NSLayoutConstraint.activate([
+            top, bottom, indent,
+            column.trailingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.trailingAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// - Parameters:
+    ///   - first: the line opens the timeline, so it keeps the card's own top margin.
+    ///   - last: the line closes the timeline, so it keeps the card's own bottom margin.
+    func show(_ line: DelegateStoryLine, first: Bool, last: Bool) {
+        text.text = line.text
+        text.font = Theme.Ramp.font(line.isProgress ? .rowMeta : .rowDetail)
+        text.textColor = line.isProgress ? Theme.Color.tertiaryLabel : line.tone.inkColor
+        detail.text = line.detail
+        detailBlock.isHidden = line.detail == nil
+        indent.constant = line.isProgress ? Theme.Spacing.l : 0
+        top.constant = first ? Theme.Spacing.m : Theme.Spacing.xs + 1
+        bottom.constant = -(last ? Theme.Spacing.m : Theme.Spacing.xs + 1)
+        accessibilityLabel = [line.text, line.detail].compactMap { $0 }.joined(separator: ". ")
+    }
+}
+
+/// The goal as the run's heading, its pill beside it, and the facts in one line under it.
+final class DelegateRunHeadView: UIView {
+    private let headline = UILabel()
+    private let pill = DelegatePill()
+    private let facts = UILabel()
+
+    init() {
+        super.init(frame: .zero)
+        headline.font = Theme.Ramp.font(.headline)
+        headline.textColor = Theme.Color.label
+        headline.numberOfLines = 0
+        headline.adjustsFontForContentSizeCategory = true
+        headline.accessibilityTraits = .header
+        facts.font = Theme.Ramp.font(.rowMeta)
+        facts.textColor = Theme.Color.secondaryLabel
+        facts.numberOfLines = 0
+        facts.adjustsFontForContentSizeCategory = true
+        let pillRow = UIStackView(arrangedSubviews: [pill, UIView()])
+        pillRow.axis = .horizontal
+        let column = UIStackView(arrangedSubviews: [pillRow, headline, facts])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.xs
+        column.setCustomSpacing(Theme.Spacing.s, after: pillRow)
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: topAnchor),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor),
+            column.leadingAnchor.constraint(equalTo: leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ reading: DelegateRunReading) {
+        headline.text = reading.headline
+        pill.show(reading.badge, tone: reading.tone)
+        pill.superview?.isHidden = reading.badge == nil
+        facts.text = reading.facts
+        facts.isHidden = reading.facts.isEmpty
+    }
+}
+
+/// The one thing that matters about the run right now, with a bar in the colour of what it means.
+final class DelegateLeadView: UIView {
+    private let bar = UIView()
+    private let title = UILabel()
+    private let caption = UILabel()
+    private let body = UILabel()
+
+    init() {
+        super.init(frame: .zero)
+        bar.layer.cornerRadius = 1.5
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        title.font = Theme.Ramp.font(.cardTitle)
+        title.numberOfLines = 0
+        title.adjustsFontForContentSizeCategory = true
+        caption.font = Theme.Ramp.font(.rowMeta)
+        caption.textColor = Theme.Color.secondaryLabel
+        caption.numberOfLines = 0
+        caption.adjustsFontForContentSizeCategory = true
+        body.numberOfLines = 0
+        body.adjustsFontForContentSizeCategory = true
+        let column = UIStackView(arrangedSubviews: [title, caption, body])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.xs
+        column.setCustomSpacing(Theme.Spacing.s, after: caption)
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(bar)
+        addSubview(column)
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            bar.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            bar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            bar.widthAnchor.constraint(equalToConstant: 3),
+            column.topAnchor.constraint(equalTo: topAnchor),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor),
+            column.leadingAnchor.constraint(equalTo: bar.trailingAnchor, constant: Theme.Spacing.m),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ lead: DelegateRunReading.Lead) {
+        bar.backgroundColor = lead.tone.color
+        title.text = lead.title
+        title.textColor = lead.tone == .quiet ? Theme.Color.label : lead.tone.color
+        caption.text = lead.caption
+        caption.isHidden = lead.caption == nil
+        body.text = lead.body
+        body.isHidden = lead.body == nil
+        body.font = Theme.Ramp.font(lead.bodyIsOutput ? .toolOutput : .cardBody)
+        body.textColor = lead.bodyIsOutput ? Theme.Color.label : Theme.Color.secondaryLabel
+    }
+}
+
+/// The run's one primary action as the prominent button, with what it does under it.
+final class DelegatePrimaryActionView: UIView {
+    var onPress: (() -> Void)?
+    private let button = PrimaryButton(title: "")
+    private let detail = UILabel()
+
+    init() {
+        super.init(frame: .zero)
+        detail.font = Theme.Ramp.font(.rowNote)
+        detail.textColor = Theme.Color.secondaryLabel
+        detail.textAlignment = .center
+        detail.numberOfLines = 0
+        detail.adjustsFontForContentSizeCategory = true
+        button.addAction(UIAction { [weak self] _ in self?.onPress?() }, for: .touchUpInside)
+        let column = UIStackView(arrangedSubviews: [button, detail])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.s
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: topAnchor),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor),
+            column.leadingAnchor.constraint(equalTo: leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ action: DelegateRunAction, busy: Bool) {
+        button.setTitle(action.title)
+        button.setLoading(busy)
+        detail.text = action.detail
+        detail.isHidden = action.detail == nil
+    }
+}
+
+/// The ladder as a row of the run, read-only, each rung wearing its state and its word for this run.
 final class LadderCell: UICollectionViewListCell {
     private let ladder = TierLadderControl()
 
@@ -356,50 +703,80 @@ final class LadderCell: UICollectionViewListCell {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func show(_ ladder: DelegateLadder) {
-        self.ladder.rungs = ladder.rungs
+        self.ladder.rungs = ladder.rungs.map { rung in
+            var worded = rung
+            worded.note = ladder.word(for: rung)
+            return worded
+        }
         accessibilityLabel = ladder.spoken
     }
 }
 
-/// The two answers a gated rung waits for. Approve climbs; hold ends the run as held.
-final class DelegateApprovalCell: UICollectionViewListCell {
-    private let title = UILabel()
-    private let reason = UILabel()
-    private let approve = PrimaryButton(title: String(localized: "Approve"))
-    private let hold = SecondaryButton(title: String(localized: "Hold"))
-    private var onDecision: ((Bool) -> Void)?
+/// What a refused apply or discard said, as a sheet sized to its words: git's own reason is set as
+/// output, because it is the message.
+@MainActor
+final class DelegateRefusalViewController: UIViewController {
+    private let refusal: DelegateRefusal
+    private let column = UIStackView()
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        title.font = Theme.Ramp.font(.rowTitleStrong)
-        title.numberOfLines = 0
-        reason.font = Theme.Ramp.font(.rowDetail)
-        reason.textColor = Theme.Color.secondaryLabel
-        reason.numberOfLines = 0
-        let buttons = UIStackView(arrangedSubviews: [approve, hold])
-        buttons.axis = .horizontal
-        buttons.distribution = .fillEqually
-        buttons.spacing = Theme.Spacing.s
-        let column = UIStackView(arrangedSubviews: [title, reason, buttons])
-        column.axis = .vertical
-        column.spacing = Theme.Spacing.s
-        column.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(column)
-        NSLayoutConstraint.activate([
-            column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m),
-            column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.m),
-            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
-        ])
-        approve.addAction(UIAction { [weak self] _ in self?.onDecision?(true) }, for: .touchUpInside)
-        hold.addAction(UIAction { [weak self] _ in self?.onDecision?(false) }, for: .touchUpInside)
+    static func present(_ refusal: DelegateRefusal, from presenter: UIViewController) {
+        let card = DelegateRefusalViewController(refusal: refusal)
+        if let sheet = card.sheetPresentationController {
+            sheet.prefersGrabberVisible = true
+            sheet.detents = [.medium(), .large()]
+        }
+        presenter.present(card, animated: true)
+    }
+
+    init(refusal: DelegateRefusal) {
+        self.refusal = refusal
+        super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func show(tier: String, reason: String, onDecision: @escaping (Bool) -> Void) {
-        title.text = Localized.text("Climb to %@?", tier)
-        self.reason.text = reason
-        self.onDecision = onDecision
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = Theme.Color.groupedBackground
+        let scroll = UIScrollView()
+        scroll.alwaysBounceVertical = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scroll)
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.m
+        column.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(column)
+
+        let title = UILabel()
+        title.text = refusal.title
+        title.font = Theme.Ramp.font(.panelTitle)
+        title.textColor = Theme.Color.danger
+        title.numberOfLines = 0
+        title.adjustsFontForContentSizeCategory = true
+        let body = UILabel()
+        body.text = refusal.body
+        body.font = Theme.Ramp.font(refusal.bodyIsOutput ? .toolOutput : .cardBody)
+        body.textColor = refusal.bodyIsOutput ? Theme.Color.label : Theme.Color.secondaryLabel
+        body.numberOfLines = 0
+        body.adjustsFontForContentSizeCategory = true
+        var config = UIButton.Configuration.filled()
+        config.title = String(localized: "OK")
+        config.baseBackgroundColor = Theme.Color.accent
+        config.cornerStyle = .large
+        config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
+        let done = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        for view in [title, body, done] { column.addArrangedSubview(view) }
+        column.setCustomSpacing(Theme.Spacing.l, after: body)
+
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: view.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            column.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: Theme.Spacing.xl),
+            column.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -Theme.Spacing.l),
+            column.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            column.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+        ])
     }
 }

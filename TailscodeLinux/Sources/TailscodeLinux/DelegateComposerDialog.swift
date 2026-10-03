@@ -6,21 +6,22 @@ import TailscodeCore
 
 /// A packet, written rather than dictated — the same standard `ForgeSetupWindow` holds pointing at
 /// a renderer: a modal transient over the board, held to as long as it is open and let go of on
-/// `destroy`. Three fields matter (the goal, the paths, the verifier) and everything else is a
-/// default the daemon's own class table already knows; `DelegateDraft` decides every word and every
-/// rule, this only composes the widgets.
+/// `destroy`. It asks first for what only the person knows — the goal, the repository (picked from
+/// where this machine's chats and runs work), the paths — and folds everything the class already
+/// decides into one Plan line that opens on demand. `DelegateDraft` decides every word and every
+/// rule; this only composes the widgets.
 final class DelegateComposerDialog: @unchecked Sendable {
     nonisolated(unsafe) private static var open: DelegateComposerDialog?
 
     static func present(
         parent: UnsafeMutablePointer<GtkWidget>?, board: DelegateBoard, draft seed: DelegateDraft? = nil,
-        onSend: @escaping @Sendable (DelegateDraft) -> Void
+        repoChoices: [DelegateRepoChoice] = [], onSend: @escaping @Sendable (DelegateDraft) -> Void
     ) {
         if let open {
             gtk_window_present(ptr(open.window))
             return
         }
-        open = DelegateComposerDialog(parent: parent, board: board, seed: seed, onSend: onSend)
+        open = DelegateComposerDialog(parent: parent, board: board, seed: seed, repoChoices: repoChoices, onSend: onSend)
     }
 
     private let window = gtk_window_new()!
@@ -28,6 +29,9 @@ final class DelegateComposerDialog: @unchecked Sendable {
     private var draft: DelegateDraft
     private let classes: [String]
     private let board: DelegateBoard
+    private let repoChoices: [DelegateRepoChoice]
+    private let planSummaryLabel = Gtk.label("", css: "dg-facts", selectable: false)
+    private let reviewSwitch = gtk_switch_new()!
     private let legendLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
     private var noteLabels: [String: UnsafeMutablePointer<GtkWidget>] = [:]
 
@@ -43,17 +47,18 @@ final class DelegateComposerDialog: @unchecked Sendable {
     private let ladderCeilingRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
     private let modeRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
     private let effortRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-    private let statusHeader = Gtk.label(DelegateComposerWords.cautionsTitle, css: "row-title", selectable: false)
-    private let problemsLabel = Gtk.label("", wrap: true, selectable: false)
-    private let cautionsLabel = Gtk.label("", wrap: true, selectable: false)
+    private let statusHeader = Gtk.label(DelegateComposerWords.cautionsTitle.uppercased(), css: "dg-section", selectable: false)
+    private let problemsLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
+    private let cautionsLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
     private let sendButton = gtk_button_new_with_label(DelegateComposerWords.sendTitle)!
 
     private init(
         parent: UnsafeMutablePointer<GtkWidget>?, board: DelegateBoard, seed: DelegateDraft?,
-        onSend: @escaping @Sendable (DelegateDraft) -> Void
+        repoChoices: [DelegateRepoChoice], onSend: @escaping @Sendable (DelegateDraft) -> Void
     ) {
         self.onSend = onSend
         self.board = board
+        self.repoChoices = repoChoices
         draft = seed ?? DelegateDraft(capabilities: board.capabilities, repo: "")
         classes = board.classes.isEmpty ? [draft.taskClass] : board.classes
         classDropdown = Self.dropdown(classes)
@@ -61,7 +66,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
         DelegateToneCSS.apply(cautionsLabel, .attention)
 
         gtk_window_set_modal(ptr(window), 1)
-        gtk_window_set_default_size(ptr(window), 560, 720)
+        gtk_window_set_default_size(ptr(window), 600, 800)
         gtk_widget_set_size_request(window, 460, 480)
         if let parent, let root = gtk_widget_get_root(parent) {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
@@ -133,23 +138,98 @@ final class DelegateComposerDialog: @unchecked Sendable {
     }
 
     private func form() -> UnsafeMutablePointer<GtkWidget> {
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 14)
-        Gtk.margins(column, top: 12, bottom: 12, leading: 16, trailing: 16)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 18)
+        Gtk.margins(column, top: 14, bottom: 14, leading: 18, trailing: 18)
 
-        gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.classLabel, classDropdown, help: DelegateComposerWords.classHelp))
         gtk_box_append(
             ptr(column),
             fieldBlock(
                 DelegateComposerWords.goalLabel,
-                textArea(goalView, placeholder: DelegateComposerWords.goalPlaceholder, minHeight: 90)))
+                textArea(goalView, placeholder: DelegateComposerWords.goalPlaceholder, minHeight: 120),
+                help: DelegateComposerWords.goalPlaceholder))
+
         gtk_widget_set_hexpand(repoEntry, 1)
-        gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.repoLabel, repoEntry))
+        let repoColumn = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        gtk_box_append(ptr(repoColumn), repoEntry)
+        if !repoChoices.isEmpty { gtk_box_append(ptr(repoColumn), repoChoiceRow()) }
+        gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.repoLabel, repoColumn))
+
         gtk_box_append(
             ptr(column),
             fieldBlock(
                 DelegateComposerWords.pathsLabel,
-                textArea(pathsView, placeholder: DelegateComposerWords.pathsPlaceholder, minHeight: 70),
-                help: DelegateComposerWords.pathsHelp))
+                textArea(pathsView, placeholder: DelegateComposerWords.pathsPlaceholder, minHeight: 64),
+                help: DelegateComposerWords.pathsHelp + " " + DelegateComposerWords.pathsOptional))
+
+        gtk_box_append(ptr(column), reviewRow())
+
+        let planHeader = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_box_append(ptr(planHeader), Gtk.label(DelegateComposerWords.planLabel, css: "row-title", selectable: false))
+        gtk_label_set_ellipsize(op(planSummaryLabel), PANGO_ELLIPSIZE_END)
+        gtk_box_append(ptr(planHeader), planSummaryLabel)
+        gtk_box_append(
+            ptr(column),
+            Gtk.disclosure(header: planHeader, expanded: false, onToggle: { _, _ in }) { [weak self] in
+                self?.planBody() ?? Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            })
+        return column
+    }
+
+    /// The repositories this machine's chats and runs work in, one press each.
+    private func repoChoiceRow() -> UnsafeMutablePointer<GtkWidget> {
+        let flow = gtk_flow_box_new()!
+        gtk_flow_box_set_selection_mode(op(flow), GTK_SELECTION_NONE)
+        gtk_flow_box_set_max_children_per_line(op(flow), 4)
+        gtk_flow_box_set_column_spacing(op(flow), 6)
+        gtk_flow_box_set_row_spacing(op(flow), 6)
+        for choice in repoChoices {
+            let button = gtk_button_new()!
+            Gtk.addClass(button, "flat")
+            Gtk.addClass(button, "dg-choice")
+            let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            gtk_box_append(ptr(lines), Gtk.label(choice.name, css: "dg-choice-name", selectable: false))
+            let detail = Gtk.label(choice.detail, css: "dg-choice-detail", selectable: false)
+            gtk_label_set_ellipsize(op(detail), PANGO_ELLIPSIZE_END)
+            gtk_label_set_max_width_chars(op(detail), 26)
+            gtk_box_append(ptr(lines), detail)
+            gtk_button_set_child(ptr(button), lines)
+            gtk_widget_set_tooltip_text(button, choice.path)
+            let path = choice.path
+            Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    gtk_editable_set_text(op(self.repoEntry), path)
+                }
+            }
+            gtk_flow_box_append(op(flow), button)
+        }
+        return flow
+    }
+
+    private func reviewRow() -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
+        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_widget_set_hexpand(words, 1)
+        gtk_box_append(ptr(words), Gtk.label(DelegateComposerWords.reviewLabel, css: "row-title", selectable: false))
+        let supported = board.supportsReview
+        gtk_box_append(
+            ptr(words),
+            Gtk.label(
+                supported ? DelegateComposerWords.reviewHelp : DelegateComposerWords.reviewUnsupported,
+                css: "row-detail", wrap: true, selectable: false))
+        gtk_box_append(ptr(row), words)
+        gtk_switch_set_active(op(reviewSwitch), supported && draft.review ? 1 : 0)
+        gtk_widget_set_sensitive(reviewSwitch, supported ? 1 : 0)
+        gtk_widget_set_valign(reviewSwitch, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(row), reviewSwitch)
+        return row
+    }
+
+    /// Everything the class already decides, built the first time Plan is opened.
+    private func planBody() -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 16)
+        Gtk.margins(column, top: 10, bottom: 4, leading: 18)
+        gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.classLabel, classDropdown, help: DelegateComposerWords.classHelp))
 
         gtk_widget_set_hexpand(verifyEntry, 1)
         let verifyColumn = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
@@ -159,21 +239,13 @@ final class DelegateComposerDialog: @unchecked Sendable {
             ptr(column),
             fieldBlock(DelegateComposerWords.verifyLabel, verifyColumn, help: DelegateComposerWords.verifyHelp))
 
-        gtk_widget_set_hexpand(readEntry, 1)
-        gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.readLabel, readEntry))
-        gtk_box_append(
-            ptr(column),
-            fieldBlock(
-                DelegateComposerWords.notesLabel,
-                textArea(notesView, placeholder: "", minHeight: 60)))
-
         Gtk.addClass(ladderStartRow, "linked")
         Gtk.addClass(ladderCeilingRow, "linked")
         let ladder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
         gtk_box_append(ptr(ladder), notesRow())
-        gtk_box_append(ptr(ladder), Gtk.label(Localized.text("Start"), css: "watch-meta", selectable: false))
+        gtk_box_append(ptr(ladder), Gtk.label(Localized.text("Start"), css: "dg-rung-label", selectable: false))
         gtk_box_append(ptr(ladder), ladderStartRow)
-        gtk_box_append(ptr(ladder), Gtk.label(Localized.text("Ceiling"), css: "watch-meta", selectable: false))
+        gtk_box_append(ptr(ladder), Gtk.label(Localized.text("Ceiling"), css: "dg-rung-label", selectable: false))
         gtk_box_append(ptr(ladder), ladderCeilingRow)
         Gtk.addClass(legendLabel, "delegate-tone-live")
         gtk_box_append(ptr(ladder), legendLabel)
@@ -184,6 +256,13 @@ final class DelegateComposerDialog: @unchecked Sendable {
         gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.modeLabel, modeRow))
         Gtk.addClass(effortRow, "linked")
         gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.effortLabel, effortRow))
+
+        gtk_widget_set_hexpand(readEntry, 1)
+        gtk_box_append(ptr(column), fieldBlock(DelegateComposerWords.readLabel, readEntry))
+        gtk_box_append(
+            ptr(column),
+            fieldBlock(DelegateComposerWords.notesLabel, textArea(notesView, placeholder: "", minHeight: 60)))
+        renderLegend()
         return column
     }
 
@@ -193,17 +272,16 @@ final class DelegateComposerDialog: @unchecked Sendable {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         for rung in board.composerRungs(taskClass: draft.taskClass) {
             let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
-            Gtk.addClass(card, "delegate-rung")
-            Gtk.margins(card, top: 4, bottom: 4, leading: 8, trailing: 8)
+            Gtk.addClass(card, "dg-rung")
             gtk_widget_set_hexpand(card, 1)
-            gtk_box_append(ptr(card), Gtk.label(rung.label.isEmpty ? rung.tier : "\(rung.tier) · \(rung.label)", css: "row-title", selectable: false))
+            gtk_box_append(ptr(card), Gtk.label(rung.label.isEmpty ? rung.tier : "\(rung.tier) · \(rung.label)", css: "dg-rung-label", selectable: false))
             if let model = rung.model, !model.isEmpty {
-                let modelLabel = Gtk.label(model, css: "watch-meta", selectable: false)
+                let modelLabel = Gtk.label(DelegateWords.shortModel(model), css: "dg-rung-model", selectable: false)
                 gtk_label_set_ellipsize(op(modelLabel), PANGO_ELLIPSIZE_END)
-                gtk_label_set_max_width_chars(op(modelLabel), 18)
+                gtk_widget_set_tooltip_text(modelLabel, model)
                 gtk_box_append(ptr(card), modelLabel)
             }
-            let note = Gtk.label(rung.note ?? "", css: "row-detail", selectable: false)
+            let note = Gtk.label(rung.note ?? "", css: "dg-rung-note", selectable: false)
             noteLabels[rung.tier] = note
             gtk_box_append(ptr(card), note)
             gtk_box_append(ptr(row), card)
@@ -216,6 +294,8 @@ final class DelegateComposerDialog: @unchecked Sendable {
     private func renderLegend() {
         let plan = draft.plan(capabilities: board.capabilities, tierOrder: board.tierOrder)
         gtk_label_set_text(op(legendLabel), plan.legend)
+        gtk_label_set_text(
+            op(planSummaryLabel), draft.planSummary(capabilities: board.capabilities, tierOrder: board.tierOrder))
         for (tier, label) in noteLabels {
             gtk_label_set_text(op(label), board.rungNote(taskClass: draft.taskClass, tier: tier))
         }
@@ -224,11 +304,11 @@ final class DelegateComposerDialog: @unchecked Sendable {
     private func fieldBlock(
         _ title: String, _ widget: UnsafeMutablePointer<GtkWidget>, help: String? = nil
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
         gtk_box_append(ptr(column), Gtk.label(title, css: "row-title", selectable: false))
         gtk_box_append(ptr(column), widget)
         if let help {
-            gtk_box_append(ptr(column), Gtk.label(help, css: "row-detail", wrap: true, selectable: false))
+            gtk_box_append(ptr(column), Gtk.label(help, css: "dg-note", wrap: true, selectable: false))
         }
         return column
     }
@@ -251,9 +331,8 @@ final class DelegateComposerDialog: @unchecked Sendable {
     }
 
     private func footer() -> UnsafeMutablePointer<GtkWidget> {
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
-        Gtk.addClass(column, "forge-prompt")
-        Gtk.margins(column, top: 8, bottom: 12, leading: 16, trailing: 16)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
+        Gtk.margins(column, top: 8, bottom: 12, leading: 18, trailing: 18)
         gtk_box_append(ptr(column), statusHeader)
         gtk_box_append(ptr(column), problemsLabel)
         gtk_box_append(ptr(column), cautionsLabel)
@@ -261,7 +340,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
         gtk_widget_set_halign(row, GTK_ALIGN_END)
         Gtk.margins(row, top: 6)
         Gtk.addClass(sendButton, "suggested-action")
-        Gtk.addClass(sendButton, "pill")
+        Gtk.addClass(sendButton, "dg-primary")
         gtk_box_append(ptr(row), sendButton)
         gtk_box_append(ptr(column), row)
         return column
@@ -294,6 +373,12 @@ final class DelegateComposerDialog: @unchecked Sendable {
         }
         Gtk.connect(UnsafeMutableRawPointer(sendButton), "clicked") { [weak self] in
             Gtk.onMain { [weak self] in self?.pressSend() }
+        }
+        Gtk.onNotify(UnsafeMutableRawPointer(reviewSwitch), property: "active") { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.draft.review = gtk_switch_get_active(op(self.reviewSwitch)) != 0
+            }
         }
     }
 

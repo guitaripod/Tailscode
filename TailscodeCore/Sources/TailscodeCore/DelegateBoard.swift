@@ -119,6 +119,9 @@ public struct DelegateBoard: Sendable, Equatable {
     public var runs: [DelegateRun]
     public var stats: [DelegateStat]
     public var stories: [String: DelegateRunStory]
+    /// Patches read from the daemon, by run. A patch never changes once its attempt passed, so one
+    /// read serves every later look.
+    public var patches: [String: String]
 
     public init(host: String, serverName: String) {
         self.host = host
@@ -129,6 +132,7 @@ public struct DelegateBoard: Sendable, Equatable {
         runs = []
         stats = []
         stories = [:]
+        patches = [:]
     }
 
     public var title: String { DelegateEntryPoint.title }
@@ -153,6 +157,15 @@ public struct DelegateBoard: Sendable, Equatable {
         }
     }
 
+    /// The line under the board's title: the machine and the dispatcher's version once it answers.
+    public var subtitle: String {
+        guard phase == .ready, let capabilities else { return serverName }
+        return Localized.text("%@ · delegate %@", capabilities.host, capabilities.version)
+    }
+
+    /// Whether this machine's dispatcher can hold a patch for review.
+    public var supportsReview: Bool { capabilities?.supportsReview ?? false }
+
     public var statusTone: ActivityTone {
         switch phase {
         case .idle, .checking: return .quiet
@@ -162,6 +175,46 @@ public struct DelegateBoard: Sendable, Equatable {
     }
 
     public var tierLines: [DelegateTierLine] { tiers.map(DelegateTierLine.init) }
+
+    /// The ladder as the board draws it: every rung with its model, its health when that says
+    /// something, and its record across every class.
+    public var ladderRungs: [DelegateBoardRung] { tiers.map { DelegateBoardRung(tier: $0, stats: stats) } }
+
+    /// The runs grouped by what they ask of the reader — waiting on you, still out, settled — each
+    /// group newest first, and a group with nothing in it left out.
+    public func sections(now: Date = Date()) -> [DelegateRunSection] {
+        var needsYou: [DelegateRunRow] = []
+        var running: [DelegateRunRow] = []
+        var earlier: [DelegateRunRow] = []
+        for run in runs {
+            let story = stories[run.id] ?? DelegateRunStory(runID: run.id, tiers: tiers, run: run)
+            let row = DelegateRunRow(story: story, run: run, now: now)
+            if story.needsYou {
+                needsYou.append(row)
+            } else if story.isLive {
+                running.append(row)
+            } else {
+                earlier.append(row)
+            }
+        }
+        return [
+            DelegateRunSection(kind: .needsYou, rows: needsYou),
+            DelegateRunSection(kind: .running, rows: running),
+            DelegateRunSection(kind: .earlier, rows: earlier),
+        ].filter { !$0.rows.isEmpty }
+    }
+
+    /// The reading a run's own screen draws, with its patch's line counts once the patch is read.
+    public func reading(for runID: String) -> DelegateRunReading? {
+        guard let story = story(for: runID) else { return nil }
+        return DelegateRunReading(
+            story: story, run: runs.first { $0.id == runID }, tierOrder: tierOrder, patch: patches[runID])
+    }
+
+    /// How many runs are waiting on a person, for a door that wants to say so.
+    public var waitingCount: Int {
+        runs.filter { (stories[$0.id] ?? DelegateRunStory(runID: $0.id, tiers: tiers, run: $0)).needsYou }.count
+    }
 
     public var statRows: [DelegateStatRow] { stats.map(DelegateStatRow.init) }
 
@@ -214,6 +267,20 @@ public struct DelegateBoard: Sendable, Equatable {
     /// has no events and a story rebuilt from it would forget the rungs it failed on.
     public mutating func filled(runs: [DelegateRun]) {
         self.runs = runs
+        for run in runs {
+            guard let delivery = run.delivery, stories[run.id] != nil else { continue }
+            stories[run.id]?.delivery = delivery
+        }
+    }
+
+    /// A held patch went one way or the other: the record and the fold both say so at once, before
+    /// the daemon's listing catches up.
+    public mutating func delivered(runID: String, _ delivery: DelegateDelivery) {
+        if let index = runs.firstIndex(where: { $0.id == runID }) { runs[index].delivery = delivery }
+        if stories[runID] == nil, let run = runs.first(where: { $0.id == runID }) {
+            stories[runID] = DelegateRunStory(runID: runID, tiers: tiers, run: run)
+        }
+        stories[runID]?.delivery = delivery
     }
 
     public mutating func filled(stats: [DelegateStat]) {
@@ -249,6 +316,10 @@ public struct DelegateBoard: Sendable, Equatable {
             runs[index].passedTier = story.passedTier
             runs[index].escalations = story.escalations
             runs[index].summary = story.summary
+            if let delivery = story.delivery, story.status == .passed { runs[index].delivery = delivery }
+            if story.status != .running, runs[index].finishedAt == nil {
+                runs[index].finishedAt = envelope.timestamp
+            }
         }
     }
 

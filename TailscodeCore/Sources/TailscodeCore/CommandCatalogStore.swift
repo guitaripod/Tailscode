@@ -52,13 +52,26 @@ public enum CommandCatalogStore {
     /// there. A server that has a design command of its own loses the row rather than sharing it:
     /// two identical words in one list, only one of which does what the list says, is worse than
     /// one word that always does.
-    public static func forComposer(_ commands: [AgentCommand], supportsDesign: Bool)
+    ///
+    /// `/delegate` is contributed for the same reason: what it opens is the packet composer, a
+    /// surface this app draws, with the chat's own machine and repository already filled in.
+    public static func forComposer(_ commands: [AgentCommand], supportsDesign: Bool, supportsDelegate: Bool = false)
         -> [AgentCommand]
     {
-        guard supportsDesign else { return commands }
-        let rest = commands.filter { $0.name != SlashDispatch.designWord }
-        return [designCommand] + rest
+        var own: [AgentCommand] = []
+        if supportsDesign { own.append(designCommand) }
+        if supportsDelegate { own.append(delegateCommand) }
+        guard !own.isEmpty else { return commands }
+        let names = Set(own.map(\.name))
+        return own + commands.filter { !names.contains($0.name) }
     }
+
+    public static let delegateCommand = AgentCommand(
+        name: SlashDispatch.delegateWord,
+        details: DelegateHandoff.details,
+        argumentHint: DelegateHandoff.argumentHint,
+        source: .builtin,
+        scope: "Tailscode")
 
     public static let designCommand = AgentCommand(
         name: SlashDispatch.designWord,

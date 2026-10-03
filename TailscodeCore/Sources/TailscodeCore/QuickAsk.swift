@@ -156,7 +156,7 @@ public struct QuickAskSend: Sendable, Equatable {
         {
         case .run(let command, let arguments):
             return QuickAskSend(text: text, kind: .command(command, arguments: arguments))
-        case .compactPreflight, .designPreflight, .plainText:
+        case .compactPreflight, .designPreflight, .delegatePreflight, .plainText:
             return QuickAskSend(text: text, kind: .prompt)
         }
     }

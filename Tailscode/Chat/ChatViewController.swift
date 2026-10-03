@@ -3611,6 +3611,13 @@ final class ChatViewController: UIViewController {
                     image: UIImage(systemName: "arrow.down.right.and.arrow.up.left")
                 ) { [weak self] _ in self?.presentCompactPreflight() })
         }
+        if viewModel.supportsDelegate {
+            children.append(
+                UIAction(
+                    title: DelegateHandoff.menuTitle,
+                    image: UIImage(systemName: DelegateEntryPoint.symbol)
+                ) { [weak self] _ in self?.handOff(goal: "") })
+        }
         if viewModel.canFork {
             children.append(
                 UIAction(
@@ -4293,6 +4300,11 @@ final class ChatViewController: UIViewController {
             presentDesignPreflight(request: "")
             return
         }
+        if command.name == SlashDispatch.delegateWord, viewModel.supportsDelegate {
+            composer.clear()
+            handOff(goal: "")
+            return
+        }
         guard !command.takesArguments else {
             composer.setDraft("/\(command.name) ", focus: true)
             return
@@ -4320,9 +4332,24 @@ final class ChatViewController: UIViewController {
             presentDesignPreflight(request: arguments ?? "")
             return
         }
+        if command.name == SlashDispatch.delegateWord, viewModel.supportsDelegate {
+            composer.clear()
+            DraftStore.clear(draftScope)
+            handOff(goal: arguments ?? "")
+            return
+        }
         composer.clear()
         DraftStore.clear(draftScope)
         viewModel.run(command, arguments: arguments)
+    }
+
+    /// Opens the packet composer on this chat's machine, with the words as the goal and the chat's
+    /// own directory as the repository, behind the same gate as every other door into delegation.
+    private func handOff(goal: String) {
+        guard let handoff = viewModel.delegateHandoff(goal: goal) else { return }
+        AppLogger.session.info(
+            "delegate handoff from session \(self.viewModel.session.id) to \(handoff.host) repo=\(handoff.repo)")
+        DelegateGate.compose(from: self, handoff: handoff)
     }
 
     private func presentCommandCatalog() {
@@ -5045,7 +5072,7 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
             text: text, commands: viewModel.composerCommands,
             supportsCompaction: viewModel.supportsCompaction,
             resolvesFromPromptText: viewModel.resolvesCommandsFromPromptText,
-            supportsDesign: viewModel.supportsDesign)
+            supportsDesign: viewModel.supportsDesign, supportsDelegate: viewModel.supportsDelegate)
         {
         case .compactPreflight(let instruction):
             DraftStore.clear(draftScope)
@@ -5056,6 +5083,11 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
             SlashRecents.record(SlashDispatch.designWord)
             composer.clear()
             presentDesignPreflight(request: request)
+        case .delegatePreflight(let goal):
+            DraftStore.clear(draftScope)
+            SlashRecents.record(SlashDispatch.delegateWord)
+            composer.clear()
+            handOff(goal: goal)
         case .run(let command, let arguments):
             runServerCommand(command, arguments: arguments)
         case .plainText:

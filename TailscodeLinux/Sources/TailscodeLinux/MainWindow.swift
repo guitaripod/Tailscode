@@ -607,8 +607,17 @@ final class MainWindow: @unchecked Sendable {
                     _ = self.presentDelegate(host: argument.isEmpty ? nil : argument)
                 case "dcompose":
                     DelegateWindow.current?.presentComposer()
+                case "dhandoff":
+                    let demo = DelegateDemo.hosts.first { $0.hasPrefix("studio") } ?? ""
+                    self.presentDelegate(
+                        handoff: DelegateHandoff(
+                            host: demo, serverName: "studio", goal: argument, repo: "/Users/demo/dev/pulse-server"))
                 case "drun":
-                    DelegateWindow.current?.openFirstRun()
+                    if argument.isEmpty {
+                        DelegateWindow.current?.openFirstRun()
+                    } else {
+                        DelegateWindow.current?.openRun(id: argument)
+                    }
                 case "fstate":
                     ForgeWindow.current?.demonstrate(argument)
                     FileHandle.standardOutput.write(
@@ -2654,8 +2663,9 @@ final class MainWindow: @unchecked Sendable {
     /// The dispatcher board, opened over the work the same way the forge is: a thing you check on
     /// rather than a place you type, so it costs the conversation behind it nothing.
     @discardableResult
-    func presentDelegate(host: String? = nil) -> DelegateWindow {
-        DelegateWindow.present(parent: window, host: host)
+    func presentDelegate(host: String? = nil, handoff: DelegateHandoff? = nil) -> DelegateWindow {
+        DelegateWindow.chatSource = { [weak self] in self?.entries ?? SessionListCache.load() }
+        return DelegateWindow.present(parent: window, host: host, handoff: handoff)
     }
 
     /// A slot that started, stopped, or learned the stream's own title. The layout is written back

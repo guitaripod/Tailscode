@@ -342,9 +342,25 @@ final class ChatViewModel {
     /// client could ever open them.
     var supportsDesign: Bool { backend.capabilities.supportsFileBrowsing }
 
-    /// What the composer offers: the server's catalog, plus the one word this app answers itself.
+    /// The machine this chat's profile names, which is where its dispatcher would be.
+    var delegateHost: String? {
+        ConnectionController.shared.profiles.first { $0.id == contextID }.flatMap { DelegateAccess.host(of: $0.baseURL) }
+    }
+
+    /// A chat whose machine is known by name can hand a task to that machine's dispatcher.
+    var supportsDelegate: Bool { delegateHost?.isEmpty == false }
+
+    /// What the composer offers: the server's catalog, plus the words this app answers itself.
     var composerCommands: [AgentCommand] {
-        CommandCatalogStore.forComposer(serverCommands, supportsDesign: supportsDesign)
+        CommandCatalogStore.forComposer(serverCommands, supportsDesign: supportsDesign, supportsDelegate: supportsDelegate)
+    }
+
+    /// A packet started from this chat: its machine, the words as the goal, and the directory the
+    /// chat works in as the repository.
+    func delegateHandoff(goal: String) -> DelegateHandoff? {
+        guard let host = delegateHost, !host.isEmpty else { return nil }
+        return DelegateHandoff(
+            host: host, serverName: serverName.isEmpty ? host : serverName, goal: goal, repo: session.directory ?? "")
     }
 
     /// The server's command catalog, fetched once per chat. A server that can't answer leaves the

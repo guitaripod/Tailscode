@@ -127,7 +127,6 @@ final class DelegateRunner: @unchecked Sendable {
                     self.reach[host] = .answering(version: capabilities.version)
                     self.changed()
                     self.refresh(host: host, serverName: serverName)
-                    for runID in board.liveRunIDs { self.follow(runID: runID, host: host) }
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -158,6 +157,7 @@ final class DelegateRunner: @unchecked Sendable {
                     board.filled(stats: stats)
                     self.boards[host] = board
                     self.changed()
+                    for runID in board.liveRunIDs { self.follow(runID: runID, host: host) }
                 }
             } catch {
                 Gtk.onMain { [weak self] in
@@ -282,7 +282,8 @@ final class DelegateRunner: @unchecked Sendable {
             completion(.failure(DelegateDeskError.noDaemon))
             return
         }
-        let overrides = DelegateOverrides(tier: draft.tier, ceiling: draft.ceiling)
+        let review = draft.review && (boards[host]?.supportsReview ?? false)
+        let overrides = DelegateOverrides(tier: draft.tier, ceiling: draft.ceiling, review: review ? true : nil)
         Task { [weak self] in
             do {
                 let runID = try await client.start(packet: packet, overrides: overrides)
@@ -314,7 +315,8 @@ final class DelegateRunner: @unchecked Sendable {
         }
         let serverName = boards[host]?.serverName ?? host
         let packet = boards[host]?.story(for: runID)?.packet
-        let overrides = DelegateOverrides(tier: tier, ceiling: ceiling)
+        let overrides = DelegateOverrides(
+            tier: tier, ceiling: ceiling, review: boards[host]?.supportsReview == true ? true : nil)
         Task { [weak self] in
             do {
                 let started = try await client.replay(runID: runID, overrides: overrides)
@@ -366,6 +368,78 @@ final class DelegateRunner: @unchecked Sendable {
                 Gtk.onMain { completion(.success(())) }
             } catch {
                 Gtk.onMain { completion(.failure(error)) }
+            }
+        }
+    }
+
+    /// The run's patch, read once and kept on the board: a passed attempt's diff never changes.
+    func patch(
+        runID: String, host: String, completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
+        if let held = boards[host]?.patches[runID] {
+            completion(.success(held))
+            return
+        }
+        guard let client = client(host: host) else {
+            completion(.failure(DelegateDeskError.noDaemon))
+            return
+        }
+        Task { [weak self] in
+            do {
+                let patch = try await client.patch(runID: runID)
+                Gtk.onMain { [weak self] in
+                    self?.boards[host]?.patches[runID] = patch
+                    self?.changed()
+                    completion(.success(patch))
+                }
+            } catch {
+                Gtk.onMain { completion(.failure(error)) }
+            }
+        }
+    }
+
+    /// Lands a held patch, or sets it aside, then reads the run's tail so its story carries the
+    /// event that says which — the daemon records it after the run's own end.
+    func deliver(
+        runID: String, host: String, apply: Bool,
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
+    ) {
+        guard let client = client(host: host) else {
+            completion(.failure(DelegateDeskError.noDaemon))
+            return
+        }
+        let serverName = boards[host]?.serverName ?? host
+        let after = boards[host]?.stories[runID]?.lastSeq ?? 0
+        Task { [weak self] in
+            do {
+                if apply {
+                    _ = try await client.apply(runID: runID)
+                } else {
+                    _ = try await client.discard(runID: runID)
+                }
+            } catch {
+                Gtk.onMain { completion(.failure(error)) }
+                return
+            }
+            Gtk.onMain { [weak self] in
+                self?.boards[host]?.delivered(runID: runID, apply ? .applied : .discarded)
+                self?.changed()
+                completion(.success(()))
+            }
+            var tail: [DelegateEnvelope] = []
+            if after > 0 {
+                do {
+                    for try await envelope in client.events(runID: runID, after: after) { tail.append(envelope) }
+                } catch {
+                    tail = []
+                }
+            }
+            let folded = tail
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                for envelope in folded { self.boards[host]?.fold(envelope) }
+                self.changed()
+                self.refresh(host: host, serverName: serverName)
             }
         }
     }

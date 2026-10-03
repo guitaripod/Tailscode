@@ -9,15 +9,19 @@ public struct DelegateStoryLine: Sendable, Hashable, Identifiable {
     public var tone: ActivityTone
     /// A worker's own progress line, indented under the attempt rather than standing as news.
     public var isProgress: Bool
+    /// What a failed attempt left behind — the verifier's last lines, the files out of scope —
+    /// carried under its line instead of in a second list that tells the same attempt twice.
+    public var detail: String?
 
     public var id: Int { seq }
 
-    public init(seq: Int, tier: String?, text: String, tone: ActivityTone, isProgress: Bool = false) {
+    public init(seq: Int, tier: String?, text: String, tone: ActivityTone, isProgress: Bool = false, detail: String? = nil) {
         self.seq = seq
         self.tier = tier
         self.text = text
         self.tone = tone
         self.isProgress = isProgress
+        self.detail = detail
     }
 }
 
@@ -123,14 +127,27 @@ public struct DelegateNotice: Sendable, Hashable {
 /// The ladder of one run: every tier the daemon knows, each with where it stands for this run.
 public struct DelegateLadder: Sendable, Hashable {
     public var rungs: [DelegateRung]
+    /// How the run ended, or nil while it is out: a rung it never reached is "waiting" only while
+    /// there is still something to wait for.
+    public var settledAs: DelegateRunStatus?
 
-    public init(rungs: [DelegateRung]) { self.rungs = rungs }
+    public init(rungs: [DelegateRung], settledAs: DelegateRunStatus? = nil) {
+        self.rungs = rungs
+        self.settledAs = settledAs
+    }
 
     public var lit: DelegateRung? { rungs.last { $0.state.isLit } }
 
     /// The words a screen reader gets: each rung and its state, cheapest first.
     public var spoken: String {
-        rungs.map { "\($0.tier) \(DelegateLadder.word($0.state))" }.joined(separator: ", ")
+        rungs.map { "\($0.tier) \(word(for: $0))" }.joined(separator: ", ")
+    }
+
+    /// One rung's word for this run: a rung inside the range the run never reached reads "not
+    /// needed" after a pass and "not reached" after any other end.
+    public func word(for rung: DelegateRung) -> String {
+        guard rung.state == .pending, let settledAs else { return Self.word(rung.state) }
+        return settledAs == .passed ? Localized.text("not needed") : Localized.text("not reached")
     }
 
     public static func word(_ state: DelegateRungState) -> String {
@@ -167,7 +184,10 @@ public struct DelegateRunStory: Sendable, Hashable {
     public var summary: String
     public var lines: [DelegateStoryLine]
     public var attempts: [DelegateAttemptOutcome]
-    public var appliedFiles: [String]
+    /// The files the passing patch touches, wherever it went.
+    public var patchFiles: [String]
+    /// Where the passing patch went: into the tree, held for a person, or set aside.
+    public var delivery: DelegateDelivery?
     public var currentTier: String?
     public var currentModel: [String: String]
     public var failedTiers: Set<String>
@@ -190,7 +210,8 @@ public struct DelegateRunStory: Sendable, Hashable {
         summary = run?.summary ?? ""
         lines = []
         attempts = []
-        appliedFiles = []
+        patchFiles = []
+        delivery = run?.effectiveDelivery
         currentTier = nil
         currentModel = [:]
         failedTiers = []
@@ -212,24 +233,32 @@ public struct DelegateRunStory: Sendable, Hashable {
         for attempt in detail.attempts {
             currentModel[attempt.tier] = attempt.model
             if attempt.status != .pass && attempt.status != .error { failedTiers.insert(attempt.tier) }
+            if attempt.status == .pass { patchFiles = attempt.changedFiles }
         }
     }
 
     public static func == (lhs: DelegateRunStory, rhs: DelegateRunStory) -> Bool {
         lhs.runID == rhs.runID && lhs.lastSeq == rhs.lastSeq && lhs.status == rhs.status
             && lhs.lines.count == rhs.lines.count && lhs.attempts.count == rhs.attempts.count
-            && lhs.pendingApproval?.tier == rhs.pendingApproval?.tier
+            && lhs.pendingApproval?.tier == rhs.pendingApproval?.tier && lhs.delivery == rhs.delivery
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(runID)
         hasher.combine(lastSeq)
         hasher.combine(status)
+        hasher.combine(delivery)
     }
 
     public var isLive: Bool { status == .running }
 
     public var needsApproval: Bool { pendingApproval != nil && status == .running }
+
+    /// A pass whose patch is held until somebody reads it.
+    public var needsReview: Bool { status == .passed && delivery == .pending }
+
+    /// Waiting on a person in either way a run can: a rung to approve or a patch to read.
+    public var needsYou: Bool { needsApproval || needsReview }
 
     /// Folds one envelope; a sequence already seen is ignored so a replayed stream cannot double a line.
     public mutating func fold(_ envelope: DelegateEnvelope) {
@@ -257,6 +286,7 @@ public struct DelegateRunStory: Sendable, Hashable {
         case .attemptFinished(let outcome):
             attempts.append(outcome)
             if outcome.status != .pass && outcome.status != .error { failedTiers.insert(outcome.tier) }
+            if outcome.status == .pass { patchFiles = outcome.changedFiles }
         case .approvalRequired(let tier, let reason):
             pendingApproval = (tier, reason)
         case .approvalResolved(let tier, let approved):
@@ -268,7 +298,14 @@ public struct DelegateRunStory: Sendable, Hashable {
         case .chainFailover(let tier, _, let to, _):
             currentModel[tier] = to
         case .applied(let files, _):
-            appliedFiles = files
+            patchFiles = files
+            delivery = .applied
+        case .awaitingReview(let files, _):
+            patchFiles = files
+            delivery = .pending
+        case .discarded(let files):
+            if !files.isEmpty { patchFiles = files }
+            delivery = .discarded
         case .runFinished(let status, let passed, let escalations, let duration, let summary):
             self.status = status
             passedTier = passed
@@ -306,7 +343,7 @@ public struct DelegateRunStory: Sendable, Hashable {
         case .attemptFinished(let outcome):
             return DelegateStoryLine(
                 seq: seq, tier: outcome.tier, text: attemptLine(outcome),
-                tone: DelegateWords.tone(outcome.status))
+                tone: DelegateWords.tone(outcome.status), detail: failureDetail(outcome))
         case .approvalRequired(let tier, let reason):
             return DelegateStoryLine(
                 seq: seq, tier: tier, text: Localized.text("%@ needs approval: %@", tier, reason),
@@ -322,18 +359,44 @@ public struct DelegateRunStory: Sendable, Hashable {
             return DelegateStoryLine(
                 seq: seq, tier: tier,
                 text: Localized.text("%@ ↷ %@ (%@ failed: %@)", tier, to, from, reason), tone: .attention)
-        case .applied(let files, let bytes):
+        case .applied(let files, _):
             return DelegateStoryLine(
                 seq: seq, tier: nil,
-                text: Localized.text("applied %@, %d bytes", DelegateWords.files(files.count), bytes), tone: .live)
+                text: Localized.text("Applied %@ to the tree, unstaged", DelegateWords.files(files.count)), tone: .live)
+        case .awaitingReview(let files, _):
+            return DelegateStoryLine(
+                seq: seq, tier: nil,
+                text: Localized.text("Holding %@ for your review", DelegateWords.files(files.count)), tone: .attention)
+        case .discarded(let files):
+            return DelegateStoryLine(
+                seq: seq, tier: nil,
+                text: Localized.text("Discarded %@; the tree never saw them", DelegateWords.files(files.count)), tone: .quiet)
         case .runFinished(let status, let passed, let escalations, let duration, let summary):
-            var text = Localized.text(
-                "%@ at %@ · %d escalation(s) · %@", DelegateWords.status(status).lowercased(),
-                passed ?? "-", escalations, DelegateWords.seconds(duration))
-            if !summary.isEmpty { text += " · " + summary.components(separatedBy: "\n").first! }
-            return DelegateStoryLine(seq: seq, tier: passed, text: text, tone: DelegateWords.tone(status))
+            var parts: [String] = []
+            if let passed {
+                parts.append(Localized.text("%@ at %@", DelegateWords.status(status), passed))
+            } else {
+                parts.append(DelegateWords.status(status))
+            }
+            if escalations > 0 { parts.append(DelegateWords.escalations(escalations)) }
+            parts.append(DelegateWords.seconds(duration))
+            if let said = DelegateWords.summaryClaim(summary, status: status) { parts.append(said) }
+            return DelegateStoryLine(seq: seq, tier: passed, text: parts.joined(separator: " · "), tone: DelegateWords.tone(status))
         case .unknown:
             return nil
+        }
+    }
+
+    /// What a failed attempt leaves under its line: the files it touched outside its paths, or the
+    /// last lines the verifier or worker printed, trimmed to what fits under one row.
+    public static func failureDetail(_ outcome: DelegateAttemptOutcome) -> String? {
+        switch outcome.status {
+        case .pass, .error:
+            return nil
+        case .scope:
+            return outcome.scopeViolations.isEmpty ? nil : outcome.scopeViolations.joined(separator: "\n")
+        case .fail, .timeout:
+            return DelegateWords.tail(outcome.verifyTail)
         }
     }
 
@@ -345,7 +408,10 @@ public struct DelegateRunStory: Sendable, Hashable {
         case .fail:
             detail = outcome.verifyExit.map { Localized.text("verify exit %d", $0) } ?? Localized.text("worker failed")
         case .timeout: detail = Localized.text("timed out")
-        case .scope: detail = Localized.text("out of scope: %@", outcome.scopeViolations.joined(separator: ", "))
+        case .scope:
+            detail = outcome.scopeViolations.count == 1
+                ? Localized.text("changed a file outside its paths")
+                : Localized.text("changed %d files outside its paths", outcome.scopeViolations.count)
         case .error: detail = Localized.text("never started")
         }
         return "\(outcome.tier) \(mark) \(Localized.text("attempt %d", outcome.attempt)) · \(detail) (\(DelegateWords.seconds(outcome.durationMS)))"
@@ -378,7 +444,7 @@ public struct DelegateRunStory: Sendable, Hashable {
             }
             return DelegateRung(tier: tier, label: tierLabels[tier] ?? "", model: currentModel[tier], state: state)
         }
-        return DelegateLadder(rungs: rungs)
+        return DelegateLadder(rungs: rungs, settledAs: status == .running ? nil : status)
     }
 
     public var headline: String {
@@ -398,14 +464,23 @@ public struct DelegateRunStory: Sendable, Hashable {
             }
             return Localized.text("Starting")
         case .passed:
-            let tier = passedTier ?? "-"
-            let head = escalations > 0
-                ? Localized.text("Passed at %@ after %d escalation(s)", tier, escalations)
-                : Localized.text("Passed at %@", tier)
-            guard let files = passedFileCount else { return head }
-            return head + " · " + DelegateWords.files(files)
+            var parts = [passedTier.map { Localized.text("Passed at %@", $0) } ?? DelegateWords.status(.passed)]
+            if escalations > 0 { parts[0] += " " + DelegateWords.afterEscalations(escalations) }
+            if let files = passedFileCount { parts.append(DelegateWords.files(files)) }
+            switch delivery {
+            case .pending: parts.append(Localized.text("waiting for your review"))
+            case .discarded: parts.append(Localized.text("discarded"))
+            case .applied, nil: break
+            }
+            return parts.joined(separator: " · ")
         case .failed:
-            return summary.isEmpty ? Localized.text("Failed on every rung") : summary
+            if let last = lastFailure {
+                return Localized.text("Stopped at %@ · %@", last.tier, DelegateRunStory.attemptReason(last))
+            }
+            if let tier = Self.stoppedTier(summary) {
+                return Localized.text("Stopped at %@ after every rung it could climb", tier)
+            }
+            return Localized.text("Failed on every rung")
         case .held:
             return Localized.text("Held before %@", currentTier ?? pendingApproval?.tier ?? "-")
         case .cancelled:
@@ -415,29 +490,66 @@ public struct DelegateRunStory: Sendable, Hashable {
         }
     }
 
+    /// The rung a stored failure names ("exhausted ladder; last failure at t2 attempt 1"), for a row
+    /// drawn from the record before its attempts have been read.
+    static func stoppedTier(_ summary: String) -> String? {
+        guard let range = summary.range(of: "last failure at ") else { return nil }
+        let tier = summary[range.upperBound...].split(separator: " ").first.map(String.init)
+        return tier?.isEmpty == false ? tier : nil
+    }
+
     /// How many files the pass landed, from the fold when this device followed it, else from the
     /// daemon's own summary line ("2 file(s): …"); nil when neither says.
     var passedFileCount: Int? {
-        if !appliedFiles.isEmpty { return appliedFiles.count }
+        if !patchFiles.isEmpty { return patchFiles.count }
         if let last = attempts.last, last.status == .pass { return last.changedFiles.count }
         let head = summary.split(separator: ":").first.map(String.init) ?? summary
         guard head.contains("file"), let number = head.split(separator: " ").first, let count = Int(number) else { return nil }
         return count
     }
 
-    public var tone: ActivityTone { DelegateWords.tone(status) }
+    public var tone: ActivityTone { needsReview ? .attention : DelegateWords.tone(status) }
 
-    /// Work breathes, a wait for you knocks, and anything settled holds still.
+    /// Work breathes, a wait for you knocks — a rung to approve or a patch to read — and anything
+    /// settled holds still.
     public var activity: ActivityKind? {
+        if needsReview { return .needsApproval }
         guard status == .running else { return status == .failed || status == .error ? .failed : nil }
         return pendingApproval == nil ? .working : .needsApproval
     }
 
+    /// The word a row's pill says. A pass says where its patch went rather than the rung it passed
+    /// at, which the line under the headline already gives.
     public var badge: String? {
         switch status {
-        case .running: return nil
-        case .passed: return passedTier
+        case .running: return needsApproval ? Localized.text("Approve") : nil
+        case .passed:
+            switch delivery {
+            case .pending: return Localized.text("Review")
+            case .discarded: return Localized.text("Discarded")
+            case .applied, nil: return Localized.text("Applied")
+            }
         default: return DelegateWords.status(status)
+        }
+    }
+
+    /// The last attempt that failed, the one a stopped run is explained by.
+    public var lastFailure: DelegateAttemptOutcome? {
+        attempts.last { $0.status != .pass && $0.status != .error } ?? attempts.last { $0.status == .error }
+    }
+
+    /// Why one attempt failed, in the fewest words that still say it.
+    public static func attemptReason(_ outcome: DelegateAttemptOutcome) -> String {
+        switch outcome.status {
+        case .pass: return DelegateWords.attemptStatus(.pass)
+        case .fail:
+            return outcome.verifyExit.map { Localized.text("the verifier exited %d", $0) } ?? Localized.text("the worker failed")
+        case .timeout: return Localized.text("timed out")
+        case .scope:
+            return outcome.scopeViolations.count == 1
+                ? Localized.text("changed a file outside its paths")
+                : Localized.text("changed %d files outside its paths", outcome.scopeViolations.count)
+        case .error: return Localized.text("the worker never started")
         }
     }
 
@@ -500,8 +612,14 @@ public struct DelegateRunStory: Sendable, Hashable {
         case .runFinished(let status, let passed, _, _, _):
             switch status {
             case .passed:
+                if delivery == .pending {
+                    return DelegateNotice(
+                        kind: .passed, title: Localized.text("Ready for your review"),
+                        body: headline + " · " + DelegateWords.files(passedFileCount ?? patchFiles.count))
+                }
                 return DelegateNotice(
-                    kind: .passed, title: Localized.text("Delegate passed at %@", passed ?? "-"),
+                    kind: .passed,
+                    title: passed.map { Localized.text("Delegate passed at %@", $0) } ?? Localized.text("Delegate passed"),
                     body: headline)
             case .failed, .error:
                 return DelegateNotice(kind: .failed, title: Localized.text("Delegate failed"), body: headline + " · " + subtitle)

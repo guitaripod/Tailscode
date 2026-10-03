@@ -186,7 +186,8 @@ public final class DelegateDesk {
         guard let client = client(host: host) else { throw DelegateDeskError.noDaemon }
         let sent = DelegateOverrides(
             tier: overrides.tier ?? draft.tier, ceiling: overrides.ceiling ?? draft.ceiling,
-            mode: overrides.mode, attempts: overrides.attempts)
+            mode: overrides.mode, attempts: overrides.attempts,
+            review: draft.review && (boards[host]?.supportsReview ?? false) ? true : nil)
         let runID = try await client.start(packet: packet, overrides: sent)
         boards[host]?.expect(runID: runID, packet: packet, startTier: sent.tier, ceiling: sent.ceiling)
         announce()
@@ -197,7 +198,8 @@ public final class DelegateDesk {
     public func replay(runID: String, host: String, tier: String?, ceiling: String?) async throws -> String {
         guard let client = client(host: host) else { throw DelegateDeskError.noDaemon }
         let packet = boards[host]?.story(for: runID)?.packet
-        let overrides = DelegateOverrides(tier: tier, ceiling: ceiling)
+        let overrides = DelegateOverrides(
+            tier: tier, ceiling: ceiling, review: boards[host]?.supportsReview == true ? true : nil)
         let started = try await client.replay(runID: runID, overrides: overrides)
         if let packet {
             boards[host]?.expect(runID: started, packet: packet, startTier: tier, ceiling: ceiling)
@@ -215,6 +217,45 @@ public final class DelegateDesk {
     public func cancel(runID: String, host: String) async throws {
         guard let client = client(host: host) else { throw DelegateDeskError.noDaemon }
         try await client.cancel(runID: runID)
+    }
+
+    /// The run's patch, read once and kept on the board: a passed attempt's diff never changes.
+    @discardableResult
+    public func patch(runID: String, host: String) async throws -> String {
+        if let held = boards[host]?.patches[runID] { return held }
+        guard let client = client(host: host) else { throw DelegateDeskError.noDaemon }
+        let patch = try await client.patch(runID: runID)
+        boards[host]?.patches[runID] = patch
+        announce()
+        return patch
+    }
+
+    /// Lands a held patch, then reads the run's tail so its story carries the event that says so.
+    public func apply(runID: String, host: String) async throws {
+        guard let client = client(host: host) else { throw DelegateDeskError.noDaemon }
+        _ = try await client.apply(runID: runID)
+        await settle(runID: runID, host: host, as: .applied)
+    }
+
+    public func discard(runID: String, host: String) async throws {
+        guard let client = client(host: host) else { throw DelegateDeskError.noDaemon }
+        _ = try await client.discard(runID: runID)
+        await settle(runID: runID, host: host, as: .discarded)
+    }
+
+    private func settle(runID: String, host: String, as delivery: DelegateDelivery) async {
+        boards[host]?.delivered(runID: runID, delivery)
+        announce()
+        guard let client = client(host: host) else { return }
+        let after = boards[host]?.stories[runID]?.lastSeq ?? 0
+        if after > 0 {
+            do {
+                for try await envelope in client.events(runID: runID, after: after) { boards[host]?.fold(envelope) }
+            } catch {
+                reach[host] = Self.reading(error)
+            }
+        }
+        await refresh(host: host)
     }
 
     public func announce() {
