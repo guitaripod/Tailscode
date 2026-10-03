@@ -281,7 +281,7 @@ public enum DelegateComposerWords {
     public static var reviewUnsupported: String {
         Localized.text("This machine's dispatcher applies a passing patch as it lands. delegate 0.4 can hold it for review.")
     }
-    public static var planLabel: String { Localized.text("Plan") }
+    public static var planLabel: String { Localized.text("How it runs") }
     public static var planHelp: String {
         Localized.text("Class, ladder, verifier and the rest. The class fills anything you leave alone.")
     }
