@@ -3,11 +3,12 @@ import CodingAgentKit
 import UIKit
 
 enum HomeSection: Hashable {
-    case alerts, supporter, missed, live, saved, projects, recent, usage
+    case alerts, demoNudge, supporter, missed, live, saved, projects, recent, usage
 }
 
 enum HomeItem: Hashable {
     case alert(ServerAlertCard)
+    case demoNudge(DemoNudgeCard)
     case supporter(SupporterCard)
     case missed(MissedActivity)
     case live(LiveCard)
@@ -34,6 +35,8 @@ extension HomeItem {
         switch self {
         case .alert(let card):
             hasher.combine(card.name)
+        case .demoNudge:
+            break
         case .supporter(let card):
             hasher.combine(card.price)
         case .missed(let item):
@@ -652,6 +655,96 @@ final class ServerAlertCell: GlassCardCell {
         accessibilityLabel = String(localized: "\(card.name) is unreachable")
         isAccessibilityElement = true
         accessibilityTraits = .button
+    }
+}
+
+/// The one demo card, keyed by nothing but its own existence.
+struct DemoNudgeCard: Hashable {
+    static func == (lhs: DemoNudgeCard, rhs: DemoNudgeCard) -> Bool { true }
+    func hash(into hasher: inout Hasher) {}
+}
+
+final class DemoNudgeCell: GlassCardCell {
+    var onSetUp: (() -> Void)?
+    var onNotNow: (() -> Void)?
+
+    private let iconView = UIImageView()
+    private let titleLabel = UILabel()
+    private let bodyLabel = UILabel()
+    private let setUpButton = PrimaryButton(title: DemoNudge.primaryAction)
+    private let notNowButton = UIButton(type: .system)
+    private let buttons = UIStackView()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        iconView.image = UIImage(
+            systemName: "laptopcomputer.and.iphone",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
+        iconView.tintColor = Theme.Color.accent
+        iconView.contentMode = .scaleAspectFit
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
+        titleLabel.textColor = Theme.Color.label
+        titleLabel.numberOfLines = 0
+        titleLabel.text = DemoNudge.title
+
+        bodyLabel.font = Theme.Ramp.font(.panelFootnote)
+        bodyLabel.textColor = Theme.Color.secondaryLabel
+        bodyLabel.numberOfLines = 0
+        bodyLabel.text = DemoNudge.body
+
+        var notNow = Theme.Glass.buttonConfiguration()
+        notNow.title = DemoNudge.secondaryAction
+        notNow.baseForegroundColor = Theme.Color.secondaryLabel
+        notNow.cornerStyle = .large
+        notNow.buttonSize = .large
+        notNowButton.configuration = notNow
+
+        setUpButton.addAction(UIAction { [weak self] _ in self?.onSetUp?() }, for: .touchUpInside)
+        notNowButton.addAction(UIAction { [weak self] _ in self?.onNotNow?() }, for: .touchUpInside)
+
+        let header = UIStackView(arrangedSubviews: [iconView, titleLabel])
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = Theme.Spacing.s
+
+        buttons.addArrangedSubview(setUpButton)
+        buttons.addArrangedSubview(notNowButton)
+        buttons.spacing = Theme.Spacing.s
+        stackButtons()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (cell: DemoNudgeCell, _) in cell.stackButtons()
+        }
+
+        let column = UIStackView(arrangedSubviews: [header, bodyLabel, buttons])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.s
+        column.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m),
+            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
+            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
+            column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.m),
+        ])
+        isAccessibilityElement = false
+        accessibilityElements = [titleLabel, bodyLabel, setUpButton, notNowButton]
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Side by side the two buttons share a line; at accessibility sizes a label would be wrapped a
+    /// letter at a time to make that true, so they take a line each instead.
+    private func stackButtons() {
+        let accessible = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
+        buttons.axis = accessible ? .vertical : .horizontal
+        buttons.distribution = accessible ? .fill : .fillProportionally
+    }
+
+    override var isHighlighted: Bool {
+        get { false }
+        set {}
     }
 }
 

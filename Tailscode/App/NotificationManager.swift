@@ -57,20 +57,53 @@ enum NotificationManager {
         UNUserNotificationCenter.current().setNotificationCategories(Set(categories))
     }
 
-    static func requestAuthorizationIfNeeded() {
-        guard !CommandLine.arguments.contains("--demo"),
-            !CommandLine.arguments.contains("--usage")
-        else { return }
+    /// Whether this launch is a scripted one — the demo, the usage board, or a DEBUG driver that
+    /// sends for itself — where a question about notifications would land on a screen nobody is
+    /// there to answer.
+    private static var isScriptedRun: Bool {
+        if CommandLine.arguments.contains("--demo") || CommandLine.arguments.contains("--usage") {
+            return true
+        }
         #if DEBUG
             let env = ProcessInfo.processInfo.environment
-            guard env["TAILSCODE_AUTOSEND"] == nil, env["TAILSCODE_OPEN_SESSION"] == nil,
-                env["TAILSCODE_NEW_CHAT"] == nil
-            else { return }
+            return env["TAILSCODE_AUTOSEND"] != nil || env["TAILSCODE_OPEN_SESSION"] != nil
+                || env["TAILSCODE_NEW_CHAT"] != nil
+        #else
+            return false
         #endif
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            guard settings.authorizationStatus == .notDetermined else { return }
-            UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .sound, .badge]) { _, _ in }
+    }
+
+    /// Asks, in the app's own words, whether alerts are wanted — the one moment the system prompt
+    /// is spent, and only after a real turn has finished so the person has seen what there is to
+    /// be alerted about. Nothing is marked as asked unless the question is actually put, so a turn
+    /// that ends while the app is behind a sheet or in the background leaves the next one to ask.
+    static func offerAfterFirstTurn(from presenter: UIViewController) {
+        guard !isScriptedRun else { return }
+        Task { @MainActor in
+            let answerPending = await authorizationStatus() == .notDetermined
+            guard
+                NotificationPrimer.shouldOffer(
+                    systemAnswerPending: answerPending,
+                    isDemo: ConnectionController.shared.isDemoMode),
+                UIApplication.shared.applicationState == .active,
+                presenter.viewIfLoaded?.window != nil,
+                presenter.presentedViewController == nil
+            else { return }
+            NotificationPrimer.markOffered()
+            AppLogger.lifecycle.info("notification pre-prompt shown after first completed turn")
+            let alert = UIAlertController(
+                title: NotificationPrimer.title, message: NotificationPrimer.body,
+                preferredStyle: .alert)
+            alert.addAction(
+                UIAlertAction(title: NotificationPrimer.declineAction, style: .cancel) { _ in
+                    AppLogger.lifecycle.info("notification pre-prompt declined")
+                })
+            let accept = UIAlertAction(title: NotificationPrimer.acceptAction, style: .default) { _ in
+                Task { @MainActor in await requestAuthorization(source: "pre-prompt") }
+            }
+            alert.addAction(accept)
+            alert.preferredAction = accept
+            presenter.present(alert, animated: true)
         }
     }
 
@@ -81,8 +114,8 @@ enum NotificationManager {
     /// The explicit ask from the Settings row, for a user who reached the app's
     /// notification controls without ever having seen the system prompt.
     @discardableResult
-    static func requestAuthorization() async -> Bool {
-        AppLogger.lifecycle.info("notification authorization requested from settings")
+    static func requestAuthorization(source: String = "settings") async -> Bool {
+        AppLogger.lifecycle.info("notification authorization requested from \(source)")
         return (try? await UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound, .badge])) ?? false
     }
