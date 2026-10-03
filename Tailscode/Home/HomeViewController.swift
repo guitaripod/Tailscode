@@ -1055,6 +1055,10 @@ final class HomeViewController: UIViewController {
                     toSection: .alerts)
             }
         }
+        if showsDemoNudge {
+            snapshot.appendSections([.demoNudge])
+            snapshot.appendItems([.demoNudge(DemoNudgeCard())], toSection: .demoNudge)
+        }
         if SupporterInvitation.isDue(isPro: ProStore.shared.isPro) {
             snapshot.appendSections([.supporter])
             snapshot.appendItems([.supporter(SupporterCard(price: proPrice))], toSection: .supporter)
@@ -1731,7 +1735,7 @@ final class HomeViewController: UIViewController {
                 switch id {
                 case .live: section = Self.liveSection()
                 case .projects: section = Self.projectsSection()
-                case .alerts, .supporter: section = Self.listSection(withHeader: false)
+                case .alerts, .demoNudge, .supporter: section = Self.listSection(withHeader: false)
                 case .missed: section = Self.listSection()
                 case .saved, .recent, .usage: section = Self.listSection()
                 }
@@ -2021,6 +2025,11 @@ final class HomeViewController: UIViewController {
         let alertCell = UICollectionView.CellRegistration<ServerAlertCell, ServerAlertCard> {
             cell, _, card in cell.configure(card)
         }
+        let demoNudgeCell = UICollectionView.CellRegistration<DemoNudgeCell, DemoNudgeCard> {
+            [weak self] cell, _, _ in
+            cell.onSetUp = { [weak self] in self?.presentSetup() }
+            cell.onNotNow = { [weak self] in self?.dismissDemoNudge() }
+        }
         let supporterCell = UICollectionView.CellRegistration<SupporterCell, SupporterCard> {
             [weak self] cell, _, card in
             cell.configure(card)
@@ -2058,6 +2067,9 @@ final class HomeViewController: UIViewController {
             case .alert(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: alertCell, for: indexPath, item: card)
+            case .demoNudge(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: demoNudgeCell, for: indexPath, item: card)
             case .supporter(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: supporterCell, for: indexPath, item: card)
@@ -2095,7 +2107,7 @@ final class HomeViewController: UIViewController {
                 let section = self.dataSource.sectionIdentifier(for: indexPath.section)
             else { return }
             switch section {
-            case .alerts, .supporter:
+            case .alerts, .demoNudge, .supporter:
                 break
             case .missed:
                 view.configure(
@@ -3403,6 +3415,18 @@ extension HomeViewController {
         return nil
     }
 
+    /// The card follows the demo itself, so it goes the moment a real server is saved or the demo
+    /// is left, and the screenshot pipeline's switch for the badge hides it the same way.
+    private var showsDemoNudge: Bool {
+        DemoNudge.isShown(demoActive: ConnectionController.shared.isDemoMode) && !Self.demoBadgeHidden
+    }
+
+    private func dismissDemoNudge() {
+        Theme.Haptics.selection()
+        DemoNudge.dismiss()
+        applySnapshot()
+    }
+
     @objc private func supporterDidChange() {
         if ProStore.shared.isPro { SupporterInvitation.settle() }
         applySnapshot()
@@ -3437,7 +3461,7 @@ extension HomeViewController: UICollectionViewDelegate {
         switch item {
         case .alert:
             onOpenSettings?()
-        case .supporter:
+        case .demoNudge, .supporter:
             break
         case .missed(let item):
             openMissed(item)
@@ -3505,7 +3529,7 @@ extension HomeViewController: UICollectionViewDelegate {
             return sessionMenu(for: card.entry, allowDelete: true)
         case .live(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .alert, .supporter, .missed, .usage, .placeholder, .usagePlaceholder:
+        case .alert, .demoNudge, .supporter, .missed, .usage, .placeholder, .usagePlaceholder:
             return nil
         }
     }

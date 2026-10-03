@@ -255383,6 +255383,716 @@
           }
         }
       }
+    },
+    "Get a nudge when your agent is done": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get a nudge when your agent is done"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erfahre sofort, wenn dein Agent fertig ist"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe un aviso cuando tu agente termine"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sois prévenu dès que votre agent a terminé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevi un avviso quando il tuo agente ha finito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントの完了をお知らせします"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 끝나면 알려 드릴게요"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba um aviso quando seu agente terminar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在智能体完成时提醒你"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在代理程式完成時提醒你"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daj sobie znać, gdy agent skończy"
+          }
+        }
+      }
+    },
+    "Tailscode can alert you on the Lock Screen and in a Live Activity when the agent finishes or has a question, so you can leave it working.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode can alert you on the Lock Screen and in a Live Activity when the agent finishes or has a question, so you can leave it working."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode kann dich auf dem Sperrbildschirm und in einer Live-Aktivität benachrichtigen, wenn der Agent fertig ist oder eine Frage hat. So kannst du ihn einfach arbeiten lassen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode puede avisarte en la pantalla de bloqueo y en una Live Activity cuando el agente termine o tenga una pregunta, así puedes dejarlo trabajando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode peut vous prévenir sur l’écran verrouillé et dans une Live Activity quand l’agent a terminé ou a une question, pour que vous le laissiez travailler."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode può avvisarti nella schermata di blocco e in una Live Activity quando l’agente ha finito o ha una domanda, così puoi lasciarlo lavorare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントが完了したときや質問があるときに、ロック画面とライブアクティビティでお知らせします。作業はそのまま任せられます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 작업을 마치거나 질문이 있을 때 잠금 화면과 Live Activity로 알려 드리니, 안심하고 맡겨 두세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscode pode avisar você na Tela Bloqueada e em uma Live Activity quando o agente terminar ou tiver uma pergunta, para você deixá-lo trabalhando."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能体完成任务或有问题要问你时，Tailscode 会通过锁定屏幕和实时活动提醒你，你可以放心让它继续工作。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理程式完成工作或有問題要問你時，Tailscode 會透過鎖定畫面與即時動態提醒你，你可以放心讓它繼續工作。"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode może powiadomić Cię na ekranie blokady i w Live Activity, gdy agent skończy lub będzie miał pytanie, więc możesz zostawić go przy pracy."
+          }
+        }
+      }
+    },
+    "Turn on alerts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn on alerts"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hinweise aktivieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activar avisos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activer les alertes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attiva gli avvisi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知をオンにする"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "알림 켜기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ativar avisos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启提醒"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟提醒"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Włącz powiadomienia"
+          }
+        }
+      }
+    },
+    "Connect your machine": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect your machine"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbinde deinen Rechner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conecta tu máquina"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectez votre machine"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collega la tua macchina"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "マシンを接続"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 컴퓨터 연결"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conecte sua máquina"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接你的机器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連接你的電腦"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połącz swój komputer"
+          }
+        }
+      }
+    },
+    "You are looking at sample data. Link a computer that runs your agent and this becomes your own.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You are looking at sample data. Link a computer that runs your agent and this becomes your own."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das sind Beispieldaten. Verknüpfe einen Rechner, auf dem dein Agent läuft, und das hier wird zu deinem eigenen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estás viendo datos de ejemplo. Vincula un ordenador que ejecute tu agente y esto pasará a ser tuyo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce sont des données d’exemple. Associez un ordinateur qui exécute votre agent et tout cela devient le vôtre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stai vedendo dati di esempio. Collega un computer che esegue il tuo agente e tutto questo diventa tuo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これはサンプルデータです。エージェントが動くコンピュータをリンクすると、ここがあなた自身の画面になります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "샘플 데이터를 보고 있어요. 에이전트가 실행되는 컴퓨터를 연결하면 이 화면이 내 것이 됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você está vendo dados de exemplo. Conecte um computador que execute seu agente e isto passa a ser seu."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你看到的是示例数据。关联一台运行智能体的电脑，这里就会变成你自己的。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你看到的是範例資料。連結一台執行代理程式的電腦，這裡就會變成你自己的。"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To przykładowe dane. Połącz komputer, na którym działa Twój agent, a to stanie się Twoje."
+          }
+        }
+      }
+    },
+    "Send these steps to my computer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send these steps to my computer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schritte an meinen Rechner senden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar estos pasos a mi ordenador"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyer ces étapes à mon ordinateur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invia questi passaggi al mio computer"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手順をコンピュータに送る"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 단계를 내 컴퓨터로 보내기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar estes passos para meu computador"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将这些步骤发送到我的电脑"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將這些步驟傳送到我的電腦"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyślij te kroki na mój komputer"
+          }
+        }
+      }
+    },
+    "Set up Tailscale and my coding agent on this computer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up Tailscale and my coding agent on this computer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale und meinen Coding-Agenten auf diesem Rechner einrichten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurar Tailscale y mi agente de programación en este ordenador"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurer Tailscale et mon agent de code sur cet ordinateur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurare Tailscale e il mio agente di programmazione su questo computer"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このコンピュータで Tailscale とコーディングエージェントをセットアップする"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 컴퓨터에 Tailscale과 코딩 에이전트 설정하기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurar o Tailscale e meu agente de código neste computador"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这台电脑上设置 Tailscale 和我的编程智能体"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在這台電腦上設定 Tailscale 和我的程式編寫代理程式"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skonfiguruj na tym komputerze Tailscale i mojego agenta kodującego"
+          }
+        }
+      }
+    },
+    "1. Install Tailscale on this computer and sign in with the same account as my phone:\n%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Install Tailscale on this computer and sign in with the same account as my phone:\n%@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Installiere Tailscale auf diesem Rechner und melde dich mit demselben Konto wie auf meinem Telefon an:\n%@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Instala Tailscale en este ordenador e inicia sesión con la misma cuenta que en mi teléfono:\n%@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Installez Tailscale sur cet ordinateur et connectez-vous avec le même compte que sur mon téléphone :\n%@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Installa Tailscale su questo computer e accedi con lo stesso account del mio telefono:\n%@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. このコンピュータに Tailscale をインストールし、iPhone と同じアカウントでサインインします:\n%@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. 이 컴퓨터에 Tailscale을 설치하고 내 휴대폰과 같은 계정으로 로그인하세요:\n%@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Instale o Tailscale neste computador e entre com a mesma conta do meu celular:\n%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. 在这台电脑上安装 Tailscale，并使用与我手机相同的账号登录：\n%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. 在這台電腦上安裝 Tailscale，並使用與我手機相同的帳號登入：\n%@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Zainstaluj Tailscale na tym komputerze i zaloguj się na to samo konto co na moim telefonie:\n%@"
+          }
+        }
+      }
+    },
+    "2. Run this in a terminal on this computer:\n%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Run this in a terminal on this computer:\n%@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Führe das in einem Terminal auf diesem Rechner aus:\n%@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Ejecuta esto en una terminal de este ordenador:\n%@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Exécutez ceci dans un terminal sur cet ordinateur :\n%@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Esegui questo in un terminale su questo computer:\n%@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. このコンピュータのターミナルで次を実行します:\n%@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 이 컴퓨터의 터미널에서 다음을 실행하세요:\n%@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Execute isto em um terminal neste computador:\n%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 在这台电脑的终端中运行：\n%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 在這台電腦的終端機中執行：\n%@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Uruchom to w terminalu na tym komputerze:\n%@"
+          }
+        }
+      }
+    },
+    "3. Then run this to read this computer's address, and type it into Tailscode on my phone:\n%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Then run this to read this computer's address, and type it into Tailscode on my phone:\n%@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Führe dann das aus, um die Adresse dieses Rechners zu lesen, und gib sie in Tailscode auf meinem Telefon ein:\n%@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Después ejecuta esto para leer la dirección de este ordenador y escríbela en Tailscode en mi teléfono:\n%@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Exécutez ensuite ceci pour lire l’adresse de cet ordinateur, puis saisissez-la dans Tailscode sur mon téléphone :\n%@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Poi esegui questo per leggere l’indirizzo di questo computer e inseriscilo in Tailscode sul mio telefono:\n%@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. 続けて次を実行してこのコンピュータのアドレスを確認し、iPhone の Tailscode に入力します:\n%@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. 이어서 다음을 실행해 이 컴퓨터의 주소를 확인하고, 내 휴대폰의 Tailscode에 입력하세요:\n%@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Depois execute isto para ler o endereço deste computador e digite-o no Tailscode no meu celular:\n%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. 然后运行下面的命令读取这台电脑的地址，并输入到我手机上的 Tailscode：\n%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. 接著執行下面的指令讀取這台電腦的位址，並輸入到我手機上的 Tailscode：\n%@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Następnie uruchom to, aby odczytać adres tego komputera, i wpisz go w Tailscode na moim telefonie:\n%@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -11,6 +11,9 @@ public enum DemoMode {
         set { UserDefaults.standard.set(newValue, forKey: defaultsKey) }
     }
 
-    public static func enter() { isActive = true }
+    public static func enter() {
+        DemoNudge.reset()
+        isActive = true
+    }
     public static func leave() { isActive = false }
 }

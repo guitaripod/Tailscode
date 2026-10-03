@@ -40,6 +40,7 @@ final class ServerSetupViewController: UIViewController {
     private let tailscaleLink = UIButton(type: .system)
     private let commandHost = UIStackView()
     private let agentLink = UIButton(type: .system)
+    private let sendStepsButton = UIButton(type: .system)
     private let addressField = FormField(
         title: String(localized: "Address"), placeholder: "100.101.102.103",
         keyboard: .URL, contentType: .URL, returnKey: .go)
@@ -290,7 +291,29 @@ final class ServerSetupViewController: UIViewController {
 
         agentCard.content.addArrangedSubview(choices)
         agentCard.content.addArrangedSubview(commandHost)
-        agentCard.content.addArrangedSubview(agentLink)
+        configureSendSteps()
+        let links = UIStackView(arrangedSubviews: [sendStepsButton, agentLink])
+        links.axis = .vertical
+        links.alignment = .leading
+        agentCard.content.addArrangedSubview(links)
+    }
+
+    /// The whole setup as one message for the computer: the commands are typed over there, so the
+    /// phone's job is to get them across, by AirDrop, Messages or Notes.
+    private func configureSendSteps() {
+        configureLink(sendStepsButton, title: SetupHandoff.action)
+        sendStepsButton.configuration?.image = UIImage(
+            systemName: "square.and.arrow.up",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        sendStepsButton.addAction(
+            UIAction { [weak self] _ in
+                guard let self else { return }
+                Theme.Haptics.tap()
+                AppLogger.lifecycle.info("setup steps shared for another computer")
+                self.share(
+                    SetupHandoff.message(installCommand: self.command(for: self.backend)),
+                    from: self.sendStepsButton)
+            }, for: .touchUpInside)
     }
 
     private func agentLinkURL(for backend: AgentType) -> String {

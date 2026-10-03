@@ -244,7 +244,6 @@ final class ChatViewController: UIViewController {
         enhancement.onStatusChange = { [weak self] status in
             self?.handleEnhancementStatus(status)
         }
-        NotificationManager.requestAuthorizationIfNeeded()
         NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
             name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -2538,6 +2537,7 @@ final class ChatViewController: UIViewController {
                 Theme.Haptics.received()
                 ReviewPromptCoordinator.shared.turnCompleted()
                 SupporterInvitation.recordSuccessfulTurn()
+                NotificationManager.offerAfterFirstTurn(from: self)
             }
             refreshSpend()
             refreshGit()
