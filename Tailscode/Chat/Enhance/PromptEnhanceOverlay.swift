@@ -115,8 +115,6 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
             systemName: "arrow.up",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .bold))
         use.imagePadding = Theme.Spacing.xs
-        use.baseBackgroundColor = Theme.Color.accent
-        use.baseForegroundColor = Theme.Color.onAccent
         useButton.configuration = use
         useButton.accessibilityLabel = String(localized: "Use this prompt")
         useButton.addAction(UIAction { [weak self] _ in self?.useCurrent() }, for: .touchUpInside)

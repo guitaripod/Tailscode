@@ -44,6 +44,7 @@ final class ImageStudioViewController: UIViewController {
     private let chipRow = UIStackView()
     private let promptView = UITextView()
     private let placeholder = UILabel()
+    private let clearButton = UIButton(type: .system)
     private let renderButton = UIButton(type: .system)
     private var promptHeight: NSLayoutConstraint!
     private var appliedChips: String?
@@ -235,11 +236,13 @@ final class ImageStudioViewController: UIViewController {
         promptView.font = Theme.Ramp.font(.composer)
         promptView.textColor = Theme.Color.label
         promptView.delegate = self
-        promptView.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
+        promptView.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 38)
         promptView.translatesAutoresizingMaskIntoConstraints = false
         placeholder.numberOfLines = 1
         placeholder.translatesAutoresizingMaskIntoConstraints = false
         promptView.addSubview(placeholder)
+
+        configureClearButton()
 
         renderButton.translatesAutoresizingMaskIntoConstraints = false
         renderButton.addAction(
@@ -260,6 +263,7 @@ final class ImageStudioViewController: UIViewController {
         view.addSubview(dock)
         dock.contentView.addSubview(chipScroll)
         dock.contentView.addSubview(promptView)
+        dock.contentView.addSubview(clearButton)
         dock.contentView.addSubview(renderButton)
         promptHeight = promptView.heightAnchor.constraint(equalToConstant: 44)
         NSLayoutConstraint.activate([
@@ -288,6 +292,10 @@ final class ImageStudioViewController: UIViewController {
             promptView.bottomAnchor.constraint(
                 equalTo: view.keyboardLayoutGuide.topAnchor, constant: -Theme.Spacing.s),
             promptHeight,
+            clearButton.topAnchor.constraint(equalTo: promptView.topAnchor, constant: 2),
+            clearButton.trailingAnchor.constraint(equalTo: promptView.trailingAnchor, constant: -2),
+            clearButton.widthAnchor.constraint(equalToConstant: 40),
+            clearButton.heightAnchor.constraint(equalToConstant: 40),
             renderButton.leadingAnchor.constraint(
                 equalTo: promptView.trailingAnchor, constant: Theme.Spacing.s),
             renderButton.trailingAnchor.constraint(
@@ -937,7 +945,45 @@ final class ImageStudioViewController: UIViewController {
             ? ImageGenWords.stopTitle : ImageGenWords.renderTitle(mode: slot.mode)
     }
 
+    /// A long brief is minutes of typing or a whole rewrite, and emptying it by selecting and
+    /// deleting is a fight with a loupe. The mark sits inside the box where the words are, is
+    /// there only while there is something to clear, and leaves the keyboard up so the next
+    /// brief starts at once.
+    private func configureClearButton() {
+        var config = UIButton.Configuration.plain()
+        config.image = UIImage(
+            systemName: "xmark.circle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .regular))
+        config.baseForegroundColor = Theme.Color.tertiaryLabel
+        clearButton.configuration = config
+        clearButton.translatesAutoresizingMaskIntoConstraints = false
+        clearButton.accessibilityLabel = String(localized: "Clear")
+        clearButton.alpha = 0
+        clearButton.isUserInteractionEnabled = false
+        clearButton.addAction(UIAction { [weak self] _ in self?.clearPrompt() }, for: .touchUpInside)
+    }
+
+    private func clearPrompt() {
+        Theme.Haptics.tap()
+        enhanceOverlay?.requestDismiss()
+        beforeEnhance = nil
+        setPrompt("")
+        studio.rememberDraft("")
+        updateChips()
+        promptView.becomeFirstResponder()
+    }
+
+    private func updateClearButton() {
+        let visible = !(promptView.text ?? "").isEmpty
+        clearButton.isUserInteractionEnabled = visible
+        guard clearButton.alpha != (visible ? 1 : 0) else { return }
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.15) {
+            self.clearButton.alpha = visible ? 1 : 0
+        }
+    }
+
     private func updatePlaceholder() {
+        updateClearButton()
         placeholder.isHidden = !(promptView.text ?? "").isEmpty
         placeholder.attributedText = NSAttributedString(
             string: slot.hint,
