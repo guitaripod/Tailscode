@@ -57,7 +57,7 @@ mkdir -p "$STAGE"
 rsync -a --delete \
   --exclude .git --exclude build --exclude 'build-*' \
   --exclude .build --exclude '**/.build' --exclude '.swiftpm' --exclude '**/.swiftpm' \
-  --exclude DerivedData --exclude vendor --exclude '*.xcuserstate' \
+  --exclude DerivedData --exclude vendor --exclude marketing --exclude '*.xcuserstate' \
   "$ROOT/" "$STAGE/"
 
 # --delete-excluded is deliberate: a stale .build in the vendored Kit makes
