@@ -1,4 +1,5 @@
 import Foundation
+import TailscodeCore
 
 /// Drives on-device prompt enhancement.
 ///
@@ -14,6 +15,23 @@ final class PromptEnhancementController {
         case ready([EnhancedPrompt])
         case failed
         case unavailable(String)
+    }
+
+    /// What the words are for. A coding brief is sharpened by the on-device model; a picture brief
+    /// is written out by the helper on the machine that paints, the same one the studio's
+    /// Enhance chip asks. Switching drops what was cached, because a rewrite is for one purpose.
+    enum Mode: Equatable {
+        case coding
+        case image
+    }
+
+    var mode: Mode = .coding {
+        didSet {
+            guard mode != oldValue else { return }
+            generationTask?.cancel()
+            generatedInput = nil
+            status = .idle
+        }
     }
 
     private let enhancer = PromptEnhancer()
@@ -52,7 +70,7 @@ final class PromptEnhancementController {
     /// Warms the model into memory the moment the composer gains focus, so the
     /// first real generation doesn't pay the cold-start cost.
     func prewarm() {
-        guard isAvailable else { return }
+        guard mode == .coding, isAvailable else { return }
         enhancer.prewarm()
     }
 
@@ -62,7 +80,7 @@ final class PromptEnhancementController {
     func updateInput(_ raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         latestInput = text
-        guard isAvailable else { return }
+        guard mode == .coding, isAvailable else { return }
         guard Self.isEnhanceable(text) else {
             generationTask?.cancel()
             generatedInput = nil
@@ -78,6 +96,11 @@ final class PromptEnhancementController {
     func requestNow(for raw: String) -> Bool {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         latestInput = text
+        if mode == .image {
+            if text == generatedInput, case .ready = status { return true }
+            paint(text)
+            return true
+        }
         if let reason = unavailableReason {
             AppLogger.ui.info("enhance: requestNow — unavailable")
             status = .unavailable(reason)
@@ -99,8 +122,52 @@ final class PromptEnhancementController {
     }
 
     func retry() {
+        if mode == .image {
+            guard !latestInput.isEmpty else { return }
+            paint(latestInput)
+            return
+        }
         guard Self.isEnhanceable(latestInput) else { return }
         generate(latestInput)
+    }
+
+    /// Has the helper write the picture brief out. It answers with the paragraph and the shape it
+    /// wants, which ride on the one card; no helper anywhere says so instead of offering a retry
+    /// that cannot work, and a rewrite already out (the Enhance chip's) is a retry rather than a
+    /// second request the studio would silently drop.
+    private func paint(_ text: String) {
+        generationTask?.cancel()
+        let studio = ImageStudio.shared
+        guard !studio.enhancing else {
+            status = .failed
+            return
+        }
+        status = .generating
+        studio.enhance(text) { [weak self] result in
+            guard let self, self.mode == .image else { return }
+            switch result {
+            case .success(let written):
+                guard !written.0.isEmpty else {
+                    self.status = .failed
+                    return
+                }
+                self.generatedInput = text
+                self.status = .ready([
+                    EnhancedPrompt(
+                        id: 0, label: studio.helper?.name ?? ImageGenSurface.title,
+                        text: written.0, aspect: written.1)
+                ])
+            case .failure(let failure):
+                self.generatedInput = nil
+                switch failure {
+                case .refused(let reason):
+                    self.status = .unavailable(reason)
+                default:
+                    self.status =
+                        studio.helper == nil ? .unavailable(ImageGenWords.enhanceMissing) : .failed
+                }
+            }
+        }
     }
 
     private func generate(_ text: String) {

@@ -49,6 +49,8 @@ final class ImageStudioViewController: UIViewController {
     private var appliedChips: String?
     /// The words as they were before a rewrite, kept for exactly one undo.
     private var beforeEnhance: String?
+    private let enhancement = PromptEnhancementController()
+    private weak var enhanceOverlay: PromptEnhanceOverlay?
     private var intake: ImageReferenceIntake!
     private var wasPainting = false
     private var loadingOriginal: String?
@@ -242,6 +244,13 @@ final class ImageStudioViewController: UIViewController {
         renderButton.translatesAutoresizingMaskIntoConstraints = false
         renderButton.addAction(
             UIAction { [weak self] _ in self?.renderTapped() }, for: .touchUpInside)
+        renderButton.addGestureRecognizer(
+            UILongPressGestureRecognizer(target: self, action: #selector(renderHeld)))
+        enhancement.mode = .image
+        enhancement.onStatusChange = { [weak self] status in
+            guard let self else { return }
+            self.enhanceOverlay?.render(status, original: self.enhancement.latestInput)
+        }
 
         let chipScroll = UIScrollView()
         chipScroll.showsHorizontalScrollIndicator = false
@@ -769,9 +778,7 @@ final class ImageStudioViewController: UIViewController {
             switch result {
             case .success(let written):
                 self.beforeEnhance = brief
-                if let aspect = written.1, !self.studio.aspectChosen, self.slot.applies(.aspect) {
-                    self.studio.follow(aspect: aspect)
-                }
+                self.studio.followWriter(aspect: written.1)
                 self.setPrompt(written.0)
                 self.studio.rememberDraft(written.0)
                 if let helper = self.studio.helper {
@@ -957,6 +964,37 @@ final class ImageStudioViewController: UIViewController {
         guard abs(height - promptHeight.constant) > 0.5 else { return }
         promptHeight.constant = height
         view.layoutIfNeeded()
+    }
+
+    /// Holding the button that makes the picture offers the brief written out first — the chat's
+    /// hold-Send, answered by the machine that paints rather than by a coding model. Nothing is
+    /// replaced until the card is taken, and taking it leaves the chip's undo behind.
+    @objc private func renderHeld(_ gesture: UILongPressGestureRecognizer) {
+        let words = (promptView.text ?? "").trimmed()
+        guard gesture.state == .began, !studio.isPainting, !words.isEmpty else { return }
+        Theme.Haptics.tap()
+        enhancement.requestNow(for: words)
+        presentEnhanceOverlay(original: words)
+    }
+
+    private func presentEnhanceOverlay(original: String) {
+        enhanceOverlay?.removeFromSuperview()
+        let overlay = PromptEnhanceOverlay()
+        overlay.delegate = self
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.bottomAnchor.constraint(equalTo: dock.topAnchor),
+        ])
+        enhanceOverlay = overlay
+        overlay.render(enhancement.status, original: original)
+        view.layoutIfNeeded()
+        let origin = renderButton.convert(
+            CGPoint(x: renderButton.bounds.midX, y: renderButton.bounds.midY), to: overlay)
+        overlay.animateIn(fromButtonCenter: origin)
     }
 
     private func renderTapped() {
@@ -1214,6 +1252,7 @@ extension ImageStudioViewController: UICollectionViewDelegate {
 
 extension ImageStudioViewController: UITextViewDelegate {
     func textViewDidChange(_ textView: UITextView) {
+        enhanceOverlay?.requestDismiss()
         updatePlaceholder()
         updateRenderButton()
         updateMachineControl()
@@ -1224,5 +1263,33 @@ extension ImageStudioViewController: UITextViewDelegate {
 extension String {
     fileprivate func trimmed() -> String {
         trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+extension ImageStudioViewController: PromptEnhanceOverlayDelegate {
+    func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didChoose prompt: EnhancedPrompt) {
+        let before = (promptView.text ?? "").trimmed()
+        Theme.Haptics.success()
+        overlay.requestDismiss()
+        studio.followWriter(aspect: prompt.aspect)
+        setPrompt(prompt.text)
+        studio.rememberDraft(prompt.text)
+        beforeEnhance = before
+        if let helper = studio.helper { notice(ImageGenWords.enhancedNotice(helper)) }
+        updateChips()
+    }
+
+    func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didCopy prompt: EnhancedPrompt) {
+        UIPasteboard.general.string = prompt.text
+        Theme.Haptics.success()
+    }
+
+    func enhanceOverlayDidRequestRetry(_ overlay: PromptEnhanceOverlay) {
+        Theme.Haptics.tap()
+        enhancement.retry()
+    }
+
+    func enhanceOverlayDidDismiss(_ overlay: PromptEnhanceOverlay) {
+        if enhanceOverlay === overlay { enhanceOverlay = nil }
     }
 }

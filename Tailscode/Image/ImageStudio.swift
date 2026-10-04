@@ -255,6 +255,13 @@ final class ImageStudio {
         announce()
     }
 
+    /// Takes the shape a writer asked for when taking its words, unless the shape was chosen by
+    /// hand or this engine has no shape to give.
+    func followWriter(aspect: ImageGenAspect?) {
+        guard let aspect, !aspectChosen, slot.applies(.aspect) else { return }
+        follow(aspect: aspect)
+    }
+
     /// The shape the helper answered with: followed, but never counted as a choice by hand.
     func follow(aspect: ImageGenAspect) {
         guard aspect != slot.aspect else { return }

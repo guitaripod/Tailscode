@@ -1628,6 +1628,9 @@ final class HomeViewController: UIViewController {
         guard askLane != lane else { return }
         let previous = askLane
         askLane = lane
+        enhancement.mode = lane == .image ? .image : .coding
+        enhanceOverlay?.requestDismiss()
+        composerBar.setEnhanceHint(false)
         composerBar.setLane(lane, animated: animated)
         if previous == .video || previous == .image { composerBar.clearText() }
         if lane == .video || lane == .image {
@@ -2168,6 +2171,9 @@ extension HomeViewController: HomeComposerBarDelegate {
         }
         if askLane == .image {
             ImageStudio.shared.rememberDraft(text)
+            enhancement.updateInput(text)
+            enhanceOverlay?.requestDismiss()
+            composerBar.setEnhanceHint(enhancement.hasFreshSuggestions)
             updateSuggestions()
             return
         }
@@ -2242,7 +2248,8 @@ extension HomeViewController: HomeComposerBarDelegate {
 
     /// Holding Send raises the on-device enhancement deck for words worth sharpening — the same
     /// gesture the chat's composer answers, because the front door is exactly where a vague
-    /// sentence costs a whole round trip.
+    /// sentence costs a whole round trip. In the picture lane the deck holds the brief written out
+    /// by the machine that paints, which is the Enhance chip's own answer.
     func homeComposerDidLongPressSend(from view: UIView) {
         let text = composerBar.currentText
         guard !text.isEmpty else { return }
@@ -3286,6 +3293,7 @@ extension HomeViewController: PromptEnhanceOverlayDelegate {
     func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didChoose prompt: EnhancedPrompt) {
         Theme.Haptics.success()
         composerBar.setDraft(prompt.text, focus: true)
+        if enhancement.mode == .image { ImageStudio.shared.followWriter(aspect: prompt.aspect) }
         overlay.requestDismiss()
     }
 

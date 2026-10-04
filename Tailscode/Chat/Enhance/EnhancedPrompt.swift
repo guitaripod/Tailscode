@@ -1,12 +1,15 @@
 import Foundation
+import TailscodeCore
 
 /// One on-device rewrite of the user's draft: a short `label` naming the angle
 /// it takes plus the refined `text`. A plain value type so the Foundation
-/// Models types stay behind `PromptEnhancer` and never reach the UI layer.
+/// Models types stay behind `PromptEnhancer` and never reach the UI layer. A picture brief also
+/// carries the shape its writer asked for, which the surface follows when the words are taken.
 struct EnhancedPrompt: Sendable, Hashable, Identifiable {
     let id: Int
     let label: String
     let text: String
+    var aspect: ImageGenAspect? = nil
 }
 
 /// Tuning for the on-device generation. Kept in one place so the thresholds
