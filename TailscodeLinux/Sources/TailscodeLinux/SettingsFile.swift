@@ -75,6 +75,14 @@ enum SettingsFile {
         }
     }
 
+    /// What this file holds for a key, ignoring the defaults. The defaults on Linux are also read
+    /// from a plist keyed to the executable that this file never removes anything from, so a
+    /// setting that was reset — which only ever deletes a key — would come back from the plist on
+    /// the next launch if it were read through them.
+    static func stored(forKey key: String) -> Any? {
+        lock.withLock { state[key] }
+    }
+
     /// The single write path for a setting: the defaults keep working for every reader, and the
     /// file learns the value at the same moment. Setting what is already there changes nothing.
     static func set(_ value: Any?, forKey key: String) {

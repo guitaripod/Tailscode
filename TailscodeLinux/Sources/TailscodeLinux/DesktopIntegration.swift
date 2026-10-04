@@ -332,12 +332,15 @@ enum DesktopIntegration {
 
 /// Font scale as a live, keyboard-driven preference: `gtk-xft-dpi` multiplies every font in the
 /// app — chrome and canvas alike — the way a terminal's Ctrl+= does, and it survives relaunch.
+/// Read from the settings file alone: a zoom undone with Ctrl+0 leaves the file and not the
+/// defaults' plist, which used to hand the old zoom back on every launch.
 enum UIScale {
     private static let key = "tailscode.uiScale"
 
     static var factor: Double {
-        let stored = UserDefaults.standard.double(forKey: key)
-        return stored == 0 ? 1.0 : stored
+        let stored = SettingsFile.stored(forKey: key)
+        let value = (stored as? Double) ?? (stored as? NSNumber)?.doubleValue ?? 0
+        return value == 0 ? 1.0 : value
     }
 
     static func apply() {
