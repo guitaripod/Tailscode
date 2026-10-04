@@ -134,7 +134,8 @@ enum Kit {
     /// 0.34.0 waits on a turn from another process: a side-effect-free request a background
     /// URLSession can hold until the turn ends, and whether a bridge can really push.
     /// 0.35.0 lets a delegated patch wait to be read: review, the patch, apply and discard.
-    static let version = Version(0, 35, 0)
+    /// 0.35.1 stops a Linux binary trapping on a resource bundle it was never given.
+    static let version = Version(0, 35, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

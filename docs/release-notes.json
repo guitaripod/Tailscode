@@ -1,4 +1,7 @@
 {
+  "1.66-linux": {
+    "en-US": "Linux no longer crashes on a prompt that is only a slash command, and the app launches at the scale Ctrl+0 gives.\n\nFixes:\n• A chat whose first message was only a slash command, such as /clear, closed the whole app. It now gets a name like any other chat.\n• The zoom you reset with Ctrl+0 is the zoom the app opens at, instead of an old 1.2 coming back on every launch."
+  },
   "1.60-linux": {
     "en-US": "Quick Ask opens on your machine's own models, and long chats draw their tool rows faster.\n\nFixes:\n• Quick Ask's model menu lists the models of the machine it is aimed at when you have not picked one yet, instead of only Server default.\n• Pointing Quick Ask at another machine stops following the previous machine's models.\n\nFaster:\n• A folded run of tool calls counts the lines its edits changed without reading every tool's whole output, so long chats draw their tool rows faster."
   },

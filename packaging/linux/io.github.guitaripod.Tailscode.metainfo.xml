@@ -69,6 +69,16 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.66" date="2026-10-04">
+      <description>
+        <p>Linux no longer crashes on a prompt that is only a slash command, and the app launches at the scale Ctrl+0 gives.</p>
+        <p>Fixes:</p>
+        <ul>
+          <li>A chat whose first message was only a slash command, such as /clear, closed the whole app. It now gets a name like any other chat.</li>
+          <li>The zoom you reset with Ctrl+0 is the zoom the app opens at, instead of an old 1.2 coming back on every launch.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.60" date="2026-09-24">
       <description>
         <p>Quick Ask opens on your machine&#x27;s own models, and long chats draw their tool rows faster.</p>
