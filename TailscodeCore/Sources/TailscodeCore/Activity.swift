@@ -43,8 +43,24 @@ public enum ActivityTuning {
     /// its compositor for a rate (`CAFrameRateRange`) is already being handed the right ticks. Both
     /// roads answer to ``frameRate``, and this one answers to ``frameSlack`` as well, so a panel
     /// whose tick lands on the boundary draws thirty frames a second rather than twenty.
-    public static func wantsFrame(at time: TimeInterval, lastDrawn: TimeInterval) -> Bool {
-        time - lastDrawn >= frameInterval - frameSlack
+    ///
+    /// The tempo is a grid rather than an interval: a tick draws when it is the first to land in a
+    /// new slot of `1 / rate` seconds of absolute time. Every mark on screen asks about the same
+    /// slots, so they all draw on the same display tick — five breathing badges and a reveal at
+    /// thirty frames a second are thirty frames a second, where an interval measured from each
+    /// mark's own last frame let them settle onto alternate ticks of a 60 Hz panel and paint the
+    /// window sixty times. ``frameSlack`` keeps a tick quantised just short of a slot's start in
+    /// that slot.
+    public static func wantsFrame(
+        at time: TimeInterval, lastDrawn: TimeInterval, rate: Double = frameRate
+    ) -> Bool {
+        guard rate > 0 else { return false }
+        return frameSlot(at: time, rate: rate) != frameSlot(at: lastDrawn, rate: rate)
+    }
+
+    /// Which slot of the tempo's grid a moment falls in.
+    public static func frameSlot(at time: TimeInterval, rate: Double = frameRate) -> Int64 {
+        Int64((time * rate + frameSlack * rate).rounded(.down))
     }
 }
 
