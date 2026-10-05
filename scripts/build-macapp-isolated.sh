@@ -12,11 +12,13 @@
 #   scripts/build-macapp-isolated.sh --selftest            then run --selftest against a server
 #   scripts/build-macapp-isolated.sh --run "<args>"        then run the built binary with <args>
 #   scripts/build-macapp-isolated.sh --release             Release instead of Debug
+#   scripts/build-macapp-isolated.sh --scheme Tailscode    build the iPhone app for the simulator instead
 #   scripts/build-macapp-isolated.sh --clean-root          delete the private tree and stop
 set -euo pipefail
 
 ROOT=tiling
 CONFIG=Debug
+SCHEME=TailscodeMac
 SELFTEST=no
 RUN_ARGS=""
 CLEAN=no
@@ -24,6 +26,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
     --root) ROOT=$2; shift ;;
     --release) CONFIG=Release ;;
+    --scheme) SCHEME=$2; shift ;;
     --selftest) SELFTEST=yes ;;
     --run) RUN_ARGS=$2; shift ;;
     --clean-root) CLEAN=yes ;;
@@ -50,23 +53,28 @@ ssh macbook "mkdir -p ~/$REMOTE_BASE/Dev/iOS ~/$REMOTE_BASE/Dev/swift"
 rsync -az --delete "${EXCLUDES[@]}" "$KIT/" "macbook:$REMOTE_BASE/Dev/swift/CodingAgentKit/"
 rsync -az --delete "${EXCLUDES[@]}" "$TREE/" "macbook:$REMOTE_BASE/Dev/iOS/Tailscode/"
 
-ssh macbook "ROOT_DIR=$REMOTE_BASE CONFIG=$CONFIG SELFTEST=$SELFTEST RUN_ARGS=$(printf %q "$RUN_ARGS") \
+ssh macbook "ROOT_DIR=$REMOTE_BASE CONFIG=$CONFIG SCHEME=$SCHEME SELFTEST=$SELFTEST RUN_ARGS=$(printf %q "$RUN_ARGS") \
     TAILSCODE_HOST=$(printf %q "$HOST") TAILSCODE_PASSWORD=$(printf %q "$PASSWORD") \
     TAILSCODE_BACKEND=$(printf %q "$BACKEND") bash -l" <<'REMOTE'
 set -e
 cd ~/$ROOT_DIR/Dev/iOS/Tailscode
 xcodegen generate >/dev/null
-LOG=/tmp/tsmac-isolated-$(basename "$ROOT_DIR").log
+LOG=/tmp/tsmac-isolated-$(basename "$ROOT_DIR")-$SCHEME.log
+DEST="platform=macOS"
+[ "$SCHEME" = Tailscode ] && DEST="generic/platform=iOS Simulator"
 if ! lockf -k -t 3600 /tmp/tsmac-build.lock bash -c "
     cd ~/$ROOT_DIR/Dev/iOS/Tailscode
-    xcodebuild -project Tailscode.xcodeproj -scheme TailscodeMac -configuration $CONFIG \
-        -destination 'platform=macOS' -derivedDataPath build-iso build >$LOG 2>&1"; then
+    xcodebuild -project Tailscode.xcodeproj -scheme $SCHEME -configuration $CONFIG \
+        -destination '$DEST' -derivedDataPath build-iso-$SCHEME build >$LOG 2>&1"; then
     grep -E "error:" "$LOG" | sort -u | tail -40
     echo "** BUILD FAILED ** (full log on the Mac: $LOG)"
     exit 1
 fi
 echo "** BUILD SUCCEEDED **"
-APP=~/$ROOT_DIR/Dev/iOS/Tailscode/build-iso/Build/Products/$CONFIG/TailscodeMac.app/Contents/MacOS/TailscodeMac
+if [ "$SCHEME" != TailscodeMac ]; then
+    exit 0
+fi
+APP=~/$ROOT_DIR/Dev/iOS/Tailscode/build-iso-$SCHEME/Build/Products/$CONFIG/TailscodeMac.app/Contents/MacOS/TailscodeMac
 echo "binary: $APP"
 if [ "$SELFTEST" = yes ]; then
     TAILSCODE_HOST="$TAILSCODE_HOST" TAILSCODE_PASSWORD="$TAILSCODE_PASSWORD" TAILSCODE_BACKEND="$TAILSCODE_BACKEND" "$APP" --selftest
