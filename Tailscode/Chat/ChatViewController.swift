@@ -342,7 +342,14 @@ final class ChatViewController: UIViewController {
                         }
                         self.updateNavControls()
                     }
-                    if dial == "rail" { self.dialPill.openRail() }
+                    if dial.hasPrefix("rail") {
+                        if let level = dial.split(separator: ":").dropFirst().first {
+                            self.viewModel.setEffort(String(level))
+                            self.updateNavControls()
+                            try? await Task.sleep(for: .seconds(0.6))
+                        }
+                        self.dialPill.openRail()
+                    }
                     if dial == "step" { self.stepEffort(by: -1) }
                     if dial == "pinscycle" { self.cyclePreset(by: 1) }
                 }

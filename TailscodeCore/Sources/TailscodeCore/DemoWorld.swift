@@ -72,7 +72,7 @@ public enum DemoWorld {
             ModelInfo(id: "claude-haiku-4-5", name: "Haiku 4.5", providerID: "anthropic"),
         ],
         defaultModelID: "claude-fable-5",
-        reasoningEffortOptions: ["low", "medium", "high", "xhigh"],
+        reasoningEffortOptions: ["low", "medium", "high", "xhigh", "max", "ultracode"],
         health: ServerHealth(healthy: true, version: "1.2.0"),
         capabilities: BackendCapabilities(
             supportsFileBrowsing: true, supportsDiffs: false, supportsPermissions: true,

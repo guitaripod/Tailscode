@@ -17,6 +17,9 @@ DEVICE_NAME=TailscodeShots
 DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max
 LOCALE="${TAILSCODE_SHOT_LOCALE:-en-US}"
 OUT="$ROOT/marketing/appstore/iphone"
+THEME_ENV=""
+[ -n "${TAILSCODE_SHOT_THEME:-}" ] && THEME_ENV="TAILSCODE_THEME=$TAILSCODE_SHOT_THEME TAILSCODE_APPEARANCE=${TAILSCODE_SHOT_APPEARANCE:-dark}"
+[ -n "${TAILSCODE_SHOT_OUT:-}" ] && OUT="$TAILSCODE_SHOT_OUT"
 if [ "${1:-}" = "--ipad" ]; then
   shift
   DEVICE_NAME=TailscodeShotsPad
@@ -61,10 +64,13 @@ SHOTS=(
   "07-home|--demo|TAILSCODE_HIDE_DEMO_BADGE=1|6"
   "08-usage|--demo --usage||7"
   "09-chats|--demo|TAILSCODE_OPEN_CHATS=1|7"
+  "02-dial|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=rail:xhigh|14"
   "10-models|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=1|9"
   "11-compaction|--demo|TAILSCODE_OPEN_SESSION=demo-c4|9"
   "12-git|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_OPEN_GIT=1|12"
   "13-diff|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_OPEN_GIT=diff|14"
+  "14-analytics|--demo --analytics||9"
+  "15-delegate|--demo|TAILSCODE_OPEN_DELEGATE=studio.tailnet-demo.ts.net|10"
   "welcome||TAILSCODE_FAKE_TAILNET=up|5"
   "setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_FAKE_TAILNET=up|6"
 )
@@ -99,7 +105,7 @@ boot_device() {
   fi
   xcrun simctl boot "$id" 2>/dev/null || true
   xcrun simctl bootstatus "$id" >/dev/null 2>&1 || true
-  xcrun simctl ui "$id" appearance dark >/dev/null 2>&1 || true
+  xcrun simctl ui "$id" appearance "${TAILSCODE_SHOT_APPEARANCE:-dark}" >/dev/null 2>&1 || true
   xcrun simctl status_bar "$id" override \
     --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
     --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 \
@@ -127,7 +133,7 @@ capture() {
   xcrun simctl terminate "$device" "$BUNDLE" >/dev/null 2>&1 || true
   local prefixed=(FOO=bar)
   [ -n "${IPAD:-}" ] && prefixed+=(SIMCTL_CHILD_TAILSCODE_WINDOW=1376x1032 SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
-  for pair in $envs; do prefixed+=("SIMCTL_CHILD_${pair}"); done
+  for pair in $envs $THEME_ENV; do prefixed+=("SIMCTL_CHILD_${pair}"); done
   env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
   sleep "$delay"
   xcrun simctl io "$device" screenshot "$OUT/$name.png" >/dev/null 2>&1
