@@ -55,7 +55,7 @@ LANGUAGE_ARGS="$(language_args "$LOCALE")"
 # the first screen and the setup checklist a first launch actually shows. The faked
 # tailnet keeps this machine's real 100.x address out of the marketing set.
 SHOTS=(
-  "01-live|--demo|TAILSCODE_OPEN_SESSION=demo-c1|14"
+  "01-live|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_DIAL=level:ultracode|14"
   "02-work|--demo|TAILSCODE_OPEN_SESSION=demo-c2|9"
   "03-approval|--demo|TAILSCODE_OPEN_SESSION=demo-c3|12"
   "04-question|--demo|TAILSCODE_OPEN_SESSION=demo-o2|11"
@@ -64,7 +64,7 @@ SHOTS=(
   "07-home|--demo|TAILSCODE_HIDE_DEMO_BADGE=1|6"
   "08-usage|--demo --usage||7"
   "09-chats|--demo|TAILSCODE_OPEN_CHATS=1|7"
-  "02-dial|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=rail:xhigh|14"
+  "02-dial|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=rail:ultracode|14"
   "10-models|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=1|9"
   "11-compaction|--demo|TAILSCODE_OPEN_SESSION=demo-c4|9"
   "12-git|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_OPEN_GIT=1|12"
@@ -81,7 +81,7 @@ SHOTS=(
 # TAILSCODE_WORKSPACE_WALK presses the sidebar's rows on a clock.
 if [ -n "${IPAD:-}" ]; then
   SHOTS=(
-    "01-live|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1|16"
+    "01-live|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1 TAILSCODE_DIAL=level:ultracode|16"
     "03-approval|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c3|14"
     "04-question|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-opencode/demo-o2|13"
     "02-work|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2|11"
