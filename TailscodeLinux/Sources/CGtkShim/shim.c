@@ -3062,3 +3062,136 @@ bool tailscode_shift_held(GtkWidget *near) {
     GdkModifierType state = gdk_device_get_modifier_state(keyboard);
     return (state & GDK_SHIFT_MASK) != 0;
 }
+
+#include <epoxy/gl.h>
+#include <stdatomic.h>
+
+/// The loop meter's ledger. Every field is touched only on the thread that runs the default main
+/// context: the poll function runs there, and so does the once-a-second read.
+static gint64 meter_slice_start = 0;
+static gint64 meter_mark = 0;
+static gint64 meter_busy = 0;
+static gint64 meter_idle = 0;
+static gint64 meter_worst = 0;
+static gboolean meter_installed = FALSE;
+
+/// Busy is everything outside `g_poll`: time spent dispatching, painting, laying out. A read in the
+/// middle of a busy slice books what has run so far and leaves the slice open, so the worst slice
+/// is still measured from where it really began.
+static gint tailscode_meter_poll(GPollFD *fds, guint count, gint timeout) {
+    gint64 enter = g_get_monotonic_time();
+    if (meter_slice_start != 0) {
+        gint64 slice = enter - meter_slice_start;
+        if (slice > meter_worst) meter_worst = slice;
+        meter_busy += enter - meter_mark;
+    }
+    gint result = g_poll(fds, count, timeout);
+    gint64 out = g_get_monotonic_time();
+    meter_idle += out - enter;
+    meter_slice_start = out;
+    meter_mark = out;
+    return result;
+}
+
+void tailscode_loop_meter_install(void) {
+    if (meter_installed) return;
+    meter_installed = TRUE;
+    gint64 now = g_get_monotonic_time();
+    meter_slice_start = now;
+    meter_mark = now;
+    g_main_context_set_poll_func(g_main_context_default(), tailscode_meter_poll);
+}
+
+void tailscode_loop_meter_take(TailscodeLoopSample *out) {
+    gint64 now = g_get_monotonic_time();
+    if (meter_slice_start != 0) {
+        meter_busy += now - meter_mark;
+        gint64 open = now - meter_slice_start;
+        if (open > meter_worst) meter_worst = open;
+    }
+    meter_mark = now;
+    out->now_us = now;
+    out->busy_us = meter_busy;
+    out->idle_us = meter_idle;
+    out->worst_us = meter_worst;
+    meter_busy = 0;
+    meter_idle = 0;
+    meter_worst = 0;
+}
+
+static _Atomic gint64 watchdog_answer = 0;
+static _Atomic int watchdog_pending = 0;
+
+static gboolean tailscode_watchdog_pong(gpointer unused) {
+    (void)unused;
+    atomic_store(&watchdog_answer, g_get_monotonic_time());
+    atomic_store(&watchdog_pending, 0);
+    return G_SOURCE_REMOVE;
+}
+
+/// At most one ping is ever queued: a loop that has stopped answering is not handed a second one
+/// to answer, so a long stall costs one idle source rather than one per half second.
+void tailscode_watchdog_ping(void) {
+    if (atomic_load(&watchdog_answer) == 0) atomic_store(&watchdog_answer, g_get_monotonic_time());
+    if (atomic_exchange(&watchdog_pending, 1)) return;
+    g_idle_add_full(G_PRIORITY_DEFAULT, tailscode_watchdog_pong, NULL, NULL);
+}
+
+gint64 tailscode_watchdog_answered(void) { return atomic_load(&watchdog_answer); }
+
+const char *tailscode_renderer_name(GtkWidget *window) {
+    if (window == NULL || !GTK_IS_NATIVE(window)) return NULL;
+    GskRenderer *renderer = gtk_native_get_renderer(GTK_NATIVE(window));
+    return renderer ? G_OBJECT_TYPE_NAME(renderer) : NULL;
+}
+
+char *tailscode_gl_vendor(GtkWidget *window) {
+    if (window == NULL || !GTK_IS_NATIVE(window)) return NULL;
+    GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(window));
+    if (surface == NULL) return NULL;
+    GError *error = NULL;
+    GdkGLContext *context = gdk_surface_create_gl_context(surface, &error);
+    if (context == NULL) {
+        g_clear_error(&error);
+        return NULL;
+    }
+    char *vendor = NULL;
+    if (gdk_gl_context_realize(context, &error)) {
+        gdk_gl_context_make_current(context);
+        const GLubyte *text = glGetString(GL_VENDOR);
+        if (text) vendor = g_strdup((const char *)text);
+        gdk_gl_context_clear_current();
+    }
+    g_clear_error(&error);
+    g_object_unref(context);
+    return vendor;
+}
+
+gboolean tailscode_systemd_set_unit_properties(
+    const char *unit, const char *const *names, const guint64 *values, int count, char **error_out) {
+    GError *error = NULL;
+    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+    if (bus == NULL) {
+        if (error_out) *error_out = g_strdup(error ? error->message : "no session bus");
+        g_clear_error(&error);
+        return FALSE;
+    }
+    GVariantBuilder properties;
+    g_variant_builder_init(&properties, G_VARIANT_TYPE("a(sv)"));
+    for (int index = 0; index < count; index++) {
+        g_variant_builder_add(&properties, "(sv)", names[index], g_variant_new_uint64(values[index]));
+    }
+    GVariant *reply = g_dbus_connection_call_sync(
+        bus, "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager", "SetUnitProperties",
+        g_variant_new("(sba(sv))", unit, TRUE, &properties), NULL, G_DBUS_CALL_FLAGS_NONE, 5000,
+        NULL, &error);
+    g_object_unref(bus);
+    if (reply == NULL) {
+        if (error_out) *error_out = g_strdup(error ? error->message : "no reply");
+        g_clear_error(&error);
+        return FALSE;
+    }
+    g_variant_unref(reply);
+    return TRUE;
+}

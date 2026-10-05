@@ -137,6 +137,14 @@ final class MainWindow: @unchecked Sendable {
     /// can open it for real.
     private var pendingBindings: [PaneID: SplitPaneSession] = [:]
     private var listedFromNetwork = false
+    /// Chats a safe restore left paused after an unclean exit: shown, named, and not streaming
+    /// until the person resumes them from the banner or by pressing into the pane.
+    private var parkedBindings: [PaneID: SplitPaneSession] = [:]
+    /// Restored chats whose listing has arrived, waiting their turn in the staggered wake.
+    private var readyToWake: [PaneID: SessionEntry] = [:]
+    private var restoreWake = RestoreWake(order: [])
+    private var wakeScheduled = false
+    private var restoreBanner: RestoreBanner?
 
     var windowWidget: UnsafeMutablePointer<GtkWidget>? { window }
 
@@ -168,6 +176,11 @@ final class MainWindow: @unchecked Sendable {
             let snapshot = SplitSnapshot.decode(raw)
         {
             pendingBindings = splitHost.restore(snapshot)
+        }
+        let plan = Seatbelts.shared.beginLaunch(chatPanes: pendingBindings.count)
+        restoreWake = RestoreWake(layout: splitHost.layout)
+        if let bannerText = plan.bannerText {
+            parkRestoredChats(bannerText: bannerText)
         }
 
         let window = adw_application_window_new(ptr(app))!
@@ -204,6 +217,9 @@ final class MainWindow: @unchecked Sendable {
         adw_application_window_set_content(ptr(window), overlay)
         gtk_window_present(ptr(window))
         Trace.stamp("window presented")
+        Seatbelts.shared.start(window: window) { [weak self] in
+            self?.seatbeltPanes() ?? .empty
+        }
 
         splitHost.eachPane { $0.rebuildHelpOverlay() }
         installKeymap(on: window)
@@ -811,6 +827,36 @@ final class MainWindow: @unchecked Sendable {
                         Data(
                             "SPLITS \(layout.paneCount) zoom=\(layout.zoomedPane != nil) region=\(self.focused) \(described)\n"
                                 .utf8))
+                case "stall":
+                    let milliseconds = UInt32(argument) ?? 4000
+                    FileHandle.standardOutput.write(Data("STALL \(milliseconds)ms\n".utf8))
+                    usleep(milliseconds * 1000)
+                case "pressure":
+                    let pressure: HostPressure =
+                        switch argument {
+                        case "critical": .critical
+                        case "strained": .strained
+                        default: .nominal
+                        }
+                    Seatbelts.shared.inject(pressure)
+                    FileHandle.standardOutput.write(
+                        Data("PRESSURE \(pressure.code) level=\(Seatbelts.shared.level.rawValue)\n".utf8))
+                case "shed":
+                    Seatbelts.shared.force(Int(argument).flatMap(ShedLevel.init(rawValue:)))
+                    FileHandle.standardOutput.write(
+                        Data("SHED level=\(Seatbelts.shared.level.rawValue)\n".utf8))
+                case "flight":
+                    let text = Seatbelts.shared.flightText(last: Int(argument) ?? 12)
+                    FileHandle.standardOutput.write(Data(("FLIGHT\n" + text).utf8))
+                case "restore":
+                    FileHandle.standardOutput.write(
+                        Data(
+                            "RESTORE parked=\(self.parkedBindings.count) banner=\(self.restoreBanner?.isShown ?? false) waiting=\(self.readyToWake.count)\n"
+                                .utf8))
+                case "resume":
+                    self.resumeParked(all: argument != "one")
+                case "quit":
+                    self.quitForUpdate()
                 case "state":
                     let pane = self.activePane
                     let adjustment = pane.transcriptScroller.flatMap {
@@ -1260,6 +1306,7 @@ final class MainWindow: @unchecked Sendable {
     /// The focused pane changed — by keyboard, click, or a structural verb. The title bar, the
     /// file tree, the terminal and the remembered last-session all follow the eye.
     func focusedPaneChanged() {
+        Seatbelts.shared.touch(activePane.id)
         refreshChromeForActivePane()
         renderSidebar()
     }
@@ -1273,6 +1320,8 @@ final class MainWindow: @unchecked Sendable {
         Trace.mark("paneClicked \(splitHost.orderedPanes.firstIndex(where: { $0 === pane }) ?? -1)")
         focused = .transcript
         splitHost.focus(pane, grabKeyboard: false)
+        Seatbelts.shared.touch(pane.id)
+        if parkedBindings[pane.id] != nil { resume(pane.id) }
     }
 
     /// The same rule for the regions beside the tree: pressing in the chat list, the file tree or
@@ -1450,7 +1499,8 @@ final class MainWindow: @unchecked Sendable {
         renderSidebar()
         restateChoosers()
         let active = activePane
-        guard active.sessionID == nil, pendingBindings[active.id] == nil, !entries.isEmpty,
+        guard active.sessionID == nil, pendingBindings[active.id] == nil,
+            parkedBindings[active.id] == nil, readyToWake[active.id] == nil, !entries.isEmpty,
             !active.isAnswering
         else { return }
         let remembered = Preferences.lastSession.flatMap { id in
@@ -1473,13 +1523,141 @@ final class MainWindow: @unchecked Sendable {
                 $0.profileID == binding.profileID && $0.session.id == binding.sessionID
             }) {
                 pendingBindings[paneID] = nil
-                pane.open(entry)
+                readyToWake[paneID] = entry
+                restoreWake.markReady(paneID)
             } else if listedFromNetwork {
                 pane.showPlaceholder(
                     Localized.text(
                         "The chat this pane was showing is not in any listing right now."))
             }
         }
+        pumpRestoreWake()
+    }
+
+    /// Opens the next restored chat whose turn has come, and arms one timer for the one after: a
+    /// restore never opens every stream in one frame. A pane the person has since filled with
+    /// something else, or closed, is skipped rather than overwritten.
+    private func pumpRestoreWake() {
+        while true {
+            switch restoreWake.take(now: Watchdog.now) {
+            case .idle:
+                return
+            case .wait(let delay):
+                guard !wakeScheduled else { return }
+                wakeScheduled = true
+                Gtk.after(UInt32((delay * 1000).rounded(.up))) { [weak self] in
+                    self?.wakeScheduled = false
+                    self?.pumpRestoreWake()
+                }
+                return
+            case .wake(let paneID):
+                guard let entry = readyToWake.removeValue(forKey: paneID),
+                    let pane = splitHost.panes[paneID], pane.sessionID == nil, !pane.isAnswering
+                else { continue }
+                Trace.mark("restore wake \(splitHost.layout.paneIDs.firstIndex(of: paneID) ?? -1)")
+                pane.open(entry)
+                return pumpRestoreWake()
+            }
+        }
+    }
+
+    /// The unclean-exit restore: every restored chat keeps its place and its name and opens no
+    /// stream, and the banner waits for the person to say how they come back.
+    private func parkRestoredChats(bannerText: String) {
+        parkedBindings = pendingBindings
+        pendingBindings = [:]
+        for paneID in parkedBindings.keys {
+            splitHost.panes[paneID]?.showPlaceholder(Self.parkedPlaceholder)
+        }
+        let banner = RestoreBanner(
+            text: bannerText,
+            resumeAll: { [weak self] in
+                Gtk.onMain { [weak self] in self?.resumeParked(all: true) }
+            },
+            resumeOneByOne: { [weak self] in
+                Gtk.onMain { [weak self] in self?.resumeParked(all: false) }
+            },
+            dismiss: { [weak self] in
+                Gtk.onMain { [weak self] in self?.dismissRestoreBanner() }
+            })
+        banner.attach(to: splitHost.container)
+        restoreBanner = banner
+    }
+
+    private static var parkedPlaceholder: String {
+        Localized.text("This chat is paused. Click it to resume.")
+    }
+
+    /// `Resume all` wakes every paused chat through the staggered wake; `Resume one by one` wakes
+    /// the focused pane and leaves the rest paused until each is pressed.
+    private func resumeParked(all: Bool) {
+        dismissRestoreBanner()
+        let chosen = all ? Array(parkedBindings.keys) : [activePane.id]
+        for paneID in chosen { resume(paneID) }
+    }
+
+    private func dismissRestoreBanner() {
+        restoreBanner?.remove()
+        restoreBanner = nil
+    }
+
+    /// One paused chat back into the wake.
+    private func resume(_ paneID: PaneID) {
+        guard let binding = parkedBindings.removeValue(forKey: paneID) else { return }
+        splitHost.panes[paneID]?.showPlaceholder(Localized.text("Connecting…"))
+        pendingBindings[paneID] = binding
+        if parkedBindings.isEmpty { dismissRestoreBanner() }
+        resolvePendingBindings()
+    }
+
+    /// The chat a pane is holding for but not yet showing — waiting for the listing, its turn in
+    /// the wake, or a paused restore — so a layout written meanwhile keeps it instead of forgetting
+    /// every chat a restore has not opened yet.
+    func heldSession(for paneID: PaneID) -> SplitPaneSession? {
+        if let binding = pendingBindings[paneID] ?? parkedBindings[paneID] { return binding }
+        return readyToWake[paneID].map {
+            SplitPaneSession(profileID: $0.profileID, sessionID: $0.session.id)
+        }
+    }
+
+    /// The panes as the governor reads them: what each holds, whether the zoom left it on screen,
+    /// its size, and what it is asking of the person.
+    private func seatbeltPanes() -> SeatbeltPanes {
+        let layout = splitHost.layout
+        var facts: [PaneFacts] = []
+        var placed = 0
+        var hidden = 0
+        for pane in splitHost.orderedPanes {
+            let onScreen = layout.zoomedPane == nil || layout.zoomedPane == pane.id
+            let kind: PaneKind
+            if pane.drawEndpoint != nil {
+                kind = .draw
+            } else if pane.webTarget != nil {
+                kind = .web
+            } else if pane.videoTarget != nil {
+                kind = .video
+            } else if pane.entry != nil || parkedBindings[pane.id] != nil {
+                kind = .chat
+            } else {
+                kind = .empty
+            }
+            let parked = parkedBindings[pane.id] != nil
+            if onScreen, !parked { placed += 1 } else { hidden += 1 }
+            facts.append(
+                PaneFacts(
+                    id: pane.id, kind: kind, focused: pane.id == layout.focusedPane,
+                    placed: onScreen && !parked, width: Double(gtk_widget_get_width(pane.root)),
+                    height: Double(gtk_widget_get_height(pane.root)),
+                    attention: Self.attention(of: pane.lastState)))
+        }
+        return SeatbeltPanes(facts: facts, placed: placed, hidden: hidden)
+    }
+
+    private static func attention(of state: ConversationState?) -> PaneAttention {
+        guard let state else { return .quiet }
+        if !state.pendingPermissions.isEmpty || !state.pendingQuestions.isEmpty { return .needsYou }
+        if state.lastFailure != nil { return .failed }
+        return state.status == .running ? .running : .quiet
     }
 
     /// One cheap re-read of the last aggregate, for the fact that changes without a listing —
@@ -2979,6 +3157,7 @@ final class MainWindow: @unchecked Sendable {
         stashDrafts()
         DraftStore.flush()
         SettingsFile.flush()
+        Seatbelts.shared.exitClean()
         g_application_quit(ptr(app))
     }
 

@@ -56,6 +56,28 @@ enum CascadeTint {
     }
 }
 
+/// What the governor lets the reveal spend at the window's shed level: how many frames a second
+/// its clock may move, and whether it reveals at all. From the loaded level on, text lands at
+/// arrival granularity, exactly as it does under reduced motion. Main loop only.
+enum CascadeBudget {
+    nonisolated(unsafe) private(set) static var budget = TileGovernor.animation(
+        level: .calm, reducedMotion: false)
+
+    static func apply(_ next: AnimationBudget) {
+        budget = next
+    }
+
+    /// Whether the written-not-pasted reveal runs at all.
+    static var reveals: Bool { budget.cascade == .focusedOnly && budget.tickCap > 0 }
+
+    /// The shortest gap between two moves of the reveal, with a little slack so a 60 Hz clock
+    /// capped at 30 moves every second frame rather than every third.
+    static var minimumInterval: Double? {
+        guard budget.tickCap > 0 else { return nil }
+        return 1 / budget.tickCap - 0.004
+    }
+}
+
 /// The pane's hand: it holds the one row the agent is writing into, moves the reveal on the
 /// display's own clock, and paints the trailing glyphs with the wave.
 ///
@@ -66,6 +88,7 @@ final class CascadePainter: @unchecked Sendable {
     private var live = LiveCascade()
     private var ultracode = false
     private var tick: UInt = 0
+    private var lastStep: Double = 0
     private var clockWidget: UnsafeMutablePointer<GtkWidget>?
     /// The markup the wave is holding, already null-terminated for the shim.
     ///
@@ -132,7 +155,9 @@ final class CascadePainter: @unchecked Sendable {
     ) {
         self.ultracode = ultracode
         let bytes = Array(markup.utf8CString)
-        guard RepeatingMotion.allowed, let id, let rendered = Self.renderedText(of: bytes) else {
+        guard RepeatingMotion.allowed, CascadeBudget.reveals, let id,
+            let rendered = Self.renderedText(of: bytes)
+        else {
             release()
             return
         }
@@ -161,7 +186,7 @@ final class CascadePainter: @unchecked Sendable {
     /// expire, which would leave the row cut at its last unmatched bracket for the rest of the turn.
     /// `markdown` is false for a row that streams code, which the gate must not read as prose.
     func renderable(row: String, _ source: String, sealed: Bool, markdown: Bool) -> String {
-        guard RepeatingMotion.allowed else { return source }
+        guard RepeatingMotion.allowed, CascadeBudget.reveals else { return source }
         return live.renderable(row: row, source, sealed: sealed, markdown: markdown, at: Self.now)
     }
 
@@ -235,7 +260,7 @@ final class CascadePainter: @unchecked Sendable {
                 self.watching = false
                 return
             }
-            guard !self.live.stalled(at: Self.now) else {
+            guard CascadeBudget.reveals, !self.live.stalled(at: Self.now) else {
                 self.watching = false
                 self.onStalled?()
                 return
@@ -263,7 +288,10 @@ final class CascadePainter: @unchecked Sendable {
     }
 
     private func step() {
-        guard live.advance(to: Self.now) else { return }
+        let now = Self.now
+        if let interval = CascadeBudget.minimumInterval, now - lastStep < interval { return }
+        lastStep = now
+        guard live.advance(to: now) else { return }
         onFrame?()
         if !live.isActive { stop() }
     }

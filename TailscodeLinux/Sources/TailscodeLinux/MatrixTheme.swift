@@ -1499,6 +1499,24 @@ enum MatrixTheme {
             border-radius: 4px;
         }
         .drop-caption { color: \(accent); \(t(.banner)) font-weight: 700; }
+        .restore-banner {
+            background-color: \(canvasRaised);
+            border-bottom: 2px solid \(warn);
+            padding: 6px 12px;
+        }
+        .restore-banner-text { color: \(text); \(t(.banner)) }
+        .restore-banner button {
+            \(t(.chip))
+            min-height: 0;
+            padding: 2px 10px;
+            background-color: \(canvas);
+            border: 1px solid \(rule);
+            border-radius: 0;
+            color: \(text);
+        }
+        .restore-banner button:hover { border-color: \(accent); }
+        .restore-banner button.restore-primary { border-color: \(warn); color: \(warn); }
+        .restore-banner button.restore-dismiss { border-color: transparent; color: \(textDim); }
         .find-hit {
             background-color: \(palette.findHit);
             box-shadow: inset 2px 0 0 \(warn);

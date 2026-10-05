@@ -430,7 +430,10 @@ final class SplitHost: @unchecked Sendable {
                 videos[id.raw] = target.address
                 continue
             }
-            guard let entry = pane.entry else { continue }
+            guard let entry = pane.entry else {
+                if let held = host?.heldSession(for: id) { sessions[id.raw] = held }
+                continue
+            }
             sessions[id.raw] = SplitPaneSession(
                 profileID: entry.profileID, sessionID: entry.session.id)
         }

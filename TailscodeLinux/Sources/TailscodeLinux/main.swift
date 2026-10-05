@@ -50,6 +50,17 @@ if Arguments.contains("--help") || Arguments.contains("-h") {
     exit(0)
 }
 
+/// The flight recorder read back: the ring another launch — or this machine's frozen session —
+/// wrote, decoded and newest last. Answered without a window, like `--version`.
+if Arguments.contains("--flight") {
+    exit(FlightWriter.printRing(minutes: Arguments.value(after: "--flight").flatMap(Double.init)))
+}
+
+/// What this launch would put on its own systemd unit, applied and read back.
+if Arguments.contains("--limits") {
+    exit(ResourceGuard.printLimits())
+}
+
 /// The catalog as data — every theme, both appearances, the colours as corrected rather than as
 /// authored, with each slot's measured contrast. A theme is judged by how it reads, and this is
 /// how anything without eyes on the window reads it.
@@ -65,7 +76,7 @@ if Arguments.contains("--themes") {
 let knownOptions: Set<String> = [
     "--selftest", "--probe-newchat", "--connect", "--password", "--name", "--opencode", "--omp",
     "--version", "--help", "-h", "--themes", "--force-desktop", "--demo", "--ask",
-    "--gapplication-service",
+    "--gapplication-service", "--flight", "--limits",
 ]
 if let stray = Arguments.flags.first(where: {
     $0.hasPrefix("-") && !knownOptions.contains($0)
@@ -117,6 +128,7 @@ Gtk.connect(UnsafeMutableRawPointer(app), "activate") {
     if let existing = mainWindow {
         existing.raise()
     } else {
+        ResourceGuard.apply()
         let window = MainWindow()
         mainWindow = window
         window.present(in: app)
@@ -160,6 +172,7 @@ if wantsAsk {
 Gtk.connect(UnsafeMutableRawPointer(app), "shutdown") {
     DraftStore.flush()
     SettingsFile.flush()
+    Seatbelts.shared.exitClean()
 }
 
 Trace.stamp("gtk run")

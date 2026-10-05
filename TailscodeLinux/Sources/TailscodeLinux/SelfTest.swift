@@ -255,6 +255,30 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkFlight()
+            report("flight recorder: \(checks) claims hold — the ring round-trips and keeps counts only")
+        } catch {
+            report("flight recorder: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkResourceGuard()
+            report("resource guard: \(checks) cgroup names decided")
+        } catch {
+            report("resource guard: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkRestorePlan()
+            report("safe restore: \(checks) launches decided and woken in order")
+        } catch {
+            report("safe restore: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkDeepSeekBalance()
             report("deepseek balance: \(checks) claims hold — money, never a bar")
         } catch {
@@ -1085,6 +1109,203 @@ public enum SelfTest {
 
     private final class PickBox: @unchecked Sendable {
         var value: (String, EffortAsk)?
+    }
+
+    /// The recorder's Linux half: the writer's records built from this process's real counts and a
+    /// real pressure sample, written to a scratch ring, read back across a reopen, and printed.
+    private static func checkFlight() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("flight: \(label)") }
+            checks += 1
+        }
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("tailscode-flight-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("flight.ring")
+        let counts = ProcessCounts.read()
+        try expect((counts.rssKiB ?? 0) > 0, "resident memory is read")
+        try expect((counts.threads ?? 0) > 0, "threads are counted")
+        try expect((counts.fds ?? 0) > 2, "descriptors are counted")
+        try expect(
+            ProcessCounts.threads(stat: "42 (a b) c) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 7 0") == 7,
+            "a command name with spaces and parentheses does not shift the fields")
+        let pressure = PressureSensor().sample()
+        try expect(pressure.availableMB.map { $0 > 0 } ?? true, "available memory is in MB")
+        let main = MainThreadState.parse(
+            stat: "42 (tail scode) R 1 2 3 4 5 6 7 8 9 10 300 12 0 0", wchan: "0\n")
+        try expect(main == MainThreadState(state: "R", ticks: 312, wchan: "0"), "main thread state")
+        try expect(main?.line == "R 0 cpu=312", "the kernel function leads the event's tail")
+        try expect(MainThreadState.read() != nil, "this process's main thread reads")
+
+        let writer = try FlightWriter(url: url)
+        writer.writeHeader(
+            FlightHeader(
+                version: TailscodeVersion.current, toolkit: "gtk 4.22.1 adw 1.8",
+                renderer: "GskNglRenderer", glVendor: "Mesa", limits: "skip-foreign"))
+        let calm = LoopPublication(
+            busy: 0.21, worstMs: 37, level: 1, panes: FlightPanes(full: 2, glance: 0, parked: 1))
+        writer.write(
+            FlightWriter.record(
+                loop: calm, silence: 0.2, pressure: pressure, counts: counts, event: nil))
+        writer.write(
+            FlightWriter.record(
+                loop: calm, silence: 3.4, pressure: pressure, counts: counts,
+                event: "stall 3400ms R 0 cpu=812"))
+        let reopened = try FlightWriter(url: url)
+        reopened.write(
+            FlightWriter.record(
+                loop: calm, silence: 0, pressure: pressure, counts: counts, event: "exit clean"))
+        let records = FlightRing.read(url: url)
+        try expect(records.map(\.n) == [1, 2, 3, 4], "numbers carry on across a reopen")
+        try expect(records.first?.header?.limits == "skip-foreign", "the header keeps the limits code")
+        try expect(records.first?.header?.renderer == "GskNglRenderer", "the header names the renderer")
+        try expect(
+            records[1].busy == 0.21 && records[1].stall == 37 && records[1].lv == 1
+                && records[1].panes == FlightPanes(full: 2, glance: 0, parked: 1),
+            "a calm second carries the loop's own numbers")
+        try expect(
+            records[2].busy == 1 && records[2].stall == 3400,
+            "a silent loop is written as the silence, not its stale numbers")
+        try expect(records[1].mb == 0 && records[1].rl == 0, "mailbox and relayout read zero until built")
+        try expect(records.last?.ev == "exit clean", "a clean exit is the last word")
+        let text = FlightFormatter.format(records)
+        try expect(text.contains("limits skip-foreign") && text.contains("exit clean"), "--flight prints it")
+        let raw = try Data(contentsOf: url)
+        try expect(raw.count == FlightRing.slotCount * FlightRecord.slotSize, "the ring is its fixed size")
+        return checks
+    }
+
+    /// The guard's decision for the units a launch can land in, from the files as text.
+    private static func checkResourceGuard() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("resource guard: \(label)") }
+            checks += 1
+        }
+        let slice = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/"
+        let total: UInt64 = 62 * ResourceLimits.gib
+        let plan = ResourceLimits.plan(memTotalBytes: total)
+        func decide(_ unit: String?, max: String? = "max", env: [String: String] = [:])
+            -> ResourceGuardDecision
+        {
+            ResourceGuard.decide(
+                procSelfCgroup: unit.map { $0.hasPrefix("0::") ? $0 : slice + $0 + "\n" },
+                memoryMax: max, memTotalBytes: total, environment: env)
+        }
+        let scope = "app-io.github.guitaripod.Tailscode-1234.scope"
+        try expect(decide(scope) == .apply(unit: scope, plan: plan), "the launcher's scope is limited")
+        let service = "app-io.github.guitaripod.Tailscode-77.service"
+        try expect(decide(service) == .apply(unit: service, plan: plan), "a service is limited")
+        try expect(
+            decide("app-ghostty-surface-transient-14171.scope")
+                == .skipForeignScope(unit: "app-ghostty-surface-transient-14171.scope"),
+            "a terminal's scope is never touched")
+        try expect(
+            decide("app-io.github.guitaripod.Tailscode-abc.scope")
+                == .skipForeignScope(unit: "app-io.github.guitaripod.Tailscode-abc.scope"),
+            "a scope that only looks like the app's is foreign")
+        try expect(
+            decide("run-r3f2.scope") == .skipForeignScope(unit: "run-r3f2.scope"),
+            "a systemd-run scope is foreign")
+        try expect(
+            decide(scope, max: "4294967296\n") == .skipAdminLimited(unit: scope, memoryMax: 4_294_967_296),
+            "an administrator's MemoryMax is left alone")
+        try expect(
+            decide(scope, max: "\(plan.memoryMax)") == .apply(unit: scope, plan: plan),
+            "this app's own earlier limit is applied again")
+        try expect(decide(scope, max: nil) == .apply(unit: scope, plan: plan), "an unreadable limit is unset")
+        try expect(
+            decide(scope, env: ["TAILSCODE_NO_LIMITS": "1"]) == .skipOptOut, "TAILSCODE_NO_LIMITS opts out")
+        try expect(
+            decide(scope, env: ["TAILSCODE_NO_LIMITS": "0"]) == .apply(unit: scope, plan: plan),
+            "TAILSCODE_NO_LIMITS=0 does not opt out")
+        try expect(
+            decide(scope, env: ["FLATPAK_ID": "io.github.guitaripod.Tailscode"])
+                == .skipUnavailable(reason: "flatpak"), "Flatpak cannot reach the user manager")
+        try expect(
+            decide(nil) == .skipUnavailable(reason: "no unified cgroup"), "no cgroup file")
+        try expect(
+            decide("0::/\n") == .skipUnavailable(reason: "no unified cgroup"), "the root cgroup")
+        try expect(ResourceGuard.parseMax("max\n") == UInt64.max, "max reads as no limit")
+        try expect(ResourceGuard.parseMax("12") == 12 && ResourceGuard.parseMax("x") == nil, "bytes or unknown")
+        let codes = [
+            ResourceGuard.Outcome(
+                decision: .apply(unit: scope, plan: plan), method: .dbus, failure: nil,
+                memoryMaxAfter: nil),
+            ResourceGuard.Outcome(
+                decision: .apply(unit: scope, plan: plan), method: nil, failure: "denied",
+                memoryMaxAfter: nil),
+            ResourceGuard.Outcome(
+                decision: .skipForeignScope(unit: "x"), method: nil, failure: nil, memoryMaxAfter: nil),
+        ].map(\.code)
+        try expect(codes == ["dbus", "failed", "skip-foreign"], "the header's codes")
+        try expect(codes.allSatisfy { $0.count <= FlightHeader.limitsWidth }, "every code fits the header")
+        return checks
+    }
+
+    /// The launch ledger through four launches in a scratch directory, and the staggered wake.
+    private static func checkRestorePlan() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("safe restore: \(label)") }
+            checks += 1
+        }
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("tailscode-ledger-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("launch.json")
+
+        let first = LaunchLedger.begin(url: url, panes: 5)
+        let firstPlan = RestorePlan.decide(ledger: first.previous, paneCount: 5)
+        try expect(firstPlan.mode == .staggered && !firstPlan.unclean, "a first launch restores staggered")
+        let second = LaunchLedger.begin(url: url, panes: 5)
+        let secondPlan = RestorePlan.decide(ledger: second.previous, paneCount: 5)
+        try expect(secondPlan.mode == .parked(bannerCount: 5), "an unclean exit with five panes parks them")
+        try expect(secondPlan.floor == nil, "one unclean exit sets no floor")
+        try expect(
+            secondPlan.bannerText == Localized.text(
+                "Tailscode didn't close normally last time. %@ chats are paused.", "5"),
+            "the banner counts the paused chats")
+        let third = LaunchLedger.begin(url: url, panes: 2)
+        let thirdPlan = RestorePlan.decide(ledger: third.previous, paneCount: 2)
+        try expect(thirdPlan.mode == .staggered && thirdPlan.unclean, "two panes restore staggered even unclean")
+        try expect(
+            thirdPlan.floor == .loaded && thirdPlan.floorDuration == 600,
+            "a second unclean exit in a row floors the level at 2 for ten minutes")
+        LaunchLedger.markClean(url: url, launchID: third.current.launchID, panes: 4, level: 1)
+        try expect(LaunchLedger.read(url: url)?.cleanExit == true, "a clean exit flips the ledger")
+        LaunchLedger.markClean(url: url, launchID: "someone else", panes: 9)
+        try expect(LaunchLedger.read(url: url)?.panes == 4, "another launch's id leaves the ledger alone")
+        let fourth = LaunchLedger.begin(url: url, panes: 6)
+        let fourthPlan = RestorePlan.decide(ledger: fourth.previous, paneCount: 6)
+        try expect(fourthPlan.mode == .staggered && fourthPlan.floor == nil, "after a clean exit, staggered")
+
+        var layout = SplitLayout()
+        let a = layout.focusedPane
+        guard let b = layout.split(a, axis: .horizontal), let c = layout.split(b, axis: .vertical) else {
+            throw SelfTestFailure("safe restore: the layout would not split")
+        }
+        layout.focus(a)
+        layout.focus(b)
+        var wake = RestoreWake(layout: layout)
+        try expect(wake.take(now: 0) == .idle, "nothing ready, nothing wakes")
+        wake.markReady(c)
+        wake.markReady(a)
+        wake.markReady(b)
+        try expect(wake.take(now: 10) == .wake(b), "the focused pane wakes first")
+        if case .wait(let delay) = wake.take(now: 10.1) {
+            try expect(abs(delay - 0.2) < 1e-6, "the next waits out the spacing")
+        } else {
+            try expect(false, "the next waits out the spacing")
+        }
+        try expect(wake.take(now: 10.3) == .wake(a), "then the most recently focused")
+        try expect(wake.take(now: 10.65) == .wake(c), "then the rest")
+        try expect(wake.take(now: 20) == .idle && !wake.isWaiting, "and then nothing")
+        var late = RestoreWake(layout: layout)
+        late.markReady(c)
+        try expect(late.take(now: 0) == .wake(c), "a ready pane never waits on one that is not")
+        return checks
     }
 
     private static func checkParity() throws -> Int {

@@ -451,3 +451,41 @@ void tailscode_monitor_size(GtkWidget *near, int *width, int *height);
 /// range mark. A keyboard activation — Enter or Space — reads the same state, which is what it is:
 /// shift-Enter marking a range is the same gesture with another device.
 bool tailscode_shift_held(GtkWidget *near);
+
+/// What the main loop did since the last read, in monotonic microseconds: time outside `g_poll`
+/// (busy), time inside it (idle), and the longest stretch between leaving one poll and entering
+/// the next, a slice still running at the read included.
+typedef struct {
+    gint64 now_us;
+    gint64 busy_us;
+    gint64 idle_us;
+    gint64 worst_us;
+} TailscodeLoopSample;
+
+/// Wraps the default main context's poll function with one that timestamps entry and exit, so
+/// busy is wall time minus time spent waiting. Installed once; later calls do nothing.
+void tailscode_loop_meter_install(void);
+
+/// Reads and resets the meter. Main context only.
+void tailscode_loop_meter_take(TailscodeLoopSample *out);
+
+/// The stall watchdog's question to the main loop, safe from any thread: a `G_PRIORITY_DEFAULT`
+/// idle that stamps the time it ran. Only one is outstanding at once.
+void tailscode_watchdog_ping(void);
+
+/// When the main loop last answered a ping, in monotonic microseconds; 0 before the first ping.
+gint64 tailscode_watchdog_answered(void);
+
+/// The GSK renderer the realised window actually draws with, as its GObject type name
+/// (`GskNglRenderer`, `GskVulkanRenderer`, `GskCairoRenderer`); NULL before it is realised.
+const char *tailscode_renderer_name(GtkWidget *window);
+
+/// The GL vendor string of a context made on the window's surface, best effort; NULL when the
+/// surface cannot make one. The caller frees the string with `g_free`.
+char *tailscode_gl_vendor(GtkWidget *window);
+
+/// `org.freedesktop.systemd1.Manager.SetUnitProperties(unit, runtime=true, a(sv))` on the session
+/// bus, every value a `t`. `g_variant_new` is varargs, which Swift cannot call. On failure the
+/// message is handed back in `error_out`, which the caller frees with `g_free`.
+gboolean tailscode_systemd_set_unit_properties(
+    const char *unit, const char *const *names, const guint64 *values, int count, char **error_out);

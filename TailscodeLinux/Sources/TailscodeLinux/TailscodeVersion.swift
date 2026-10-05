@@ -12,6 +12,8 @@ enum TailscodeVersion {
           tailscode --demo                   open the scripted demo world (no server)
           tailscode --connect <address>      save a server (--password, --name, --opencode, --omp)
           tailscode --selftest               check the whole chain with no display
+          tailscode --flight [minutes]       print the flight recorder, newest last
+          tailscode --limits                 apply and print this launch's resource limits
           tailscode --version
         """
 }
