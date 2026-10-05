@@ -638,11 +638,28 @@ final class ChatViewController: UIViewController {
         keepEndClear()
     }
 
-    private func contentHeightMoved() {
-        guard isViewLoaded, view.window != nil else { return }
-        let parked = isParkedOnEnd()
+    /// When the page was opened onto the end, so that the rows settling in behind it — a cached
+    /// transcript giving way to the server's, cells being measured after the scroll — keep the end
+    /// in view for a few seconds instead of leaving the page stranded wherever the estimate put it.
+    private var settleUntil: CFTimeInterval = 0
+
+    /// A row that measured itself, a transcript that grew: a reader who was on the end of the page
+    /// is still on it. While a live answer is being written the glide owns the end, and it
+    /// follows the written edge rather than the laid-out one, so this leaves that alone.
+    private func contentHeightMoved(from old: CGFloat) {
+        guard isViewLoaded, view.window != nil, hasRevealed else { return }
+        if let unrevealed = unrevealedHeight(), unrevealed > 0 {
+            updateTranscriptInsets()
+            return
+        }
+        let inset = collectionView.adjustedContentInset
+        let before = max(-inset.top, old + inset.bottom - collectionView.bounds.height)
+        let wasOnEnd = collectionView.contentOffset.y >= before - 24
+        let following =
+            canvasPromptIDs.isEmpty && !userScrolledUp && !isFingerDown
+            && (wasOnEnd || CACurrentMediaTime() < settleUntil)
         updateTranscriptInsets()
-        if parked { carryEnd() }
+        if following { carryEnd() }
     }
 
     /// How far the page is from the offset at which its end rests against whatever stands in
@@ -1061,8 +1078,8 @@ final class ChatViewController: UIViewController {
         composerAccessories.onHeightChange = { [weak self] in self?.updateTranscriptInsets() }
         contentSizeWatch = collectionView.observe(\.contentSize, options: [.old, .new]) {
             [weak self] _, change in
-            guard change.oldValue?.height != change.newValue?.height else { return }
-            MainActor.assumeIsolated { self?.contentHeightMoved() }
+            guard let old = change.oldValue?.height, old != change.newValue?.height else { return }
+            MainActor.assumeIsolated { self?.contentHeightMoved(from: old) }
         }
 
         [banner, composer].forEach {
@@ -3272,6 +3289,7 @@ final class ChatViewController: UIViewController {
     private func revealTranscript() {
         guard !hasRevealed else { return }
         hasRevealed = true
+        settleUntil = CACurrentMediaTime() + 4
         revealFallback?.cancel()
         collectionView.layoutIfNeeded()
         scrollToBottom(animated: false)
@@ -5785,6 +5803,7 @@ extension ChatViewController: UICollectionViewDelegate {
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         userScrolledUp = true
+        settleUntil = 0
         canvasIntent = []
         canvasPinned = false
         canvasRiseDeadline = nil
