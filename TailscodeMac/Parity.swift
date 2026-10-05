@@ -177,6 +177,14 @@ enum ParityManifest {
                 because:
                     "The pane runs a login shell against this Mac's own directories, and a copy the App Store installs is sealed in a container that may neither spawn that process nor see the folder it would run in. A shell that could only reach the app's own container is not a shell beside the conversation, and offering one would be worth less than saying so.")
         case .listBesideConversation: return .implemented("NSSplitViewItem(sidebarWithViewController")
+        case .paneDensity: return .gap("panes are all full; glance and parked faces, the live chip and the governor that assigns density are built in the canvas milestone")
+        case .paneArrangements: return .gap("the arrangement, promote and rotate verbs exist in Core but no host wires them yet; built in the canvas milestone")
+        case .paneOverflow: return .gap("the nested split host has no overflow strip and never hides a pane for want of room; built in the canvas milestone")
+        case .paneResizeByKey: return .gap("dividers move by pointer only and are not accessible splitters; keyboard resize is built in the canvas milestone")
+        case .paneRearrange: return .gap("a pane's strip is not a drag source yet; built with the canvas, in the rearrange milestone")
+        case .safeRestore: return .gap("restore always reopens every pane live; the launch ledger and parked restore are built in the seatbelts milestone")
+        case .flightRecorder: return .gap("no flight ring is written yet; built in the seatbelts milestone")
+        case .resourceGuard: return .gap("no launch limits and no pressure response yet; built in the seatbelts milestone")
         case .splitPanes: return .implemented("SplitPaneHost")
         case .videoSlot:
             return .varies(
