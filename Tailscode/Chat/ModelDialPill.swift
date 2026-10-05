@@ -5,13 +5,12 @@ import UIKit
 /// to think, in one capsule with two halves.
 ///
 /// The model half is a button that opens the quick menu, and swiping along it steps through the
-/// pinned pairs without opening anything. The effort half is the control for the level: pressed
-/// and slid it lifts the ladder out as a rail (`EffortRailPresenter`), tapped it leaves the rail
-/// open to be tapped, and to a screen reader it is an adjustable element that steps one level at
-/// a time. Hue is who answers and heat is how hard, so colour sits on the dot and on the bars and
+/// pinned pairs without opening anything. The effort half is the control for the level: one tap
+/// lifts the ladder out as a rail (`EffortRailPresenter`) to tap a level on or slide along, and to
+/// a screen reader it is an adjustable element that steps one level at a time. Hue is who answers and heat is how hard, so colour sits on the dot and on the bars and
 /// the words stay in ink.
 @MainActor
-final class ModelDialPill: UIView, UIGestureRecognizerDelegate {
+final class ModelDialPill: UIView {
     struct Content: Equatable {
         var modelWord: String
         var chip: ModelChip?
@@ -103,7 +102,13 @@ final class ModelDialPill: UIView, UIGestureRecognizerDelegate {
         slotWidth = effortLabel.widthAnchor.constraint(equalToConstant: 0)
         slotWidth.isActive = true
 
-        let effort = UIStackView(arrangedSubviews: [effortLabel, meter])
+        let chevron = UIImageView(
+            image: UIImage(
+                systemName: "chevron.up.chevron.down",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .semibold)))
+        chevron.tintColor = Theme.Color.tertiaryLabel
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        let effort = UIStackView(arrangedSubviews: [effortLabel, meter, chevron])
         effort.axis = .horizontal
         effort.alignment = .center
         effort.spacing = 7
@@ -122,14 +127,8 @@ final class ModelDialPill: UIView, UIGestureRecognizerDelegate {
         effortZone.onIncrement = { [weak self] in self?.step(by: 1) }
         effortZone.onDecrement = { [weak self] in self?.step(by: -1) }
 
-        let tap = UITapGestureRecognizer(target: self, action: #selector(effortTapped))
-        let press = UILongPressGestureRecognizer(target: self, action: #selector(effortPressed(_:)))
-        press.minimumPressDuration = 0.16
-        press.allowableMovement = 10_000
-        press.delegate = self
-        tap.require(toFail: press)
-        effortZone.addGestureRecognizer(tap)
-        effortZone.addGestureRecognizer(press)
+        effortZone.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(effortTapped)))
 
         row.axis = .horizontal
         row.alignment = .fill
@@ -186,7 +185,7 @@ final class ModelDialPill: UIView, UIGestureRecognizerDelegate {
         slotWidth.constant = ceil(widest)
         meter.reading = .init(face: face, level: ModelEffort.surviving(content.effort, options: content.options))
         effortZone.accessibilityValue = face.isServer ? String(localized: "server decides") : face.effortWord
-        effortZone.accessibilityHint = String(localized: "Press and slide to change, or swipe up or down")
+        effortZone.accessibilityHint = String(localized: "Opens the levels, or swipe up or down to change")
     }
 
     private static func effortWord(_ word: String, isPower: Bool, font: UIFont) -> NSAttributedString {
@@ -207,13 +206,6 @@ final class ModelDialPill: UIView, UIGestureRecognizerDelegate {
         return text
     }
 
-    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard gestureRecognizer is UILongPressGestureRecognizer else {
-            return super.gestureRecognizerShouldBegin(gestureRecognizer)
-        }
-        return isEnabled && ModelEffort.isOffered(options: content.options)
-    }
-
     private func railPresenter() -> EffortRailPresenter? {
         if let presenter { return presenter }
         guard let railHost else { return nil }
@@ -232,31 +224,10 @@ final class ModelDialPill: UIView, UIGestureRecognizerDelegate {
         if presenter.isPresented { return presenter.dismiss(committing: false) }
         presenter.present(
             anchor: effortZone, rungs: ModelDial.rungs(options: content.options),
-            current: ModelEffort.surviving(content.effort, options: content.options), finger: nil)
+            current: ModelEffort.surviving(content.effort, options: content.options))
     }
 
     @objc private func effortTapped() { openRail() }
-
-    @objc private func effortPressed(_ gesture: UILongPressGestureRecognizer) {
-        guard let presenter = railPresenter(), let host = railHost else { return }
-        let point = gesture.location(in: host)
-        switch gesture.state {
-        case .began:
-            guard !presenter.isPresented else { return }
-            presenter.present(
-                anchor: effortZone, rungs: ModelDial.rungs(options: content.options),
-                current: ModelEffort.surviving(content.effort, options: content.options),
-                finger: point)
-        case .changed:
-            presenter.move(to: point)
-        case .ended:
-            presenter.end()
-        case .cancelled, .failed:
-            presenter.dismiss(committing: false)
-        default:
-            break
-        }
-    }
 
     @objc private func swiped(_ gesture: UISwipeGestureRecognizer) {
         guard isEnabled else { return }

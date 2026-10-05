@@ -1,10 +1,10 @@
 import TailscodeCore
 import UIKit
 
-/// The effort ladder lifted out of the composer's pill as a column of rungs a thumb travels along.
+/// The effort ladder lifted out of the composer's pill as a column of rungs to tap or slide along.
 ///
 /// What it draws is `ModelDial.rungs` — the power on top, then hottest first, the server's own
-/// choice last — and what decides where the thumb is lives in Core (`EffortRail`). This only
+/// choice last — and what decides which rung a sliding finger holds lives in Core (`EffortRail`). This only
 /// lays the rungs out, lights the one being held and says what it means.
 @MainActor
 final class EffortRailView: UIView {
@@ -27,9 +27,8 @@ final class EffortRailView: UIView {
 
     static let width: CGFloat = 268
 
-    private let glass = Theme.Glass.view(interactive: false)
+    private let glass = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterial))
     private let column = UIStackView()
-    private let thumb = UIView()
     private let footer = UILabel()
     private var rows: [RungRowView] = []
     private let rungs: [EffortRung]
@@ -50,17 +49,12 @@ final class EffortRailView: UIView {
     private func build() {
         layer.cornerRadius = 26
         layer.cornerCurve = .continuous
+        layer.borderWidth = 0.5
+        layer.borderColor = UIColor.label.withAlphaComponent(0.12).cgColor
         clipsToBounds = true
         accessibilityViewIsModal = true
         glass.translatesAutoresizingMaskIntoConstraints = false
         addSubview(glass)
-
-        thumb.layer.cornerRadius = 18
-        thumb.layer.cornerCurve = .continuous
-        thumb.layer.borderWidth = 1.5
-        thumb.backgroundColor = UIColor.label.withAlphaComponent(0.09)
-        thumb.isUserInteractionEnabled = false
-        glass.contentView.addSubview(thumb)
 
         column.axis = .vertical
         column.spacing = 0
@@ -135,21 +129,18 @@ final class EffortRailView: UIView {
     func light(_ index: Int, animated: Bool) {
         guard rows.indices.contains(index) else { return }
         held = index
-        layoutIfNeeded()
-        let frame = rows[index].convert(rows[index].bounds, to: glass.contentView)
-        let heat = Self.heatColor(for: rungs[index])
         let apply = {
-            self.thumb.frame = frame
-            self.thumb.layer.borderColor = heat.cgColor
-            for (position, row) in self.rows.enumerated() { row.setHeld(position == index) }
+            for (position, row) in self.rows.enumerated() {
+                row.setHeld(position == index, heat: Self.heatColor(for: self.rungs[position]))
+            }
         }
         guard animated, !UIAccessibility.isReduceMotionEnabled else {
             apply()
             return
         }
         UIView.animate(
-            withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4,
-            options: [.beginFromCurrentState, .allowUserInteraction], animations: apply)
+            withDuration: 0.18, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction],
+            animations: apply)
     }
 
     func say(_ text: String?) {
@@ -160,12 +151,6 @@ final class EffortRailView: UIView {
         if rung.isPower { return Theme.Color.modelRainbowLetter(2, of: EffortMeter.bars) }
         guard let level = rung.level else { return Theme.Color.tertiaryLabel }
         return Theme.Color.modelEffort(level) ?? Theme.Color.secondaryLabel
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        guard rows.indices.contains(held) else { return }
-        thumb.frame = rows[held].convert(rows[held].bounds, to: glass.contentView)
     }
 }
 
@@ -182,6 +167,8 @@ private final class RungRowView: UIView {
         self.rung = rung
         self.meter = EffortMeterView(reading: .init(rung: rung))
         super.init(frame: .zero)
+        layer.cornerRadius = 18
+        layer.cornerCurve = .continuous
         isAccessibilityElement = true
         accessibilityTraits = .button
         accessibilityLabel =
@@ -227,8 +214,11 @@ private final class RungRowView: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func setHeld(_ held: Bool) {
+    func setHeld(_ held: Bool, heat: UIColor) {
         check.alpha = held ? 1 : 0
+        layer.borderWidth = held ? 1.5 : 0
+        layer.borderColor = heat.cgColor
+        backgroundColor = held ? UIColor.label.withAlphaComponent(0.08) : .clear
         accessibilityTraits = held ? [.button, .selected] : .button
     }
 
@@ -256,14 +246,15 @@ private final class RungRowView: UIView {
     }
 }
 
-/// Presents the rail over a screen and walks a finger along it.
+/// Presents the rail over a screen and lets a finger choose on it.
 ///
-/// A press-and-slide starts on the pill and ends where the finger lifts, so what a finger does
-/// is measured as travel from where it came down: the rail opens with the level the chat is
-/// at already lit, and moving up is hotter by as many rows as the finger has crossed. A tap
-/// that goes nowhere leaves the rail open to be tapped instead — which is also the road for a
-/// screen reader and for anyone who cannot hold a press. The scrim sits under the composer so
-/// the thing being aimed stays in view.
+/// One tap on the pill's effort half opens it with the level the chat is at already marked, and
+/// then it works the way a list does: tap a level and it is set, or put a finger down on one and
+/// slide to another before lifting — the level under the finger is the one that is held, with a
+/// tick for each one entered. Lifting well off the side of the rail, or tapping the dimmed page,
+/// chooses nothing. The scrim sits under the composer so the thing being aimed stays in view, and
+/// the rail is a thick material rather than glass: a transparent one let the transcript run
+/// through its words.
 @MainActor
 final class EffortRailPresenter {
     private weak var host: UIView?
@@ -272,12 +263,10 @@ final class EffortRailPresenter {
     private var rail: EffortRailView?
     private var rungs: [EffortRung] = []
     private var centers: [Double] = []
-    private var origin = 0
     private var held = 0
-    private var startFinger: CGPoint = .zero
+    private var engaged = false
     private var cancelling = false
     private var initialLevel: String?
-    private var sticky = false
 
     var footer: ((EffortRung) -> String?)?
     var onSet: ((String?) -> Void)?
@@ -296,14 +285,12 @@ final class EffortRailPresenter {
         if let keyboardWatch { NotificationCenter.default.removeObserver(keyboardWatch) }
     }
 
-    /// - Parameter finger: where a press came down, in the host's coordinates; nil for a tap,
-    ///   which opens the rail to be tapped.
-    func present(anchor: UIView, rungs: [EffortRung], current: String?, finger: CGPoint?) {
+    func present(anchor: UIView, rungs: [EffortRung], current: String?) {
         guard let host, rail == nil, !rungs.isEmpty else { return }
         self.rungs = rungs
         initialLevel = current
-        sticky = finger == nil
         cancelling = false
+        engaged = false
 
         let anchorFrame = anchor.convert(anchor.bounds, to: host)
         let belowTop = below.map { $0.convert($0.bounds, to: host).minY } ?? anchorFrame.minY
@@ -312,11 +299,10 @@ final class EffortRailPresenter {
         let view = EffortRailView(
             rungs: rungs, current: current, density: Self.density(rungs: rungs, available: available))
         rail = view
-        origin = view.held
         held = view.held
 
         let scrim = UIControl()
-        scrim.backgroundColor = UIColor.black.withAlphaComponent(0.34)
+        scrim.backgroundColor = UIColor.black.withAlphaComponent(0.4)
         scrim.alpha = 0
         scrim.frame = host.bounds
         scrim.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -338,13 +324,13 @@ final class EffortRailPresenter {
         ])
         host.layoutIfNeeded()
         centers = view.centers(in: host)
-        startFinger = finger ?? .zero
         view.say(footer?(rungs[held]))
 
-        if sticky {
-            let tap = UITapGestureRecognizer(target: self, action: #selector(railTapped(_:)))
-            view.addGestureRecognizer(tap)
-        }
+        let touch = UILongPressGestureRecognizer(target: self, action: #selector(railTouched(_:)))
+        touch.minimumPressDuration = 0
+        touch.allowableMovement = .greatestFiniteMagnitude
+        view.addGestureRecognizer(touch)
+
         Theme.Haptics.tap()
         keyboardWatch = NotificationCenter.default.addObserver(
             forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main
@@ -365,38 +351,45 @@ final class EffortRailPresenter {
             options: [.allowUserInteraction], animations: appear)
     }
 
-    /// The finger moved. `point` is in the host's coordinates.
-    func move(to point: CGPoint) {
-        guard let rail, !sticky, !centers.isEmpty else { return }
-        let travelled = Double(point.y - startFinger.y)
-        let effective = centers[origin] + travelled
-        let stray = Double(abs(point.x - startFinger.x))
-        let nowCancelling = EffortRail.cancels(horizontalDistance: stray)
-        if nowCancelling != cancelling {
-            cancelling = nowCancelling
-            UIView.animate(withDuration: 0.15) { rail.alpha = nowCancelling ? 0.45 : 1 }
+    /// A finger on the rail: where it comes down on a level picks that level, and sliding moves the
+    /// pick with it. A finger that comes down on the gaps or the footer is not choosing anything.
+    @objc private func railTouched(_ gesture: UILongPressGestureRecognizer) {
+        guard let rail, let host else { return }
+        switch gesture.state {
+        case .began:
+            guard let index = rail.rowIndex(at: gesture.location(in: rail)) else { return }
+            engaged = true
+            select(index, in: rail)
+        case .changed:
+            guard engaged else { return }
+            let point = gesture.location(in: host)
+            let frame = rail.frame
+            let stray = max(frame.minX - point.x, point.x - frame.maxX, 0)
+            let nowCancelling = EffortRail.cancels(horizontalDistance: Double(stray))
+            if nowCancelling != cancelling {
+                cancelling = nowCancelling
+                UIView.animate(withDuration: 0.15) { rail.alpha = nowCancelling ? 0.5 : 1 }
+            }
+            guard let next = EffortRail.target(current: held, centers: centers, y: Double(point.y)) else {
+                return
+            }
+            select(next, in: rail)
+        case .ended:
+            guard engaged else { return }
+            dismiss(committing: !cancelling)
+        case .cancelled, .failed:
+            dismiss(committing: false)
+        default:
+            break
         }
-        guard let next = EffortRail.target(current: held, centers: centers, y: effective),
-            next != held
-        else { return }
-        if EffortRail.ticks(from: held, to: next) { Theme.Haptics.notch() }
-        held = next
-        rail.light(next, animated: true)
-        rail.say(footer?(rungs[next]))
     }
 
-    /// The finger lifted.
-    func end() {
-        guard rail != nil, !sticky else { return }
-        dismiss(committing: !cancelling)
-    }
-
-    @objc private func railTapped(_ gesture: UITapGestureRecognizer) {
-        guard let rail, let index = rail.rowIndex(at: gesture.location(in: rail)) else { return }
+    private func select(_ index: Int, in rail: EffortRailView) {
+        guard index != held else { return }
+        if EffortRail.ticks(from: held, to: index) { Theme.Haptics.notch() }
         held = index
         rail.light(index, animated: true)
-        Theme.Haptics.notch()
-        dismiss(committing: true)
+        rail.say(footer?(rungs[index]))
     }
 
     func dismiss(committing: Bool) {

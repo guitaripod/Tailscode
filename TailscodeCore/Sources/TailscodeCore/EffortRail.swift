@@ -1,13 +1,14 @@
 import Foundation
 
-/// The arithmetic of pressing the effort meter and sliding: which rung a finger is on, and when it
-/// has meant to leave.
+/// The arithmetic of choosing on the effort rail: which rung a finger is on, and when it has meant
+/// to leave.
 ///
-/// A rail is the ladder (`ModelDial.rungs`) drawn as a column the thumb travels along, so what a
-/// client owes is only where each row's centre is. Everything that makes the motion feel decided
-/// rather than twitchy lives here once, for every desk that draws one: a rung is held until the
-/// finger is clearly closer to its neighbour, a slide off the side is a cancel, and the tick the
-/// hand feels is one per rung entered, never one per frame.
+/// A rail is the ladder (`ModelDial.rungs`) drawn as a column opened by one tap, so what a client
+/// owes is only where each row's centre is. A level is chosen by tapping it or by putting a finger
+/// down and sliding before lifting, and everything that makes the slide feel decided rather than
+/// twitchy lives here once: a rung is held until the finger is clearly closer to its neighbour, a
+/// finger lifted well off the side chooses nothing, and the tick the hand feels is one per rung
+/// entered, never one per frame.
 public enum EffortRail {
     /// How much of a row's pitch the finger has to travel past the halfway point before the
     /// thumb lets go of the rung it holds. Without it a finger resting on a boundary flickers
