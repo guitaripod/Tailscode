@@ -3,56 +3,56 @@
     {
       "master": "01-live",
       "slug": "01-agents-anywhere",
-      "headline": "Claude Code, opencode,\nOh My Pi — on your phone",
+      "headline": "Claude Code, opencode,\nOh My Pi \u2014 on your phone",
       "subline": "Every turn live in your hand, over your own tailnet."
     },
     {
+      "master": "02-dial",
+      "slug": "02-model-and-effort",
+      "headline": "Pick the model.\nSet how hard it thinks.",
+      "subline": "One tap on the pill \u2014 your pinned favourites one swipe away."
+    },
+    {
       "master": "03-approval",
-      "slug": "02-approve-remote",
+      "slug": "03-approve-remote",
       "headline": "Approve the risky\ncommand from anywhere",
-      "subline": "Allow once, always, or deny — mid-turn."
+      "subline": "Allow once, always, or deny \u2014 mid-turn."
     },
     {
       "master": "07-home",
-      "slug": "03-one-board",
+      "slug": "04-one-board",
       "headline": "Every machine,\none board",
-      "subline": "Live turns, projects, and unread — already triaged."
+      "subline": "Live turns, projects, and unread \u2014 already triaged."
     },
     {
-      "master": "04-question",
-      "slug": "04-answer-blockers",
-      "headline": "When it needs you,\nit asks",
-      "subline": "Answer the agent's question with a tap."
+      "master": "15-delegate",
+      "slug": "05-delegate",
+      "headline": "Hand the routine work\nto cheaper models",
+      "subline": "A ladder of models and a verifier that decides \u2014 nothing applied until it passes."
     },
     {
       "master": "02-work",
-      "slug": "05-real-work",
+      "slug": "06-real-work",
       "headline": "Every diff, every\ncommand, inline",
       "subline": "Tool calls unfold with their real output."
     },
     {
       "master": "05-subagents",
-      "slug": "06-agent-fanout",
+      "slug": "07-agent-fanout",
       "headline": "A fan-out of agents,\nat a glance",
       "subline": "Subagents dock inside the turn that spawned them."
     },
     {
-      "master": "12-git",
-      "slug": "07-repo-truth",
-      "headline": "Read the repo\nbefore you trust it",
-      "subline": "Branch, staged, changed — straight from the machine."
+      "master": "04-question",
+      "slug": "08-answer-blockers",
+      "headline": "When it needs you,\nit asks",
+      "subline": "Answer the agent's question with a tap."
     },
     {
       "master": "08-usage",
-      "slug": "08-month-in-numbers",
-      "headline": "The month\nin numbers",
-      "subline": "Every turn priced, every machine counted."
-    },
-    {
-      "master": "11-compaction",
-      "slug": "09-compaction-seam",
-      "headline": "Compaction is a seam,\nnot a mystery",
-      "subline": "What was kept, and what it made room for."
+      "slug": "09-know-your-limits",
+      "headline": "Know your limits\nbefore you hit them",
+      "subline": "Every window with its own reset clock, read from your machines."
     },
     {
       "master": "setup",
@@ -68,14 +68,14 @@
     {
       "master": "01-live",
       "slug": "01-one-workspace",
-      "headline": "Claude Code, opencode, Oh My Pi — one workspace",
+      "headline": "Claude Code, opencode, Oh My Pi \u2014 one workspace",
       "subline": "Every machine and every chat beside the conversation, over your own tailnet."
     },
     {
       "master": "03-approval",
       "slug": "02-approve-remote",
       "headline": "Approve the risky command from anywhere",
-      "subline": "Allow once, always, or deny — mid-turn, with the list still in view."
+      "subline": "Allow once, always, or deny \u2014 mid-turn, with the list still in view."
     },
     {
       "master": "04-question",
@@ -99,7 +99,7 @@
       "master": "13-diff",
       "slug": "06-repo-truth",
       "headline": "Read the diff before you trust it",
-      "subline": "Branch, staged, changed — the real patch, straight from the machine."
+      "subline": "Branch, staged, changed \u2014 the real patch, straight from the machine."
     },
     {
       "master": "08-usage",
@@ -123,7 +123,7 @@
       "master": "11-focus",
       "slug": "10-whole-screen",
       "headline": "Or give it the whole screen",
-      "subline": "Hide the columns with one tap — compaction reads as a seam, not a mystery."
+      "subline": "Hide the columns with one tap \u2014 compaction reads as a seam, not a mystery."
     }
   ]
 }

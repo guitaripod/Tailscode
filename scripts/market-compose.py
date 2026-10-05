@@ -26,11 +26,14 @@ story slugs, numbered in store order.
   scripts/market-compose.py iphone             # one platform, every locale
   scripts/market-compose.py iphone --locale ja # one platform, one locale
 """
+import hashlib
 import io
 import json
 import math
 import os
+import subprocess
 import sys
+import tempfile
 
 import AppKit
 import Foundation
@@ -43,6 +46,9 @@ L10N_IN = os.path.join(ROOT, "marketing/appstore/l10n")
 MAC_IN = os.path.join(ROOT, "Resources/Screenshots/mac")
 CAPTIONS = os.path.join(ROOT, "marketing/captions")
 OUT = os.path.join(ROOT, "marketing/appstore/panels")
+
+FRAME_COLOR = "Silver"
+FRAME_CACHE = os.path.join(tempfile.gettempdir(), "tailscode-frames")
 
 ACCENT = (84, 107, 255)
 CANVAS_TOP = (13, 15, 21)
@@ -191,33 +197,61 @@ def text_block(canvas, x, y, headline, subline, head_size, sub_size, spacing, al
     return sub_y + sub.height
 
 
+def framed(master, color=FRAME_COLOR):
+    """The screenshot inside its real device bezel, from the `frames` CLI, which picks the device
+    from the screenshot's own size. Cached by the master's bytes, because a panel is composed once
+    per locale and the framing never changes between them."""
+    with open(master, "rb") as f:
+        key = hashlib.sha1(f.read() + color.encode()).hexdigest()[:16]
+    folder = os.path.join(FRAME_CACHE, key)
+    out = os.path.join(folder, os.path.splitext(os.path.basename(master))[0] + "_framed.png")
+    if not os.path.exists(out):
+        os.makedirs(folder, exist_ok=True)
+        result = subprocess.run(["frames", "-c", color, "-o", folder, master], capture_output=True, text=True)
+        if result.returncode != 0 or not os.path.exists(out):
+            sys.exit(f"frames failed for {master}:\n{result.stdout}{result.stderr}")
+    return Image.open(out).convert("RGBA")
+
+
+def device_shadow(canvas, device, position, blur=70, alpha=170, drop=34):
+    """A shadow cast by the bezel's own outline, so the shape under the device is the device's."""
+    layer = Image.new("L", canvas.size, 0)
+    layer.paste(device.split()[3].point(lambda a: alpha if a > 200 else 0), (position[0], position[1] + drop))
+    layer = layer.filter(ImageFilter.GaussianBlur(blur))
+    canvas.paste(Image.new("RGB", canvas.size, (0, 0, 0)), (0, 0), layer)
+
+
+def place_device(canvas, master, top, bottom_margin, width_limit, side_margin=0):
+    """Scales the framed device to the room between `top` and the canvas bottom, whole — nothing of
+    the screen cropped away, so the composer and the pill under it are always in the picture."""
+    device = framed(master)
+    room_h = canvas.height - top - bottom_margin
+    scale = min(room_h / device.height, width_limit / device.width)
+    device = device.resize((round(device.width * scale), round(device.height * scale)), Image.LANCZOS)
+    x = (canvas.width - device.width) // 2
+    glow(canvas, (canvas.width // 2, top + device.height // 2), round(device.width * 0.8), 20)
+    device_shadow(canvas, device, (x, top))
+    canvas.paste(device.convert("RGB"), (x, top), device.split()[3])
+    return device
+
+
 def compose_iphone(master, slug, headline, subline):
     W, H = 1320, 2868
     canvas = gradient(W, H).convert("RGBA")
     glow(canvas, (W // 2, -300), 900, 26)
-    end = text_block(canvas, 96, 148, headline, subline, 104, 51, 40, "left", W)
-    shot = rounded(Image.open(master).convert("RGB"), 64, 1136)
-    x = (W - shot.width) // 2
-    y = max(660, end + 72)
-    shadow_under(canvas, [x + 8, y + 24, x + shot.width - 8, min(H, y + shot.height)], 64)
-    canvas.paste(shot.convert("RGB"), (x, y), shot.split()[3])
-    return canvas.convert("RGB").crop((0, 0, W, H))
+    end = text_block(canvas, 96, 132, headline, subline, 104, 51, 36, "left", W)
+    place_device(canvas, master, top=end + 56, bottom_margin=44, width_limit=W - 150)
+    return canvas.convert("RGB")
 
 
 def compose_ipad(master, slug, headline, subline):
-    """The landscape workspace, whole: the claim centred above it and the screen scaled to the
-    room the claim leaves, so no column of the three is cropped away."""
+    """The landscape workspace, whole, in its own bezel: the claim centred above it and the device
+    scaled to the room the claim leaves, so no column of the three is cropped away."""
     W, H = 2752, 2064
     canvas = gradient(W, H).convert("RGBA")
     glow(canvas, (W // 2, -520), 1500, 26)
-    end = text_block(canvas, 0, 104, headline, subline, 112, 56, 26, "center", W)
-    y = end + 72
-    source = Image.open(master).convert("RGB")
-    scale_w = round((H - y - 84) * source.width / source.height)
-    shot = rounded(source, 56, scale_w)
-    x = (W - shot.width) // 2
-    shadow_under(canvas, [x + 12, y + 30, x + shot.width - 12, y + shot.height + 20], 56)
-    canvas.paste(shot.convert("RGB"), (x, y), shot.split()[3])
+    end = text_block(canvas, 0, 96, headline, subline, 108, 54, 24, "center", W)
+    place_device(canvas, master, top=end + 56, bottom_margin=40, width_limit=W - 200)
     return canvas.convert("RGB")
 
 
