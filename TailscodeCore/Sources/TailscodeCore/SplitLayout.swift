@@ -125,6 +125,13 @@ public struct SplitLayout: Sendable, Equatable, Codable {
         return Array(never) + held
     }
 
+    /// The panes from most to least recently focused, every one present in the tree: the order a
+    /// restore wakes them in after the focused one, so the chats a person was reading last come
+    /// back first.
+    public var recentlyFocused: [PaneID] {
+        recency.reversed()
+    }
+
     /// Every pane in the tree, in reading order (first child before second, depth first).
     public var paneIDs: [PaneID] {
         Self.leaves(of: root)

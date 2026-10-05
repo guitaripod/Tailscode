@@ -8,6 +8,27 @@ import Testing
 @Suite("Split layout")
 struct SplitLayoutTests {
 
+    @Test("Recently focused lists every pane, newest focus first, never-focused panes last")
+    func recentlyFocusedOrder() {
+        var layout = SplitLayout()
+        let a = layout.focusedPane
+        let b = layout.split(a, axis: .horizontal)!
+        let c = layout.split(b, axis: .vertical)!
+        let d = layout.split(a, axis: .vertical)!
+        layout.focus(c)
+        layout.focus(a)
+        let order = layout.recentlyFocused
+        #expect(order.first == a)
+        #expect(Set(order) == Set(layout.paneIDs))
+        #expect(order.count == layout.paneCount)
+        #expect(order.firstIndex(of: c)! < order.firstIndex(of: d)!)
+        let wake = RestorePlan.wakeSchedule(focused: layout.focusedPane, recent: order)
+        #expect(wake.map(\.pane) == order)
+        for (index, step) in wake.enumerated() {
+            #expect(abs(step.at - Double(index) * 0.3) < 1e-9)
+        }
+    }
+
     @Test("A split makes a sibling and moves focus to it")
     func splitCreatesSiblingAndFocuses() {
         var layout = SplitLayout()
