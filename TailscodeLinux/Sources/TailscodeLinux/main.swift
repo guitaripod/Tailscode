@@ -180,6 +180,7 @@ if wantsAsk {
 Gtk.connect(UnsafeMutableRawPointer(app), "shutdown") {
     DraftStore.flush()
     SettingsFile.flush()
+    SessionListCache.flushEnqueuedSave()
     Seatbelts.shared.exitClean()
 }
 

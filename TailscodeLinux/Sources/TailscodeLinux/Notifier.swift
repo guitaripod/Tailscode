@@ -13,6 +13,9 @@ final class Notifier: @unchecked Sendable {
 
     private var appBits: UInt = 0
     private var watch = ActivityWatch()
+    /// The watch is read from the main loop for listings and from the conversation hub's stream
+    /// task for conversations, so its state is held under a lock; delivery always hops to main.
+    private let watchLock = NSLock()
 
     /// Everything an approval button needs to answer from outside the window, carried through the
     /// notification as one string the action handler can decode.
@@ -94,7 +97,9 @@ final class Notifier: @unchecked Sendable {
     /// Turn-end edges across the listing, skipping the open session — its own stream reports it.
     func observeListing(_ rows: [ActivityObservation], openSessionID: String?, windowActive: Bool)
     {
+        watchLock.lock()
         let alerts = watch.observeListing(rows, openSessionID: openSessionID)
+        watchLock.unlock()
         deliver(alerts, windowActive: windowActive)
     }
 
@@ -102,10 +107,29 @@ final class Notifier: @unchecked Sendable {
         profileID: String, sessionID: String, title: String, state: ConversationState,
         windowActive: Bool
     ) {
+        watchLock.lock()
         let (alerts, withdrawals) = watch.observeConversation(
             profileID: profileID, sessionID: sessionID, title: title, state: state)
+        watchLock.unlock()
         withdraw(withdrawals)
         deliver(alerts, windowActive: windowActive)
+    }
+
+    /// The same edges, from any thread: the conversation hub calls this once per state per
+    /// conversation, and only a state that raised or withdrew something reaches the main loop,
+    /// where whether a window of this app is the one being looked at is read at delivery.
+    func observeConversationAnywhere(
+        profileID: String, sessionID: String, title: String, state: ConversationState
+    ) {
+        watchLock.lock()
+        let (alerts, withdrawals) = watch.observeConversation(
+            profileID: profileID, sessionID: sessionID, title: title, state: state)
+        watchLock.unlock()
+        guard !alerts.isEmpty || !withdrawals.isEmpty else { return }
+        Gtk.onMain { [self] in
+            withdraw(withdrawals)
+            deliver(alerts, windowActive: Self.anyWindowActive)
+        }
     }
 
     /// Raised and written down in one step: a notice nobody happened to be at the screen for is

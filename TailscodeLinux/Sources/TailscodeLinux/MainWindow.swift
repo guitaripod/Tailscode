@@ -68,7 +68,7 @@ final class MainWindow: @unchecked Sendable {
     private var sessionRows: [String: [TranscriptRow]] = [:]
     private var sessionRowOrder: [String] = []
 
-    private var entries: [SessionEntry] = []
+    private(set) var entries: [SessionEntry] = []
     /// The configured servers, kept on the main context so an empty pane can ask its question in
     /// the same frame the split happens rather than after a hop through the directory actor.
     private var knownProfiles: [ConnectionProfile] = []
@@ -140,7 +140,7 @@ final class MainWindow: @unchecked Sendable {
     private var lastCatalogWarm: [String: Date] = [:]
     private var usageStripSignature = ""
 
-    private var splitHost: SplitHost!
+    private(set) var splitHost: SplitHost!
     /// What each restored pane was showing, until the listing carries the session and the pane
     /// can open it for real.
     private var pendingBindings: [PaneID: SplitPaneSession] = [:]
@@ -958,7 +958,7 @@ final class MainWindow: @unchecked Sendable {
                             "STATE follows=\(pane.followsBottom) rows=\(pane.renderedRows.count)/\(pane.lastFullRows.count) value=\(Int(value)) bottom=\(Int(upper))\n"
                             .utf8))
                 default:
-                    break
+                    self.driveLive(verb, argument)
                 }
             }
         }
@@ -1313,126 +1313,19 @@ final class MainWindow: @unchecked Sendable {
         splitHost.persist()
     }
 
-    /// Watches a conversation whose pane moved on, so a turn still in flight keeps its LIVE NOW
-    /// seat until it settles. A pane switching chats (or closing) stops streaming, and a listing
-    /// — opencode's especially — cannot say a turn is running; this keeps the one subscription
-    /// alive in the background and feeds the sidebar exactly what the pane saw.
-    private var backgroundWatch: [String: (id: UUID, task: Task<Void, Never>)] = [:]
-    private var backgroundPresence: [String: SessionPresence] = [:]
+    /// The process's live runtime: the window's drain, the one conversation hub and the edge
+    /// services every pane and background watch share.
+    let live = LiveRuntime()
+
+    /// Conversations a pane moved on from, watched so a turn still in flight keeps its LIVE NOW seat
+    /// until it settles and a held queue still drains. Each is a `watching` lease on the hub, keyed
+    /// as the sidebar keys a chat.
+    var watchLeases: [String: LiveLease] = [:]
+    var backgroundPresence: [String: SessionPresence] = [:]
     /// What each conversation's last settled witness said, carried across the moment one watcher
     /// hands a chat to another. Without it, opening a live chat on a server whose listing cannot
     /// report a turn dropped the row to RECENT for one round trip and then took it back.
     private var presenceLedger = PresenceLedger()
-
-    func keepWatching(_ conversation: AgentConversation, entry: SessionEntry) {
-        let key = SessionPinStore.key(entry.profileID, entry.session.id)
-        stopWatching(key)
-        let id = UUID()
-        let task = Task { [weak self] in
-            var lastReading: SessionPresence = .running(nil)
-            var handoff = TurnHandoff()
-            while !Task.isCancelled {
-                let stream = await conversation.states()
-                for await state in stream {
-                    guard let self else { return }
-                    handoff.observe(state, sendsInFlight: false)
-                    if await Self.drainHeld(
-                        conversation, entry: entry, state: state, handoff: &handoff)
-                    {
-                        continue
-                    }
-                    let reading = SessionPresence.reading(state, step: nil)
-                    let changed = reading != lastReading
-                    lastReading = reading
-                    let settled = reading == .unobserved
-                    Gtk.onMain { [weak self] in
-                        guard let self, self.backgroundWatch[key]?.id == id else { return }
-                        self.backgroundPresence[key] = reading
-                        if changed { self.renderSidebar() }
-                        if settled { self.stopWatching(key) }
-                    }
-                    if settled { return }
-                }
-            }
-            Gtk.onMain { [weak self] in
-                guard let self, self.backgroundWatch[key]?.id == id else { return }
-                self.backgroundWatch[key] = nil
-                self.backgroundPresence[key] = nil
-                self.renderSidebar()
-            }
-        }
-        backgroundWatch[key] = (id, task)
-    }
-
-
-    /// A conversation a pane left running still owes its queue: the next waiting message goes the
-    /// moment the turn yields, read from the store rather than from any pane, because the pane
-    /// that wrote it may be showing something else by now. Answers whether a message went, so
-    /// the watch knows the turn is not over.
-    private static func drainHeld(
-        _ conversation: AgentConversation, entry: SessionEntry, state: ConversationState,
-        handoff: inout TurnHandoff
-    ) async -> Bool {
-        guard SendQueueDrain.mayDrain(state, handoff: handoff) else { return false }
-        var held = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
-        guard let next = held.takeFirst() else { return false }
-        SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
-        handoff.begin(after: state)
-        do {
-            try await conversation.send(
-                next.text, model: next.model, reasoningEffort: next.effort,
-                attachments: next.attachments)
-            return true
-        } catch {
-            handoff.end()
-            held.requeueAtHead(next)
-            SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
-            return false
-        }
-    }
-
-    /// Every conversation the store is holding a message for gets a watch, so a queue written
-    /// before the app quit goes when its turn yields rather than when somebody opens the chat.
-    /// A chat a pane is showing drains from the pane; a held chat the listing no longer has waits
-    /// for a listing that does.
-    private func wakeHeldQueues() {
-        let held = SendQueueStore.all()
-        guard !held.isEmpty else { return }
-        let entries = self.entries
-        Task { [weak self] in
-            let profiles = await ServerDirectory.shared.profiles()
-            for record in held {
-                guard let entry = entries.first(where: {
-                        $0.session.id == record.sessionID && $0.profileID == record.profileID
-                    }),
-                    let profile = profiles.first(where: { $0.id == record.profileID }),
-                    let backend = await ServerDirectory.shared.backend(for: profile)
-                else { continue }
-                Gtk.onMain { [weak self] in
-                    guard let self else { return }
-                    let key = SessionPinStore.key(record.profileID, record.sessionID)
-                    var shown = false
-                    self.splitHost.eachPane { pane in
-                        if pane.sessionID == record.sessionID, pane.entry?.profileID == record.profileID {
-                            shown = true
-                        }
-                    }
-                    guard self.backgroundWatch[key] == nil, !shown else { return }
-                    self.keepWatching(
-                        AgentConversation(
-                            backend: backend, sessionID: entry.session.id,
-                            cache: AppCache.sessionCache),
-                        entry: entry)
-                }
-            }
-        }
-    }
-
-    func stopWatching(_ key: String) {
-        backgroundWatch[key]?.task.cancel()
-        backgroundWatch[key] = nil
-        backgroundPresence[key] = nil
-    }
 
     /// A pane took a conversation: the window chrome follows it only when that pane is the
     /// focused one — an unfocused pane opening in the background must not steal the title bar.
@@ -1581,7 +1474,7 @@ final class MainWindow: @unchecked Sendable {
             next.append(entry)
             next.sort { $0.session.updatedAt > $1.session.updatedAt }
             entries = next
-            if !next.isEmpty { Soak.timeListSave { SessionListCache.save(next) } }
+            if !next.isEmpty { Soak.timeListSave { SessionListCache.enqueueSave(next) } }
             SessionMarks.reconcile(with: [entry])
             renderSidebar()
             splitHost.eachPane { pane in
@@ -1603,7 +1496,7 @@ final class MainWindow: @unchecked Sendable {
         let (entries, unreachable) = await ServerDirectory.shared.entries(
             knownDirectories: Array(known), previous: self.entries)
         let heard = await ServerDirectory.shared.lastHeard
-        if !entries.isEmpty { SessionListCache.save(entries) }
+        if !entries.isEmpty { SessionListCache.enqueueSave(entries) }
         await SessionMarkSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
         Gtk.onMain { SessionMarks.reconcile(with: entries) }
         UpdateWatch.keep(profiles)
@@ -1812,7 +1705,7 @@ final class MainWindow: @unchecked Sendable {
     /// Rebuilding two hundred rows of widgets is a visible stutter — nothing is touched unless
     /// what the list would say actually differs from what it says now, and only the first
     /// screenful or two are built.
-    private func renderSidebar() {
+    func renderSidebar() {
         if sidebarPointerHeld {
             sidebarRenderHeld = true
             return
@@ -3298,6 +3191,7 @@ final class MainWindow: @unchecked Sendable {
         stashDrafts()
         DraftStore.flush()
         SettingsFile.flush()
+        SessionListCache.flushEnqueuedSave()
         Seatbelts.shared.exitClean()
         g_application_quit(ptr(app))
     }

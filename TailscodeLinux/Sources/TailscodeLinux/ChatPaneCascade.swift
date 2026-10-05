@@ -20,7 +20,7 @@ extension ChatPane {
     /// take the row (reduced motion, markup the parser refuses) the cut goes with it: a prefix
     /// nothing is going to reveal is just an answer with its last words missing.
     func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
-        let liveIndex = running ? rows.lastIndex(where: { !$0.isLinkRail }) : nil
+        let liveIndex = running && revealsHere ? rows.lastIndex(where: { !$0.isLinkRail }) : nil
         let live = liveIndex.flatMap { rows[$0].streamedText == nil ? nil : rows[$0] }
         let released = cascade.key
         if let abandoned, abandoned != live?.key { self.abandoned = nil }
@@ -73,7 +73,7 @@ extension ChatPane {
     /// stalled, and one the transcript no longer holds all say no, and the caller lets go exactly
     /// as before.
     private func drainStrandedCascade(in rows: [TranscriptRow]) -> Bool {
-        guard let key = cascade.key, cascade.owes, key != abandoned,
+        guard revealsHere, let key = cascade.key, cascade.owes, key != abandoned,
             let row = rows.last(where: { $0.key == key })
                 ?? lastFullRows.last(where: { $0.key == key }),
             let source = row.streamedText,
@@ -86,6 +86,23 @@ extension ChatPane {
         guard cascade.key == key, cascade.owes else { return false }
         lastStreamedKey = key
         return true
+    }
+
+    /// Whether this pane runs the written-not-pasted reveal: only the focused pane does, and only
+    /// while the governor's budget allows a reveal at all. Every other pane shows an answer at the
+    /// granularity it arrives in, painted whole.
+    var revealsHere: Bool { isFocusedPane && !isParked && CascadeBudget.reveals }
+
+    /// Takes the wave off whatever row it holds and hands that row back whole, for a pane that
+    /// stopped being the one that reveals.
+    func letGoOfCascade() {
+        guard let key = cascade.key else { return }
+        cascade.release()
+        if settleCascade(on: key, in: lastFullRows) {
+            if lastStreamedKey == key { lastStreamedKey = nil }
+        } else {
+            scheduleTailRepair(on: key)
+        }
     }
 
     /// A stall that is only the gate holding is not a stall in the writing.

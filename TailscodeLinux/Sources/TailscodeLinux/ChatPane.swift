@@ -60,7 +60,7 @@ final class ChatPane: @unchecked Sendable {
     /// being a queue and not a send.
     private var queue = SendQueue() {
         didSet {
-            guard queue != oldValue, let entry else { return }
+            guard !adoptingQueue, queue != oldValue, let entry else { return }
             SendQueueStore.save(queue, profileID: entry.profileID, sessionID: entry.session.id)
         }
     }
@@ -117,7 +117,9 @@ final class ChatPane: @unchecked Sendable {
     private var fillComplete = false
     /// How much of a transcript is folded into rows at all — read from the streaming task, so it
     /// is a plain value rather than anything that needs the main context.
-    private nonisolated(unsafe) var rowTailMessages = 300
+    private var rowTailMessages = 300 {
+        didSet { feed.update { [rowTailMessages] in $0.tail = rowTailMessages } }
+    }
 
     private let findBar = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let findEntry = gtk_search_entry_new()!
@@ -228,12 +230,37 @@ final class ChatPane: @unchecked Sendable {
     private var inFlightDesignBoards: Set<String> = []
     private(set) var conversation: AgentConversation?
     private(set) var lastState: ConversationState?
-    private var streamTask: Task<Void, Never>?
+    /// Everything the pane started that must stop when the pane stops being alive: lane
+    /// observers and the like, for the life of the pane.
+    let lifetime = PaneLifetime()
+    /// What the open conversation started — its extras, its fetches, its resume clock — ended on
+    /// every switch of conversation, reset, slot swap and shutdown.
+    let chatLife = PaneLifetime()
+    /// What keeps the pane live — its hub lease, its row pump, its drain slot, its ticker, its
+    /// reveal and its identity pulse — ended also when the pane is hidden (parked), and taken
+    /// again when it is shown.
+    let streamLife = PaneLifetime()
+    private let feed = PaneFeed()
+    private(set) var lease: LiveLease?
+    private var drainToken: DrainToken?
+    /// Which conversation a build was made for: bumped by every open, so a build that was already
+    /// on its way when the pane moved on is dropped at the drain rather than drawn into the wrong
+    /// chat.
+    private var streamGeneration: UInt64 = 0
+    /// Hidden by a zoom: no lease, no pump, no clocks, the last rows frozen.
+    private(set) var isParked = false
+    /// Whether the window's focus is on this pane. Only the focused pane runs the reveal.
+    private(set) var isFocusedPane = true
+    private var drainPriority: DrainPriority = .focused
+    /// Set while the queue is re-read from the store, which already holds what it says.
+    private var adoptingQueue = false
     private var agentStreamTask: Task<Void, Never>?
     private var agentStreamSessionID: String?
     private var tickerTask: Task<Void, Never>?
 
-    private var models: [ModelInfo] = []
+    private var models: [ModelInfo] = [] {
+        didSet { feed.update { [models] in $0.models = models } }
+    }
     private var modelsReachable: Bool?
     private var catalogWatchTask: Task<Void, Never>?
     private var lastPillsSignature = ""
@@ -280,6 +307,7 @@ final class ChatPane: @unchecked Sendable {
     /// reporting that nothing is running: the row it just took over from the background watcher
     /// must not settle on the difference between two witnesses.
     var presence: SessionPresence {
+        guard !isParked else { return entry == nil ? .unobserved : .unsettled }
         guard let state = lastState else { return entry == nil ? .unobserved : .unsettled }
         return SessionPresence.reading(state, step: bandState.facts.runningTool)
     }
@@ -289,6 +317,7 @@ final class ChatPane: @unchecked Sendable {
     init(id: PaneID, host: MainWindow) {
         self.id = id
         self.host = host
+        host.live.attach(window: host)
         buildRoot()
         wireContext()
         cascade.holder = UnsafeMutableRawPointer(transcriptBox)
@@ -333,7 +362,7 @@ final class ChatPane: @unchecked Sendable {
             self.windowLimit += 400
             self.rowTailMessages += 600
             self.apply(state: state, rows: self.lastFullRows)
-            Task { [weak self] in await self?.conversation?.reconnect() }
+            self.feed.rebuild(state)
         }
         gtk_box_append(ptr(canvas), earlierButton)
         gtk_box_append(ptr(canvas), transcriptBox)
@@ -862,6 +891,71 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
+    /// The window's focus moved onto or off this pane. The focused pane drains first and is the one
+    /// pane that runs the reveal; a pane that loses the focus mid-answer hands its live row back
+    /// whole and shows the rest of the answer as it arrives.
+    func setFocused(_ focused: Bool) {
+        guard focused != isFocusedPane else { return }
+        isFocusedPane = focused
+        if !focused { letGoOfCascade() }
+        restateDrainPriority()
+    }
+
+    /// Focused first, then a pane that needs the person or failed, then everyone else.
+    private func restateDrainPriority() {
+        let priority: DrainPriority
+        if isFocusedPane {
+            priority = .focused
+        } else {
+            switch presence {
+            case .awaitingApproval, .failed: priority = .attention
+            default: priority = .full
+            }
+        }
+        guard priority != drainPriority else { return }
+        drainPriority = priority
+        restateDrainSlot()
+    }
+
+    /// Re-registers the drain slot's priority and rate, after either changed.
+    func restateDrainSlot() {
+        if !revealsHere { letGoOfCascade() }
+        if let drainToken, let host { host.live.drain.update(drainToken, to: drainSlot()) }
+    }
+
+    /// Hidden by a zoom: the lease, the pump, the drain slot, the ticker, the reveal, the identity
+    /// pulse and any rise in progress end, and the pane keeps showing its last rows, frozen. A turn
+    /// still in flight is handed to the window's watch so the chat list keeps its LIVE NOW seat.
+    func park() {
+        guard !isParked else { return }
+        isParked = true
+        if let entry, presence.isInFlight { host?.keepWatching(entry) }
+        leaveFreshCanvas()
+        releaseStream()
+        agentStreamTask?.cancel()
+        agentStreamTask = nil
+        agentStreamSessionID = nil
+    }
+
+    /// Shown again: the watch hands the chat back and a fresh lease brings the newest state at
+    /// once, so the pane catches up in one apply rather than replaying what it missed.
+    func unpark() {
+        guard isParked else { return }
+        isParked = false
+        guard !isShutDown else { return }
+        if let entry { host?.stopWatching(LiveKey(entry).pinKey) }
+        attachStream()
+        refreshIdentity()
+    }
+
+    /// What the pane owns right now, for the harness: whether it holds a lease and a drain slot,
+    /// how many of its clocks are running and whether it is parked.
+    var liveReading: String {
+        "parked=\(isParked) lease=\(lease != nil) slot=\(drainToken != nil) "
+            + "reveal=\(cascade.isActive) ticker=\(tickerTask != nil) "
+            + "rise=\(canvasSettle != nil) agents=\(agentStreamTask != nil)"
+    }
+
     /// The strip that says whose conversation this pane is — only worth its line once a second
     /// pane exists, so a lone pane stays exactly the window it always was.
     func setIdentityVisible(_ visible: Bool) {
@@ -873,7 +967,8 @@ final class ChatPane: @unchecked Sendable {
     /// chat furniture is hidden rather than destroyed, so a slot is a state of a pane and not a
     /// second kind of object the split tree would have to learn.
     func showVideo(_ target: VideoTarget?) {
-        chooser = nil
+        becomeSlot()
+        leaveSlots(except: video.map(ObjectIdentifier.init))
         if video == nil {
             let pane = VideoPane(target: target)
             video = pane
@@ -895,7 +990,8 @@ final class ChatPane: @unchecked Sendable {
 
     /// Turns this pane into a browser slot, or points the one it already is at another address.
     func showWeb(_ target: WebTarget?) {
-        chooser = nil
+        becomeSlot()
+        leaveSlots(except: page.map(ObjectIdentifier.init))
         if page == nil {
             let pane = WebPane(target: target)
             page = pane
@@ -919,7 +1015,8 @@ final class ChatPane: @unchecked Sendable {
     /// endpoint persists in the layout snapshot, so a restart reopens the pane on the machine it
     /// was painting on.
     func showDraw(_ endpoint: ImageGenEndpoint?) {
-        chooser = nil
+        becomeSlot()
+        leaveSlots(except: draw.map(ObjectIdentifier.init))
         if draw == nil {
             let pane = DrawPane(endpoint: endpoint)
             draw = pane
@@ -1019,18 +1116,74 @@ final class ChatPane: @unchecked Sendable {
 
     /// Everything the pane draws for a conversation, out of the way while it holds a stream —
     /// walked rather than named so a new piece of chat chrome cannot forget to hide itself.
+    ///
+    /// Hiding remembers which pieces were showing, and showing again brings back exactly those: a
+    /// find bar that was closed or a banner with nothing to say stays hidden when a slot gives the
+    /// pane back to a chat.
     private func setChatFurnitureVisible(_ visible: Bool) {
+        guard !visible else {
+            for bits in hiddenFurniture {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
+                gtk_widget_set_visible(ptr(raw), 1)
+            }
+            hiddenFurniture = []
+            return
+        }
         var child = gtk_widget_get_first_child(root)
         while let current = child {
             let next = gtk_widget_get_next_sibling(current)
             if current != identityLabel, current != video?.root, current != page?.root,
-                current != draw?.root
+                current != draw?.root, gtk_widget_get_visible(current) != 0
             {
-                gtk_widget_set_visible(current, visible ? 1 : 0)
+                hiddenFurniture.append(UInt(bitPattern: current))
+                gtk_widget_set_visible(current, 0)
             }
             child = next
         }
     }
+
+    private var hiddenFurniture: [UInt] = []
+
+    /// A pane becoming a slot stops being a chat: its stream, fetches and clocks end (a turn still
+    /// in flight is handed to the window's watch), so nothing keeps streaming behind the slot.
+    private func becomeSlot() {
+        chooser = nil
+        guard entry != nil else { return }
+        leaveChat()
+        placeholderShown = false
+        host?.paneRebound()
+        host?.scheduleSidebarRender()
+    }
+
+    /// Takes down whatever slot the pane holds and gives the pane back its chat furniture — what an
+    /// open or a chooser does to a pane that was a page, a stream or a painter.
+    func leaveSlots(except keep: ObjectIdentifier? = nil) {
+        var left = false
+        if let video, ObjectIdentifier(video) != keep {
+            video.shutdown()
+            gtk_box_remove(ptr(root), video.root)
+            self.video = nil
+            left = true
+        }
+        if let page, ObjectIdentifier(page) != keep {
+            page.shutdown()
+            gtk_box_remove(ptr(root), page.root)
+            self.page = nil
+            left = true
+        }
+        if let draw, ObjectIdentifier(draw) != keep {
+            draw.shutdown()
+            gtk_box_remove(ptr(root), draw.root)
+            self.draw = nil
+            left = true
+        }
+        guard left, video == nil, page == nil, draw == nil else { return }
+        setChatFurnitureVisible(true)
+        refreshIdentity()
+    }
+
+    /// Whether the pane is a slot rather than a chat.
+    var isSlot: Bool { video != nil || page != nil || draw != nil }
 
     /// A pane wears what it is doing in its own identity strip, so a grid of four says which one
     /// is working without the reader having to find and read four status bands. The strip is what
@@ -1061,7 +1214,7 @@ final class ChatPane: @unchecked Sendable {
 
     private func setIdentity(_ text: String, activity: ActivityKind?) {
         identityName = text
-        guard let activity else {
+        guard let activity, !isParked else {
             ActivityPulse.apply(nil, to: identityLabel)
             gtk_label_set_text(op(identityLabel), text)
             return
@@ -1172,11 +1325,11 @@ final class ChatPane: @unchecked Sendable {
         Trace.mark("open begin \(entry.session.id.prefix(8))")
         host?.stopWatching(SessionPinStore.key(entry.profileID, entry.session.id))
         let previousEntry = self.entry
-        let previousConversation = self.conversation
         let previousPresence = presence
-        if let previousEntry, let previousConversation, previousPresence.isInFlight {
-            host?.keepWatching(previousConversation, entry: previousEntry)
+        if let previousEntry, previousPresence.isInFlight {
+            host?.keepWatching(previousEntry)
         }
+        leaveSlots()
         chooser = nil
         leaveFreshCanvas()
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
@@ -1227,9 +1380,17 @@ final class ChatPane: @unchecked Sendable {
         if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
         restoreDraft(for: entry)
         restoreHeldMessages()
-        streamTask?.cancel()
-        tickerTask?.cancel()
-        tickerTask = nil
+        releaseStream()
+        chatLife.cancelAll()
+        streamGeneration &+= 1
+        let generation = streamGeneration
+        feed.update { context in
+            context.generation = generation
+            context.tail = 300
+            context.profileID = entry.profileID
+            context.sessionModel = entry.session.model
+            context.models = []
+        }
         if let remembered = host?.rememberedRows(for: entry.session.id) {
             placeholderShown = true
             lastFullRows = remembered
@@ -1271,8 +1432,11 @@ final class ChatPane: @unchecked Sendable {
         Gtk.onMain { [weak self] in self?.host?.scheduleSidebarRender() }
 
         let sessionID = entry.session.id
-        streamTask = Task { [weak self] in
-            guard let self else { return }
+        host?.live.edges.note(entry)
+        if !isParked { attachStream() }
+        let key = LiveKey(entry)
+        let hub = host?.live.hub
+        let task = Task { [weak self] in
             if await ServerDirectory.shared.profiles().isEmpty {
                 await ServerDirectory.shared.reload()
             }
@@ -1291,82 +1455,121 @@ final class ChatPane: @unchecked Sendable {
                 guard let self, self.sessionID == sessionID else { return }
                 self.backend = backend
                 self.host?.workspaceSyncIfFocused(self)
+                self.loadSessionExtras(
+                    backend: backend, directory: entry.session.directory, sessionID: sessionID)
             }
-            self.loadSessionExtras(
-                backend: backend, directory: entry.session.directory, sessionID: sessionID)
-            let conversation = AgentConversation(
-                backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
-            self.conversation = conversation
-            if !Task.isCancelled, let queued = await self.takeQueuedFirstMessage(),
-                queued.sessionID == entry.session.id
-            {
-                let model = self.chosenModel
-                let effort = ModelEffort.surviving(self.chosenEffort, options: self.effortOptions())
-                let words = queued.send.text
-                Gtk.onMain { [weak self] in
-                    guard let self, self.sessionID == sessionID else { return }
-                    // The first message of a new chat is a send like any other, and it took the
-                    // one road that drew its row without ever asking for the rise.
-                    let row = self.pending.begin(
-                        text: words,
-                        userMessages: self.lastState?.messages.count { $0.role == .user } ?? 0)
-                    self.redrawPending()
-                    self.raiseFreshCanvas(for: row.id)
-                    if Ultracode.invokes(words) || effort == Ultracode.effortLevel {
-                        self.ultracodeInFlight = true
-                        self.refreshUltracodeAura()
-                    }
-                }
-                switch queued.send.kind {
-                case .prompt:
-                    try? await conversation.send(
-                        words, model: model, reasoningEffort: effort,
-                        attachments: queued.attachments.map(\.prompt))
-                case .command(let command, let arguments):
-                    try? await conversation.run(
-                        command, arguments: arguments, model: model, reasoningEffort: effort)
-                }
+            guard let conversation = await hub?.conversation(for: key), !Task.isCancelled else {
+                return
             }
-            let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil && !Soak.isOn
-            var resubscribes = 0
-            while !Task.isCancelled {
-                for await state in await conversation.states() {
-                    if Task.isCancelled { return }
-                    if state.connection == .live { resubscribes = 0 }
-                    let tail = self.rowTailMessages
-                    let messages = state.messages.count > tail
-                        ? Array(state.messages.suffix(tail)) : state.messages
-                    let started = Date()
-                    let rows = self.rowBuilder.rows(
-                        for: messages, turnOpen: state.status == .running,
-                        modelName: self.noteModelName)
-                    if tracing {
-                        let ms = Int(Date().timeIntervalSince(started) * 1000)
-                        FileHandle.standardOutput.write(
-                            Data(
-                                ("BUILD \(messages.count) messages -> \(rows.count) rows in \(ms)ms "
-                                    + Self.driverCensus(of: messages) + "\n").utf8))
-                    }
-                    Gtk.onMain { [weak self] in
-                        guard let self, self.sessionID == sessionID else { return }
-                        Soak.timeApply { self.apply(state: state, rows: rows) }
-                    }
-                    let fill = ContextFill.read(
-                        messages: state.messages, sessionModel: self.entry?.session.model,
-                        catalog: self.models)
-                    Gtk.onMain { [weak self] in
-                        guard let self, self.sessionID == sessionID, fill != self.contextFill
-                        else { return }
-                        self.contextFill = fill
-                        self.updateStatus()
-                    }
+            await self?.adoptConversation(conversation, for: entry)
+        }
+        chatLife.add { task.cancel() }
+    }
+
+    /// The hub's conversation for the chat this pane opened, once it exists: kept for sending, and
+    /// the quick ask's first words — waiting under exactly this session's id — go out through it.
+    private func adoptConversation(_ conversation: AgentConversation, for entry: SessionEntry) async {
+        let sessionID = entry.session.id
+        let adopted: Bool = await withCheckedContinuation { continuation in
+            Gtk.onMain { [weak self] in
+                guard let self, self.sessionID == sessionID, self.entry?.profileID == entry.profileID
+                else {
+                    continuation.resume(returning: false)
+                    return
                 }
-                guard !Task.isCancelled else { return }
-                resubscribes += 1
-                let delay = min(30.0, pow(2.0, Double(min(resubscribes, 5))))
-                try? await Task.sleep(for: .seconds(delay))
+                self.conversation = conversation
+                if let state = self.lastState { self.drainHeldQueue(state) }
+                continuation.resume(returning: true)
             }
         }
+        guard adopted, let queued = await takeQueuedFirstMessage(), queued.sessionID == sessionID
+        else { return }
+        let words = queued.send.text
+        let choice: (ModelSelection?, String?) = await withCheckedContinuation { continuation in
+            Gtk.onMain { [weak self] in
+                guard let self, self.sessionID == sessionID else {
+                    continuation.resume(returning: (nil, nil))
+                    return
+                }
+                let effort = ModelEffort.surviving(self.chosenEffort, options: self.effortOptions())
+                let row = self.pending.begin(
+                    text: words,
+                    userMessages: self.lastState?.messages.count { $0.role == .user } ?? 0)
+                self.openHandoff()
+                self.redrawPending()
+                self.raiseFreshCanvas(for: row.id)
+                if Ultracode.invokes(words) || effort == Ultracode.effortLevel {
+                    self.ultracodeInFlight = true
+                    self.refreshUltracodeAura()
+                }
+                continuation.resume(returning: (self.chosenModel, effort))
+            }
+        }
+        switch queued.send.kind {
+        case .prompt:
+            try? await conversation.send(
+                words, model: choice.0, reasoningEffort: choice.1,
+                attachments: queued.attachments.map(\.prompt))
+        case .command(let command, let arguments):
+            try? await conversation.run(
+                command, arguments: arguments, model: choice.0, reasoningEffort: choice.1)
+        }
+    }
+
+    /// Takes the hub lease and wires it through the pump to the window's drain. Every piece is
+    /// registered in `streamLife`, so parking, a switch of chat and shutdown all end it at once.
+    private func attachStream() {
+        guard let entry, let host, lease == nil, !isShutDown else { return }
+        let live = host.live
+        let feed = self.feed
+        let lease = live.hub.lease(LiveKey(entry), interest: .full) { feed.pull() }
+        self.lease = lease
+        feed.attach(lease: lease, builder: rowBuilder, drain: live.drain)
+        let token = live.drain.register(drainSlot())
+        drainToken = token
+        streamLife.add { [weak self] in
+            token.cancel()
+            feed.detach()
+            lease.cancel()
+            self?.lease = nil
+            self?.drainToken = nil
+        }
+        feed.pull()
+    }
+
+    private func drainSlot() -> DrainSlot {
+        let feed = self.feed
+        return DrainSlot(
+            pane: id, priority: drainPriority,
+            minInterval: drainPriority == .focused
+                ? CascadeBudget.focusedApplyInterval : Self.peerApplyInterval,
+            hasWork: { feed.hasBuilt }, apply: { [weak self] in self?.applyBuilt() })
+    }
+
+    /// The shortest gap between two applies for a pane the focus is not on. A peer shows an
+    /// answer at arrival granularity, and an arrival is measured in tenths of a second rather than
+    /// in frames: ten applies a second read as the answer growing, and every apply past that is a
+    /// relayout of a column nobody is reading. The focused pane applies every state it is handed.
+    static let peerApplyInterval: TimeInterval = 0.1
+
+    /// The drain's turn for this pane: the newest built state, if it is still this pane's chat.
+    private func applyBuilt() {
+        guard let built = feed.takeBuilt(), built.generation == streamGeneration, !isParked else {
+            return
+        }
+        Soak.timeApply { apply(state: built.state, rows: built.rows) }
+        if built.fill != contextFill {
+            contextFill = built.fill
+            updateStatus()
+        }
+    }
+
+    /// Ends everything that keeps the pane live, and the reveal with it, settling the row it held.
+    private func releaseStream() {
+        streamLife.cancelAll()
+        letGoOfCascade()
+        updateTicker(running: false, quietly: true)
+        ActivityPulse.stop(identityLabel)
     }
 
     /// Empties the pane deliberately — a deleted or unresolvable session leaves an explanation,
@@ -1378,15 +1581,29 @@ final class ChatPane: @unchecked Sendable {
     /// next Enter drops in silence.
     func reset(placeholder: String) {
         stashDraft()
-        streamTask?.cancel()
-        streamTask = nil
+        leaveChat()
+        showPlaceholder(placeholder)
+        refreshPills()
+        refreshIdentity()
+    }
+
+    /// Lets go of the conversation the pane holds — its stream, its fetches, its clocks and the
+    /// state it was drawing — without deciding what the pane shows next. A turn still in flight is
+    /// handed to the window's watch, so its row keeps LIVE NOW until it settles.
+    private func leaveChat() {
+        stashDraft()
+        if let entry, presence.isInFlight { host?.keepWatching(entry) }
+        leaveFreshCanvas()
+        releaseStream()
+        chatLife.cancelAll()
+        streamGeneration &+= 1
         agentStreamTask?.cancel()
         agentStreamTask = nil
         agentStreamSessionID = nil
-        tickerTask?.cancel()
-        tickerTask = nil
         catalogWatchTask?.cancel()
         catalogWatchTask = nil
+        resumeTask?.cancel()
+        resumeTask = nil
         entry = nil
         clearComposer()
         backend = nil
@@ -1408,9 +1625,6 @@ final class ChatPane: @unchecked Sendable {
         lastGitFactsAt = nil
         Gtk.removeChildren(of: pendingBox)
         gtk_widget_set_visible(authBanner, 0)
-        showPlaceholder(placeholder)
-        refreshPills()
-        refreshIdentity()
     }
 
     /// A closing pane stops talking to the world before its widgets go: a cancelled stream is
@@ -1418,13 +1632,14 @@ final class ChatPane: @unchecked Sendable {
     /// still in flight is handed to the background watcher first, so the row keeps its LIVE NOW
     /// seat until the turn settles.
     func shutdown() {
-        let previousEntry = entry
-        let previousConversation = conversation
-        let previousPresence = presence
-        if let previousEntry, let previousConversation, previousPresence.isInFlight {
-            host?.keepWatching(previousConversation, entry: previousEntry)
-        }
+        stashDraft()
+        if let entry, presence.isInFlight { host?.keepWatching(entry) }
+        leaveFreshCanvas()
+        releaseStream()
+        chatLife.cancelAll()
+        lifetime.cancelAll()
         cascade.release()
+        repairingTail = false
         for observer in laneObservers { NotificationCenter.default.removeObserver(observer) }
         laneObservers = []
         draw?.shutdown()
@@ -1433,17 +1648,20 @@ final class ChatPane: @unchecked Sendable {
         video = nil
         page?.shutdown()
         page = nil
-        stashDraft()
-        streamTask?.cancel()
         agentStreamTask?.cancel()
-        tickerTask?.cancel()
         catalogWatchTask?.cancel()
+        resumeTask?.cancel()
         editor.stopAura()
-        streamTask = nil
         agentStreamTask = nil
-        tickerTask = nil
         catalogWatchTask = nil
+        resumeTask = nil
+        conversation = nil
+        backend = nil
+        isShutDown = true
     }
+
+    /// Set once the pane has been closed: nothing may take a lease or a clock for it again.
+    private(set) var isShutDown = false
 
     /// Everything worth knowing about the session besides its transcript, fetched once per open:
     /// the models the server offers, the commands it resolves, and whether its Claude is signed in.
@@ -1457,7 +1675,7 @@ final class ChatPane: @unchecked Sendable {
         // Spend, agents and git are facts about the open chat — asked once the backend is known,
         // not held until a model catalog or command list happens to land. The backend pointer is
         // the one just resolved; the property may not have landed on the main context yet.
-        Task { [weak self] in
+        track(Task { [weak self] in
             let agents = (try? await backend.subagents(for: sessionID)) ?? []
             let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
             let report = (try? await backend.sessionSpend(sessionID)) ?? nil
@@ -1474,9 +1692,9 @@ final class ChatPane: @unchecked Sendable {
                     messages: self.lastState?.messages ?? [], for: sessionID)
                 self.applyAgentFacts(agents)
             }
-        }
+        })
         if let profileID = entry?.profileID {
-            catalogWatchTask = Task { [weak self] in
+            catalogWatchTask = track(Task { [weak self] in
                 guard let self else { return }
                 for await reading in ModelCatalogWatch.readings(
                     profileID: profileID, backend: backend)
@@ -1490,24 +1708,24 @@ final class ChatPane: @unchecked Sendable {
                         self.refreshPills()
                     }
                 }
-            }
+            })
         }
-        Task { [weak self] in
+        track(Task { [weak self] in
             let commands = (try? await backend.availableCommands(directory: directory)) ?? []
             Gtk.onMain { [weak self] in
                 guard let self, self.sessionID == sessionID else { return }
                 self.commands = commands
                 self.refreshPills()
             }
-        }
+        })
         if let authenticating = backend as? any AuthenticatingBackend {
-            Task { [weak self] in
+            track(Task { [weak self] in
                 guard let auth = try? await authenticating.authStatus() else { return }
                 Gtk.onMain { [weak self] in
                     guard let self, self.sessionID == sessionID else { return }
                     self.renderAuthBanner(auth, backend: authenticating)
                 }
-            }
+            })
         }
     }
 
@@ -1585,15 +1803,6 @@ final class ChatPane: @unchecked Sendable {
         if Ultracode.turnInvoked(state), !ultracodeInFlight {
             ultracodeInFlight = true
             refreshUltracodeAura()
-        }
-        if let entry {
-            Notifier.shared.observeConversation(
-                profileID: entry.profileID, sessionID: entry.session.id,
-                title: MissedActivity.name(
-                    title: entry.session.title,
-                    latestPrompt: state.messages.last { $0.role == .user }?
-                        .parts.compactMap(\.text).joined(separator: "\n")),
-                state: state, windowActive: host?.windowIsActive ?? false)
         }
         // Everything this device docks at the end — the echo, the cut-off card, the queue — is
         // added on the way to the screen and then memoized in `lastFullRows`, and three callers
@@ -1674,7 +1883,7 @@ final class ChatPane: @unchecked Sendable {
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
         scheduleRetryWake()
         handoff.observe(state, sendsInFlight: pending.hasInFlight)
-        drainQueue(state)
+        restateDrainPriority()
     }
 
     /// A standing revert, docked right where the set-aside messages used to be. It is an account of
@@ -1766,24 +1975,34 @@ final class ChatPane: @unchecked Sendable {
 
     /// The moment the turn yields, the next thing written goes. Never while one is running and
     /// never while the composer is holding one open for rewriting: sending it out from under the
-    /// person editing it is the one thing the queue exists to prevent.
-    private func drainQueue(_ state: ConversationState) {
-        guard
+    /// person editing it is the one thing the queue exists to prevent. Asked by the conversation's
+    /// edge service, once per conversation however many panes show it, and the head is taken from
+    /// the store atomically, so no other pane, watch or process can send the same message.
+    func drainHeldQueue(_ state: ConversationState) {
+        guard let entry,
             SendQueueDrain.mayDrain(state, editing: editingQueued != nil, handoff: handoff),
-            !queue.isEmpty, let conversation
+            let conversation, !draining
         else { return }
-        guard !draining else { return }
         draining = true
         defer { draining = false }
-        guard let next = queue.takeFirst() else { return }
+        let next = SendQueueStore.takeFirst(profileID: entry.profileID, sessionID: entry.session.id)
+        adoptStoredQueue()
+        guard let next else { return }
         deliver(next, through: conversation)
-        // Re-rendering from inside the render is what makes a transcript write itself twice: the
-        // second pass adopts the tail the first one is still revealing. The queue is one row at the
-        // end of the list, so the next ordinary state is soon enough to take it off.
-        Gtk.onMain { [weak self] in
-            guard let self, let state = self.lastState else { return }
-            self.apply(state: state, rows: self.lastFullRows)
-        }
+    }
+
+    /// Re-reads this conversation's queue from the store, after something else took from it or put
+    /// back into it, and redraws the waiting rows.
+    func reloadQueue() {
+        adoptStoredQueue()
+        if let state = lastState { apply(state: state, rows: lastFullRows) }
+    }
+
+    private func adoptStoredQueue() {
+        guard let entry else { return }
+        adoptingQueue = true
+        queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
+        adoptingQueue = false
     }
 
     /// Guards the drain against re-entering itself: `drainQueue` runs at the end of `apply`, and
@@ -1797,6 +2016,7 @@ final class ChatPane: @unchecked Sendable {
 
     private func openHandoff() {
         handoff.begin(after: lastState)
+        if let entry { host?.live.edges.beganSend(LiveKey(entry), after: lastState) }
         handoffWakeGeneration += 1
         let token = handoffWakeGeneration
         Gtk.after(UInt32((TurnHandoff.patience + 1) * 1000)) { [weak self] in
@@ -1807,6 +2027,12 @@ final class ChatPane: @unchecked Sendable {
                 self.redrawPending()
             }
         }
+    }
+
+    /// A send that never left ends the handoff it opened, here and in the conversation's edges.
+    private func endHandoff() {
+        handoff.end()
+        if let entry { host?.live.edges.endedSend(LiveKey(entry)) }
     }
 
     /// A compaction is a turn like any other, so one asked for while a turn runs waits behind
@@ -1850,7 +2076,7 @@ final class ChatPane: @unchecked Sendable {
                     reasoningEffort: send.effort)
             } catch {
                 Gtk.onMain { [weak self] in
-                    self?.handoff.end()
+                    self?.endHandoff()
                     self?.setNotice(AgentErrorText.readable(error))
                 }
             }
@@ -1893,7 +2119,7 @@ final class ChatPane: @unchecked Sendable {
                 // A send that never left is not a silence: the row keeps the words and says so.
                 Gtk.onMain { [weak self] in
                     guard let self else { return }
-                    self.handoff.end()
+                    self.endHandoff()
                     let reason = AgentErrorText.readable(error)
                     self.pending.mark(id: id, .failed(reason: reason))
                     self.armResume(row: id, reason: reason)
@@ -2221,6 +2447,7 @@ final class ChatPane: @unchecked Sendable {
     /// An empty pane asks which server rather than captioning itself. The chooser owns the
     /// transcript area until something fills it, and every re-render keeps the person's place.
     func showChooser(_ model: PaneChooser) {
+        leaveSlots()
         chooser = model
         renderChooser()
     }
@@ -2667,7 +2894,7 @@ final class ChatPane: @unchecked Sendable {
         let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
         switch (renderedRows[last].kind, rows[last].kind) {
         case (.agentProse, .agentProse), (.codeBlock, .codeBlock):
-            guard rows[last].key == cascade.key else { return false }
+            guard rows[last].key == cascade.key else { return restateProseWhole(rows[last], on: widget, at: last) }
             let previous = renderedRows[last]
             renderedRows[last] = rows[last]
             guard paintCascade() else {
@@ -2694,6 +2921,25 @@ final class ChatPane: @unchecked Sendable {
     }
 
 
+
+    /// A pane that does not reveal still takes an answer's growth in place: the words go into the
+    /// label the row already has, whole, so a peer's live answer costs one markup set per applied
+    /// state rather than a new widget, a new entrance and a relayout of the column.
+    private func restateProseWhole(
+        _ row: TranscriptRow, on widget: UnsafeMutablePointer<GtkWidget>, at index: Int
+    ) -> Bool {
+        guard cascade.key == nil, case .agentProse = row.kind,
+            let label = Self.streamedLabel(in: widget, kind: row.kind),
+            let markup = Self.settleMarkup(for: row), cascade.settle(label, markup: markup)
+        else { return false }
+        renderedRows[index] = row
+        if canvasPromptKey != nil {
+            settleFreshCanvas()
+        } else if followsBottom {
+            pinToBottom()
+        }
+        return true
+    }
 
     /// A row that stopped being written ends up whole, whatever the wave was doing when it let go.
     ///
@@ -3234,7 +3480,7 @@ final class ChatPane: @unchecked Sendable {
         let sessionID = entry.session.id
         let skipAgents = agentStreamSessionID == sessionID && agentStreamTask != nil
         let wantGit = includeGit
-        Task { [weak self] in
+        track(Task { [weak self] in
             let agents = skipAgents ? nil : ((try? await backend.subagents(for: sessionID)) ?? [])
             let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
             let report = (try? await backend.sessionSpend(sessionID)) ?? nil
@@ -3257,7 +3503,7 @@ final class ChatPane: @unchecked Sendable {
                     self.updateStatus()
                 }
             }
-        }
+        })
     }
 
     /// The repository the conversation is working in, when the server can read one. A backend
@@ -3281,8 +3527,13 @@ final class ChatPane: @unchecked Sendable {
     /// A once-a-second nudge while anything on screen still needs a clock: elapsed, pending
     /// captions, workflow spinners. Network facts and git ride slower cadences so a multi-pane
     /// window does not re-read porcelain six times a minute per chat.
-    private func updateTicker(running: Bool) {
-        let running = running || needsTicker
+    private func updateTicker(running: Bool, quietly: Bool = false) {
+        let running = (running || needsTicker) && !isParked && !quietly
+        if quietly {
+            tickerTask?.cancel()
+            tickerTask = nil
+            return
+        }
         if running, tickerTask == nil {
             lastNetworkFactsAt = nil
             lastGitFactsAt = nil
@@ -3475,7 +3726,7 @@ final class ChatPane: @unchecked Sendable {
     /// entry just wired in, say — needs its own ask rather than waiting for this pane to reopen.
     private func refreshModelCatalog() {
         guard let backend, let profileID = entry?.profileID, let sessionID else { return }
-        Task { [weak self] in
+        track(Task { [weak self] in
             let reading = await ModelCatalogWatch.refreshOnce(profileID: profileID, backend: backend)
             Gtk.onMain { [weak self] in
                 guard let self, self.sessionID == sessionID else { return }
@@ -3484,7 +3735,7 @@ final class ChatPane: @unchecked Sendable {
                 ModelChooserWindow.updateOpen(sources: self.modelSources())
                 self.refreshPills()
             }
-        }
+        })
     }
 
     /// Every server this app is connected to, with this pane's own at the front. A catalog is a
@@ -4914,7 +5165,7 @@ final class ChatPane: @unchecked Sendable {
         inFlightImages.insert(key)
         let backend = backend
         let sessionID = self.sessionID
-        Task { [weak self] in
+        track(Task { [weak self] in
             var data = ImageCache.load(reference)
             if data == nil, let backend {
                 data = try? await backend.attachmentData(reference)
@@ -4944,7 +5195,7 @@ final class ChatPane: @unchecked Sendable {
                 self.inFlightImages.remove(key)
                 self.adoptImage(decoded, data: data, key: key, from: sessionID)
             }
-        }
+        })
     }
 
     /// A decoded picture landing after the pane may have moved on, which is two halves with two
@@ -5028,7 +5279,7 @@ final class ChatPane: @unchecked Sendable {
         guard let backend, let entry, !inFlightSubagents.contains(agentID) else { return }
         inFlightSubagents.insert(agentID)
         let sessionID = entry.session.id
-        Task { [weak self] in
+        track(Task { [weak self] in
             let messages =
                 (try? await backend.subagentMessages(sessionID: sessionID, agentID: agentID)) ?? []
             let rows = TranscriptRow.rows(for: messages)
@@ -5042,7 +5293,7 @@ final class ChatPane: @unchecked Sendable {
                         .contains { $0.id == agentID } ?? true
                 }
             }
-        }
+        })
     }
 
     private func fetchSubagent(_ call: ToolCall) {
@@ -5051,7 +5302,7 @@ final class ChatPane: @unchecked Sendable {
         else { return }
         inFlightSubagents.insert(call.id)
         let sessionID = entry.session.id
-        Task { [weak self] in
+        track(Task { [weak self] in
             let agents = (try? await backend.subagents(for: sessionID)) ?? []
             let match = agents.first { $0.toolUseID == call.id }
             let messages: [ChatMessage]
@@ -5071,7 +5322,7 @@ final class ChatPane: @unchecked Sendable {
                     return false
                 }
             }
-        }
+        })
     }
 
     /// The cheatsheet is generated from the registry, so it always tells the truth — overrides
@@ -5176,18 +5427,14 @@ final class ChatPane: @unchecked Sendable {
     /// conversation must never be re-parsed where the frame clock lives.
     private func rebuildTranscriptRows() {
         guard let state = lastState else { return }
-        let tail = rowTailMessages
-        let sessionID = self.sessionID
-        Task.detached { [weak self] in
-            guard let self else { return }
-            let messages =
-                state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
-            let rows = self.rowBuilder.rows(for: messages, turnOpen: state.status == .running)
-            Gtk.onMain { [weak self] in
-                guard let self, self.sessionID == sessionID else { return }
-                self.apply(state: state, rows: rows)
-            }
-        }
+        feed.rebuild(state)
+    }
+
+    /// A fire-and-forget fetch for the open conversation, ended with it.
+    @discardableResult
+    private func track(_ task: Task<Void, Never>) -> Task<Void, Never> {
+        chatLife.add { task.cancel() }
+        return task
     }
 
     /// A typed slash command goes where the completion list would send it. The decision is the

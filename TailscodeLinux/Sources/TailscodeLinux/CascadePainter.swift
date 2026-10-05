@@ -64,9 +64,15 @@ enum CascadeBudget {
         level: .calm, reducedMotion: false)
     nonisolated(unsafe) private(set) static var level = ShedLevel.calm
 
+    /// Told when the budget changes, so the panes can restate their drain rates and the focused
+    /// pane can let go of a reveal the level no longer allows. Main loop only.
+    nonisolated(unsafe) static var onChange: (() -> Void)?
+
     static func apply(_ next: AnimationBudget, level newLevel: ShedLevel) {
+        guard next != budget || newLevel != level else { return }
         budget = next
         level = newLevel
+        onChange?()
     }
 
     /// Whether the written-not-pasted reveal runs at all.
@@ -81,6 +87,21 @@ enum CascadeBudget {
     static var minimumInterval: Double? {
         guard level > .calm, budget.tickCap > 0 else { return nil }
         return 1 / budget.tickCap - 0.004
+    }
+
+    /// Whether a display tick is one the reveal may move on: the tempo's grid at the budget's tick
+    /// cap, so the reveal lands on the same ticks as every breathing mark and the window paints
+    /// once for all of them.
+    static func wantsStep(at time: Double, lastStep: Double) -> Bool {
+        guard budget.tickCap > 0 else { return false }
+        return ActivityTuning.wantsFrame(at: time, lastDrawn: lastStep, rate: budget.tickCap)
+    }
+
+    /// The shortest gap between two applies of the focused pane's states: the reveal's own tick,
+    /// because a state applied faster than the reveal can move is a relayout and a paint nobody can
+    /// see. With no clocks allowed at all it falls to the peers' rate.
+    static var focusedApplyInterval: TimeInterval {
+        minimumInterval ?? ChatPane.peerApplyInterval
     }
 }
 
@@ -310,7 +331,7 @@ final class CascadePainter: @unchecked Sendable {
 
     private func step() {
         let now = Self.now
-        if let interval = CascadeBudget.minimumInterval, now - lastStep < interval { return }
+        guard CascadeBudget.wantsStep(at: now, lastStep: lastStep) else { return }
         lastStep = now
         guard live.advance(to: now) else { return }
         onFrame?()

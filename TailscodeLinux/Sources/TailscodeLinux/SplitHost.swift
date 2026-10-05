@@ -105,7 +105,9 @@ final class SplitHost: @unchecked Sendable {
     func splitActive(axis: SplitAxis) {
         guard let host else { return }
         let source = activePane.entry?.profileID
-        guard let freshID = layout.split(layout.focusedPane, axis: axis) else { return }
+        guard hasRoomToSplit(layout.focusedPane, axis: axis),
+            let freshID = layout.split(layout.focusedPane, axis: axis)
+        else { return }
         let pane = makePane(freshID)
         panes[freshID] = pane
         rebuild()
@@ -255,7 +257,7 @@ final class SplitHost: @unchecked Sendable {
     /// promised that half, so the tree has to put it there rather than always second.
     @discardableResult
     func split(_ pane: ChatPane, edge: PaneDropEdge) -> ChatPane? {
-        guard
+        guard hasRoomToSplit(pane.id, axis: edge.axis),
             let freshID = layout.split(
                 pane.id, axis: edge.axis, placingNewFirst: edge.placesArrivalFirst)
         else { return nil }
@@ -265,6 +267,21 @@ final class SplitHost: @unchecked Sendable {
         host?.focusedPaneChanged()
         persist()
         return fresh
+    }
+
+    /// Whether halving a pane on an axis leaves both halves at least a glance tile, judged from
+    /// Core's placement of the tree in the container's real size. A refusal says so in a toast,
+    /// never in silence; a tree not yet allocated (a restore, the first frame) is not refused.
+    private func hasRoomToSplit(_ id: PaneID, axis: SplitAxis) -> Bool {
+        let width = Double(gtk_widget_get_width(treeBox))
+        let height = Double(gtk_widget_get_height(treeBox))
+        guard width > 50, height > 50 else { return true }
+        let placement = layout.placement(in: SplitSize(width: width, height: height))
+        guard layout.canSplit(id, axis: axis, in: placement) else {
+            host?.toast(Localized.text("No room for another split here"))
+            return false
+        }
+        return true
     }
 
     /// The same drag the pointer makes, without a pointer — what the headless driver aims with.
@@ -651,16 +668,22 @@ final class SplitHost: @unchecked Sendable {
 
     /// The zoom is visibility, not structure: every other pane hides, each paned collapses onto
     /// the subtree that is still visible, and unzooming shows everything exactly where it was.
+    ///
+    /// A pane the zoom hides is parked: it gives up its stream lease, its row pump, its drain slot
+    /// and every clock, and shows its last rows frozen until the unzoom brings it back.
     private func applyZoomVisibility() {
         let zoomed = layout.zoomedPane
         for (id, pane) in panes {
-            gtk_widget_set_visible(pane.root, zoomed == nil || zoomed == id ? 1 : 0)
+            let shown = zoomed == nil || zoomed == id
+            gtk_widget_set_visible(pane.root, shown ? 1 : 0)
+            if shown { pane.unpark() } else { pane.park() }
         }
     }
 
     private func applyFocusStyling() {
         let showAccent = layout.paneCount > 1
         for (id, pane) in panes {
+            pane.setFocused(id == layout.focusedPane)
             if showAccent, id == layout.focusedPane {
                 Gtk.addClass(pane.root, "pane-focused")
             } else {
