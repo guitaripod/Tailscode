@@ -3195,3 +3195,7 @@ gboolean tailscode_systemd_set_unit_properties(
     g_variant_unref(reply);
     return TRUE;
 }
+
+#include <sys/prctl.h>
+
+void tailscode_name_thread(const char *name) { prctl(PR_SET_NAME, name, 0, 0, 0); }

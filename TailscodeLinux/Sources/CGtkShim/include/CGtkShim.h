@@ -489,3 +489,7 @@ char *tailscode_gl_vendor(GtkWidget *window);
 /// message is handed back in `error_out`, which the caller frees with `g_free`.
 gboolean tailscode_systemd_set_unit_properties(
     const char *unit, const char *const *names, const guint64 *values, int count, char **error_out);
+
+/// Names the calling thread for `ps`, `top` and `/proc/self/task/<tid>/comm` (15 characters kept).
+/// `prctl` is variadic, which Swift cannot call.
+void tailscode_name_thread(const char *name);

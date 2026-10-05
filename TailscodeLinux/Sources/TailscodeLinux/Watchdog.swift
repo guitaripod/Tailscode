@@ -77,7 +77,6 @@ final class Watchdog: @unchecked Sendable {
         let thread = Thread { [self] in
             self.loop(onStall: onStall, onTick: onTick)
         }
-        thread.name = "tailscode.watchdog"
         thread.stackSize = 512 * 1024
         thread.start()
     }
@@ -95,6 +94,7 @@ final class Watchdog: @unchecked Sendable {
         onStall: @Sendable (StallWatch.Event, MainThreadState?) -> Void,
         onTick: @Sendable (TimeInterval, Bool) -> Void
     ) {
+        tailscode_name_thread("tailscode.watch")
         let ping = watch.policy.ping
         while true {
             condition.lock()

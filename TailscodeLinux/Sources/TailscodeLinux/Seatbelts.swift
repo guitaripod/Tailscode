@@ -271,10 +271,17 @@ final class Seatbelts: @unchecked Sendable {
         }
     }
 
+    /// The GL vendor is asked only of a GL renderer: under cairo or Vulkan, making a context just to
+    /// read its vendor would load a whole GL driver into the process for one string.
+    private static func drawsWithGL(_ renderer: String?) -> Bool {
+        guard let renderer else { return false }
+        return renderer.contains("GL") || renderer.contains("Ngl")
+    }
+
     private static func header(window: UnsafeMutablePointer<GtkWidget>) -> FlightHeader {
         let renderer = tailscode_renderer_name(window).map { String(cString: $0) }
         var vendor: String?
-        if let raw = tailscode_gl_vendor(window) {
+        if Self.drawsWithGL(renderer), let raw = tailscode_gl_vendor(window) {
             vendor = String(cString: raw)
             g_free(raw)
         }
