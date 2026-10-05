@@ -1287,7 +1287,7 @@ final class ChatPane: @unchecked Sendable {
                         command, arguments: arguments, model: model, reasoningEffort: effort)
                 }
             }
-            let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil
+            let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil && !Soak.isOn
             var resubscribes = 0
             while !Task.isCancelled {
                 for await state in await conversation.states() {
