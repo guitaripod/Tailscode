@@ -313,6 +313,15 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 button: reload))
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Diagnostics")))
+        let copyFlight = NSButton(
+            title: Localized.text("Copy"), target: self, action: #selector(copyDiagnostics))
+        column.addArrangedSubview(
+            buttonRow(
+                title: Localized.text("Copy diagnostics"), subtitle: FlightRing.defaultURL().path,
+                button: copyFlight))
+
+        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Alpha")))
         column.addArrangedSubview(
             switchRow(
@@ -325,6 +334,15 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             view.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -48).isActive = true
         }
         return MacDialogs.scrollColumn(holding: column)
+    }
+
+    /// The flight recorder's last quarter hour, decoded, on the pasteboard for a bug report. The
+    /// ring holds counts and durations only, so there is nothing in it to redact.
+    @objc private func copyDiagnostics() {
+        Seatbelts.shared.writer?.drain()
+        let text = FlightFormatter.format(FlightRing.read(url: FlightRing.defaultURL()), minutes: 15)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     @objc private func presenceOrbChanged(_ sender: NSButton) {

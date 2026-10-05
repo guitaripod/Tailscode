@@ -157,9 +157,27 @@ final class CascadePainter {
     var revealed: Int { live.revealed }
 
     /// Whether the desktop wants motion at all. A person who has asked for less of it has said
-    /// what they want from a cascade, and the answer is the text.
+    /// what they want from a cascade, and the answer is the text — and so has a window shedding
+    /// load at loaded or above, where text appears as it arrives (`MotionBudget`).
     static var motionAllowed: Bool {
-        !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        MotionBudget.cascadeAllowed
+    }
+
+    init() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(budgetChanged), name: MotionBudget.didChange, object: nil)
+    }
+
+    /// The shed level moved what the cascade may spend. A reveal no longer allowed hands its row
+    /// over whole, the way a stalled one does; one still allowed takes the level's frame rate.
+    @objc private func budgetChanged() {
+        guard live.isActive else { return }
+        guard Self.motionAllowed else {
+            stop()
+            onStalled?()
+            return
+        }
+        link?.preferredFrameRateRange = MotionBudget.cascadeRange
     }
 
     /// Points the wave at the row the stream is writing into, with that row's fully rendered text.
@@ -253,11 +271,12 @@ final class CascadePainter {
     /// A mark says a fact and thirty frames a second is plenty to say it with; this is a renderer,
     /// writing an answer out glyph by glyph under the reader's eye, and text revealed at thirty
     /// reads as a hand that stutters rather than one that writes. It asks for the panel's own rate
-    /// on purpose — `ActivityTuning` governs marks, not the cascade.
+    /// on purpose — `ActivityTuning` governs marks, not the cascade — until the window sheds load,
+    /// when `MotionBudget` holds it to the level's tick cap.
     private func start() {
         guard link == nil, let host else { return }
         let link = host.displayLink(target: self, selector: #selector(tick))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.preferredFrameRateRange = MotionBudget.cascadeRange
         link.add(to: .main, forMode: .common)
         self.link = link
     }
@@ -348,7 +367,7 @@ enum CascadeEntrance {
     private static var nextEntrance: CFTimeInterval = 0
 
     static func animate(_ view: NSView) {
-        guard CascadePainter.motionAllowed else { return }
+        guard CascadePainter.motionAllowed, MotionBudget.animationAllowed else { return }
         view.wantsLayer = true
         view.alphaValue = 0
         let now = CACurrentMediaTime()

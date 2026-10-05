@@ -48,7 +48,7 @@ layout, the shortcut engine, and current-chat state (`currentEntry`, `currentBac
 
 | File | Owns |
 |---|---|
-| `main.swift` | flags: `--selftest`, `--version`, `--help`, `--connect`, unknown-flag guard |
+| `main.swift` | flags: `--selftest`, `--version`, `--help`, `--connect`, `--flight`, unknown-flag guard |
 | `AppDelegate.swift` | lifecycle only: activation, reconnect-on-active, opens `MainWindowController` |
 | `MainMenu.swift` | the whole menu bar; every ⌘ equivalent lives here, one action per item |
 | `MainWindowController.swift` | window, toolbar, split (sidebar / content column with the terminal under the transcript / files inspector), pane toggles + persistence (`tailscode.pane.*`), divider persistence (`tailscode.divider.*`), pane focus + Tab cycle, shortcut dispatch (`MacKeys.chord` → `ShortcutSet.resolve` → `perform(KeyAction)`), open/close of chats, new-chat creation, the servers/settings windows |
@@ -64,6 +64,13 @@ layout, the shortcut engine, and current-chat state (`currentEntry`, `currentBac
 | `StatusBandView.swift`, `UsageViews.swift`, `ToastPresenter.swift` | status, usage, toasts |
 | `ServersWindow.swift`, `SignInSheet.swift`, `NewChatSheet.swift`, `MacDialogs.swift`, `PreferencesWindow.swift` | server management, dialogs, settings |
 | `MacKeys.swift`, `MacTheme.swift` | NSEvent→KeyChord adapter, tokens + glass helpers |
+| `Seatbelts.swift` | the one-second sample: sensors into `TileGovernor`, the level applied through `MotionBudget` (cascade instant at loaded, no animation at strained, the cascade link capped from busy) and `MemoryRelief`, the launch ledger and `RestorePlan`, the clean-exit record, SIGTERM as a quit |
+| `LoopMeter.swift` | `MachClock`, and the main run loop's busy time from `CFRunLoopObserver`s on after-waiting / before-waiting into Core's `LoopLoad` |
+| `Watchdog.swift` | a global-queue timer pinging the main queue; Core's `StallWatch` turns silence into stall and deep records with the main thread's CPU (`thread_info`) and the level-4 hint |
+| `MemoryPressure.swift` | the kernel's memory-pressure source, `phys_footprint` against `min(8 GiB, 0.15 × physical)`, thermal state and Low Power Mode |
+| `FlightWriter.swift` | Core's `FlightRing` written off the main thread at `~/Library/Logs/Tailscode/flight.ring` (the container in the store build), the launch header, `--flight [minutes]` |
+| `RestoreBannerView.swift` | the safe restore's strip over the pane area: Core's sentence, Resume all / Resume one by one, dismiss |
+| `DriveHooks.swift` | DEBUG `TAILSCODE_DRIVE` verbs for the seatbelts: `stall`, `spin`, `pressure`, `shed`, `level`, `flight`, `quit`, `kill` |
 | `SelfTest.swift` | headless validation (`--selftest` over ssh) |
 
 ## Keyboard

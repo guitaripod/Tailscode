@@ -30,6 +30,10 @@ final class SplitPaneHost: NSViewController {
     var makePane: (() -> TranscriptViewController)?
     var onFocusChanged: (() -> Void)?
     var onLayoutChanged: (() -> Void)?
+    /// Sessions panes hold without showing them yet — parked by a safe restore, waiting their turn
+    /// in a staggered one, or waiting for their server — so a layout saved meanwhile keeps them
+    /// rather than writing those panes down as empty.
+    var heldSessions: (() -> [PaneID: SplitPaneSession])?
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -62,6 +66,23 @@ final class SplitPaneHost: NSViewController {
 
     var orderedPanes: [TranscriptViewController] {
         layout.paneIDs.compactMap { panes[$0] }
+    }
+
+    func id(of pane: TranscriptViewController) -> PaneID? {
+        panes.first { $0.value === pane }?.key
+    }
+
+    /// Lays a strip across the top of the pane area, above every pane and under the toolbar. The
+    /// tree is always rebuilt beneath what is already here, so an overlay stays on top without
+    /// ever being moved.
+    func installOverlay(_ overlay: NSView) {
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(overlay, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+        ])
     }
 
     func pane(showing sessionID: String) -> TranscriptViewController? {
@@ -320,6 +341,7 @@ final class SplitPaneHost: NSViewController {
         var sessions: [String: SplitPaneSession] = [:]
         var videos: [String: String] = [:]
         var pages: [String: String] = [:]
+        let held = heldSessions?() ?? [:]
         for (id, pane) in panes {
             if let target = pane.webTarget {
                 pages[id.raw] = target.address
@@ -331,7 +353,10 @@ final class SplitPaneHost: NSViewController {
                     continue
                 }
             #endif
-            guard let entry = pane.currentEntry else { continue }
+            guard let entry = pane.currentEntry else {
+                if let session = held[id] { sessions[id.raw] = session }
+                continue
+            }
             sessions[id.raw] = SplitPaneSession(
                 profileID: entry.profileID, sessionID: entry.session.id)
         }
@@ -376,7 +401,7 @@ final class SplitPaneHost: NSViewController {
         let built = build(layout.root)
         addChild(built)
         built.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(built.view)
+        view.addSubview(built.view, positioned: .below, relativeTo: nil)
         NSLayoutConstraint.activate([
             built.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             built.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),

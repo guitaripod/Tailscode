@@ -24,13 +24,14 @@ enum MacCLI {
           TailscodeMac --tree <path>            write every view's frame and ambiguity to a file
           TailscodeMac --open <surface>         open a named window first (servers, preferences, …)
           TailscodeMac --bench <transcript.json …>  time what cached transcripts cost to show
+          TailscodeMac --flight [minutes]       print the flight recorder's ring, newest last
           TailscodeMac --version
         """
 
     static let knownOptions: Set<String> = [
         "--selftest", "--connect", "--password", "--name", "--opencode", "--omp", "--demo",
         "--shot", "--shot-delay", "--shot-size", "--tree", "--tree-constraints", "--open",
-        "--bench", "--version", "--help", "-h",
+        "--bench", "--flight", "--version", "--help", "-h",
     ]
 
     /// Whether an argument is a flag this CLI was never taught. A single dash and a capital —
@@ -120,6 +121,10 @@ if TranscriptBench.isRequested {
 if SelfTest.isRequested {
     Task { await SelfTest.run() }
     dispatchMain()
+}
+
+if CommandLine.arguments.contains("--flight") {
+    FlightWriter.printRing()
 }
 
 if CommandLine.arguments.contains("--version") {

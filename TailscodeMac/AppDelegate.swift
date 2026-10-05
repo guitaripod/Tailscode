@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DraftStore.warm()
         ThemeSelection.fallbackID = ThemeSelection.systemID
         NSApp.appearance = MacTheme.Chrome.appearance
+        Seatbelts.shared.start()
         let controller = MainWindowController()
         controller.showWindow(nil)
         main = controller
@@ -43,6 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openRequestedSession()
         openRequestedSurface()
         MacShot.schedule()
+        #if DEBUG
+            DriveHooks.install(main: controller)
+        #endif
     }
 
     #if TAILSCODE_MAS

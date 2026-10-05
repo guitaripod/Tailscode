@@ -32,6 +32,12 @@ final class MainWindowController: NSWindowController {
     /// What each restored pane was showing, until the cached listing carries the session and the
     /// pane can open it for real.
     private var pendingBindings: [PaneID: SplitPaneSession] = [:]
+    /// Restored chats a safe restore left paused after a launch that did not close normally; each
+    /// wakes when its pane is gone to, or all at once from the banner.
+    private var parkedBindings: [PaneID: SplitPaneSession] = [:]
+    /// Chats resolved and waiting their turn in a staggered wake, 300 ms apart.
+    private var wakingBindings: [PaneID: SplitPaneSession] = [:]
+    private var restoreBanner: RestoreBannerView?
     private var cheatsheet: NSPanel?
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
@@ -144,10 +150,14 @@ final class MainWindowController: NSWindowController {
     /// moves the window's own chrome after it — the title, the files tree, the terminal's
     /// directory all sit at their launch defaults until something tells them a chat is open, which
     /// is why the first `git status` after a restore used to run in the wrong repository.
+    ///
+    /// What resolves does not open at once: it wakes in `RestorePlan.wakeSchedule`'s order — the
+    /// focused pane now, then the most recently focused, 300 ms apart — so a restore or a bulk open
+    /// never starts every stream in one frame.
     private func resolvePendingBindings() {
         guard !pendingBindings.isEmpty else { return }
         let listed = SessionListCache.load()
-        var opened = false
+        var ready: [PaneID: (SessionEntry, any CodingAgentBackend)] = [:]
         for (paneID, binding) in pendingBindings {
             guard let pane = splitPanes.panes[paneID], pane.currentEntry == nil else {
                 pendingBindings[paneID] = nil
@@ -168,17 +178,178 @@ final class MainWindowController: NSWindowController {
                 continue
             }
             pendingBindings[paneID] = nil
-            pane.open(entry, backend: backend)
-            opened = true
+            wakingBindings[paneID] = binding
+            ready[paneID] = (entry, backend)
         }
-        if opened { focusedPaneChanged() }
+        guard !ready.isEmpty else { return }
+        let layout = splitPanes.layout
+        let schedule = RestorePlan.wakeSchedule(
+            focused: layout.focusedPane, recent: layout.recentlyFocused
+        ).filter { ready[$0.pane] != nil }
+        let already = wakingQueueEnd
+        for (index, step) in schedule.enumerated() {
+            guard let (entry, backend) = ready[step.pane] else { continue }
+            let delay = max(already, CACurrentMediaTime()) - CACurrentMediaTime() + step.at
+            if index == 0, delay <= 0 {
+                wake(step.pane, entry: entry, backend: backend)
+                continue
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                MainActor.assumeIsolated { self?.wake(step.pane, entry: entry, backend: backend) }
+            }
+        }
+        wakingQueueEnd =
+            max(already, CACurrentMediaTime()) + (schedule.last?.at ?? 0) + RestorePlan.wakeSpacing
     }
 
-    private func restoreSplitLayout() {
-        guard let raw = UserDefaults.standard.string(forKey: SplitSnapshot.defaultsKey),
-            let snapshot = SplitSnapshot.decode(raw)
+    /// When the last wake already scheduled falls due, so a second resolve queues behind it rather
+    /// than starting its own streams in the same frames.
+    private var wakingQueueEnd: CFTimeInterval = 0
+
+    /// One pane's turn in a staggered wake. A pane closed or filled by hand while it waited keeps
+    /// what it has.
+    private func wake(
+        _ paneID: PaneID, entry: SessionEntry, backend: any CodingAgentBackend
+    ) {
+        guard wakingBindings.removeValue(forKey: paneID) != nil,
+            let pane = splitPanes.panes[paneID], pane.currentEntry == nil
         else { return }
-        pendingBindings = splitPanes.restore(snapshot)
+        pane.open(entry, backend: backend)
+        AppLogger.session.info("restore: woke pane \(paneID.raw.prefix(8)), \(wakingBindings.count) still waiting")
+        if pane === transcript { focusedPaneChanged() }
+    }
+
+    /// The pane a parked or waking chat belongs to. Asked to open such a chat — the list's own
+    /// reopen of the last chat at launch, or a press on its row — the window goes to that pane
+    /// instead of collapsing the arrangement around it; going there is what wakes a parked one.
+    private func heldPane(showing sessionID: String) -> PaneID? {
+        parkedBindings.first { $0.value.sessionID == sessionID }?.key
+            ?? wakingBindings.first { $0.value.sessionID == sessionID }?.key
+    }
+
+    /// Holds for panes a structural change closed go with them, and the banner counts what is left.
+    private func forgetHeldPanesGone() {
+        let present = Set(splitPanes.layout.paneIDs)
+        parkedBindings = parkedBindings.filter { present.contains($0.key) }
+        wakingBindings = wakingBindings.filter { present.contains($0.key) }
+        if parkedBindings.isEmpty {
+            dismissRestoreBanner()
+        } else {
+            restoreBanner?.setCount(parkedBindings.count)
+        }
+    }
+
+    /// Every session a pane holds without showing it yet, for the saved layout.
+    private var heldSessions: [PaneID: SplitPaneSession] {
+        pendingBindings.merging(wakingBindings) { held, _ in held }
+            .merging(parkedBindings) { held, _ in held }
+    }
+
+    /// The safe restore's paused face: each parked pane says it is paused and how to wake it, and
+    /// the banner counts them.
+    private func park(_ bindings: [PaneID: SplitPaneSession]) {
+        parkedBindings = bindings
+        for paneID in bindings.keys {
+            splitPanes.panes[paneID]?.resetPane(
+                placeholder: Localized.text("Paused. Select this pane to resume it."))
+        }
+        let banner = RestoreBannerView()
+        banner.setCount(bindings.count)
+        banner.onResumeAll = { [weak self] in self?.resumeAllParked() }
+        banner.onResumeOneByOne = { [weak self] in self?.resumeParkedOneByOne() }
+        banner.onDismiss = { [weak self] in self?.dismissRestoreBanner() }
+        splitPanes.installOverlay(banner)
+        restoreBanner = banner
+    }
+
+    private func resumeAllParked() {
+        pendingBindings.merge(parkedBindings) { held, _ in held }
+        parkedBindings = [:]
+        dismissRestoreBanner()
+        resolvePendingBindings()
+    }
+
+    /// The banner goes and the focused chat wakes; every other one wakes when its pane is gone to.
+    private func resumeParkedOneByOne() {
+        dismissRestoreBanner()
+        wakeParked(splitPanes.layout.focusedPane)
+    }
+
+    private func dismissRestoreBanner() {
+        restoreBanner?.removeFromSuperview()
+        restoreBanner = nil
+    }
+
+    /// Going to a parked pane — a press in it, a keyboard move onto it — is asking to see it.
+    private func wakeParked(_ paneID: PaneID) {
+        guard let binding = parkedBindings.removeValue(forKey: paneID) else { return }
+        pendingBindings[paneID] = binding
+        if parkedBindings.isEmpty {
+            dismissRestoreBanner()
+        } else {
+            restoreBanner?.setCount(parkedBindings.count)
+        }
+        resolvePendingBindings()
+    }
+
+    /// What the seatbelts sample each second: today's panes as the governor ranks them, and the
+    /// counts the flight recorder keeps.
+    private func seatbeltPanes() -> SeatbeltPanes {
+        var seen = SeatbeltPanes()
+        let layout = splitPanes.layout
+        let held = heldSessions
+        for paneID in layout.paneIDs {
+            guard let pane = splitPanes.panes[paneID] else { continue }
+            let placed = layout.zoomedPane == nil || layout.zoomedPane == paneID
+            let kind: PaneKind
+            if pane.webTarget != nil {
+                kind = .web
+            } else if pane.currentEntry != nil || held[paneID] != nil {
+                kind = .chat
+            } else {
+                kind = .empty
+            }
+            #if !TAILSCODE_MAS
+                let video = pane.videoTarget != nil
+            #else
+                let video = false
+            #endif
+            let size = pane.isViewLoaded ? pane.view.bounds.size : .zero
+            let running = pane.currentState?.status == .running
+            seen.facts.append(
+                PaneFacts(
+                    id: paneID, kind: video ? .video : kind, focused: paneID == layout.focusedPane,
+                    placed: placed, width: Double(size.width), height: Double(size.height),
+                    attention: running ? .running : .quiet))
+            if !placed {
+                seen.hidden += 1
+            } else if held[paneID] != nil {
+                seen.parked += 1
+            } else {
+                seen.live += 1
+            }
+        }
+        seen.occluded = !(window?.occlusionState.contains(.visible) ?? false)
+        return seen
+    }
+
+    /// The arrangement comes back before anything can stream into it, and how its chats come back
+    /// is the safe restore's decision: staggered after a clean exit, parked behind the banner after
+    /// an unclean one with three or more chats. The launch is recorded either way, so the ledger
+    /// always describes the launch that is running.
+    private func restoreSplitLayout() {
+        var bindings: [PaneID: SplitPaneSession] = [:]
+        if let raw = UserDefaults.standard.string(forKey: SplitSnapshot.defaultsKey),
+            let snapshot = SplitSnapshot.decode(raw)
+        {
+            bindings = splitPanes.restore(snapshot)
+        }
+        let plan = Seatbelts.shared.beginLaunch(chatPanes: bindings.count)
+        guard case .parked = plan.mode else {
+            pendingBindings = bindings
+            return
+        }
+        park(bindings)
     }
 
     /// The focused pane changed — by keyboard, click, band, or a structural verb. The window
@@ -950,6 +1121,13 @@ final class MainWindowController: NSWindowController {
                     self.resolvePendingBindings()
                     return
                 }
+                if let paneID = self.heldPane(showing: entry.session.id),
+                    let pane = self.splitPanes.panes[paneID]
+                {
+                    self.splitPanes.focus(pane, grabKeyboard: true)
+                    self.focusedPaneChanged()
+                    return
+                }
                 self.splitPanes.collapse(to: self.splitPanes.active)
             }
             self.handleOpen(entry, backend: backend)
@@ -972,6 +1150,7 @@ final class MainWindowController: NSWindowController {
         }
         splitPanes.onLayoutChanged = { [weak self] in
             self?.sidebar.noteLayoutChanged()
+            self?.forgetHeldPanesGone()
         }
         sidebar.onOpenInSplit = { [weak self] entry in
             self?.openInNewSplit(entry)
@@ -1007,7 +1186,13 @@ final class MainWindowController: NSWindowController {
         splitPanes.onPaneOpened = { [weak self] pane, source in
             self?.presentChooser(in: pane, preferring: source)
         }
-        splitPanes.onFocusChanged = { [weak self] in self?.focusedPaneChanged() }
+        splitPanes.onFocusChanged = { [weak self] in
+            guard let self else { return }
+            self.focusedPaneChanged()
+            self.wakeParked(self.splitPanes.layout.focusedPane)
+        }
+        splitPanes.heldSessions = { [weak self] in self?.heldSessions ?? [:] }
+        Seatbelts.shared.panes = { [weak self] in self?.seatbeltPanes() ?? SeatbeltPanes() }
         splitPanes.chatTitleForDrop = { [weak self] payload in
             self?.chatTitle(for: payload)
         }
@@ -1469,9 +1654,13 @@ final class MainWindowController: NSWindowController {
     private func pressLanded(_ event: NSEvent) {
         guard event.window === window else { return }
         let point = event.locationInWindow
+        if let banner = restoreBanner, banner.bounds.contains(banner.convert(point, from: nil)) {
+            return
+        }
         if let pane = splitPanes.pane(atWindowPoint: point) {
             regionPressed(.transcript)
             splitPanes.focus(pane, grabKeyboard: false)
+            if let paneID = splitPanes.id(of: pane) { wakeParked(paneID) }
             return
         }
         if contains(sidebar, point) {
@@ -1538,6 +1727,7 @@ final class MainWindowController: NSWindowController {
             terminalPane.stopRunning()
         #endif
         SessionListCache.flushPendingSave()
+        Seatbelts.shared.finish(panes: splitPanes.paneCount)
     }
 
     private func handle(_ event: NSEvent) -> NSEvent? {
@@ -2410,3 +2600,27 @@ private final class CheatsheetPanel: NSPanel {
         close()
     }
 }
+
+#if DEBUG
+    extension MainWindowController {
+        /// `split=<n>`: the first chats of the list opened as one tiling, the way marking them does.
+        func driveSplit(_ count: Int) {
+            openMarkedSplit(Array(sidebar.entries.prefix(count)), as: .grid)
+        }
+
+        /// `restore`: what the safe restore is holding, in counts.
+        func driveRestoreReport() -> String {
+            var open = 0
+            splitPanes.eachPane { if $0.currentEntry != nil { open += 1 } }
+            return
+                "RESTORE panes=\(splitPanes.paneCount) open=\(open) parked=\(parkedBindings.count) "
+                + "pending=\(pendingBindings.count) waking=\(wakingBindings.count) "
+                + "banner=\(restoreBanner?.text ?? "none")"
+        }
+
+        /// `resume=all` or `resume=one`: the banner's two buttons.
+        func driveResume(_ how: String) {
+            if how == "all" { resumeAllParked() } else { resumeParkedOneByOne() }
+        }
+    }
+#endif

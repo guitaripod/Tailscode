@@ -138,9 +138,10 @@ final class ActivityPulse {
     }
 
     /// Whether the desk wants motion. Read per state rather than per frame; a Mac that has asked
-    /// for less motion still gets the symbol, the word and the colour.
+    /// for less motion still gets the symbol, the word and the colour — and so does a window shedding
+    /// load at strained or above, where nothing moves (`MotionBudget`).
     static var motionAllowed: Bool {
-        !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        MotionBudget.animationAllowed
     }
 
     /// Re-applying the state a view is already wearing is a no-op: the band re-renders every
