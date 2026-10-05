@@ -131,9 +131,12 @@ enum ParityManifest {
         case .paneOverflow: return .gap("the nested split host has no overflow strip and never hides a pane for want of room; built in the canvas milestone")
         case .paneResizeByKey: return .gap("dividers move by pointer only and are not accessible splitters; keyboard resize is built in the canvas milestone")
         case .paneRearrange: return .gap("a pane's strip is not a drag source yet; built with the canvas, in the rearrange milestone")
-        case .safeRestore: return .gap("restore always reopens every pane live; the launch ledger and parked restore are built in the seatbelts milestone")
-        case .flightRecorder: return .gap("no flight ring is written yet; built in the seatbelts milestone")
-        case .resourceGuard: return .gap("no launch limits and no pressure response yet; built in the seatbelts milestone")
+        case .safeRestore: return .implemented("parkRestoredChats")
+        case .flightRecorder: return .implemented("FlightWriter")
+        case .resourceGuard:
+            return .partial(
+                "ResourceGuard.apply",
+                missing: "terminal launches and Flatpak cannot be limited; the governor still applies")
         case .splitPanes: return .implemented("SplitHost")
         case .videoSlot: return .implemented("VideoPane")
         case .watchDirectory: return .implemented("WatchBoard.make")
