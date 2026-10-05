@@ -309,7 +309,7 @@ public struct GlanceReading: Sendable, Equatable {
     public let tail: String
     public let question: String?
     public let model: String?
-    public let effort: ModelEffort?
+    public let effort: String?
     public let turnStartedAt: Date?
     public let queued: Int
     public let background: BackgroundWork?
@@ -320,6 +320,7 @@ public struct GlanceReading: Sendable, Equatable {
 - `activity` is `ActivityKind.inFlight(in:)` (bounded by the turn); `session` is `SessionPresence.reading(state, step:)`.
 - `tail` is plain text: inline markdown marks stripped, a code fence shown as one `⟨code⟩` line, the last 600 characters cut at a word boundary. `tail(maxChars:)` lets the host ask for exactly the width × lines it can show.
 - `question` is the awaiting `AskUserQuestion` text, or the pending permission's one-line summary.
+- `effort` is the level word the answer was asked for in (`ChatMessage.reasoningEffort`): `ModelEffort` is a caseless namespace of rules, not a value, so the level travels as the model's own spelling and the host reads its heat through `EffortVocabulary`. The turn's start and model are looked for within the last 64 messages.
 - **Excluded on purpose:** `SessionSpend` and an estimated `ContextFill` are O(n). A glance shows `ContextFill` only when the reverse scan finds a reported value (cheap), and never spend.
 
 ### 5.4 Density and the governor
