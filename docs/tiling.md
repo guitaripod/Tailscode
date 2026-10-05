@@ -197,6 +197,22 @@ public struct SplitSnapshot: Codable, Sendable, Equatable {
 - **Persistence is coalesced.** Hosts call `LayoutStore.schedule(snapshot)`: one trailing write 250 ms after the last change, flushed on every exit path. Linux routes through `SettingsFile.set` (already 750 ms coalesced); the Mac currently encodes the whole snapshot to `UserDefaults` on every divider notification and every focus change, which stops.
 - A lone chat pane writes nothing, as today. A lone slot writes.
 
+### 4.7 As built (core model)
+
+Where the code settled a question this spec left open, or had to differ from it:
+
+- **`split` stays unguarded.** The room guard is `SplitLayout.canSplit(_:axis:in:)` (false when either half of the pane's current rect, less the gutter, is below the glance minimum on that axis); hosts call it before `split` and toast the refusal. Keeping `split` itself unguarded keeps every existing caller and test, and the guard needs a placement `split` does not have.
+- **`PanePlacement` also carries `bounds`** (the area the panes and seams tile: the container less the strip) **and `strip`** (the strip's rect when needed), so hosts never recompute them.
+- **Divider coordinates.** `DividerPlacement.position`, `lowest`, `highest` and the `to:` of `drag` are the first side's extent measured from the parent rect's leading edge along the axis (the seam's start, not its centre). A host subtracts `parent.x` (or `y`) from the pointer.
+- **Resize verbs.** `nudge(_:toward:by:in:)` moves the divider on the pane's `toward` edge (the opposite one when the pane touches the window there) by that many points in that direction; `grow(_:along:by:in:)` is vim's grow/shrink; `resize(_:_:step:in:)` maps the chords: `KeyAction.resizeSplit(.right)` wider, `.left` narrower, `.down` taller, `.up` shorter. Steps are `PaneSizing.keyboardStep` (16) and `keyboardStepLarge` (64).
+- **Promote on the main pane** swaps it with the first pane of the root's other side and follows the new main (dwm's zoom), so the same key toggles two panes.
+- **Zoom.** Every structural verb (`swap`, `promote`, `rotate`, `move`, `moveToEdge`) clears the zoom as `exchange` does; `arrange` keeps it; `cycleFocus` unzooms when it moves (as `focusNeighbor` does) and skips only panes hidden for `.noRoom`.
+- **Never-focused panes** (an arrangement focuses only its first pane) are hidden before any focused pane, the later in reading order first.
+- **Arrangements.** `mainTop` is built and read back but is not in the `ctrl+w a` cycle (`SplitArrangement.cycle`: columns, rows, grid, main and stack) nor in bulk offers; for three chats the offer is the three old shapes then main and stack. `shape(of:)` reads one pane beside a line of the other axis as `mainStack`/`mainTop`, so a hand-built "split right, then split the right pane down" now reads as main and stack rather than grid.
+- **Snapshot.** `SplitSnapshot` moved to `Tiling/SplitSnapshot.swift` with its public API and key unchanged; it is built from `contents` (the four-dictionary initialiser migrates, a pane named twice takes draw, then page, then video, then chat, as the Linux restore did). The truncation is reported by `SplitSnapshot.decodeReporting(_:)` (`droppedPanes`); `decode(_:)` returns the truncated snapshot.
+- **`TrailingWriter<Value>`** (`Tiling/TrailingWriter.swift`) is the generic coalescing writer behind `LayoutStore.schedule`: newest value wins, one write `delay` (0.25 s) after the last schedule on its own utility queue, `flush()` writes synchronously and in order.
+- **Pane moves.** `PaneMovePayload` (`application/x-tailscode-pane`), `PaneMoveIntent` (`.swap`, `.move`), `PaneDropTarget.move(_:onto:zone:)`, `PaneDropZone.moveVerb` and `SplitLayout.apply(_:)`.
+
 ## 5. Core runtime
 
 ### 5.1 Primitives
