@@ -69,6 +69,22 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.67" date="2026-10-05">
+      <description>
+        <p>Model and effort are one control in the composer, pinned model-and-level pairs cycle without opening anything, and every provider and local model reads honestly on the dial.</p>
+        <p>New:</p>
+        <ul>
+          <li>Model and effort are one control in the composer: a dot in the model&#x27;s colour, the model, the effort word and five bars of heat. Click it for a popover with your pinned pairs, recent models and the other machines beside the effort ladder; the ladder follows the cursor, so you see what a pick would do to your level before you take it.</li>
+          <li>Pin a model and a level together (Ctrl+S in the popover), cycle your pins with Ctrl+Alt+Left and Ctrl+Alt+Right and jump with Ctrl+Alt+1–9. Scroll over the control, or press Ctrl+Alt+Up and Ctrl+Alt+Down, to step the effort one notch.</li>
+          <li>Every provider and local model gets the same treatment: levels such as think and nothink, fast, none, auto or numeric budgets are read, ordered and drawn on the meter. Switching to a model that lacks your level moves it to the nearest cooler one and says so.</li>
+          <li>Local and gateway models keep their own name and colour: a Qwen build named after Claude is no longer drawn as Opus.</li>
+        </ul>
+        <p>Changes:</p>
+        <ul>
+          <li>A pinned pair is offered only where that machine can really run it.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.66" date="2026-10-04">
       <description>
         <p>Linux no longer crashes on a prompt that is only a slash command, and the app launches at the scale Ctrl+0 gives.</p>
