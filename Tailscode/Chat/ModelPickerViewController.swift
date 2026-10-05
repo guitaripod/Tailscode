@@ -24,6 +24,7 @@ final class ModelPickerViewController: UIViewController {
     /// conversation is for the cost of switching.
     struct Dial {
         let modelName: String
+        var chip: ModelChip? = nil
         let options: [String]
         let agentOptions: [String]
         var effort: String?
@@ -31,6 +32,22 @@ final class ModelPickerViewController: UIViewController {
         let onEffort: (String?) -> Void
     }
 
+    /// Where the picker was opened from, which decides what a pick means and what the sheet says
+    /// about it: a pick in a chat changes that chat, one from Home aims the message being written,
+    /// and one from a server's own screen sets what that server runs by default.
+    enum Context {
+        case chat, composer, serverDefault
+
+        var chooser: ChooserContext {
+            switch self {
+            case .chat: return .chat
+            case .composer: return .composer
+            case .serverDefault: return .serverDefault
+            }
+        }
+    }
+
+    private let context: Context
     private var dial: Dial?
     private let effortStrip = EffortStripView()
     private var collectionView: UICollectionView!
@@ -39,7 +56,8 @@ final class ModelPickerViewController: UIViewController {
     private let machineStrip = ChipStripView()
     private let doorStrip = ChipStripView()
     private let consequence = UILabel()
-    private let above = UIStackView()
+    private let above = BandView()
+    private let aboveClip = ClippingBand()
     private var didScrollToSelected = false
     private var sectionIDs: [String] = []
     private var rowsByID: [String: ModelChooserRow] = [:]
@@ -47,11 +65,13 @@ final class ModelPickerViewController: UIViewController {
     init(
         sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota] = [],
         recents: [ModelSelection] = RecentModelsStore.all(), dial: Dial? = nil,
-        onSelect: @escaping (ModelPick) -> Void
+        context: Context = .chat, onSelect: @escaping (ModelPick) -> Void
     ) {
-        self.chooser = ModelChooser(
-            sources: sources, selected: selected, recents: recents, quotas: quotas)
+        self.context = context
         self.dial = dial
+        self.chooser = Self.makeChooser(
+            sources: sources, selected: selected, recents: recents, quotas: quotas, dial: dial,
+            context: context)
         self.onSelect = onSelect
         self.quotas = quotas
         self.recents = recents
@@ -59,6 +79,19 @@ final class ModelPickerViewController: UIViewController {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// The list is told what the chat is doing — its level, and what each model can take — so a
+    /// row can say what a pick would run at, and pinned pairs lead the list when there is a level
+    /// to pair a model with. A server's own screen has neither: it sets a default, not a send.
+    private static func makeChooser(
+        sources: [ModelSource], selected: ModelSelection?, recents: [ModelSelection],
+        quotas: [UsageQuota], dial: Dial?, context: Context
+    ) -> ModelChooser {
+        ModelChooser(
+            sources: sources, selected: selected, recents: recents, quotas: quotas,
+            showsPairs: dial != nil && context != .serverDefault,
+            aim: dial.map { ChooserAim(effort: $0.effort, agentOptions: $0.agentOptions) })
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -70,6 +103,12 @@ final class ModelPickerViewController: UIViewController {
         configureCollectionView()
         configureMachines()
         applySnapshot()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (picker: ModelPickerViewController, _) in
+            picker.syncMachines()
+            picker.applySnapshot(keepingScroll: true)
+            picker.scrollBand()
+        }
     }
 
     override func viewIsAppearing(_ animated: Bool) {
@@ -101,8 +140,10 @@ final class ModelPickerViewController: UIViewController {
     /// a server's name is a word somebody chose and a segment truncates it to nothing.
     private func configureMachines() {
         above.axis = .vertical
+        above.backgroundColor = Theme.Color.groupedBackground
         above.spacing = Theme.Spacing.xs
         above.translatesAutoresizingMaskIntoConstraints = false
+        above.onResize = { [weak self] in self?.fitBand() }
         machineStrip.onPick = { [weak self] index in self?.pickMachine(index) }
         doorStrip.onPick = { [weak self] index in self?.pickDoor(index) }
         machineStrip.onInfo = { [weak self] index in self?.briefMachine(index) }
@@ -120,21 +161,35 @@ final class ModelPickerViewController: UIViewController {
             consequence.trailingAnchor.constraint(equalTo: line.trailingAnchor, constant: -Theme.Spacing.l),
         ])
         if let dial {
-            effortStrip.render(modelName: dial.modelName, options: dial.options, effort: dial.effort)
+            effortStrip.render(
+                modelName: dial.modelName, chip: dial.chip,
+                context: context == .composer ? String(localized: "Next chat") : String(localized: "This chat"),
+                options: dial.options, effort: dial.effort)
             effortStrip.onSet = { [weak self] level in
-                self?.dial?.effort = level
-                self?.dial?.onEffort(level)
+                guard let self else { return }
+                self.dial?.effort = level
+                self.dial?.onEffort(level)
+                self.chooser.setAim(
+                    self.dial.map { ChooserAim(effort: $0.effort, agentOptions: $0.agentOptions) })
+                self.applySnapshot(keepingScroll: true)
             }
             above.addArrangedSubview(effortStrip)
         }
         above.addArrangedSubview(machineStrip)
         above.addArrangedSubview(doorStrip)
         above.addArrangedSubview(line)
-        view.addSubview(above)
+        aboveClip.clipsToBounds = true
+        aboveClip.translatesAutoresizingMaskIntoConstraints = false
+        aboveClip.addSubview(above)
+        view.addSubview(aboveClip)
         NSLayoutConstraint.activate([
-            above.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            above.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            above.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            aboveClip.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            aboveClip.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            aboveClip.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            aboveClip.bottomAnchor.constraint(equalTo: above.bottomAnchor),
+            above.topAnchor.constraint(equalTo: aboveClip.topAnchor),
+            above.leadingAnchor.constraint(equalTo: aboveClip.leadingAnchor),
+            above.trailingAnchor.constraint(equalTo: aboveClip.trailingAnchor),
         ])
         syncMachines()
     }
@@ -144,14 +199,16 @@ final class ModelPickerViewController: UIViewController {
         machineStrip.isHidden = !shown
         machineStrip.render(chooser.machines.map(ChipStripView.Chip.init), selected: chooser.machineIndex)
         syncDoors()
-        let line = chooser.shownMachine?.consequence
+        let line = chooser.shownMachine?.consequence(for: context.chooser)
         consequence.superview?.isHidden = !shown || line == nil
         consequence.attributedText = line.map {
             NSAttributedString(
-                string: $0, attributes: Theme.Ramp.attributes(.cardBody, color: Theme.Color.warning))
+                string: $0, attributes: Theme.Ramp.attributes(.rowNote, color: Theme.Color.warning))
         }
         consequence.accessibilityLabel = line
         view.setNeedsLayout()
+        view.layoutIfNeeded()
+        fitBand()
     }
 
     /// The doors under the machine: every door first, then each provider the machine reaches its
@@ -249,17 +306,44 @@ final class ModelPickerViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let height = above.isHidden ? 0 : above.systemLayoutSizeFitting(
-            CGSize(width: view.bounds.width, height: UIView.layoutFittingCompressedSize.height),
-            withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel
-        ).height
+        fitBand()
+    }
+
+    /// The band above the list is real chrome of a height nobody here knows ahead — the effort card,
+    /// two strips of chips and a sentence that wraps — so the list leaves room for what it measured
+    /// *now*, and again whenever the band changes size: a tab that turns a line on used to leave
+    /// the list one line short, with the sentence drawn over the first heading.
+    private func fitBand() {
+        guard isViewLoaded else { return }
+        let height =
+            above.isHidden
+            ? 0
+            : above.systemLayoutSizeFitting(
+                CGSize(width: view.bounds.width, height: UIView.layoutFittingCompressedSize.height),
+                withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel
+            ).height
         let inset =
             machineStrip.isHidden && doorStrip.isHidden && effortStrip.isHidden
             ? 0 : height + Theme.Spacing.xs
-        if abs(collectionView.contentInset.top - inset) > 0.5 {
-            collectionView.contentInset.top = inset
-            collectionView.verticalScrollIndicatorInsets.top = inset
+        let was = collectionView.contentInset.top
+        defer { scrollBand() }
+        guard abs(was - inset) > 0.5 else { return }
+        let atTop = collectionView.contentOffset.y <= -collectionView.adjustedContentInset.top + 1
+        collectionView.contentInset.top = inset
+        collectionView.verticalScrollIndicatorInsets.top = inset
+        if atTop { collectionView.contentOffset.y = -collectionView.adjustedContentInset.top }
+    }
+
+    /// At the accessibility text sizes the band alone would fill the screen, so it stops being
+    /// chrome and becomes the head of the list: it scrolls away with it.
+    private func scrollBand() {
+        guard isViewLoaded, traitCollection.preferredContentSizeCategory.isAccessibilityCategory
+        else {
+            above.transform = .identity
+            return
         }
+        let lift = max(0, collectionView.contentOffset.y + collectionView.adjustedContentInset.top)
+        above.transform = CGAffineTransform(translationX: 0, y: -lift)
     }
 
     private func row(for id: String) -> ModelChooserRow? { rowsByID[id] }
@@ -310,21 +394,13 @@ final class ModelPickerViewController: UIViewController {
             guard let self, let row = self.row(for: id) else { return }
             var content = cell.defaultContentConfiguration()
             content.attributedText = Self.title(row)
-            content.textProperties.font = Theme.Ramp.font(row.isSelected ? .rowTitleStrong : .answer)
-            if row.isAuto {
-                content.secondaryText = row.detail
-                content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-                content.image = UIImage(systemName: "wand.and.stars")
-                content.imageProperties.tintColor = Theme.Color.accent
-            } else {
-                content.secondaryText = row.detail
-                content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
-                content.secondaryTextProperties.font = Theme.Ramp.font(.toolOutput)
-                content.secondaryTextProperties.numberOfLines = 1
-                content.secondaryTextProperties.lineBreakMode = .byTruncatingTail
-            }
-            content.textProperties.numberOfLines = 1
-            content.textProperties.lineBreakMode = .byTruncatingTail
+            content.textProperties.font = Theme.Ramp.font(row.isSelected ? .rowTitleStrong : .rowTitle)
+            content.image = Self.face(row)
+            content.imageProperties.reservedLayoutSize = CGSize(width: 14, height: 14)
+            content.imageToTextPadding = Theme.Spacing.m
+            content.secondaryAttributedText = Self.subtitle(row, shown: self.chooser.machine)
+            content.secondaryTextProperties.numberOfLines = 0
+            content.textProperties.numberOfLines = 0
             if row.wall != nil, !row.isSelected {
                 content.textProperties.color = Theme.Color.tertiaryLabel
             }
@@ -332,7 +408,7 @@ final class ModelPickerViewController: UIViewController {
             cell.contentConfiguration = content
             cell.indentationLevel = row.isNested ? 1 : 0
             cell.accessories = [
-                self.marks(row, room: self.view.bounds.width * (row.wall == nil ? 0.42 : 0.56))
+                self.marks(row, room: self.view.bounds.width * 0.42)
             ]
         }
 
@@ -350,14 +426,7 @@ final class ModelPickerViewController: UIViewController {
             elementKind: UICollectionView.elementKindSectionFooter
         ) { [weak self] view, _, _ in
             var content = UIListContentConfiguration.footer()
-            content.text =
-                self?.chooser.serverReading
-                ?? (self?.chooser.isNarrowed == true
-                    ? self?.chooser.summary
-                    : String(
-                        localized:
-                            "One row per model, grouped by family. The chevron opens the other providers that run it."
-                    ))
+            content.text = self?.footerText()
             view.contentConfiguration = content
         }
 
@@ -381,7 +450,9 @@ final class ModelPickerViewController: UIViewController {
     private func configureHeader(_ view: UICollectionViewListCell, section: ModelChooserSection) {
             var content = UIListContentConfiguration.header()
             content.text = section.title.isEmpty ? nil : section.title.uppercased()
+            content.textProperties.font = Theme.Ramp.font(.sectionLabel)
             content.secondaryText = section.title.isEmpty ? nil : section.detail
+            content.secondaryTextProperties.font = Theme.Ramp.font(.rowMeta)
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             if section.canCollapse {
@@ -395,6 +466,9 @@ final class ModelPickerViewController: UIViewController {
             view.accessibilityHint =
                 section.canCollapse
                 ? String(localized: "Opens or folds this family") : nil
+            view.accessibilityValue =
+                section.canCollapse
+                ? (section.isCollapsed ? String(localized: "Folded") : String(localized: "Open")) : nil
             view.gestureRecognizers?.forEach(view.removeGestureRecognizer)
             guard section.canCollapse else { return }
             view.addGestureRecognizer(
@@ -432,10 +506,56 @@ final class ModelPickerViewController: UIViewController {
             text.addAttributes(
                 [
                     .foregroundColor: Theme.Color.accent,
-                    .font: Theme.Ramp.font(.headline),
+                    .font: Theme.Ramp.font(.rowTitleStrong),
                 ], range: NSRange(location: start, length: length))
         }
         return text
+    }
+
+    /// The row's face: the family's dot, who answers, exactly as the pill and the quick menu wear
+    /// it; a hollow circle where nobody has been chosen yet.
+    private static func face(_ row: ModelChooserRow) -> UIImage {
+        if let chip = row.chip { return EffortMeterView.dotImage(Theme.Color.modelIdentity(chip)) }
+        return UIImage(
+            systemName: "circle",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .semibold))?
+            .withTintColor(Theme.Color.tertiaryLabel, renderingMode: .alwaysOriginal)
+            ?? UIImage()
+    }
+
+    /// One line under the name, said the same way on every row: what settles which model it is,
+    /// where it runs when that is news, and what a pick would do to the level when it would move it.
+    private static func subtitle(_ row: ModelChooserRow, shown: String) -> NSAttributedString? {
+        let font = Theme.Ramp.font(.rowDetail)
+        let text = NSMutableAttributedString()
+        func add(_ part: String, _ color: UIColor) {
+            if text.length > 0 {
+                text.append(
+                    NSAttributedString(
+                        string: " · ",
+                        attributes: [.font: font, .foregroundColor: Theme.Color.tertiaryLabel]))
+            }
+            text.append(NSAttributedString(string: part, attributes: [.font: font, .foregroundColor: color]))
+        }
+        if let wall = row.wall { add(QuotaSurface.rowNote(wall), Theme.Color.danger) }
+        if !row.detail.isEmpty {
+            add(row.detail, row.isAuto ? Theme.Color.secondaryLabel : Theme.Color.tertiaryLabel)
+        }
+        if let place = row.place, row.profileID != shown || !row.isElsewhere {
+            add(place, Theme.Color.info)
+        }
+        if let hint = row.reading?.hint { add(hint, Theme.Color.secondaryLabel) }
+        return text.length > 0 ? text : nil
+    }
+
+    /// Under the last group: what the catalog amounts to, and — only when a row has other
+    /// providers to open — the one sentence about the chevron.
+    private func footerText() -> String? {
+        if let reading = chooser.serverReading { return reading }
+        if chooser.isNarrowed { return chooser.summary }
+        guard chooser.canExpandAny else { return chooser.catalogSummary }
+        return chooser.catalogSummary + "\n"
+            + String(localized: "The chevron opens the other providers that run it.")
     }
 
     /// The whole row in words. A narrow screen has room for two marks and drops the rest, which is
@@ -446,16 +566,19 @@ final class ModelPickerViewController: UIViewController {
         if !row.detail.isEmpty { parts.append(row.detail) }
         if let wall = row.wall { parts.append(QuotaSurface.bannerBody(wall)) }
         parts += row.facts.map(\.label)
+        if let word = row.reading?.word { parts.append(word) }
+        if let hint = row.reading?.hint { parts.append(hint) }
+        if row.pinning.isPinned { parts.append(String(localized: "Pinned")) }
         if row.isSelected { parts.append(String(localized: "Currently chosen")) }
         return parts.joined(separator: ". ")
     }
 
-    /// The star: a decision about the model rather than a fact about it, muted until it is made.
-    /// Every listing of the same model wears the same state, because `isPinned` follows the
-    /// selection through every section it appears in.
+    /// The pin: one decision about the pair a row would run — the model at the level it would be
+    /// worked at — muted until it is made. A swipe, the menu and this star are the same action,
+    /// and every listing of the same model wears the same state.
     private func star(_ row: ModelChooserRow) -> UIView? {
-        guard !row.isAuto, !row.isLiteral, let selection = row.selection else { return nil }
-        let pinned = row.isPinned
+        guard !row.isAuto, !row.isLiteral, row.pinning.preset != nil else { return nil }
+        let pinned = row.pinning.isPinned
         let button = UIButton(type: .system)
         button.setImage(
             UIImage(
@@ -465,37 +588,21 @@ final class ModelPickerViewController: UIViewController {
         button.tintColor = pinned ? Theme.Color.accent : Theme.Color.tertiaryLabel
         button.frame = CGRect(x: 0, y: 0, width: 30, height: 28)
         button.accessibilityLabel =
-            pinned ? String(localized: "Unpin") : String(localized: "Pin")
-        button.addAction(UIAction { [weak self] _ in self?.togglePin(selection) }, for: .touchUpInside)
+            pinned ? String(localized: "Unpin") : String(localized: "Pin pair")
+        button.addAction(UIAction { [weak self] _ in self?.togglePin(row) }, for: .touchUpInside)
         return button
-    }
-
-    /// The pair a row would pin: the model with the level this chat is at carried onto it, a
-    /// model with no levels as the plain star it always was.
-    private func pair(for row: ModelChooserRow) -> ModelPreset? {
-        guard !row.isAuto, !row.isLiteral, let selection = row.selection,
-            let candidate = chooser.candidates.first(where: { $0.carries(selection) })
-        else { return nil }
-        let levels = ModelEffort.options(
-            models: [candidate.primary.model], selection: selection,
-            agentOptions: dial?.agentOptions ?? [])
-        guard ModelEffort.isOffered(options: levels) else {
-            return ModelPreset(selection: selection, effort: .keep)
-        }
-        let level = ModelEffort.carry(dial?.effort, options: levels).level
-        return ModelPreset(selection: selection, effort: level.map { .level($0) } ?? .server)
     }
 
     private func pinActions(at indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         guard let id = dataSource.itemIdentifier(for: indexPath), let row = row(for: id),
-            let preset = pair(for: row)
+            row.pinning.preset != nil
         else { return nil }
-        let pinned = ModelPresetStore.all().contains(preset)
+        let pinned = row.pinning.isPinned
         let action = UIContextualAction(
             style: .normal,
             title: pinned ? String(localized: "Unpin") : String(localized: "Pin pair")
         ) { [weak self] _, _, done in
-            self?.pin(preset)
+            self?.togglePin(row)
             done(true)
         }
         action.backgroundColor = Theme.Color.accent
@@ -503,13 +610,12 @@ final class ModelPickerViewController: UIViewController {
         return UISwipeActionsConfiguration(actions: [action])
     }
 
-    private func pin(_ preset: ModelPreset) {
-        let pinned = ModelPresetStore.pin(preset)
+    private func togglePin(_ row: ModelChooserRow) {
+        guard let preset = row.pinning.preset else { return }
+        let pinned = chooser.togglePin(row: row)
         Theme.Haptics.success()
         applySnapshot(keepingScroll: true)
-        let name = chooser.candidates.first { $0.carries(preset.selection) }?.name
-            ?? ModelBadge.shortName(preset.selection.modelID)
-        let said = ModelPresetCycle.said(preset, modelName: name)
+        let said = ModelPresetCycle.said(preset, modelName: row.title)
         ToastView(
             message: pinned ? String(localized: "Pinned: \(said)") : String(localized: "Unpinned: \(said)")
         ).flash(in: view, above: view.safeAreaLayoutGuide.bottomAnchor, duration: 1.8)
@@ -536,31 +642,37 @@ final class ModelPickerViewController: UIViewController {
                 guard let self else { return nil }
                 var actions: [UIMenuElement] = [
                     UIAction(
-                        title: String(localized: "Use for this chat"),
+                        title: self.pickTitle(for: row),
                         image: UIImage(systemName: "checkmark.circle")
                     ) { [weak self] _ in
-                        Theme.Haptics.success()
                         self?.onSelect(row.pick)
                         self?.dismiss(animated: true)
                     }
                 ]
-                if let preset = self.pair(for: row) {
-                    let pinned = ModelPresetStore.all().contains(preset)
+                if row.pinning.preset != nil {
+                    let pinned = row.pinning.isPinned
                     actions.append(
                         UIAction(
                             title: pinned
                                 ? String(localized: "Unpin") : String(localized: "Pin this pair"),
                             image: UIImage(systemName: pinned ? "star.slash" : "star")
-                        ) { [weak self] _ in self?.pin(preset) })
+                        ) { [weak self] _ in self?.togglePin(row) })
                 }
                 return UIMenu(children: actions)
             })
     }
 
-    private func togglePin(_ selection: ModelSelection) {
-        Theme.Haptics.selection()
-        chooser.togglePin(selection)
-        applySnapshot(keepingScroll: true)
+    /// What the press on a row's menu says it does, by where the picker was opened from.
+    private func pickTitle(for row: ModelChooserRow) -> String {
+        switch context {
+        case .serverDefault: return String(localized: "Use as the default")
+        case .composer:
+            return row.isElsewhere
+                ? String(localized: "Start a new chat there") : String(localized: "Use for this message")
+        case .chat:
+            return row.isElsewhere
+                ? String(localized: "Start a new chat there") : String(localized: "Use for this chat")
+        }
     }
 
     /// Everything the row wears, in one accessory.
@@ -609,8 +721,9 @@ final class ModelPickerViewController: UIViewController {
     /// A row's identity is its place in the list, not its face: opening a row's other doors, or
     /// picking one of them, changes what the row wears without changing which row it is, and a
     /// snapshot that finds the same ids draws nothing new. Every row whose reading changed is
-    /// reconfigured by name, and the headings on screen are rewritten, so a chevron always points
-    /// the way the list is actually folded.
+    /// reloaded by name rather than reconfigured — a reconfigured cell keeps the height it was
+    /// measured at, so a longer subtitle was cut off at the old row's one line — and the headings
+    /// on screen are rewritten, so a chevron always points the way the list is actually folded.
     private func applyRows() {
         var snapshot = NSDiffableDataSourceSnapshot<String, String>()
         let before = rowsByID
@@ -624,7 +737,7 @@ final class ModelPickerViewController: UIViewController {
             guard let old = before[id], old != row else { return nil }
             return id
         }
-        if !changed.isEmpty { snapshot.reconfigureItems(changed) }
+        if !changed.isEmpty { snapshot.reloadItems(changed) }
         sectionIDs = chooser.sections.map(\.id)
         dataSource.apply(snapshot, animatingDifferences: false)
         refreshVisibleHeaders()
@@ -669,8 +782,9 @@ final class ModelPickerViewController: UIViewController {
         let query = chooser.query
         let machine = chooser.machine
         let door = chooser.door
-        chooser = ModelChooser(
-            sources: sources, selected: chooser.selected, recents: recents, quotas: quotas)
+        chooser = Self.makeChooser(
+            sources: sources, selected: chooser.selected, recents: recents, quotas: quotas,
+            dial: dial, context: context)
         chooser.search(query)
         chooser.setMachine(machine)
         chooser.setDoor(door)
@@ -681,6 +795,16 @@ final class ModelPickerViewController: UIViewController {
 
     #if DEBUG
         func tourMachine(_ index: Int) { pickMachine(index) }
+
+        func tourDoor(_ index: Int) { pickDoor(index) }
+
+        func tourExpand() {
+            guard let index = chooser.rows.firstIndex(where: { $0.canExpand && !$0.isExpanded })
+            else { return }
+            chooser.focus(index)
+            _ = chooser.setExpanded(true, at: index)
+            applySnapshot(keepingScroll: true)
+        }
 
         func tourSearch(_ text: String) {
             search.isActive = true
@@ -752,49 +876,43 @@ private final class SectionTapRecognizer: UITapGestureRecognizer {
     }
 }
 
-/// A pill that measures itself. An accessory laid out from a hand-set frame has no size for the
-/// cell to lay out *around*, so two of them on one row were drawn in the same place — which is how
-/// a row ended up wearing "used up" and "3 levels" on top of each other. A label with an honest
-/// `intrinsicContentSize` is the whole fix.
-private final class PillLabel: UILabel {
-    var minimumWidth: CGFloat = 0
-    private let inset = UIEdgeInsets(top: 3, left: 6, bottom: 3, right: 6)
-
-    override var intrinsicContentSize: CGSize {
-        let size = super.intrinsicContentSize
-        return CGSize(
-            width: max(minimumWidth, size.width + inset.left + inset.right),
-            height: size.height + inset.top + inset.bottom)
-    }
-
-    override func drawText(in rect: CGRect) {
-        super.drawText(in: rect.inset(by: inset))
-    }
-
-    /// An accessory is laid out from whichever of the two a cell asks for, and which one it asks
-    /// for is not ours to know — so the size is stated both ways.
-    func fixSize() {
-        let size = intrinsicContentSize
-        frame = CGRect(origin: .zero, size: size)
+/// What a pick would run at, as the pill draws it: the same five bars, and the level's word in the
+/// model's own spelling beside them when there is room.
+private final class LevelMark: UIView {
+    init(reading: ModelRowLevel, withWord: Bool) {
+        let meter = EffortMeterView(
+            reading: EffortMeterView.Reading(
+                heat: reading.heat, level: reading.level, isPower: reading.isPower,
+                isServer: reading.isServer, isEmber: reading.isEmber))
+        let size = EffortMeterView.size
+        meter.frame = CGRect(x: 0, y: (28 - size.height) / 2, width: size.width, height: size.height)
+        var width = size.width
+        var label: UILabel?
+        if withWord, let word = reading.word {
+            let text = UILabel()
+            text.attributedText = ModelDialPill.effortWord(
+                word, isPower: reading.isPower, font: Theme.Ramp.font(.rowMeta))
+            if !reading.isPower {
+                text.textColor = Theme.Color.secondaryLabel
+            }
+            let fitted = text.intrinsicContentSize
+            text.frame = CGRect(
+                x: size.width + 5, y: (28 - fitted.height) / 2, width: fitted.width, height: fitted.height)
+            width += 5 + fitted.width
+            label = text
+        }
+        super.init(frame: CGRect(x: 0, y: 0, width: width, height: 28))
+        addSubview(meter)
+        if let label { addSubview(label) }
+        isAccessibilityElement = false
+        translatesAutoresizingMaskIntoConstraints = true
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: size.width),
-            heightAnchor.constraint(equalToConstant: size.height),
+            widthAnchor.constraint(equalToConstant: width),
+            heightAnchor.constraint(equalToConstant: 28),
         ])
     }
 
-    static func make(text: String, tint: UIColor, spoken: String, minimum: CGFloat) -> PillLabel {
-        let pill = PillLabel()
-        pill.text = text
-        pill.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
-        pill.textColor = tint
-        pill.textAlignment = .center
-        pill.accessibilityLabel = spoken
-        pill.minimumWidth = minimum
-        pill.backgroundColor = tint.withAlphaComponent(0.12)
-        pill.layer.cornerRadius = 5
-        pill.layer.cornerCurve = .continuous
-        return pill
-    }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 }
 
 /// The right-hand end of a row: what ran out or what it reads, where it runs, the star, and the
@@ -841,24 +959,11 @@ private final class RowMarksView: UIView {
         let spoken = max(0, room - tail.reduce(0) { $0 + $1.frame.width + Self.gap })
 
         var pieces: [UIView] = []
-        if let wall = row.wall {
-            let note = UILabel()
-            note.attributedText = NSAttributedString(
-                string: QuotaSurface.rowNote(wall),
-                attributes: Theme.Ramp.attributes(.rowStamp, color: Theme.Color.danger))
-            note.accessibilityLabel = QuotaSurface.bannerBody(wall)
-            note.lineBreakMode = .byTruncatingTail
-            let fitted = min(note.intrinsicContentSize.width, spoken)
-            note.frame = CGRect(x: 0, y: 0, width: fitted, height: 28)
-            pieces.append(note)
-        } else if let capabilities = Self.capabilities(row: row, slots: slots) {
-            pieces.append(capabilities)
+        if let reading = row.reading, reading.takesLevels {
+            pieces.append(LevelMark(reading: reading, withWord: spoken >= 150))
         }
-        for fact in row.facts where !fact.isCapability {
-            pieces.append(
-                PillLabel.make(
-                    text: fact.tag.uppercased(), tint: Self.tint(fact), spoken: fact.label,
-                    minimum: 0))
+        if let capabilities = Self.capabilities(row: row, slots: slots) {
+            pieces.append(capabilities)
         }
 
         var width: CGFloat = 0
@@ -893,14 +998,6 @@ private final class RowMarksView: UIView {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    private static func tint(_ fact: ModelFact) -> UIColor {
-        switch fact {
-        case .local: return Theme.Color.accent
-        case .server: return Theme.Color.warning
-        default: return Theme.Color.secondaryLabel
-        }
-    }
 
     /// One slot per capability the catalog can tell models apart by, empty where a model lacks it,
     /// so the symbols read down the list as a column rather than a huddle that shifts per row.
@@ -942,6 +1039,8 @@ private final class FixedWidthView: UIView {
 }
 
 extension ModelPickerViewController: UICollectionViewDelegate {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { scrollBand() }
+
     func collectionView(
         _ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath,
         point: CGPoint
@@ -957,7 +1056,6 @@ extension ModelPickerViewController: UICollectionViewDelegate {
         guard let id = dataSource.itemIdentifier(for: indexPath), let row = row(for: id) else {
             return
         }
-        Theme.Haptics.success()
         onSelect(row.pick)
         dismiss(animated: true)
     }
@@ -970,10 +1068,32 @@ extension ModelPickerViewController: UISearchResultsUpdating {
     }
 }
 
+/// Holds the band so that, lifted by a scroll, it is cut off at the edge of the bars rather than
+/// drawn through them, and lets every touch it does not cover reach the list underneath.
+private final class ClippingBand: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        return hit === self ? nil : hit
+    }
+}
+
+/// The stack above the list, which tells its owner when it changes size.
+private final class BandView: UIStackView {
+    var onResize: (() -> Void)?
+    private var measured: CGFloat = -1
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard abs(bounds.height - measured) > 0.5 else { return }
+        measured = bounds.height
+        onResize?()
+    }
+}
+
 /// One capsule per machine, scrolling sideways. The name, a dot for a machine that is not
-/// answering, and the count in the quieter register; the selected one wears the accent.
-/// A row of capsule chips that answers to one press each — the machines' tabs and, under them,
-/// the doors — the one in force wearing the accent.
+/// answering, and the count in the quieter register; the selected one wears the accent. The same
+/// row of capsules serves the doors under the machines — one press each, the one in force wearing
+/// the accent.
 private final class ChipStripView: UIScrollView {
     struct Chip {
         let title: String
@@ -1024,7 +1144,7 @@ private final class ChipStripView: UIScrollView {
                 equalTo: contentLayoutGuide.bottomAnchor, constant: -Theme.Spacing.xs),
             row.leadingAnchor.constraint(equalTo: contentLayoutGuide.leadingAnchor),
             row.trailingAnchor.constraint(equalTo: contentLayoutGuide.trailingAnchor),
-            row.heightAnchor.constraint(equalTo: frameLayoutGuide.heightAnchor, constant: -2 * Theme.Spacing.xs),
+            heightAnchor.constraint(equalTo: row.heightAnchor, constant: 2 * Theme.Spacing.xs),
         ])
         isAccessibilityElement = false
     }
@@ -1061,7 +1181,7 @@ private final class ChipStripView: UIScrollView {
         let ink = selected ? Theme.Color.onAccent : Theme.Color.label
         let quiet = selected ? Theme.Color.onAccent.withAlphaComponent(0.7) : Theme.Color.tertiaryLabel
         let title = NSMutableAttributedString(
-            string: chip.title, attributes: Theme.Ramp.attributes(.rowTitleStrong, color: ink))
+            string: chip.title, attributes: Theme.Ramp.attributes(.chip, color: ink))
         title.append(
             NSAttributedString(
                 string: "  \(chip.count)", attributes: Theme.Ramp.attributes(.rowMeta, color: quiet)))

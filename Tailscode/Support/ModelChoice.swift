@@ -335,9 +335,9 @@ enum ModelMenu {
         if allowsServerDefault {
             picks.append(
                 UIAction(
-                    title: String(localized: "Auto"),
-                    subtitle: String(localized: "Whatever the server runs"),
-                    image: UIImage(systemName: "wand.and.stars"),
+                    title: String(localized: "Server default"),
+                    subtitle: String(localized: "Whatever this server runs"),
+                    image: UIImage(systemName: "circle"),
                     state: choice.model == nil ? .on : .off
                 ) { _ in actions.selectModel(nil) })
         }

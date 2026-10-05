@@ -23,15 +23,15 @@ final class ModelChooserSheet: NSObject {
     private var chooser: ModelChooser
     private let onPick: @MainActor (ModelPick) -> Void
     private var quotas: [UsageQuota]
-    private let summary = NSTextField(labelWithString: "")
+    private let summary = FittedWrapLabel()
     private let field = NSSearchField()
     private let table = NSTableView()
     private let scroll = NSScrollView()
-    private let empty = NSTextField(wrappingLabelWithString: "")
+    private let empty = FittedWrapLabel()
     private let fold = NSButton()
-    private let machineStrip = NSStackView()
-    private let doorStrip = NSStackView()
-    private let consequence = NSTextField(wrappingLabelWithString: "")
+    private let machineStrip = ChipFlow()
+    private let doorStrip = ChipFlow()
+    private let consequence = FittedWrapLabel()
     private var entries: [Entry] = []
     private var monitor: Any?
 
@@ -96,21 +96,13 @@ final class ModelChooserSheet: NSObject {
         summary.font = MacTheme.Ramp.font(.toolOutput)
         summary.textColor = MacTheme.Color.secondaryLabel
         summary.alignment = .left
-        summary.lineBreakMode = .byTruncatingTail
+        summary.maximumNumberOfLines = 2
+        summary.cell?.truncatesLastVisibleLine = true
         summary.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        summary.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        summary.setContentCompressionResistancePriority(.init(249), for: .horizontal)
 
         field.placeholderString = Localized.text("Search models, providers, ids")
         field.delegate = self
-
-        machineStrip.orientation = .horizontal
-        machineStrip.alignment = .centerY
-        machineStrip.spacing = MacTheme.Spacing.xs
-        machineStrip.setContentHuggingPriority(.required, for: .vertical)
-        doorStrip.orientation = .horizontal
-        doorStrip.alignment = .centerY
-        doorStrip.spacing = MacTheme.Spacing.xs
-        doorStrip.setContentHuggingPriority(.required, for: .vertical)
 
         consequence.font = MacTheme.Ramp.font(.rowNote)
         consequence.textColor = MacTheme.Color.warning
@@ -125,7 +117,7 @@ final class ModelChooserSheet: NSObject {
 
         let band = NSStackView(views: [summary, fold])
         band.orientation = .horizontal
-        band.alignment = .centerY
+        band.alignment = .firstBaseline
         band.spacing = MacTheme.Spacing.s
 
         let top = NSStackView(views: [field, machineStrip, doorStrip, consequence, band])
@@ -163,7 +155,8 @@ final class ModelChooserSheet: NSObject {
         empty.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(empty)
 
-        let hint = NSTextField(labelWithString: chooser.hint)
+        let hint = FittedWrapLabel()
+        hint.stringValue = chooser.hint
         hint.font = MacTheme.Ramp.font(.rowNote)
         hint.textColor = MacTheme.Color.tertiaryLabel
         hint.translatesAutoresizingMaskIntoConstraints = false
@@ -207,7 +200,15 @@ final class ModelChooserSheet: NSObject {
     }
 
     private static let sizeKey = "tailscode.mac.modelChooser.size"
-    private static let smallest = NSSize(width: 520, height: 420)
+    /// The narrowest sheet a row still reads whole in — name, wall with its reset, marks, star —
+    /// at the type size in force, so a larger scale widens the floor rather than crushing the name.
+    private static var smallest: NSSize {
+        let room = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1_600, height: 1_000)
+        let scale = MacTheme.UIScale.factor
+        return NSSize(
+            width: min(520 * scale, max(room.width - 80, 520)),
+            height: min(420 * scale, max(room.height - 80, 420)))
+    }
 
     /// Two hundred models read better on a tall sheet, so the sheet can be dragged bigger and
     /// opens next time at the size it was left.
@@ -275,6 +276,43 @@ final class ModelChooserSheet: NSObject {
         }
     }
 
+    /// A state reached by hand, reached from the command line instead — `--open models:<steps>` —
+    /// so a tab, a door, a search, an open row or a folded catalog can be measured with nobody at
+    /// the keyboard. Steps are comma separated: `machine=N`, `door=N` (0 is every door),
+    /// `search=text`, `expand`, `fold`.
+    func demonstrate(_ script: String) {
+        for step in script.split(separator: ",").map(String.init) {
+            let parts = step.split(separator: "=", maxSplits: 1).map(String.init)
+            let value = parts.count > 1 ? parts[1] : ""
+            switch parts.first ?? "" {
+            case "machine":
+                if let index = Int(value), chooser.machines.indices.contains(index) {
+                    _ = chooser.setMachine(chooser.machines[index].profileID)
+                }
+            case "door":
+                if let index = Int(value) {
+                    let doors = chooser.doors
+                    _ = chooser.setDoor(index > 0 && index <= doors.count ? doors[index - 1].providerID : nil)
+                }
+            case "search":
+                field.stringValue = value
+                chooser.search(value)
+            case "expand":
+                if let index = chooser.rows.firstIndex(where: \.canExpand) {
+                    chooser.focus(index)
+                    _ = chooser.setExpanded(true, at: index)
+                }
+            case "fold":
+                _ = chooser.setAllCollapsed(true)
+            default:
+                break
+            }
+        }
+        rebuildMachines()
+        rebuild()
+        revealCursor()
+    }
+
     private func handled(_ command: ModelChooserCommand) -> Bool {
         chooser.handle(command).handled
     }
@@ -308,11 +346,11 @@ final class ModelChooserSheet: NSObject {
     /// One chip per machine, the tab under the cursor in accent. Drawn only past one machine: a
     /// tab bar with one tab is chrome pretending to be a control.
     private func rebuildMachines() {
-        for view in machineStrip.arrangedSubviews { view.removeFromSuperview() }
         machineStrip.isHidden = !chooser.showsMachines
+        var chips: [NSView] = []
         if chooser.showsMachines {
             for (index, machine) in chooser.machines.enumerated() {
-                machineStrip.addArrangedSubview(
+                chips.append(
                     MachineChip(
                         title: machine.title, count: machine.count, detail: machine.detail,
                         dot: Self.dot(machine.state), selected: index == chooser.machineIndex,
@@ -327,16 +365,22 @@ final class ModelChooserSheet: NSObject {
                     })
             }
         }
+        machineStrip.setChips(chips)
         rebuildDoors()
     }
 
     /// The doors under the tab — every door first, then each provider the machine reaches its
-    /// models through, biggest first (⌥0–9). Drawn only past one door.
+    /// models through, biggest first (⌥0–9). Drawn only past one door, and wrapped onto as many
+    /// lines as the sheet's width asks for: a machine with a dozen providers is ordinary, and a
+    /// strip that kept them on one line held the sheet twice as wide as anybody dragged it.
     private func rebuildDoors() {
-        for view in doorStrip.arrangedSubviews { view.removeFromSuperview() }
         doorStrip.isHidden = !chooser.showsDoors
-        guard chooser.showsDoors else { return }
-        doorStrip.addArrangedSubview(
+        guard chooser.showsDoors else {
+            doorStrip.setChips([])
+            return
+        }
+        var chips: [NSView] = []
+        chips.append(
             MachineChip(
                 title: Localized.text("All"), count: chooser.doors.reduce(0) { $0 + $1.count },
                 detail: Localized.text("Every provider this server reaches"), dot: nil,
@@ -346,7 +390,7 @@ final class ModelChooserSheet: NSObject {
                 self.machineChanged()
             })
         for (index, door) in chooser.doors.enumerated() {
-            doorStrip.addArrangedSubview(
+            chips.append(
                 MachineChip(
                     title: door.title, count: door.count, detail: door.detail,
                     dot: door.kind == .local ? MacTheme.Color.info : nil,
@@ -361,6 +405,7 @@ final class ModelChooserSheet: NSObject {
                     self.machineChanged()
                 })
         }
+        doorStrip.setChips(chips)
     }
 
     private static func dot(_ state: ModelMachineState) -> NSColor? {
@@ -398,6 +443,7 @@ final class ModelChooserSheet: NSObject {
             }
         }
         summary.stringValue = chooser.summary
+        summary.toolTip = chooser.summary
         empty.stringValue = chooser.emptyResult ?? ""
         empty.isHidden = chooser.emptyResult == nil
         let line = chooser.shownMachine?.consequence
@@ -617,6 +663,107 @@ private final class MachineChip: NSButton {
     @objc private func info() { onInfo?(self) }
 }
 
+/// Chips in reading order, wrapped onto as many lines as the width asks for and placed by frame.
+/// A stack view keeps every chip on one line, and so holds its window at least as wide as the
+/// whole row; a flow lets the window be the width a person chose and grows a line instead.
+@MainActor
+private final class ChipFlow: NSView {
+    private var chips: [NSView] = []
+    private var measuredWidth: CGFloat = 0
+    private let gap = MacTheme.Spacing.xs
+
+    nonisolated override var isFlipped: Bool { true }
+
+    init() {
+        super.init(frame: .zero)
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func setChips(_ views: [NSView]) {
+        for view in chips { view.removeFromSuperview() }
+        chips = views
+        for view in views {
+            view.translatesAutoresizingMaskIntoConstraints = true
+            addSubview(view)
+        }
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(
+            width: NSView.noIntrinsicMetric,
+            height: arrange(width: measuredWidth > 0 ? measuredWidth : .greatestFiniteMagnitude, placing: false))
+    }
+
+    override func layout() {
+        super.layout()
+        if abs(bounds.width - measuredWidth) > 0.5 {
+            measuredWidth = bounds.width
+            invalidateIntrinsicContentSize()
+        }
+        arrange(width: bounds.width, placing: true)
+    }
+
+    /// Lays the chips out at `width` and answers the height they take. A chip wider than the
+    /// whole strip gets a line of its own at the strip's width rather than running off its edge.
+    @discardableResult
+    private func arrange(width: CGFloat, placing: Bool) -> CGFloat {
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var line: CGFloat = 0
+        for view in chips {
+            let natural = view.intrinsicContentSize
+            let size =
+                natural.width == NSView.noIntrinsicMetric ? view.fittingSize : natural
+            let chipWidth = min(size.width, width)
+            if x > 0, x + chipWidth > width {
+                x = 0
+                y += line + gap
+                line = 0
+            }
+            if placing {
+                view.frame = NSRect(x: x, y: y, width: chipWidth, height: size.height)
+            }
+            x += chipWidth + gap
+            line = max(line, size.height)
+        }
+        return chips.isEmpty ? 0 : y + line
+    }
+}
+
+/// A wrapping label that measures its lines at the width it was given. A wrapping `NSTextField`
+/// otherwise reports its text's width on one line, which either holds the window that wide or,
+/// squeezed, keeps the height of one line and cuts the rest off.
+@MainActor
+final class FittedWrapLabel: NSTextField {
+    init() {
+        super.init(frame: .zero)
+        isEditable = false
+        isSelectable = false
+        isBordered = false
+        isBezeled = false
+        drawsBackground = false
+        lineBreakMode = .byWordWrapping
+        cell?.wraps = true
+        cell?.isScrollable = false
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        let width = bounds.width
+        guard width > 0, abs(preferredMaxLayoutWidth - width) > 0.5 else { return }
+        preferredMaxLayoutWidth = width
+        invalidateIntrinsicContentSize()
+    }
+}
+
 /// The card behind a tab or a door — Core's `ChooserBriefing` drawn as headings, lines and
 /// footnotes in one column, the state line in the state's own tone.
 @MainActor
@@ -733,6 +880,12 @@ private final class ModelChooserHeaderView: NSTableCellView {
         let detail = NSTextField(labelWithString: section.detail)
         detail.font = MacTheme.Ramp.font(.gaugeCaption)
         detail.textColor = MacTheme.Color.secondaryLabel
+        detail.lineBreakMode = .byTruncatingTail
+        detail.toolTip = section.detail
+        detail.setContentCompressionResistancePriority(.init(240), for: .horizontal)
+        title.lineBreakMode = .byTruncatingTail
+        title.toolTip = section.title
+        title.setContentCompressionResistancePriority(.init(245), for: .horizontal)
         for view in [title, detail] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
@@ -741,6 +894,8 @@ private final class ModelChooserHeaderView: NSTableCellView {
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leading),
             title.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            detail.leadingAnchor.constraint(
+                greaterThanOrEqualTo: title.trailingAnchor, constant: MacTheme.Spacing.s),
             detail.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.s),
             detail.lastBaselineAnchor.constraint(equalTo: title.lastBaselineAnchor),
         ])
@@ -779,7 +934,9 @@ private final class ModelChooserRowView: NSTableCellView {
 
         let title = NSTextField(labelWithAttributedString: Self.title(row))
         title.lineBreakMode = .byTruncatingTail
+        title.toolTip = row.title
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.setContentHuggingPriority(.init(260), for: .horizontal)
 
         let column = NSStackView(views: [title])
         column.orientation = .vertical
@@ -790,21 +947,23 @@ private final class ModelChooserRowView: NSTableCellView {
             detail.font = MacTheme.Ramp.font(.rowNote)
             detail.textColor = MacTheme.Color.tertiaryLabel
             detail.lineBreakMode = .byTruncatingTail
+            detail.toolTip = row.detail
             detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             column.addArrangedSubview(detail)
         }
         column.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        column.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        column.setContentHuggingPriority(.init(700), for: .horizontal)
 
         let check = NSTextField(labelWithString: row.isSelected ? "✓" : "")
         check.font = MacTheme.Ramp.font(.panelLabel)
         check.textColor = MacTheme.Color.accent
         check.alignment = .center
 
-        let line = NSStackView(views: [check, column])
+        let line = NSStackView(views: [check, row.detail.isEmpty ? title : column, Self.spacer()])
         line.spacing = MacTheme.Spacing.xs
         line.alignment = .centerY
         line.orientation = .horizontal
+        line.distribution = .fill
 
         if let wall = row.wall {
             let note = NSTextField(labelWithString: QuotaSurface.rowNote(wall))
@@ -867,6 +1026,16 @@ private final class ModelChooserRowView: NSTableCellView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// What takes the row's slack, so the name keeps its own width and everything after it sits
+    /// flush right — a stack with no lowest hugger handed the slack to whichever view it liked,
+    /// and the marks floated after each name instead of standing in a column.
+    private static func spacer() -> NSView {
+        let view = NSView()
+        view.setContentHuggingPriority(.init(1), for: .horizontal)
+        view.setContentCompressionResistancePriority(.init(1), for: .horizontal)
+        return view
+    }
+
     /// The capability column: one slot per mark the catalog can wear, in the catalog's order, a
     /// slot left empty where this model lacks the capability so the glyphs line up down the list.
     private static func marks(_ row: ModelChooserRow, slots: [ModelFact]) -> NSView {
@@ -874,6 +1043,10 @@ private final class ModelChooserRowView: NSTableCellView {
         strip.orientation = .horizontal
         strip.spacing = 0
         strip.alignment = .centerY
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        strip.widthAnchor.constraint(
+            equalToConstant: CGFloat(slots.count) * slotWidth * MacTheme.UIScale.factor
+        ).isActive = true
         let worn = row.facts.filter(\.isCapability)
         for slot in slots {
             let cell = NSImageView()

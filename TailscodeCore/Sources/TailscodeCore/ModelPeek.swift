@@ -40,7 +40,8 @@ public struct ModelPeekReading: Sendable, Equatable {
                 value: levels.isEmpty ? Localized.text("none") : "\(levels.count)",
                 label: Localized.text("effort levels")))
         if candidate.isLocal {
-            facts.append(Fact(value: Localized.text("Local"), label: Localized.text("runs here")))
+            facts.append(
+                Fact(value: Localized.text("Local"), label: Localized.text("Runs on the server's own hardware")))
         }
         let current = !candidate.isElsewhere && candidate.carries(selected)
         let carry = !current && !candidate.isElsewhere

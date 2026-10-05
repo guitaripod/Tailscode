@@ -2924,11 +2924,15 @@ extension HomeViewController: HomeComposerBarDelegate {
             selected: modelChoices[aim.memoryKey]?.model,
             quotas: QuotaSurface.relevantQuotas(
                 for: profile.backend, among: UsageWidgetStore.cachedQuotas()),
-            dial: composePickerDial(for: aim, backend: backend)
+            dial: composePickerDial(for: aim, backend: backend), context: .composer
         ) { [weak self] pick in
             guard let self else { return }
             guard pick.isElsewhere else {
-                self.setComposeModel(pick.selection, for: aim)
+                if let preset = pick.preset {
+                    self.setComposePreset(preset, for: aim)
+                } else {
+                    self.setComposeModel(pick.selection, for: aim)
+                }
                 return
             }
             self.retargetCompose(to: pick, from: aim)
@@ -2936,6 +2940,7 @@ extension HomeViewController: HomeComposerBarDelegate {
         let nav = UINavigationController(rootViewController: picker)
         if let sheet = nav.sheetPresentationController {
             sheet.detents = [.medium(), .large()]
+            sheet.selectedDetentIdentifier = .large
             sheet.prefersGrabberVisible = true
         }
         present(nav, animated: true)
@@ -2964,6 +2969,7 @@ extension HomeViewController: HomeComposerBarDelegate {
             modelName: choice.model.map {
                 ModelBadge.word(for: $0, in: ModelCatalog.cached(for: aim.profile.id))
             } ?? String(localized: "Auto"),
+            chip: ModelBadge.chip(selection: choice.model, effort: nil),
             options: dialOptions(for: aim), agentOptions: backend.reasoningEffortOptions,
             effort: choice.effort, contextTokens: nil,
             onEffort: { [weak self] level in self?.setComposeEffort(level, for: aim) })

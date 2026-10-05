@@ -22,6 +22,7 @@ public enum ProviderIdentity {
         case "deepseek": return "DeepSeek"
         case "server": return "Server"
         default:
+            if let brand = brands[providerID.lowercased()] { return brand }
             let words = providerID.split(separator: "-")
             if words.isEmpty { return providerID }
             return words
@@ -32,6 +33,22 @@ public enum ProviderIdentity {
                 .joined(separator: " ")
         }
     }
+
+    /// Houses whose names are not their keys with a capital letter: a brand is spelled the way its
+    /// owner spells it, and "Openai" or "Github Copilot" on a chip reads as a typo about a bill.
+    private static let brands: [String: String] = [
+        "openai": "OpenAI", "azure": "Azure OpenAI", "github-copilot": "GitHub Copilot",
+        "github-models": "GitHub Models", "google": "Google", "google-vertex": "Google Vertex AI",
+        "google-vertex-anthropic": "Google Vertex AI",
+        "mistral": "Mistral AI", "groq": "Groq", "together": "Together AI",
+        "togetherai": "Together AI", "together-ai": "Together AI", "fireworks": "Fireworks AI",
+        "fireworks-ai": "Fireworks AI", "amazon-bedrock": "Amazon Bedrock", "bedrock": "Amazon Bedrock",
+        "huggingface": "Hugging Face", "moonshot": "Moonshot AI", "moonshotai": "Moonshot AI",
+        "moonshotai-cn": "Moonshot AI", "zai": "Z.ai", "zhipuai": "Zhipu AI", "cerebras": "Cerebras",
+        "deepinfra": "DeepInfra", "perplexity": "Perplexity", "vercel": "Vercel AI Gateway",
+        "inception": "Inception", "minimax": "MiniMax", "alibaba": "Alibaba Cloud",
+        "nvidia": "NVIDIA", "baseten": "Baseten", "cohere": "Cohere",
+    ]
 
     /// Which door a model's tokens went through, read from the model key itself. opencode names
     /// a model `provider/id`, which is the answer outright; a bridge that serves one vendor names

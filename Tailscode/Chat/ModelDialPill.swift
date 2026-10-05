@@ -203,7 +203,7 @@ final class ModelDialPill: UIView {
         effortZone.accessibilityHint = String(localized: "Opens the levels, or swipe up or down to change")
     }
 
-    private static func effortWord(_ word: String, isPower: Bool, font: UIFont) -> NSAttributedString {
+    static func effortWord(_ word: String, isPower: Bool, font: UIFont) -> NSAttributedString {
         guard isPower else {
             return NSAttributedString(
                 string: word, attributes: [.font: font, .foregroundColor: Theme.Color.label])

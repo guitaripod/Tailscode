@@ -507,13 +507,15 @@ final class ComposerView: NSView {
     }
 
     private func refreshPills() {
-        let destination = [
-            entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) },
-            entry?.session.directory.map {
-                URL(fileURLWithPath: $0, isDirectory: true).lastPathComponent
-            },
-        ].compactMap { $0 }.joined(separator: " · ")
-        pills.setDestination(destination)
+        let folder = entry?.session.directory.map {
+            URL(fileURLWithPath: $0, isDirectory: true).lastPathComponent
+        }
+        let variants = [
+            [entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) }, folder],
+            [entry?.profileName, folder],
+            [entry?.profileName],
+        ].map { $0.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ") }
+        pills.setDestination(variants)
         let face = ModelDial.face(
             modelWord: modelPillText(), effort: displayedEffort(), options: effortOptions())
         let activeModel = activeModelID
@@ -627,15 +629,32 @@ final class ComposerView: NSView {
 
     /// The chooser over a fleet that exists only as a fixture, so the surface can be looked at and
     /// measured on a desk with no servers on it — `--open models` from the command line.
-    func openDemoModelChooser() {
-        presentModelChooser(sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected)
+    /// `script` is the sheet's own `demonstrate` steps, plus `unreachable`, which takes the last
+    /// machine off the tailnet before the sheet is drawn. The fixture's wall always stands, so the
+    /// spent register is on screen beside the rest.
+    func openDemoModelChooser(script: String = "") {
+        var sources = ModelChooserDemo.sources()
+        if script.split(separator: ",").contains("unreachable"), let last = sources.popLast() {
+            sources.append(
+                ModelSource(
+                    profileID: last.profileID, name: last.name, backend: last.backend,
+                    models: last.models, isCurrent: last.isCurrent,
+                    allowsServerDefault: last.allowsServerDefault,
+                    acceptsAnyModelID: last.acceptsAnyModelID, isReachable: false))
+        }
+        presentModelChooser(
+            sources: sources, selected: ModelChooserDemo.selected,
+            quotas: ModelChooserDemo.quotas())
+        modelSheet?.demonstrate(script)
     }
 
-    private func presentModelChooser(sources: [ModelSource], selected: ModelSelection?) {
+    private func presentModelChooser(
+        sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota]? = nil
+    ) {
         guard let host = window else { return }
         modelSheet = ModelChooserSheet.present(
             on: host, sources: sources, selected: selected,
-            quotas: quotasForModels?() ?? []
+            quotas: quotas ?? quotasForModels?() ?? []
         ) { [weak self] pick in
             self?.modelSheet = nil
             self?.handleModelPick(pick)
@@ -812,17 +831,41 @@ final class ComposerView: NSView {
     /// The dial over the fixture fleet the chooser demo uses, so the popover can be drawn and
     /// measured on a desk with no servers on it — `--open dial` from the command line, or
     /// `--open dial:pill` for the closed pill alone.
-    func openDemoModelDial(popover: Bool, query: String? = nil, cursor: Int? = nil) {
-        let options = ["low", "medium", "high", "xhigh", "max", Ultracode.effortLevel]
-        let word = "Opus"
+    /// `face` draws the closed pill in one of the shapes it has to survive: `long` (a local
+    /// build's whole name), `nolevels`, `think` (a model whose only levels are think and nothink)
+    /// and `server` (the level left to the machine).
+    func openDemoModelDial(
+        popover: Bool, query: String? = nil, cursor: Int? = nil, face: String? = nil
+    ) {
+        var options = ["low", "medium", "high", "xhigh", "max", Ultracode.effortLevel]
+        var word = "Opus"
+        var effort: String? = "high"
+        var tinted = ModelChooserDemo.selected.modelID
+        switch face {
+        case "long":
+            let local = ModelChooserDemo.sources().flatMap(\.models)
+            let pick = ModelSelection(providerID: "ollama", modelID: "nemotron-3.5-lightning:30b-mlx")
+            word = ModelBadge.word(for: pick, in: local)
+            tinted = pick.modelID
+        case "nolevels":
+            options = []
+            effort = nil
+        case "think":
+            options = ["nothink", "think"]
+            effort = "think"
+        case "server":
+            effort = nil
+        default:
+            break
+        }
         pills.setFace(
-            ModelDial.face(modelWord: word, effort: "high", options: options),
-            modelTint: ModelBadge.chip(model: ModelChooserDemo.selected.modelID, effort: nil)
+            ModelDial.face(modelWord: word, effort: effort, options: options),
+            modelTint: ModelBadge.chip(model: tinted, effort: nil)
                 .map(MacTheme.Color.modelIdentity))
         guard popover else { return }
         var state = ModelDialState(
             sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,
-            effort: "high", options: options, modelWord: word, quotas: [],
+            effort: effort, options: options, modelWord: word, quotas: ModelChooserDemo.quotas(),
             recents: ModelChooserDemo.recents, presets: ModelDialDemo.presets,
             agentOptions: [])
         if let query { state.search(query) }

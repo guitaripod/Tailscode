@@ -630,10 +630,12 @@ public struct ModelDialState: Sendable {
     public var currentRung: EffortRung? { rungs.first { $0.level == ladderEffort } }
 
     /// What would become of the level if the cursor's row were taken as it stands, when that is
-    /// not nothing: said under the ladder so a level that will move is never a surprise.
+    /// not nothing: said under the ladder so a level that will move is never a surprise. A model
+    /// that takes no level is already the headline's whole sentence, and is not said twice.
     public var carryNotice: String? {
         guard !effortIsLive, let row = focused, row.preset == nil,
-            stepped?.rowID != row.id, let candidate = row.candidate, let asked = effort
+            stepped?.rowID != row.id, let candidate = row.candidate, let asked = effort,
+            ModelEffort.isOffered(options: focusedOptions)
         else { return nil }
         return ModelEffort.carry(asked, options: focusedOptions)
             .forecast(modelName: candidate.name)

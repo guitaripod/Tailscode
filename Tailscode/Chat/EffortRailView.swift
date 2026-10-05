@@ -181,6 +181,7 @@ private final class RungRowView: UIView {
         caption.font = Theme.Ramp.font(.panelFootnote)
         caption.textColor = Theme.Color.secondaryLabel
         caption.isHidden = !density.showsCaptions || rung.caption.isEmpty
+        caption.numberOfLines = 0
         title.adjustsFontForContentSizeCategory = true
         caption.adjustsFontForContentSizeCategory = true
 
@@ -210,7 +211,9 @@ private final class RungRowView: UIView {
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             row.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(equalToConstant: density.rowHeight),
+            row.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 6),
+            row.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -6),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: density.rowHeight),
         ])
     }
 

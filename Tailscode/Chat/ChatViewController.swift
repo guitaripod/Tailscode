@@ -349,13 +349,26 @@ final class ChatViewController: UIViewController {
                         try? await Task.sleep(for: .seconds(1.5))
                         self?.modelPicker?.tourPeek(matching: model)
                     }
-                    guard
-                        let machine = ProcessInfo.processInfo.environment[
-                            "TAILSCODE_MODELS_MACHINE"
-                        ].flatMap(Int.init)
-                    else { return }
-                    try? await Task.sleep(for: .seconds(1))
-                    self?.modelPicker?.tourMachine(machine)
+                    if let machine = ProcessInfo.processInfo.environment[
+                        "TAILSCODE_MODELS_MACHINE"
+                    ].flatMap(Int.init) {
+                        try? await Task.sleep(for: .seconds(1))
+                        self?.modelPicker?.tourMachine(machine)
+                    }
+                    if let door = ProcessInfo.processInfo.environment["TAILSCODE_MODELS_DOOR"]
+                        .flatMap(Int.init)
+                    {
+                        try? await Task.sleep(for: .seconds(1))
+                        self?.modelPicker?.tourDoor(door)
+                    }
+                    if ProcessInfo.processInfo.environment["TAILSCODE_MODELS_EXPAND"] != nil {
+                        try? await Task.sleep(for: .seconds(1))
+                        self?.modelPicker?.tourExpand()
+                    }
+                    if let query = ProcessInfo.processInfo.environment["TAILSCODE_MODELS_SEARCH"] {
+                        try? await Task.sleep(for: .seconds(1))
+                        self?.modelPicker?.tourSearch(query)
+                    }
                 }
             }
             if let hook = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_GIT"] {
@@ -4898,6 +4911,7 @@ final class ChatViewController: UIViewController {
         return ModelPickerViewController.Dial(
             modelName: model.map { ModelBadge.word(for: $0, in: availableModels) }
                 ?? String(localized: "Auto"),
+            chip: ModelBadge.chip(selection: model, effort: nil),
             options: viewModel.reasoningEffortOptions,
             agentOptions: viewModel.backend.reasoningEffortOptions,
             effort: viewModel.displayedEffort, contextTokens: transcriptFill?.used,
@@ -4920,9 +4934,15 @@ final class ChatViewController: UIViewController {
             guard ProcessInfo.processInfo.environment["TAILSCODE_OPEN_MODELS"] == "demo" else {
                 return nil
             }
+            DialTour.pinFixturePairs()
             return ModelPickerViewController(
                 sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,
                 quotas: ModelChooserDemo.quotas(), recents: ModelChooserDemo.recents,
+                dial: ModelPickerViewController.Dial(
+                    modelName: "Opus",
+                    chip: ModelBadge.chip(selection: ModelChooserDemo.selected, effort: nil),
+                    options: ["low", "medium", "high"], agentOptions: ["low", "medium", "high"],
+                    effort: "high", contextTokens: 148_900, onEffort: { _ in }),
                 onSelect: onSelect)
         #else
             return nil
@@ -4934,7 +4954,11 @@ final class ChatViewController: UIViewController {
     /// only thing it can honour: the same model, on that machine, in a new chat.
     private func apply(_ pick: ModelPick) {
         guard pick.isElsewhere else {
-            chooseModel(pick.selection)
+            if let preset = pick.preset {
+                choose(preset)
+            } else {
+                chooseModel(pick.selection)
+            }
             return
         }
         let alert = UIAlertController(
@@ -4944,7 +4968,12 @@ final class ChatViewController: UIViewController {
         alert.addAction(
             UIAlertAction(title: ModelFleet.moveAction, style: .default) { [weak self] _ in
                 guard let self else { return }
-                let effort = self.viewModel.displayedEffort
+                let effort: String?
+                switch pick.preset?.effort {
+                case .level(let level)?: effort = level
+                case .server?: effort = nil
+                default: effort = self.viewModel.displayedEffort
+                }
                 let directory = self.viewModel.session.directory
                 let stacked = self.navigationController?.viewControllers.first as? HomeViewController
                 let workspace = sequence(first: self as UIViewController, next: \.parent)

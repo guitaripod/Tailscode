@@ -89,6 +89,17 @@ SHOTS=(
   "vx-home-local|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_HOME_DIAL=aim:demo-opencode+pick:ollama^qwen3:14b+level:think|9"
   "vx-home-menu|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_HOME_DIAL=aim:demo-opencode+menu|10"
   "vx-home-rail|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_HOME_DIAL=aim:demo-opencode+pick:openai^gpt-5.1-codex+rail|10"
+  "pv-prime|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_HOME_DIAL=aim:demo-opencode+menu|9"
+  "pv-claude|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh+pins TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12|18"
+  "pv-homelab|--demo|TAILSCODE_OPEN_SESSION=demo-o1 TAILSCODE_DIAL=pick:openai^gpt-5.1-codex+level:medium+pins TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12|18"
+  "pv-homelab-tab|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12 TAILSCODE_MODELS_MACHINE=1|20"
+  "pv-demo|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8|14"
+  "pv-demo-m2|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_MACHINE=1|14"
+  "pv-demo-m3|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_MACHINE=2|14"
+  "pv-demo-door|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_DOOR=2|14"
+  "pv-demo-expand|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_EXPAND=1|14"
+  "pv-demo-search|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_SEARCH=deep|16"
+  "pv-search|--demo|TAILSCODE_OPEN_SESSION=demo-o1 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_SEARCH=qwen|16"
   "welcome||TAILSCODE_FAKE_TAILNET=up|5"
   "setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_FAKE_TAILNET=up|6"
 )
@@ -109,6 +120,8 @@ if [ -n "${IPAD:-}" ]; then
     "14-analytics|--demo|TAILSCODE_WORKSPACE_WALK=5:analytics|11"
     "15-delegate|--demo|TAILSCODE_WORKSPACE_WALK=5:delegate=studio|12"
     "11-focus|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c4,8:hide|13"
+    "pv-demo|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=12|20"
+    "pv-demo-m3|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=12 TAILSCODE_MODELS_MACHINE=2|22"
   )
 fi
 
@@ -125,6 +138,7 @@ boot_device() {
   xcrun simctl bootstatus "$id" >/dev/null 2>&1 || true
   xcrun simctl ui "$id" appearance "${TAILSCODE_SHOT_APPEARANCE:-dark}" >/dev/null 2>&1 || true
   xcrun simctl spawn "$id" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true >/dev/null 2>&1 || true
+  xcrun simctl ui "$id" content_size "${TAILSCODE_SHOT_CONTENT_SIZE:-large}" >/dev/null 2>&1 || true
   xcrun simctl status_bar "$id" override \
     --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
     --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 \

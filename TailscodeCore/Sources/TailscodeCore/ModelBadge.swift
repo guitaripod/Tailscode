@@ -200,7 +200,7 @@ public enum ModelBadge {
 /// What a coloured model label is made of: the name, the family whose hue it wears — nil for a
 /// model the catalog does not recognise, which keeps the quiet register — and the effort word,
 /// which carries its own heat. Both facts stay words; the colour is on top, never instead.
-public struct ModelChip: Equatable, Sendable {
+public struct ModelChip: Hashable, Sendable {
     public let name: String
     public let family: ModelTint.Family?
     public let effort: String?

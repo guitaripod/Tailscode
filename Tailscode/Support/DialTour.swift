@@ -18,6 +18,19 @@
             }
         }
 
+        static func pinFixturePairs() {
+            for preset in [
+                ModelPreset(
+                    selection: ModelSelection(providerID: "anthropic", modelID: "claude-opus-5"),
+                    effort: .level("high")),
+                ModelPreset(
+                    selection: ModelSelection(providerID: "anthropic", modelID: "claude-sonnet-5"),
+                    effort: .level("low")),
+            ] where !ModelPresetStore.all().contains(preset) {
+                ModelPresetStore.pin(preset)
+            }
+        }
+
         static func star(_ modelID: String) {
             let starred = ModelPreset(selection: selection(modelID), effort: .keep)
             if !ModelPresetStore.all().contains(starred) { ModelPresetStore.pin(starred) }

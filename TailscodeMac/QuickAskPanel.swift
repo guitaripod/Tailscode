@@ -141,7 +141,7 @@ final class QuickAskPanel: NSPanel {
 
         dialPill.onPress = { [weak self] in self?.openModelDial() }
         dialPill.onStep = { [weak self] delta in self?.stepEffort(by: delta) }
-        dialPill.toolTip = Localized.text(
+        dialPill.usage = Localized.text(
             "The model the question runs on and how hard it thinks — scroll to step the effort")
 
         attachButton.bezelStyle = .rounded
@@ -168,8 +168,12 @@ final class QuickAskPanel: NSPanel {
         completion.hasProject = false
         completion.onPick = { [weak self] command in self?.accept(command) }
 
-        let aim = NSStackView(views: [dialPill, attachButton])
+        let slack = NSView()
+        slack.setContentHuggingPriority(.init(1), for: .horizontal)
+        slack.setContentCompressionResistancePriority(.init(1), for: .horizontal)
+        let aim = NSStackView(views: [dialPill, attachButton, slack])
         aim.orientation = .horizontal
+        aim.distribution = .fill
         aim.spacing = 8
         let column = QuickAskDropView(views: [
             aimStrip, editor, completion, chips, aim, status, starters,
@@ -758,10 +762,12 @@ final class QuickAskPanel: NSPanel {
     /// catalog has been read, and "Model…" only while nothing is picked and nobody has asked the
     /// catalog yet — a blank word would read as a machine with no models.
     private func modelWord(for server: ConnectionProfile) -> String {
-        let picked = QuickAskDefaults.model(forProfileID: server.id)
-        return picked == nil && ModelCatalogStore.cached(server.id).isEmpty
-            ? Localized.text("Model…")
-            : ModelBadge.label(model: picked, effort: nil)
+        let catalog = ModelCatalogStore.cached(server.id)
+        guard let picked = QuickAskDefaults.model(forProfileID: server.id) else {
+            return catalog.isEmpty
+                ? Localized.text("Model…") : ModelBadge.label(model: nil, effort: nil)
+        }
+        return ModelBadge.word(for: picked, in: catalog)
     }
 
     /// A model whose levels are its own can make the level already picked unrunnable. The aim

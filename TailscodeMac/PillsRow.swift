@@ -44,7 +44,7 @@ final class PillsRow: NSView {
         action: nil)
     private let vimBadge = NSTextField(labelWithString: "")
     private let vimBadgeWrap = NSView()
-    private let destinationLabel = NSTextField(labelWithString: "")
+    private let destinationLabel = DestinationLabel()
     private let dialPill = DialPill()
     private let commandPill: MenuPill
     private let attachButton: MenuPill
@@ -74,14 +74,11 @@ final class PillsRow: NSView {
         vimBadgeWrap.isHidden = true
 
         destinationLabel.textColor = MacTheme.Color.onGlassSecondary
-        destinationLabel.lineBreakMode = .byTruncatingMiddle
         destinationLabel.translatesAutoresizingMaskIntoConstraints = false
-        destinationLabel.setContentCompressionResistancePriority(
-            .defaultLow, for: .horizontal)
 
         dialPill.onPress = { [weak self] in self?.onDial?() }
         dialPill.onStep = { [weak self] delta in self?.onDialStep?(delta) }
-        dialPill.toolTip = Localized.text(
+        dialPill.usage = Localized.text(
             "The model the next prompt runs on and how hard it thinks — scroll to step the effort")
         commandPill.rows = { [weak self] in self?.commandRows?() ?? [] }
         commandPill.toolTip = Localized.text("Slash commands")
@@ -103,8 +100,8 @@ final class PillsRow: NSView {
         stopButton.action = #selector(stopTapped)
         stopButton.translatesAutoresizingMaskIntoConstraints = false
 
-        dialPill.setContentCompressionResistancePriority(.init(251), for: .horizontal)
-        commandPill.setContentCompressionResistancePriority(.init(251), for: .horizontal)
+        dialPill.setContentCompressionResistancePriority(.init(450), for: .horizontal)
+        commandPill.setContentCompressionResistancePriority(.init(450), for: .horizontal)
         commandPill.cell?.lineBreakMode = .byTruncatingTail
         attachButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         stopButton.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -128,7 +125,9 @@ final class PillsRow: NSView {
         row.spacing = MacTheme.Spacing.s
         row.translatesAutoresizingMaskIntoConstraints = false
         row.setClippingResistancePriority(.init(400), for: .horizontal)
-        row.setVisibilityPriority(.detachOnlyIfNecessary, for: laneControl)
+        row.setVisibilityPriority(.init(700), for: laneControl)
+        row.setVisibilityPriority(.init(720), for: commandPill)
+        row.setVisibilityPriority(.init(750), for: destinationLabel)
         addSubview(row)
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -190,8 +189,11 @@ final class PillsRow: NSView {
         vimBadgeWrap.layer?.backgroundColor = background.cgColor
     }
 
-    func setDestination(_ text: String) {
-        destinationLabel.stringValue = text
+    /// The destination's readings from fullest to barest; the label wears the fullest one the row
+    /// has room for, so a narrow pane drops the agent's name before it cuts the machine's.
+    func setDestination(_ variants: [String]) {
+        destinationLabel.variants = variants
+        destinationLabel.toolTip = variants.first
     }
 
     /// The dial wears what the composer already knows — the model's word, the level a send would
@@ -221,6 +223,74 @@ final class PillsRow: NSView {
     }
 }
 
+/// Where the next prompt goes, in the fullest reading that fits. It asks the row for the room of
+/// its fullest reading, so the row compresses it rather than hugging whatever it last wore, and it
+/// steps down a reading at a time as the room shrinks: a machine's name cut to an ellipsis is the
+/// one thing this label exists to say, and an agent's name beside it is the part to lose first.
+@MainActor
+final class DestinationLabel: NSTextField {
+    var variants: [String] = [] {
+        didSet {
+            resize()
+            fit()
+        }
+    }
+
+    /// The fullest reading is wanted below the priority at which the row lets its optional
+    /// controls go, and the barest is held above it: the lane control and the command pill leave
+    /// before the machine's name is cut.
+    private lazy var wants: NSLayoutConstraint = {
+        let constraint = widthAnchor.constraint(greaterThanOrEqualToConstant: 0)
+        constraint.priority = .init(300)
+        constraint.isActive = true
+        return constraint
+    }()
+
+    init() {
+        super.init(frame: .zero)
+        isEditable = false
+        isSelectable = false
+        isBordered = false
+        isBezeled = false
+        drawsBackground = false
+        lineBreakMode = .byTruncatingMiddle
+        setContentCompressionResistancePriority(.init(450), for: .horizontal)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        let base = super.intrinsicContentSize
+        guard let barest = variants.last else { return base }
+        return NSSize(width: width(of: barest), height: base.height)
+    }
+
+    override var font: NSFont? {
+        didSet { resize() }
+    }
+
+    private func resize() {
+        wants.constant = variants.first.map(width(of:)) ?? 0
+        invalidateIntrinsicContentSize()
+    }
+
+    override func layout() {
+        super.layout()
+        fit()
+    }
+
+    private func fit() {
+        let room = bounds.width
+        let chosen = variants.first { width(of: $0) <= room + 0.5 } ?? variants.last ?? ""
+        if stringValue != chosen { stringValue = chosen }
+    }
+
+    private func width(of text: String) -> CGFloat {
+        let attributes: [NSAttributedString.Key: Any] = [.font: font ?? NSFont.systemFont(ofSize: 0)]
+        return ceil((text as NSString).size(withAttributes: attributes).width) + 4
+    }
+}
+
 /// The one pill for model and effort: a tinted dot, the model's word, the effort word in its
 /// tier's colour and the five-bar meter. A wheel over it steps the effort one notch per click,
 /// because which machine and how hard are one decision and the second half of it should not
@@ -229,6 +299,12 @@ final class PillsRow: NSView {
 final class DialPill: NSButton {
     var onPress: (() -> Void)?
     var onStep: ((Int) -> Void)?
+    /// What the pill is for, said under what it is wearing. The face leads the tooltip because a
+    /// long model name is the first thing a narrow pane cuts, and the tooltip is where it is read
+    /// whole.
+    var usage = "" {
+        didSet { syncToolTip() }
+    }
 
     private let dot = NSTextField(labelWithString: "●")
     private let modelLabel = NSTextField(labelWithString: "")
@@ -336,6 +412,7 @@ final class DialPill: NSButton {
         effortWord.isHidden = !face.showsMeter
         meter.isHidden = !face.showsMeter
         setAccessibilityLabel(face.spoken)
+        syncToolTip()
         guard let word = face.effortWord else {
             stopShimmer()
             invalidateIntrinsicContentSize()
@@ -366,6 +443,11 @@ final class DialPill: NSButton {
         syncShimmer()
         invalidateIntrinsicContentSize()
         needsDisplay = true
+    }
+
+    private func syncToolTip() {
+        toolTip = [face?.spoken, usage].compactMap { $0 }.filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     /// Ultracode is a power, not a level, so its word takes no heat: it is set letter by letter

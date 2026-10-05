@@ -123,6 +123,17 @@ public enum ModelPresetStore {
         return after.contains(preset)
     }
 
+    /// Takes every pin of one model through one door off the list — its star and each pair — for
+    /// a star that reads lit because of any of them: pressing a lit star has to put it out.
+    public static func unpinAll(_ selection: ModelSelection) {
+        persist(all().filter { $0.selection != selection })
+    }
+
+    /// Whether any pin — a star or a pair — stands on this model through this door.
+    public static func isPinned(_ selection: ModelSelection) -> Bool {
+        all().contains { $0.selection == selection }
+    }
+
     private static func persist(_ presets: [ModelPreset]) {
         store(Array(presets.filter { $0.effort != .keep }.prefix(limit)))
         ModelFavoritesStore.replace(presets.filter { $0.effort == .keep }.map(\.selection))

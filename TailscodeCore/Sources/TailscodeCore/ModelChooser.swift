@@ -135,17 +135,121 @@ public struct ModelPick: Sendable, Hashable {
     public let serverName: String
     /// The model as a person would say it, for that same sentence.
     public let modelName: String
+    /// The pinned pair this pick came from, resolved to the door the machine takes, so a caller
+    /// sets the model and its level together. Nil for a model picked on its own.
+    public let preset: ModelPreset?
 
     public init(
         profileID: String, selection: ModelSelection?, isElsewhere: Bool, serverName: String,
-        modelName: String = ""
+        modelName: String = "", preset: ModelPreset? = nil
     ) {
         self.profileID = profileID
         self.selection = selection
         self.isElsewhere = isElsewhere
         self.serverName = serverName
         self.modelName = modelName
+        self.preset = preset
     }
+}
+
+/// What the person is aiming with when the chooser opens: the level the composer carries and the
+/// levels the agent offers where a model names none. Told to a chooser, it lets every row say the
+/// level a pick of it would run at.
+public struct ChooserAim: Sendable, Equatable {
+    public let effort: String?
+    public let agentOptions: [String]
+
+    public init(effort: String?, agentOptions: [String]) {
+        self.effort = effort
+        self.agentOptions = agentOptions
+    }
+}
+
+/// Where the chooser was opened from, which decides what a pick on another machine means.
+public enum ChooserContext: Sendable {
+    /// A conversation in hand: a pick elsewhere starts a chat there.
+    case chat
+    /// A message not yet sent: a pick elsewhere aims that message at the other machine.
+    case composer
+    /// A server's own default: there is no other machine to be moved to.
+    case serverDefault
+}
+
+/// The level a pick of one row would run at, read on the same meter the pill wears. `level` nil
+/// is the server deciding; `moved` says the level asked for is not one this model takes, and
+/// `hint` says how it moved in two words.
+public struct ModelRowLevel: Sendable, Hashable {
+    public let level: String?
+    public let word: String?
+    public let heat: Int
+    public let isPower: Bool
+    public let isServer: Bool
+    public let isEmber: Bool
+    public let asked: String?
+    public let moved: Bool
+    public let takesLevels: Bool
+    public let hint: String?
+
+    public init(
+        level: String?, word: String?, heat: Int, isPower: Bool, isServer: Bool, isEmber: Bool,
+        asked: String?, moved: Bool, takesLevels: Bool, hint: String?
+    ) {
+        self.level = level
+        self.word = word
+        self.heat = heat
+        self.isPower = isPower
+        self.isServer = isServer
+        self.isEmber = isEmber
+        self.asked = asked
+        self.moved = moved
+        self.takesLevels = takesLevels
+        self.hint = hint
+    }
+
+    /// The reading for a model whose levels are `options`, at `level` as the pick would send it.
+    /// Nil where the model takes no level, because then there is nothing to draw.
+    static func of(
+        level: String?, asked: String?, moved: Bool, options: [String]
+    ) -> ModelRowLevel? {
+        guard ModelEffort.isOffered(options: options) else { return nil }
+        let face = ModelDial.face(modelWord: "", effort: level, options: options)
+        let word = face.effortWord
+        let hint = moved
+            ? asked.map { Localized.text("%@ → %@", spelled($0), word ?? Localized.text("server")) }
+            : nil
+        return ModelRowLevel(
+            level: ModelEffort.surviving(level, options: options), word: word, heat: face.heat,
+            isPower: face.isPower, isServer: face.isServer, isEmber: face.isEmber, asked: asked,
+            moved: moved, takesLevels: true, hint: hint)
+    }
+
+    /// A row that is not the chat's own model, at the level the aim carries onto it.
+    static func carried(_ asked: String?, options: [String]) -> ModelRowLevel? {
+        let carry = ModelEffort.carry(asked, options: options)
+        return of(level: carry.level, asked: carry.asked, moved: carry.moved, options: options)
+    }
+
+    private static func spelled(_ level: String) -> String {
+        ModelDial.isPower(level) ? Ultracode.menuTitle.lowercased() : level
+    }
+}
+
+/// Where a row stands among the person's pins, and the one pin a press on its star would toggle.
+public struct RowPinning: Sendable, Hashable {
+    /// Any pin on this model through this door — its star, or a pair at any level.
+    public let isPinned: Bool
+    /// The level the pin a press would make, or the pair a pinned-pair row is.
+    public let level: PresetEffort
+    /// The pin a press on this row toggles; nil on a row that cannot be pinned.
+    public let preset: ModelPreset?
+
+    public init(isPinned: Bool, level: PresetEffort, preset: ModelPreset?) {
+        self.isPinned = isPinned
+        self.level = level
+        self.preset = preset
+    }
+
+    public static let none = RowPinning(isPinned: false, level: .keep, preset: nil)
 }
 
 /// A model as a person means it — one name, and every provider that will run it. Two gateways
@@ -236,7 +340,7 @@ public enum ModelFact: Sendable, Hashable {
         case .vision: return Localized.text("Reads images")
         case .pdf: return Localized.text("Reads PDFs")
         case .attachments: return Localized.text("Takes attachments")
-        case .local: return Localized.text("Runs on your server's machine")
+        case .local: return Localized.text("Runs on the server's own hardware")
         case .server(let name): return Localized.text("Runs on %@ — picking it starts a chat there", name)
         }
     }
@@ -378,8 +482,18 @@ public struct ModelMachine: Sendable, Hashable, Identifiable {
 
     /// What a pick on this tab does, said once above the list rather than repeated on every row.
     /// Nothing on the current machine, because changing this chat is what a chooser is for.
-    public var consequence: String? {
-        isCurrent ? nil : Localized.text("A pick here starts a new chat on %@", title)
+    public var consequence: String? { consequence(for: .chat) }
+
+    /// The same sentence for where the chooser was opened: a conversation is moved by a pick on
+    /// another machine, a message waiting to be sent is only re-aimed, and a server's own default
+    /// has nowhere else to go.
+    public func consequence(for context: ChooserContext) -> String? {
+        guard !isCurrent else { return nil }
+        switch context {
+        case .chat: return Localized.text("A pick here starts a new chat on %@", title)
+        case .composer: return Localized.text("A pick here aims this message at %@", title)
+        case .serverDefault: return nil
+        }
     }
 }
 
@@ -471,6 +585,9 @@ public struct ModelChooserRow: Sendable, Hashable, Identifiable {
     /// What this row is about, the same wherever it is listed — two rows sharing an anchor are one
     /// model in two places, and expanding either opens both.
     public var anchor: String {
+        if let pair, case .candidate(let candidate) = kind {
+            return "·pair/\(candidate.id)/\(pair.id)"
+        }
         switch kind {
         case .auto: return "·default/\(profileID)"
         case .candidate(let candidate): return candidate.id
@@ -493,12 +610,29 @@ public struct ModelChooserRow: Sendable, Hashable, Identifiable {
     public var pick: ModelPick {
         ModelPick(
             profileID: profileID, selection: selection, isElsewhere: isElsewhere,
-            serverName: serverName, modelName: title)
+            serverName: serverName, modelName: title, preset: pair)
     }
 
-    /// Whether you starred this model, wherever it is listed — a star follows the model
-    /// through every section it appears in.
+    /// Whether you pinned this model, wherever it is listed — a star follows the model
+    /// through every section it appears in, and a pair at any level lights it as well.
     public var isPinned: Bool = false
+
+    /// The level a pick of this row would run at, when the chooser was told the aim. Nil without
+    /// an aim, and on a model that takes no level.
+    public var reading: ModelRowLevel? = nil
+
+    /// The model's name and family hue, for a row drawn as the pill draws it. Nil on the auto row.
+    public var chip: ModelChip? = nil
+
+    /// Where the row stands among the pins, and the pin its star toggles.
+    public var pinning: RowPinning = .none
+
+    /// The one word for where this model runs: *local* on the machine's own hardware, *on* a
+    /// machine that is not the one the chooser opened from, nothing otherwise.
+    public var place: String? = nil
+
+    /// The pinned pair a row of the Pinned section stands for, resolved to this machine's door.
+    var pair: ModelPreset? = nil
 
     public var isAuto: Bool {
         if case .auto = kind { return true }
@@ -596,6 +730,12 @@ public struct ModelChooser: Sendable, Equatable {
     /// while a list is open, and a search that re-ranks two hundred rows per keystroke must not
     /// re-read every gauge to draw them.
     private let walls: [String: QuotaExhaustion]
+    /// The explicit pairs pinned on this device, for the stars and, when shown, the Pinned section.
+    private var pins: [ModelPreset]
+    /// Whether the pinned pairs are listed as rows of their own, ahead of Yours.
+    private let showsPairs: Bool
+    /// The level the chooser was opened with, which every row reads its own level from.
+    public private(set) var aim: ChooserAim?
 
     /// Past this many hosted models a family heading opens rather than scrolls, and the list
     /// arrives shut except for what you are on and what you reach for. Under it, a closed heading
@@ -649,8 +789,13 @@ public struct ModelChooser: Sendable, Equatable {
     public init(
         sources: [ModelSource], selected: ModelSelection?,
         recents: [ModelSelection] = RecentModelsStore.all(),
-        favorites: [ModelSelection] = ModelFavoritesStore.all(), quotas: [UsageQuota] = []
+        favorites: [ModelSelection] = ModelFavoritesStore.all(), quotas: [UsageQuota] = [],
+        showsPairs: Bool = false, pins: [ModelPreset] = ModelPresetStore.explicit(),
+        aim: ChooserAim? = nil
     ) {
+        self.pins = pins.filter { $0.effort != .keep }
+        self.showsPairs = showsPairs
+        self.aim = aim
         let ordered = sources.sorted { lhs, rhs in lhs.isCurrent && !rhs.isCurrent }
         self.sources = ordered
         let candidates = ordered.flatMap { Self.fold(source: $0, preferred: selected) }
@@ -968,7 +1113,9 @@ public struct ModelChooser: Sendable, Equatable {
     @discardableResult
     public mutating func setExpanded(_ shown: Bool, at index: Int? = nil) -> Bool {
         let target = index ?? cursor
-        guard let row = rows.indices.contains(target) ? rows[target] : nil else { return false }
+        guard let row = rows.indices.contains(target) ? rows[target] : nil, row.pair == nil else {
+            return false
+        }
         let candidate: ModelCandidate
         switch row.kind {
         case .candidate(let value) where value.offers.count > 1: candidate = value
@@ -1083,7 +1230,14 @@ public struct ModelChooser: Sendable, Equatable {
         let matches = self.matches(in: mine)
         matched = matches.count
         if query.isEmpty {
-            sections += yoursSection(in: mine)
+            let paired = showsPairs ? pinnedSection(in: mine) : []
+            let covered = Set(paired.flatMap(\.rows).compactMap { row -> String? in
+                if case .candidate(let candidate) = row.kind { return candidate.id }
+                return nil
+            })
+            let runningCovered = paired.flatMap(\.rows).contains(where: \.isSelected)
+            sections += paired
+            sections += yoursSection(in: mine, covered: covered, runningCovered: runningCovered)
         }
         sections += localSection(from: matches)
         var byFamily: [ModelFamily: [(ModelCandidate, [Int])]] = [:]
@@ -1114,9 +1268,120 @@ public struct ModelChooser: Sendable, Equatable {
         elsewhereMatched = elsewhere.reduce(0) { $0 + $1.count }
         sections += elsewhere
         sections += literalSections()
-        self.sections = sections
+        let keys = pinnedKeys
+        self.sections = sections.map { section in
+            ModelChooserSection(
+                id: section.id, title: section.title, detail: section.detail,
+                rows: section.rows.map { decorated($0, pinned: keys) },
+                canCollapse: section.canCollapse,
+                isCollapsed: section.isCollapsed, count: section.count)
+        }
         self.hidden = hiding
-        rows = sections.flatMap(\.rows)
+        rows = self.sections.flatMap(\.rows)
+    }
+
+    /// The keys of every model that wears a lit star: a bare star, or a pair at any level.
+    private var pinnedKeys: Set<String> {
+        favoriteKeys.union(pins.map(\.selection.rawValue))
+    }
+
+    /// The levels one row's model takes, read the way the composer reads them.
+    private func options(of row: ModelChooserRow, agentOptions: [String]) -> [String] {
+        let model: ModelInfo?
+        switch row.kind {
+        case .auto: return []
+        case .candidate(let candidate): model = candidate.primary.model
+        case .alternate(_, let offer): model = offer.model
+        case .literal: model = nil
+        }
+        return ModelEffort.options(
+            models: model.map { [$0] } ?? [], selection: row.selection, agentOptions: agentOptions)
+    }
+
+    /// The facts every row carries beyond its words: the level a pick would run at, the chip, the
+    /// pin its star toggles, and the word for where it runs. A Pinned row arrives with its own
+    /// reading and pin already set, because its level is the pair's rather than the aim's.
+    private func decorated(_ row: ModelChooserRow, pinned keys: Set<String>) -> ModelChooserRow {
+        var row = row
+        row.chip = ModelBadge.chip(selection: row.selection, effort: nil)
+        row.place = place(of: row)
+        guard row.pair == nil else { return row }
+        guard let selection = row.selection else { return row }
+        if let aim {
+            let options = options(of: row, agentOptions: aim.agentOptions)
+            row.reading = row.isSelected
+                ? ModelRowLevel.of(
+                    level: ModelEffort.surviving(aim.effort, options: options), asked: aim.effort,
+                    moved: false, options: options)
+                : ModelRowLevel.carried(aim.effort, options: options)
+        }
+        let level: PresetEffort = row.reading.map { $0.level.map(PresetEffort.level) ?? .server } ?? .keep
+        row.isPinned = keys.contains(selection.rawValue)
+        row.pinning = RowPinning(
+            isPinned: row.isPinned, level: level,
+            preset: ModelPreset(selection: selection, effort: level))
+        return row
+    }
+
+    private func place(of row: ModelChooserRow) -> String? {
+        if row.isAuto { return nil }
+        if row.isElsewhere { return Localized.text("on %@", row.serverName) }
+        switch row.kind {
+        case .candidate(let candidate) where candidate.isLocal: return Localized.text("local")
+        case .alternate(_, let offer) where offer.isLocal: return Localized.text("local")
+        default: return nil
+        }
+    }
+
+    /// The pinned pairs the shown machine can run, one row each at the pair's own level, ahead of
+    /// everything else: a pair is a decision already made, and the list should open on it. A pair
+    /// that lives on another machine is not listed here — this list is one machine's catalog.
+    private func pinnedSection(in mine: [ModelCandidate]) -> [ModelChooserSection] {
+        guard let shown else { return [] }
+        var rows: [ModelChooserRow] = []
+        var seen: Set<String> = []
+        for pin in pins {
+            guard let resolved = ModelPresetCycle.resolve(pin, on: shown),
+                let candidate = mine.first(where: { $0.carries(resolved.selection) }),
+                let offer = candidate.offer(for: resolved.selection),
+                seen.insert(resolved.id).inserted
+            else { continue }
+            let leading = ModelCandidate(
+                id: candidate.id, name: candidate.name, family: candidate.family,
+                offers: [offer] + candidate.offers.filter { $0.selection != offer.selection },
+                profileID: candidate.profileID, serverName: candidate.serverName,
+                isElsewhere: candidate.isElsewhere)
+            let options = ModelEffort.options(
+                models: [offer.model], selection: offer.selection,
+                agentOptions: aim?.agentOptions ?? [])
+            let reading: ModelRowLevel?
+            switch pin.effort {
+            case .server: reading = ModelRowLevel.of(level: nil, asked: nil, moved: false, options: options)
+            case .level(let level): reading = ModelRowLevel.carried(level, options: options)
+            case .keep: reading = aim.flatMap { ModelRowLevel.carried($0.effort, options: options) }
+            }
+            let running = aim.map {
+                !candidate.isElsewhere && resolved.matches(model: selected, effort: $0.effort)
+            } ?? false
+            var row = ModelChooserRow(
+                kind: .candidate(leading), profileID: candidate.profileID,
+                serverName: candidate.serverName, isElsewhere: candidate.isElsewhere,
+                sectionID: "·pinned", title: candidate.name,
+                detail: detail(for: leading, namesProvider: true), highlight: [],
+                facts: ModelFact.of(leading, policy: policy), isSelected: running,
+                isExpanded: false, canExpand: false, isNested: false,
+                wall: walls[offer.selection.rawValue], isPinned: true)
+            row.reading = reading
+            row.pinning = RowPinning(isPinned: true, level: pin.effort, preset: pin)
+            row.pair = resolved
+            rows.append(row)
+        }
+        guard !rows.isEmpty else { return [] }
+        return [
+            ModelChooserSection(
+                id: "·pinned", title: Localized.text("Pinned"),
+                detail: Localized.text("A model and a level together"), rows: rows)
+        ]
     }
 
     /// What is yours on this machine, in one short section: the model this chat runs, named
@@ -1124,7 +1389,9 @@ public struct ModelChooser: Sendable, Equatable {
     /// reached for lately; and the server's own default, which is a real answer. Three headings
     /// used to say this — Current, Pinned, Recent — and a person opening the list read three
     /// headings before the first model they had not already chosen.
-    private func yoursSection(in mine: [ModelCandidate]) -> [ModelChooserSection] {
+    private func yoursSection(
+        in mine: [ModelCandidate], covered: Set<String> = [], runningCovered: Bool = false
+    ) -> [ModelChooserSection] {
         var picked: [ModelCandidate] = []
         var seen = Set<String>()
         func admit(_ candidate: ModelCandidate?) {
@@ -1132,9 +1399,12 @@ public struct ModelChooser: Sendable, Equatable {
             else { return }
             picked.append(candidate)
         }
-        if let selected, let inUse = mine.first(where: { !$0.isElsewhere && $0.carries(selected) }) {
+        if !runningCovered, let selected,
+            let inUse = mine.first(where: { !$0.isElsewhere && $0.carries(selected) })
+        {
             admit(inUse)
         }
+        seen.formUnion(covered)
         for favorite in favorites { admit(mine.first { $0.carries(favorite) }) }
         for recent in recents.prefix(Self.recentLimit) { admit(mine.first { $0.carries(recent) }) }
         var rows = picked.flatMap { self.rows(for: $0, section: "·yours", highlight: []) }
@@ -1400,13 +1670,67 @@ public struct ModelChooser: Sendable, Equatable {
 
     /// Stars or unstars a model and re-renders: the Yours section answers immediately, so the
     /// press feels like moving the list rather than filing a preference away somewhere.
+    ///
+    /// A star lit by a pair rather than a bare star is put out with every pin of the model, so a
+    /// press on a lit star always leaves it dark.
     public mutating func togglePin(_ selection: ModelSelection) {
-        ModelFavoritesStore.toggle(selection)
-        favorites = ModelFavoritesStore.all()
-        favoriteKeys = Set(favorites.map(\.rawValue))
+        if !favoriteKeys.contains(selection.rawValue), pins.contains(where: { $0.selection == selection }) {
+            ModelPresetStore.unpinAll(selection)
+        } else {
+            ModelFavoritesStore.toggle(selection)
+        }
+        reloadPins()
         rebuild()
         cursor = min(cursor, max(0, rows.count - 1))
     }
+
+    private mutating func reloadPins() {
+        favorites = ModelFavoritesStore.all()
+        favoriteKeys = Set(favorites.map(\.rawValue))
+        pins = ModelPresetStore.explicit()
+    }
+
+    /// Pins or unpins what a press on this row's star means, and answers whether the row is pinned
+    /// afterwards. The press toggles the row's own pair — the model at the level a pick of it would
+    /// run at — through the store's one rule: pinning it absorbs the model's bare star, unpinning it
+    /// takes the star too. A row of the Pinned section toggles exactly its pair. A row lit only by
+    /// pairs at other levels puts every one of them out, because a press on a lit star must never
+    /// leave it lit by a pin the press cannot see.
+    @discardableResult
+    public mutating func togglePin(row: ModelChooserRow) -> Bool {
+        guard let preset = row.pinning.preset else { return false }
+        let all = ModelPresetStore.all()
+        let starred = all.contains { $0.selection == preset.selection && $0.effort == .keep }
+        if row.pair == nil, row.pinning.isPinned, !all.contains(preset), !starred {
+            ModelPresetStore.unpinAll(preset.selection)
+        } else {
+            ModelPresetStore.pin(preset)
+        }
+        refreshPins()
+        return row.pair != nil
+            ? pins.contains(preset)
+            : pinnedKeys.contains(preset.selection.rawValue)
+    }
+
+    /// Reads the stars and pairs again after a pin changed anywhere, and redraws.
+    public mutating func refreshPins() {
+        reloadPins()
+        let anchor = focused?.anchor
+        rebuild()
+        cursor = rows.firstIndex { $0.anchor == anchor } ?? min(cursor, max(0, rows.count - 1))
+    }
+
+    /// Tells the chooser the level it is aiming with, so every row reads the level a pick would
+    /// run at; nil takes the readings away.
+    public mutating func setAim(_ aim: ChooserAim?) {
+        guard aim != self.aim else { return }
+        self.aim = aim
+        rebuild()
+    }
+
+    /// Whether any row showing can be opened onto its other doors, for a hint that names the
+    /// chevron only when there is one.
+    public var canExpandAny: Bool { rows.contains(where: \.canExpand) }
 
     /// Opens or shuts one heading. Answers whether anything happened, so a key that finds nothing
     /// to fold can go on meaning what it usually means.

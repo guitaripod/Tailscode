@@ -2,22 +2,31 @@ import TailscodeCore
 import UIKit
 
 /// The effort ladder laid flat across the top of the catalog, so the sheet that chooses a model
-/// can also say how hard it will work: one segment per level the current model takes, coldest at
-/// the left, the server's own choice as a chip beside the heading.
+/// can also say how hard it will work. It is the pill's own ladder, not a second one: the same
+/// rungs as the rail in the same cold-to-hot order with the server's choice as the first stop, the
+/// same five bars under the same words, and under the row the same sentence for what the held
+/// level means.
 ///
 /// It acts on the model the chat already runs and is live — a level is something a person nudges
-/// while looking at the list, not something submitted with a row.
+/// while looking at the list, not something submitted with a row. A level is tapped or slid to, a
+/// tick for every rung crossed.
 @MainActor
 final class EffortStripView: UIView {
     var onSet: ((String?) -> Void)?
 
     private let card = UIView()
+    private let dot = UIImageView()
     private let heading = UILabel()
-    private let serverChip = UIButton(type: .system)
+    private let context = UILabel()
     private let segments = UIStackView()
-    private var options: [String] = []
+    private let caption = UILabel()
+    private var rungs: [EffortRung] = []
+    private var buttons: [UIControl] = []
     private var effort: String?
+    private var options: [String] = []
     private var modelName = ""
+    private var chip: ModelChip?
+    private var contextWord = ""
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -35,26 +44,33 @@ final class EffortStripView: UIView {
         card.translatesAutoresizingMaskIntoConstraints = false
         addSubview(card)
 
-        heading.font = Theme.Ramp.font(.rowDetail)
-        heading.textColor = Theme.Color.secondaryLabel
+        heading.font = Theme.Ramp.font(.rowTitleStrong)
+        heading.textColor = Theme.Color.label
         heading.adjustsFontForContentSizeCategory = true
+        heading.numberOfLines = 0
+        context.font = Theme.Ramp.font(.rowMeta)
+        context.textColor = Theme.Color.tertiaryLabel
+        context.adjustsFontForContentSizeCategory = true
+        context.setContentHuggingPriority(.required, for: .horizontal)
+        dot.setContentHuggingPriority(.required, for: .horizontal)
 
-        var chip = UIButton.Configuration.plain()
-        chip.imagePadding = 5
-        chip.contentInsets = NSDirectionalEdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8)
-        chip.baseForegroundColor = Theme.Color.secondaryLabel
-        serverChip.configuration = chip
-        serverChip.addAction(UIAction { [weak self] _ in self?.choose(nil) }, for: .touchUpInside)
-
-        let top = UIStackView(arrangedSubviews: [heading, UIView(), serverChip])
+        let top = UIStackView(arrangedSubviews: [dot, heading, UIView(), context])
         top.axis = .horizontal
         top.alignment = .center
+        top.spacing = 7
 
         segments.axis = .horizontal
         segments.spacing = 4
         segments.distribution = .fillEqually
+        segments.addGestureRecognizer(
+            UIPanGestureRecognizer(target: self, action: #selector(slid(_:))))
 
-        let column = UIStackView(arrangedSubviews: [top, segments])
+        caption.font = Theme.Ramp.font(.rowMeta)
+        caption.textColor = Theme.Color.secondaryLabel
+        caption.adjustsFontForContentSizeCategory = true
+        caption.numberOfLines = 0
+
+        let column = UIStackView(arrangedSubviews: [top, segments, caption])
         column.axis = .vertical
         column.spacing = 10
         column.translatesAutoresizingMaskIntoConstraints = false
@@ -69,7 +85,15 @@ final class EffortStripView: UIView {
             column.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 10),
             column.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -10),
         ])
-        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
+
+        isAccessibilityElement = false
+        card.isAccessibilityElement = true
+        card.accessibilityTraits = .adjustable
+        card.accessibilityLabel = String(localized: "Effort")
+        registerForTraitChanges([
+            UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self,
+            UITraitPreferredContentSizeCategory.self,
+        ]) {
             (view: EffortStripView, _) in
             view.card.backgroundColor = UIColor.label.withAlphaComponent(0.05)
             view.card.layer.borderColor = UIColor.label.withAlphaComponent(0.07).cgColor
@@ -77,43 +101,41 @@ final class EffortStripView: UIView {
         }
     }
 
-    func render(modelName: String, options: [String], effort: String?) {
+    func render(
+        modelName: String, chip: ModelChip?, context: String, options: [String], effort: String?
+    ) {
         self.modelName = modelName
-        self.options = ModelDial.ascending(options: options)
+        self.chip = chip
+        self.contextWord = context
+        self.options = options
         self.effort = ModelEffort.surviving(effort, options: options)
         render()
     }
 
     private func render() {
-        isHidden = options.isEmpty
-        heading.text = String(localized: "Effort for \(modelName), this chat")
-
-        var chip = serverChip.configuration ?? .plain()
-        let server = effort == nil
-        chip.image = UIImage(
-            systemName: server ? "circle.fill" : "circle",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 7, weight: .semibold))
-        var title = AttributedString(String(localized: "server decides"))
-        title.font = Theme.Ramp.font(.rowMeta)
-        chip.attributedTitle = title
-        chip.baseForegroundColor = server ? Theme.Color.label : Theme.Color.secondaryLabel
-        serverChip.configuration = chip
-        serverChip.accessibilityTraits = server ? [.button, .selected] : .button
+        isHidden = !ModelEffort.isOffered(options: options)
+        guard !isHidden else { return }
+        rungs = Array(ModelDial.rungs(options: options).reversed())
+        dot.image = chip.map { EffortMeterView.dotImage(Theme.Color.modelIdentity($0)) }
+            ?? UIImage(
+                systemName: "circle",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .semibold))?
+            .withTintColor(Theme.Color.tertiaryLabel, renderingMode: .alwaysOriginal)
+        heading.text = modelName
+        context.text = contextWord
 
         segments.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for level in options {
-            let reading = EffortMeterView.Reading(level: level, options: options)
-            let selected = level == effort
-            let button = UIButton(type: .custom)
+        buttons = []
+        for rung in rungs {
+            let selected = rung.level == effort
+            let button = UIControl()
             button.layer.cornerRadius = 12
             button.layer.cornerCurve = .continuous
-            button.layer.borderWidth = selected ? 1.5 : 0
-            button.layer.borderColor = (Theme.Color.modelEffort(level) ?? Theme.Color.label).cgColor
-            button.backgroundColor = UIColor.label.withAlphaComponent(selected ? 0.1 : 0.04)
-            let meter = EffortMeterView(reading: reading)
+            button.backgroundColor = UIColor.label.withAlphaComponent(selected ? 0.12 : 0.04)
+            let meter = EffortMeterView(reading: EffortMeterView.Reading(rung: rung))
             meter.translatesAutoresizingMaskIntoConstraints = false
             let label = UILabel()
-            label.attributedText = Self.word(level, selected: selected)
+            label.attributedText = Self.word(rung, selected: selected)
             label.adjustsFontSizeToFitWidth = true
             label.minimumScaleFactor = 0.7
             label.textAlignment = .center
@@ -130,12 +152,16 @@ final class EffortStripView: UIView {
                 stack.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -2),
                 button.heightAnchor.constraint(equalToConstant: 50),
             ])
-            button.accessibilityLabel = ModelDial.isPower(level) ? Ultracode.menuTitle : level
-            button.accessibilityHint = ModelDial.caption(level)
-            button.accessibilityTraits = selected ? [.button, .selected] : .button
+            button.isAccessibilityElement = false
+            let level = rung.level
             button.addAction(UIAction { [weak self] _ in self?.choose(level) }, for: .touchUpInside)
             segments.addArrangedSubview(button)
+            buttons.append(button)
         }
+        let held = rungs.first { $0.level == effort }
+        caption.text = held?.caption
+        card.accessibilityValue = held?.title
+        card.accessibilityHint = String(localized: "Swipe up or down to change")
     }
 
     private func choose(_ level: String?) {
@@ -146,11 +172,30 @@ final class EffortStripView: UIView {
         onSet?(level)
     }
 
-    private static func word(_ level: String, selected: Bool) -> NSAttributedString {
-        let font = Theme.Ramp.font(.rowMeta)
+    @objc private func slid(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.state == .began || gesture.state == .changed, !buttons.isEmpty else { return }
+        let x = gesture.location(in: segments).x
+        guard let index = buttons.firstIndex(where: { $0.frame.minX - 2 <= x && x <= $0.frame.maxX + 2 })
+        else { return }
+        choose(rungs[index].level)
+    }
+
+    override func accessibilityIncrement() { step(by: 1) }
+    override func accessibilityDecrement() { step(by: -1) }
+
+    /// One level hotter or colder for a screen reader, along the same ladder a finger slides.
+    private func step(by delta: Int) {
+        let next = ModelDial.step(effort, by: delta, options: options)
+        guard next != effort else { return }
+        choose(next)
+    }
+
+    private static func word(_ rung: EffortRung, selected: Bool) -> NSAttributedString {
+        let font = selected ? Theme.Ramp.font(.rowTitleStrong) : Theme.Ramp.font(.rowMeta)
         let ink = selected ? Theme.Color.label : Theme.Color.secondaryLabel
-        guard ModelDial.isPower(level) else {
-            return NSAttributedString(string: level, attributes: [.font: font, .foregroundColor: ink])
+        guard rung.isPower else {
+            let text = rung.level == nil ? String(localized: "server") : rung.title
+            return NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: ink])
         }
         let text = NSMutableAttributedString()
         let word = String(Ultracode.menuTitle.lowercased().prefix(5))

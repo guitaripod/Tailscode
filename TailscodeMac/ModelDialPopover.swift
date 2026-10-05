@@ -245,12 +245,15 @@ final class ModelDialPanel: NSViewController {
     private let ladder = NSStackView()
     private let carryNotice = NSTextField(wrappingLabelWithString: "")
     private let ladderFrame = ColumnFrameView()
-    private let hint = NSTextField(labelWithString: "")
+    private let hint = FittedWrapLabel()
     private var rowViews: [Int: DialModelRowView] = [:]
     private var ladderKey: [String] = []
-    private static let listCap: CGFloat = 400
-    private static let ladderWidth: CGFloat = 260
-    private static let listWidth: CGFloat = 352
+    /// The columns grow with the type: a width fixed in points while the words in it are scaled
+    /// is a column that cuts the words it was sized for. The list is wide enough for a pinned
+    /// pair that stands behind a wall — name, wall with its reset, level and check on one line.
+    private static var listCap: CGFloat { 400 * MacTheme.UIScale.factor }
+    static var ladderWidth: CGFloat { 280 * MacTheme.UIScale.factor }
+    static var listWidth: CGFloat { 392 * MacTheme.UIScale.factor }
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -345,7 +348,6 @@ final class ModelDialPanel: NSViewController {
         hint.font = MacTheme.Ramp.font(.hint)
         hint.textColor = MacTheme.Color.secondaryLabel
         hint.stringValue = ModelDial.hint
-        hint.lineBreakMode = .byTruncatingTail
         let rule = NSBox()
         rule.boxType = .separator
         rule.translatesAutoresizingMaskIntoConstraints = false
@@ -364,7 +366,7 @@ final class ModelDialPanel: NSViewController {
             body.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
             body.topAnchor.constraint(equalTo: root.topAnchor, constant: inset),
             body.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -inset),
-            root.widthAnchor.constraint(greaterThanOrEqualToConstant: 640),
+            root.widthAnchor.constraint(greaterThanOrEqualToConstant: 640 * MacTheme.UIScale.factor),
             left.widthAnchor.constraint(equalToConstant: Self.listWidth),
             right.widthAnchor.constraint(equalToConstant: Self.ladderWidth),
             left.leadingAnchor.constraint(equalTo: columns.leadingAnchor),
@@ -497,7 +499,7 @@ final class ModelDialPanel: NSViewController {
             }
         }
         ladder.alphaValue = live ? 1 : 0.78
-        if let notice = state.carryNotice {
+        if let notice = state.carryNotice, !Self.repeats(notice, state.headline) {
             carryNotice.stringValue = notice
             carryNotice.isHidden = false
         } else {
@@ -505,6 +507,13 @@ final class ModelDialPanel: NSViewController {
             carryNotice.isHidden = true
         }
         view.layoutSubtreeIfNeeded()
+    }
+
+    /// A carry notice that only says again what the headline above it already says — a model with
+    /// no levels is both — is drawn once.
+    static func repeats(_ notice: String, _ headline: String) -> Bool {
+        let trim = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "."))
+        return notice.trimmingCharacters(in: trim) == headline.trimmingCharacters(in: trim)
     }
 
     func highlight(_ cursor: Int) {
@@ -614,7 +623,8 @@ private final class DialModelRowView: NSView {
         line.setCustomSpacing(5, after: dot)
         line.translatesAutoresizingMaskIntoConstraints = false
 
-        let chips = row.facts.filter(\.isCapability)
+        title.toolTip = row.title
+        let chips = row.wall == nil ? row.facts.filter(\.isCapability) : []
         if !chips.isEmpty {
             let strip = NSStackView(views: chips.map(Self.chip))
             strip.orientation = .horizontal
@@ -628,7 +638,8 @@ private final class DialModelRowView: NSView {
             note.font = MacTheme.Ramp.font(.rowNote)
             note.textColor = MacTheme.Color.danger
             note.toolTip = QuotaSurface.bannerBody(wall)
-            note.setContentCompressionResistancePriority(.required, for: .horizontal)
+            note.lineBreakMode = .byTruncatingTail
+            note.setContentCompressionResistancePriority(.init(250), for: .horizontal)
             line.addArrangedSubview(note)
         }
         let showsDetail = row.level == nil || row.candidate?.isElsewhere == true
@@ -637,11 +648,11 @@ private final class DialModelRowView: NSView {
             detail.font = MacTheme.Ramp.font(.rowNote)
             detail.textColor = MacTheme.Color.secondaryLabel
             detail.lineBreakMode = .byTruncatingTail
+            detail.toolTip = row.detail
             detail.setContentCompressionResistancePriority(.init(240), for: .horizontal)
             line.addArrangedSubview(detail)
-        } else if !row.detail.isEmpty {
-            toolTip = row.detail
         }
+        toolTip = [row.title, row.detail].filter { !$0.isEmpty }.joined(separator: " — ")
         if let level = row.level {
             line.addArrangedSubview(Self.levelView(level))
         }
@@ -664,7 +675,7 @@ private final class DialModelRowView: NSView {
 
     /// The list's width less the row's insets, so the message wraps where it will be drawn and the
     /// list is measured tall enough to hold it.
-    private static let messageWidth: CGFloat = 332
+    private static var messageWidth: CGFloat { ModelDialPanel.listWidth - 20 }
 
     /// The search that found nothing says so in two lines — what was asked and where it looked —
     /// in the quiet ink of a caption, because it is an answer and not a row to take.
@@ -838,6 +849,7 @@ private final class DialRungView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel("\(rung.title), \(rung.caption)")
+        toolTip = "\(rung.title) — \(rung.caption)"
 
         let key = NSTextField(labelWithString: String(rung.key))
         key.font = MacTheme.Ramp.font(.rowMeta)
@@ -854,11 +866,11 @@ private final class DialRungView: NSView {
             title.textColor = rung.isServer ? MacTheme.Color.secondaryLabel : MacTheme.Color.label
         }
         title.lineBreakMode = .byTruncatingTail
-        let caption = NSTextField(labelWithString: rung.caption)
+        let caption = FittedWrapLabel()
+        caption.stringValue = rung.caption
         caption.font = MacTheme.Ramp.font(.rowNote)
         caption.textColor = MacTheme.Color.secondaryLabel
-        caption.lineBreakMode = .byTruncatingTail
-        caption.maximumNumberOfLines = 1
+        caption.maximumNumberOfLines = 2
         let words = NSStackView(views: [title, caption])
         words.orientation = .vertical
         words.alignment = .leading

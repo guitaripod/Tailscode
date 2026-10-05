@@ -785,9 +785,12 @@ enum SelfTest {
         try expect(
             panel.drawn.rungs == state.rungs.count,
             "\(panel.drawn.rungs) rungs drawn for \(state.rungs.count)")
+        let owedCarry = state.carryNotice.flatMap {
+            ModelDialPanel.repeats($0, state.headline) ? nil : $0
+        }
         try expect(
-            panel.drawn.carry == state.carryNotice,
-            "the carry line says \(panel.drawn.carry ?? "nothing") for \(state.carryNotice ?? "nothing")")
+            panel.drawn.carry == owedCarry,
+            "the carry line says \(panel.drawn.carry ?? "nothing") for \(owedCarry ?? "nothing")")
         checks += 4
 
         _ = state.handle(.switchColumn)

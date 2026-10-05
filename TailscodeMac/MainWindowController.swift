@@ -607,14 +607,18 @@ final class MainWindowController: NSWindowController {
         case "analytics": presentAnalytics()
         case "usage", "quotas": presentUsageWindow()
         case "newchat": presentNewChat()
-        case "quickask": presentQuickAsk()
+        case "quickask": presentQuickAsk(demoServer: parts.count > 1 && parts[1] == "long")
         case "cheatsheet", "shortcuts": presentCheatsheet()
         case "commands": transcript.presentCommandCatalog()
         case "chooser": presentChooser(in: transcript)
-        case "models": transcript.composer.openDemoModelChooser()
+        case "models":
+            transcript.composer.openDemoModelChooser(script: parts.count > 1 ? parts[1] : "")
         case "dial":
             let detail = parts.count > 1 ? parts[1] : ""
-            if detail.hasPrefix("search:") {
+            if detail.hasPrefix("pill=") {
+                transcript.composer.openDemoModelDial(
+                    popover: false, face: String(detail.dropFirst("pill=".count)))
+            } else if detail.hasPrefix("search:") {
                 transcript.composer.openDemoModelDial(
                     popover: true, query: String(detail.dropFirst("search:".count)))
             } else if detail.hasPrefix("row:"), let row = Int(detail.dropFirst("row:".count)) {
@@ -1900,8 +1904,16 @@ final class MainWindowController: NSWindowController {
     /// The chord summons one field and nothing else; the words land in the focused pane as a new
     /// conversation with no project directory. With no servers the chord goes to setup instead
     /// of presenting a dead field.
-    private func presentQuickAsk() {
-        let profiles = ServerDirectory.shared.profiles
+    /// `demoServer` adds one machine with a name long enough to test the aim strip, so the panel
+    /// can be measured against the worst name a person might give a server — `--open quickask:long`.
+    private func presentQuickAsk(demoServer: Bool = false) {
+        var profiles = ServerDirectory.shared.profiles
+        if demoServer, let address = URL(string: "http://100.64.0.99:4098") {
+            profiles.append(
+                ConnectionProfile(
+                    id: "demo-long-name", name: "build-server-in-the-basement-rack-two",
+                    backend: .claudeCode, baseURL: address))
+        }
         guard !profiles.isEmpty else {
             presentServers()
             return

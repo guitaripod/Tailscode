@@ -446,13 +446,15 @@ final class ServerDetailViewController: UIViewController {
         let picker = ModelPickerViewController(
             sources: [source], selected: modelChoice.model,
             quotas: QuotaSurface.relevantQuotas(
-                for: profile.backend, among: UsageWidgetStore.cachedQuotas())
+                for: profile.backend, among: UsageWidgetStore.cachedQuotas()),
+            context: .serverDefault
         ) { [weak self] pick in
             self?.setDefaultModel(pick.selection)
         }
         let nav = UINavigationController(rootViewController: picker)
         if let sheet = nav.sheetPresentationController {
             sheet.detents = [.medium(), .large()]
+            sheet.selectedDetentIdentifier = .large
             sheet.prefersGrabberVisible = true
         }
         present(nav, animated: true)
