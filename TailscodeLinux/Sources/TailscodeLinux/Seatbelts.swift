@@ -157,7 +157,7 @@ final class Seatbelts: @unchecked Sendable {
             return fact
         }
         touched = touched.filter { entry in facts.contains { $0.id == entry.key } }
-        let reducedMotion = !RepeatingMotion.allowed
+        let reducedMotion = tailscode_animations_enabled() == 0
         let sample = GovernorSample(
             loopBusy: reading.loop.busy2, worstStall: reading.worstSinceLast, host: snapshot.host,
             ownMemory: snapshot.ownMemory, reducedMotion: reducedMotion, watchdog: watchdogHint)

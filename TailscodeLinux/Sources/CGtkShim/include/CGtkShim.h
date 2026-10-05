@@ -416,6 +416,8 @@ void tailscode_watch_animations(GtkWidget *lifetime, void (*handler)(void *), vo
 /// about animations, which is how a claim about re-asking is proved rather than asserted. Nothing
 /// in the app calls it — a client that wrote the desktop's motion setting would be answering a
 /// question it is supposed to be asking.
+/// Re-asks every motion watcher whether it may move, as a change of the desk's setting would.
+void tailscode_notify_animations(void);
 void tailscode_set_animations_enabled(gboolean enabled);
 
 /// The tailnet radar: a drawing area that shows a scan as a dial rather than a spinner. Every

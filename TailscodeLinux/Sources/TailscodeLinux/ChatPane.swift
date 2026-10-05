@@ -1547,10 +1547,11 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// The shortest gap between two applies for a pane the focus is not on. A peer shows an
-    /// answer at arrival granularity, and an arrival is measured in tenths of a second rather than
-    /// in frames: ten applies a second read as the answer growing, and every apply past that is a
-    /// relayout of a column nobody is reading. The focused pane applies every state it is handed.
-    static let peerApplyInterval: TimeInterval = 0.1
+    /// answer at arrival granularity, and an arrival is measured in fifths of a second rather than
+    /// in frames: five applies a second read as the answer growing, and every apply past that is a
+    /// relayout, a scroll and a repaint of a column nobody is reading — measured, the largest cost
+    /// of a window of streaming panes. The focused pane applies at the reveal's own tick.
+    static let peerApplyInterval: TimeInterval = 0.2
 
     /// The drain's turn for this pane: the newest built state, if it is still this pane's chat.
     private func applyBuilt() {

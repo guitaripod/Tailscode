@@ -1427,6 +1427,13 @@ void tailscode_watch_animations(GtkWidget *lifetime, void (*handler)(void *), vo
         lifetime, 0);
 }
 
+/// Tells every motion watcher to decide again without changing the desk's setting: the shed level
+/// took the pulses away or gave them back.
+void tailscode_notify_animations(void) {
+    GtkSettings *settings = gtk_settings_get_default();
+    if (settings) g_object_notify(G_OBJECT(settings), "gtk-enable-animations");
+}
+
 void tailscode_set_animations_enabled(gboolean enabled) {
     GtkSettings *settings = gtk_settings_get_default();
     if (!settings) return;

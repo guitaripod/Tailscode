@@ -51,7 +51,11 @@ final class RepeatingMotion {
     /// Whether the desk wants motion at all — GTK's `gtk-enable-animations`, which is what every
     /// desktop's "reduce animation" switch actually writes. One reading for the whole client, so a
     /// badge, an aura and a dial in the same window can never answer it differently.
-    static var allowed: Bool { tailscode_animations_enabled() != 0 }
+    ///
+    /// The window's shed level has a say too: from strained up the governor takes the pulses away
+    /// (`AnimationBudget.pulses`), and every lap is asked again when it does, exactly as when the
+    /// desk changes its mind.
+    static var allowed: Bool { tailscode_animations_enabled() != 0 && CascadeBudget.budget.pulses }
 
     /// Whether a lap is turning right now, for a harness that has to prove a claim about it rather
     /// than watch it — a still frame and a moving one are the same picture in any screenshot.

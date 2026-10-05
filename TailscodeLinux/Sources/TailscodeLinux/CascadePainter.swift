@@ -70,9 +70,11 @@ enum CascadeBudget {
 
     static func apply(_ next: AnimationBudget, level newLevel: ShedLevel) {
         guard next != budget || newLevel != level else { return }
+        let pulsesChanged = next.pulses != budget.pulses
         budget = next
         level = newLevel
         onChange?()
+        if pulsesChanged { tailscode_notify_animations() }
     }
 
     /// Whether the written-not-pasted reveal runs at all.
