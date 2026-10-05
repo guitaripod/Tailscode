@@ -151,6 +151,8 @@ final class CascadePainter {
     var onStalled: (() -> Void)?
 
     var key: String? { live.id }
+    /// Whether the wave holds a display link or its watchdog right now.
+    var isLinked: Bool { link != nil || watchdog != nil }
     var isActive: Bool { live.isActive }
     var isSettled: Bool { live.isSettled }
     var owes: Bool { live.owes }

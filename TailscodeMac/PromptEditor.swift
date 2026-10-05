@@ -264,6 +264,10 @@ final class PromptEditor: NSView {
         aura.setActive(active)
     }
 
+    func setAuraParked(_ parked: Bool) {
+        aura.setParked(parked)
+    }
+
     private func contentChanged() {
         placeholderLabel.isHidden = !textView.string.isEmpty
         scheduleMeasure()

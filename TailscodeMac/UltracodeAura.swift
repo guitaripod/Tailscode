@@ -19,6 +19,8 @@ final class UltracodeAura: NSObject {
     private let maskParent = CALayer()
     private var restoredBorderColor: CGColor?
     private(set) var isActive = false
+    /// A pane nobody can see keeps its ring lit and still: the laps go, the fact stays.
+    private var isParked = false
 
     /// The two laps this ring keeps while the power is on, for a harness that has to prove they run
     /// at the vocabulary's tempo rather than look at them. Neither ends on its own, and a repeating
@@ -66,8 +68,10 @@ final class UltracodeAura: NSObject {
         guard let host, let hostLayer = host.layer else { return }
         if active {
             layout()
-            spin()
-            breathe()
+            if !isParked {
+                spin()
+                breathe()
+            }
             if restoredBorderColor == nil { restoredBorderColor = hostLayer.borderColor }
             hostLayer.borderColor = NSColor.clear.cgColor
             hostLayer.shadowColor = MacTheme.Color.mark.cgColor
@@ -121,9 +125,23 @@ final class UltracodeAura: NSObject {
     /// fact is the edge rather than the travel around it. An aura whose power is off has no fact to
     /// draw, so it stays dark through the change.
     @objc private func motionPreferenceChanged() {
-        guard isActive else { return }
+        guard isActive, !isParked else { return }
         spin()
         breathe()
+    }
+
+    /// Takes the laps off while the pane is hidden and lays them on again when it is shown.
+    func setParked(_ parked: Bool) {
+        guard parked != isParked else { return }
+        isParked = parked
+        guard isActive else { return }
+        if parked {
+            gradient.removeAnimation(forKey: "spin")
+            container.removeAnimation(forKey: "breathe")
+        } else {
+            spin()
+            breathe()
+        }
     }
 
     private func spin() {

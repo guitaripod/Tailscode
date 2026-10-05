@@ -11,9 +11,15 @@ extension TranscriptViewController {
     /// its closer; a code row is not held at all, because the gate reads markdown and code's
     /// punctuation is its own language's. How much of what was rendered is on screen is the
     /// painter's business, applied to the label after the diff has built it.
+    ///
+    /// Only the focused pane takes a row up: the reveal is for the answer being read, and a peer
+    /// beside it shows its text as it arrives rather than running a display link of its own. A row
+    /// already being written when the focus leaves is finished, not cut.
     func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
         cascade.host = view
-        let live = running ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
+        let live =
+            running && revealsAnswers
+            ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
         let released = cascade.key
         if let abandoned, abandoned != live?.key { self.abandoned = nil }
         guard let live, let source = live.streamedText, live.key != abandoned else {

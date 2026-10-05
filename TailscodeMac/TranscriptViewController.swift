@@ -29,8 +29,8 @@ final class TranscriptViewController: NSViewController {
     var quotasForStatus: (() -> [UsageQuota])?
     /// A turn still in flight when this pane moves on is handed to the hub's background watcher,
     /// so the row keeps its LIVE NOW seat until the turn settles.
-    var onBackgroundWatch: ((AgentConversation, SessionEntry) -> Void)?
-    var onStopWatch: ((String) -> Void)?
+    var onBackgroundWatch: ((SessionEntry, any CodingAgentBackend) -> Void)?
+    var onStopWatch: ((LiveKey) -> Void)?
 
     /// Drag-a-chat-into-this-pane hooks, owned by the tiling host so every pane is a drop target.
     var onDragEntered: ((NSDraggingInfo) -> Bool)?
@@ -69,7 +69,30 @@ final class TranscriptViewController: NSViewController {
     private var furnitureHidden: [NSView] = []
 
     private var conversation: AgentConversation?
-    private var streamTask: Task<Void, Never>?
+    /// This pane's hold on the process's one live conversation for its chat. States land in the
+    /// lease's latest-wins mailbox and the frame's drain applies the newest; a parked or closed
+    /// pane holds none.
+    private(set) var lease: LiveLease?
+    private var drainToken: DrainToken?
+    private var attachedKey: LiveKey?
+    private var lastSequence: UInt64 = 0
+    /// Frames this pane applied, and states the drain skipped because a newer one had already
+    /// landed — the coalescing, counted for the selftest and the bench.
+    private(set) var appliedFrames = 0
+    private(set) var skippedFrames = 0
+    /// Main-thread time spent building and applying those frames.
+    private(set) var applyTime: TimeInterval = 0
+    /// The drain's name for this pane's slot.
+    let paneID = PaneID()
+    /// Everything this pane started that has to stop when it stops being alive: the lease, the
+    /// drain slot, every clock and observer. Shutting the pane down and parking it both end it.
+    let lifetime = PaneLifetime()
+    private var lifetimeArmed = false
+    private var scrollObserved = false
+    /// Hidden from the reader — zoomed away, or the window not visible — so it owns no stream and
+    /// no clock, and its last rows stay as they were.
+    private(set) var isParked = false
+    private var isFocusedPane = false
     private var backend: (any CodingAgentBackend)?
     private var entry: SessionEntry?
     #if !TAILSCODE_MAS
@@ -304,7 +327,7 @@ final class TranscriptViewController: NSViewController {
         ])
         view = container
         wireContext()
-        observeScrolling()
+        beginLifetime()
     }
 
     /// The pane's own name, on the same material as the rest of the floating layer. It is a control
@@ -594,15 +617,10 @@ final class TranscriptViewController: NSViewController {
         guard self.entry?.session.id != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
         beginOpenJourney()
-        onStopWatch?(SessionPinStore.key(entry.profileID, entry.session.id))
+        onStopWatch?(TileRuntime.key(entry))
         keepPage(of: self.entry)
-        let previousEntry = self.entry
-        let previousConversation = conversation
-        let previousPresence = presence
-        if let previousEntry, let previousConversation, previousPresence.isInFlight {
-            onBackgroundWatch?(previousConversation, previousEntry)
-        }
-        streamTask?.cancel()
+        handToWatchIfInFlight()
+        detachLive()
         self.entry = entry
         self.backend = backend
         editingQueued = nil
@@ -667,36 +685,14 @@ final class TranscriptViewController: NSViewController {
         } else if let remembered = sessionRows[entry.session.id] {
             placeholderShown = true
             lastFullRows = remembered
-            let limit = max(windowLimit, Self.transcriptWindowPreference)
+            let limit = rowLimit
             applyRows(remembered.count > limit ? Array(remembered.suffix(limit)) : remembered)
         } else {
             showPlaceholder(Localized.text("Connecting…"))
         }
 
-        let conversation =
-            ConversationWarmer.shared.take(entry)
-            ?? AgentConversation(
-                backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
-        self.conversation = conversation
-        streamTask = Task { [weak self] in
-            var resubscribes = 0
-            while !Task.isCancelled {
-                for await state in await conversation.states() {
-                    guard !Task.isCancelled, let self else { return }
-                    if state.connection == .live { resubscribes = 0 }
-                    let tail = self.rowTailMessages
-                    let messages =
-                        state.messages.count > tail
-                        ? Array(state.messages.suffix(tail)) : state.messages
-                    let rows = self.rowBuilder.rows(for: messages, turnOpen: state.status == .running)
-                    self.apply(state: state, rows: rows)
-                }
-                guard !Task.isCancelled, self != nil else { return }
-                resubscribes += 1
-                let delay = min(30.0, pow(2.0, Double(min(resubscribes, 5))))
-                try? await Task.sleep(for: .seconds(delay))
-            }
-        }
+        conversation = TileRuntime.shared.conversation(for: entry, backend: backend)
+        if !isParked { attachLive() }
         refreshTurnFacts()
         if let queued = pendingFirstMessage {
             pendingFirstMessage = nil
@@ -934,24 +930,124 @@ final class TranscriptViewController: NSViewController {
     /// half-typed into it is written first — closing a pane is not a decision to throw a prompt
     /// away, and the chat it belongs to can be opened again anywhere.
     func shutdownPane() {
-        let previousEntry = entry
-        let previousConversation = conversation
-        let previousPresence = presence
-        if let previousEntry, let previousConversation, previousPresence.isInFlight {
-            onBackgroundWatch?(previousConversation, previousEntry)
-        }
+        handToWatchIfInFlight()
         composer.stashDraft()
         composer.stopWatching()
-        cascade.release()
-        stopTailRepair()
-        forgetHeldRows()
         interruptionPress = nil
         page?.shutdown()
         #if !TAILSCODE_MAS
             video?.shutdown()
         #endif
-        streamTask?.cancel()
-        streamTask = nil
+        lifetime.cancelAll()
+        releaseClocks()
+    }
+
+    /// A turn still in flight when this pane lets go of its chat is handed to the window's watch,
+    /// before the pane's own lease goes, so the stream never has nobody holding it.
+    private func handToWatchIfInFlight() {
+        guard let entry, let backend, conversation != nil, presence.isInFlight else { return }
+        onBackgroundWatch?(entry, backend)
+    }
+
+    /// Takes the process's live conversation for this pane's chat: a full lease whose states wake
+    /// the frame's drain, and a slot in that drain. Both, and every clock, belong to the lifetime.
+    private func attachLive() {
+        guard lease == nil, let entry, let backend else { return }
+        beginLifetime()
+        let runtime = TileRuntime.shared
+        let (taken, shared) = runtime.attach(self, entry: entry, backend: backend)
+        ConversationWarmer.shared.handOver(entry)
+        let key = TileRuntime.key(entry)
+        lease = taken
+        conversation = shared
+        attachedKey = key
+        lastSequence = 0
+        let token = runtime.drain.register(drainSlot(taken))
+        drainToken = token
+        let me = ObjectIdentifier(self)
+        lifetime.add { taken.cancel() }
+        lifetime.add { token.cancel() }
+        lifetime.add { MainActor.assumeIsolated { TileRuntime.shared.detach(me, from: key) } }
+    }
+
+    private func detachLive() {
+        guard lease != nil else { return }
+        lifetime.cancelAll()
+    }
+
+    private func drainSlot(_ lease: LiveLease) -> DrainSlot {
+        DrainSlot(
+            pane: paneID, priority: isFocusedPane ? .focused : .full,
+            hasWork: { lease.hasFrame },
+            apply: { [weak self] in MainActor.assumeIsolated { self?.applyNewestFrame() } })
+    }
+
+    /// The frame's turn for this pane: the newest state the hub holds, built and applied once,
+    /// however many arrived since the last frame.
+    private func applyNewestFrame() {
+        guard let frame = lease?.take() else { return }
+        if lastSequence > 0, frame.sequence > lastSequence + 1 {
+            skippedFrames += Int(frame.sequence - lastSequence - 1)
+        }
+        lastSequence = frame.sequence
+        appliedFrames += 1
+        let started = CACurrentMediaTime()
+        defer { applyTime += CACurrentMediaTime() - started }
+        let state = frame.state
+        let tail = rowTailMessages
+        let messages =
+            state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
+        let rows = rowBuilder.rows(for: messages, turnOpen: state.status == .running)
+        apply(state: state, rows: rows)
+    }
+
+    /// How many rows this pane realises. The focused pane keeps the person's window; a peer keeps
+    /// the governor's peer window for the shed level, never under 60 — every realised row joins the
+    /// window's one layout engine, whose cost grows faster than the row count, so eight panes of
+    /// full windows is a window that cannot be laid out.
+    private var rowLimit: Int {
+        let own = max(windowLimit, Self.transcriptWindowPreference)
+        guard !isFocusedPane else { return own }
+        return min(own, max(60, TileGovernor.peerRowWindow(level: Seatbelts.shared.level)))
+    }
+
+    /// Whether this pane may take a streaming row up for the reveal: only the focused one.
+    var revealsAnswers: Bool { isFocusedPane }
+
+    /// The focused pane's frames go first when a frame cannot apply every pane.
+    func setFocusedPane(_ focused: Bool) {
+        guard focused != isFocusedPane else { return }
+        isFocusedPane = focused
+        if let state = lastState, !placeholderShown { apply(state: state, rows: lastFullRows) }
+        guard let lease, let drainToken else { return }
+        TileRuntime.shared.drain.update(drainToken, to: drainSlot(lease))
+    }
+
+    /// Whether this pane drains its chat's send queue: a chat in two panes drains from the first.
+    private var ownsQueue: Bool {
+        guard let attachedKey else { return false }
+        return TileRuntime.shared.ownsQueue(self, of: attachedKey)
+    }
+
+    /// Opens a lifetime generation: one entry that stops every clock this pane may start before
+    /// the next `cancelAll`, and the scroll observers.
+    private func beginLifetime() {
+        guard !lifetimeArmed else { return }
+        lifetimeArmed = true
+        lifetime.add { [weak self] in MainActor.assumeIsolated { self?.releaseClocks() } }
+        if isViewLoaded { observeScrolling() }
+    }
+
+    /// Every clock, task, monitor and observer the pane may be running, stopped; the lease and the
+    /// drain slot go with the lifetime that owns them.
+    private func releaseClocks() {
+        lifetimeArmed = false
+        lease = nil
+        drainToken = nil
+        attachedKey = nil
+        cascade.release()
+        stopTailRepair()
+        forgetHeldRows()
         tickerTask?.cancel()
         tickerTask = nil
         agentStreamTask?.cancel()
@@ -963,6 +1059,35 @@ final class TranscriptViewController: NSViewController {
         retryWake = nil
         captionWake?.cancel()
         captionWake = nil
+        handoffWakeGeneration += 1
+        stopObservingScrolling()
+    }
+
+    /// Hides or shows the pane to its clocks. Parked, it gives up its lease (a turn in flight goes
+    /// to the window's watch first) and every clock, and its last rows stay frozen; unparked, it
+    /// takes the chat back, and the hub hands it the newest state at once.
+    func setParked(_ parked: Bool) {
+        guard parked != isParked else { return }
+        isParked = parked
+        composer.setParked(parked)
+        if parked {
+            handToWatchIfInFlight()
+            lifetime.cancelAll()
+            releaseClocks()
+            return
+        }
+        guard let entry else { return }
+        onStopWatch?(TileRuntime.key(entry))
+        attachLive()
+        startResumeClock()
+        refreshTurnFacts()
+    }
+
+    /// What a selftest reads to prove a parked or closed pane owns nothing.
+    var ownsClocks: Bool {
+        lease != nil || drainToken != nil || tickerTask != nil || agentStreamTask != nil
+            || resumeClock != nil || retryWake != nil || captionWake != nil || tailRepair != nil
+            || holdMonitor != nil || cascade.isLinked || lifetime.count > 0 || scrollObserved
     }
 
     /// Empties the pane deliberately — a deleted or unresolvable session leaves an explanation,
@@ -1359,7 +1484,7 @@ final class TranscriptViewController: NSViewController {
     /// being a queue and not a send.
     private var queue = SendQueue() {
         didSet {
-            guard queue != oldValue, let entry else { return }
+            guard queue != oldValue, !adoptingStoredQueue, let entry else { return }
             SendQueueStore.save(queue, profileID: entry.profileID, sessionID: entry.session.id)
         }
     }
@@ -1431,11 +1556,15 @@ final class TranscriptViewController: NSViewController {
     private func drainQueue() {
         guard let state = lastState,
             SendQueueDrain.mayDrain(state, editing: editingQueued != nil, handoff: handoff),
-            !queue.isEmpty, !draining
+            !queue.isEmpty, !draining, ownsQueue, let entry
         else { return }
         draining = true
         defer { draining = false }
-        guard let next = queue.takeFirst() else { return }
+        let next = SendQueueStore.takeFirst(profileID: entry.profileID, sessionID: entry.session.id)
+        adoptingStoredQueue = true
+        queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
+        adoptingStoredQueue = false
+        guard let next else { return }
         if next.isCommand {
             runCommand(next)
             return
@@ -1448,6 +1577,9 @@ final class TranscriptViewController: NSViewController {
     /// sending re-applies. Re-rendering from inside the render is what makes a transcript write
     /// itself twice — the second pass adopts the tail the first one is still revealing.
     private var draining = false
+    /// Set while the queue is read back from the store after an atomic take, so what the store
+    /// already holds is not written to it again.
+    private var adoptingStoredQueue = false
 
     /// The stretch after a send during which the server still reads idle. The queue waits it out,
     /// or every message written during a turn goes at once and the agent answers only the last.
@@ -1911,7 +2043,7 @@ final class TranscriptViewController: NSViewController {
         armRetryWake(state.retry, now: Date())
         if state.revert == nil, revertOperation != .restoring { revertComposerFill = nil }
         let shown = docked(echoed(confirmed), state: state)
-        let limit = max(windowLimit, Self.transcriptWindowPreference)
+        let limit = rowLimit
         let windowed = shown.count > limit ? Array(shown.suffix(limit)) : shown
         let hiddenCount = shown.count - windowed.count
         earlierButton.isHidden = hiddenCount <= 0
@@ -2809,7 +2941,7 @@ final class TranscriptViewController: NSViewController {
         forgetWantedImages(renderedRows[index...])
         rowViews.removeSubrange(index...)
         renderedRows.removeSubrange(index...)
-        let limit = max(windowLimit, Self.transcriptWindowPreference)
+        let limit = rowLimit
         let rows = lastState.map { docked(echoed(lastFullRows), state: $0) } ?? echoed(lastFullRows)
         applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
     }
@@ -2853,7 +2985,7 @@ final class TranscriptViewController: NSViewController {
                     if let state = self.lastState {
                         self.apply(state: state, rows: self.lastFullRows)
                     } else {
-                        let limit = max(self.windowLimit, Self.transcriptWindowPreference)
+                        let limit = self.rowLimit
                         let rows = self.echoed(self.lastFullRows)
                         self.applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
                     }
@@ -3705,6 +3837,8 @@ final class TranscriptViewController: NSViewController {
     /// Following is a decision, not a measurement: the intent is held here and re-applied
     /// whenever the content actually grows, so an unfocused chat never drifts up as it streams.
     private func observeScrolling() {
+        guard !scrollObserved else { return }
+        scrollObserved = true
         scrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
             self, selector: #selector(scrollBoundsChanged),
@@ -3713,6 +3847,15 @@ final class TranscriptViewController: NSViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(contentGrew),
             name: NSView.frameDidChangeNotification, object: canvas)
+    }
+
+    private func stopObservingScrolling() {
+        guard scrollObserved else { return }
+        scrollObserved = false
+        NotificationCenter.default.removeObserver(
+            self, name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+        NotificationCenter.default.removeObserver(
+            self, name: NSView.frameDidChangeNotification, object: canvas)
     }
 
     @objc private func scrollBoundsChanged() {

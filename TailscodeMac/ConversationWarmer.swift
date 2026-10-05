@@ -14,9 +14,11 @@ import TailscodeCore
 final class ConversationWarmer {
     static let shared = ConversationWarmer()
 
+    /// A warm chat is a glance-interest lease on the process's one conversation for it, so the pane
+    /// that opens it a moment later takes the same conversation from the hub rather than a second
+    /// one built beside it.
     private struct Held {
-        let conversation: AgentConversation
-        let listening: Task<Void, Never>
+        let lease: LiveLease
         let expiry: Task<Void, Never>
     }
 
@@ -31,37 +33,24 @@ final class ConversationWarmer {
     func warm(_ entry: SessionEntry, backend: any CodingAgentBackend) {
         let key = SessionPinStore.key(entry.profileID, entry.session.id)
         guard held[key] == nil else { return }
-        let conversation = AgentConversation(
-            backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
-        let listening = Task {
-            for await _ in await conversation.states() {}
-        }
+        let (lease, _) = TileRuntime.shared.lease(
+            entry, backend: backend, interest: .glance, dirty: {})
         let expiry = Task { [weak self] in
             try? await Task.sleep(for: Self.patience)
             guard !Task.isCancelled else { return }
             self?.drop(key)
         }
-        held[key] = Held(conversation: conversation, listening: listening, expiry: expiry)
+        held[key] = Held(lease: lease, expiry: expiry)
         order.append(key)
         while order.count > Self.limit, let oldest = order.first {
             drop(oldest)
         }
     }
 
-    /// The conversation warmed for this chat, handed over once. The warming listener stays a moment
-    /// longer, so the conversation never has nobody listening between the hand-over and its new
-    /// owner's own subscription — which would stop it and throw away what it had already read.
-    func take(_ entry: SessionEntry) -> AgentConversation? {
-        let key = SessionPinStore.key(entry.profileID, entry.session.id)
-        guard let taken = held.removeValue(forKey: key) else { return nil }
-        order.removeAll { $0 == key }
-        taken.expiry.cancel()
-        let listening = taken.listening
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            listening.cancel()
-        }
-        return taken.conversation
+    /// The pane that opened this chat holds it now. The warm lease goes at once: the pane's own
+    /// lease is already keeping the stream, so the conversation never has nobody listening.
+    func handOver(_ entry: SessionEntry) {
+        drop(SessionPinStore.key(entry.profileID, entry.session.id))
     }
 
     /// Whether a chat is warm, for a harness.
@@ -72,7 +61,7 @@ final class ConversationWarmer {
     private func drop(_ key: String) {
         guard let dropped = held.removeValue(forKey: key) else { return }
         order.removeAll { $0 == key }
-        dropped.listening.cancel()
+        dropped.lease.cancel()
         dropped.expiry.cancel()
     }
 }

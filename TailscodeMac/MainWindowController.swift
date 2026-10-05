@@ -88,6 +88,7 @@ final class MainWindowController: NSWindowController {
         restoreSplitLayout()
         configureSplit()
         configureToolbar()
+        wireLiveRuntime(window)
         window.center()
         window.setFrameAutosaveName("TailscodeMain")
         installKeyMonitor()
@@ -118,6 +119,27 @@ final class MainWindowController: NSWindowController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The process's live conversations meet this window here: the drain's display link follows
+    /// the window's screen, a watched chat's reading reaches the chat list, a window nobody can
+    /// see parks every pane, and the governor's parked panes are parked.
+    private func wireLiveRuntime(_ window: NSWindow) {
+        let runtime = TileRuntime.shared
+        runtime.clock.host = window.contentView
+        runtime.onPresenceChanged = { [weak self] in self?.sidebar.notePresenceChanged() }
+        splitPanes.onRefused = { [weak self] text in self?.toast(text) }
+        Seatbelts.shared.onDecision = { [weak self] decision in
+            self?.splitPanes.applyGovernor(decision.densities)
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let window = self.window else { return }
+                self.splitPanes.setOccluded(!window.occlusionState.contains(.visible))
+            }
+        }
+    }
 
     /// The smallest window a chat still reads in: the chat list at its own minimum beside a
     /// conversation wide enough for the composer's row of pills, and tall enough for the composer
@@ -1212,19 +1234,11 @@ final class MainWindowController: NSWindowController {
     private func makePane() -> TranscriptViewController {
         let pane = TranscriptViewController()
         pane.composer.onAuraChanged = { [weak self] in self?.sidebar.refreshOrb() }
-        pane.onBackgroundWatch = { [weak self] conversation, entry in
-            self?.keepWatching(conversation, entry: entry)
+        pane.onBackgroundWatch = { entry, backend in
+            TileRuntime.shared.watch(entry, backend: backend)
         }
-        pane.onStopWatch = { [weak self] key in self?.stopWatching(key) }
-        pane.onState = { [weak self, weak pane] state in
-            guard let pane, let entry = pane.currentEntry else { return }
-            MacNotifier.shared.observeConversation(
-                profileID: entry.profileID, sessionID: entry.session.id,
-                title: MissedActivity.name(
-                    title: entry.session.title,
-                    latestPrompt: state.messages.last { $0.role == .user }?
-                        .parts.compactMap(\.text).joined(separator: "\n")),
-                state: state)
+        pane.onStopWatch = { key in TileRuntime.shared.stopWatching(key) }
+        pane.onState = { [weak self] _ in
             self?.sidebar.notePresenceChanged()
         }
         pane.onToast = { [weak self] text in self?.toast(text) }
@@ -1248,7 +1262,7 @@ final class MainWindowController: NSWindowController {
     /// turn that stopped to ask for an approval, so a chat being talked in right now would
     /// otherwise be findable only by recency.
     private func observedPresence() -> [String: SessionPresence] {
-        var observed = backgroundPresence
+        var observed = TileRuntime.shared.backgroundPresence
         splitPanes.eachPane { pane in
             guard let entry = pane.currentEntry else { return }
             let presence = pane.presence
@@ -1260,81 +1274,10 @@ final class MainWindowController: NSWindowController {
         return presenceLedger.readings()
     }
 
-    /// Watches a conversation whose pane moved on, so a turn still in flight keeps its LIVE NOW
-    /// seat until it settles — the same retention the phone gives an in-flight chat.
-    private var backgroundWatch: [String: (id: UUID, task: Task<Void, Never>)] = [:]
-    private var backgroundPresence: [String: SessionPresence] = [:]
     /// What each conversation's last settled witness said, carried across the moment one watcher
     /// hands a chat to another. Without it, opening a live chat on a server whose listing cannot
     /// report a turn dropped the row to RECENT for one round trip and then took it back.
     private var presenceLedger = PresenceLedger()
-
-    func keepWatching(_ conversation: AgentConversation, entry: SessionEntry) {
-        let key = SessionPinStore.key(entry.profileID, entry.session.id)
-        stopWatching(key)
-        let id = UUID()
-        let task = Task { [weak self] in
-            var lastReading: SessionPresence = .running(nil)
-            var handoff = TurnHandoff()
-            while !Task.isCancelled {
-                let stream = await conversation.states()
-                for await state in stream {
-                    guard let self else { return }
-                    handoff.observe(state, sendsInFlight: false)
-                    if await Self.drainHeld(
-                        conversation, entry: entry, state: state, handoff: &handoff)
-                    {
-                        continue
-                    }
-                    let reading = SessionPresence.reading(state, step: nil)
-                    let changed = reading != lastReading
-                    lastReading = reading
-                    let settled = reading == .unobserved
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, self.backgroundWatch[key]?.id == id else { return }
-                        self.backgroundPresence[key] = reading
-                        if changed { self.sidebar.notePresenceChanged() }
-                        if settled { self.stopWatching(key) }
-                    }
-                    if settled { return }
-                }
-            }
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.backgroundWatch[key]?.id == id else { return }
-                self.backgroundWatch[key] = nil
-                self.backgroundPresence[key] = nil
-                self.sidebar.notePresenceChanged()
-            }
-        }
-        backgroundWatch[key] = (id, task)
-    }
-
-
-    /// A conversation a pane left running still owes its queue: the next waiting message goes the
-    /// moment the turn yields, read from the store rather than from any pane, because the pane
-    /// that wrote it may be showing something else by now. Answers whether a message went, so
-    /// the watch knows the turn is not over.
-    private static func drainHeld(
-        _ conversation: AgentConversation, entry: SessionEntry, state: ConversationState,
-        handoff: inout TurnHandoff
-    ) async -> Bool {
-        guard SendQueueDrain.mayDrain(state, handoff: handoff) else { return false }
-        var held = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
-        guard let next = held.takeFirst() else { return false }
-        SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
-        handoff.begin(after: state)
-        do {
-            try await conversation.send(
-                next.text, model: next.model, reasoningEffort: next.effort,
-                attachments: next.attachments)
-            return true
-        } catch {
-            handoff.end()
-            held.requeueAtHead(next)
-            SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
-            return false
-        }
-    }
 
     /// Every conversation the store is holding a message for gets a watch, so a queue written
     /// before the app quit goes when its turn yields rather than when somebody opens the chat.
@@ -1342,8 +1285,8 @@ final class MainWindowController: NSWindowController {
     /// for a listing that does.
     func wakeHeldQueues(entries: [SessionEntry]) {
         for record in SendQueueStore.all() {
-            let key = SessionPinStore.key(record.profileID, record.sessionID)
-            guard backgroundWatch[key] == nil,
+            let key = LiveKey(profileID: record.profileID, sessionID: record.sessionID)
+            guard !TileRuntime.shared.isWatching(key),
                 !splitPanes.panes.values.contains(where: {
                     $0.currentEntry?.session.id == record.sessionID
                         && $0.currentEntry?.profileID == record.profileID
@@ -1354,17 +1297,8 @@ final class MainWindowController: NSWindowController {
                 let profile = ServerDirectory.shared.profiles.first(where: { $0.id == record.profileID }),
                 let backend = ServerDirectory.shared.backend(for: profile)
             else { continue }
-            keepWatching(
-                AgentConversation(
-                    backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache),
-                entry: entry)
+            TileRuntime.shared.watch(entry, backend: backend)
         }
-    }
-
-    func stopWatching(_ key: String) {
-        backgroundWatch[key]?.task.cancel()
-        backgroundWatch[key] = nil
-        backgroundPresence[key] = nil
     }
 
     /// Every pane showing a deleted session empties with an explanation; the sidebar's own flow
@@ -1727,6 +1661,7 @@ final class MainWindowController: NSWindowController {
             terminalPane.stopRunning()
         #endif
         SessionListCache.flushPendingSave()
+        splitPanes.flushPersistence()
         Seatbelts.shared.finish(panes: splitPanes.paneCount)
     }
 

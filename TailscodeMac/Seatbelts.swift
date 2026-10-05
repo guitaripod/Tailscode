@@ -105,6 +105,8 @@ final class Seatbelts {
 
     /// The window's panes, asked once a sample.
     var panes: (() -> SeatbeltPanes)?
+    /// Told every decision, so the window can park what the governor parks.
+    var onDecision: ((GovernorDecision) -> Void)?
 
     /// Starts everything: the ring and its launch record, the loop meter, the watchdog, the
     /// pressure source, the one-second sample and the SIGTERM path to a clean quit. Called once
@@ -239,6 +241,7 @@ final class Seatbelts {
             occluded: seen.occluded, watchdog: hint)
         let decision = governor.evaluate(now: now, sample: sample, panes: seen.facts, setting: .auto)
         self.decision = decision
+        onDecision?(decision)
         let previous = level
         let next = forced ?? decision.level
         var events: [String] = []

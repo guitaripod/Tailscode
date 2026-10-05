@@ -214,6 +214,11 @@ final class PillsRow: NSView {
         stopButton.isHidden = !shown
     }
 
+    /// A hidden pane's pill stops its rainbow; shown again, it picks the rhythm back up.
+    func setParked(_ parked: Bool) {
+        dialPill.setParked(parked)
+    }
+
     func popUpCommandMenu() {
         commandPill.popUpMenu()
     }
@@ -323,6 +328,7 @@ final class DialPill: NSButton {
     /// the power, is in a window, and the desk has not asked for less motion.
     private var shimmer: Timer?
     private var shimmerPhase = 0
+    private var isParked = false
     private static let shimmerStep: TimeInterval = 0.09
 
     init() {
@@ -467,9 +473,18 @@ final class DialPill: NSButton {
         return text
     }
 
+    func setParked(_ parked: Bool) {
+        guard parked != isParked else { return }
+        isParked = parked
+        syncShimmer()
+    }
+
+    /// Whether the rainbow's timer is running, for a selftest that proves a parked pane owns none.
+    var isShimmering: Bool { shimmer != nil }
+
     private func syncShimmer() {
-        guard let face, face.isPower, let window, window.occlusionState.contains(.visible),
-            EffortHeat.motionAllowed
+        guard !isParked, let face, face.isPower, let window,
+            window.occlusionState.contains(.visible), EffortHeat.motionAllowed
         else {
             stopShimmer()
             return

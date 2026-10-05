@@ -350,6 +350,12 @@ final class ComposerView: NSView {
         catalogWatch = nil
     }
 
+    /// A pane hidden from the reader stops the pill's rainbow and the aura's laps.
+    func setParked(_ parked: Bool) {
+        pills.setParked(parked)
+        editor.setAuraParked(parked)
+    }
+
     func applyVim(_ key: VimKey) {
         let outcome = vim.handle(key, text: editor.text, cursor: editor.cursor)
         switch outcome {

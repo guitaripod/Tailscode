@@ -34,6 +34,24 @@ final class SplitPaneHost: NSViewController {
     /// in a staggered one, or waiting for their server — so a layout saved meanwhile keeps them
     /// rather than writing those panes down as empty.
     var heldSessions: (() -> [PaneID: SplitPaneSession])?
+    /// A verb refused with a reason — a split with no room for another pane.
+    var onRefused: ((String) -> Void)?
+    /// Panes the governor parks on top of what zoom and occlusion already hide.
+    private var governorParked: Set<PaneID> = []
+    private var occluded = false
+    /// The layout written a moment after the last change rather than on every focus move and every
+    /// divider notification; nil clears the record. Flushed on every exit path.
+    private let writer = TrailingWriter<String?>(label: "tailscode.layout-writer") { encoded in
+        if let encoded {
+            UserDefaults.standard.set(encoded, forKey: SplitSnapshot.defaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: SplitSnapshot.defaultsKey)
+        }
+    }
+    /// Layout writes asked for, and divider notifications that moved a ratio — counted for the
+    /// selftest that proves a burst of changes is one write and a programmatic resize is none.
+    private(set) var persistRequests = 0
+    private(set) var ratioCaptures = 0
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -98,6 +116,7 @@ final class SplitPaneHost: NSViewController {
     /// can still fill it instead.
     func splitActive(axis: SplitAxis) {
         let source = active.currentEntry?.profileID
+        guard hasRoom(layout.focusedPane, axis: axis) else { return }
         guard let makePane, let freshID = layout.split(layout.focusedPane, axis: axis) else {
             return
         }
@@ -115,6 +134,7 @@ final class SplitPaneHost: NSViewController {
     func split(_ pane: TranscriptViewController, edge: PaneDropEdge) -> TranscriptViewController? {
         guard let makePane,
             let id = panes.first(where: { $0.value === pane })?.key,
+            hasRoom(id, axis: edge.axis),
             let freshID = layout.split(id, axis: edge.axis, placingNewFirst: edge.placesArrivalFirst)
         else { return nil }
         let fresh = makePane()
@@ -124,6 +144,25 @@ final class SplitPaneHost: NSViewController {
         onFocusChanged?()
         persist()
         return fresh
+    }
+
+    /// Whether a pane can halve along `axis` in the room the tree really has, asked of Core's
+    /// placement at the container's size; a refusal is said rather than swallowed.
+    func canSplit(_ id: PaneID, axis: SplitAxis) -> Bool {
+        let size = view.bounds.size
+        guard size.width > 0, size.height > 0 else { return true }
+        let placement = layout.placement(
+            in: SplitSize(width: Double(size.width), height: Double(size.height)),
+            scale: Double(view.window?.backingScaleFactor ?? 2))
+        return layout.canSplit(id, axis: axis, in: placement)
+    }
+
+    private func hasRoom(_ id: PaneID, axis: SplitAxis) -> Bool {
+        guard canSplit(id, axis: axis) else {
+            onRefused?(Localized.text("No room for another split here"))
+            return false
+        }
+        return true
     }
 
     /// The whole tree collapsed onto one pane: every other pane closes, the kept one inherits
@@ -366,15 +405,25 @@ final class SplitPaneHost: NSViewController {
     /// The same key and shape the Linux desktop persists, so both restore the same arrangement.
     /// A lone pane clears the record: the plain window needs no layout file.
     func persist() {
+        schedulePersist()
+        onLayoutChanged?()
+    }
+
+    private func schedulePersist() {
+        persistRequests += 1
         let current = snapshot()
         if paneCount > 1 || !current.videos.isEmpty || !current.pages.isEmpty,
             let encoded = current.encoded
         {
-            UserDefaults.standard.set(encoded, forKey: SplitSnapshot.defaultsKey)
+            writer.schedule(encoded)
         } else {
-            UserDefaults.standard.removeObject(forKey: SplitSnapshot.defaultsKey)
+            writer.schedule(nil)
         }
-        onLayoutChanged?()
+    }
+
+    /// Writes the waiting layout now; every exit path calls it.
+    func flushPersistence() {
+        writer.flush()
     }
 
     /// Rebuilds the controller skeleton around the surviving panes. Panes detach first so no
@@ -383,6 +432,7 @@ final class SplitPaneHost: NSViewController {
     /// `NSSplitView`'s own even distribution and then jumped to the real arrangement a frame later,
     /// and once on the next turn for the tree that had no extent yet.
     private func rebuild() {
+        suppressCapture = true
         for pane in panes.values {
             pane.removeFromParent()
             pane.view.removeFromSuperview()
@@ -413,7 +463,11 @@ final class SplitPaneHost: NSViewController {
         applyFocusStyling()
         applyIdentity()
         applyRatios()
-        DispatchQueue.main.async { [weak self] in self?.applyRatios() }
+        suppressCapture = true
+        DispatchQueue.main.async { [weak self] in
+            self?.applyRatios()
+            self?.suppressCapture = false
+        }
     }
 
     private func build(_ node: SplitNode) -> NSViewController {
@@ -473,8 +527,9 @@ final class SplitPaneHost: NSViewController {
     /// its new extent once its parent's position has actually landed, so any other order divides
     /// an extent the tree is about to stop having.
     func applyRatios() {
+        let held = suppressCapture
         suppressCapture = true
-        defer { suppressCapture = false }
+        defer { suppressCapture = held }
         view.layoutSubtreeIfNeeded()
         applyRatios(layout.root)
     }
@@ -493,9 +548,11 @@ final class SplitPaneHost: NSViewController {
     }
 
     /// A divider drag settles into the model as a ratio, exactly the way the window's own
-    /// dividers persist — mid-collapse widths that are nobody's intent are ignored.
+    /// dividers persist — mid-collapse widths that are nobody's intent are ignored, and so is every
+    /// resize the person did not make with a divider: a window resize, a zoom, a rebuild. Only a
+    /// ratio that actually moved is written, and the write trails the drag.
     @objc private func splitResized(_ notification: Notification) {
-        guard !suppressCapture,
+        guard !suppressCapture, Self.isDividerDrag(notification),
             let splitView = notification.object as? NSSplitView,
             let id = splitViews.first(where: { $0.value === splitView })?.key,
             let firstView = splitView.arrangedSubviews.first
@@ -503,9 +560,20 @@ final class SplitPaneHost: NSViewController {
         let extent = splitView.isVertical ? splitView.bounds.width : splitView.bounds.height
         let position = splitView.isVertical ? firstView.frame.width : firstView.frame.height
         guard extent > 150, position > 40, position < extent - 40 else { return }
-        layout.setRatio(position / extent, of: id)
-        if paneCount > 1, let encoded = snapshot().encoded {
-            UserDefaults.standard.set(encoded, forKey: SplitSnapshot.defaultsKey)
+        let ratio = position / extent
+        guard abs((layout.ratio(of: id) ?? -1) - ratio) > 0.001 else { return }
+        layout.setRatio(ratio, of: id)
+        ratioCaptures += 1
+        schedulePersist()
+    }
+
+    /// `NSSplitView` names the divider in the notification only when a divider is being dragged,
+    /// and a drag is a mouse gesture; a resize from anywhere else carries neither.
+    private static func isDividerDrag(_ notification: Notification) -> Bool {
+        guard notification.userInfo?["NSSplitViewDividerIndex"] != nil else { return false }
+        switch NSApp?.currentEvent?.type {
+        case .leftMouseDragged, .leftMouseDown, .leftMouseUp: return true
+        default: return false
         }
     }
 
@@ -523,6 +591,33 @@ final class SplitPaneHost: NSViewController {
             items.first.isCollapsed = leaves.second.contains(zoomed)
             items.second.isCollapsed = leaves.first.contains(zoomed)
         }
+        applyParking()
+    }
+
+    /// A pane nobody can see owns no stream and no clock: zoomed away, the window not visible, or
+    /// parked by the governor. Showing it again takes its chat back.
+    func applyParking() {
+        let zoomed = layout.zoomedPane
+        for (id, pane) in panes {
+            let hidden = zoomed != nil && zoomed != id
+            pane.setParked(occluded || hidden || governorParked.contains(id))
+        }
+    }
+
+    /// Whether the window is visible at all, from its occlusion state.
+    func setOccluded(_ occluded: Bool) {
+        guard occluded != self.occluded else { return }
+        self.occluded = occluded
+        if !occluded { governorParked = [] }
+        applyParking()
+    }
+
+    /// The governor's parked panes, from the seatbelts' one-second decision.
+    func applyGovernor(_ densities: [PaneID: PaneDensity]) {
+        let parked = Set(densities.filter { $0.value == .parked }.keys)
+        guard parked != governorParked else { return }
+        governorParked = parked
+        applyParking()
     }
 
     /// A hairline accent on the focused pane, only once a second pane exists to be told apart
@@ -532,6 +627,7 @@ final class SplitPaneHost: NSViewController {
     func applyFocusStyling() {
         let showAccent = layout.paneCount > 1
         for (id, pane) in panes {
+            pane.setFocusedPane(id == layout.focusedPane)
             let layer = pane.view.layer
             if showAccent, id == layout.focusedPane {
                 layer?.borderColor = MacTheme.Color.accent.withAlphaComponent(0.55).cgColor
