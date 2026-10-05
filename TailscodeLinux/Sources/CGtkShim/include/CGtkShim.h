@@ -17,6 +17,27 @@ void tailscode_set_box_release(void (*release)(void *));
 /// `data` and releases it inside the handler.
 void tailscode_on_main(void (*handler)(void *), void *data);
 
+/// What the tiling soak reads from the main context: closures posted by `tailscode_on_main` and
+/// not yet run (and the deepest that queue got since the last read), how late a 100 ms timeout
+/// fired over the window, and running totals of reveal markup parses, cache hits, frame-clock
+/// callbacks and painted frames. Everything stays zero until `tailscode_soak_enable`.
+typedef struct {
+    long pending;
+    long pending_max;
+    long parses;
+    long parse_hits;
+    long tick_runs;
+    long frames;
+    int lag_samples;
+    double lag50_ms;
+    double lag95_ms;
+    double lag_max_ms;
+} TailscodeSoakSample;
+
+void tailscode_soak_enable(void);
+gboolean tailscode_soak_watch_frames(GtkWidget *widget);
+void tailscode_soak_read(TailscodeSoakSample *out);
+
 /// A `GtkListItemFactory` whose bind step calls back into Swift with the list item and the row's
 /// position, which is all the transcript and the sidebar need.
 GtkListItemFactory *tailscode_make_factory(

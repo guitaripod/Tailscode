@@ -235,6 +235,7 @@ final class MainWindow: @unchecked Sendable {
             activePane.insertIntoComposer(seed.replacingOccurrences(of: "\\n", with: "\n"))
         }
         installDriver()
+        Soak.watchFrames(of: window)
     }
 
     /// Setup, from launch or from the road back the empty sidebar offers. It presents itself only
@@ -496,6 +497,14 @@ final class MainWindow: @unchecked Sendable {
                     Preferences.setScale((Double(argument) ?? 100) / 100, for: .mono)
                     MatrixTheme.install()
                     self.applyLayoutPreferences()
+                case "soakopen":
+                    self.soakOpen(SplitArrangement(rawValue: argument) ?? .grid, attempts: 30)
+                case "soaksend":
+                    self.soakSend()
+                case "soakhammer":
+                    self.soakHammer(seconds: Int(argument) ?? 60)
+                case "soakstats":
+                    Soak.report()
                 case "split":
                     _ = self.perform(.splitPane(argument == "down" ? .vertical : .horizontal))
                 case "sfocus":
@@ -1384,7 +1393,7 @@ final class MainWindow: @unchecked Sendable {
             next.append(entry)
             next.sort { $0.session.updatedAt > $1.session.updatedAt }
             entries = next
-            if !next.isEmpty { SessionListCache.save(next) }
+            if !next.isEmpty { Soak.timeListSave { SessionListCache.save(next) } }
             renderSidebar()
             splitHost.eachPane { pane in
                 if pane.sessionID == session.id { pane.refreshPills() }
@@ -1769,7 +1778,10 @@ final class MainWindow: @unchecked Sendable {
     /// the window held — the gesture asked for these conversations, and it persists like any
     /// hand-built layout.
     private func openMarkedSplit(_ arrangement: SplitArrangement) {
-        let chosen = marks.resolve(in: visibleEntries)
+        openSplit(marks.resolve(in: visibleEntries), as: arrangement)
+    }
+
+    private func openSplit(_ chosen: [SessionEntry], as arrangement: SplitArrangement) {
         guard let layout = SplitEven.layout(count: chosen.count, as: arrangement) else { return }
         var sessions: [String: SplitPaneSession] = [:]
         for (pane, entry) in zip(layout.paneIDs, chosen) {
@@ -3901,4 +3913,80 @@ private struct SidebarRowWidget {
     /// chats inside it is the one on screen.
     let sessionIDs: [String]
     let widget: UnsafeMutablePointer<GtkWidget>
+}
+
+extension MainWindow {
+    /// Opens the soak world's sessions one per pane, waiting for the list to carry them first.
+    fileprivate func soakOpen(_ arrangement: SplitArrangement, attempts: Int) {
+        guard let configuration = SoakWorld.configuration else {
+            FileHandle.standardOutput.write(Data("SOAKOPEN no soak world\n".utf8))
+            return
+        }
+        let chosen = (1...configuration.panes).compactMap { index in
+            entries.first {
+                $0.profileID == SoakWorld.profile.id && $0.session.id == SoakWorld.sessionID(index)
+            }
+        }
+        guard chosen.count == configuration.panes else {
+            if attempts > 0 {
+                Gtk.after(1000) { [weak self] in self?.soakOpen(arrangement, attempts: attempts - 1) }
+            } else {
+                FileHandle.standardOutput.write(
+                    Data("SOAKOPEN missing \(configuration.panes - chosen.count)\n".utf8))
+            }
+            return
+        }
+        if chosen.count == 1 {
+            open(chosen[0])
+        } else {
+            let offered = SplitEven.offers(count: chosen.count)
+            openSplit(chosen, as: offered.contains(arrangement) ? arrangement : .sideBySide)
+        }
+        FileHandle.standardOutput.write(Data("SOAKOPEN panes=\(splitHost.paneCount)\n".utf8))
+    }
+
+    /// One prompt into every pane in the same main-loop turn, so every reply streams at once.
+    fileprivate func soakSend() {
+        let panes = splitHost.orderedPanes
+        for (index, pane) in panes.enumerated() {
+            pane.sendComposed("Soak turn for pane \(index + 1): write a long answer.")
+        }
+        FileHandle.standardOutput.write(Data("SOAKSEND panes=\(panes.count)\n".utf8))
+    }
+
+    /// Structural verbs and window resizes on a 1.2 s beat for `seconds`, keeping the pane count
+    /// where it started: every split is closed again on the next beat.
+    fileprivate func soakHammer(seconds: Int) {
+        guard let window else { return }
+        let width = gtk_widget_get_width(window)
+        let height = gtk_widget_get_height(window)
+        let beats = max(1, seconds * 1000 / 1200)
+        let cycle = [
+            "split", "sclose", "szoom", "szoom", "sxchg", "seq", "sfocus", "shrink", "grow",
+        ]
+        for beat in 0..<beats {
+            Gtk.after(UInt32(beat * 1200)) { [weak self] in
+                guard let self, let window = self.window else { return }
+                switch cycle[beat % cycle.count] {
+                case "split": _ = self.perform(.splitPane(beat % 2 == 0 ? .horizontal : .vertical))
+                case "sclose": _ = self.perform(.closeSplit)
+                case "szoom": _ = self.perform(.zoomSplit)
+                case "sxchg": _ = self.perform(.exchangeSplit)
+                case "seq": _ = self.perform(.equalizeSplits)
+                case "sfocus": _ = self.perform(.focusSplit(beat % 2 == 0 ? .right : .left))
+                case "shrink": gtk_window_set_default_size(ptr(window), width * 2 / 3, height * 3 / 4)
+                default: gtk_window_set_default_size(ptr(window), width, height)
+                }
+            }
+        }
+        Gtk.after(UInt32(beats * 1200 + 500)) { [weak self] in
+            guard let self, let window = self.window else { return }
+            gtk_window_set_default_size(ptr(window), width, height)
+            _ = self.perform(.equalizeSplits)
+            FileHandle.standardOutput.write(
+                Data(
+                    "SOAKHAMMER done beats=\(beats) panes=\(self.splitHost.paneCount) window=\(gtk_widget_get_width(window))x\(gtk_widget_get_height(window))\n"
+                        .utf8))
+        }
+    }
 }

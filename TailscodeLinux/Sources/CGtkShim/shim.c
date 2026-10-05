@@ -3,6 +3,8 @@
 #include <pango/pangocairo.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdatomic.h>
+#include <stdlib.h>
 
 /// How a Swift closure that a signal was holding is let go of.
 ///
@@ -28,10 +30,26 @@ void tailscode_connect(gpointer instance, const char *signal, GCallback handler,
 typedef struct {
     void (*handler)(void *);
     void *data;
+    gboolean counted;
 } TailscodeIdle;
+
+/// The soak's counters. Off until `tailscode_soak_enable`, and then each is one relaxed atomic
+/// on a path that already allocates, so a measured run costs what an unmeasured one does.
+static atomic_bool tailscode_soak_on = false;
+static atomic_long tailscode_soak_pending = 0;
+static atomic_long tailscode_soak_pending_max = 0;
+static atomic_long tailscode_soak_parses = 0;
+static atomic_long tailscode_soak_parse_hits = 0;
+static atomic_long tailscode_soak_tick_runs = 0;
+static atomic_long tailscode_soak_frames = 0;
+
+#define TAILSCODE_SOAK_COUNT(counter) \
+    if (atomic_load_explicit(&tailscode_soak_on, memory_order_relaxed)) \
+        atomic_fetch_add_explicit(&(counter), 1, memory_order_relaxed)
 
 static gboolean tailscode_idle_trampoline(gpointer raw) {
     TailscodeIdle *box = raw;
+    if (box->counted) atomic_fetch_sub_explicit(&tailscode_soak_pending, 1, memory_order_relaxed);
     box->handler(box->data);
     g_free(box);
     return G_SOURCE_REMOVE;
@@ -50,7 +68,80 @@ void tailscode_on_main(void (*handler)(void *), void *data) {
     TailscodeIdle *box = g_new0(TailscodeIdle, 1);
     box->handler = handler;
     box->data = data;
+    box->counted = atomic_load_explicit(&tailscode_soak_on, memory_order_relaxed);
+    if (box->counted) {
+        long depth = atomic_fetch_add_explicit(&tailscode_soak_pending, 1, memory_order_relaxed) + 1;
+        long peak = atomic_load_explicit(&tailscode_soak_pending_max, memory_order_relaxed);
+        while (depth > peak && !atomic_compare_exchange_weak(&tailscode_soak_pending_max, &peak, depth)) {}
+    }
     g_idle_add_full(G_PRIORITY_DEFAULT, tailscode_idle_trampoline, box, NULL);
+}
+
+#define TAILSCODE_SOAK_LAGS 4096
+
+static GMutex tailscode_soak_lock;
+static gint64 tailscode_soak_lag_last = 0;
+static gint64 tailscode_soak_lags[TAILSCODE_SOAK_LAGS];
+static int tailscode_soak_lag_count = 0;
+
+/// A 100 ms timeout at the same priority as the posted work; how late it fires is how long the
+/// main loop was busy with something else.
+static gboolean tailscode_soak_lag_tick(gpointer unused) {
+    (void)unused;
+    gint64 now = g_get_monotonic_time();
+    g_mutex_lock(&tailscode_soak_lock);
+    if (tailscode_soak_lag_last != 0 && tailscode_soak_lag_count < TAILSCODE_SOAK_LAGS) {
+        gint64 late = now - tailscode_soak_lag_last - 100000;
+        tailscode_soak_lags[tailscode_soak_lag_count++] = late > 0 ? late : 0;
+    }
+    tailscode_soak_lag_last = now;
+    g_mutex_unlock(&tailscode_soak_lock);
+    return G_SOURCE_CONTINUE;
+}
+
+static void tailscode_soak_frame(GdkFrameClock *clock, gpointer unused) {
+    (void)clock;
+    (void)unused;
+    TAILSCODE_SOAK_COUNT(tailscode_soak_frames);
+}
+
+void tailscode_soak_enable(void) {
+    if (atomic_exchange(&tailscode_soak_on, true)) return;
+    g_timeout_add_full(G_PRIORITY_DEFAULT, 100, tailscode_soak_lag_tick, NULL, NULL);
+}
+
+gboolean tailscode_soak_watch_frames(GtkWidget *widget) {
+    GdkFrameClock *clock = widget ? gtk_widget_get_frame_clock(widget) : NULL;
+    if (!clock) return FALSE;
+    g_signal_connect(clock, "after-paint", G_CALLBACK(tailscode_soak_frame), NULL);
+    return TRUE;
+}
+
+static int tailscode_soak_compare(const void *left, const void *right) {
+    gint64 a = *(const gint64 *)left, b = *(const gint64 *)right;
+    return (a > b) - (a < b);
+}
+
+void tailscode_soak_read(TailscodeSoakSample *out) {
+    out->pending = atomic_load(&tailscode_soak_pending);
+    out->pending_max = atomic_exchange(&tailscode_soak_pending_max, out->pending);
+    out->parses = atomic_load(&tailscode_soak_parses);
+    out->parse_hits = atomic_load(&tailscode_soak_parse_hits);
+    out->tick_runs = atomic_load(&tailscode_soak_tick_runs);
+    out->frames = atomic_load(&tailscode_soak_frames);
+    g_mutex_lock(&tailscode_soak_lock);
+    int count = tailscode_soak_lag_count;
+    gint64 *lags = g_memdup2(tailscode_soak_lags, sizeof(gint64) * (count > 0 ? count : 1));
+    tailscode_soak_lag_count = 0;
+    gint64 stalled = tailscode_soak_lag_last ? g_get_monotonic_time() - tailscode_soak_lag_last - 100000 : 0;
+    g_mutex_unlock(&tailscode_soak_lock);
+    qsort(lags, count, sizeof(gint64), tailscode_soak_compare);
+    out->lag_samples = count;
+    out->lag50_ms = count ? lags[count / 2] / 1000.0 : 0;
+    out->lag95_ms = count ? lags[MIN(count - 1, (count * 95) / 100)] / 1000.0 : 0;
+    double worst = count ? lags[count - 1] / 1000.0 : 0;
+    out->lag_max_ms = MAX(worst, stalled / 1000.0);
+    g_free(lags);
 }
 
 void tailscode_after(guint ms, void (*handler)(void *), void *data) {
@@ -1119,6 +1210,7 @@ static gboolean tailscode_tick_trampoline(
     (void)widget;
     (void)clock;
     TailscodeTick *box = raw;
+    TAILSCODE_SOAK_COUNT(tailscode_soak_tick_runs);
     if (box->owned) return box->owned(box->data) ? G_SOURCE_CONTINUE : G_SOURCE_REMOVE;
     box->handler(box->data);
     return G_SOURCE_CONTINUE;
@@ -1604,7 +1696,11 @@ static char *tailscode_reveal_text = NULL;
 static PangoAttrList *tailscode_reveal_attrs = NULL;
 
 static gboolean tailscode_reveal_parse(const char *markup) {
-    if (tailscode_reveal_markup && strcmp(tailscode_reveal_markup, markup) == 0) return TRUE;
+    if (tailscode_reveal_markup && strcmp(tailscode_reveal_markup, markup) == 0) {
+        TAILSCODE_SOAK_COUNT(tailscode_soak_parse_hits);
+        return TRUE;
+    }
+    TAILSCODE_SOAK_COUNT(tailscode_soak_parses);
     PangoAttrList *attrs = NULL;
     char *text = NULL;
     if (!pango_parse_markup(markup, -1, 0, &attrs, &text, NULL, NULL)) return FALSE;

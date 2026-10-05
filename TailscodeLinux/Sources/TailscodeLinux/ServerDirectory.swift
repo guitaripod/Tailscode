@@ -47,6 +47,7 @@ public actor ServerDirectory {
         demoMode = DemoMode.isActive
         if demoMode {
             listed.append(contentsOf: DemoWorld.profiles)
+            if SoakWorld.configuration != nil { listed.append(SoakWorld.profile) }
         }
         cached = listed
         keepBackends(for: cached)
@@ -92,7 +93,7 @@ public actor ServerDirectory {
 
     public func backend(for profile: ConnectionProfile) -> (any CodingAgentBackend)? {
         if profile.id.hasPrefix(DemoWorld.profilePrefix) {
-            return DemoWorld.backend(for: profile.id)
+            return SoakWorld.backend(for: profile.id) ?? DemoWorld.backend(for: profile.id)
         }
         if let existing = backends[profile.id] { return existing }
         let made: (any CodingAgentBackend)?

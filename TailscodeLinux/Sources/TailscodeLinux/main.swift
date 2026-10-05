@@ -81,6 +81,7 @@ if Connect.isRequested {
 
 if Arguments.contains("--demo") {
     DemoMode.enter()
+    Soak.installIfRequested()
 }
 
 ToolkitFloor.enforce()
