@@ -83,7 +83,7 @@ public final class ConversationHub: @unchecked Sendable {
         var interest: LiveInterest
     }
 
-    private final class Entry {
+    private final class Entry: @unchecked Sendable {
         var opening: Task<AgentConversation?, Never>?
         var subscription: Task<Void, Never>?
         var subscriptionID: UInt64 = 0
@@ -289,17 +289,18 @@ public final class ConversationHub: @unchecked Sendable {
         guard let opening = entry.opening else { return }
         entry.subscriptionID &+= 1
         let id = entry.subscriptionID
-        entry.subscription = Task { [weak self] in
+        entry.subscription = Task { [weak self, weak entry] in
             guard let conversation = await opening.value, !Task.isCancelled else {
-                self?.subscriptionEnded(key, id: id, opened: false)
+                if let entry { self?.subscriptionEnded(key, entry: entry, id: id, opened: false) }
                 return
             }
             let stream = await conversation.states()
             for await state in stream {
                 if Task.isCancelled { break }
-                self?.receive(key, state, subscriptionID: id)
+                guard let entry else { break }
+                self?.receive(key, entry: entry, state, subscriptionID: id)
             }
-            self?.subscriptionEnded(key, id: id, opened: true)
+            if let entry { self?.subscriptionEnded(key, entry: entry, id: id, opened: true) }
         }
     }
 
@@ -309,10 +310,14 @@ public final class ConversationHub: @unchecked Sendable {
     /// backoff (2, 4, 8 … 30 s, reset by a live state), because the Kit finishes its subscribers on
     /// a failure it calls terminal and a pane that is still showing the chat must not go quiet for
     /// good; an open that failed waits for the next lease, as a server nobody has configured does.
-    private func subscriptionEnded(_ key: LiveKey, id: UInt64, opened: Bool) {
+    ///
+    /// The entry is compared by identity as well as by subscription number: a key dropped and
+    /// leased again starts a fresh entry whose numbering starts again, and a cancelled
+    /// subscription of the old one must not be read as the new one ending.
+    private func subscriptionEnded(_ key: LiveKey, entry ended: Entry, id: UInt64, opened: Bool) {
         lock.lock()
         defer { lock.unlock() }
-        guard let entry = entries[key], entry.subscriptionID == id else { return }
+        guard let entry = entries[key], entry === ended, entry.subscriptionID == id else { return }
         entry.subscription = nil
         if !opened { entry.opening = nil }
         if entry.leases.isEmpty {
@@ -328,9 +333,12 @@ public final class ConversationHub: @unchecked Sendable {
     /// The longest wait before a finished stream is dialled again.
     public static let maxRedialDelay: TimeInterval = 30
 
-    private func receive(_ key: LiveKey, _ state: ConversationState, subscriptionID: UInt64) {
+    private func receive(
+        _ key: LiveKey, entry received: Entry, _ state: ConversationState, subscriptionID: UInt64
+    ) {
         lock.lock()
-        guard let entry = entries[key], entry.subscriptionID == subscriptionID else {
+        guard let entry = entries[key], entry === received, entry.subscriptionID == subscriptionID
+        else {
             lock.unlock()
             return
         }
