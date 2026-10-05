@@ -1557,6 +1557,7 @@ final class ChatPane: @unchecked Sendable {
         guard let built = feed.takeBuilt(), built.generation == streamGeneration, !isParked else {
             return
         }
+        Trace.mark("applyBuilt \(built.rows.count) rows")
         Soak.timeApply { apply(state: built.state, rows: built.rows) }
         if built.fill != contextFill {
             contextFill = built.fill
@@ -2555,6 +2556,8 @@ final class ChatPane: @unchecked Sendable {
     /// arrival, so a build that produces one says so where it is produced rather than being
     /// diagnosed later from the flicker.
     private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
+        Trace.mark("applyRows begin \(rows.count) rendered=\(renderedRows.count)")
+        defer { Trace.mark("applyRows end") }
         stampLiveClock()
         assert(
             Set(rows.map(\.key)).count == rows.count,
@@ -2620,7 +2623,7 @@ final class ChatPane: @unchecked Sendable {
 
         let tailDone = start + renderedRows.count >= rows.count
         if tailDone, start > 0 {
-            let from = max(0, start - chunk)
+            let from = max(0, start - Self.historyChunk)
             var previous: UnsafeMutablePointer<GtkWidget>?
             var bits: [UInt] = []
             for row in rows[from..<start] {
@@ -2642,7 +2645,7 @@ final class ChatPane: @unchecked Sendable {
             if stick { followsBottom = true }
             if !isFillingInChunks {
                 isFillingInChunks = true
-                Gtk.onMain { [weak self] in
+                FillTurns.take(on: root) { [weak self] in
                     guard let self else { return }
                     self.isFillingInChunks = false
                     if let state = self.lastState {
@@ -2685,6 +2688,10 @@ final class ChatPane: @unchecked Sendable {
     /// the release: a click always lands on the row it was aimed at, and the transcript catches up
     /// a tenth of a second later.
     private(set) var pointerHeld = false
+    /// Rows put back above the tail per hop of a first fill. Each hop is laid out in a frame of its
+    /// own, and a row of markdown, a table or a code block costs one to two milliseconds to lay out
+    /// on a software renderer, so twenty keeps a hop's frame well inside the stall budget.
+    private static let historyChunk = 20
     private var heldRows: [TranscriptRow]?
     /// Rows a cache arrival asked to redraw while the pointer was down, redrawn on the release.
     private var heldReplacements: Set<String> = []
@@ -6076,6 +6083,37 @@ final class ChatPane: @unchecked Sendable {
         gtk_widget_grab_focus(entryView)
         vim.reset(to: text, cursor: text.count, mode: .insert)
         gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), text, -1)
+    }
+}
+
+/// One first-fill hop per frame, across every pane in the window.
+///
+/// A pane fills an opened transcript from its tail a chunk of rows at a time, and every chunk has
+/// to be laid out before the next is added or the chunking buys nothing. Five panes opened at once
+/// were five chunks laid out in the same frame, each frame the size of all of them; here the panes
+/// take turns, one chunk after each frame, so no frame lays out more than one pane's chunk.
+enum FillTurns {
+    nonisolated(unsafe) private static var waiting: [@Sendable () -> Void] = []
+    nonisolated(unsafe) private static var scheduled = false
+
+    static func take(
+        on widget: UnsafeMutablePointer<GtkWidget>, _ hop: @escaping @Sendable () -> Void
+    ) {
+        waiting.append(hop)
+        schedule(on: widget)
+    }
+
+    private static func schedule(on widget: UnsafeMutablePointer<GtkWidget>) {
+        guard !scheduled, !waiting.isEmpty else { return }
+        scheduled = true
+        let bits = UInt(bitPattern: widget)
+        Gtk.betweenFrames(of: widget) {
+            scheduled = false
+            guard !waiting.isEmpty else { return }
+            let hop = waiting.removeFirst()
+            hop()
+            if let raw = UnsafeMutableRawPointer(bitPattern: bits) { schedule(on: ptr(raw)) }
+        }
     }
 }
 

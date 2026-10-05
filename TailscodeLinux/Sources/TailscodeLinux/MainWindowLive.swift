@@ -183,3 +183,17 @@ private final class WeakPane: @unchecked Sendable {
     weak var pane: ChatPane?
     init(_ pane: ChatPane) { self.pane = pane }
 }
+
+extension MainWindow {
+    /// Opens several chats into their panes one per frame rather than all in one slice: each open
+    /// builds its pane's first screenful of rows, and five of them in one frame was one stall the
+    /// size of all five. The first opens at once; the rest follow, each after the previous one has
+    /// been laid out and painted.
+    func openInTurns(_ pairs: [(PaneID, SessionEntry)]) {
+        guard let (first, entry) = pairs.first else { return }
+        splitHost.panes[first]?.open(entry)
+        let rest = Array(pairs.dropFirst())
+        guard !rest.isEmpty, let root = splitHost.panes[first]?.root else { return }
+        FillTurns.take(on: root) { [weak self] in self?.openInTurns(rest) }
+    }
+}

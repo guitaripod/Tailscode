@@ -58,6 +58,8 @@ final class SplitHost: @unchecked Sendable {
     /// Every pane is a place a dragged chat can land, so a pane is never built without its drop
     /// target — including the ones a restore or a drop itself mints.
     private func makePane(_ id: PaneID) -> ChatPane {
+        Trace.mark("makePane begin")
+        defer { Trace.mark("makePane end") }
         let pane = ChatPane(id: id, host: host!)
         Gtk.acceptChatDrops(
             on: pane.root,
@@ -403,6 +405,8 @@ final class SplitHost: @unchecked Sendable {
     /// referenced across the teardown so the old tree's death cannot take a live conversation's
     /// widgets with it.
     private func rebuild() {
+        Trace.mark("rebuild begin")
+        defer { Trace.mark("rebuild end") }
         for pane in panes.values {
             g_object_ref(UnsafeMutableRawPointer(pane.root))
             Gtk.detachFromParent(pane.root)

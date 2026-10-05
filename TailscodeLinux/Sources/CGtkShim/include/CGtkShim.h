@@ -621,3 +621,7 @@ typedef struct TailscodeDrain TailscodeDrain;
 TailscodeDrain *tailscode_drain_new(void (*run)(void *, int), void *data);
 void tailscode_drain_request(TailscodeDrain *drain);
 gboolean tailscode_drain_pending(TailscodeDrain *drain);
+
+/// Runs `handler(data)` once after `widget`'s next frame has been laid out and painted (asking for
+/// that frame), from an idle below the frame clock. Same ownership rule as `tailscode_on_main`.
+void tailscode_between_frames(GtkWidget *widget, void (*handler)(void *), void *data);

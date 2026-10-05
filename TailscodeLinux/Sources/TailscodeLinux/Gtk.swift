@@ -46,6 +46,20 @@ enum Gtk {
             }, box)
     }
 
+    /// Runs `work` once after `widget`'s next frame has been laid out and painted, never before —
+    /// for work done in hops that each must be drawn before the next is added.
+    static func betweenFrames(
+        of widget: UnsafeMutablePointer<GtkWidget>?, _ work: @escaping @Sendable () -> Void
+    ) {
+        let box = Unmanaged.passRetained(Box(work)).toOpaque()
+        tailscode_between_frames(
+            widget,
+            { raw in
+                guard let raw else { return }
+                Unmanaged<Box>.fromOpaque(raw).takeRetainedValue().work()
+            }, box)
+    }
+
     final class Box: @unchecked Sendable {
         let work: @Sendable () -> Void
         init(_ work: @escaping @Sendable () -> Void) { self.work = work }

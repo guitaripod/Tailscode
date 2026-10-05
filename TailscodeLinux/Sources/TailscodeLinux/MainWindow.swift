@@ -2001,9 +2001,7 @@ final class MainWindow: @unchecked Sendable {
                 profileID: entry.profileID, sessionID: entry.session.id)
         }
         _ = splitHost.restore(SplitSnapshot(layout: layout, sessions: sessions))
-        for (pane, entry) in zip(layout.paneIDs, chosen) {
-            splitHost.panes[pane]?.open(entry)
-        }
+        openInTurns(Array(zip(layout.paneIDs, chosen)))
         splitHost.persist()
         marks.clear()
         lastSidebar = nil

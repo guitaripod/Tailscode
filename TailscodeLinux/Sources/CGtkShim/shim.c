@@ -3514,3 +3514,44 @@ gboolean tailscode_drain_pending(TailscodeDrain *drain) {
     g_mutex_unlock(&drain->lock);
     return pending;
 }
+
+typedef struct {
+    void (*handler)(void *);
+    void *data;
+    GdkFrameClock *clock;
+    gulong signal;
+} TailscodeAfterFrame;
+
+static void tailscode_after_frame_fired(GdkFrameClock *clock, gpointer raw) {
+    TailscodeAfterFrame *box = raw;
+    g_signal_handler_disconnect(clock, box->signal);
+    TailscodeIdle *idle = g_new0(TailscodeIdle, 1);
+    idle->handler = box->handler;
+    idle->data = box->data;
+    g_idle_add_full(GDK_PRIORITY_REDRAW + 10, tailscode_idle_trampoline, idle, NULL);
+    g_object_unref(box->clock);
+    g_free(box);
+}
+
+/// Work for the gap after the next frame: a one-shot on the widget's frame clock `after-paint`
+/// hands the work to an idle, so whatever came before it has been laid out and painted first, and
+/// a frame is asked for so the wait is never longer than one. A first fill that adds its rows in
+/// hops at the default priority added them all before the frame that laid them out — one slice the
+/// size of the whole transcript, five of them for five panes. With no frame clock (an unrealized
+/// widget) the work simply goes to an idle.
+void tailscode_between_frames(GtkWidget *widget, void (*handler)(void *), void *data) {
+    GdkFrameClock *clock = widget ? gtk_widget_get_frame_clock(widget) : NULL;
+    if (!clock) {
+        TailscodeIdle *idle = g_new0(TailscodeIdle, 1);
+        idle->handler = handler;
+        idle->data = data;
+        g_idle_add_full(GDK_PRIORITY_REDRAW + 10, tailscode_idle_trampoline, idle, NULL);
+        return;
+    }
+    TailscodeAfterFrame *box = g_new0(TailscodeAfterFrame, 1);
+    box->handler = handler;
+    box->data = data;
+    box->clock = g_object_ref(clock);
+    box->signal = g_signal_connect(clock, "after-paint", G_CALLBACK(tailscode_after_frame_fired), box);
+    gdk_frame_clock_request_phase(clock, GDK_FRAME_CLOCK_PHASE_AFTER_PAINT);
+}
