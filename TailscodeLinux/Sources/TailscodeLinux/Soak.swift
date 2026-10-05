@@ -8,11 +8,13 @@ import TailscodeCore
 /// world and turns them on; nothing here runs otherwise. Every five seconds, from a thread of its
 /// own so a wedged main loop still reports, one line goes to stdout:
 ///
-/// `SOAK t= dt= rss= anon= thr= fds= pending= maxPending= lag50= lag95= lagMax= ticks= tickRuns=
-/// frames= parses= parseHits= listSaves= listSaveMs= cpu= mainCpu=`
+/// `SOAK t= dt= rss= anon= thr= fds= pending= maxPending= lag50= lag95= lagMax= lagN= ticks= tickRuns=
+/// frames= parses= parseHits= listSaves= listSaveMs= applies= applyMs= cpu= mainCpu=`
 ///
-/// `ticks` is the number of live frame-clock callbacks; `tickRuns`, `frames`, `parses`,
-/// `parseHits`, `listSaves` and `listSaveMs` are totals over the last `dt` seconds; `cpu` and
+/// `lagN` is how many times the 100 ms lag timer fired in the window (zero means the main loop
+/// never reached it, and `lagMax` is then the time since it last did); `ticks` is the number of
+/// live frame-clock callbacks; `tickRuns`, `frames`, `parses`, `parseHits`, `listSaves`,
+/// `listSaveMs`, `applies` and `applyMs` are totals over the last `dt` seconds; `cpu` and
 /// `mainCpu` are the process's and the main thread's share of one core over the same window.
 enum Soak {
     static let requested = ProcessInfo.processInfo.environment["TAILSCODE_SOAK"].flatMap {
@@ -21,6 +23,7 @@ enum Soak {
 
     private static let running = Atomic<Bool>(false)
     private static let saves = Mutex((count: 0, nanoseconds: UInt64(0)))
+    private static let applies = Mutex((count: 0, nanoseconds: UInt64(0)))
     private static let window = Mutex(Window())
 
     private struct Window {
@@ -71,14 +74,31 @@ enum Soak {
         }
     }
 
-    static func timeListSave(_ save: () -> Void) {
-        guard isOn else { return save() }
+    static func timeListSave(_ save: () -> Void) { time(save, into: saves) }
+
+    /// A pane taking one conversation state on the main thread: the row diff, the widgets and the
+    /// live row's re-render.
+    static func timeApply(_ apply: () -> Void) { time(apply, into: applies) }
+
+    private static func time(
+        _ work: () -> Void, into total: borrowing Mutex<(count: Int, nanoseconds: UInt64)>
+    ) {
+        guard isOn else { return work() }
         let began = DispatchTime.now().uptimeNanoseconds
-        save()
+        work()
         let spent = DispatchTime.now().uptimeNanoseconds - began
-        saves.withLock {
+        total.withLock {
             $0.count += 1
             $0.nanoseconds += spent
+        }
+    }
+
+    private static func drain(_ total: borrowing Mutex<(count: Int, nanoseconds: UInt64)>)
+        -> (Int, UInt64)
+    {
+        total.withLock { state -> (Int, UInt64) in
+            defer { state = (0, 0) }
+            return (state.count, state.nanoseconds)
         }
     }
 
@@ -90,10 +110,8 @@ enum Soak {
     private static func line() -> String {
         var sample = TailscodeSoakSample()
         tailscode_soak_read(&sample)
-        let (saveCount, saveNanoseconds) = saves.withLock { state -> (Int, UInt64) in
-            defer { state = (0, 0) }
-            return (state.count, state.nanoseconds)
-        }
+        let (saveCount, saveNanoseconds) = drain(saves)
+        let (applyCount, applyNanoseconds) = drain(applies)
         let status = procStatus()
         let fds = ((try? FileManager.default.contentsOfDirectory(atPath: "/proc/self/fd"))?.count ?? 1) - 1
         let cpuNow = cpuTicks(of: "/proc/self/stat")
@@ -116,6 +134,7 @@ enum Soak {
                 "lag50=\(String(format: "%.1f", sample.lag50_ms))",
                 "lag95=\(String(format: "%.1f", sample.lag95_ms))",
                 "lagMax=\(String(format: "%.1f", sample.lag_max_ms))",
+                "lagN=\(sample.lag_samples)",
                 "ticks=\(tailscode_live_ticks())",
                 "tickRuns=\(sample.tick_runs - state.tickRuns)",
                 "frames=\(sample.frames - state.frames)",
@@ -123,6 +142,8 @@ enum Soak {
                 "parseHits=\(sample.parse_hits - state.parseHits)",
                 "listSaves=\(saveCount)",
                 "listSaveMs=\(String(format: "%.1f", Double(saveNanoseconds) / 1e6))",
+                "applies=\(applyCount)",
+                "applyMs=\(String(format: "%.1f", Double(applyNanoseconds) / 1e6))",
                 "cpu=\(String(format: "%.1f", cpu))",
                 "mainCpu=\(String(format: "%.1f", mainCpu))",
             ]

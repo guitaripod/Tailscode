@@ -1309,7 +1309,7 @@ final class ChatPane: @unchecked Sendable {
                     }
                     Gtk.onMain { [weak self] in
                         guard let self, self.sessionID == sessionID else { return }
-                        self.apply(state: state, rows: rows)
+                        Soak.timeApply { self.apply(state: state, rows: rows) }
                     }
                     let fill = ContextFill.read(
                         messages: state.messages, sessionModel: self.entry?.session.model,

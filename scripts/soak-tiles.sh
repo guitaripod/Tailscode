@@ -10,7 +10,8 @@
 # The app runs from the worktree's own release build (TailscodeLinux/.build/release), because a
 # debug build measures the optimiser's absence. The whole harness — Xvfb, bus, app — runs inside
 # a systemd scope capped at 10 GiB with no swap, so a runaway is killed in its cgroup instead of
-# taking the desktop with it; a run that dies that way is reported, not hidden. The harness is
+# taking the desktop with it. OOMPolicy=continue lets the kernel kill only the app, so this script
+# survives to report the death instead of being stopped with the rest of the scope. The harness is
 # always stopped on exit.
 #
 # What it reads: the app's own `SOAK` lines (every 5 s, see TailscodeLinux/Sources/TailscodeLinux/
@@ -57,6 +58,7 @@ fi
 
 if [ -z "${SOAK_IN_SCOPE:-}" ]; then
     exec systemd-run --user --scope --quiet -p MemoryMax=10G -p MemorySwapMax=0 -p CPUQuota=1200% \
+        -p OOMPolicy=continue \
         -- env SOAK_IN_SCOPE=1 "$0" \
         --panes "$PANES" --rate "$RATE" --rows "$ROWS" --seconds "$SECONDS_" --warmup "$WARMUP" \
         --arrange "$ARRANGE" --label "$LABEL" --out "$OUT" \
@@ -130,6 +132,7 @@ def pct(values, p):
     return values[min(len(values) - 1, int(len(values) * p))]
 
 live = [s for s in soak if s["t"] > send + 10 and s["dt"] > 2]
+timed = [s for s in live if s.get("lagN", 1) > 0]
 warm = [p for p in proc if p[0] > send + warmup]
 rate = lambda key: statistics.fmean(s[key] / s["dt"] for s in live) if live else float("nan")
 rss_slope = slope([(p[0] / 60, p[1]) for p in warm])
@@ -144,13 +147,15 @@ summary = {
     "rss_peak_mib": max((p[1] for p in proc), default=0) / 1024,
     "rss_end_mib": proc[-1][1] / 1024 if proc else 0,
     "rss_slope_kib_min": rss_slope,
+    "died_at_s_after_send": float(died) - send if died else float("nan"),
     "thr_min_max": (min(thr), max(thr)),
     "fds_min_max": (min(fds), max(fds)),
     "pending_max": max((s["maxPending"] for s in live), default=float("nan")),
     "pending_last": live[-1]["pending"] if live else float("nan"),
-    "lag50_median_ms": statistics.median(s["lag50"] for s in live) if live else float("nan"),
-    "lag95_median_ms": statistics.median(s["lag95"] for s in live) if live else float("nan"),
-    "lag95_worst_ms": max((s["lag95"] for s in live), default=float("nan")),
+    "lag_silent_windows": len(live) - len(timed),
+    "lag50_median_ms": statistics.median(s["lag50"] for s in timed) if timed else float("nan"),
+    "lag95_median_ms": statistics.median(s["lag95"] for s in timed) if timed else float("nan"),
+    "lag95_worst_ms": max((s["lag95"] for s in timed), default=float("nan")),
     "lag_max_ms": max((s["lagMax"] for s in live), default=float("nan")),
     "live_ticks": statistics.median(s["ticks"] for s in live) if live else float("nan"),
     "tick_runs_s": rate("tickRuns"),
