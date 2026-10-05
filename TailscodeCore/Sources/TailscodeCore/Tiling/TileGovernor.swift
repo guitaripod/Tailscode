@@ -212,13 +212,17 @@ public struct PaneFacts: Sendable, Equatable {
 }
 
 /// The size a chat pane needs to be full, and the margin it must clear to become full again so a
-/// drag across the line does not flicker. The host connects it to `PaneSizing` (4.2).
+/// drag across the line does not flicker. It defaults to `PaneSizing`'s own numbers so the layout's
+/// clamp and the governor's density can never disagree about what a full pane is.
 public struct FullDensityRule: Sendable, Equatable {
     public var width: Double
     public var height: Double
     public var hysteresis: Double
 
-    public init(width: Double = 280, height: Double = 200, hysteresis: Double = 16) {
+    public init(
+        width: Double = PaneSizing.chatFull.width, height: Double = PaneSizing.chatFull.height,
+        hysteresis: Double = PaneSizing.hysteresis
+    ) {
         self.width = width
         self.height = height
         self.hysteresis = hysteresis

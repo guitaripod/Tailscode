@@ -354,3 +354,22 @@ struct TileGovernorTests {
         #expect(ShedReason.thermal(.serious).chipWord == "warm")
     }
 }
+
+@Suite("Full density rule")
+struct FullDensityRuleTests {
+    @Test("The governor and the layout agree on what a full chat is")
+    func agreesWithPaneSizing() {
+        let rule = FullDensityRule()
+        #expect(rule.width == PaneSizing.chatFull.width)
+        #expect(rule.height == PaneSizing.chatFull.height)
+        #expect(rule.hysteresis == PaneSizing.hysteresis)
+        for (width, height, was) in [
+            (279.0, 400.0, true), (280.0, 200.0, true), (290.0, 210.0, false), (296.0, 216.0, false),
+            (500.0, 199.0, true),
+        ] {
+            #expect(
+                rule.allowsFull(width: width, height: height, wasAllowed: was)
+                    == PaneSizing.allowsFull(width: width, height: height, wasFull: was))
+        }
+    }
+}
