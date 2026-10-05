@@ -133,7 +133,7 @@ final class ChatViewController: UIViewController {
     private var findVisible = false
     private var lastFindRowCount = 0
     private var lastRenderedGoal: SessionGoal?
-    private let composerAccessories = UIStackView()
+    private let composerAccessories = AccessoryStack()
     private var streamingActivityID: String?
     private var expandedAgentGroups: Set<String> = []
     private let navTitleContainer = UIView()
@@ -144,6 +144,11 @@ final class ChatViewController: UIViewController {
     private let attachmentStrip = UIStackView()
     private var suppressBannerUntil: Date = .distantPast
     private var userScrolledUp = false
+    /// Rows measure themselves after the transcript was last laid out — a tool row opening its
+    /// detail, an image decoding, a running row growing a line — and the room above a short
+    /// transcript and the end of a long one are both worked out from its height, so a height that
+    /// moves has to say so or the last rows end up behind whatever floats over the composer.
+    private var contentSizeWatch: NSKeyValueObservation?
     /// A finger resting on the transcript, which is not the same gesture as a drag and stops the
     /// stream following the bottom all the same.
     private var isFingerDown = false
@@ -610,8 +615,10 @@ final class ChatViewController: UIViewController {
             chrome: collectionView.safeAreaInsets.top + bannerInset + composerInset)
         let bottomInset = composerInset + canvasPadding
         if abs(collectionView.contentInset.bottom - bottomInset) > 0.5 {
+            let parked = isParkedOnEnd()
             collectionView.contentInset.bottom = bottomInset
             collectionView.verticalScrollIndicatorInsets.bottom = composerInset
+            if parked { carryEnd() }
         }
 
         let contentHeight = collectionView.collectionViewLayout.collectionViewContentSize.height
@@ -621,6 +628,53 @@ final class ChatViewController: UIViewController {
             collectionView.contentInset.top = topInset
         }
         pinFreshCanvas()
+        keepEndClear()
+    }
+
+    private func contentHeightMoved() {
+        guard isViewLoaded, view.window != nil else { return }
+        let parked = isParkedOnEnd()
+        updateTranscriptInsets()
+        if parked { carryEnd() }
+    }
+
+    /// How far the page is from the offset at which its end rests against whatever stands in
+    /// front of it. Measured against the real inset, which the reading `isNearBottom` takes for
+    /// following a live answer deliberately does not: with the keyboard up that reading calls
+    /// nearly every offset near the bottom.
+    private func distanceFromRestingEnd() -> CGFloat {
+        let inset = collectionView.adjustedContentInset
+        let resting = collectionView.contentSize.height + inset.bottom - collectionView.bounds.height
+        return max(-inset.top, resting) - collectionView.contentOffset.y
+    }
+
+    /// Whether the reader is on the end of the transcript, so that a change in what stands in
+    /// front of it — a chip arriving above the composer, the pill row growing the box, the
+    /// keyboard going — has to carry the end along. Without it the room under the transcript
+    /// changes and the page stays where it was, which is how the last rows of a chat ended up
+    /// behind the chips: the end was scrolled to before the chips had a height.
+    private func isParkedOnEnd() -> Bool {
+        guard canvasPromptIDs.isEmpty, !userScrolledUp, !isFingerDown else { return false }
+        return abs(distanceFromRestingEnd()) < 120
+    }
+
+    /// The end of the transcript is never left behind the composer: whoever scrolled last — the
+    /// keyboard's own animation, a row finishing its measuring — a reader who is on the end is put
+    /// back on it once the page has stopped moving.
+    private func keepEndClear() {
+        guard isParkedOnEnd(), distanceFromRestingEnd() > 1 else { return }
+        carryEnd()
+    }
+
+    /// Puts the end of the transcript back against whatever now stands in front of it.
+    private func carryEnd() {
+        if let unrevealed = unrevealedHeight(), unrevealed > 0 {
+            followVisibleEnd()
+            return
+        }
+        let inset = collectionView.adjustedContentInset
+        let end = collectionView.contentSize.height + inset.bottom - collectionView.bounds.height
+        collectionView.contentOffset.y = max(-inset.top, end)
     }
 
     /// The room held under the transcript so the prompt just sent can rest at the top of the
@@ -778,6 +832,11 @@ final class ChatViewController: UIViewController {
     ///
     /// Nil when there is a live row but no cell on screen to read it from, which is not zero: a
     /// caller that took it for zero would take the whole laid-out paragraph for written.
+    ///
+    /// The unrevealed text is only ever the end of the page when the live row is the last one.
+    /// With a row below it — a tool starting while the words are still being written, a message
+    /// waiting its turn — the clear text is a gap above rows that are already real, and an end
+    /// that excluded the gap put those rows behind the composer.
     private func visibleEnd() -> CGFloat? {
         let contentHeight = collectionView.contentSize.height
         guard let id = cascade.key, let row = rowsByID[id] else { return contentHeight }
@@ -785,6 +844,7 @@ final class ChatViewController: UIViewController {
             let attributes = collectionView.layoutAttributesForItem(at: indexPath),
             let cell = collectionView.cellForItem(at: indexPath)
         else { return nil }
+        guard indexPath.item == dataSource.snapshot().numberOfItems - 1 else { return contentHeight }
         let bottom: CGFloat
         switch (row.content, cell) {
         case (.text, let bubble as TextBubbleCell):
@@ -795,9 +855,7 @@ final class ChatViewController: UIViewController {
         default:
             return contentHeight
         }
-        let isLast = indexPath.item == dataSource.snapshot().numberOfItems - 1
-        let below = isLast ? 0 : max(0, contentHeight - attributes.frame.maxY)
-        return min(contentHeight, attributes.frame.minY + bottom + below)
+        return min(contentHeight, attributes.frame.minY + bottom)
     }
 
     /// How much of the live row is laid out past its reveal — text the reader has not been shown
@@ -993,6 +1051,12 @@ final class ChatViewController: UIViewController {
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
+        composerAccessories.onHeightChange = { [weak self] in self?.updateTranscriptInsets() }
+        contentSizeWatch = collectionView.observe(\.contentSize, options: [.old, .new]) {
+            [weak self] _, change in
+            guard change.oldValue?.height != change.newValue?.height else { return }
+            MainActor.assumeIsolated { self?.contentHeightMoved() }
+        }
 
         [banner, composer].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
@@ -1025,7 +1089,9 @@ final class ChatViewController: UIViewController {
         let chips = UIStackView(arrangedSubviews: [contextChip, spendChip, gitChip])
         chips.axis = .horizontal
         chips.spacing = Theme.Spacing.xs
+        chips.alignment = .center
         composerAccessories.addArrangedSubview(chips)
+        chips.widthAnchor.constraint(lessThanOrEqualTo: composerAccessories.widthAnchor).isActive = true
         view.addSubview(composerAccessories)
 
         NSLayoutConstraint.activate([
@@ -3009,7 +3075,10 @@ final class ChatViewController: UIViewController {
         config.buttonSize = .small
         config.imagePadding = 6
         config.baseForegroundColor = Theme.Color.secondaryLabel
+        config.titleLineBreakMode = .byTruncatingTail
         contextChip.configuration = config
+        contextChip.titleLabel?.numberOfLines = 1
+        contextChip.setContentCompressionResistancePriority(.required, for: .horizontal)
         contextChip.accessibilityHint = String(localized: "Opens the context window.")
         contextChip.addAction(
             UIAction { [weak self] _ in self?.presentContextWindow() }, for: .touchUpInside)
@@ -3027,7 +3096,10 @@ final class ChatViewController: UIViewController {
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
         config.imagePadding = 6
         config.baseForegroundColor = Theme.Color.secondaryLabel
+        config.titleLineBreakMode = .byTruncatingTail
         spendChip.configuration = config
+        spendChip.titleLabel?.numberOfLines = 1
+        spendChip.setContentCompressionResistancePriority(.required, for: .horizontal)
         spendChip.accessibilityHint = String(
             localized: "What this conversation has cost. Opens the breakdown.")
         spendChip.addAction(
@@ -3046,7 +3118,10 @@ final class ChatViewController: UIViewController {
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
         config.imagePadding = 6
         config.baseForegroundColor = Theme.Color.secondaryLabel
+        config.titleLineBreakMode = .byTruncatingTail
         gitChip.configuration = config
+        gitChip.titleLabel?.numberOfLines = 1
+        gitChip.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         gitChip.accessibilityHint = String(
             localized: "The repository this conversation is working in. Opens its state.")
         gitChip.addAction(
@@ -5697,6 +5772,10 @@ extension ChatViewController: UICollectionViewDelegate {
         syncFAB()
     }
 
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        keepEndClear()
+    }
+
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         userScrolledUp = true
         canvasIntent = []
@@ -6104,5 +6183,22 @@ extension ChatViewController: KeyActionHost {
         let target = min(maxY, max(minY, collectionView.contentOffset.y + delta))
         if delta < 0 { userScrolledUp = true }
         collectionView.setContentOffset(CGPoint(x: 0, y: target), animated: true)
+    }
+}
+
+/// The stack of chips and strips that floats over the composer. A chip arriving or leaving changes
+/// its height, and the transcript's room at the bottom is worked out from where this stack starts
+/// — but nothing in the screen's own layout pass hears a hidden view being shown, so the stack
+/// says so itself, and the last rows of a chat are never left behind it.
+@MainActor
+private final class AccessoryStack: UIStackView {
+    var onHeightChange: (() -> Void)?
+    private var lastHeight: CGFloat = 0
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard abs(bounds.height - lastHeight) > 0.5 else { return }
+        lastHeight = bounds.height
+        onHeightChange?()
     }
 }
