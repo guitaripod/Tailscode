@@ -20,6 +20,7 @@ enum SelfTest {
     static func run() async -> Never {
         startWatchdog()
         var failures = 0
+        let tileChild = TileChecks.Child()
 
         do {
             let checks = try checkMarkup()
@@ -462,6 +463,16 @@ enum SelfTest {
             report("two observers: agree on \(count) messages")
         } catch {
             report("two observers: \(error)")
+            failures += 1
+        }
+
+        let tiles = tileChild.verdict()
+        if tiles.failures.isEmpty {
+            report(
+                "tiles: a frame applies the newest state, one conversation per chat, parked panes "
+                    + "own nothing, closed panes are freed, a split needs room (\(tiles.notes))")
+        } else {
+            report("tiles: \(tiles.failures.joined(separator: " · "))")
             failures += 1
         }
 

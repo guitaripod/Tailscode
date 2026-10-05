@@ -21,8 +21,11 @@ enum TranscriptBench {
         guard let flag = arguments.firstIndex(of: "--bench") else { exit(2) }
         let paths = arguments[(flag + 1)...].prefix { !$0.hasPrefix("-") }
         guard !paths.isEmpty else {
-            print("usage: TailscodeMac --bench <transcript.json …>")
+            print("usage: TailscodeMac --bench <transcript.json …> | tiles=N[:R:K:S]")
             exit(2)
+        }
+        if TileBench.isRequested(paths), let spec = paths.first {
+            TileBench.run(spec)
         }
         var disagreed = false
         for path in paths {
