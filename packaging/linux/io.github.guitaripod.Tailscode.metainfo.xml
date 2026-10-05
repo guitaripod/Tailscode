@@ -69,6 +69,19 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.68" date="2026-10-05">
+      <description>
+        <p>The model chooser, the dial popover, Quick Ask and the composer&#x27;s model button no longer cut a name, a limit or a hint off, at any window width or text scale.</p>
+        <p>Changes:</p>
+        <ul>
+          <li>Provider and server chips in the model chooser wrap onto further lines instead of forcing the window to its widest, and a long server name, a hint, a count or a wall&#x27;s words wraps instead of ending in an ellipsis.</li>
+          <li>The popover&#x27;s model column grows to hold &quot;Used up · resets in 10h 59m&quot; whole, and model names, level words and the machine a model runs on wrap rather than cut.</li>
+          <li>The composer&#x27;s model button no longer shrinks. When the strip is short the chat, ask, image and video buttons give way first, then the machine and project label moves to a line of its own, so a split pane keeps the model and its level whole.</li>
+          <li>A long server name in Quick Ask no longer widens the window.</li>
+          <li>The chooser&#x27;s every-provider chip counts the machine&#x27;s models once, so it agrees with its tab; a model that runs on the server&#x27;s own hardware reads the same everywhere, and a model that takes no effort level says so once in the dial.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.67" date="2026-10-05">
       <description>
         <p>Model and effort are one control in the composer, pinned model-and-level pairs cycle without opening anything, and every provider and local model reads honestly on the dial.</p>
