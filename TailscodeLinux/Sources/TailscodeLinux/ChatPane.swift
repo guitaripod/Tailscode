@@ -291,6 +291,7 @@ final class ChatPane: @unchecked Sendable {
         self.host = host
         buildRoot()
         wireContext()
+        cascade.holder = UnsafeMutableRawPointer(transcriptBox)
         cascade.onFrame = { [weak self] in self?.paintCascade() }
         cascade.onStalled = { [weak self] in self?.giveUpCascade() }
     }

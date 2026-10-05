@@ -348,9 +348,11 @@ GtkWidget *tailscode_reveal_label_new(void);
 /// than the paragraph. A paragraph whose wave touches a right-to-left run is drawn whole by the
 /// label itself instead of drawn wrongly. Returns the markup's total rendered length, or -1 if it
 /// could not be parsed or the label is not a reveal label. A negative `visible` clears the wave
-/// and hands the label the whole markup back.
+/// and hands the label the whole markup back. The parse is cached on `holder` (see
+/// `tailscode_markup_text`); a NULL holder parses into the scratch entry, which is what a one-off
+/// settle wants.
 int tailscode_label_reveal(
-    GtkWidget *label, const char *markup, int visible, int wave,
+    GtkWidget *label, gpointer holder, const char *markup, int visible, int wave,
     const unsigned int *rgb, const unsigned short *alpha);
 
 /// What a frame at `visible` characters would draw, as numbers, so the geometry can be checked
@@ -368,9 +370,11 @@ int tailscode_label_reveal_plan(GtkWidget *label, int visible, int wave, double 
 double tailscode_label_revealed_height(GtkWidget *label, int visible);
 
 /// The markup's rendered text — what a reader actually sees, with every marker already eaten.
-/// The caller paces over this, so it has to be the same string the label will show. Owned by the
-/// one-entry parse cache and valid until the next call with different markup.
-const char *tailscode_markup_text(const char *markup);
+/// The caller paces over this, so it has to be the same string the label will show. Owned by
+/// `holder`'s parse cache (a scratch entry when `holder` is NULL) and valid until the next call
+/// on that holder with different markup. `tailscode_label_reveal` takes the same holder, so the
+/// rendered length and every frame after it read one parse per holder.
+const char *tailscode_markup_text(gpointer holder, const char *markup);
 
 /// A callback on the widget's own frame clock. A chained timeout drifts against the compositor and
 /// lands two frames in one and none in the next, which is the stutter a cascade exists to remove;
@@ -603,3 +607,12 @@ gboolean tailscode_systemd_set_unit_properties(
 /// Names the calling thread for `ps`, `top` and `/proc/self/task/<tid>/comm` (15 characters kept).
 /// `prctl` is variadic, which Swift cannot call.
 void tailscode_name_thread(const char *name);
+
+/// The tiling drain's seat on the main context (see shim.c): `run(data, one)` is called from an
+/// idle below the frame clock's paint with `one` false, or from the 100 ms starvation guard with
+/// `one` true, which asks for exactly one ready slot. `request` is idempotent while pending and
+/// callable from any thread.
+typedef struct TailscodeDrain TailscodeDrain;
+TailscodeDrain *tailscode_drain_new(void (*run)(void *, int), void *data);
+void tailscode_drain_request(TailscodeDrain *drain);
+gboolean tailscode_drain_pending(TailscodeDrain *drain);

@@ -3396,3 +3396,69 @@ gboolean tailscode_focus_on_divider(GtkWidget *root) {
     GtkWidget *parent = gtk_widget_get_parent(focus);
     return parent && GTK_IS_PANED(parent) && tailscode_paned_handle(GTK_PANED(parent)) == focus;
 }
+
+/// The tiling drain's seat on the main context: one idle at `GDK_PRIORITY_REDRAW + 10`, below the
+/// frame clock's paint, so applying the panes' newest states takes the gap between frames and can
+/// never starve painting; and while it is pending, a 100 ms `G_PRIORITY_DEFAULT` guard that runs
+/// one ready slot if the idle has not run by then, so a stream's ending state can never wait behind
+/// an animation that outranks it. Requests are idempotent while one is pending and may come from
+/// any thread. Settled means silent: with nothing requested there is no source at all.
+struct TailscodeDrain {
+    void (*run)(void *, int);
+    void *data;
+    GMutex lock;
+    guint idle_id;
+    guint guard_id;
+};
+
+static gboolean tailscode_drain_guard(gpointer raw) {
+    TailscodeDrain *drain = raw;
+    g_mutex_lock(&drain->lock);
+    if (drain->idle_id == 0) {
+        drain->guard_id = 0;
+        g_mutex_unlock(&drain->lock);
+        return G_SOURCE_REMOVE;
+    }
+    g_mutex_unlock(&drain->lock);
+    drain->run(drain->data, 1);
+    return G_SOURCE_CONTINUE;
+}
+
+static gboolean tailscode_drain_idle(gpointer raw) {
+    TailscodeDrain *drain = raw;
+    g_mutex_lock(&drain->lock);
+    drain->idle_id = 0;
+    guint guard = drain->guard_id;
+    drain->guard_id = 0;
+    g_mutex_unlock(&drain->lock);
+    if (guard) g_source_remove(guard);
+    drain->run(drain->data, 0);
+    return G_SOURCE_REMOVE;
+}
+
+TailscodeDrain *tailscode_drain_new(void (*run)(void *, int), void *data) {
+    TailscodeDrain *drain = g_new0(TailscodeDrain, 1);
+    drain->run = run;
+    drain->data = data;
+    g_mutex_init(&drain->lock);
+    return drain;
+}
+
+void tailscode_drain_request(TailscodeDrain *drain) {
+    if (!drain) return;
+    g_mutex_lock(&drain->lock);
+    if (drain->idle_id == 0) {
+        drain->idle_id = g_idle_add_full(GDK_PRIORITY_REDRAW + 10, tailscode_drain_idle, drain, NULL);
+        if (drain->guard_id == 0)
+            drain->guard_id = g_timeout_add_full(G_PRIORITY_DEFAULT, 100, tailscode_drain_guard, drain, NULL);
+    }
+    g_mutex_unlock(&drain->lock);
+}
+
+gboolean tailscode_drain_pending(TailscodeDrain *drain) {
+    if (!drain) return FALSE;
+    g_mutex_lock(&drain->lock);
+    gboolean pending = drain->idle_id != 0;
+    g_mutex_unlock(&drain->lock);
+    return pending;
+}

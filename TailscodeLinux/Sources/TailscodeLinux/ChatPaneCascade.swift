@@ -111,7 +111,7 @@ extension ChatPane {
             row: key, source, sealed: sealed, markdown: row.streamsMarkdown)
         let held = safe == source ? row : row.truncated(to: safe)
         guard let markup = Self.cascadeMarkup(for: held),
-            let rendered = CascadePainter.renderedText(of: markup),
+            let rendered = cascade.renderedText(of: markup),
             rendered.unicodeScalars.count > cascade.revealed
         else { return false }
         cascade.focus(
