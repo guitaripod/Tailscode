@@ -12,8 +12,10 @@ struct SplitEvenTests {
     func offersFitTheCount() {
         #expect(SplitEven.offers(count: 1).isEmpty)
         #expect(SplitEven.offers(count: 2) == [.sideBySide, .stacked])
-        #expect(SplitEven.offers(count: 3) == [.sideBySide, .stacked, .grid])
-        #expect(SplitEven.offers(count: SplitEven.limit).count == 3)
+        #expect(SplitEven.offers(count: 3) == [.sideBySide, .stacked, .grid, .mainStack])
+        #expect(SplitEven.offers(count: 4) == [.mainStack, .sideBySide, .stacked, .grid])
+        #expect(SplitEven.offers(count: SplitEven.limit).first == .mainStack)
+        #expect(SplitEven.offers(count: SplitEven.limit).count == 4)
         #expect(SplitEven.offers(count: SplitEven.limit + 1).isEmpty)
     }
 
