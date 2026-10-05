@@ -153,3 +153,38 @@ scripts/soak-tiles.sh --panes 5 --seconds 180 --assert   # exit 1 past the 10.7 
 ```
 
 Each run writes `app.log` (the `SOAK` lines), `proc.csv` (1 s external samples) and `summary.txt` under `${TMPDIR:-/tmp}/tailscode-soak/<label>` (or `--out`). The `SOAK` fields are documented in `TailscodeLinux/Sources/TailscodeLinux/Soak.swift`. A one-off run without the script is `TAILSCODE_SOAK=5:80:600 scripts/dev-linuxapp.sh start --release --clean --drive '4000:soakopen;12000:soaksend' -- --demo`, inside the same capped scope.
+
+## Mac
+
+Measured 2026-10-06 on the reference Mac (macOS 27.2, Xcode 27, Debug builds from `scripts/build-macapp-isolated.sh`) with `TailscodeMac --bench tiles=N:80:600:20`: N panes on `SoakWorld` sessions of 600 messages, one send per pane, 20 s of 80 tok/s firehose, in a 1600×1000 window ordered front (the display awake through `caffeinate -u`, so the display link is served). "Old" is master at `8bdf52d3` (each pane's own `AgentConversation`, every state built and applied on the main thread from the pane's stream loop) with only the bench and an apply counter added; "new" is `wt/mb` (hub leases, latest-wins mailboxes, the frame-paced drain). Busy and worst slice are Ma's `LoopMeter` (main run loop, 1 s windows); lag is how late a 100 ms main-queue timer fires, the Mac's stand-in for a queue depth; the footprint slope is a least-squares fit over the 20 s, which the growing answers themselves dominate and is noisy at that length. The Mac cannot run the Linux soak harness; there is no external process sampler here.
+
+| Measure | N=1 old / new | N=2 | N=3 | N=4 | N=5 | N=8 |
+|---|---|---|---|---|---|---|
+| main busy mean | 0.66 / 0.65 | 0.95 / 0.67 | 1.00 / 0.71 | 1.00 / 0.73 | 0.95 / 0.73 | **killed past 11 GB** / 0.74 |
+| main busy p95 | 0.89 / 0.80 | 1.00 / 0.84 | 1.00 / 0.87 | 1.00 / 0.90 | 1.00 / 0.95 | — / 0.87 |
+| worst slice (ms) | 243 / 40 | 445 / 44 | 646 / 65 | 1 117 / 74 | 1 908 / 92 | — / 118 |
+| lag p95 (ms) | 21 / 21 | 47 / 22 | 71 / 24 | 107 / 26 | 172 / 28 | — / 33 |
+| worst lag (ms) | 29 / 35 | 58 / 29 | 118 / 32 | 126 / 33 | 255 / 39 | — / 47 |
+| footprint at end (MiB) | 266 / 270 | 455 / 309 | 693 / 400 | 970 / 520 | 1 079 / 624 | — / 827 |
+| footprint slope (MiB/min) | 122 / 34 | 293 / 97 | −13 / 90 | 131 / 130 | 117 / 144 | — / 135 |
+| process CPU (% of a core) | 68 / 66 | 97 / 70 | 106 / 74 | 103 / 76 | 107 / 77 | — / 82 |
+| states applied per pane per s | 64 / 49 | 49 / 25 | 33 / 16 | 21 / 12 | 16 / 9 | — / 5 |
+| states folded per pane per s | 0 / 17 | 0 / 36 | 0 / 43 | 0 / 47 | 0 / 40 | — / 41 |
+| zoomed onto one (5 s): busy mean | 0.57 / 0.33 | 0.80 / 0.30 | 0.98 / 0.28 | 1.00 / 0.28 | 0.80 / 0.29 | — / 0.30 |
+| hidden panes still applying | — | 1 of 1 / 0 of 1 | 2 of 2 / 0 of 2 | 3 of 3 / 0 of 3 | 4 of 4 / 0 of 4 | — / 0 of 7 |
+
+What it says:
+
+- **The old Mac pipeline does not run away the way Linux does, but it saturates.** Each pane's stream loop awaits the main actor with the Kit's newest-only buffer, so states cannot pile up in a queue; instead the main thread is pinned at 1.00 from two streaming panes, a single run-loop slice reaches 0.4–1.9 s, and a main-queue timer arrives up to 255 ms late at five panes. Hidden panes keep applying every state, so zooming changes nothing (busy 0.80–1.00 zoomed).
+- **The new pipeline is flat in N.** Busy stays 0.65–0.74 from one pane to eight, the worst slice under 120 ms, lag p95 under 35 ms. Per-pane applies fall as N rises (49 → 5 per second) and the rest are folded by latest-wins: the frame applies only the newest state. Zoomed onto one pane the main thread drops to 0.28–0.33 at every N, and parked panes apply nothing.
+- **Eight panes.** The old code's footprint passed 11 GB within 12 s of opening eight 600-message panes and the process was killed; `malloc_history` puts the growth in `NSISEngine` bitsets while the window's one Auto Layout engine absorbs every pane's rows. The new code holds peers to the governor's row window (150 at calm, never under 60), so the window carries one full transcript plus 150 rows per peer, and eight panes end at 827 MiB.
+- **Not met yet: busy ≤ 0.35.** Even one pane alone sits at 0.65 in a Debug build, because the focused pane's reveal paints every frame and a single apply of a long streaming answer costs 5 ms focused and 9–25 ms for a peer (the row is rebuilt and re-measured whole; 50–110 ms was seen late in a long answer). The drain caps applies at a third of the main thread, which is why busy no longer grows with N; reaching 0.35 needs the row builds off the main thread (6.2's follow-up, now justified by these numbers) and a Release-build measurement.
+- **`--bench` (cached transcripts) is unchanged:** the three largest caches on this Mac measure a row arriving 0.5 ms, words arriving 0.2 ms median and a resize step 18.4–23.1 ms (against 16.8–22.8 ms before), within run-to-run noise; that path does not run through the drain.
+
+Commands:
+
+```sh
+scripts/build-macapp-isolated.sh --root mb --run "--bench tiles=4:80:600:20"
+ssh macbook 'caffeinate -u -t 2'   # before each run, or the display link is not served and the 100 ms guard paces the drain
+scripts/build-macapp-isolated.sh --root mb --selftest   # includes the tiles child check
+```
