@@ -131,7 +131,7 @@ install_fresh() {
 capture() {
   local device=$1 name=$2 args=$3 envs=$4 delay=$5
   xcrun simctl terminate "$device" "$BUNDLE" >/dev/null 2>&1 || true
-  local prefixed=(FOO=bar)
+  local prefixed=(FOO=bar SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
   [ -n "${IPAD:-}" ] && prefixed+=(SIMCTL_CHILD_TAILSCODE_WINDOW=1376x1032 SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
   for pair in $envs $THEME_ENV; do prefixed+=("SIMCTL_CHILD_${pair}"); done
   env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null

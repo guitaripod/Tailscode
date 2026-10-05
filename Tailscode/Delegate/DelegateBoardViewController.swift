@@ -98,7 +98,14 @@ final class DelegateBoardViewController: UIViewController {
             guard let self else { return }
             switch item {
             case .compose:
-                self.composeNote.text = self.board.note ?? DelegateEntryPoint.subtitle
+                #if DEBUG
+                    let demoNote =
+                        ProcessInfo.processInfo.environment["TAILSCODE_HIDE_DEMO_BADGE"] != nil
+                        ? nil : self.board.note
+                #else
+                    let demoNote = self.board.note
+                #endif
+                self.composeNote.text = demoNote ?? DelegateEntryPoint.subtitle
                 cell.place(self.composeView)
                 cell.backgroundConfiguration = .clear()
             case .ladder:
