@@ -111,7 +111,7 @@ public enum ModelEffort {
 
     private static func runworthy(_ variants: [String], on providerID: String) -> [String] {
         guard let withdrawn = unexecutable[providerID] else { return variants }
-        return variants.filter { !withdrawn.contains($0) }
+        return variants.filter { !withdrawn.contains(EffortVocabulary.key($0)) }
     }
 
     public static func options(
@@ -173,10 +173,10 @@ public enum ModelEffort {
     public static func isOffered(options: [String]) -> Bool { !options.isEmpty }
 
     /// A level the picked model cannot run is handed back to the machine rather than kept as a
-    /// word the send would not carry.
+    /// word the send would not carry. A level it does run comes back in the model's own spelling,
+    /// whatever case it was asked in, because that spelling is what the server accepts.
     public static func surviving(_ level: String?, options: [String]) -> String? {
-        guard let level, options.contains(level) else { return nil }
-        return level
+        EffortVocabulary.spelling(of: level, in: options)
     }
 
     /// What effort becomes after a model pick. Keep the level where the new model offers it; move

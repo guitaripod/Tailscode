@@ -3235,7 +3235,7 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func modelPillText() -> String {
-        if let chosenModel { return ModelBadge.label(model: chosenModel, effort: nil) }
+        if let chosenModel { return ModelBadge.word(for: chosenModel, in: models) }
         if let observed = observedModelID() {
             return ModelBadge.label(model: ModelSelection(providerID: "server", modelID: observed), effort: nil)
         }

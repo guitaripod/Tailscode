@@ -537,7 +537,7 @@ final class ComposerView: NSView {
     }
 
     private func modelPillText() -> String {
-        if let chosenModel { return ModelBadge.label(model: chosenModel, effort: nil) }
+        if let chosenModel { return ModelBadge.word(for: chosenModel, in: models) }
         if let observed = observedModelID() {
             return ModelBadge.label(
                 model: ModelSelection(providerID: "server", modelID: observed), effort: nil)
@@ -732,7 +732,7 @@ final class ComposerView: NSView {
         let effort = displayedEffort()
         return ModelPresetCycle.reachable(
             ModelPresetStore.all(), models: models,
-            acceptsAnyModelID: backend.map { $0.agentType != .openCode } ?? false
+            acceptsAnyModelID: backend.map { ModelFleet.acceptsAnyModelID($0.agentType) } ?? false
         ).map { preset in
             (
                 preset,

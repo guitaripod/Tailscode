@@ -62,9 +62,18 @@ public enum ModelFleet {
                 profileID: profile.id, name: profile.name, backend: profile.backend,
                 models: models, isCurrent: isCurrent,
                 allowsServerDefault: isCurrent ? allowsServerDefault : true,
-                acceptsAnyModelID: profile.backend != .openCode,
+                acceptsAnyModelID: acceptsAnyModelID(profile.backend),
                 isReachable: reachability[profile.id])
         }
+    }
+
+    /// Whether a server of this kind runs a model id it never listed. One answer for every surface
+    /// that asks — the menu, the swipe, the chord, on every client — so a pin cannot be offered by
+    /// one and refused by the next. Only the Claude CLI does: it resolves its own aliases without
+    /// a catalog, and taking any id still means any id *of its own house*, which pins that admits
+    /// is `ModelPresetCycle.resolve`'s decision. Every other server runs what its catalog lists.
+    public static func acceptsAnyModelID(_ backend: AgentType) -> Bool {
+        backend == .claudeCode
     }
 
     /// What a client has to do when a pick lands on another machine. The chat you are in cannot

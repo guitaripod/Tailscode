@@ -358,7 +358,7 @@ public enum DemoWorld {
             AgentSession(
                 id: "demo-o2", agentType: .openCode, title: "Ship the pricing page A/B test",
                 directory: "/home/demo/dev/acme-web", createdAt: ago(11_400), updatedAt: ago(10_200),
-                model: "ollama/qwen3:14b", reasoningEffort: "thinking"),
+                model: "ollama/qwen3:14b", reasoningEffort: "think"),
             AgentSession(
                 id: "demo-o3", agentType: .openCode, title: "Hunt the memory leak in ImagePipeline",
                 directory: "/home/demo/dev/acme-ios", createdAt: ago(94_000), updatedAt: ago(90_000),
@@ -371,16 +371,24 @@ public enum DemoWorld {
         models: [
             ModelInfo(id: "claude-sonnet-5", name: "Sonnet 5", providerID: "anthropic"),
             ModelInfo(id: "claude-opus-4-8", name: "Opus 4.8", providerID: "anthropic"),
-            ModelInfo(id: "gpt-5.1-codex", name: "GPT-5.1 Codex", providerID: "openai"),
+            ModelInfo(
+                id: "gpt-5.1-codex", name: "GPT-5.1 Codex", providerID: "openai",
+                variants: ["none", "minimal", "low", "medium", "high", "xhigh"]),
             ModelInfo(id: "o4-mini", name: "o4-mini", providerID: "openai"),
             ModelInfo(id: "gemini-3-pro", name: "Gemini 3 Pro", providerID: "google"),
+            ModelInfo(
+                id: "qwen3:14b", name: "Qwen3 14B", providerID: "ollama",
+                variants: ["nothink", "think"]),
+            ModelInfo(
+                id: "glm-5.3-flash", name: "GLM-5.3 Flash", providerID: "opencode-go",
+                variants: ["low", "high"]),
         ],
         defaultModelID: "claude-sonnet-5",
         health: ServerHealth(healthy: true, version: "0.9.4"),
         capabilities: BackendCapabilities(
             supportsFileBrowsing: true, supportsDiffs: true, supportsPermissions: true,
             supportsMultipleSessions: true, supportsModelSelection: true, supportsAttachments: true,
-            supportsReasoningEffort: false, supportsClearing: false, supportsForking: false,
+            supportsReasoningEffort: true, supportsClearing: false, supportsForking: false,
             supportsAbort: true, supportsSessionUsage: true, supportsQuestions: true,
             supportsRenaming: true, supportsSubagents: false, supportsCommands: true,
             supportsRevert: true),

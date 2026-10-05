@@ -31,7 +31,22 @@ struct ModelDialTests {
         #expect(gpt[3].isEmber && gpt[3].heat == 1 && !gpt[2].isEmber)
         #expect(ModelDial.step("low", by: -1, options: ["minimal", "low", "high"]) == "minimal")
         #expect(ModelDial.face(modelWord: "GPT", effort: "minimal", options: ["minimal", "low"]).isEmber)
-        #expect(ModelDial.heat("shallow", options: ["shallow", "deep"]) == 3)
+        #expect(ModelDial.heat("shallow", options: ["shallow", "deeper"]) == 1)
+        #expect(ModelDial.heat("deeper", options: ["shallow", "deeper"]) == EffortMeter.bars)
+        #expect(ModelDial.heat("shallow", options: ["shallow", "deep"]) == EffortMeter.bars, "a word nobody placed is never cooler than a known one under it")
+    }
+
+    @Test("Real vocabularies light their tiers: a local model's think is medium's two bars, its nothink an ember")
+    func vocabularies() {
+        #expect(ModelDial.heat("think", options: ["think", "nothink"]) == 2)
+        #expect(ModelDial.heat("nothink", options: ["think", "nothink"]) == 1)
+        #expect(ModelDial.isEmber("nothink"))
+        #expect(ModelDial.heat("fast", options: ["think", "fast"]) == 1)
+        #expect(ModelDial.heat("auto", options: ["auto", "low", "high"]) == 0)
+        #expect(ModelDial.face(modelWord: "Gemini", effort: "auto", options: ["auto", "low", "high"]).isServer)
+        let qwen = ModelDial.face(modelWord: "Qwen", effort: "THINK", options: ["nothink", "think"])
+        #expect(qwen.effortWord == "think" && qwen.heat == 2 && !qwen.isServer)
+        #expect(ModelDial.step("THINK", by: -1, options: ["think", "nothink"]) == "nothink")
     }
 
     @Test("A step is pinned at both ends: the coldest level is the floor, never the server")

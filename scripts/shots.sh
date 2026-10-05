@@ -83,6 +83,12 @@ SHOTS=(
   "pk-list|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh+pins+star:claude-haiku-4-5 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12|17"
   "pk-peek|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh+pins+star:claude-haiku-4-5 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12 TAILSCODE_MODELS_PEEK=claude-sonnet-5|18"
   "pk-home|--demo|TAILSCODE_HIDE_DEMO_BADGE=1|7"
+  "vx-o1-rail|--demo|TAILSCODE_OPEN_SESSION=demo-o1 TAILSCODE_DIAL=rail:medium|12"
+  "vx-o2-rail|--demo|TAILSCODE_OPEN_SESSION=demo-o2 TAILSCODE_DIAL=rail:nothink|12"
+  "vx-o3-pill|--demo|TAILSCODE_OPEN_SESSION=demo-o3|10"
+  "vx-home-local|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_HOME_DIAL=aim:demo-opencode+pick:ollama^qwen3:14b+level:think|9"
+  "vx-home-menu|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_HOME_DIAL=aim:demo-opencode+menu|10"
+  "vx-home-rail|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_HOME_DIAL=aim:demo-opencode+pick:openai^gpt-5.1-codex+rail|10"
   "welcome||TAILSCODE_FAKE_TAILNET=up|5"
   "setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_FAKE_TAILNET=up|6"
 )

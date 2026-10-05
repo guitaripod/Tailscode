@@ -14,18 +14,21 @@ public enum ModelTint {
     public enum Family: String, CaseIterable, Sendable {
         case fable, opus, sonnet, haiku, grok, gpt, gemini
         case qwen, deepseek, llama, mistral
+        case glm, kimi, minimax, gemma, phi, command
     }
 
-    /// Matched against the id's last path segment, because a provider prefix is not a family:
-    /// `ollama/glm-4.7-air` must not wear Llama's blue for the crime of being served by ollama.
+    /// Read from the same table as the catalog's sections (``ModelNeedles``), against the id's
+    /// last path segment, because a provider prefix is not a family: `ollama/glm-4.7-air` must
+    /// not wear Llama's blue for the crime of being served by ollama. Claude's members are worn
+    /// only by a model that is Claude's — see ``family(_:providerID:)``.
     public static func family(_ raw: String) -> Family? {
-        let id = String(raw.lowercased().split(separator: "/").last ?? "")
-        if id.contains("fable") || id.contains("mythos") { return .fable }
-        if id.contains("gemma") { return .gemini }
-        for family in Family.allCases where id.contains(family.rawValue) {
-            return family
-        }
-        return nil
+        ModelNeedles.tint(raw)
+    }
+
+    /// The family with the door the model runs through, which settles Claude outright: an
+    /// `anthropic` door is Claude whatever its alias, and no other door borrows Claude's words.
+    public static func family(_ raw: String, providerID: String?) -> Family? {
+        ModelNeedles.tint(raw, providerID: providerID)
     }
 
     /// The authored hue: what the family's colour *is*, before any canvas has a say. Fable wears
@@ -44,11 +47,17 @@ public enum ModelTint {
         case .deepseek: return "#4d6bfe"
         case .llama: return "#1877f2"
         case .mistral: return "#f2620f"
+        case .glm: return "#c65bd6"
+        case .kimi: return "#a3e635"
+        case .minimax: return "#f0507e"
+        case .gemma: return "#b8c4ff"
+        case .phi: return "#e4e44b"
+        case .command: return "#ff9ec7"
         }
     }
 
     /// A model outside the authored families still deserves to be told apart in a list: its name
-    /// is hashed onto one of twelve evenly spaced hues, so `glm` is the same colour on every desk
+    /// is hashed onto one of twelve evenly spaced hues, so `hunyuan` is the same colour on every desk
     /// and in every palette without anyone having authored an identity for it. The hash is its
     /// own (djb2) rather than the language's, whose hashing is salted per process — a colour that
     /// changed on every launch would read as a different model.
@@ -88,15 +97,17 @@ public enum ModelTint {
     /// The effort's heat, authored once for every desk: minimal and low are the same cold slate —
     /// both mean "quickly" — and the scale ends at vermilion because max is the hottest a *level*
     /// goes. Ultracode is not on the scale; it has ``rainbow(letters:onCanvas:)``. An effort word
-    /// nobody authored a heat for answers nil and keeps the quiet register.
+    /// nobody authored a heat for answers nil and keeps the quiet register. The colour follows the
+    /// word's tier (`EffortVocabulary`), so a local model's think wears medium's teal and its
+    /// nothink the slate under low.
     public static func authoredEffortHex(_ effort: String) -> String? {
-        switch effort.lowercased() {
-        case "minimal", "none", "low": return "#8494a6"
-        case "medium", "thinking": return "#3aa8a0"
-        case "high": return "#d9a13c"
-        case "xhigh": return "#ee8434"
-        case "max": return "#f25c3f"
-        default: return nil
+        guard let tier = ModelDial.rank(effort) else { return nil }
+        switch tier {
+        case ...1: return "#8494a6"
+        case 2: return "#3aa8a0"
+        case 3: return "#d9a13c"
+        case 4: return "#ee8434"
+        default: return "#f25c3f"
         }
     }
 
@@ -157,24 +168,15 @@ public enum ModelTint {
     }
 
     public static func effortClass(_ effort: String) -> String? {
-        if effort.lowercased() == Ultracode.effortLevel { return "effort-ultracode" }
-        switch authoredEffortHex(effort) {
-        case nil: return nil
-        default: return "effort-\(canonicalEffort(effort))"
-        }
+        if ModelDial.isPower(effort) { return "effort-ultracode" }
+        guard let tier = ModelDial.rank(effort) else { return nil }
+        return "effort-" + effortTiers[max(0, min(effortTiers.count - 1, tier - 1))]
     }
 
-    /// The tiers the stylesheet authors classes for, keyed by their canonical names — minimal and
-    /// none fold into low, because they share its slate and a class per synonym is noise.
+    /// The tiers the stylesheet authors classes for, keyed by their canonical names — every word
+    /// folds into its tier's class, the floor under low into low's, because they share its slate
+    /// and a class per synonym is noise.
     public static let effortTiers = ["low", "medium", "high", "xhigh", "max"]
-
-    private static func canonicalEffort(_ effort: String) -> String {
-        switch effort.lowercased() {
-        case "minimal", "none": return "low"
-        case "thinking": return "medium"
-        default: return effort.lowercased()
-        }
-    }
 
     private static func published(_ hex: String, on canvas: String) -> String {
         Contrast.adjusted(hex, on: canvas, ratio: Contrast.readable) ?? hex

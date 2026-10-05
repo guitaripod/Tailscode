@@ -55,7 +55,9 @@ public struct ModelPreset: Sendable, Hashable, Identifiable {
     }
 
     /// What taking this preset does to a chat on a machine whose catalog is `models`: the level the
-    /// pair asks for, carried onto the model's own levels like any pick, with the account of it.
+    /// pair asks for, carried onto the model's own levels like any pick, with the account of it. A
+    /// level the model spells differently resolves through the same tiers, in the model's spelling,
+    /// and a difference of case alone is no move and says nothing.
     public func applied(
         currentEffort: String?, models: [ModelInfo], agentOptions: [String]
     ) -> EffortCarry {
@@ -70,7 +72,7 @@ public struct ModelPreset: Sendable, Hashable, Identifiable {
         switch effort {
         case .keep: return true
         case .server: return level == nil
-        case .level(let wanted): return level == wanted
+        case .level(let wanted): return level.map { EffortVocabulary.same($0, wanted) } ?? false
         }
     }
 }
@@ -157,16 +159,85 @@ public enum ModelPresetStore {
 /// desk. Wraps — unlike the effort wheel, where wrapping from max back to low is a mistake at
 /// speed, a short list of favourites is a ring and the next of the last is the first.
 public enum ModelPresetCycle {
-    /// The pinned pairs this machine can run: a pair whose model is not in its catalog is a model
-    /// on another machine, which a step cannot honour without starting a new chat. A server that
-    /// takes any model id (the Claude CLI) runs every pair.
+    /// The pinned pairs this machine can run, each through the door it will actually take: a pair
+    /// whose model is not in its catalog is a model on another machine, which a step cannot honour
+    /// without starting a new chat.
     public static func reachable(
         _ presets: [ModelPreset], models: [ModelInfo], acceptsAnyModelID: Bool = false
     ) -> [ModelPreset] {
-        guard !acceptsAnyModelID else { return presets }
-        return presets.filter { preset in
-            models.contains { $0.selection == preset.selection || $0.id == preset.selection.modelID }
+        presets.compactMap { resolve($0, models: models, acceptsAnyModelID: acceptsAnyModelID) }
+    }
+
+    /// One pin on one machine, or nil when that machine cannot run it.
+    ///
+    /// The door is part of the pin: the same model through OpenRouter and through its own key are
+    /// two bills, so a pin matches on provider and id. Only when the catalog offers that id exactly
+    /// once is the provider allowed to differ, and then the pin is taken through that one offer —
+    /// never through a door the catalog does not list. A server that takes ids it never listed
+    /// (the Claude CLI, omp) takes them only for its own house: a Claude bridge runs any Claude id
+    /// and no other, and a pin for somebody else's model is a pin for another machine.
+    public static func resolve(
+        _ preset: ModelPreset, models: [ModelInfo], acceptsAnyModelID: Bool
+    ) -> ModelPreset? {
+        if models.contains(where: { $0.selection == preset.selection }) { return preset }
+        if acceptsAnyModelID {
+            return speaksForHouse(preset.selection, models: models) ? preset : nil
         }
+        let offers = models.filter { $0.id == preset.selection.modelID }
+        guard offers.count == 1, let only = offers.first else { return nil }
+        return ModelPreset(selection: only.selection, effort: preset.effort)
+    }
+
+    public static func resolve(_ preset: ModelPreset, on source: ModelSource) -> ModelPreset? {
+        resolve(preset, models: source.models, acceptsAnyModelID: source.acceptsAnyModelID)
+    }
+
+    /// Where every pin stands from the machine a surface is aimed at: the ones it can run, resolved
+    /// to their doors, then the ones it cannot, each naming the machine that can — so a pin that
+    /// lives elsewhere is said rather than silently missing from the list.
+    public static func placement(
+        _ presets: [ModelPreset], models: [ModelInfo], acceptsAnyModelID: Bool,
+        elsewhere: [ModelSource]
+    ) -> PinPlacement {
+        var reachable: [ModelPreset] = []
+        var away: [PinPlacement.Away] = []
+        for preset in presets {
+            if let here = resolve(preset, models: models, acceptsAnyModelID: acceptsAnyModelID) {
+                reachable.append(here)
+                continue
+            }
+            let home = elsewhere.first { !$0.isCurrent && resolve(preset, on: $0) != nil }
+            away.append(
+                PinPlacement.Away(
+                    preset: preset, profileID: home?.profileID, serverName: home?.title))
+        }
+        return PinPlacement(reachable: reachable, away: away)
+    }
+
+    private static func house(_ providerID: String) -> String {
+        let id = providerID.lowercased()
+        return id == "claude" ? "anthropic" : id
+    }
+
+    /// Whether a pin belongs to the house a take-any-id server answers to: one of the providers its
+    /// own catalog names (Anthropic for a Claude bridge that has not reported yet), and for
+    /// Anthropic only an id the CLI would read as Claude's.
+    static func speaksForHouse(_ selection: ModelSelection, models: [ModelInfo]) -> Bool {
+        let houses = Set(models.map { house($0.providerID) })
+        let provider = house(selection.providerID)
+        guard (houses.isEmpty ? ["anthropic"] : houses).contains(provider) else { return false }
+        return provider != "anthropic" || isClaudeID(selection.modelID)
+    }
+
+    private static let claudeAliases: Set<String> = [
+        "fable", "opus", "sonnet", "haiku", "opusplan", "default", "best",
+    ]
+
+    static func isClaudeID(_ raw: String) -> Bool {
+        let id = raw.lowercased()
+        if id.hasPrefix("claude") || ModelNeedles.isClaude(raw) { return true }
+        let base = id.split(separator: "[").first.map(String.init) ?? id
+        return claudeAliases.contains(base)
     }
 
     public static func step(

@@ -4723,8 +4723,9 @@ final class ChatViewController: UIViewController {
         let model = viewModel.displayedModel
         let effort = viewModel.displayedEffort
         dialPill.content = ModelDialPill.Content(
-            modelWord: model.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto"),
-            chip: model.flatMap { ModelBadge.chip(model: $0.modelID, effort: nil) },
+            modelWord: model.map { ModelBadge.word(for: $0, in: availableModels) }
+                ?? String(localized: "Auto"),
+            chip: ModelBadge.chip(selection: model, effort: nil),
             effort: effort, options: viewModel.reasoningEffortOptions,
             choosesModel: viewModel.supportsModelSelection)
         dialPill.modelMenu = UIMenu(title: String(localized: "Model"), children: dialMenuElements())
@@ -4756,7 +4757,8 @@ final class ChatViewController: UIViewController {
                 selectModel: { [weak self] selection in self?.chooseModel(selection) },
                 selectEffort: { [weak self] level in self?.setEffortFromDial(level) },
                 selectPreset: { [weak self] preset in self?.choose(preset) },
-                browseAll: { [weak self] in self?.presentModelPicker() }))
+                browseAll: { [weak self] in self?.presentModelPicker() },
+                selectElsewhere: { [weak self] pick in self?.apply(pick) }))
     }
 
     private func chooseModel(_ selection: ModelSelection?) {
@@ -4776,7 +4778,8 @@ final class ChatViewController: UIViewController {
     /// What a model change did to the level, said where it happened: a word that moved on its own
     /// is a surprise, and one that is told is a fact.
     private func saySwitch(_ carry: EffortCarry, selection: ModelSelection?) {
-        let name = selection.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto")
+        let name = selection.map { ModelBadge.word(for: $0, in: availableModels) }
+            ?? String(localized: "Auto")
         guard let notice = carry.notice(modelName: name) else { return }
         presentToast(notice, duration: 3)
     }
@@ -4795,7 +4798,11 @@ final class ChatViewController: UIViewController {
     /// Steps along the pinned pairs without opening anything: a swipe on the pill, a chord.
     private func cyclePreset(by delta: Int) {
         guard let preset = viewModel.presetStep(by: delta) else {
-            presentToast(String(localized: "Pin a model and level in the model menu"))
+            let away = viewModel.presetPlacement(
+                elsewhere: ModelFleet.sources(
+                    profiles: ConnectionController.shared.profiles, current: viewModel.contextID)
+            ).awayNotice
+            presentToast(away ?? String(localized: "Pin a model and level in the model menu"))
             return
         }
         applyPreset(preset)
@@ -4804,7 +4811,7 @@ final class ChatViewController: UIViewController {
     private func applyPreset(_ preset: ModelPreset) {
         let carry = viewModel.apply(preset)
         updateNavControls()
-        let name = ModelBadge.shortName(preset.selection.modelID)
+        let name = ModelBadge.word(for: preset.selection, in: availableModels)
         presentToast(carry.notice(modelName: name) ?? ModelPresetCycle.said(preset, modelName: name))
     }
 
@@ -4812,7 +4819,8 @@ final class ChatViewController: UIViewController {
     private func stepEffort(by delta: Int) {
         let options = viewModel.reasoningEffortOptions
         guard ModelEffort.isOffered(options: options) else {
-            let name = viewModel.displayedModel.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto")
+            let name = viewModel.displayedModel.map { ModelBadge.word(for: $0, in: availableModels) }
+                ?? String(localized: "Auto")
             presentToast(ModelDial.headline(modelName: name, options: []))
             return
         }
@@ -4888,7 +4896,8 @@ final class ChatViewController: UIViewController {
     private func pickerDial() -> ModelPickerViewController.Dial {
         let model = viewModel.displayedModel
         return ModelPickerViewController.Dial(
-            modelName: model.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto"),
+            modelName: model.map { ModelBadge.word(for: $0, in: availableModels) }
+                ?? String(localized: "Auto"),
             options: viewModel.reasoningEffortOptions,
             agentOptions: viewModel.backend.reasoningEffortOptions,
             effort: viewModel.displayedEffort, contextTokens: transcriptFill?.used,
@@ -4934,11 +4943,21 @@ final class ChatViewController: UIViewController {
         alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         alert.addAction(
             UIAlertAction(title: ModelFleet.moveAction, style: .default) { [weak self] _ in
-                ModelFleet.adopt(pick)
+                guard let self else { return }
+                let effort = self.viewModel.displayedEffort
+                let directory = self.viewModel.session.directory
+                let stacked = self.navigationController?.viewControllers.first as? HomeViewController
+                let workspace = sequence(first: self as UIViewController, next: \.parent)
+                    .lazy.compactMap { $0 as? WorkspaceSplitViewController }.first
                 Theme.Haptics.success()
-                self?.navigationController?.popToRootViewController(animated: true)
-                (self?.navigationController?.viewControllers.first as? HomeViewController)?
-                    .aimCompose(at: pick.profileID)
+                if stacked == nil, let workspace {
+                    workspace.showHome()
+                } else {
+                    self.navigationController?.popToRootViewController(animated: true)
+                }
+                guard let home = stacked ?? workspace?.home else { return ModelFleet.adopt(pick) }
+                home.aimCompose(
+                    at: pick.profileID, carrying: pick, effort: effort, directory: directory)
             })
         present(alert, animated: true)
     }
@@ -6250,7 +6269,7 @@ private final class AccessoryStack: UIStackView {
                 updateNavControls()
             case "pick":
                 guard parts.count > 1 else { return }
-                _ = viewModel.selectModel(ModelSelection(providerID: "anthropic", modelID: parts[1]))
+                _ = viewModel.selectModel(DialTour.selection(parts[1]))
                 updateNavControls()
             case "level", "rail":
                 if parts.count > 1 {
@@ -6264,7 +6283,7 @@ private final class AccessoryStack: UIStackView {
             case "menu": dialPill.openMenu()
             case "model":
                 guard parts.count > 1 else { return }
-                chooseModel(ModelSelection(providerID: "anthropic", modelID: parts[1]))
+                chooseModel(DialTour.selection(parts[1]))
             default: break
             }
         }

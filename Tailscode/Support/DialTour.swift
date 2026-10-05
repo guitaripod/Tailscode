@@ -19,9 +19,17 @@
         }
 
         static func star(_ modelID: String) {
-            let starred = ModelPreset(
-                selection: ModelSelection(providerID: "anthropic", modelID: modelID), effort: .keep)
+            let starred = ModelPreset(selection: selection(modelID), effort: .keep)
             if !ModelPresetStore.all().contains(starred) { ModelPresetStore.pin(starred) }
+        }
+
+        /// A model named the way a script writes it: `claude-opus-4-8` is Anthropic's, and
+        /// `ollama^qwen3:14b` names the door before the id.
+        static func selection(_ named: String) -> ModelSelection {
+            let parts = named.split(separator: "^", maxSplits: 1).map(String.init)
+            return parts.count == 2
+                ? ModelSelection(providerID: parts[0], modelID: parts[1])
+                : ModelSelection(providerID: "anthropic", modelID: named)
         }
     }
 #endif

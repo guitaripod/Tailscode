@@ -88,12 +88,13 @@ extension DeviceStores {
             #expect(ModelTint.family("grok-code-fast-1") == .grok)
             #expect(ModelTint.family("gpt-5.2") == .gpt)
             #expect(ModelTint.family("gemini-3-pro") == .gemini)
-            #expect(ModelTint.family("gemma3:4b") == .gemini)
+            #expect(ModelTint.family("gemma3:4b") == .gemma)
             #expect(ModelTint.family("ollama/qwen3:14b") == .qwen)
             #expect(ModelTint.family("deepseek-v3.2") == .deepseek)
             #expect(ModelTint.family("meta-llama/llama-4-maverick") == .llama)
             #expect(ModelTint.family("mistral-large-2") == .mistral)
-            #expect(ModelTint.family("ollama/glm-4.7-air") == nil)
+            #expect(ModelTint.family("ollama/glm-4.7-air") == .glm)
+            #expect(ModelTint.family("ollama/hunyuan-a13b") == nil)
             #expect(ModelTint.effortClass("thinking") == "effort-medium")
         }
 

@@ -279,12 +279,37 @@ struct ModelPresetApplicationTests {
             .applied(currentEffort: "high", models: [sonnet], agentOptions: []).level == nil)
     }
 
+    @Test("A pair the next model spells differently resolves through the tiers, with no false notice")
+    func spelledDifferently() {
+        let qwen = ModelInfo(id: "qwen3:14b", name: "Qwen", providerID: "ollama", variants: ["nothink", "think"])
+        let models = [sonnet, opus, qwen]
+        let cased = ModelPreset(selection: qwen.selection, effort: .level("THINK"))
+            .applied(currentEffort: nil, models: models, agentOptions: [])
+        #expect(cased.level == "think" && !cased.moved && cased.notice(modelName: "Qwen") == nil)
+        let high = ModelPreset(selection: qwen.selection, effort: .level("high"))
+            .applied(currentEffort: nil, models: models, agentOptions: [])
+        #expect(high.level == "think")
+        #expect(high.notice(modelName: "Qwen") == "high moved to think. Qwen has no high.")
+        let think = ModelPreset(selection: sonnet.selection, effort: .level("think"))
+            .applied(currentEffort: nil, models: models, agentOptions: [])
+        #expect(think.level == "medium")
+        let off = ModelPreset(selection: opus.selection, effort: .level("nothink"))
+            .applied(currentEffort: nil, models: models, agentOptions: [])
+        #expect(off.level == nil, "a level that turns thinking off never lands on one that thinks")
+        let kept = ModelPreset(selection: qwen.selection, effort: .keep)
+            .applied(currentEffort: "Medium", models: models, agentOptions: [])
+        #expect(kept.level == "think")
+        let pair = ModelPreset(selection: qwen.selection, effort: .level("Think"))
+        #expect(pair.matches(model: qwen.selection, effort: "think"))
+        #expect(ModelPresetCycle.step([pair], model: qwen.selection, effort: "think", by: 1) == pair)
+    }
+
     @Test("A step only walks the pairs this machine can run")
     func reachable() {
         let here = ModelPreset(selection: sonnet.selection, effort: .level("high"))
         let there = ModelPreset(selection: ModelSelection(providerID: "ollama", modelID: "qwen"), effort: .keep)
         #expect(ModelPresetCycle.reachable([here, there], models: [sonnet]) == [here])
-        #expect(ModelPresetCycle.reachable([here, there], models: [sonnet], acceptsAnyModelID: true) == [here, there])
+        #expect(ModelPresetCycle.reachable([here, there], models: [sonnet], acceptsAnyModelID: true) == [here])
     }
 }
 

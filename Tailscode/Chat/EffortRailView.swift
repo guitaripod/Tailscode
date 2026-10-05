@@ -62,7 +62,9 @@ final class EffortRailView: UIView {
         glass.contentView.addSubview(column)
 
         for (index, rung) in rungs.enumerated() {
-            if rung.isServer, index > 0 { column.addArrangedSubview(Self.gap()) }
+            if rung.isServer, index > 0, !rungs[index - 1].isServer {
+                column.addArrangedSubview(Self.gap())
+            }
             let row = RungRowView(rung: rung, density: density)
             rows.append(row)
             column.addArrangedSubview(row)

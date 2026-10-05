@@ -56,3 +56,48 @@ public enum EffortRail {
         return (last - first) / Double(centers.count - 1)
     }
 }
+
+/// The arithmetic of sliding along the effort half of the pill: a hand that moves along the bars
+/// walks the model's own ladder one notch at a time, hotter toward the end the bars grow to.
+///
+/// It stops at both ends rather than wrapping, never falls onto the server's own stop (the same
+/// rule as the arrow keys, `ModelDial.step`), and keeps no dead zone: a hand that has run past the
+/// end is *at* the end, so reversing leaves it at once instead of retracing the distance it
+/// overshot.
+public struct EffortScrub: Sendable, Equatable {
+    /// How far along the bars a hand travels for one level.
+    public static let notchWidth = 24.0
+
+    public private(set) var level: String?
+    private var applied = 0
+    private var slack = 0
+
+    /// A slide that begins at the level the control shows.
+    public init(level: String?) {
+        self.level = level
+    }
+
+    /// The whole notches a hand has crossed after travelling `translation` points along the
+    /// screen's x axis. A right-to-left layout grows its bars leftward, so its sign is flipped.
+    public static func notches(translation: Double, rightToLeft: Bool = false) -> Int {
+        Int(((rightToLeft ? -translation : translation) / notchWidth).rounded(.towardZero))
+    }
+
+    /// Carries the slide to `notches` and returns each level it newly reached, in the order the
+    /// hand crossed them. Empty when the hand has not crossed a notch or is pinned at an end.
+    public mutating func move(to notches: Int, options: [String]) -> [String?] {
+        var reached: [String?] = []
+        while applied != notches - slack {
+            let delta = notches - slack > applied ? 1 : -1
+            let next = ModelDial.step(level, by: delta, options: options)
+            guard next != level else {
+                slack = notches - applied
+                break
+            }
+            applied += delta
+            level = next
+            reached.append(next)
+        }
+        return reached
+    }
+}

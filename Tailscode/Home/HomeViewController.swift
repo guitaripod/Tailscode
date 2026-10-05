@@ -160,8 +160,23 @@ final class HomeViewController: UIViewController {
                     try? await Task.sleep(for: .seconds(4))
                     for verb in script.split(separator: "+") {
                         guard let self else { return }
-                        switch verb {
+                        let parts = verb.split(separator: ":", maxSplits: 1).map(String.init)
+                        switch parts.first ?? "" {
                         case "pins": DialTour.pinPairs()
+                        case "aim":
+                            if parts.count > 1,
+                                let profile = self.viewModel.servers.first(where: { $0.id == parts[1] })
+                            {
+                                self.setComposeTarget(profile: profile, directory: nil)
+                            }
+                        case "pick":
+                            if parts.count > 1, let aim = self.composerAim {
+                                self.setComposeModel(DialTour.selection(parts[1]), for: aim)
+                            }
+                        case "level":
+                            if parts.count > 1, let aim = self.composerAim {
+                                self.setComposeEffort(parts[1], for: aim)
+                            }
                         case "rail": self.composerBar.dialPill.openRail()
                         case "menu": self.composerBar.dialPill.openMenu()
                         default: break
@@ -2656,9 +2671,10 @@ extension HomeViewController: HomeComposerBarDelegate {
         let options = dialOptions(for: aim)
         composerBar.setDial(
             ModelDialPill.Content(
-                modelWord: choice.model.map { ModelBadge.shortName($0.modelID) }
-                    ?? String(localized: "Auto"),
-                chip: choice.model.flatMap { ModelBadge.chip(model: $0.modelID, effort: nil) },
+                modelWord: choice.model.map {
+                    ModelBadge.word(for: $0, in: ModelCatalog.cached(for: aim.profile.id))
+                } ?? String(localized: "Auto"),
+                chip: ModelBadge.chip(selection: choice.model, effort: nil),
                 effort: ModelEffort.surviving(choice.effort, options: options), options: options,
                 choosesModel: backend.capabilities.supportsModelSelection),
             menu: modelMenu(for: aim, backend: backend))
@@ -2684,28 +2700,42 @@ extension HomeViewController: HomeComposerBarDelegate {
             guard let self, let aim = self.composerAim else { return }
             self.setComposeEffort(level, for: aim)
         }
+        pill.onScrub = { [weak self] level in
+            guard let self, let aim = self.composerAim else { return }
+            self.setComposeEffort(level, for: aim, quiet: true)
+        }
         pill.onCycle = { [weak self] delta in self?.cycleComposePreset(by: delta) }
         pill.footer = { rung in EffortRail.footer(for: rung, yours: nil) }
     }
 
-    /// The pinned pairs the aimed server can run, in the order they were pinned.
-    private func composePresets(for aim: ComposerAim) -> [ModelPreset] {
-        ModelPresetCycle.reachable(
+    /// Where every pin stands from the aimed server: the ones it runs, through the doors it lists,
+    /// and the ones that live on another machine.
+    private func composePins(for aim: ComposerAim) -> PinPlacement {
+        ModelPresetCycle.placement(
             ModelPresetStore.all(), models: ModelCatalog.cached(for: aim.profile.id),
-            acceptsAnyModelID: aim.profile.backend == .claudeCode)
+            acceptsAnyModelID: ModelFleet.acceptsAnyModelID(aim.profile.backend),
+            elsewhere: ModelFleet.sources(
+                profiles: ConnectionController.shared.profiles, current: aim.profile.id))
     }
 
     private func cycleComposePreset(by delta: Int) {
         guard let aim = composerAim else { return }
         let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
+        let pins = composePins(for: aim)
         guard
             let preset = ModelPresetCycle.step(
-                composePresets(for: aim), model: choice.model, effort: choice.effort, by: delta)
+                pins.reachable, model: choice.model, effort: choice.effort, by: delta)
         else {
-            toast(String(localized: "Pin a model and level in the model menu"))
+            toast(pins.awayNotice ?? String(localized: "Pin a model and level in the model menu"))
             return
         }
         setComposePreset(preset, for: aim)
+    }
+
+    /// What the chat screen's picker does with the fleet, on Home: a machine that did not answer
+    /// the last listing says so in every menu that offers its models.
+    private var composeReachability: [String: Bool] {
+        Dictionary(viewModel.unreachable.map { ($0, false) }, uniquingKeysWith: { first, _ in first })
     }
 
     private func setComposePreset(_ preset: ModelPreset, for aim: ComposerAim) {
@@ -2716,7 +2746,7 @@ extension HomeViewController: HomeComposerBarDelegate {
             agentOptions: backend?.reasoningEffortOptions ?? [])
         setComposeModel(preset.selection, for: aim, announces: false)
         setComposeEffort(carry.level, for: aim)
-        let name = ModelBadge.shortName(preset.selection.modelID)
+        let name = ModelBadge.word(for: preset.selection, in: ModelCatalog.cached(for: aim.profile.id))
         toast(carry.notice(modelName: name) ?? ModelPresetCycle.said(preset, modelName: name))
     }
 
@@ -2750,7 +2780,8 @@ extension HomeViewController: HomeComposerBarDelegate {
                             sources: ModelFleet.sources(
                                 profiles: ConnectionController.shared.profiles,
                                 current: aim.profile.id, currentModels: models,
-                                allowsServerDefault: ChatModelResolver.honoursServerDefault(backend)),
+                                allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
+                                reachability: self.composeReachability),
                             choice: self.modelChoices[aim.memoryKey] ?? ModelChoice(),
                             efforts: backend.reasoningEffortOptions,
                             allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
@@ -2770,6 +2801,9 @@ extension HomeViewController: HomeComposerBarDelegate {
                                 browseAll: { [weak self] in
                                     self?.presentComposeModelPicker(
                                         aim: aim, backend: backend, models: models)
+                                },
+                                selectElsewhere: { [weak self] pick in
+                                    self?.retargetCompose(to: pick, from: aim)
                                 }))
                         if let follow = self.followServerElement(for: aim) {
                             elements.append(follow)
@@ -2827,7 +2861,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                         carry.level, sessionKey: nil, contextID: aim.profile.id)
                 }
                 modelChoices[aim.memoryKey] = choice
-                announce(carry, selection: selection, if: announces)
+                announce(carry, selection: selection, models: models, if: announces)
             }
         case .video, .image:
             assertionFailure("a render lane has no ComposerAim")
@@ -2842,7 +2876,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                 QuickAskDefaults.recordEffort(carry.level, forProfileID: aim.profile.id)
             }
             modelChoices[aim.memoryKey] = choice
-            announce(carry, selection: selection, if: announces)
+            announce(carry, selection: selection, models: models, if: announces)
         }
         Theme.Haptics.selection()
         appliedComposerState = nil
@@ -2850,13 +2884,15 @@ extension HomeViewController: HomeComposerBarDelegate {
     }
 
     /// A level that moved because the model under it changed is said, not left to be noticed.
-    private func announce(_ carry: EffortCarry, selection: ModelSelection?, if announces: Bool) {
+    private func announce(
+        _ carry: EffortCarry, selection: ModelSelection?, models: [ModelInfo], if announces: Bool
+    ) {
         guard announces else { return }
-        let name = selection.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto")
+        let name = selection.map { ModelBadge.word(for: $0, in: models) } ?? String(localized: "Auto")
         if let notice = carry.notice(modelName: name) { toast(notice) }
     }
 
-    private func setComposeEffort(_ level: String?, for aim: ComposerAim) {
+    private func setComposeEffort(_ level: String?, for aim: ComposerAim, quiet: Bool = false) {
         switch aim.lane {
         case .chat:
             EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: aim.profile.id)
@@ -2868,7 +2904,7 @@ extension HomeViewController: HomeComposerBarDelegate {
         var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
         choice.effort = level
         modelChoices[aim.memoryKey] = choice
-        Theme.Haptics.selection()
+        if !quiet { Theme.Haptics.selection() }
         appliedComposerState = nil
         updateComposer()
     }
@@ -2879,10 +2915,12 @@ extension HomeViewController: HomeComposerBarDelegate {
         guard !models.isEmpty else { return }
         Theme.Haptics.tap()
         let profile = aim.profile
+        let reachability = composeReachability
         let picker = ModelPickerViewController(
             sources: ModelFleet.sources(
                 profiles: ConnectionController.shared.profiles, current: profile.id,
-                currentModels: models, allowsServerDefault: profile.backend == .claudeCode),
+                currentModels: models, allowsServerDefault: profile.backend == .claudeCode,
+                reachability: reachability),
             selected: modelChoices[aim.memoryKey]?.model,
             quotas: QuotaSurface.relevantQuotas(
                 for: profile.backend, among: UsageWidgetStore.cachedQuotas()),
@@ -2893,16 +2931,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                 self.setComposeModel(pick.selection, for: aim)
                 return
             }
-            switch aim.lane {
-            case .chat:
-                ModelFleet.adopt(pick)
-                self.aimCompose(at: pick.profileID)
-            case .ask:
-                QuickAskDefaults.adopt(pick)
-                self.aimAsk(at: pick.profileID)
-            case .video, .image:
-                assertionFailure("a render lane has no ComposerAim")
-            }
+            self.retargetCompose(to: pick, from: aim)
         }
         let nav = UINavigationController(rootViewController: picker)
         if let sheet = nav.sheetPresentationController {
@@ -2915,7 +2944,8 @@ extension HomeViewController: HomeComposerBarDelegate {
         let sources = { (models: [ModelInfo]) in
             ModelFleet.sources(
                 profiles: ConnectionController.shared.profiles, current: contextID,
-                currentModels: models, allowsServerDefault: allowsServerDefault)
+                currentModels: models, allowsServerDefault: allowsServerDefault,
+                reachability: reachability)
         }
         let watch = PickerCatalogWatch.keep(
             picker: picker, profileID: contextID, backend: backend, sources: sources)
@@ -2931,8 +2961,9 @@ extension HomeViewController: HomeComposerBarDelegate {
     ) -> ModelPickerViewController.Dial {
         let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
         return ModelPickerViewController.Dial(
-            modelName: choice.model.map { ModelBadge.shortName($0.modelID) }
-                ?? String(localized: "Auto"),
+            modelName: choice.model.map {
+                ModelBadge.word(for: $0, in: ModelCatalog.cached(for: aim.profile.id))
+            } ?? String(localized: "Auto"),
             options: dialOptions(for: aim), agentOptions: backend.reasoningEffortOptions,
             effort: choice.effort, contextTokens: nil,
             onEffort: { [weak self] level in self?.setComposeEffort(level, for: aim) })
@@ -2991,7 +3022,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                 return UIMenu(options: .displayInline, children: children)
             }
             return UIMenu(
-                title: profile.name,
+                title: profile.name, subtitle: machineLine(for: profile, lane: .chat),
                 image: UIImage(systemName: profile.backend.symbolName),
                 children: children)
         }
@@ -3003,11 +3034,51 @@ extension HomeViewController: HomeComposerBarDelegate {
         let current = composerAim?.profile.id
         return viewModel.servers.map { profile in
             UIAction(
-                title: profile.name, subtitle: profile.backend.displayName,
+                title: profile.name, subtitle: machineLine(for: profile, lane: .ask),
                 image: UIImage(systemName: profile.backend.symbolName),
                 state: profile.id == current ? .on : .off
             ) { [weak self] _ in self?.aimAsk(at: profile.id) }
         }
+    }
+
+    /// What a lane on a machine will run before anybody aims at it: the pill's own reading when it
+    /// has been drawn, else what this device remembers for that machine — the person's pick, then
+    /// the server default it already named — the level narrowed to the ones that model takes.
+    private func aimedChoice(for profile: ConnectionProfile, lane: QuickAskLane) -> ModelChoice {
+        let ask = lane == .ask
+        var choice: ModelChoice
+        if let held = modelChoices[ask ? QuickAskDefaults.contextID(forProfileID: profile.id) : profile.id] {
+            choice = held
+        } else {
+            let context = ask ? QuickAskDefaults.aimContext(forProfileID: profile.id) : profile.id
+            choice = ModelChoice(model: ModelPreferenceStore.globalModel(forContextID: context))
+            if let backend = viewModel.backend(forProfileID: profile.id) {
+                if choice.model == nil, !ChatModelResolver.honoursServerDefault(backend) {
+                    choice.model = ChatModelResolver.knownServerDefault(profileID: profile.id)
+                }
+                choice.effort = ChatModelResolver.effort(
+                    profileID: profile.id, backend: backend, contextID: context)
+            }
+        }
+        guard let backend = viewModel.backend(forProfileID: profile.id),
+            backend.capabilities.supportsReasoningEffort
+        else { return ModelChoice(model: choice.model) }
+        choice.effort = ModelEffort.surviving(
+            choice.effort,
+            options: ModelEffort.options(
+                models: ModelCatalog.cached(for: profile.id), selection: choice.model,
+                agentOptions: backend.reasoningEffortOptions))
+        return choice
+    }
+
+    /// A machine row's subtitle: what it will run, and that it is not answering when it is not.
+    private func machineLine(for profile: ConnectionProfile, lane: QuickAskLane) -> String {
+        let choice = aimedChoice(for: profile, lane: lane)
+        return AimReading.machineLine(
+            modelWord: choice.model.map {
+                ModelBadge.word(for: $0, in: ModelCatalog.cached(for: profile.id))
+            }, effort: choice.effort,
+            isReachable: viewModel.unreachable.contains(profile.id) ? false : nil)
     }
 
     /// Explicitly chosen recents first, then directories of past sessions.
@@ -3025,7 +3096,12 @@ extension HomeViewController: HomeComposerBarDelegate {
         return result
     }
 
-    private func setComposeTarget(profile: ConnectionProfile, directory: String?) {
+    /// - Parameter announces: whether a change of machine says what the new one will run. A move
+    ///   that already says so in its own sentence passes false.
+    private func setComposeTarget(
+        profile: ConnectionProfile, directory: String?, announces: Bool = true
+    ) {
+        let moved = askLane == .chat && composerAim?.profile.id != profile.id
         AppPreferences.lastComposeTarget = (profile.id, directory)
         resolvedComposeTarget = nil
         if let directory { FileBrowserRecents.record(directory, for: profile.id) }
@@ -3033,6 +3109,69 @@ extension HomeViewController: HomeComposerBarDelegate {
         setLane(.chat, animated: true)
         appliedComposerState = nil
         updateComposer()
+        guard announces, moved, viewModel.servers.count > 1 else { return }
+        let choice = aimedChoice(for: profile, lane: .chat)
+        toast(
+            ComposerRetarget.sentence(
+                machine: profile.name,
+                modelWord: choice.model.map {
+                    ModelBadge.word(for: $0, in: ModelCatalog.cached(for: profile.id))
+                },
+                effort: choice.effort))
+    }
+
+    /// A model that lives on another machine moves the composer there, the way a pick in the full
+    /// picker does: machine, model and level are one aimed decision. The pill is seeded with the
+    /// pick and the level carried onto that machine's own catalog — so it never shows the last
+    /// aim's model — the folder survives only where that machine knows it, and one sentence says
+    /// where the composer now points.
+    private func retargetCompose(to pick: ModelPick, from aim: ComposerAim) {
+        retargetCompose(
+            to: pick, lane: aim.lane, effort: modelChoices[aim.memoryKey]?.effort,
+            directory: aim.directory)
+    }
+
+    private func retargetCompose(
+        to pick: ModelPick, lane: QuickAskLane, effort: String?, directory: String?
+    ) {
+        guard
+            let profile = viewModel.servers.first(where: { $0.id == pick.profileID })
+                ?? ConnectionController.shared.profiles.first(where: { $0.id == pick.profileID })
+        else { return }
+        let backend = viewModel.backend(forProfileID: profile.id)
+        let takesLevels = backend?.capabilities.supportsReasoningEffort ?? false
+        let move = ComposerRetarget.decide(
+            pick: pick, directory: lane == .chat ? directory : nil,
+            knownDirectories: recentDirectories(for: profile), effort: takesLevels ? effort : nil,
+            models: ModelCatalog.cached(for: profile.id),
+            agentOptions: backend?.reasoningEffortOptions ?? [])
+        switch lane {
+        case .chat:
+            ModelFleet.adopt(pick)
+            if takesLevels {
+                EffortPreferenceStore.recordPick(move.effort, sessionKey: nil, contextID: profile.id)
+            }
+            modelChoices[profile.id] = move.model.map { ModelChoice(model: $0, effort: move.effort) }
+            setComposeTarget(profile: profile, directory: move.directory, announces: false)
+        case .ask:
+            QuickAskDefaults.adopt(pick)
+            if takesLevels { QuickAskDefaults.recordEffort(move.effort, forProfileID: profile.id) }
+            modelChoices[QuickAskDefaults.contextID(forProfileID: profile.id)] = move.model.map {
+                ModelChoice(model: $0, effort: move.effort)
+            }
+            aimAsk(at: profile.id)
+            appliedComposerState = nil
+            updateComposer()
+        case .video, .image:
+            assertionFailure("a render lane has no ComposerAim")
+            return
+        }
+        toast(
+            move.sentence(
+                machine: profile.name,
+                modelWord: move.model.map {
+                    ModelBadge.word(for: $0, in: ModelCatalog.cached(for: profile.id))
+                }))
     }
 
     /// Moving the question to another machine takes the draft with it: what is typed belongs to
@@ -3049,10 +3188,20 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// Aims the docked composer at another machine, the Home half of the fleet's "start a chat
     /// there" move. The compose is a promise about where the next session will live, so it is the
     /// one thing on this screen that can point somewhere else.
-    func aimCompose(at profileID: String) {
+    ///
+    /// A pick carried from a chat aims the model and level too, through the same move as a pick
+    /// made here; `directory` is the folder the chat was in, kept when that machine knows it.
+    func aimCompose(
+        at profileID: String, carrying pick: ModelPick? = nil, effort: String? = nil,
+        directory: String? = nil
+    ) {
         guard let profile = ConnectionController.shared.profiles.first(where: { $0.id == profileID })
         else { return }
-        setComposeTarget(profile: profile, directory: nil)
+        if let pick {
+            retargetCompose(to: pick, lane: .chat, effort: effort, directory: directory)
+        } else {
+            setComposeTarget(profile: profile, directory: nil)
+        }
         focusComposer()
     }
 
@@ -3909,7 +4058,7 @@ extension HomeViewController: KeyActionHost {
             cycleComposePreset(by: -1)
         case .preset(let number):
             guard let aim = composerAim else { return false }
-            let presets = composePresets(for: aim)
+            let presets = composePins(for: aim).reachable
             guard presets.indices.contains(number - 1) else { return false }
             setComposePreset(presets[number - 1], for: aim)
         default:

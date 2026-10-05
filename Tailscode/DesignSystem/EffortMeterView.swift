@@ -40,7 +40,8 @@ final class EffortMeterView: UIView {
         init(level: String?, options: [String]) {
             self.init(
                 heat: ModelDial.heat(level, options: options), level: level,
-                isPower: ModelDial.isPower(level), isServer: level == nil,
+                isPower: ModelDial.isPower(level),
+                isServer: level.map(EffortVocabulary.isAutomatic) ?? true,
                 isEmber: ModelDial.isEmber(level))
         }
     }

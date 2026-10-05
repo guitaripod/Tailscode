@@ -33,12 +33,13 @@ struct EffortCarryTests {
         #expect(ModelEffort.carry("medium", options: ["minimal", "low", "high"]).level == "low")
     }
 
-    @Test("A model with no levels, or only levels the table has not met, hands the level back")
+    @Test("A model with no levels, or a word nobody can place, hands the level back")
     func handedBack() {
         let none = ModelEffort.carry("high", options: [])
         #expect(none.level == nil && none.moved && !none.takesLevels)
-        let custom = ModelEffort.carry("high", options: ["shallow", "deep"])
+        let custom = ModelEffort.carry("turbo", options: claude)
         #expect(custom.level == nil && custom.moved && custom.takesLevels)
+        #expect(ModelEffort.carry("high", options: ["shallow", "deep"]).level == "deep")
         #expect(ModelEffort.carry(nil, options: claude).level == nil)
         #expect(!ModelEffort.carry(nil, options: claude).moved)
     }
@@ -55,6 +56,22 @@ struct EffortCarryTests {
         #expect(back.notice(modelName: "Pro") == "medium handed back to the server. Pro has no cooler level.")
         let power = ModelEffort.carry("ultracode", options: ["low", "high"])
         #expect(power.notice(modelName: "Haiku") == "ultracode moved to high. Haiku has no ultracode.")
+        let budget = ModelEffort.carry("4096", options: claude)
+        #expect(budget.notice(modelName: "Opus") == "4096 handed back to the server. Opus has no 4096.")
+        #expect(budget.forecast(modelName: "Opus") == "4096 will go back to the server.")
+        let think = ModelEffort.carry("think", options: claude)
+        #expect(think.notice(modelName: "Opus") == "think moved to medium. Opus has no think.")
+        let off = ModelEffort.carry("nothink", options: ["low", "high"])
+        #expect(off.notice(modelName: "Gemini") == "nothink handed back to the server. Gemini has no cooler level.")
+    }
+
+    @Test("A difference of case alone is no move and says nothing")
+    func caseAlone() {
+        let carry = ModelEffort.carry("High", options: claude)
+        #expect(carry.level == "high" && !carry.moved)
+        #expect(carry.notice(modelName: "Opus") == nil && carry.forecast(modelName: "Opus") == nil)
+        let upper = ModelEffort.carry("low", options: ["Low", "HIGH"])
+        #expect(upper.level == "Low" && !upper.moved)
     }
 
     @Test("A model pick carries the level through the catalog's own variants")
@@ -100,5 +117,62 @@ struct EffortRailTests {
     func cancel() {
         #expect(!EffortRail.cancels(horizontalDistance: 30))
         #expect(EffortRail.cancels(horizontalDistance: 120))
+    }
+}
+
+@Suite("Effort scrub")
+struct EffortScrubTests {
+    private let claude = ["low", "medium", "high", "xhigh", "max", "ultracode"]
+
+    @Test("A hand moving along the bars climbs the model's own ladder one level per notch")
+    func climbs() {
+        var scrub = EffortScrub(level: "low")
+        #expect(scrub.move(to: 0, options: claude).isEmpty)
+        #expect(scrub.move(to: 1, options: claude) == ["medium"])
+        #expect(scrub.move(to: 4, options: claude) == ["high", "xhigh", "max"])
+        #expect(scrub.level == "max")
+    }
+
+    @Test("Sliding back down walks the same levels in reverse")
+    func descends() {
+        var scrub = EffortScrub(level: "xhigh")
+        #expect(scrub.move(to: -2, options: claude) == ["high", "medium"])
+        #expect(scrub.move(to: -3, options: claude) == ["low"])
+    }
+
+    @Test("It stops at both ends and a reversal leaves at once, with no dead zone")
+    func noDeadZone() {
+        let options = ["low", "medium", "high"]
+        var scrub = EffortScrub(level: "low")
+        #expect(scrub.move(to: 6, options: options) == ["medium", "high"])
+        #expect(scrub.level == "high")
+        #expect(scrub.move(to: 5, options: options) == ["medium"])
+        var floor = EffortScrub(level: "medium")
+        #expect(floor.move(to: -5, options: options) == ["low"])
+        #expect(floor.move(to: -4, options: options) == ["medium"])
+    }
+
+    @Test("The server's own stop is a place a slide starts from and never falls onto")
+    func serverStop() {
+        var scrub = EffortScrub(level: nil)
+        #expect(scrub.move(to: -3, options: claude).isEmpty)
+        #expect(scrub.level == nil)
+        #expect(scrub.move(to: -2, options: claude) == ["low"])
+    }
+
+    @Test("A model with one level, or none, has nowhere to slide")
+    func nowhere() {
+        var one = EffortScrub(level: "thinking")
+        #expect(one.move(to: 3, options: ["thinking"]).isEmpty)
+        var none = EffortScrub(level: nil)
+        #expect(none.move(to: 3, options: []).isEmpty)
+    }
+
+    @Test("A notch is a fixed distance, whole notches only, and a right-to-left layout flips it")
+    func distance() {
+        #expect(EffortScrub.notches(translation: 23) == 0)
+        #expect(EffortScrub.notches(translation: 24) == 1)
+        #expect(EffortScrub.notches(translation: -49) == -2)
+        #expect(EffortScrub.notches(translation: 48, rightToLeft: true) == -2)
     }
 }

@@ -23,34 +23,18 @@ public struct ModelFamily: Sendable, Hashable, Comparable {
 
     static let other = ModelFamily(key: "·other", title: Localized.text("Other"), rank: 900)
 
-    /// Needles are matched against whole words, so "gpt" finds "GPT-5.6" without "o3" finding
-    /// "Command-R O3xx". Order is the order of the sections a person reads.
-    private static let table: [(needles: [String], title: String)] = [
-        (["claude", "fable", "opus", "sonnet", "haiku"], "Claude"),
-        (["gpt", "codex", "o1", "o3", "o4"], "GPT"),
-        (["gemini"], "Gemini"),
-        (["grok"], "Grok"),
-        (["deepseek"], "DeepSeek"),
-        (["qwen", "qwq"], "Qwen"),
-        (["kimi"], "Kimi"),
-        (["glm", "chatglm"], "GLM"),
-        (["llama"], "Llama"),
-        (["mistral", "codestral", "devstral", "magistral", "mixtral", "ministral"], "Mistral"),
-        (["gemma"], "Gemma"),
-        (["command", "cohere"], "Command"),
-        (["phi"], "Phi"),
-        (["nova"], "Nova"),
-        (["minimax"], "MiniMax"),
-        (["hunyuan"], "Hunyuan"),
-    ]
-
+    /// The section is the house ``ModelNeedles`` reads, so the list and the pill's hue never
+    /// disagree about whose a model is.
     public static func of(name: String, id: String) -> ModelFamily {
-        let words = Set(tokens(name) + tokens(id))
-        for (rank, entry) in table.enumerated() {
-            guard entry.needles.contains(where: words.contains) else { continue }
-            return ModelFamily(key: entry.title.lowercased(), title: entry.title, rank: rank)
+        of(name: name, id: id, providerID: nil)
+    }
+
+    public static func of(name: String, id: String, providerID: String?) -> ModelFamily {
+        guard let rank = ModelNeedles.house(id: id, name: name, providerID: providerID) else {
+            return other
         }
-        return other
+        let title = ModelNeedles.houses[rank].title
+        return ModelFamily(key: title.lowercased(), title: title, rank: rank)
     }
 
     /// A name breaks into the words a family is named by: letters and digits part company, so
@@ -1522,7 +1506,7 @@ public struct ModelChooser: Sendable, Equatable {
             return ModelCandidate(
                 id: source.profileID.isEmpty ? key : "\(source.profileID)·\(key)",
                 name: name.isEmpty ? first.id : name,
-                family: ModelFamily.of(name: name, id: first.id), offers: offers,
+                family: ModelFamily.of(name: name, id: first.id, providerID: first.providerID), offers: offers,
                 profileID: source.profileID, serverName: source.name,
                 isElsewhere: !source.isCurrent)
         }
@@ -1570,18 +1554,36 @@ public struct ModelChooser: Sendable, Equatable {
         recents: [ModelSelection] = RecentModelsStore.all(),
         favorites: [ModelSelection] = ModelFavoritesStore.all()
     ) -> [ModelCandidate] {
+        shortlistEntries(
+            sources: sources, selected: selected, limit: limit, recents: recents,
+            favorites: favorites
+        ).map(\.candidate)
+    }
+
+    /// The same shortlist, each row carrying the door it was remembered through. A recent or a star
+    /// is a selection — a model *and* the provider it went through — and a row that answered with
+    /// the folded candidate's preferred door instead would move the bill on a re-pick nobody asked
+    /// to move.
+    public static func shortlistEntries(
+        sources: [ModelSource], selected: ModelSelection?, limit: Int = 8,
+        recents: [ModelSelection] = RecentModelsStore.all(),
+        favorites: [ModelSelection] = ModelFavoritesStore.all(),
+        excluding skip: (ModelCandidate) -> Bool = { _ in false }
+    ) -> [ModelMenuEntry] {
         let candidates = sources.flatMap { fold(source: $0, preferred: selected) }
-        var result: [ModelCandidate] = []
-        func admit(_ candidate: ModelCandidate?) {
-            guard let candidate, result.count < limit,
-                !result.contains(where: { $0.id == candidate.id })
+        var result: [ModelMenuEntry] = []
+        func admit(_ candidate: ModelCandidate?, _ door: ModelSelection?) {
+            guard let candidate, result.count < limit, !skip(candidate),
+                !result.contains(where: { $0.candidate.id == candidate.id })
             else { return }
-            result.append(candidate)
+            result.append(ModelMenuEntry(candidate: candidate, selection: door ?? candidate.selection))
         }
-        if let selected { admit(candidates.first { !$0.isElsewhere && $0.carries(selected) }) }
-        for selection in favorites { admit(candidates.first { $0.carries(selection) }) }
-        for selection in recents { admit(candidates.first { $0.carries(selection) }) }
-        if result.isEmpty { seedUntouched(candidates, admit: admit) }
+        if let selected {
+            admit(candidates.first { !$0.isElsewhere && $0.carries(selected) }, selected)
+        }
+        for selection in favorites { admit(candidates.first { $0.carries(selection) }, selection) }
+        for selection in recents { admit(candidates.first { $0.carries(selection) }, selection) }
+        if result.isEmpty { seedUntouched(candidates) { admit($0, nil) } }
         return result
     }
 

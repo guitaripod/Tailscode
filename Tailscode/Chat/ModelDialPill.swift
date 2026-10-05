@@ -34,6 +34,10 @@ final class ModelDialPill: UIView {
 
     var onCycle: ((Int) -> Void)?
     var onEffort: ((String?) -> Void)?
+
+    /// A level reached by sliding along the effort half, which a host that plays its own feedback
+    /// for a set level can take quietly; without it the slide sets levels through `onEffort`.
+    var onScrub: ((String?) -> Void)?
     var footer: ((EffortRung) -> String?)?
 
     /// The screen the rail opens over, and the view it must stay beneath so the thing being aimed
@@ -60,6 +64,7 @@ final class ModelDialPill: UIView {
     private let row = UIStackView()
     private var slotWidth: NSLayoutConstraint!
     private var presenter: EffortRailPresenter?
+    private var scrub: EffortScrub?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -80,6 +85,7 @@ final class ModelDialPill: UIView {
         config.imagePadding = 7
         config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 11)
         config.baseForegroundColor = Theme.Color.label
+        config.titleLineBreakMode = .byTruncatingMiddle
         modelButton.configuration = config
         modelButton.showsMenuAsPrimaryAction = true
         modelButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -129,6 +135,13 @@ final class ModelDialPill: UIView {
 
         effortZone.addGestureRecognizer(
             UITapGestureRecognizer(target: self, action: #selector(effortTapped)))
+        effortZone.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(slid(_:))))
+        effortZone.allowsSlide = { [weak self] pan in
+            guard let self else { return false }
+            let velocity = pan.velocity(in: self)
+            return self.isEnabled && ModelEffort.isOffered(options: self.content.options)
+                && abs(velocity.x) > abs(velocity.y)
+        }
 
         row.axis = .horizontal
         row.alignment = .fill
@@ -184,7 +197,9 @@ final class ModelDialPill: UIView {
         }.max() ?? 0
         slotWidth.constant = ceil(widest)
         meter.reading = .init(face: face, level: ModelEffort.surviving(content.effort, options: content.options))
-        effortZone.accessibilityValue = face.isServer ? String(localized: "server decides") : face.effortWord
+        effortZone.accessibilityValue =
+            ModelEffort.surviving(content.effort, options: content.options) == nil
+            ? String(localized: "server decides") : face.effortWord
         effortZone.accessibilityHint = String(localized: "Opens the levels, or swipe up or down to change")
     }
 
@@ -233,6 +248,30 @@ final class ModelDialPill: UIView {
         func openMenu() { modelButton.performPrimaryAction() }
     #endif
 
+    /// Sliding along the effort half is the same ladder the rail draws, walked a notch at a time:
+    /// hotter toward the end the bars grow to, a tick for every level crossed, the pill itself
+    /// showing where the hand is. It stops at both ends rather than wrapping, and never lands on
+    /// the server's own stop, exactly like the arrow keys.
+    @objc private func slid(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            presenter?.dismiss(committing: false)
+            scrub = EffortScrub(level: ModelEffort.surviving(content.effort, options: content.options))
+        case .changed:
+            guard var held = scrub else { return }
+            let notches = EffortScrub.notches(
+                translation: gesture.translation(in: effortZone).x,
+                rightToLeft: effortZone.effectiveUserInterfaceLayoutDirection == .rightToLeft)
+            for level in held.move(to: notches, options: content.options) {
+                Theme.Haptics.notch()
+                (onScrub ?? onEffort)?(level)
+            }
+            scrub = held
+        default:
+            scrub = nil
+        }
+    }
+
     @objc private func swiped(_ gesture: UISwipeGestureRecognizer) {
         guard isEnabled else { return }
         let delta = gesture.direction == .left ? 1 : -1
@@ -261,6 +300,14 @@ final class ModelDialPill: UIView {
 private final class EffortZoneView: UIView {
     var onIncrement: (() -> Void)?
     var onDecrement: (() -> Void)?
+    var allowsSlide: ((UIPanGestureRecognizer) -> Bool)?
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as? UIPanGestureRecognizer, let allowsSlide else {
+            return super.gestureRecognizerShouldBegin(gestureRecognizer)
+        }
+        return allowsSlide(pan)
+    }
 
     override func accessibilityIncrement() { onIncrement?() }
     override func accessibilityDecrement() { onDecrement?() }

@@ -287,6 +287,10 @@ struct ModelEffortTests {
     func levelSurvivesOnlyWhereItCanRun() {
         #expect(ModelEffort.surviving("max", options: ["low", "high"]) == nil)
         #expect(ModelEffort.surviving("high", options: ["low", "high"]) == "high")
+        #expect(ModelEffort.surviving("HIGH", options: ["low", "high"]) == "high")
+        #expect(ModelEffort.surviving("high", options: ["Low", "HIGH"]) == "HIGH")
+        #expect(ModelEffort.surviving(" think ", options: ["nothink", "think"]) == "think")
+        #expect(ModelEffort.surviving("thinking", options: ["nothink", "think"]) == nil)
     }
 
     @Test("A model pick carries a level the new model cannot run to the nearest cooler one")

@@ -1419,9 +1419,17 @@ final class ChatViewModel {
 
     /// The pinned pairs this server can run, in the order they were pinned.
     var reachablePresets: [ModelPreset] {
-        ModelPresetCycle.reachable(
-            ModelPresetStore.all(), models: knownModels,
-            acceptsAnyModelID: ChatModelResolver.honoursServerDefault(backend))
+        presetPlacement(elsewhere: []).reachable
+    }
+
+    /// Where every pin stands from this chat's server: the same predicate the model menu and Home
+    /// use, so a pin the menu offers is one the swipe reaches and the other way round.
+    func presetPlacement(elsewhere: [ModelSource]) -> PinPlacement {
+        ModelPresetCycle.placement(
+            ModelPresetStore.all(),
+            models: knownModels.isEmpty ? ModelCatalog.cached(for: contextID) : knownModels,
+            acceptsAnyModelID: ModelFleet.acceptsAnyModelID(backend.agentType),
+            elsewhere: elsewhere)
     }
 
     /// A pinned pair: the model, then the level it asks for through the same carry as any pick.
