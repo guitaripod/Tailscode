@@ -28,6 +28,9 @@ public enum DemoWorld {
     }
 
     private static let now = Date()
+
+    private static let readsEverything = ModelCapabilities(
+        attachment: true, imageInput: true, pdfInput: true)
     private static func ago(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(-seconds) }
     private static func hence(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(seconds) }
 
@@ -66,10 +69,23 @@ public enum DemoWorld {
                 model: "claude-haiku-4-5", reasoningEffort: "low"),
         ],
         models: [
-            ModelInfo(id: "claude-fable-5", name: "Fable 5", providerID: "anthropic"),
-            ModelInfo(id: "claude-opus-4-8", name: "Opus 4.8", providerID: "anthropic"),
-            ModelInfo(id: "claude-sonnet-5", name: "Sonnet 5", providerID: "anthropic"),
-            ModelInfo(id: "claude-haiku-4-5", name: "Haiku 4.5", providerID: "anthropic"),
+            ModelInfo(
+                id: "claude-fable-5", name: "Fable 5", providerID: "anthropic",
+                capabilities: readsEverything,
+                variants: ["low", "medium", "high", "xhigh", "max", "ultracode"],
+                contextWindow: 1_000_000),
+            ModelInfo(
+                id: "claude-opus-4-8", name: "Opus 4.8", providerID: "anthropic",
+                capabilities: readsEverything,
+                variants: ["low", "medium", "high", "xhigh", "max", "ultracode"],
+                contextWindow: 1_000_000),
+            ModelInfo(
+                id: "claude-sonnet-5", name: "Sonnet 5", providerID: "anthropic",
+                capabilities: readsEverything, variants: ["low", "medium", "high"],
+                contextWindow: 1_000_000),
+            ModelInfo(
+                id: "claude-haiku-4-5", name: "Haiku 4.5", providerID: "anthropic",
+                capabilities: readsEverything, variants: [], contextWindow: 200_000),
         ],
         defaultModelID: "claude-fable-5",
         reasoningEffortOptions: ["low", "medium", "high", "xhigh", "max", "ultracode"],

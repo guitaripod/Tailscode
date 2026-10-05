@@ -332,31 +332,23 @@ final class ChatViewController: UIViewController {
             if let dial = ProcessInfo.processInfo.environment["TAILSCODE_DIAL"] {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(7))
-                    guard let self else { return }
-                    if dial.hasPrefix("pins") {
-                        for preset in [
-                            ModelPreset(selection: ModelSelection(providerID: "anthropic", modelID: "sonnet"), effort: .level("medium")),
-                            ModelPreset(selection: ModelSelection(providerID: "anthropic", modelID: "opus"), effort: .level("xhigh")),
-                        ] where !ModelPresetStore.all().contains(preset) {
-                            ModelPresetStore.pin(preset)
-                        }
-                        self.updateNavControls()
-                    }
-                    let parts = dial.split(separator: ":")
-                    if parts.count > 1, parts[0] == "rail" || parts[0] == "level" {
-                        self.viewModel.setEffort(String(parts[1]))
-                        self.updateNavControls()
+                    for verb in dial.split(separator: "+") {
+                        guard let self else { return }
+                        await self.tourDial(String(verb))
                         try? await Task.sleep(for: .seconds(0.6))
                     }
-                    if parts.first == "rail" { self.dialPill.openRail() }
-                    if dial == "step" { self.stepEffort(by: -1) }
-                    if dial == "pinscycle" { self.cyclePreset(by: 1) }
                 }
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_MODELS"] != nil {
                 Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(2))
+                    let delay = ProcessInfo.processInfo.environment["TAILSCODE_MODELS_DELAY"]
+                        .flatMap(Double.init) ?? 2
+                    try? await Task.sleep(for: .seconds(delay))
                     self?.presentModelPicker()
+                    if let model = ProcessInfo.processInfo.environment["TAILSCODE_MODELS_PEEK"] {
+                        try? await Task.sleep(for: .seconds(1.5))
+                        self?.modelPicker?.tourPeek(matching: model)
+                    }
                     guard
                         let machine = ProcessInfo.processInfo.environment[
                             "TAILSCODE_MODELS_MACHINE"
@@ -4698,7 +4690,16 @@ final class ChatViewController: UIViewController {
 
     private func presentToast(_ message: String, duration: TimeInterval = 2.0) {
         let toast = ToastView(message: message)
-        toast.flash(in: view, above: composer.topAnchor, duration: duration)
+        toast.flash(in: view, above: composer.topAnchor, duration: heldToastDuration(duration))
+    }
+
+    private func heldToastDuration(_ duration: TimeInterval) -> TimeInterval {
+        #if DEBUG
+            return ProcessInfo.processInfo.environment["TAILSCODE_TOAST_HOLD"].flatMap(Double.init)
+                ?? duration
+        #else
+            return duration
+        #endif
     }
 
     /// The pill in the composer carries both the model and the effort, and names them. It reads the
@@ -6227,3 +6228,45 @@ private final class AccessoryStack: UIStackView {
         onHeightChange?()
     }
 }
+
+#if DEBUG
+    extension ChatViewController {
+        /// One step of a scripted walk through the model dial, for the headless screenshot run:
+        /// `pins`, `pinscycle`, `star:<id>`, `auto`, `pick:<id>`, `level:<l>`, `rail[:<l>]`, `step`, `cycle`, `menu`, `model:<id>`.
+        func tourDial(_ verb: String) async {
+            let parts = verb.split(separator: ":", maxSplits: 1).map(String.init)
+            switch parts[0] {
+            case "pins", "pinscycle":
+                DialTour.pinPairs()
+                updateNavControls()
+                if parts[0] == "pinscycle" { cyclePreset(by: 1) }
+            case "star":
+                guard parts.count > 1 else { return }
+                DialTour.star(parts[1])
+                updateNavControls()
+            case "auto":
+                _ = viewModel.selectModel(nil)
+                viewModel.setEffort(nil)
+                updateNavControls()
+            case "pick":
+                guard parts.count > 1 else { return }
+                _ = viewModel.selectModel(ModelSelection(providerID: "anthropic", modelID: parts[1]))
+                updateNavControls()
+            case "level", "rail":
+                if parts.count > 1 {
+                    viewModel.setEffort(parts[1])
+                    updateNavControls()
+                    try? await Task.sleep(for: .seconds(0.6))
+                }
+                if parts[0] == "rail" { dialPill.openRail() }
+            case "step": stepEffort(by: -1)
+            case "cycle": cyclePreset(by: 1)
+            case "menu": dialPill.openMenu()
+            case "model":
+                guard parts.count > 1 else { return }
+                chooseModel(ModelSelection(providerID: "anthropic", modelID: parts[1]))
+            default: break
+            }
+        }
+    }
+#endif

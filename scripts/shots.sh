@@ -71,6 +71,18 @@ SHOTS=(
   "13-diff|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_OPEN_GIT=diff|14"
   "14-analytics|--demo --analytics||9"
   "15-delegate|--demo|TAILSCODE_OPEN_DELEGATE=studio.tailnet-demo.ts.net|10"
+  "pk-pill-auto|--demo|TAILSCODE_HIDE_DEMO_BADGE=1|6"
+  "pk-pill-haiku|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-haiku-4-5|9"
+  "pk-pill-sonnet|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-sonnet-5+level:low|9"
+  "pk-pill-opus|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh|9"
+  "pk-pill-fable|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-fable-5+level:ultracode|9"
+  "pk-menu|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_HOME_DIAL=pins+menu|10"
+  "pk-rail|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+rail:ultracode|14"
+  "pk-cycle|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_TOAST_HOLD=12 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh+pins+cycle|12"
+  "pk-carry|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_TOAST_HOLD=12 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh+model:claude-sonnet-5|12"
+  "pk-list|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh+pins+star:claude-haiku-4-5 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12|17"
+  "pk-peek|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh+pins+star:claude-haiku-4-5 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12 TAILSCODE_MODELS_PEEK=claude-sonnet-5|18"
+  "pk-home|--demo|TAILSCODE_HIDE_DEMO_BADGE=1|7"
   "welcome||TAILSCODE_FAKE_TAILNET=up|5"
   "setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_FAKE_TAILNET=up|6"
 )
@@ -106,6 +118,7 @@ boot_device() {
   xcrun simctl boot "$id" 2>/dev/null || true
   xcrun simctl bootstatus "$id" >/dev/null 2>&1 || true
   xcrun simctl ui "$id" appearance "${TAILSCODE_SHOT_APPEARANCE:-dark}" >/dev/null 2>&1 || true
+  xcrun simctl spawn "$id" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true >/dev/null 2>&1 || true
   xcrun simctl status_bar "$id" override \
     --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
     --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 \

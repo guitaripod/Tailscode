@@ -229,6 +229,10 @@ final class ModelDialPill: UIView {
 
     @objc private func effortTapped() { openRail() }
 
+    #if DEBUG
+        func openMenu() { modelButton.performPrimaryAction() }
+    #endif
+
     @objc private func swiped(_ gesture: UISwipeGestureRecognizer) {
         guard isEnabled else { return }
         let delta = gesture.direction == .left ? 1 : -1

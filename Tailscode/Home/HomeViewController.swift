@@ -155,6 +155,21 @@ final class HomeViewController: UIViewController {
                     self?.pushSaved()
                 }
             }
+            if let script = ProcessInfo.processInfo.environment["TAILSCODE_HOME_DIAL"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(4))
+                    for verb in script.split(separator: "+") {
+                        guard let self else { return }
+                        switch verb {
+                        case "pins": DialTour.pinPairs()
+                        case "rail": self.composerBar.dialPill.openRail()
+                        case "menu": self.composerBar.dialPill.openMenu()
+                        default: break
+                        }
+                        try? await Task.sleep(for: .seconds(0.6))
+                    }
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_ASK"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
