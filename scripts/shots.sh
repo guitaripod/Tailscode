@@ -55,7 +55,7 @@ LANGUAGE_ARGS="$(language_args "$LOCALE")"
 # the first screen and the setup checklist a first launch actually shows. The faked
 # tailnet keeps this machine's real 100.x address out of the marketing set.
 SHOTS=(
-  "01-live|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_DIAL=level:ultracode|14"
+  "01-live|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_DIAL=level:max|14"
   "02-work|--demo|TAILSCODE_OPEN_SESSION=demo-c2|9"
   "03-approval|--demo|TAILSCODE_OPEN_SESSION=demo-c3|12"
   "04-question|--demo|TAILSCODE_OPEN_SESSION=demo-o2|11"
