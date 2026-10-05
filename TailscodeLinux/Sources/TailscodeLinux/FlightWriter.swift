@@ -34,6 +34,11 @@ struct LoopPublication: Sendable, Equatable {
     var worstMs = 0
     var level = 0
     var panes = FlightPanes(full: 0, glance: 0, parked: 0)
+    /// The most drain slots that were ready at once in the last second: the deepest the panes'
+    /// latest-wins mailboxes got, each of which holds at most one state.
+    var mailbox = 0
+    /// The 95th percentile of the drain's passes in the last second, ms.
+    var drainP95Ms: Double?
 }
 
 /// The Linux end of the flight recorder: Core's `FlightRing` at `$XDG_STATE_HOME/tailscode/
@@ -62,7 +67,8 @@ final class FlightWriter: @unchecked Sendable {
         return FlightRecord(
             t: FlightRecord.epochMilliseconds(now), rss: counts.rssKiB, thr: counts.threads,
             fds: counts.fds, panes: loop.panes, lv: loop.level,
-            busy: silentMs > 0 ? 1 : loop.busy, stall: max(loop.worstMs, silentMs), mb: 0,
+            busy: silentMs > 0 ? 1 : loop.busy, stall: max(loop.worstMs, silentMs), mb: loop.mailbox,
+            dr: loop.drainP95Ms,
             ps: pressure.recorded, av: pressure.availableMB, own: pressure.ownMemory, rl: 0,
             ev: event)
     }

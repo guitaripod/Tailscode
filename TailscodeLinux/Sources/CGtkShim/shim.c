@@ -119,10 +119,59 @@ void tailscode_soak_enable(void) {
     g_timeout_add_full(G_PRIORITY_DEFAULT, 100, tailscode_soak_lag_tick, NULL, NULL);
 }
 
+static gint64 tailscode_soak_cycle_began = 0;
+static gint64 tailscode_soak_layout_ended = 0;
+static atomic_long tailscode_soak_cycle_us = 0;
+static atomic_long tailscode_soak_layout_us = 0;
+static atomic_long tailscode_soak_paint_us = 0;
+
+static void tailscode_soak_layout_done(GdkFrameClock *clock, gpointer unused) {
+    (void)clock;
+    (void)unused;
+    if (tailscode_soak_cycle_began == 0) return;
+    tailscode_soak_layout_ended = g_get_monotonic_time();
+    atomic_fetch_add_explicit(
+        &tailscode_soak_layout_us, tailscode_soak_layout_ended - tailscode_soak_cycle_began,
+        memory_order_relaxed);
+}
+
+static void tailscode_soak_paint_done(GdkFrameClock *clock, gpointer unused) {
+    (void)clock;
+    (void)unused;
+    if (tailscode_soak_layout_ended == 0) return;
+    atomic_fetch_add_explicit(
+        &tailscode_soak_paint_us, g_get_monotonic_time() - tailscode_soak_layout_ended,
+        memory_order_relaxed);
+    tailscode_soak_layout_ended = 0;
+}
+
+static void tailscode_soak_before_paint(GdkFrameClock *clock, gpointer unused) {
+    (void)clock;
+    (void)unused;
+    tailscode_soak_cycle_began = g_get_monotonic_time();
+}
+
+static void tailscode_soak_after_paint(GdkFrameClock *clock, gpointer unused) {
+    (void)clock;
+    (void)unused;
+    if (tailscode_soak_cycle_began == 0) return;
+    atomic_fetch_add_explicit(
+        &tailscode_soak_cycle_us, g_get_monotonic_time() - tailscode_soak_cycle_began,
+        memory_order_relaxed);
+    tailscode_soak_cycle_began = 0;
+}
+
+/// Counts frames, and times each frame cycle from `before-paint` to `after-paint` — the ticks,
+/// the layout and the paint together — which is the share of the main thread the toolkit spends
+/// drawing rather than the app spends applying.
 gboolean tailscode_soak_watch_frames(GtkWidget *widget) {
     GdkFrameClock *clock = widget ? gtk_widget_get_frame_clock(widget) : NULL;
     if (!clock) return FALSE;
     g_signal_connect(clock, "after-paint", G_CALLBACK(tailscode_soak_frame), NULL);
+    g_signal_connect(clock, "before-paint", G_CALLBACK(tailscode_soak_before_paint), NULL);
+    g_signal_connect_after(clock, "after-paint", G_CALLBACK(tailscode_soak_after_paint), NULL);
+    g_signal_connect_after(clock, "layout", G_CALLBACK(tailscode_soak_layout_done), NULL);
+    g_signal_connect_after(clock, "paint", G_CALLBACK(tailscode_soak_paint_done), NULL);
     return TRUE;
 }
 
@@ -138,6 +187,9 @@ void tailscode_soak_read(TailscodeSoakSample *out) {
     out->parse_hits = atomic_load(&tailscode_soak_parse_hits);
     out->tick_runs = atomic_load(&tailscode_soak_tick_runs);
     out->frames = atomic_load(&tailscode_soak_frames);
+    out->frame_us = atomic_load(&tailscode_soak_cycle_us);
+    out->layout_us = atomic_load(&tailscode_soak_layout_us);
+    out->paint_us = atomic_load(&tailscode_soak_paint_us);
     g_mutex_lock(&tailscode_soak_lock);
     int count = tailscode_soak_lag_count;
     gint64 *lags = g_memdup2(tailscode_soak_lags, sizeof(gint64) * (count > 0 ? count : 1));

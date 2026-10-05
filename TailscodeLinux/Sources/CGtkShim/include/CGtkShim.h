@@ -28,6 +28,11 @@ typedef struct {
     long parse_hits;
     long tick_runs;
     long frames;
+    /// Microseconds spent inside frame cycles (before-paint to after-paint), running total.
+    long frame_us;
+    /// Of those, the ticks and the layout phase, and the paint phase.
+    long layout_us;
+    long paint_us;
     int lag_samples;
     double lag50_ms;
     double lag95_ms;

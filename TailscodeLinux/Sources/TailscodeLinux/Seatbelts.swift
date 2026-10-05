@@ -185,6 +185,9 @@ final class Seatbelts: @unchecked Sendable {
         publication.worstMs = max(publication.worstMs, Int((reading.worstSinceLast * 1000).rounded()))
         publication.level = effective.rawValue
         publication.panes = FlightPanes(full: current.placed, glance: 0, parked: current.hidden)
+        let drained = LiveDrainStats.takeFlight()
+        publication.mailbox = drained.ready
+        publication.drainP95Ms = drained.passes > 0 ? (drained.p95 * 10_000).rounded() / 10 : nil
         events += fresh
         lock.unlock()
         if !fresh.isEmpty { watchdog.poke() }

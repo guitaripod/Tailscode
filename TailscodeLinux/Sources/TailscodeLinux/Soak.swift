@@ -9,7 +9,15 @@ import TailscodeCore
 /// own so a wedged main loop still reports, one line goes to stdout:
 ///
 /// `SOAK t= dt= rss= anon= thr= fds= pending= maxPending= lag50= lag95= lagMax= lagN= ticks= tickRuns=
-/// frames= parses= parseHits= listSaves= listSaveMs= applies= applyMs= cpu= mainCpu=`
+/// frames= parses= parseHits= listSaves= listSaveMs= applies= applyMs= paints= paintMs= drains= guarded= ready=
+/// drainMs= drainP95= drainMax= frameMs= layoutMs= phasePaintMs= cpu= mainCpu=`
+///
+/// `frameMs` is the time spent inside frame cycles — ticks, layout and paint — over the window,
+/// `layoutMs` the part up to the end of the layout phase and `phasePaintMs` the paint phase.
+///
+/// `drains` is how many passes the tiling drain ran, `guarded` how many of those the 100 ms
+/// starvation guard ran, `ready` the most slots ready at once (the deepest the mailboxes got),
+/// and `drainMs`, `drainP95`, `drainMax` its total, 95th percentile and worst pass in ms.
 ///
 /// `lagN` is how many times the 100 ms lag timer fired in the window (zero means the main loop
 /// never reached it, and `lagMax` is then the time since it last did); `ticks` is the number of
@@ -32,6 +40,9 @@ enum Soak {
         var at = ContinuousClock.now
         var tickRuns = 0
         var frames = 0
+        var frameMicroseconds = 0
+        var layoutMicroseconds = 0
+        var paintMicroseconds = 0
         var parses = 0
         var parseHits = 0
         var cpuTicks = 0
@@ -119,6 +130,7 @@ enum Soak {
         let (saveCount, saveNanoseconds) = drain(saves)
         let (applyCount, applyNanoseconds) = drain(applies)
         let (paintCount, paintNanoseconds) = drain(paints)
+        let drained = LiveDrainStats.takeSoak()
         let status = procStatus()
         let fds = ((try? FileManager.default.contentsOfDirectory(atPath: "/proc/self/fd"))?.count ?? 1) - 1
         let cpuNow = cpuTicks(of: "/proc/self/stat")
@@ -145,6 +157,9 @@ enum Soak {
                 "ticks=\(tailscode_live_ticks())",
                 "tickRuns=\(sample.tick_runs - state.tickRuns)",
                 "frames=\(sample.frames - state.frames)",
+                "frameMs=\(String(format: "%.1f", Double(sample.frame_us - state.frameMicroseconds) / 1000))",
+                "layoutMs=\(String(format: "%.1f", Double(sample.layout_us - state.layoutMicroseconds) / 1000))",
+                "phasePaintMs=\(String(format: "%.1f", Double(sample.paint_us - state.paintMicroseconds) / 1000))",
                 "parses=\(sample.parses - state.parses)",
                 "parseHits=\(sample.parse_hits - state.parseHits)",
                 "listSaves=\(saveCount)",
@@ -153,12 +168,21 @@ enum Soak {
                 "applyMs=\(String(format: "%.1f", Double(applyNanoseconds) / 1e6))",
                 "paints=\(paintCount)",
                 "paintMs=\(String(format: "%.1f", Double(paintNanoseconds) / 1e6))",
+                "drains=\(drained.passes)",
+                "guarded=\(drained.guarded)",
+                "ready=\(drained.ready)",
+                "drainMs=\(String(format: "%.1f", drained.seconds * 1000))",
+                "drainP95=\(String(format: "%.2f", drained.p95 * 1000))",
+                "drainMax=\(String(format: "%.2f", drained.worst * 1000))",
                 "cpu=\(String(format: "%.1f", cpu))",
                 "mainCpu=\(String(format: "%.1f", mainCpu))",
             ]
             state.at = now
             state.tickRuns = sample.tick_runs
             state.frames = sample.frames
+            state.frameMicroseconds = sample.frame_us
+            state.layoutMicroseconds = sample.layout_us
+            state.paintMicroseconds = sample.paint_us
             state.parses = sample.parses
             state.parseHits = sample.parse_hits
             state.cpuTicks = cpuNow
