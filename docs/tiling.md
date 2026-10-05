@@ -260,6 +260,8 @@ public struct DrainSlot: Sendable {
 
 `DrainPriority`: `focused`, `attention` (needs you or failed), `full`, `glance`. `run` applies slots in priority order, rotating the start within a class so peers do not starve, skips a slot whose `minInterval` has not elapsed (glance rate), always runs at least one ready slot, and stops at the deadline. A leftover marks the drain pending again. **Settled means silent:** with no dirty slot there is no tick, no timer and no wake.
 
+`TileDrain.run(until:)` returns a `DrainOutcome` (applied panes, ready leftovers, and `wakeAt` when only a slot's `minInterval` holds it back, so the host arms one timer instead of draining every frame); `run()` uses the drain's own budget from now; `update(_:to:)` changes a registered slot's priority in place; a `DrainToken` cancels idempotently. `SingleFlightPump.init` takes the `BuildGate` (default `.shared`).
+
 ### 5.2 ConversationHub
 
 One live conversation per `(profile, session)`, process-wide.
@@ -373,6 +375,8 @@ public struct TileGovernor: Sendable {
 4. Remaining `full` slots, up to the level's budget, go to: needs-you or failed panes first, then panes with a running turn the person touched in the last 60 s, then most recently focused. Pinned panes sort first and count against the budget, but are ignored at level 3 and above.
 5. Everything else that is a chat is `glance`.
 6. A promoted pane stays `full` for at least 8 s unless the budget drops (dwell), so a busy turn does not make panes trade places.
+
+**As built.** `GovernorSample` also carries `occluded` (minimized or suspended: chats and videos park) and `watchdog` (the stall hint that jumps to 4). `PaneAttention` is `quiet < running < failed < needsYou`. `GovernorDecision` also carries `transition` (`shed a→b reason`, for the recorder), `fullBudget`, `liveChats` and `chats` (the chip's numbers) and `preferenceOverridden` (the chip says a pin or `Keep all live` was ignored); `rowWindows` omits the focused pane, which uses the person's preference. The full-density threshold is an injected `FullDensityRule` (280 × 200, +16) until the host connects it to `PaneSizing`. Ranking for the remaining full slots is pinned (below level 3), then a pane still inside its 8 s dwell (unless the budget dropped since the last evaluation), then needs-you or failed, then running and touched in the last 60 s, then most recently touched. An explicit setting (`count(n)` or `all`) replaces the automatic budget at levels 0–2 and is capped at 1 from level 3. The sustain timers restart at each escalation, so each further step needs a fresh sustained period. The doubled relax delay returns to 20 s after ten minutes without an escalation. `TileGovernor.hold(atLeast:until:)` is the safe restore's floor. A tick cap of 0 means no pane clocks and a glance rate of 0 means frozen.
 
 **Shed levels.** `base = clamp(cores / 4, 2, 4)`; the setting `Auto | 1…6 | All` overrides `base` but never exceeds the level's cap at 3 and above.
 
