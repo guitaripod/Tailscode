@@ -70,6 +70,23 @@ struct FlightRecorderTests {
         #expect(back.ev?.allSatisfy { $0 == "e" } == true)
     }
 
+    @Test("The launch header keeps the limits code, and a header at every ceiling still fits its slot")
+    func launchHeaderLimits() throws {
+        let header = FlightHeader(
+            version: "1.68", toolkit: "gtk 4.22.1 adw 1.8.0", renderer: "GskNglRenderer",
+            glVendor: "NVIDIA Corporation", limits: "dbus")
+        let back = try #require(FlightRecord.decode(slot: FlightRecord.launch(header, t: 7).slot()))
+        #expect(back.header == header)
+        #expect(FlightFormatter.format([back]).contains("limits dbus"))
+        let widest = String(repeating: "w", count: 40)
+        let full = FlightHeader(
+            version: widest, toolkit: widest, renderer: widest, glVendor: widest, limits: widest)
+        let slot = FlightRecord.launch(full, t: 1_759_999_999_999).slot()
+        #expect(slot.count == FlightRecord.slotSize)
+        let decoded = try #require(FlightRecord.decode(slot: slot))
+        #expect(decoded.header?.limits?.count == FlightHeader.limitsWidth)
+    }
+
     @Test("The launch header carries version, toolkit, renderer and GL vendor")
     func launchHeader() throws {
         let header = FlightHeader(version: "1.68", toolkit: "GTK 4.22.1", renderer: "GskGLRenderer", glVendor: "NVIDIA Corporation")
@@ -97,7 +114,7 @@ struct FlightRecorderTests {
         let labels = Set(Mirror(reflecting: Self.full(1)).children.compactMap(\.label))
         #expect(labels == allowed)
         let headerLabels = Set(Mirror(reflecting: FlightHeader(version: "", toolkit: "")).children.compactMap(\.label))
-        #expect(headerLabels == ["version", "toolkit", "renderer", "glVendor"])
+        #expect(headerLabels == ["version", "toolkit", "renderer", "glVendor", "limits"])
         for banned in ["title", "id", "sessionID", "path", "text", "profile", "name", "url"] {
             #expect(!labels.contains(banned))
         }

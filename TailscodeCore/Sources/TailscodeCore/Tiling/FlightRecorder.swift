@@ -27,13 +27,24 @@ public struct FlightHeader: Sendable, Equatable {
     public var toolkit: String
     public var renderer: String?
     public var glVendor: String?
+    /// What the launch did about its own resource limits, as a short code (`dbus`, `systemctl`,
+    /// `skip-foreign`, …), so a freeze read from the ring says whether the app was fenced in.
+    public var limits: String?
 
-    public init(version: String, toolkit: String, renderer: String? = nil, glVendor: String? = nil) {
+    public init(
+        version: String, toolkit: String, renderer: String? = nil, glVendor: String? = nil,
+        limits: String? = nil
+    ) {
         self.version = version
         self.toolkit = toolkit
         self.renderer = renderer
         self.glVendor = glVendor
+        self.limits = limits
     }
+
+    /// The longest limits code a header keeps: with every other header field at its own ceiling
+    /// the slot still fits.
+    public static let limitsWidth = 12
 }
 
 /// One second of the black box. Counts and durations only: there is no field that could hold a
@@ -146,6 +157,9 @@ public struct FlightRecord: Sendable, Equatable {
             if let vendor = header.glVendor {
                 fields.append(("gl", Self.quoted(Self.ascii(vendor).prefix(24))))
             }
+            if let limits = header.limits {
+                fields.append(("lim", Self.quoted(Self.ascii(limits).prefix(FlightHeader.limitsWidth))))
+            }
         }
         var optional: [(String, String)] = []
         if let lv { optional.append(("lv", String(lv))) }
@@ -192,7 +206,7 @@ public struct FlightRecord: Sendable, Equatable {
         if let version = object["ver"] as? String, let toolkit = object["tk"] as? String {
             record.header = FlightHeader(
                 version: version, toolkit: toolkit, renderer: object["gsk"] as? String,
-                glVendor: object["gl"] as? String)
+                glVendor: object["gl"] as? String, limits: object["lim"] as? String)
         }
         return record
     }
@@ -387,6 +401,7 @@ public enum FlightFormatter {
                 let parts = [
                     "version \(header.version)", "toolkit \(header.toolkit)",
                     header.renderer.map { "renderer \($0)" }, header.glVendor.map { "gl \($0)" },
+                    header.limits.map { "limits \($0)" },
                 ].compactMap { $0 }
                 lines.append(
                     pad(time, 19) + "  " + pad(String(record.n), 7, right: true) + "  launch: "
