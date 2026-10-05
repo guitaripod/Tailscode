@@ -77,6 +77,8 @@ final class ModelDialPopover: @unchecked Sendable {
         gtk_scrolled_window_set_policy(op(list), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
         gtk_scrolled_window_set_max_content_height(op(list), 400)
         gtk_scrolled_window_set_propagate_natural_height(op(list), 1)
+        gtk_scrolled_window_set_propagate_natural_width(op(list), 1)
+        gtk_scrolled_window_set_max_content_width(op(list), Self.modelsCeiling)
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
         Gtk.margins(column, top: 0, bottom: 6, leading: 6, trailing: 6)
         gtk_scrolled_window_set_child(op(list), column)
@@ -106,6 +108,11 @@ final class ModelDialPopover: @unchecked Sendable {
         renderLadder()
         gtk_widget_grab_focus(search)
     }
+
+    /// How wide the models column may grow to hold a row whole. Its floor is the size request; a
+    /// row wearing a wall, its chips and a pinned level is wider than that floor, and a column held
+    /// at the floor cut the wall's reset time — the one fact on the row a person acts on.
+    private static let modelsCeiling: Int32 = 560
 
     private func tearDown() {
         entry = nil
@@ -255,13 +262,14 @@ final class ModelDialPopover: @unchecked Sendable {
         gtk_widget_set_valign(star, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(line), star)
         gtk_box_append(ptr(line), Self.familyDot(for: row))
-        let title = Gtk.label(row.title, css: "dial-title", selectable: false)
-        gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
-        gtk_label_set_max_width_chars(op(title), 24)
+        let title = Gtk.label(row.title, css: "dial-title", wrap: true, selectable: false)
+        Gtk.fitWrap(title, to: row.title, ceiling: 28)
+        gtk_widget_set_tooltip_text(title, row.title)
         gtk_widget_set_valign(title, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(line), title)
         for fact in row.facts where fact == .vision || fact == .pdf || fact == .local {
             let chip = Gtk.label(fact.tag, css: "dial-chip", selectable: false)
+            gtk_label_set_ellipsize(op(chip), PANGO_ELLIPSIZE_NONE)
             if fact == .local { Gtk.addClass(chip, "dial-chip-local") }
             gtk_widget_set_valign(chip, GTK_ALIGN_CENTER)
             gtk_widget_set_tooltip_text(chip, fact.label)
@@ -271,15 +279,20 @@ final class ModelDialPopover: @unchecked Sendable {
         gtk_widget_set_hexpand(spacer, 1)
         gtk_box_append(ptr(line), spacer)
         if let wall = row.wall {
-            let note = Gtk.label(QuotaSurface.rowNote(wall), css: "dial-wall", selectable: false)
+            let note = Gtk.label(
+                QuotaSurface.rowNote(wall), css: "dial-wall", wrap: true, selectable: false)
+            Gtk.fitWrap(note, to: QuotaSurface.rowNote(wall), ceiling: 30)
+            gtk_widget_set_tooltip_text(note, QuotaSurface.bannerBody(wall))
             gtk_widget_set_valign(note, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), note)
         }
         let showsDetail = row.level == nil || row.candidate?.isElsewhere == true
         if showsDetail, !row.detail.isEmpty {
-            let detail = Gtk.label(row.detail, css: "dial-detail", selectable: false)
-            gtk_label_set_ellipsize(op(detail), PANGO_ELLIPSIZE_END)
-            gtk_label_set_max_width_chars(op(detail), row.candidate == nil ? 28 : 16)
+            let detail = Gtk.label(row.detail, css: "dial-detail", wrap: true, selectable: false)
+            gtk_label_set_xalign(op(detail), 1)
+            gtk_label_set_justify(op(detail), GTK_JUSTIFY_RIGHT)
+            Gtk.fitWrap(detail, to: row.detail, ceiling: row.candidate == nil ? 40 : 24)
+            gtk_widget_set_tooltip_text(detail, row.detail)
             gtk_widget_set_valign(detail, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), detail)
         }
@@ -332,6 +345,7 @@ final class ModelDialPopover: @unchecked Sendable {
             gtk_label_set_selectable(op(word), 0)
         } else {
             word = Gtk.label(level.word, css: "dial-level-word", selectable: false)
+            gtk_label_set_ellipsize(op(word), PANGO_ELLIPSIZE_NONE)
         }
         if level.isServer { Gtk.addClass(word, "dial-level-server") }
         gtk_widget_set_valign(word, GTK_ALIGN_CENTER)
@@ -463,12 +477,13 @@ final class ModelDialPopover: @unchecked Sendable {
                 Self.rainbowMarkup(rung.title), css: "dial-rung-title", wrap: false)
             gtk_label_set_selectable(op(title), 0)
         } else {
-            title = Gtk.label(rung.title, css: "dial-rung-title", selectable: false)
+            title = Gtk.label(rung.title, css: "dial-rung-title", wrap: true, selectable: false)
         }
         gtk_box_append(ptr(words), title)
         if !rung.caption.isEmpty {
             gtk_box_append(
-                ptr(words), Gtk.label(rung.caption, css: "dial-rung-caption", selectable: false))
+                ptr(words),
+                Gtk.label(rung.caption, css: "dial-rung-caption", wrap: true, selectable: false))
         }
         gtk_box_append(ptr(line), words)
         let meter = Self.meter(

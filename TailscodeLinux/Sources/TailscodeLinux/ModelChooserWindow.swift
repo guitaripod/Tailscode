@@ -94,10 +94,10 @@ final class ModelChooserWindow: @unchecked Sendable {
         Gtk.addClass(entry, "model-search")
         gtk_box_append(ptr(column), entry)
 
-        strip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        strip = Self.chipStrip()
         Gtk.margins(strip, top: 2, leading: 2, trailing: 2)
         gtk_box_append(ptr(column), strip)
-        doorStrip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        doorStrip = Self.chipStrip()
         Gtk.margins(doorStrip, top: 2, leading: 2, trailing: 2)
         gtk_box_append(ptr(column), doorStrip)
         consequence = Gtk.label("", css: "model-consequence", wrap: true, selectable: false)
@@ -105,7 +105,8 @@ final class ModelChooserWindow: @unchecked Sendable {
         Gtk.margins(consequence, leading: 4, trailing: 4)
         gtk_box_append(ptr(column), consequence)
 
-        count = Gtk.label(chooser.summary, css: "model-summary", selectable: false)
+        count = Gtk.label(chooser.summary, css: "model-summary", wrap: true, selectable: false)
+        Gtk.fitWrap(count, to: chooser.summary, ceiling: Self.lineCeiling)
         gtk_label_set_xalign(op(count), 0)
         fold = gtk_button_new_with_label("")!
         Gtk.addClass(fold, "flat")
@@ -129,7 +130,10 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_scrolled_window_set_child(op(scroller), list)
         gtk_box_append(ptr(column), scroller)
 
-        gtk_box_append(ptr(column), Gtk.label(chooser.hint, css: "chooser-hint", selectable: false))
+        let hint = Gtk.label(chooser.hint, css: "chooser-hint", wrap: true, selectable: false)
+        gtk_label_set_xalign(op(hint), 0)
+        Gtk.fitWrap(hint, to: chooser.hint, ceiling: Self.lineCeiling)
+        gtk_box_append(ptr(column), hint)
 
         Gtk.connect(UnsafeMutableRawPointer(entry), "changed") { [weak self] in
             Gtk.onMain { [weak self] in self?.queryChanged() }
@@ -167,7 +171,7 @@ final class ModelChooserWindow: @unchecked Sendable {
     /// a tab nobody can see the shortcut for is a tab reached with the mouse forever.
     private func buildMachines() {
         machineChips = []
-        Gtk.removeChildren(of: strip)
+        gtk_flow_box_remove_all(op(strip))
         gtk_widget_set_visible(strip, chooser.showsMachines ? 1 : 0)
         guard chooser.showsMachines else {
             syncMachines()
@@ -184,13 +188,15 @@ final class ModelChooserWindow: @unchecked Sendable {
                 gtk_widget_set_valign(dot, GTK_ALIGN_CENTER)
                 gtk_box_append(ptr(content), dot)
             }
-            let label = gtk_label_new(nil)!
+            let name = Gtk.label(machine.title, wrap: true, selectable: false)
+            Gtk.fitWrap(name, to: machine.title, ceiling: 30)
+            gtk_box_append(ptr(content), name)
+            let tail = gtk_label_new(nil)!
             gtk_label_set_markup(
-                op(label),
-                PangoMarkdown.escape(machine.title)
-                    + "  <span alpha=\"60%\">\(machine.count)</span>"
+                op(tail),
+                "<span alpha=\"60%\">\(machine.count)</span>"
                     + "  <span alpha=\"40%\">⌃\(index + 1)</span>")
-            gtk_box_append(ptr(content), label)
+            gtk_box_append(ptr(content), tail)
             gtk_button_set_child(ptr(button), content)
             gtk_widget_set_tooltip_text(button, machine.detail)
             let profileID = machine.profileID
@@ -207,7 +213,7 @@ final class ModelChooserWindow: @unchecked Sendable {
                 }
             }
             machineChips.append((profileID, UInt(bitPattern: button)))
-            gtk_box_append(ptr(strip), button)
+            Self.appendChip(button, to: strip)
         }
         syncMachines()
     }
@@ -217,12 +223,12 @@ final class ModelChooserWindow: @unchecked Sendable {
     /// the shown machine, so the strip is rebuilt with the tabs and drawn only past one door.
     private func buildDoors() {
         doorChips = []
-        Gtk.removeChildren(of: doorStrip)
+        gtk_flow_box_remove_all(op(doorStrip))
         gtk_widget_set_visible(doorStrip, chooser.showsDoors ? 1 : 0)
         guard chooser.showsDoors else { return }
         let every = (
             id: String?.none, title: Localized.text("All"),
-            count: chooser.doors.reduce(0) { $0 + $1.count },
+            count: chooser.allDoorsCount,
             detail: Localized.text("Every provider this server reaches"), kind: ModelDoorKind?.none)
         let doors =
             [every]
@@ -263,8 +269,31 @@ final class ModelChooserWindow: @unchecked Sendable {
                 }
             }
             doorChips.append((providerID, UInt(bitPattern: button)))
-            gtk_box_append(ptr(doorStrip), button)
+            Self.appendChip(button, to: doorStrip)
         }
+    }
+
+    /// A row of chips that wraps onto a second line rather than holding the window open: a fleet
+    /// whose doors carry their brands' full names is wider than any window the chooser asks for,
+    /// and a strip that cannot wrap made that width the window's minimum.
+    private static func chipStrip() -> UnsafeMutablePointer<GtkWidget> {
+        let flow = gtk_flow_box_new()!
+        gtk_flow_box_set_selection_mode(op(flow), GTK_SELECTION_NONE)
+        gtk_flow_box_set_homogeneous(op(flow), 0)
+        gtk_flow_box_set_max_children_per_line(op(flow), 64)
+        gtk_flow_box_set_column_spacing(op(flow), 0)
+        gtk_flow_box_set_row_spacing(op(flow), 0)
+        gtk_widget_set_halign(flow, GTK_ALIGN_START)
+        Gtk.addClass(flow, "model-chip-strip")
+        return flow
+    }
+
+    /// The chip, not the cell the flow wraps it in, is what takes a press and the keyboard.
+    private static func appendChip(
+        _ chip: UnsafeMutablePointer<GtkWidget>, to strip: UnsafeMutablePointer<GtkWidget>
+    ) {
+        gtk_flow_box_append(op(strip), chip)
+        if let cell = gtk_widget_get_parent(chip) { gtk_widget_set_focusable(cell, 0) }
     }
 
     /// A server that is not answering wears the danger dot, one that has not answered yet the
@@ -417,6 +446,7 @@ final class ModelChooserWindow: @unchecked Sendable {
     /// Everything the list's own state feeds: the count, the chips, the rows.
     private func refresh(keepingScroll: Bool = false, revealingCursor: Bool = true) {
         gtk_label_set_text(op(count), chooser.summary)
+        Gtk.fitWrap(count, to: chooser.summary, ceiling: Self.lineCeiling)
         syncMachines()
         syncFold()
         render(keepingScroll: keepingScroll, revealingCursor: revealingCursor)
@@ -497,6 +527,15 @@ final class ModelChooserWindow: @unchecked Sendable {
     /// list has one right edge rather than two.
     private static let chevronWidth: Int32 = 24
 
+    /// A row's name and its line under it wrap rather than cut, and a wrapping label with no
+    /// ceiling asks for a guess at a pleasing shape instead of its whole width, so a sentence
+    /// with room to spare broke under its last word. The ceiling is wider than any row.
+    private static let lineCeiling = 120
+
+    /// A fact as short as a machine's usual name is never broken; only a long one (a server named
+    /// for where it sits) may wrap, so it cannot hold the window wider than the person made it.
+    private static let unbrokenTag = 14
+
     /// - Parameter keepingScroll: whether the list is still answering the same question and must
     ///   therefore stay exactly where the reader left it. Opening a family, or a row's other
     ///   providers, adds lines *below* the line that was pressed, so every pixel above it is
@@ -561,11 +600,16 @@ final class ModelChooserWindow: @unchecked Sendable {
             gtk_box_append(ptr(row), glyph)
         }
         let title = Gtk.label(
-            section.title.uppercased(), css: "section-header", selectable: false)
+            section.title.uppercased(), css: "section-header", wrap: true, selectable: false)
         gtk_widget_set_hexpand(title, 1)
         gtk_box_append(ptr(row), title)
-        gtk_box_append(
-            ptr(row), Gtk.label(section.detail, css: "model-section-count", selectable: false))
+        let detail = Gtk.label(
+            section.detail, css: "model-section-count", wrap: true, selectable: false)
+        gtk_label_set_xalign(op(detail), 1)
+        gtk_label_set_justify(op(detail), GTK_JUSTIFY_RIGHT)
+        Gtk.fitWrap(title, to: section.title, ceiling: Self.lineCeiling)
+        Gtk.fitWrap(detail, to: section.detail, ceiling: Self.lineCeiling)
+        gtk_box_append(ptr(row), detail)
         guard section.canCollapse else { return row }
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
@@ -600,17 +644,16 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_widget_set_valign(tick, GTK_ALIGN_CENTER)
 
         let title = Gtk.markupLabel(Self.markup(row), css: "row-title")
-        gtk_label_set_wrap(op(title), 0)
         gtk_label_set_selectable(op(title), 0)
-        gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
+        Gtk.fitWrap(title, to: row.title, ceiling: Self.lineCeiling)
         gtk_widget_set_hexpand(title, 1)
         if row.wall != nil { Gtk.addClass(title, "model-row-spent") }
 
         let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
         gtk_box_append(ptr(lines), title)
         if !row.detail.isEmpty {
-            let detail = Gtk.label(row.detail, css: "row-detail", selectable: false)
-            gtk_label_set_ellipsize(op(detail), PANGO_ELLIPSIZE_END)
+            let detail = Gtk.label(row.detail, css: "row-detail", wrap: true, selectable: false)
+            Gtk.fitWrap(detail, to: row.detail, ceiling: Self.lineCeiling)
             gtk_box_append(ptr(lines), detail)
         }
         gtk_widget_set_hexpand(lines, 1)
@@ -841,8 +884,9 @@ final class ModelChooserWindow: @unchecked Sendable {
     }
 
     private static func factPill(_ fact: ModelFact) -> UnsafeMutablePointer<GtkWidget> {
-        let label = Gtk.label(fact.tag, css: "model-fact", selectable: false)
-        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
+        let label = Gtk.label(fact.tag, css: "model-fact", wrap: true, selectable: false)
+        Gtk.fitWrap(label, to: fact.tag, ceiling: 24)
+        if fact.tag.count <= Self.unbrokenTag { gtk_label_set_wrap(op(label), 0) }
         gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
         gtk_widget_set_tooltip_text(label, fact.label)
         switch fact {

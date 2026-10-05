@@ -219,6 +219,34 @@ enum Gtk {
             }, box)
     }
 
+    /// Lets a wrapping label ask for the width of its own words rather than its ceiling. GTK hands
+    /// a wrapping label its `max-width-chars` as its natural width, so a short name in a label
+    /// allowed to wrap at forty characters reserved room for forty; held to the words' own length,
+    /// with slack for letters wider than the average, it asks for one line and wraps only when
+    /// the space is genuinely short.
+    static func fitWrap(_ label: UnsafeMutablePointer<GtkWidget>, to text: String, ceiling: Int) {
+        let chars = min(ceiling, text.count + text.count / 4 + 2)
+        gtk_label_set_max_width_chars(op(label), Int32(chars))
+    }
+
+    /// A drawing area's `resize`, which carries the new width and height before the user data —
+    /// the plain trampoline would read the width as its closure.
+    static func onResize(
+        _ area: UnsafeMutablePointer<GtkWidget>, _ handler: @escaping @Sendable () -> Void
+    ) {
+        _ = releaseInstalled
+        let box = Unmanaged.passRetained(Box(handler)).toOpaque()
+        let callback:
+            @convention(c) (UnsafeMutableRawPointer?, gint, gint, UnsafeMutableRawPointer?) -> Void = {
+                _, _, _, raw in
+                guard let raw else { return }
+                Unmanaged<Box>.fromOpaque(raw).takeUnretainedValue().work()
+            }
+        tailscode_connect(
+            UnsafeMutableRawPointer(area), "resize", unsafeBitCast(callback, to: GCallback.self),
+            box)
+    }
+
     /// Watches a GObject property — `notify::` carries a GParamSpec the plain trampoline cannot
     /// marshal, so it goes through its own. The handler runs on the GLib main context.
     static func onNotify(

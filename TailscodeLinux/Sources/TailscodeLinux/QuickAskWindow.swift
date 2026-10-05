@@ -123,7 +123,7 @@ final class QuickAskWindow: @unchecked Sendable {
 
         editor = PromptEditor(
             css: "ask-entry", placeholder: Localized.text("Ask anything — no project, no setup"))
-        hint = Gtk.label("", css: "ask-hint", selectable: false)
+        hint = Gtk.label("", css: "ask-hint", wrap: true, selectable: false)
         target = Gtk.menuButton("", css: ["flat", "ask-chip"]) {
             QuickAskWindow.open?.serverRows() ?? []
         }
@@ -353,7 +353,13 @@ final class QuickAskWindow: @unchecked Sendable {
         gtk_widget_set_visible(target, 0)
         var lead: UnsafeMutablePointer<GtkWidget>?
         for (index, server) in servers.enumerated() {
-            let button = gtk_toggle_button_new_with_label(ServerLabel.display(server))!
+            let button = gtk_toggle_button_new()!
+            let name = ServerLabel.display(server)
+            let label = Gtk.label(name, wrap: true, selectable: false)
+            gtk_label_set_xalign(op(label), 0.5)
+            gtk_label_set_justify(op(label), GTK_JUSTIFY_CENTER)
+            Gtk.fitWrap(label, to: name, ceiling: 28)
+            gtk_button_set_child(ptr(button), label)
             Gtk.addClass(button, "ask-aim-segment")
             gtk_widget_set_tooltip_text(button, ServerLabel.address(server))
             gtk_widget_set_hexpand(button, 1)

@@ -457,6 +457,12 @@ enum MatrixTheme {
             border-color: \(accent);
         }
         .model-scope-key { opacity: 0.55; }
+        .model-chip-strip > flowboxchild {
+            padding: 0;
+            margin: 0 6px 4px 0;
+            background: none;
+            outline: none;
+        }
         .model-row {
             padding: 0;
             border: none;
@@ -873,6 +879,7 @@ enum MatrixTheme {
             padding: 4px 12px;
         }
         .pill-row { padding: 0px 22px 6px 22px; }
+        .pill-row.pill-row-place { padding-bottom: 2px; }
         .pill-row button {
             \(t(.chip))
             min-height: 0;

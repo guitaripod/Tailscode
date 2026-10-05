@@ -85,6 +85,15 @@ final class ChatPane: @unchecked Sendable {
     private let sendButton = gtk_button_new_with_label("Send")!
     private let stopButton = gtk_button_new_with_label("⏹")!
     private var dial: DialPill?
+    private var stripRow: UnsafeMutablePointer<GtkWidget>?
+    /// The mode badge and the machine and project, kept together so they move as one: beside the
+    /// pill while the strip has room, on `placeLine` above it when it does not.
+    private let placeBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+    private let placeLine = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+    private var stripFrame: UnsafeMutablePointer<GtkWidget>?
+    /// The lanes' own width, read while they were last on show, since a hidden widget measures
+    /// as nothing and the question is whether they would fit if shown again.
+    private var laneWidth: Int32 = 0
     private var commandButton: UnsafeMutablePointer<GtkWidget>?
     private let destinationLabel = Gtk.label("", css: "row-detail", selectable: false)
     private(set) var transcriptScroller: UnsafeMutablePointer<GtkWidget>?
@@ -499,10 +508,18 @@ final class ChatPane: @unchecked Sendable {
 
         gtk_widget_set_visible(vimBadge, 0)
         gtk_label_set_ellipsize(op(vimBadge), PANGO_ELLIPSIZE_NONE)
-        gtk_box_append(ptr(row), vimBadge)
-        gtk_box_append(ptr(row), destinationLabel)
+        gtk_widget_set_valign(vimBadge, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(placeBox), vimBadge)
+        gtk_label_set_wrap(op(destinationLabel), 1)
+        gtk_label_set_wrap_mode(op(destinationLabel), PANGO_WRAP_WORD)
+        gtk_label_set_ellipsize(op(destinationLabel), PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_valign(destinationLabel, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(placeBox), destinationLabel)
+        gtk_box_append(ptr(row), placeBox)
 
-        gtk_box_append(ptr(row), makeDialPill())
+        let pill = makeDialPill()
+        gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(row), pill)
 
         let palette = Gtk.menuButton("/") { [weak self] in
             self?.commandRows() ?? []
@@ -540,7 +557,75 @@ final class ChatPane: @unchecked Sendable {
             self?.stopTurn()
         }
         gtk_box_append(ptr(row), stopButton)
-        return row
+        return gauged(row)
+    }
+
+    /// The strip with a gauge laid over it, so it gives way part by part when it is short. One
+    /// line that had to fit everything bought its width from the labels that could shrink, which
+    /// were the machine and the model — a split pane drew the pill as a dot and an ellipsis
+    /// beside four lane buttons drawn whole. The lanes go first, being the part a narrow pane can
+    /// best do without (the keys still reach every lane); then the machine and project move to a
+    /// line of their own above the pill, rather than being cut beside it.
+    private func gauged(_ row: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(placeLine, "pill-row")
+        Gtk.addClass(placeLine, "pill-row-place")
+        gtk_widget_set_visible(placeLine, 0)
+        gtk_box_append(ptr(column), placeLine)
+        let overlay = gtk_overlay_new()!
+        gtk_overlay_set_child(op(overlay), row)
+        let gauge = gtk_drawing_area_new()!
+        gtk_widget_set_can_target(gauge, 0)
+        gtk_widget_set_can_focus(gauge, 0)
+        gtk_overlay_add_overlay(op(overlay), gauge)
+        gtk_box_append(ptr(column), overlay)
+        stripRow = row
+        stripFrame = overlay
+        Gtk.onResize(gauge) { [weak self] in
+            Gtk.onMain { [weak self] in self?.fitLanes() }
+        }
+        return column
+    }
+
+    /// The strip's words changed under an unchanged width — another model, Send become Queue —
+    /// so the gauge is asked again once the new words have been measured.
+    private func queueLaneFit() {
+        Gtk.onMain { [weak self] in self?.fitLanes() }
+    }
+
+    /// Shows the lanes, and keeps the machine beside the pill, exactly when the strip fits its
+    /// width with every label whole.
+    private func fitLanes() {
+        guard let stripRow, let stripFrame else { return }
+        let width = gtk_widget_get_width(stripFrame)
+        guard width > 0 else { return }
+        let lanesShown = gtk_widget_get_visible(laneRow) != 0
+        let placeInline = gtk_widget_get_parent(placeBox) == stripRow
+        if lanesShown { laneWidth = Self.naturalWidth(laneRow) }
+        let place = Self.naturalWidth(placeBox) + 8
+        let core =
+            Self.naturalWidth(stripRow) - (lanesShown ? laneWidth + 8 : 0)
+            - (placeInline ? place : 0)
+        let showLanes = core + place + laneWidth + 8 <= width
+        let keepInline = showLanes || core + place <= width
+        if showLanes != lanesShown { gtk_widget_set_visible(laneRow, showLanes ? 1 : 0) }
+        guard keepInline != placeInline else { return }
+        _ = g_object_ref(UnsafeMutableRawPointer(placeBox))
+        if let parent = gtk_widget_get_parent(placeBox) { gtk_box_remove(ptr(parent), placeBox) }
+        if keepInline {
+            gtk_box_prepend(ptr(stripRow), placeBox)
+        } else {
+            gtk_box_append(ptr(placeLine), placeBox)
+        }
+        g_object_unref(UnsafeMutableRawPointer(placeBox))
+        gtk_widget_set_visible(placeLine, keepInline ? 0 : 1)
+    }
+
+    private static func naturalWidth(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        gtk_widget_measure(widget, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural, nil, nil)
+        return natural
     }
 
     /// One pill for the model and the effort, because on a desk they are one decision: a tinted
@@ -2857,7 +2942,10 @@ final class ChatPane: @unchecked Sendable {
         }
         gtk_button_set_label(
             ptr(sendButton), running ? Localized.text("⏎ queue") : Localized.text("⏎ send"))
-        gtk_widget_set_visible(stopButton, running ? 1 : 0)
+        if (gtk_widget_get_visible(stopButton) != 0) != running {
+            gtk_widget_set_visible(stopButton, running ? 1 : 0)
+            queueLaneFit()
+        }
         notePresenceChange()
     }
 
@@ -3190,6 +3278,7 @@ final class ChatPane: @unchecked Sendable {
         }
         lastPillsSignature = signature
         gtk_label_set_text(op(destinationLabel), destination)
+        Gtk.fitWrap(destinationLabel, to: destination, ceiling: 60)
         renderDial(face)
         if let attachButton {
             gtk_widget_set_visible(attachButton, abilities.attachments ? 1 : 0)
@@ -3211,6 +3300,7 @@ final class ChatPane: @unchecked Sendable {
 
     private func renderDial(_ face: DialFace) {
         dial?.render(face, modelTint: modelTintClass())
+        queueLaneFit()
     }
 
     private func modelTintClass() -> String? {

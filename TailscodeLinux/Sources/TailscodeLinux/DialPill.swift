@@ -29,13 +29,14 @@ final class DialPill: @unchecked Sendable {
         button = gtk_menu_button_new()!
         Gtk.addClass(button, "dial-pill")
         for name in css { Gtk.addClass(button, name) }
-        gtk_menu_button_set_can_shrink(op(button), 1)
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         for widget in [dot, modelLabel, separator, effortLabel] {
             gtk_widget_set_valign(widget, GTK_ALIGN_CENTER)
+            gtk_label_set_ellipsize(op(widget), PANGO_ELLIPSIZE_NONE)
             gtk_box_append(ptr(line), widget)
         }
-        gtk_label_set_max_width_chars(op(modelLabel), 22)
+        gtk_label_set_wrap(op(modelLabel), 1)
+        gtk_label_set_wrap_mode(op(modelLabel), PANGO_WRAP_WORD)
         gtk_label_set_xalign(op(effortLabel), 0)
         for widget in [separator, effortLabel, meterSlot] { gtk_widget_set_visible(widget, 0) }
         Gtk.addClass(meterSlot, "dial-meter-slot")
@@ -64,6 +65,7 @@ final class DialPill: @unchecked Sendable {
             button, face.spoken + " · " + Localized.text("wheel to step the level"))
         Self.swapClass(on: dot, among: Self.modelTintClasses, chosen: modelTint)
         gtk_label_set_text(op(modelLabel), face.modelWord)
+        Gtk.fitWrap(modelLabel, to: face.modelWord, ceiling: 40)
         for widget in [separator, effortLabel, meterSlot] {
             gtk_widget_set_visible(widget, face.showsMeter ? 1 : 0)
         }
