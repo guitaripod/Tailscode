@@ -1,6 +1,14 @@
 import CodingAgentKit
 import Foundation
 
+#if canImport(Darwin)
+    import Darwin
+#elseif canImport(Glibc)
+    import Glibc
+#elseif canImport(Musl)
+    import Musl
+#endif
+
 /// One conversation's waiting messages, whole, on disk.
 public struct SendQueueRecord: Sendable, Hashable, Codable {
     public var profileID: String
@@ -50,6 +58,42 @@ public enum SendQueueStore {
     }
 
     static var unreadableURL: URL { url.appendingPathExtension("unreadable") }
+
+    static var lockURL: URL { url.appendingPathExtension("lock") }
+
+    /// Takes the head of one conversation's queue, atomically across threads and processes.
+    ///
+    /// Reading the queue, taking its head and saving the rest were three calls, and a pane and a
+    /// background watch on one chat could both read the same head between them and both send it.
+    /// Here the read comes fresh from disk under the store's lock and an advisory lock on the
+    /// file, so a second process holding the same queue cannot take the same message either. Nil
+    /// when the conversation holds nothing.
+    public static func takeFirst(profileID: String, sessionID: String) -> QueuedSend? {
+        lock.lock()
+        defer { lock.unlock() }
+        fileLock.lock()
+        defer { fileLock.unlock() }
+        return withFileLock {
+            var records = restoreFromDisk()
+            guard let index = records.firstIndex(where: {
+                $0.profileID == profileID && $0.sessionID == sessionID
+            }) else {
+                loaded = records
+                return nil
+            }
+            var queue = records[index].queue
+            let head = queue.takeFirst()
+            if queue.isEmpty {
+                records.remove(at: index)
+            } else {
+                records[index] = SendQueueRecord(
+                    profileID: profileID, sessionID: sessionID, items: queue.items)
+            }
+            loaded = records
+            writeLocked(records)
+            return head
+        }
+    }
 
     /// Every conversation with something waiting, oldest write first.
     public static func all() -> [SendQueueRecord] {
@@ -134,11 +178,29 @@ public enum SendQueueStore {
     private static func write(_ records: [SendQueueRecord]) {
         fileLock.lock()
         defer { fileLock.unlock() }
+        withFileLock { writeLocked(records) }
+    }
+
+    private static func writeLocked(_ records: [SendQueueRecord]) {
         let directory = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true)
         guard let data = try? JSONEncoder().encode(records) else { return }
         try? data.write(to: url, options: .atomic)
+    }
+
+    /// Runs `body` holding an exclusive advisory lock on the queue's lock file, which another
+    /// process taking or saving the queue also takes. A lock file that cannot be opened degrades to
+    /// the in-process locks alone rather than to no write at all.
+    private static func withFileLock<T>(_ body: () -> T) -> T {
+        try? FileManager.default.createDirectory(
+            at: lockURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let fd = open(lockURL.path, O_RDWR | O_CREAT, 0o600)
+        guard fd >= 0 else { return body() }
+        defer { close(fd) }
+        while flock(fd, LOCK_EX) != 0, errno == EINTR {}
+        defer { _ = flock(fd, LOCK_UN) }
+        return body()
     }
 }
 

@@ -104,6 +104,52 @@ struct SendQueueStoreTests {
         #expect(SendQueueDrain.mayDrain(state, handoff: handoff))
     }
 
+    @Test("takeFirst hands back the head and keeps the rest, and an emptied queue leaves no record")
+    func takeFirstOrder() {
+        SendQueueStore.removeAll()
+        defer { SendQueueStore.removeAll() }
+        SendQueueStore.save(
+            SendQueue(items: [QueuedSend(text: "one"), QueuedSend(text: "two")]), profileID: "p", sessionID: "s")
+        #expect(SendQueueStore.takeFirst(profileID: "p", sessionID: "s")?.text == "one")
+        #expect(SendQueueStore.queue(profileID: "p", sessionID: "s").items.map(\.text) == ["two"])
+        #expect(SendQueueStore.takeFirst(profileID: "p", sessionID: "s")?.text == "two")
+        #expect(SendQueueStore.takeFirst(profileID: "p", sessionID: "s") == nil)
+        #expect(SendQueueStore.all().isEmpty)
+        #expect(SendQueueStore.takeFirst(profileID: "nobody", sessionID: "s") == nil)
+    }
+
+    @Test("Under many concurrent takers every queued message is taken exactly once")
+    func takeFirstConcurrent() {
+        SendQueueStore.removeAll()
+        defer { SendQueueStore.removeAll() }
+        let sent = (0..<120).map { QueuedSend(text: "m\($0)") }
+        SendQueueStore.save(SendQueue(items: sent), profileID: "p", sessionID: "s")
+        SendQueueStore.save(SendQueue(items: [QueuedSend(text: "other")]), profileID: "p", sessionID: "t")
+        let lock = NSLock()
+        nonisolated(unsafe) var taken: [QueuedSend] = []
+        DispatchQueue.concurrentPerform(iterations: 16) { _ in
+            while let next = SendQueueStore.takeFirst(profileID: "p", sessionID: "s") {
+                lock.lock()
+                taken.append(next)
+                lock.unlock()
+            }
+        }
+        #expect(taken.count == sent.count)
+        #expect(Set(taken.map(\.id)) == Set(sent.map(\.id)))
+        #expect(SendQueueStore.queue(profileID: "p", sessionID: "t").items.map(\.text) == ["other"])
+    }
+
+    @Test("takeFirst reads what another process wrote rather than this process's memory")
+    func takeFirstReadsDisk() throws {
+        SendQueueStore.removeAll()
+        defer { SendQueueStore.removeAll() }
+        SendQueueStore.save(SendQueue(items: [QueuedSend(text: "stale")]), profileID: "p", sessionID: "s")
+        let elsewhere = [SendQueueRecord(profileID: "p", sessionID: "s", items: [QueuedSend(text: "fresh"), QueuedSend(text: "later")])]
+        try JSONEncoder().encode(elsewhere).write(to: SendQueueStore.url, options: .atomic)
+        #expect(SendQueueStore.takeFirst(profileID: "p", sessionID: "s")?.text == "fresh")
+        #expect(SendQueueStore.queue(profileID: "p", sessionID: "s").items.map(\.text) == ["later"])
+    }
+
     private static func message(_ role: MessageRole) -> ChatMessage {
         ChatMessage(
             id: UUID().uuidString, role: role, agentType: .claudeCode,
