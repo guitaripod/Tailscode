@@ -35,6 +35,36 @@ public struct PaneDragPayload: Sendable, Equatable {
     }
 }
 
+/// A pane in flight over the other panes: its strip dragged onto another pane, under a type of
+/// its own so a chat target never mistakes a pane for a chat and a prompt box never receives it as
+/// words.
+public struct PaneMovePayload: Sendable, Equatable {
+    public static let identifier = "application/x-tailscode-pane"
+    private static let tag = "tailscode-pane"
+
+    public let pane: PaneID
+
+    public init(pane: PaneID) {
+        self.pane = pane
+    }
+
+    public var encoded: String { [Self.tag, pane.raw].joined(separator: "\t") }
+
+    public static func decode(_ text: String) -> PaneMovePayload? {
+        let fields = text.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+        guard fields.count == 2, fields[0] == tag, !fields[1].isEmpty else { return nil }
+        return PaneMovePayload(pane: PaneID(raw: fields[1]))
+    }
+}
+
+/// What a pane dropped on another pane does to the tree.
+public enum PaneMoveIntent: Sendable, Equatable {
+    /// The middle of a pane: the two exchange places.
+    case swap(PaneID, PaneID)
+    /// An edge: the dragged pane leaves its place and takes that side of the target.
+    case move(PaneID, onto: PaneID, edge: PaneDropEdge)
+}
+
 /// Which side of a pane a chat was dropped against, and what that means to the tree.
 public enum PaneDropEdge: String, Sendable, Equatable, CaseIterable {
     case left
@@ -85,6 +115,18 @@ public enum PaneDropZone: Sendable, Equatable {
         }
     }
 
+    /// What the same zone means when a pane rather than a chat is carried: the middle swaps the
+    /// two panes, an edge moves the carried pane to that side.
+    public var moveVerb: String {
+        switch self {
+        case .fill: return Localized.text("Swap panes")
+        case .split(.left): return Localized.text("Move left")
+        case .split(.right): return Localized.text("Move right")
+        case .split(.top): return Localized.text("Move above")
+        case .split(.bottom): return Localized.text("Move below")
+        }
+    }
+
     /// The verb with the chat it applies to, for the label inside the highlight. A drag that has
     /// not said which chat it carries yet is still worth captioning with what the zone would do.
     public func caption(_ title: String?) -> String {
@@ -120,6 +162,19 @@ public enum PaneDropTarget {
             nearest.depth < edgeBand
         else { return .fill }
         return .split(nearest.edge)
+    }
+
+    /// What dropping `pane` at a zone of `target` does: the zones are the chat drop's own, so a
+    /// pane dragged over a pane is aimed exactly as a chat is. A pane dropped on itself does
+    /// nothing.
+    public static func move(
+        _ pane: PaneID, onto target: PaneID, zone: PaneDropZone
+    ) -> PaneMoveIntent? {
+        guard pane != target else { return nil }
+        switch zone {
+        case .fill: return .swap(pane, target)
+        case .split(let edge): return .move(pane, onto: target, edge: edge)
+        }
     }
 
     /// The highlight in pixels inside a pane of that size — the same rectangle every client draws.
