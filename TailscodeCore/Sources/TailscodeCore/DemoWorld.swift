@@ -419,8 +419,7 @@ public enum DemoWorld {
                 output: "final class ReconnectScheduler {\n    var baseDelay: Duration = .milliseconds(400)\n    var jitter: ClosedRange<Double> = 0.6...1.4\n    …\n}",
                 title: "Read Sources/Pulse/ReconnectScheduler.swift"))))),
             step(.partUpserted(messageID: "c1a1", MessagePart(id: "t2", kind: .text("")))),
-            step(.partTextDelta(messageID: "c1a1", partID: "t2", delta: "Found it. `ReconnectScheduler` applies ±40% jitter to the 400 ms base delay, so the worst case is 560 ms — past the test's 500 ms ceiling.\n\n")),
-            step(.partTextDelta(messageID: "c1a1", partID: "t2", delta: "Injecting a deterministic jitter source in tests is the honest fix — the scheduler keeps its production behavior:\n\n")),
+            step(.partTextDelta(messageID: "c1a1", partID: "t2", delta: "Found it. `ReconnectScheduler` applies ±40% jitter to the 400 ms base delay, so the worst case is 560 ms — past the test's 500 ms ceiling. Pin it in tests:\n\n")),
             step(.partTextDelta(messageID: "c1a1", partID: "t2", delta: "```swift\nprotocol JitterSource: Sendable {\n    func factor(in range: ClosedRange<Double>) -> Double\n}\n\nstruct FixedJitter: JitterSource {\n    let value: Double\n    func factor(in _: ClosedRange<Double>) -> Double { value }\n}\n```\n\n")),
             step(.partUpserted(messageID: "c1a1", MessagePart(id: "t2b", kind: .tool(ToolCall(
                 id: "c1t3", name: "Edit", status: .completed,
