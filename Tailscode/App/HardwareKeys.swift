@@ -151,7 +151,8 @@ final class KeyBridge {
             return UIDevice.current.userInterfaceIdiom == .pad
         case .focus, .cycleForward, .cycleBackward, .toggleFiles,
             .toggleTerminal, .zoomIn, .zoomOut, .zoomReset, .splitPane, .closeSplit,
-            .focusSplit, .zoomSplit, .equalizeSplits, .exchangeSplit:
+            .focusSplit, .zoomSplit, .equalizeSplits, .exchangeSplit, .cycleSplit, .promoteSplit,
+            .rotateSplits, .moveSplitToEdge, .resizeSplit, .arrangeSplits, .pinSplit, .parkSplit:
             return false
         default:
             return true

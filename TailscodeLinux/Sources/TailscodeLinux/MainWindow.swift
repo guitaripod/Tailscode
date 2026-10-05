@@ -3474,6 +3474,9 @@ final class MainWindow: @unchecked Sendable {
             splitHost.equalize()
         case .exchangeSplit:
             splitHost.exchangeActive()
+        case .cycleSplit, .promoteSplit, .rotateSplits, .moveSplitToEdge, .resizeSplit,
+            .arrangeSplits, .pinSplit, .parkSplit:
+            return false
         case .toggleProjectScope:
             toggleProjectScope()
         case .quickAsk:

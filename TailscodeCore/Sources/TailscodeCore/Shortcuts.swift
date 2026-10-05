@@ -411,6 +411,14 @@ public enum ShortcutRegistry {
             category: .navigate, action: .focusSplit(.right), contexts: [.normal],
             defaults: ["ctrl+w l", "ctrl+w right"]),
         .init(
+            id: "split.cycle", title: Localized.text("Focus the next split"),
+            category: .navigate, action: .cycleSplit(true), contexts: [.normal],
+            defaults: ["ctrl+w w"]),
+        .init(
+            id: "split.cycleBack", title: Localized.text("Focus the previous split"),
+            category: .navigate, action: .cycleSplit(false), contexts: [.normal],
+            defaults: ["ctrl+w shift+w"]),
+        .init(
             id: "pane.sidebar", title: Localized.text("Show / hide the chat list"),
             category: .view, action: .toggleSidebar, contexts: [.normal, .insert, .terminal],
             defaults: ["normal,insert:ctrl+b", "ctrl+shift+b"]),
@@ -446,6 +454,60 @@ public enum ShortcutRegistry {
             id: "split.equalize", title: Localized.text("Even out the splits"),
             category: .view, action: .equalizeSplits, contexts: [.normal],
             defaults: ["ctrl+w equal"]),
+        .init(
+            id: "split.promote", title: Localized.text("Promote this split to main"),
+            category: .view, action: .promoteSplit, contexts: [.normal],
+            defaults: ["ctrl+w return"]),
+        .init(
+            id: "split.rotate", title: Localized.text("Rotate the splits"),
+            category: .view, action: .rotateSplits(true), contexts: [.normal],
+            defaults: ["ctrl+w r"]),
+        .init(
+            id: "split.rotateBack", title: Localized.text("Rotate the splits backwards"),
+            category: .view, action: .rotateSplits(false), contexts: [.normal],
+            defaults: ["ctrl+w shift+r"]),
+        .init(
+            id: "split.moveFarLeft", title: Localized.text("Move this split to the far left"),
+            category: .view, action: .moveSplitToEdge(.left), contexts: [.normal],
+            defaults: ["ctrl+w shift+h"]),
+        .init(
+            id: "split.moveFarDown", title: Localized.text("Move this split to the bottom"),
+            category: .view, action: .moveSplitToEdge(.down), contexts: [.normal],
+            defaults: ["ctrl+w shift+j"]),
+        .init(
+            id: "split.moveFarUp", title: Localized.text("Move this split to the top"),
+            category: .view, action: .moveSplitToEdge(.up), contexts: [.normal],
+            defaults: ["ctrl+w shift+k"]),
+        .init(
+            id: "split.moveFarRight", title: Localized.text("Move this split to the far right"),
+            category: .view, action: .moveSplitToEdge(.right), contexts: [.normal],
+            defaults: ["ctrl+w shift+l"]),
+        .init(
+            id: "split.growWider", title: Localized.text("Make this split wider"),
+            category: .view, action: .resizeSplit(.right), contexts: [.normal],
+            defaults: ["ctrl+w >"]),
+        .init(
+            id: "split.growNarrower", title: Localized.text("Make this split narrower"),
+            category: .view, action: .resizeSplit(.left), contexts: [.normal],
+            defaults: ["ctrl+w <"]),
+        .init(
+            id: "split.growTaller", title: Localized.text("Make this split taller"),
+            category: .view, action: .resizeSplit(.down), contexts: [.normal],
+            defaults: ["ctrl+w +"]),
+        .init(
+            id: "split.growShorter", title: Localized.text("Make this split shorter"),
+            category: .view, action: .resizeSplit(.up), contexts: [.normal],
+            defaults: ["ctrl+w -"]),
+        .init(
+            id: "split.arrange", title: Localized.text("Arrange the splits"),
+            category: .view, action: .arrangeSplits, contexts: [.normal],
+            defaults: ["ctrl+w a"]),
+        .init(
+            id: "split.pin", title: Localized.text("Keep this split live"),
+            category: .view, action: .pinSplit, contexts: [.normal], defaults: []),
+        .init(
+            id: "split.park", title: Localized.text("Pause this split"),
+            category: .view, action: .parkSplit, contexts: [.normal], defaults: []),
         .init(
             id: "zoom.in", title: Localized.text("Zoom in"), category: .view, action: .zoomIn,
             contexts: [.normal, .insert, .terminal], defaults: ["ctrl+equal", "ctrl+plus"]),
@@ -736,6 +798,18 @@ public enum KeyAction: Equatable, Sendable {
     case zoomSplit
     case equalizeSplits
     case exchangeSplit
+    /// Focus the next split in reading order (`true`) or the previous one.
+    case cycleSplit(Bool)
+    case promoteSplit
+    /// Rotate every split one slot along the reading order, forward or back.
+    case rotateSplits(Bool)
+    case moveSplitToEdge(SplitDirection)
+    /// Resize the focused split: `.right` wider, `.left` narrower, `.down` taller, `.up` shorter
+    /// (`SplitLayout.resize` reads it that way).
+    case resizeSplit(SplitDirection)
+    case arrangeSplits
+    case pinSplit
+    case parkSplit
     case effortHotter
     case effortColder
     case modelDial

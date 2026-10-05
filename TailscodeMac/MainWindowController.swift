@@ -465,6 +465,9 @@ final class MainWindowController: NSWindowController {
             splitPanes.equalize()
         case .exchangeSplit:
             splitPanes.exchangeActive()
+        case .cycleSplit, .promoteSplit, .rotateSplits, .moveSplitToEdge, .resizeSplit,
+            .arrangeSplits, .pinSplit, .parkSplit:
+            return false
         case .toggleProjectScope:
             sidebar.toggleProjectScope(fallback: currentEntry)
         case .quickAsk:

@@ -226,7 +226,10 @@ struct SplitLayoutTests {
         for id in [
             "split.right", "split.down", "split.close", "split.zoom", "split.exchange",
             "split.equalize", "split.focusLeft", "split.focusDown", "split.focusUp",
-            "split.focusRight",
+            "split.focusRight", "split.cycle", "split.cycleBack", "split.promote", "split.rotate",
+            "split.rotateBack", "split.moveFarLeft", "split.moveFarDown", "split.moveFarUp",
+            "split.moveFarRight", "split.growWider", "split.growNarrower", "split.growTaller",
+            "split.growShorter", "split.arrange", "split.pin", "split.park",
         ] {
             #expect(ids.contains(id))
         }
