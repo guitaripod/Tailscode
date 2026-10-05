@@ -89,10 +89,10 @@ public struct SplitRect: Sendable, Equatable {
 /// is a pure mutation here so all three clients share one behavior and the tests never touch a
 /// widget.
 public struct SplitLayout: Sendable, Equatable, Codable {
-    public private(set) var root: SplitNode
-    public private(set) var focusedPane: PaneID
-    public private(set) var zoomedPane: PaneID?
-    private var focusHistory: [PaneID]
+    public internal(set) var root: SplitNode
+    public internal(set) var focusedPane: PaneID
+    public internal(set) var zoomedPane: PaneID?
+    var focusHistory: [PaneID]
 
     public init() {
         let pane = PaneID()
@@ -100,6 +100,29 @@ public struct SplitLayout: Sendable, Equatable, Codable {
         focusedPane = pane
         zoomedPane = nil
         focusHistory = [pane]
+    }
+
+    /// A layout over a tree somebody else built — an arrangement, a migration. The caller owns
+    /// the tree's validity; the focus is taken as given when it is in the tree and falls back to
+    /// the first pane otherwise.
+    init(root: SplitNode, focused: PaneID? = nil, zoomed: PaneID? = nil, history: [PaneID] = []) {
+        self.root = root
+        let ids = Self.leaves(of: root)
+        let focus = focused.flatMap { ids.contains($0) ? $0 : nil } ?? ids[0]
+        focusedPane = focus
+        zoomedPane = zoomed.flatMap { ids.contains($0) ? $0 : nil }
+        var seen: Set<PaneID> = [focus]
+        focusHistory = history.filter { ids.contains($0) && seen.insert($0).inserted } + [focus]
+    }
+
+    /// The panes from least to most recently focused, every one present in the tree. Panes never
+    /// focused lead, the later in reading order the earlier, so a window with no room keeps the
+    /// panes a person reads first.
+    var recency: [PaneID] {
+        let ids = paneIDs
+        let held = focusHistory.filter { ids.contains($0) }
+        let never = ids.filter { !held.contains($0) }.reversed()
+        return Array(never) + held
     }
 
     /// Every pane in the tree, in reading order (first child before second, depth first).
@@ -291,7 +314,7 @@ public struct SplitLayout: Sendable, Equatable, Codable {
         return true
     }
 
-    private static func leaves(of node: SplitNode) -> [PaneID] {
+    static func leaves(of node: SplitNode) -> [PaneID] {
         switch node {
         case .pane(let id): return [id]
         case .split(_, _, _, let first, let second):
@@ -308,7 +331,7 @@ public struct SplitLayout: Sendable, Equatable, Codable {
         }
     }
 
-    private static func replacingLeaf(
+    static func replacingLeaf(
         _ pane: PaneID, in node: SplitNode, with replacement: () -> SplitNode
     ) -> SplitNode {
         switch node {
@@ -322,7 +345,7 @@ public struct SplitLayout: Sendable, Equatable, Codable {
         }
     }
 
-    private static func removing(_ pane: PaneID, from node: SplitNode) -> SplitNode? {
+    static func removing(_ pane: PaneID, from node: SplitNode) -> SplitNode? {
         switch node {
         case .pane(let id):
             return id == pane ? nil : node
@@ -372,7 +395,7 @@ public struct SplitLayout: Sendable, Equatable, Codable {
 
     /// How many pane-widths a subtree needs along `axis`: a split along it adds its sides, a
     /// split across it stacks them into the wider one's footprint.
-    private static func span(of node: SplitNode, along axis: SplitAxis) -> Double {
+    static func span(of node: SplitNode, along axis: SplitAxis) -> Double {
         switch node {
         case .pane: return 1
         case .split(_, let own, _, let first, let second):
