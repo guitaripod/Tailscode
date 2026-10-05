@@ -57,13 +57,11 @@ ssh macbook "ROOT_DIR=$REMOTE_BASE CONFIG=$CONFIG SCHEME=$SCHEME SELFTEST=$SELFT
     TAILSCODE_HOST=$(printf %q "$HOST") TAILSCODE_PASSWORD=$(printf %q "$PASSWORD") \
     TAILSCODE_BACKEND=$(printf %q "$BACKEND") bash -l" <<'REMOTE'
 set -e
-cd ~/$ROOT_DIR/Dev/iOS/Tailscode
-xcodegen generate >/dev/null
 LOG=/tmp/tsmac-isolated-$(basename "$ROOT_DIR")-$SCHEME.log
 DEST="platform=macOS"
 [ "$SCHEME" = Tailscode ] && DEST="generic/platform=iOS Simulator"
 if ! lockf -k -t 3600 /tmp/tsmac-build.lock bash -c "
-    cd ~/$ROOT_DIR/Dev/iOS/Tailscode
+    cd ~/$ROOT_DIR/Dev/iOS/Tailscode && xcodegen generate >/dev/null &&
     xcodebuild -project Tailscode.xcodeproj -scheme $SCHEME -configuration $CONFIG \
         -destination '$DEST' -derivedDataPath build-iso-$SCHEME build >$LOG 2>&1"; then
     grep -E "error:" "$LOG" | sort -u | tail -40
