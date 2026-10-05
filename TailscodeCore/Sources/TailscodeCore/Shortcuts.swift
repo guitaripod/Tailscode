@@ -322,6 +322,50 @@ public enum ShortcutRegistry {
             category: .composer, action: .modelDial, contexts: [.normal, .insert],
             defaults: ["ctrl+alt+m"]),
         .init(
+            id: "composer.presetNext", title: Localized.text("Next pinned model and level"),
+            category: .composer, action: .presetNext, contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+right"]),
+        .init(
+            id: "composer.presetPrevious", title: Localized.text("Previous pinned model and level"),
+            category: .composer, action: .presetPrevious, contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+left"]),
+        .init(
+            id: "composer.preset1", title: Localized.text("Pinned model and level %d", 1),
+            category: .composer, action: .preset(1), contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+1"]),
+        .init(
+            id: "composer.preset2", title: Localized.text("Pinned model and level %d", 2),
+            category: .composer, action: .preset(2), contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+2"]),
+        .init(
+            id: "composer.preset3", title: Localized.text("Pinned model and level %d", 3),
+            category: .composer, action: .preset(3), contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+3"]),
+        .init(
+            id: "composer.preset4", title: Localized.text("Pinned model and level %d", 4),
+            category: .composer, action: .preset(4), contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+4"]),
+        .init(
+            id: "composer.preset5", title: Localized.text("Pinned model and level %d", 5),
+            category: .composer, action: .preset(5), contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+5"]),
+        .init(
+            id: "composer.preset6", title: Localized.text("Pinned model and level %d", 6),
+            category: .composer, action: .preset(6), contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+6"]),
+        .init(
+            id: "composer.preset7", title: Localized.text("Pinned model and level %d", 7),
+            category: .composer, action: .preset(7), contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+7"]),
+        .init(
+            id: "composer.preset8", title: Localized.text("Pinned model and level %d", 8),
+            category: .composer, action: .preset(8), contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+8"]),
+        .init(
+            id: "composer.preset9", title: Localized.text("Pinned model and level %d", 9),
+            category: .composer, action: .preset(9), contexts: [.normal, .insert],
+            defaults: ["ctrl+alt+9"]),
+        .init(
             id: "mode.leave", title: Localized.text("Back to normal mode"), category: .composer,
             action: .leaveInsert, contexts: [.normal, .insert], defaults: ["escape"]),
         .init(
@@ -695,6 +739,9 @@ public enum KeyAction: Equatable, Sendable {
     case effortHotter
     case effortColder
     case modelDial
+    case presetNext
+    case presetPrevious
+    case preset(Int)
 }
 
 /// The canonical key-code space is GDK's, spelled out rather than imported: on Linux the numbers

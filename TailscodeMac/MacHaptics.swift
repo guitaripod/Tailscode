@@ -71,7 +71,7 @@ final class MacHaptics {
     /// needs-you still knocks twice, an error still lands three times at full strength.
     private static func pattern(for cue: HapticCue) -> NSHapticFeedbackManager.FeedbackPattern {
         switch cue {
-        case .tap, .selection, .step: return .alignment
+        case .tap, .selection, .step, .notch: return .alignment
         case .send, .needsYou, .warning: return .generic
         case .received, .success, .error: return .levelChange
         }

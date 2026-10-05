@@ -346,6 +346,8 @@ enum Theme {
         static func needsYou() { HapticEngine.shared.play(.needsYou) }
         /// The selection click for pickers and expand/collapse.
         static func selection() { HapticEngine.shared.play(.selection) }
+        /// One soft tick for each rung a finger enters on the effort rail.
+        static func notch() { HapticEngine.shared.play(.notch) }
         static func success() { HapticEngine.shared.play(.success) }
         static func warning() { HapticEngine.shared.play(.warning) }
         static func error() { HapticEngine.shared.play(.error) }

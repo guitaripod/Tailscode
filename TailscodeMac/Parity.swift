@@ -107,6 +107,7 @@ enum ParityManifest {
         case .sendQueue: return .implemented("editQueued")
         case .modelEffortPicker: return .implemented("PillsRow")
         case .modelEffortDial: return .implemented("ModelDialPopover")
+        case .modelPresets: return .implemented("ModelPresetCycle.step")
         case .unifiedModelChooser: return .implemented("MachineChip")
         case .modelEffortDisplay: return .implemented("ModelBadge")
         case .modelCapabilitySurfacing: return .implemented("dropUnsendableAttachments")

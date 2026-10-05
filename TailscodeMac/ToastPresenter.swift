@@ -10,15 +10,39 @@ final class ToastPresenter {
     /// Where a toast lands, resolved per show: the transcript view and the top of the floating
     /// composer layer it must stay above. Late resolution, because the window outlives layouts.
     private let anchor: () -> (host: NSView, above: NSLayoutYAxisAnchor)?
-    private var queue: [String] = []
+    private var queue: [(text: String, key: String?)] = []
     private var draining = false
+    /// The capsule on screen, kept so a keyed toast can rewrite it in place and push its dwell
+    /// out. `generation` tells the dismissal that was scheduled for it whether it is still the
+    /// latest word.
+    private var showing: (label: NSTextField, glass: NSView, key: String?, generation: Int)?
+    private var generations = 0
 
     init(anchor: @escaping () -> (host: NSView, above: NSLayoutYAxisAnchor)?) {
         self.anchor = anchor
     }
 
     func show(_ text: String) {
-        queue.append(text)
+        show(text, replacing: nil)
+    }
+
+    /// A keyed toast is one voice that keeps talking rather than a queue of them: it takes over
+    /// the capsule already showing the same key, and drops any of its own still waiting, so a
+    /// control turned five notches says where it landed rather than reciting every stop.
+    func show(_ text: String, replacing key: String?) {
+        if let key {
+            queue.removeAll { $0.key == key }
+            if var current = showing, current.key == key {
+                generations += 1
+                current.generation = generations
+                current.label.stringValue = text
+                showing = current
+                announce(text, from: current.glass)
+                scheduleDismissal(generation: current.generation, text: text)
+                return
+            }
+        }
+        queue.append((text, key))
         drain()
     }
 
@@ -39,7 +63,7 @@ final class ToastPresenter {
     private func drain() {
         guard !draining, !queue.isEmpty else { return }
         guard let (host, above) = anchor() else { return }
-        let text = queue.removeFirst()
+        let (text, key) = queue.removeFirst()
         draining = true
 
         let label = NSTextField(wrappingLabelWithString: text)
@@ -74,14 +98,24 @@ final class ToastPresenter {
             context.duration = 0.15
             glass.animator().alphaValue = 1
         }
+        generations += 1
+        showing = (label, glass, key, generations)
+        scheduleDismissal(generation: generations, text: text)
+    }
+
+    private func scheduleDismissal(generation: Int, text: String) {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.dwell(text)))
+            guard let self, let current = self.showing, current.generation == generation else {
+                return
+            }
+            let glass = current.glass
+            self.showing = nil
             await NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.3
                 glass.animator().alphaValue = 0
             }
             glass.removeFromSuperview()
-            guard let self else { return }
             self.draining = false
             self.drain()
         }

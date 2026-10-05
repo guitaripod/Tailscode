@@ -271,6 +271,34 @@ final class MainWindowController: NSWindowController {
         toasts.show(text)
     }
 
+    /// The single key a binding puts an action on right now, overrides included, for a menu item
+    /// to show — so a chord rebound in the keybindings file is the chord the menu names. A
+    /// sequence has no menu spelling and is left off.
+    func boundChord(for action: KeyAction) -> KeyChord? {
+        Self.boundChord(for: action, in: shortcuts)
+    }
+
+    static func boundChord(for action: KeyAction, in shortcuts: ShortcutSet) -> KeyChord? {
+        let map = shortcuts.actions[.insert] ?? shortcuts.actions[.normal] ?? [:]
+        let tokens = map.filter { $0.value == action && !$0.key.contains(",") }.keys.sorted()
+        guard let token = tokens.first, let colon = token.firstIndex(of: ":"),
+            let keyval = UInt32(token[token.index(after: colon)...])
+        else { return nil }
+        let flags = token[..<colon]
+        var state: UInt32 = 0
+        if flags.contains("c") { state |= KeyChord.controlMask }
+        if flags.contains("s") { state |= KeyChord.shiftMask }
+        if flags.contains("a") { state |= KeyChord.altMask }
+        return KeyChord.canonical(keyval: keyval, state: state)
+    }
+
+    /// The dial's answers to a control turned in quick steps — a wheel notch, a preset chord — each
+    /// replacing the last rather than queueing behind it, so five notches are one sentence that
+    /// keeps up and not ten seconds of sentences that lag.
+    func dialToast(_ text: String) {
+        toasts.show(text, replacing: "dial")
+    }
+
     func setNotice(_ text: String) {
         transcript.setNotice(text)
     }
@@ -408,6 +436,12 @@ final class MainWindowController: NSWindowController {
             transcript.composer.stepEffort(by: -1)
         case .modelDial:
             transcript.composer.openModelDial()
+        case .presetNext:
+            transcript.composer.stepPreset(by: 1)
+        case .presetPrevious:
+            transcript.composer.stepPreset(by: -1)
+        case .preset(let number):
+            transcript.composer.applyPreset(number: number)
         case .zoomIn:
             MacTheme.UIScale.step(0.1)
             applyUIScale()
@@ -578,7 +612,16 @@ final class MainWindowController: NSWindowController {
         case "commands": transcript.presentCommandCatalog()
         case "chooser": presentChooser(in: transcript)
         case "models": transcript.composer.openDemoModelChooser()
-        case "dial": transcript.composer.openDemoModelDial(popover: parts.count < 2)
+        case "dial":
+            let detail = parts.count > 1 ? parts[1] : ""
+            if detail.hasPrefix("search:") {
+                transcript.composer.openDemoModelDial(
+                    popover: true, query: String(detail.dropFirst("search:".count)))
+            } else if detail.hasPrefix("row:"), let row = Int(detail.dropFirst("row:".count)) {
+                transcript.composer.openDemoModelDial(popover: true, cursor: row)
+            } else {
+                transcript.composer.openDemoModelDial(popover: detail != "pill")
+            }
         case "spend": presentSpend(for: transcript)
         case "git": presentGit(for: transcript)
         case "forge", "video":
@@ -993,6 +1036,7 @@ final class MainWindowController: NSWindowController {
             self?.sidebar.notePresenceChanged()
         }
         pane.onToast = { [weak self] text in self?.toast(text) }
+        pane.onDialToast = { [weak self] text in self?.dialToast(text) }
         pane.onVideoChanged = { [weak self] in self?.splitPanes.persist() }
         pane.onBandAction = { [weak self, weak pane] action in
             guard let pane else { return }

@@ -9,6 +9,7 @@ import TailscodeCore
 @MainActor
 final class MainMenu: NSObject {
     private unowned let hub: MainWindowController
+    private let modelMenu = NSMenu(title: Localized.text("Model"))
 
     init(hub: MainWindowController) {
         self.hub = hub
@@ -20,6 +21,7 @@ final class MainMenu: NSObject {
         main.addItem(makeFileMenu())
         main.addItem(makeEditMenu())
         main.addItem(makeChatMenu())
+        main.addItem(makeModelMenu())
         main.addItem(makeViewMenu())
         main.addItem(makeGoMenu())
         main.addItem(makeWindowMenu())
@@ -190,6 +192,82 @@ final class MainMenu: NSObject {
         menu.addItem(.separator())
         menu.addItem(tagged(.delete, Localized.text("Delete…"), #selector(deleteChat), "\u{08}"))
         return holder(menu)
+    }
+
+    /// The dial's verbs in the menu bar, where a person looks for what the keyboard can do: the
+    /// chords shown are the ones bound right now, read from the shortcut set rather than written
+    /// here, so a rebinding is honest in the menu too. The pinned pairs are re-read every time the
+    /// menu opens, because pinning happens in the dial and the menu bar is built once.
+    private func makeModelMenu() -> NSMenuItem {
+        modelMenu.delegate = self
+        modelMenu.autoenablesItems = true
+        rebuildModelMenu()
+        return holder(modelMenu)
+    }
+
+    private func rebuildModelMenu() {
+        modelMenu.removeAllItems()
+        modelMenu.addItem(bound(Localized.text("Open Dial"), #selector(openDial), .modelDial))
+        modelMenu.addItem(.separator())
+        modelMenu.addItem(
+            bound(Localized.text("Effort Hotter"), #selector(effortHotter), .effortHotter))
+        modelMenu.addItem(
+            bound(Localized.text("Effort Colder"), #selector(effortColder), .effortColder))
+        modelMenu.addItem(item(Localized.text("Server Decides Effort"), #selector(serverDecides), ""))
+        modelMenu.addItem(.separator())
+        modelMenu.addItem(
+            bound(Localized.text("Next Pinned"), #selector(nextPreset), .presetNext))
+        modelMenu.addItem(
+            bound(Localized.text("Previous Pinned"), #selector(previousPreset), .presetPrevious))
+        modelMenu.addItem(.separator())
+        let presets = hub.window?.isVisible == true ? hub.transcript.composer.reachablePresets() : []
+        if presets.isEmpty {
+            let empty = NSMenuItem(title: ComposerView.noPresetsHint, action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            modelMenu.addItem(empty)
+        }
+        for (index, entry) in presets.enumerated() {
+            let number = index + 1
+            let row =
+                number <= 9
+                ? bound(entry.title, #selector(takePreset(_:)), .preset(number))
+                : item(entry.title, #selector(takePreset(_:)), "")
+            row.tag = number
+            row.state = entry.isCurrent ? .on : .off
+            modelMenu.addItem(row)
+        }
+        modelMenu.addItem(.separator())
+        modelMenu.addItem(item(Localized.text("All Models…"), #selector(allModels), ""))
+    }
+
+    /// An item wearing whatever single chord the shortcut set binds its action to, or none.
+    private func bound(_ title: String, _ action: Selector, _ keyAction: KeyAction) -> NSMenuItem {
+        let entry = item(title, action, "", [])
+        guard let chord = hub.boundChord(for: keyAction),
+            let key = Self.keyEquivalent(chord.keyval)
+        else { return entry }
+        var modifiers: NSEvent.ModifierFlags = []
+        if chord.control { modifiers.insert(.control) }
+        if chord.alt { modifiers.insert(.option) }
+        if chord.shift { modifiers.insert(.shift) }
+        entry.keyEquivalent = key
+        entry.keyEquivalentModifierMask = modifiers
+        return entry
+    }
+
+    private static func keyEquivalent(_ keyval: UInt32) -> String? {
+        switch keyval {
+        case Keymap.up: return "\u{F700}"
+        case Keymap.down: return "\u{F701}"
+        case 0xFF51: return "\u{F702}"
+        case 0xFF53: return "\u{F703}"
+        case Keymap.enter: return "\r"
+        case Keymap.tab: return "\t"
+        case Keymap.escape: return "\u{1B}"
+        default:
+            guard keyval < 0xFF00, let character = Keymap.scalar(keyval) else { return nil }
+            return String(character).lowercased()
+        }
     }
 
     private func makeViewMenu() -> NSMenuItem {
@@ -372,6 +450,14 @@ final class MainMenu: NSObject {
         _ = hub.perform(action)
     }
 
+    @objc private func openDial() { run(.modelDial) }
+    @objc private func effortHotter() { run(.effortHotter) }
+    @objc private func effortColder() { run(.effortColder) }
+    @objc private func nextPreset() { run(.presetNext) }
+    @objc private func previousPreset() { run(.presetPrevious) }
+    @objc private func takePreset(_ sender: NSMenuItem) { run(.preset(sender.tag)) }
+    @objc private func serverDecides() { hub.transcript.composer.setServerDecidesEffort() }
+    @objc private func allModels() { hub.transcript.composer.openModelChooser() }
     @objc private func quickAsk() { hub.summonQuickAsk() }
     @objc private func findNext() { hub.transcript.stepFind(by: 1) }
     @objc private func findPrevious() { hub.transcript.stepFind(by: -1) }
@@ -438,6 +524,14 @@ extension MainMenu: NSMenuItemValidation {
         if let action = menuItem.action, treeVerbs.contains(action) {
             return hub.splitPanes.paneCount > 1
         }
+        let modelVerbs: Set<Selector> = [
+            #selector(openDial), #selector(effortHotter), #selector(effortColder),
+            #selector(nextPreset), #selector(previousPreset), #selector(takePreset(_:)),
+            #selector(serverDecides), #selector(allModels),
+        ]
+        if let action = menuItem.action, modelVerbs.contains(action) {
+            return hub.window?.isKeyWindow == true && hub.currentEntry != nil
+        }
         if menuItem.action == #selector(findNext) || menuItem.action == #selector(findPrevious) {
             return hub.window?.isVisible == true && hub.transcript.canStepFind
         }
@@ -497,5 +591,12 @@ extension MainMenu: NSMenuItemValidation {
         case .delete: menuItem.title = Localized.text("Delete…")
         default: break
         }
+    }
+}
+
+extension MainMenu: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === modelMenu else { return }
+        rebuildModelMenu()
     }
 }

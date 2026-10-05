@@ -34,10 +34,10 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private let laneButton = UIButton(type: .system)
     private let chipButton = UIButton(type: .system)
     private let chevron = UIImageView()
-    private let modelButton = UIButton(type: .system)
-    private let modelChevron = UIImageView()
+    /// The pill for model and effort, in the box's bottom row beside the paperclip and Send — the
+    /// same control, in the same place, as in a chat.
+    let dialPill = ModelDialPill()
     private let destinationRow = UIStackView()
-    private let modelRow = UIStackView()
     private let topRow = UIStackView()
     private let textView = PastingTextView()
     private let placeholder = UILabel()
@@ -73,9 +73,47 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         didSet {
             guard showsAttach != oldValue else { return }
             attachButton.isHidden = !showsAttach
-            textViewLeadingToBar?.isActive = !showsAttach
-            textViewLeadingToAttach?.isActive = showsAttach
+            applyDialLayout()
         }
+    }
+
+    private static let dialRow: CGFloat = 36
+    private var lineConstraints: [NSLayoutConstraint] = []
+    private var stackedConstraints: [NSLayoutConstraint] = []
+    private var dialConstraints: [NSLayoutConstraint] = []
+    private var dialToAttach: NSLayoutConstraint?
+    private var dialToBar: NSLayoutConstraint?
+
+    /// Whether the box carries the pill. Without a model or an effort to choose there is nothing to
+    /// show, and the box is the single line it was.
+    private var showsDial = false {
+        didSet {
+            guard showsDial != oldValue else { return }
+            dialPill.isHidden = !showsDial
+            applyDialLayout()
+        }
+    }
+
+    /// One place decides which layout is live: the words beside Send, or the words over a row
+    /// holding the paperclip, the pill and Send.
+    private func applyDialLayout() {
+        let leadings = [textViewLeadingToAttach, textViewLeadingToBar].compactMap { $0 }
+        if showsDial {
+            NSLayoutConstraint.deactivate(lineConstraints + leadings)
+            NSLayoutConstraint.activate(
+                stackedConstraints + dialConstraints
+                    + [showsAttach ? dialToAttach : dialToBar].compactMap { $0 })
+            NSLayoutConstraint.deactivate([showsAttach ? dialToBar : dialToAttach].compactMap { $0 })
+        } else {
+            NSLayoutConstraint.deactivate(
+                stackedConstraints + dialConstraints + [dialToAttach, dialToBar].compactMap { $0 })
+            NSLayoutConstraint.activate(
+                lineConstraints + [showsAttach ? textViewLeadingToAttach : textViewLeadingToBar]
+                    .compactMap { $0 })
+            NSLayoutConstraint.deactivate(
+                [showsAttach ? textViewLeadingToBar : textViewLeadingToAttach].compactMap { $0 })
+        }
+        setNeedsLayout()
     }
 
     /// A picture handed over with no words is still a question, so a box with something in its
@@ -130,24 +168,8 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         chipButton.contentHorizontalAlignment = .leading
         chipButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        var model = UIButton.Configuration.plain()
-        model.contentInsets = .zero
-        model.imagePadding = 4
-        model.titleLineBreakMode = .byTruncatingTail
-        model.baseForegroundColor = Theme.Color.secondaryLabel
-        model.image = UIImage(
-            systemName: "cpu",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold))
-        modelButton.configuration = model
-        modelButton.showsMenuAsPrimaryAction = true
-        modelButton.contentHorizontalAlignment = .trailing
-        modelButton.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
-
         configureChevron(chevron)
-        configureChevron(modelChevron)
         configureChipRow(destinationRow, button: chipButton, chevron: chevron)
-        configureChipRow(modelRow, button: modelButton, chevron: modelChevron)
-        modelRow.isHidden = true
 
         let spacer = UIView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -155,7 +177,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         topRow.axis = .horizontal
         topRow.alignment = .center
         topRow.spacing = Theme.Spacing.s
-        [laneButton, destinationRow, spacer, modelRow].forEach(topRow.addArrangedSubview)
+        [laneButton, destinationRow, spacer].forEach(topRow.addArrangedSubview)
         topRow.translatesAutoresizingMaskIntoConstraints = false
 
         textView.font = Theme.Ramp.font(.answer)
@@ -233,6 +255,28 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         textViewLeadingToBar = toBar
         toBar.isActive = true
 
+        let textBottom = textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -11)
+        let textTrailing = textView.trailingAnchor.constraint(
+            equalTo: sendButton.leadingAnchor, constant: -Theme.Spacing.xs)
+        lineConstraints = [textBottom, textTrailing]
+        stackedConstraints = [
+            textView.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.m),
+            textView.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.m),
+            textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -(Self.dialRow + 10)),
+        ]
+        dialPill.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(dialPill)
+        dialToAttach = dialPill.leadingAnchor.constraint(
+            equalTo: attachButton.trailingAnchor, constant: Theme.Spacing.xs)
+        dialToBar = dialPill.leadingAnchor.constraint(
+            equalTo: bar.leadingAnchor, constant: Theme.Spacing.m)
+        dialConstraints = [
+            dialPill.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
+            dialPill.trailingAnchor.constraint(
+                lessThanOrEqualTo: sendButton.leadingAnchor, constant: -Theme.Spacing.s),
+        ]
+        dialPill.isHidden = true
+
         NSLayoutConstraint.activate([
             auraHost.topAnchor.constraint(equalTo: bar.topAnchor),
             auraHost.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
@@ -255,9 +299,8 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             attachButton.heightAnchor.constraint(equalToConstant: 32),
 
             textView.topAnchor.constraint(equalTo: topRow.bottomAnchor, constant: 8),
-            textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -11),
-            textView.trailingAnchor.constraint(
-                equalTo: sendButton.leadingAnchor, constant: -Theme.Spacing.xs),
+            textBottom,
+            textTrailing,
             heightConstraint,
 
             sendButton.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.xs),
@@ -454,19 +497,16 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             : String(localized: "Chat destination: \(title)")
     }
 
-    /// Passing no title hides the chip entirely — a backend without model
-    /// selection must not show an affordance that does nothing.
-    func setModel(title: String?, menu: UIMenu?) {
-        guard let title, let menu else {
-            modelRow.isHidden = true
+    /// Passing no content hides the pill entirely — a backend without model selection or effort
+    /// must not show an affordance that does nothing.
+    func setDial(_ content: ModelDialPill.Content?, menu: UIMenu?) {
+        guard let content else {
+            showsDial = false
             return
         }
-        modelRow.isHidden = false
-        var config = modelButton.configuration ?? .plain()
-        config.attributedTitle = Self.chipTitle(title)
-        modelButton.configuration = config
-        modelButton.menu = menu
-        modelButton.accessibilityLabel = String(localized: "Model: \(title)")
+        dialPill.content = content
+        dialPill.modelMenu = menu
+        showsDial = true
     }
 
     private static func chipTitle(_ text: String) -> AttributedString {
@@ -482,7 +522,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         isSending = sending
         textView.isEditable = !sending
         chipButton.isEnabled = !sending
-        modelButton.isEnabled = !sending
+        dialPill.isEnabled = !sending
         laneButton.isEnabled = !sending
         attachButton.isEnabled = !sending
         updateSendButton()
@@ -580,7 +620,8 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch
     ) -> Bool {
-        !(touch.view is UIControl)
+        guard let view = touch.view else { return true }
+        return !(view is UIControl) && !view.isDescendant(of: dialPill)
     }
 
     private var trimmed: String {

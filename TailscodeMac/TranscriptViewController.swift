@@ -14,6 +14,7 @@ final class TranscriptViewController: NSViewController {
     var onState: ((ConversationState) -> Void)?
     /// A floating confirmation, presented by the hub so it clears toasts app-wide.
     var onToast: ((String) -> Void)?
+    var onDialToast: ((String) -> Void)?
     /// The board window this pane opened, held because an NSWindowController with nobody keeping
     /// it alive closes the moment the frame that made it returns.
     private var designBoard: DesignBoardWindowController?
@@ -1175,6 +1176,7 @@ final class TranscriptViewController: NSViewController {
             }
         }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
+        composer.onDialToast = { [weak self] text in self?.onDialToast?(text) }
         composer.onMoveToServer = { [weak self] profileID in
             guard let self,
                 let host = self.view.window?.windowController as? MainWindowController,

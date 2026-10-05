@@ -19,6 +19,20 @@ final class ModelPickerViewController: UIViewController {
     /// so the caller stops watching a catalog nobody is looking at.
     var onClose: (() -> Void)?
 
+    /// What the picker needs to speak for the chat that opened it: the model's name and levels for
+    /// the effort strip, the level in force for the pairs a swipe pins, and how big the
+    /// conversation is for the cost of switching.
+    struct Dial {
+        let modelName: String
+        let options: [String]
+        let agentOptions: [String]
+        var effort: String?
+        let contextTokens: Int?
+        let onEffort: (String?) -> Void
+    }
+
+    private var dial: Dial?
+    private let effortStrip = EffortStripView()
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<String, String>!
     private let search = UISearchController(searchResultsController: nil)
@@ -32,11 +46,12 @@ final class ModelPickerViewController: UIViewController {
 
     init(
         sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota] = [],
-        recents: [ModelSelection] = RecentModelsStore.all(),
+        recents: [ModelSelection] = RecentModelsStore.all(), dial: Dial? = nil,
         onSelect: @escaping (ModelPick) -> Void
     ) {
         self.chooser = ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas)
+        self.dial = dial
         self.onSelect = onSelect
         self.quotas = quotas
         self.recents = recents
@@ -104,6 +119,14 @@ final class ModelPickerViewController: UIViewController {
             consequence.leadingAnchor.constraint(equalTo: line.leadingAnchor, constant: Theme.Spacing.l),
             consequence.trailingAnchor.constraint(equalTo: line.trailingAnchor, constant: -Theme.Spacing.l),
         ])
+        if let dial {
+            effortStrip.render(modelName: dial.modelName, options: dial.options, effort: dial.effort)
+            effortStrip.onSet = { [weak self] level in
+                self?.dial?.effort = level
+                self?.dial?.onEffort(level)
+            }
+            above.addArrangedSubview(effortStrip)
+        }
         above.addArrangedSubview(machineStrip)
         above.addArrangedSubview(doorStrip)
         above.addArrangedSubview(line)
@@ -230,7 +253,9 @@ final class ModelPickerViewController: UIViewController {
             CGSize(width: view.bounds.width, height: UIView.layoutFittingCompressedSize.height),
             withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel
         ).height
-        let inset = machineStrip.isHidden && doorStrip.isHidden ? 0 : height + Theme.Spacing.xs
+        let inset =
+            machineStrip.isHidden && doorStrip.isHidden && effortStrip.isHidden
+            ? 0 : height + Theme.Spacing.xs
         if abs(collectionView.contentInset.top - inset) > 0.5 {
             collectionView.contentInset.top = inset
             collectionView.verticalScrollIndicatorInsets.top = inset
@@ -250,6 +275,9 @@ final class ModelPickerViewController: UIViewController {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         config.headerMode = sectionTitle(at: index).isEmpty ? .none : .supplementary
         config.footerMode = index == sectionIDs.count - 1 ? .supplementary : .none
+        config.leadingSwipeActionsConfigurationProvider = { [weak self] indexPath in
+            self?.pinActions(at: indexPath)
+        }
         return .list(using: config, layoutEnvironment: environment)
     }
 
@@ -440,6 +468,93 @@ final class ModelPickerViewController: UIViewController {
             pinned ? String(localized: "Unpin") : String(localized: "Pin")
         button.addAction(UIAction { [weak self] _ in self?.togglePin(selection) }, for: .touchUpInside)
         return button
+    }
+
+    /// The pair a row would pin: the model with the level this chat is at carried onto it, a
+    /// model with no levels as the plain star it always was.
+    private func pair(for row: ModelChooserRow) -> ModelPreset? {
+        guard !row.isAuto, !row.isLiteral, let selection = row.selection,
+            let candidate = chooser.candidates.first(where: { $0.carries(selection) })
+        else { return nil }
+        let levels = ModelEffort.options(
+            models: [candidate.primary.model], selection: selection,
+            agentOptions: dial?.agentOptions ?? [])
+        guard ModelEffort.isOffered(options: levels) else {
+            return ModelPreset(selection: selection, effort: .keep)
+        }
+        let level = ModelEffort.carry(dial?.effort, options: levels).level
+        return ModelPreset(selection: selection, effort: level.map { .level($0) } ?? .server)
+    }
+
+    private func pinActions(at indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard let id = dataSource.itemIdentifier(for: indexPath), let row = row(for: id),
+            let preset = pair(for: row)
+        else { return nil }
+        let pinned = ModelPresetStore.all().contains(preset)
+        let action = UIContextualAction(
+            style: .normal,
+            title: pinned ? String(localized: "Unpin") : String(localized: "Pin pair")
+        ) { [weak self] _, _, done in
+            self?.pin(preset)
+            done(true)
+        }
+        action.backgroundColor = Theme.Color.accent
+        action.image = UIImage(systemName: pinned ? "star.slash" : "star.fill")
+        return UISwipeActionsConfiguration(actions: [action])
+    }
+
+    private func pin(_ preset: ModelPreset) {
+        let pinned = ModelPresetStore.pin(preset)
+        Theme.Haptics.success()
+        applySnapshot(keepingScroll: true)
+        let name = chooser.candidates.first { $0.carries(preset.selection) }?.name
+            ?? ModelBadge.shortName(preset.selection.modelID)
+        let said = ModelPresetCycle.said(preset, modelName: name)
+        ToastView(
+            message: pinned ? String(localized: "Pinned: \(said)") : String(localized: "Unpinned: \(said)")
+        ).flash(in: view, above: view.safeAreaLayoutGuide.bottomAnchor, duration: 1.8)
+    }
+
+    private func peekReading(for row: ModelChooserRow) -> ModelPeekReading? {
+        guard !row.isAuto, let selection = row.selection,
+            let candidate = chooser.candidates.first(where: { $0.carries(selection) })
+        else { return nil }
+        return ModelPeekReading.of(
+            candidate, selected: chooser.selected, effort: dial?.effort,
+            agentOptions: dial?.agentOptions ?? [], contextTokens: dial?.contextTokens,
+            quotas: quotas)
+    }
+
+    private func contextMenu(for row: ModelChooserRow) -> UIContextMenuConfiguration? {
+        guard let reading = peekReading(for: row) else { return nil }
+        let hue = ModelBadge.chip(model: row.selection?.modelID, effort: nil)
+            .map { Theme.Color.modelIdentity($0) } ?? Theme.Color.tertiaryLabel
+        return UIContextMenuConfiguration(
+            identifier: row.id as NSString,
+            previewProvider: { ModelPeekViewController(reading: reading, hue: hue) },
+            actionProvider: { [weak self] _ in
+                guard let self else { return nil }
+                var actions: [UIMenuElement] = [
+                    UIAction(
+                        title: String(localized: "Use for this chat"),
+                        image: UIImage(systemName: "checkmark.circle")
+                    ) { [weak self] _ in
+                        Theme.Haptics.success()
+                        self?.onSelect(row.pick)
+                        self?.dismiss(animated: true)
+                    }
+                ]
+                if let preset = self.pair(for: row) {
+                    let pinned = ModelPresetStore.all().contains(preset)
+                    actions.append(
+                        UIAction(
+                            title: pinned
+                                ? String(localized: "Unpin") : String(localized: "Pin this pair"),
+                            image: UIImage(systemName: pinned ? "star.slash" : "star")
+                        ) { [weak self] _ in self?.pin(preset) })
+                }
+                return UIMenu(children: actions)
+            })
     }
 
     private func togglePin(_ selection: ModelSelection) {
@@ -797,6 +912,16 @@ private final class FixedWidthView: UIView {
 }
 
 extension ModelPickerViewController: UICollectionViewDelegate {
+    func collectionView(
+        _ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath,
+        point: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let id = dataSource.itemIdentifier(for: indexPath), let row = row(for: id) else {
+            return nil
+        }
+        return contextMenu(for: row)
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let id = dataSource.itemIdentifier(for: indexPath), let row = row(for: id) else {

@@ -1399,17 +1399,57 @@ final class ChatViewModel {
         dismissedFailure = state.lastFailure
     }
 
-    func selectModel(_ model: ModelSelection?) {
+    /// Picks the model for the next turns. The level the chip is showing rides along by Core's
+    /// carry — to the nearest cooler level the new model takes, never hotter — and what became of
+    /// it is handed back so the screen can say so instead of changing a word on its own.
+    @discardableResult
+    func selectModel(_ model: ModelSelection?) -> EffortCarry {
+        let asked = displayedEffort ?? currentEffort
         selectedModel = model
         ModelPreferenceStore.recordPick(model, sessionKey: persistKey, contextID: contextID)
-        let kept = ModelEffort.adopt(
-            currentEffort, for: model, models: knownModels,
-            agentOptions: backend.reasoningEffortOptions)
-        if kept != currentEffort {
-            currentEffort = kept
-            EffortPreferenceStore.recordPick(kept, sessionKey: persistKey, contextID: contextID)
+        let carry = ModelEffort.adoption(
+            asked, for: model, models: knownModels, agentOptions: backend.reasoningEffortOptions)
+        if carry.moved || (currentEffort != nil && carry.level != currentEffort) {
+            currentEffort = carry.level
+            EffortPreferenceStore.recordPick(carry.level, sessionKey: persistKey, contextID: contextID)
         }
         onModelChange?()
+        return carry
+    }
+
+    /// The pinned pairs this server can run, in the order they were pinned.
+    var reachablePresets: [ModelPreset] {
+        ModelPresetCycle.reachable(
+            ModelPresetStore.all(), models: knownModels,
+            acceptsAnyModelID: ChatModelResolver.honoursServerDefault(backend))
+    }
+
+    /// A pinned pair: the model, then the level it asks for through the same carry as any pick.
+    @discardableResult
+    func apply(_ preset: ModelPreset) -> EffortCarry {
+        let asked = preset.asks(current: displayedEffort ?? currentEffort)
+        selectedModel = preset.selection
+        ModelPreferenceStore.recordPick(preset.selection, sessionKey: persistKey, contextID: contextID)
+        let carry = ModelEffort.adoption(
+            asked, for: preset.selection, models: knownModels,
+            agentOptions: backend.reasoningEffortOptions)
+        currentEffort = carry.level
+        EffortPreferenceStore.recordPick(carry.level, sessionKey: persistKey, contextID: contextID)
+        onModelChange?()
+        return carry
+    }
+
+    /// The pair a step along the pinned list lands on, or nil with nothing pinned that this server
+    /// can run.
+    func presetStep(by delta: Int) -> ModelPreset? {
+        ModelPresetCycle.step(
+            reachablePresets, model: displayedModel, effort: displayedEffort, by: delta)
+    }
+
+    /// The nth pinned pair, 1-based, as a hardware key names it.
+    func preset(number: Int) -> ModelPreset? {
+        let presets = reachablePresets
+        return presets.indices.contains(number - 1) ? presets[number - 1] : nil
     }
 
     func setEffort(_ level: String?) {

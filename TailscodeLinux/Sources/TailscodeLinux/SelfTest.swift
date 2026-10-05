@@ -239,6 +239,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkModelDial()
+            report("model dial: \(checks) answers drawn")
+        } catch {
+            report("model dial: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkParity()
             report("parity: \(checks) capabilities answered")
         } catch {
@@ -1015,6 +1023,68 @@ public enum SelfTest {
         try expect(WebCommand.command(for: address) == .address, "ctrl+l opens the address bar")
         try expect(WebCommand.command(for: back) == .back, "alt+left goes back")
         return checks
+    }
+
+    /// The dial drawn, not only decided: pinned pairs carry their meter, the ladder turns into a
+    /// preview off this chat's model and says what a level will become, ⇥ hands the arrows to the
+    /// ladder before focus traversal can take the key, a search that finds nothing is a message no
+    /// cursor lands on, and a pick hands over the level the ladder showed.
+    private static func checkModelDial() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("model dial: \(label)") }
+            checks += 1
+        }
+        let picked = PickBox()
+        let dial = ModelDialPopover(
+            makeState: { DialDemo.state() },
+            onPick: { pick, effort, _ in picked.value = (pick.modelName, effort) },
+            onEffort: { _ in }, onOpenCatalog: {})
+        dial.fill()
+        guard let opened = dial.current else { throw SelfTestFailure("model dial: no state") }
+        try expect(dial.drawnRows == opened.rows.count, "every row is drawn, in order")
+        try expect(
+            opened.rows.first?.section != nil && opened.rows.first?.level?.word == "high",
+            "the pinned pair leads under its heading with its level as a meter")
+        try expect(opened.focused?.isCurrent == true, "it opens on what the chat runs")
+        try expect(
+            dial.drawsPreview == opened.ladderIsPreview, "the ladder says whether it is live or a preview")
+
+        _ = dial.press(keyval: Keymap.down)
+        guard let sonnet = dial.current else { throw SelfTestFailure("model dial: lost state") }
+        try expect(sonnet.focused?.preset != nil && sonnet.ladderIsPreview, "down walks to a pair")
+        try expect(dial.drawsPreview, "the ladder previews another model's levels")
+        try expect(sonnet.ladderEffort == "low", "and lights the level the pair would take")
+
+        _ = dial.press(keyval: Keymap.tab)
+        try expect(
+            dial.current?.column == .ladder && dial.activeColumnIsLadder,
+            "tab hands the arrows to the ladder and the ladder wears it")
+        _ = dial.press(keyval: Keymap.up)
+        try expect(dial.current?.ladderEffort == "high", "up on the ladder steps the preview")
+        _ = dial.press(keyval: Keymap.enter)
+        try expect(
+            picked.value?.0 == "Sonnet" && picked.value?.1 == .set("high"),
+            "the pick carries the level the ladder showed")
+
+        dial.fill()
+        var walks = 0
+        while dial.current?.carryNotice == nil, walks < 12 {
+            _ = dial.press(keyval: Keymap.down)
+            walks += 1
+        }
+        try expect(dial.current?.carryNotice != nil, "a row whose model lacks high says so first")
+
+        dial.search("zzzz-no-model")
+        guard let empty = dial.current else { throw SelfTestFailure("model dial: lost state") }
+        try expect(empty.rows.first?.isMessage == true, "nothing found is a message row")
+        try expect(empty.focused?.isMessage != true, "and no cursor lands on it")
+        try expect(dial.drawnRows == empty.rows.count, "the message is drawn with the rest")
+        return checks
+    }
+
+    private final class PickBox: @unchecked Sendable {
+        var value: (String, EffortAsk)?
     }
 
     private static func checkParity() throws -> Int {
@@ -2836,7 +2906,7 @@ public enum SelfTest {
                 makeState: {
                     ModelDialState(
                         sources: [], selected: nil, effort: nil, options: [], modelWord: "")
-                }, onPick: { _ in }, onEffort: { _ in }, onOpenCatalog: {}),
+                }, onPick: { _, _, _ in }, onEffort: { _ in }, onOpenCatalog: {}),
             onStep: { _ in })
         let ladder = ["low", "medium", "high", "xhigh", "max", Ultracode.effortLevel]
         let power = ModelDial.face(

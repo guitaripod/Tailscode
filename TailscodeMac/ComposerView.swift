@@ -23,6 +23,9 @@ final class ComposerView: NSView {
     /// Whether the pane is holding a waiting message open in this box.
     var isEditingQueued: (() -> Bool)?
     var onToast: ((String) -> Void)?
+    /// A toast that answers a control turned in quick steps — the wheel, a preset chord — where
+    /// each step's sentence replaces the last rather than queueing behind it.
+    var onDialToast: ((String) -> Void)?
     /// The attachments-in-waiting changed — the status band counts them.
     var onAttachmentsChanged: (() -> Void)?
     /// A model picked on another machine, move confirmed: the hub opens a new chat there.
@@ -618,7 +621,7 @@ final class ComposerView: NSView {
             reachable: entry.flatMap { reachableByProfile[$0.profileID] })
     }
 
-    private func openModelChooser() {
+    func openModelChooser() {
         presentModelChooser(sources: modelSources(), selected: chosenModel)
     }
 
@@ -640,10 +643,16 @@ final class ComposerView: NSView {
     }
 
     /// A pick's whole answer: this chat changes model, or the work moves to the machine that runs
-    /// it — remembered there first (`adopt`), then opened as a new chat that arrives already on it.
-    private func handleModelPick(_ pick: ModelPick) {
+    /// it — remembered there first (`adopt`, with the level the dial showed for it), then opened
+    /// as a new chat that arrives already on it. `notice` is the dial's own sentence for a level
+    /// the pick moved, said once the pick has landed.
+    private func handleModelPick(
+        _ pick: ModelPick, effort: EffortAsk = .unchanged, notice: String? = nil
+    ) {
         guard pick.isElsewhere else {
-            setModel(pick.selection)
+            setModel(
+                pick.selection, effort: effort, notice: notice,
+                modelName: pick.modelName.isEmpty ? nil : pick.modelName)
             return
         }
         MacDialogs.confirm(
@@ -651,24 +660,38 @@ final class ComposerView: NSView {
             confirmLabel: ModelFleet.moveAction, destructive: false
         ) { [weak self] in
             ModelFleet.adopt(pick)
+            if case .set(let level) = effort {
+                EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: pick.profileID)
+            }
             self?.onMoveToServer?(pick.profileID)
         }
     }
 
     /// Effort is the model's on servers whose catalog says so, so a pick can strand a level the
-    /// new model does not offer — named in the pill, checked nowhere in its own menu, and shipped
-    /// with the next prompt. A stranded level falls back to the server's default.
-    private func setModel(_ selection: ModelSelection?) {
+    /// new model does not offer. A pair names its level (`.set`), which is carried onto the model's
+    /// own levels; a model alone keeps the level where it is, and a level the model lacks moves to
+    /// the nearest cooler one it takes and says so — never hotter, and never silently.
+    private func setModel(
+        _ selection: ModelSelection?, effort: EffortAsk = .unchanged, notice: String? = nil,
+        modelName: String? = nil
+    ) {
         chosenModel = selection
         if let entry {
             ModelPreferenceStore.recordPick(
                 selection, sessionKey: Self.preferenceKey(entry), contextID: entry.profileID)
         }
-        let kept = ModelEffort.adopt(
-            chosenEffort, for: selection, models: models,
+        let asked: String?
+        switch effort {
+        case .unchanged: asked = chosenEffort
+        case .set(let level): asked = level
+        }
+        let carry = ModelEffort.adoption(
+            asked, for: selection, models: models,
             agentOptions: backend?.reasoningEffortOptions ?? [])
-        if kept != chosenEffort {
-            setEffort(kept)
+        let name = modelName ?? ModelBadge.label(model: selection, effort: nil)
+        if let said = notice ?? carry.notice(modelName: name) { onToast?(said) }
+        if effort != .unchanged || carry.level != chosenEffort {
+            setEffort(carry.level)
             return
         }
         refreshPills()
@@ -676,13 +699,93 @@ final class ComposerView: NSView {
     }
 
     /// One notch of the wheel or one ⌃⌥ arrow: the next stop cold-to-hot from the level the dial
-    /// shows, pinned at both ends. Nothing opens; the pill is the whole answer.
+    /// shows, pinned at both ends. Nothing opens; the pill and a toast are the whole answer, and a
+    /// model that takes no level says so rather than letting the wheel turn in silence.
     func stepEffort(by delta: Int) {
         let options = effortOptions()
-        guard ModelEffort.isOffered(options: options) else { return }
+        guard ModelEffort.isOffered(options: options) else {
+            onDialToast?(ModelDial.headline(modelName: modelPillText(), options: []))
+            return
+        }
         let next = ModelDial.step(displayedEffort(), by: delta, options: options)
-        guard next != displayedEffort() else { return }
-        setEffort(next)
+        if next != displayedEffort() { setEffort(next) }
+        onDialToast?(ModelDial.stepped(to: next))
+    }
+
+    /// The level handed back to the machine, from the Model menu: the server's own stop on the
+    /// ladder, reached without opening anything.
+    func setServerDecidesEffort() {
+        let options = effortOptions()
+        guard ModelEffort.isOffered(options: options) else {
+            onDialToast?(ModelDial.headline(modelName: modelPillText(), options: []))
+            return
+        }
+        if displayedEffort() != nil { setEffort(nil) }
+        onDialToast?(ModelDial.stepped(to: nil))
+    }
+
+    /// The pinned pairs this chat's machine can run, in the order they were pinned, each with the
+    /// word it is said by and whether it is what the chat runs now — what the Model menu lists and
+    /// the ⌃⌥ digits count.
+    func reachablePresets() -> [(preset: ModelPreset, title: String, isCurrent: Bool)] {
+        let model = activeSelection
+        let effort = displayedEffort()
+        return ModelPresetCycle.reachable(
+            ModelPresetStore.all(), models: models,
+            acceptsAnyModelID: backend.map { $0.agentType != .openCode } ?? false
+        ).map { preset in
+            (
+                preset,
+                ModelPresetCycle.said(
+                    preset, modelName: ModelBadge.label(model: preset.selection, effort: nil)),
+                preset.matches(model: model, effort: effort)
+            )
+        }
+    }
+
+    /// ⌃⌥→ and ⌃⌥←: the next pinned pair round the ring from the one the chat runs.
+    func stepPreset(by delta: Int) {
+        let reachable = reachablePresets().map(\.preset)
+        guard
+            let preset = ModelPresetCycle.step(
+                reachable, model: activeSelection, effort: displayedEffort(), by: delta)
+        else {
+            onDialToast?(Self.noPresetsHint)
+            return
+        }
+        applyPreset(preset)
+    }
+
+    /// ⌃⌥1 to ⌃⌥9: the nth pinned pair this machine can run.
+    func applyPreset(number: Int) {
+        let reachable = reachablePresets()
+        guard !reachable.isEmpty else {
+            onDialToast?(Self.noPresetsHint)
+            return
+        }
+        guard reachable.indices.contains(number - 1) else {
+            onDialToast?(
+                Localized.text("Only %d pinned pairs run on this machine", reachable.count))
+            return
+        }
+        applyPreset(reachable[number - 1].preset)
+    }
+
+    /// A pair taken without opening the dial is the same pick the dial makes: the model first, then
+    /// the level the pair asks for, carried onto the model's own levels — and one toast saying
+    /// which pair it was and, when the level had to move, where it went.
+    func applyPreset(_ preset: ModelPreset) {
+        let name = ModelBadge.label(model: preset.selection, effort: nil)
+        let carry = preset.applied(
+            currentEffort: displayedEffort(), models: models,
+            agentOptions: backend?.reasoningEffortOptions ?? [])
+        setModel(preset.selection, effort: .set(carry.level), notice: nil, modelName: name)
+        let said = ModelPresetCycle.said(preset, modelName: name)
+        onDialToast?(carry.notice(modelName: name).map { said + "\n" + $0 } ?? said)
+    }
+
+    static var noPresetsHint: String {
+        Localized.text("Pin a model and level with ⌃S in the model dial")
     }
 
     /// The dial opened on its own pill. Pressing it while open closes it, the way a menu does.
@@ -695,9 +798,11 @@ final class ComposerView: NSView {
         dialPopover = ModelDialPopover.present(
             from: pills.dialAnchor, state: dialState(),
             onEffort: { [weak self] level in self?.setEffort(level) },
-            onPick: { [weak self] pick in self?.handleModelPick(pick) },
+            onPick: { [weak self] pick, effort, notice in
+                self?.handleModelPick(pick, effort: effort, notice: notice)
+            },
             onOpenCatalog: { [weak self] in self?.openModelChooser() },
-            onStarred: { selection in ModelFavoritesStore.toggle(selection) },
+            onPinned: { preset in ModelPresetStore.pin(preset) },
             onClosed: { [weak self] in
                 self?.dialPopover = nil
                 self?.dialClosedAt = Date()
@@ -707,7 +812,7 @@ final class ComposerView: NSView {
     /// The dial over the fixture fleet the chooser demo uses, so the popover can be drawn and
     /// measured on a desk with no servers on it — `--open dial` from the command line, or
     /// `--open dial:pill` for the closed pill alone.
-    func openDemoModelDial(popover: Bool) {
+    func openDemoModelDial(popover: Bool, query: String? = nil, cursor: Int? = nil) {
         let options = ["low", "medium", "high", "xhigh", "max", Ultracode.effortLevel]
         let word = "Opus"
         pills.setFace(
@@ -715,13 +820,16 @@ final class ComposerView: NSView {
             modelTint: ModelBadge.chip(model: ModelChooserDemo.selected.modelID, effort: nil)
                 .map(MacTheme.Color.modelIdentity))
         guard popover else { return }
-        let state = ModelDialState(
+        var state = ModelDialState(
             sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,
             effort: "high", options: options, modelWord: word, quotas: [],
-            recents: ModelChooserDemo.recents)
+            recents: ModelChooserDemo.recents, presets: ModelDialDemo.presets,
+            agentOptions: [])
+        if let query { state.search(query) }
+        if let cursor { state.move(to: cursor) }
         dialPopover = ModelDialPopover.present(
             from: pills.dialAnchor, state: state,
-            onEffort: { _ in }, onPick: { _ in }, onOpenCatalog: {}, onStarred: { _ in },
+            onEffort: { _ in }, onPick: { _, _, _ in }, onOpenCatalog: {}, onPinned: { _ in },
             onClosed: { [weak self] in self?.dialPopover = nil })
     }
 
@@ -729,7 +837,8 @@ final class ComposerView: NSView {
         ModelDialState(
             sources: modelSources(), selected: chosenModel, effort: displayedEffort(),
             options: effortOptions(), modelWord: modelPillText(),
-            quotas: quotasForModels?() ?? [])
+            quotas: quotasForModels?() ?? [],
+            agentOptions: backend?.reasoningEffortOptions ?? [])
     }
 
     private func setEffort(_ level: String?) {

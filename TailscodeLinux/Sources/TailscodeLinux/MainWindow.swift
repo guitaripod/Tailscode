@@ -126,6 +126,8 @@ final class MainWindow: @unchecked Sendable {
     private var freshlyCreated: SessionEntry?
     private var refreshTask: Task<Void, Never>?
     private var toastOverlay: UnsafeMutablePointer<GtkWidget>?
+    private var lastFlash: OpaquePointer?
+    var demoDial: ModelDialPopover?
     private var listStreamTasks: [String: Task<Void, Never>] = [:]
     private var lastCatalogWarm: [String: Date] = [:]
     private var usageStripSignature = ""
@@ -456,6 +458,13 @@ final class MainWindow: @unchecked Sendable {
                     }
                 case "agents":
                     self.activePane.bandState.openMenu(id: "agents")
+                case "dial":
+                    self.presentDialDemo()
+                case "dkey":
+                    self.pressDialDemo(argument)
+                case "dtype":
+                    self.demoDial?.search(argument)
+                    self.reportDialDemo("DTYPE \(argument)")
                 case "toast":
                     self.toast(Localized.text("Command copied"))
                 case "reader":
@@ -1061,6 +1070,21 @@ final class MainWindow: @unchecked Sendable {
         let toast = adw_toast_new(text)
         adw_toast_set_timeout(toast, 2)
         adw_toast_overlay_add_toast(op(toastOverlay), toast)
+    }
+
+    /// A confirmation that replaces the one before it rather than queueing behind it: a wheel
+    /// turned five notches says where it landed now, not five sentences in a row over ten seconds.
+    func flash(_ text: String) {
+        guard let toastOverlay, let toast = adw_toast_new(text) else { return }
+        if let lastFlash {
+            adw_toast_dismiss(lastFlash)
+            g_object_unref(UnsafeMutableRawPointer(lastFlash))
+        }
+        adw_toast_set_timeout(toast, 2)
+        g_object_ref(UnsafeMutableRawPointer(toast))
+        lastFlash = toast
+        adw_toast_overlay_add_toast(op(toastOverlay), toast)
+        FileHandle.standardOutput.write(Data("FLASH \(text)\n".utf8))
     }
 
     var windowIsActive: Bool {
@@ -3404,6 +3428,9 @@ final class MainWindow: @unchecked Sendable {
         case .effortHotter: activePane.stepEffort(by: 1)
         case .effortColder: activePane.stepEffort(by: -1)
         case .modelDial: activePane.openModelDial()
+        case .presetNext: activePane.stepPreset(by: 1)
+        case .presetPrevious: activePane.stepPreset(by: -1)
+        case .preset(let number): activePane.takePreset(number: number)
         case .archiveSelected:
             if let entry = activePane.entry { toggleArchived(entry) }
         case .toggleArchiveView: setArchiveShown(!showingArchive)

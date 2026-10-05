@@ -358,7 +358,7 @@ final class DialPill: NSButton {
             effortWord.text = NSAttributedString(
                 string: word,
                 attributes: EffortHeat.attributes(
-                    word, pointSize: effortWord.pointSize, colour: tint))
+                    word, pointSize: effortWord.pointSize, colour: MacTheme.Color.label))
             meter.set(
                 lit: face.heat, tint: tint, rainbow: false, cold: false,
                 glow: EffortHeat.style(word).glow, ember: face.isEmber)

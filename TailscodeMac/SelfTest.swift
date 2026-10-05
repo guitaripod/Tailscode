@@ -54,6 +54,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkModelDial()
+            report("model dial: \(checks) pairs, previews and keys draw as the state says")
+        } catch {
+            report("model dial: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkTheme()
             report("theme: \(checks) palettes reach AppKit and keep their meanings")
         } catch {
@@ -735,6 +743,87 @@ enum SelfTest {
         let mute = ModelDial.face(modelWord: "opus", effort: nil, options: [])
         try expect(!mute.showsMeter, "a model with no levels still shows a meter")
         return widths.count + emberWidths.count
+    }
+
+    /// The dial opened over the fixture fleet with pinned pairs: every pair wears the pill's meter,
+    /// the ladder follows the cursor onto another model as a marked preview with the sentence about
+    /// the level, ⇥ hands the arrows to the ladder, a search that finds nothing is a message no
+    /// cursor can land on, and the menu reads the preset chords from the shortcut set.
+    private static func checkModelDial() throws -> Int {
+        func expect(_ condition: Bool, _ label: String) throws {
+            if !condition { throw SelfTestFailure(label) }
+        }
+        var checks = 0
+        let options = ["low", "medium", "high", "xhigh", "max"]
+        var state = ModelDialState(
+            sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,
+            effort: "max", options: options, modelWord: "Opus", quotas: [],
+            recents: ModelChooserDemo.recents, presets: ModelDialDemo.presets, agentOptions: [])
+        let panel = ModelDialPanel()
+        _ = panel.view
+        panel.render(state)
+        let pairs = state.rows.filter { $0.level != nil }.count
+        try expect(pairs >= 2, "only \(pairs) pinned pairs carry a level")
+        try expect(
+            panel.drawn.rowMeters == pairs,
+            "\(panel.drawn.rowMeters) meters drawn for \(pairs) pairs with a level")
+        try expect(state.rows.first?.section != nil, "the first row has no section heading")
+        try expect(!state.ladderIsPreview, "the dial opens on a preview rather than this chat's model")
+        try expect(!panel.drawn.preview, "the live ladder is marked a preview")
+        checks += 5
+
+        guard
+            let other = state.rows.firstIndex(where: {
+                $0.preset == nil && $0.candidate != nil && $0.candidate?.isElsewhere == false
+                    && !$0.isCurrent
+            })
+        else { throw SelfTestFailure("no other model to preview") }
+        state.move(to: other)
+        panel.renderLadder(state)
+        try expect(state.ladderIsPreview, "the cursor on another model leaves the ladder live")
+        try expect(panel.drawn.preview, "a preview is not marked as one")
+        try expect(
+            panel.drawn.rungs == state.rungs.count,
+            "\(panel.drawn.rungs) rungs drawn for \(state.rungs.count)")
+        try expect(
+            panel.drawn.carry == state.carryNotice,
+            "the carry line says \(panel.drawn.carry ?? "nothing") for \(state.carryNotice ?? "nothing")")
+        checks += 4
+
+        _ = state.handle(.switchColumn)
+        panel.renderLadder(state)
+        try expect(
+            panel.drawn.ladderOwnsArrows == (state.column == .ladder),
+            "the ladder frame disagrees with the column that owns the arrows")
+        let tab = ModelDialState.command(
+            for: KeyChord.canonical(keyval: Keymap.tab, state: 0)!, digitsLive: true)
+        try expect(tab == .switchColumn, "tab does not switch columns")
+        let pin = ModelDialState.command(
+            for: KeyChord.canonical(keyval: UInt32(UnicodeScalar("s").value), state: KeyChord.controlMask)!,
+            digitsLive: true)
+        try expect(pin == .pin, "control-s does not pin")
+        checks += 3
+
+        state.search("zzzz-no-such-model")
+        panel.render(state)
+        try expect(state.rows.first?.isMessage == true, "a search that finds nothing has no message")
+        try expect(state.focused?.isMessage != true, "the cursor rests on the message")
+        checks += 2
+
+        let set = ShortcutSet.build(overrides: [:])
+        let next = MainWindowController.boundChord(for: .presetNext, in: set)
+        try expect(
+            next?.control == true && next?.alt == true && next?.keyval == 0xFF53,
+            "next pinned is not on control-option-right")
+        let third = MainWindowController.boundChord(for: .preset(3), in: set)
+        try expect(third?.keyval == UInt32(UnicodeScalar("3").value), "the third pair has no chord")
+        let rebound = ShortcutSet.build(overrides: ["composer.presetNext": ["ctrl+alt+n"]])
+        try expect(
+            MainWindowController.boundChord(for: .presetNext, in: rebound)?.keyval
+                == UInt32(UnicodeScalar("n").value),
+            "a rebound chord does not reach the menu")
+        checks += 3
+        return checks
     }
 
     /// The paced reveal, checked where it can actually go wrong on this toolkit: every prefix the

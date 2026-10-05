@@ -135,7 +135,9 @@ final class QuickAskWindow: @unchecked Sendable {
                         ?? ModelDialState(
                             sources: [], selected: nil, effort: nil, options: [], modelWord: "")
                 },
-                onPick: { pick in Gtk.onMain { QuickAskWindow.open?.pick(pick) } },
+                onPick: { pick, effort, notice in
+                    Gtk.onMain { QuickAskWindow.open?.pick(pick, effort: effort, notice: notice) }
+                },
                 onEffort: { level in
                     Gtk.onMain {
                         guard let open = QuickAskWindow.open else { return }
@@ -552,7 +554,7 @@ final class QuickAskWindow: @unchecked Sendable {
             sources: ModelFleet.sources(profiles: servers, current: server.id),
             selected: QuickAskDefaults.model(forProfileID: server.id),
             effort: QuickAskDefaults.effort(forProfileID: server.id), options: effortOptions(),
-            modelWord: modelWord())
+            modelWord: modelWord(), agentOptions: agentEfforts[server.id] ?? [])
     }
 
     /// One notch of the wheel or one chord: the level moves one stop along the aimed model's own
@@ -561,12 +563,15 @@ final class QuickAskWindow: @unchecked Sendable {
         guard !asking else { return }
         let server = targetServer
         let options = effortOptions()
-        guard ModelEffort.isOffered(options: options) else { return }
+        guard ModelEffort.isOffered(options: options) else {
+            setHint(ModelDial.headline(modelName: modelWord(), options: []))
+            return
+        }
         let current = ModelEffort.surviving(
             QuickAskDefaults.effort(forProfileID: server.id), options: options)
         let next = ModelDial.step(current, by: delta, options: options)
-        guard next != current else { return }
-        setEffort(next, on: server.id, refocus: false)
+        if next != current { setEffort(next, on: server.id, refocus: false) }
+        setHint(ModelDial.stepped(to: next))
     }
 
     private func modelWord() -> String {
@@ -586,17 +591,25 @@ final class QuickAskWindow: @unchecked Sendable {
 
     /// A row from the dial: the server's own choice is filed against the aimed machine, a model
     /// against the machine that runs it — which re-aims the question there when that is not the
-    /// machine already aimed at.
-    private func pick(_ pick: ModelPick) {
+    /// machine already aimed at. The level the dial showed for the row goes with it, into the
+    /// quick ask's own memory for that machine and never the chat's.
+    private func pick(_ pick: ModelPick, effort: EffortAsk, notice: String?) {
+        let profileID = pick.profileID.isEmpty ? targetServer.id : pick.profileID
         if pick.selection == nil, !pick.isElsewhere {
             QuickAskDefaults.recordModel(nil, forProfileID: targetServer.id)
         } else {
             QuickAskDefaults.adopt(pick)
-            if let index = servers.firstIndex(where: { $0.id == pick.profileID }) {
-                retarget(to: index)
-            }
+        }
+        if case .set(let level) = effort {
+            QuickAskDefaults.recordEffort(level, forProfileID: profileID)
+        }
+        if pick.selection != nil || pick.isElsewhere,
+            let index = servers.firstIndex(where: { $0.id == pick.profileID })
+        {
+            retarget(to: index)
         }
         refreshTarget()
+        if let notice { setHint(notice) }
         editor.focus()
     }
 

@@ -2,11 +2,12 @@ import AppKit
 import CodingAgentKit
 import TailscodeCore
 
-/// The dial opened: the models a person actually reaches for beside the effort ladder, over one
-/// `ModelDialState` so the Mac draws the same columns in the same order as the Linux desk. The
-/// axes split the keys — ↑↓ and ⏎ are the model's, ←→ and the digits the effort's — and a mouse
-/// does the same by clicking a row or a rung. Effort changes are live and keep the popover open;
-/// a model is committed by a press and closes it.
+/// The dial opened: the models and pinned pairs a person actually reaches for beside the effort
+/// ladder, over one `ModelDialState` so the Mac draws the same columns in the same order as the
+/// Linux desk. The axes split the keys — ↑↓ and ⏎ are the model's, ←→ and the digits the effort's,
+/// ⇥ hands the arrows to the ladder — and a mouse does the same by clicking a row or a rung. The
+/// ladder follows the cursor: on this chat's model a level is live and keeps the popover open, on
+/// any other row it is a preview that rides with the pick, and a pick closes it.
 @MainActor
 final class ModelDialPopover: NSObject {
     private let popover = NSPopover()
@@ -14,22 +15,25 @@ final class ModelDialPopover: NSObject {
     private var state: ModelDialState
     private var monitor: Any?
     private let onEffort: @MainActor (String?) -> Void
-    private let onPick: @MainActor (ModelPick) -> Void
+    private let onPick: @MainActor (ModelPick, EffortAsk, String?) -> Void
     private let onOpenCatalog: @MainActor () -> Void
-    private let onStarred: @MainActor (ModelSelection) -> Void
+    private let onPinned: @MainActor (ModelPreset) -> Void
     private let onClosed: @MainActor () -> Void
 
+    /// `onPick` hands over the pick, what it does to the level, and the sentence to say when the
+    /// level moved on its own (`ModelDialState.pickNotice`), read before the popover forgets the
+    /// state it was taken in.
     static func present(
         from anchor: NSView, state: ModelDialState,
         onEffort: @escaping @MainActor (String?) -> Void,
-        onPick: @escaping @MainActor (ModelPick) -> Void,
+        onPick: @escaping @MainActor (ModelPick, EffortAsk, String?) -> Void,
         onOpenCatalog: @escaping @MainActor () -> Void,
-        onStarred: @escaping @MainActor (ModelSelection) -> Void,
+        onPinned: @escaping @MainActor (ModelPreset) -> Void,
         onClosed: @escaping @MainActor () -> Void
     ) -> ModelDialPopover {
         let controller = ModelDialPopover(
             state: state, onEffort: onEffort, onPick: onPick, onOpenCatalog: onOpenCatalog,
-            onStarred: onStarred, onClosed: onClosed)
+            onPinned: onPinned, onClosed: onClosed)
         controller.show(from: anchor)
         return controller
     }
@@ -37,16 +41,16 @@ final class ModelDialPopover: NSObject {
     private init(
         state: ModelDialState,
         onEffort: @escaping @MainActor (String?) -> Void,
-        onPick: @escaping @MainActor (ModelPick) -> Void,
+        onPick: @escaping @MainActor (ModelPick, EffortAsk, String?) -> Void,
         onOpenCatalog: @escaping @MainActor () -> Void,
-        onStarred: @escaping @MainActor (ModelSelection) -> Void,
+        onPinned: @escaping @MainActor (ModelPreset) -> Void,
         onClosed: @escaping @MainActor () -> Void
     ) {
         self.state = state
         self.onEffort = onEffort
         self.onPick = onPick
         self.onOpenCatalog = onOpenCatalog
-        self.onStarred = onStarred
+        self.onPinned = onPinned
         self.onClosed = onClosed
         panel = ModelDialPanel()
         super.init()
@@ -59,15 +63,18 @@ final class ModelDialPopover: NSObject {
     var isShown: Bool { popover.isShown }
 
     /// The composer heard something new — a catalog refresh, a level stepped from the wheel —
-    /// and hands over a fresh state. The query and the row under the cursor survive the swap.
+    /// and hands over a fresh state. The query, the row under the cursor and the column that owns
+    /// the arrows survive the swap.
     func update(state fresh: ModelDialState) {
         let query = state.query
         let focusedID = state.focused?.id
+        let column = state.column
         state = fresh
         if !query.isEmpty { state.search(query) }
         if let focusedID, let index = state.rows.firstIndex(where: { $0.id == focusedID }) {
             state.move(to: index)
         }
+        if column != state.column { _ = state.handle(.switchColumn) }
         render()
     }
 
@@ -88,12 +95,17 @@ final class ModelDialPopover: NSObject {
 
     private func render() {
         panel.render(state)
-        popover.contentSize = panel.view.fittingSize
+        fit()
         panel.reveal(state.cursor)
     }
 
-    /// The field editor owns the arrows, Enter and Escape through `doCommandBy`, but a chord with
-    /// control and a bare digit never reach it as commands — ⌃S stars, ⌃⏎ opens the catalog,
+    private func fit() {
+        let size = panel.view.fittingSize
+        if popover.contentSize != size { popover.contentSize = size }
+    }
+
+    /// The field editor owns the arrows, Enter, Escape and Tab through `doCommandBy`, but a chord
+    /// with control and a bare digit never reach it as commands — ⌃S pins, ⌃⏎ opens the catalog,
     /// ⌃↑/⌃↓ jump the list, and a digit picks a rung while the search is empty, because a
     /// person typing "gpt-5" is naming a model rather than asking for five bars.
     private func installMonitor() {
@@ -121,24 +133,33 @@ final class ModelDialPopover: NSObject {
         apply(state.handle(command))
     }
 
+    /// A move redraws the ladder as well as the cursor, because the ladder is the cursor's: the
+    /// row under it decides whose levels are shown and whether a step is live or a preview.
     private func apply(_ outcome: ModelDialOutcome) -> Bool {
         switch outcome {
         case .unhandled:
             return false
         case .moved:
             panel.highlight(state.cursor)
+            panel.renderLadder(state)
+            fit()
             panel.reveal(state.cursor)
         case .effort(let level):
             onEffort(level)
-            panel.render(state)
-        case .pick(let pick):
+            panel.renderLadder(state)
+            fit()
+        case .previewed:
+            panel.renderLadder(state)
+            fit()
+        case .pick(let pick, let effort):
+            let notice = state.pickNotice
             close()
-            onPick(pick)
+            onPick(pick, effort, notice)
         case .openCatalog:
             close()
             onOpenCatalog()
-        case .starred(let selection):
-            onStarred(selection)
+        case .pinned(let preset):
+            onPinned(preset)
             render()
         case .dismiss:
             close()
@@ -147,19 +168,23 @@ final class ModelDialPopover: NSObject {
     }
 
     private func hover(_ index: Int) {
-        guard index != state.cursor else { return }
+        guard index != state.cursor, state.rows.indices.contains(index),
+            !state.rows[index].isMessage
+        else { return }
         state.move(to: index)
         panel.highlight(state.cursor)
+        panel.renderLadder(state)
+        fit()
     }
 
     private func press(_ index: Int) {
+        guard state.rows.indices.contains(index), !state.rows[index].isMessage else { return }
         state.move(to: index)
         handle(.activate)
     }
 
     private func select(_ rung: EffortRung) {
-        state.setEffort(rung.level)
-        _ = apply(.effort(state.effort))
+        _ = apply(state.setEffort(rung.level))
     }
 }
 
@@ -178,7 +203,8 @@ extension ModelDialPopover: NSSearchFieldDelegate {
 
     /// A bare arrow steps the ladder only while the field is empty: with words in it the caret
     /// owns ←→, the same rule `ModelDialState.command` applies, and ⌃←/⌃→ reach the ladder
-    /// through the chord monitor regardless.
+    /// through the chord monitor regardless. Tab and Shift-Tab hand the arrows between the
+    /// columns, and are taken here so AppKit's key-view loop never walks focus out of the field.
     func control(
         _ control: NSControl, textView: NSTextView, doCommandBy selector: Selector
     ) -> Bool {
@@ -189,6 +215,9 @@ extension ModelDialPopover: NSSearchFieldDelegate {
             return state.digitsPickEffort ? handle(.colder) : false
         case #selector(NSResponder.moveRight(_:)):
             return state.digitsPickEffort ? handle(.hotter) : false
+        case #selector(NSResponder.insertTab(_:)), #selector(NSResponder.insertBacktab(_:)):
+            handle(.switchColumn)
+            return true
         case #selector(NSResponder.insertNewline(_:)): return handle(.activate)
         case #selector(NSResponder.cancelOperation(_:)): return handle(.dismiss)
         default: return false
@@ -198,7 +227,8 @@ extension ModelDialPopover: NSSearchFieldDelegate {
 
 /// The popover's body: the model column with its search on the left, the ladder on the right,
 /// the key hint along the foot. It draws a state and forwards presses; every decision is the
-/// controller's.
+/// controller's. The column that owns the arrows wears a quiet accent frame, and a ladder drawn
+/// for a row other than this chat's model is marked a preview and set a little quieter.
 @MainActor
 final class ModelDialPanel: NSViewController {
     let searchField = NSSearchField()
@@ -209,11 +239,18 @@ final class ModelDialPanel: NSViewController {
     private let modelList = FlippedStackView()
     private let listScroll = NSScrollView()
     private var listHeight: NSLayoutConstraint?
-    private let headline = NSTextField(labelWithString: "")
+    private let effortLabel = NSTextField(labelWithString: "")
+    private let previewTag = NSTextField(labelWithString: "")
+    private let headline = NSTextField(wrappingLabelWithString: "")
     private let ladder = NSStackView()
+    private let carryNotice = NSTextField(wrappingLabelWithString: "")
+    private let ladderFrame = ColumnFrameView()
     private let hint = NSTextField(labelWithString: "")
-    private var rowViews: [DialModelRowView] = []
+    private var rowViews: [Int: DialModelRowView] = [:]
+    private var ladderKey: [String] = []
     private static let listCap: CGFloat = 400
+    private static let ladderWidth: CGFloat = 260
+    private static let listWidth: CGFloat = 352
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -251,35 +288,46 @@ final class ModelDialPanel: NSViewController {
         left.spacing = MacTheme.Spacing.s
         left.translatesAutoresizingMaskIntoConstraints = false
 
-        let effortLabel = NSTextField(labelWithString: "")
-        effortLabel.attributedStringValue = NSAttributedString(
-            string: Localized.text("EFFORT"),
-            attributes: MacTheme.Ramp.attributes(
-                .sectionLabel, color: MacTheme.Color.secondaryLabel))
-        headline.font = MacTheme.Ramp.font(.rowDetail)
-        headline.textColor = MacTheme.Color.secondaryLabel
-        headline.lineBreakMode = .byTruncatingTail
-        headline.alignment = .right
         effortLabel.setContentHuggingPriority(.required, for: .horizontal)
         effortLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-        headline.setContentHuggingPriority(.init(1), for: .horizontal)
-        headline.setContentCompressionResistancePriority(.init(240), for: .horizontal)
-        let head = NSStackView(views: [effortLabel, headline])
+        previewTag.attributedStringValue = NSAttributedString(
+            string: Localized.text("preview").uppercased(),
+            attributes: MacTheme.Ramp.attributes(.chip, color: MacTheme.Color.secondaryLabel))
+        previewTag.wantsLayer = true
+        previewTag.toolTip = Localized.text(
+            "The levels of the row under the cursor. A level set here goes with the pick.")
+        previewTag.setContentHuggingPriority(.required, for: .horizontal)
+        previewTag.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let tagSpacer = NSView()
+        tagSpacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        let head = NSStackView(views: [effortLabel, previewTag, tagSpacer])
         head.orientation = .horizontal
         head.alignment = .firstBaseline
-        head.distribution = .fill
+        head.spacing = MacTheme.Spacing.s
         head.translatesAutoresizingMaskIntoConstraints = false
+
+        headline.font = MacTheme.Ramp.font(.rowDetail)
+        headline.textColor = MacTheme.Color.secondaryLabel
+        headline.maximumNumberOfLines = 2
+        headline.preferredMaxLayoutWidth = Self.ladderWidth - 20
 
         ladder.orientation = .vertical
         ladder.alignment = .leading
         ladder.spacing = 5
         ladder.translatesAutoresizingMaskIntoConstraints = false
 
-        let right = NSStackView(views: [head, ladder])
+        carryNotice.font = MacTheme.Ramp.font(.rowNote)
+        carryNotice.textColor = MacTheme.Color.secondaryLabel
+        carryNotice.maximumNumberOfLines = 3
+        carryNotice.preferredMaxLayoutWidth = Self.ladderWidth - 20
+
+        let right = NSStackView(views: [head, headline, ladder, carryNotice])
         right.orientation = .vertical
         right.alignment = .leading
         right.spacing = MacTheme.Spacing.s
+        right.setCustomSpacing(2, after: head)
         right.translatesAutoresizingMaskIntoConstraints = false
+        ladderFrame.translatesAutoresizingMaskIntoConstraints = false
 
         let divider = NSBox()
         divider.boxType = .separator
@@ -289,11 +337,10 @@ final class ModelDialPanel: NSViewController {
         columns.translatesAutoresizingMaskIntoConstraints = false
         columns.addSubview(left)
         columns.addSubview(divider)
+        columns.addSubview(ladderFrame)
         columns.addSubview(right)
         let leftFloor = columns.bottomAnchor.constraint(equalTo: left.bottomAnchor)
         leftFloor.priority = .defaultLow
-        let rightFloor = columns.bottomAnchor.constraint(equalTo: right.bottomAnchor)
-        rightFloor.priority = .defaultLow
 
         hint.font = MacTheme.Ramp.font(.hint)
         hint.textColor = MacTheme.Color.secondaryLabel
@@ -311,14 +358,15 @@ final class ModelDialPanel: NSViewController {
         root.addSubview(body)
 
         let inset = MacTheme.Spacing.m
+        let halo: CGFloat = 6
         NSLayoutConstraint.activate([
             body.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
             body.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
             body.topAnchor.constraint(equalTo: root.topAnchor, constant: inset),
             body.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -inset),
-            root.widthAnchor.constraint(greaterThanOrEqualToConstant: 620),
-            left.widthAnchor.constraint(equalToConstant: 340),
-            right.widthAnchor.constraint(equalToConstant: 260),
+            root.widthAnchor.constraint(greaterThanOrEqualToConstant: 640),
+            left.widthAnchor.constraint(equalToConstant: Self.listWidth),
+            right.widthAnchor.constraint(equalToConstant: Self.ladderWidth),
             left.leadingAnchor.constraint(equalTo: columns.leadingAnchor),
             left.topAnchor.constraint(equalTo: columns.topAnchor),
             divider.leadingAnchor.constraint(
@@ -328,11 +376,16 @@ final class ModelDialPanel: NSViewController {
             divider.bottomAnchor.constraint(equalTo: columns.bottomAnchor),
             right.leadingAnchor.constraint(
                 equalTo: divider.trailingAnchor, constant: MacTheme.Spacing.m),
-            right.topAnchor.constraint(equalTo: columns.topAnchor),
+            right.topAnchor.constraint(equalTo: columns.topAnchor, constant: halo),
             right.trailingAnchor.constraint(equalTo: columns.trailingAnchor),
+            ladderFrame.leadingAnchor.constraint(equalTo: right.leadingAnchor, constant: -halo),
+            ladderFrame.trailingAnchor.constraint(equalTo: right.trailingAnchor, constant: halo),
+            ladderFrame.topAnchor.constraint(equalTo: right.topAnchor, constant: -halo),
+            ladderFrame.bottomAnchor.constraint(equalTo: right.bottomAnchor, constant: halo),
             columns.bottomAnchor.constraint(greaterThanOrEqualTo: left.bottomAnchor),
-            columns.bottomAnchor.constraint(greaterThanOrEqualTo: right.bottomAnchor),
-            leftFloor, rightFloor,
+            columns.bottomAnchor.constraint(
+                greaterThanOrEqualTo: right.bottomAnchor, constant: halo),
+            leftFloor,
             searchField.widthAnchor.constraint(equalTo: left.widthAnchor),
             listScroll.widthAnchor.constraint(equalTo: left.widthAnchor),
             listHeight,
@@ -340,7 +393,9 @@ final class ModelDialPanel: NSViewController {
             modelList.topAnchor.constraint(equalTo: listScroll.contentView.topAnchor),
             modelList.leadingAnchor.constraint(equalTo: listScroll.contentView.leadingAnchor),
             head.widthAnchor.constraint(equalTo: right.widthAnchor),
+            headline.widthAnchor.constraint(equalTo: right.widthAnchor),
             ladder.widthAnchor.constraint(equalTo: right.widthAnchor),
+            carryNotice.widthAnchor.constraint(equalTo: right.widthAnchor),
             columns.widthAnchor.constraint(equalTo: body.widthAnchor),
             rule.widthAnchor.constraint(equalTo: body.widthAnchor),
             hint.widthAnchor.constraint(equalTo: body.widthAnchor),
@@ -348,7 +403,11 @@ final class ModelDialPanel: NSViewController {
         view = root
     }
 
+    /// The view is loaded first: the popover asks for the panel's size before AppKit has asked for
+    /// its view, and a list measured into a constraint that does not exist yet stays at its
+    /// placeholder height.
     func render(_ state: ModelDialState) {
+        loadViewIfNeeded()
         if searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) != state.query {
             searchField.stringValue = state.query
         }
@@ -356,7 +415,7 @@ final class ModelDialPanel: NSViewController {
             modelList.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
-        rowViews = []
+        rowViews = [:]
         for (index, row) in state.rows.enumerated() {
             if let section = row.section {
                 let label = NSTextField(labelWithString: "")
@@ -379,44 +438,127 @@ final class ModelDialPanel: NSViewController {
                 wrap.widthAnchor.constraint(equalTo: modelList.widthAnchor).isActive = true
             }
             let view = DialModelRowView(row: row)
-            view.onHover = { [weak self] in self?.onRowHover?(index) }
-            view.onPress = { [weak self] in self?.onRowPress?(index) }
+            if !row.isMessage {
+                view.onHover = { [weak self] in self?.onRowHover?(index) }
+                view.onPress = { [weak self] in self?.onRowPress?(index) }
+            }
             modelList.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: modelList.widthAnchor).isActive = true
-            rowViews.append(view)
+            rowViews[index] = view
         }
         highlight(state.cursor)
-        modelList.layoutSubtreeIfNeeded()
-        listHeight?.constant = min(modelList.fittingSize.height, Self.listCap)
+        listHeight?.constant = min(listContentHeight(), Self.listCap)
+        ladderKey = []
+        renderLadder(state)
+    }
 
-        headline.stringValue = state.headline
-        for view in ladder.arrangedSubviews {
-            ladder.removeArrangedSubview(view)
-            view.removeFromSuperview()
+    /// The list's own height, measured row by row at the column's width: the stack's fitting size
+    /// is read while it is still pinned to a clip of the old height, and answered with that.
+    private func listContentHeight() -> CGFloat {
+        let views = modelList.arrangedSubviews
+        let width = Self.listWidth
+        let rows = views.reduce(CGFloat(0)) { total, row in
+            let probe = row.widthAnchor.constraint(equalToConstant: width)
+            probe.priority = .required
+            row.addConstraint(probe)
+            defer { row.removeConstraint(probe) }
+            return total + row.fittingSize.height
         }
-        for rung in state.rungs {
-            let view = DialRungView(rung: rung, isCurrent: rung.id == state.currentRung?.id)
-            view.onPress = { [weak self] in self?.onRungPress?(rung) }
-            ladder.addArrangedSubview(view)
-            view.widthAnchor.constraint(equalTo: ladder.widthAnchor).isActive = true
+        return rows + modelList.spacing * CGFloat(max(0, views.count - 1))
+    }
+
+    /// The right column alone, which follows the cursor: the ladder of the row under it, the
+    /// headline naming whose levels these are, the preview mark, the sentence about what will
+    /// become of the level, and which column owns the arrows. Rungs are rebuilt only when the
+    /// ladder itself changed, so a hover across rows of one model does not churn views.
+    func renderLadder(_ state: ModelDialState) {
+        let live = !state.ladderIsPreview
+        let owns = state.column == .ladder
+        effortLabel.attributedStringValue = NSAttributedString(
+            string: Localized.text("EFFORT"),
+            attributes: MacTheme.Ramp.attributes(
+                .sectionLabel, color: owns ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel))
+        previewTag.isHidden = live
+        ladderFrame.owns = owns
+        headline.stringValue = state.headline
+        let current = state.currentRung?.id
+        let key = state.rungs.map { $0.id + ($0.id == current ? "·on" : "") } + [live ? "live" : "preview"]
+        if key != ladderKey {
+            ladderKey = key
+            for view in ladder.arrangedSubviews {
+                ladder.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+            for rung in state.rungs {
+                let view = DialRungView(rung: rung, isCurrent: rung.id == current)
+                view.onPress = { [weak self] in self?.onRungPress?(rung) }
+                ladder.addArrangedSubview(view)
+                view.widthAnchor.constraint(equalTo: ladder.widthAnchor).isActive = true
+            }
+        }
+        ladder.alphaValue = live ? 1 : 0.78
+        if let notice = state.carryNotice {
+            carryNotice.stringValue = notice
+            carryNotice.isHidden = false
+        } else {
+            carryNotice.stringValue = ""
+            carryNotice.isHidden = true
         }
         view.layoutSubtreeIfNeeded()
     }
 
     func highlight(_ cursor: Int) {
-        for (index, view) in rowViews.enumerated() { view.isFocused = index == cursor }
+        for (index, view) in rowViews { view.isFocused = index == cursor }
+    }
+
+    /// What the panel drew, for the self-test to read back without a screen.
+    var drawn: (preview: Bool, carry: String?, ladderOwnsArrows: Bool, rungs: Int, rowMeters: Int) {
+        let meters = rowViews.values.reduce(0) { count, row in
+            count + Self.meters(in: row)
+        }
+        return (
+            !previewTag.isHidden, carryNotice.isHidden ? nil : carryNotice.stringValue,
+            ladderFrame.owns, ladder.arrangedSubviews.count, meters
+        )
+    }
+
+    private static func meters(in view: NSView) -> Int {
+        (view is EffortMeterView ? 1 : 0) + view.subviews.reduce(0) { $0 + meters(in: $1) }
     }
 
     func reveal(_ cursor: Int) {
-        guard rowViews.indices.contains(cursor) else { return }
-        let row = rowViews[cursor]
+        guard let row = rowViews[cursor] else { return }
         row.scrollToVisible(row.bounds)
     }
 }
 
-/// One model row: the star, the name, its capabilities in the quieter register, the door or the
-/// machine, and the wall in front of it. The row under the cursor wears a wash and an accent
-/// edge; hovering moves the cursor, so the mouse and the arrows are one cursor.
+/// The ladder column's frame: drawn only while the arrows are the ladder's, so a person who
+/// pressed ⇥ can see where ↑↓ now land without reading the hint.
+@MainActor
+private final class ColumnFrameView: NSView {
+    var owns = false {
+        didSet { if owns != oldValue { needsDisplay = true } }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard owns else { return }
+        let shape = NSBezierPath(
+            roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)
+        MacTheme.Color.accent.withAlphaComponent(0.06).setFill()
+        shape.fill()
+        MacTheme.Color.accent.withAlphaComponent(0.45).setStroke()
+        shape.lineWidth = 1
+        shape.stroke()
+    }
+}
+
+/// One model row: the star, the family's dot, the name, its capabilities in the quieter register,
+/// the pinned pair's level as the pill's own word and meter, the door or the machine, the wall in
+/// front of it, and a check on the row this chat runs. The row under the cursor wears a wash and
+/// an accent edge; hovering moves the cursor, so the mouse and the arrows are one cursor. A row
+/// that is a message — a search that found nothing — is two quiet lines and answers nothing.
 @MainActor
 private final class DialModelRowView: NSView {
     var onHover: (() -> Void)?
@@ -432,13 +574,29 @@ private final class DialModelRowView: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         setAccessibilityElement(true)
+        guard !row.isMessage else {
+            buildMessage()
+            return
+        }
         setAccessibilityRole(.button)
-        setAccessibilityLabel([row.title, row.detail].filter { !$0.isEmpty }.joined(separator: ", "))
+        let levelWords = row.level.map { Localized.text("%@ effort", $0.word) }
+        setAccessibilityLabel(
+            [row.title, levelWords, row.detail, row.isStarred ? Localized.text("pinned") : nil]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", "))
+        setAccessibilityValue(row.isCurrent ? Localized.text("current") : nil)
 
         let star = NSTextField(labelWithString: row.candidate == nil ? "" : (row.isStarred ? "★" : "☆"))
         star.font = MacTheme.Ramp.font(.rowMeta)
-        star.textColor = row.isStarred ? MacTheme.Color.warning : MacTheme.Color.tertiaryLabel
+        star.textColor = row.isStarred ? MacTheme.Color.mark : MacTheme.Color.tertiaryLabel
         star.alignment = .center
+
+        let dot = NSTextField(labelWithString: row.candidate == nil ? "" : "●")
+        dot.font = MacTheme.Ramp.font(.chip)
+        dot.textColor =
+            row.candidate.flatMap { ModelBadge.chip(model: $0.selection.modelID, effort: nil) }
+            .map(MacTheme.Color.modelIdentity) ?? MacTheme.Color.tertiaryLabel
+        dot.setContentHuggingPriority(.required, for: .horizontal)
+        dot.isHidden = row.candidate == nil
 
         let title = NSTextField(labelWithString: row.title)
         title.font = MacTheme.Ramp.font(row.isCurrent ? .rowTitleStrong : .rowTitle)
@@ -448,11 +606,12 @@ private final class DialModelRowView: NSView {
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.init(260), for: .horizontal)
 
-        let line = NSStackView(views: [star, title])
+        let line = NSStackView(views: [star, dot, title])
         line.orientation = .horizontal
         line.alignment = .centerY
         line.distribution = .fill
         line.spacing = MacTheme.Spacing.s
+        line.setCustomSpacing(5, after: dot)
         line.translatesAutoresizingMaskIntoConstraints = false
 
         let chips = row.facts.filter(\.isCapability)
@@ -472,23 +631,108 @@ private final class DialModelRowView: NSView {
             note.setContentCompressionResistancePriority(.required, for: .horizontal)
             line.addArrangedSubview(note)
         }
-        if !row.detail.isEmpty {
+        let showsDetail = row.level == nil || row.candidate?.isElsewhere == true
+        if showsDetail, !row.detail.isEmpty {
             let detail = NSTextField(labelWithString: row.detail)
             detail.font = MacTheme.Ramp.font(.rowNote)
             detail.textColor = MacTheme.Color.secondaryLabel
             detail.lineBreakMode = .byTruncatingTail
             detail.setContentCompressionResistancePriority(.init(240), for: .horizontal)
             line.addArrangedSubview(detail)
+        } else if !row.detail.isEmpty {
+            toolTip = row.detail
         }
+        if let level = row.level {
+            line.addArrangedSubview(Self.levelView(level))
+        }
+        let check = NSTextField(labelWithString: row.isCurrent ? "✓" : "")
+        check.font = MacTheme.Ramp.font(.rowMeta)
+        check.textColor = MacTheme.Color.accent
+        check.alignment = .center
+        line.addArrangedSubview(check)
 
         addSubview(line)
         NSLayoutConstraint.activate([
             line.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            line.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            line.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             line.topAnchor.constraint(equalTo: topAnchor, constant: 5),
             line.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5),
             star.widthAnchor.constraint(equalToConstant: 14 * MacTheme.UIScale.factor),
+            check.widthAnchor.constraint(equalToConstant: 12 * MacTheme.UIScale.factor),
         ])
+    }
+
+    /// The list's width less the row's insets, so the message wraps where it will be drawn and the
+    /// list is measured tall enough to hold it.
+    private static let messageWidth: CGFloat = 332
+
+    /// The search that found nothing says so in two lines — what was asked and where it looked —
+    /// in the quiet ink of a caption, because it is an answer and not a row to take.
+    private func buildMessage() {
+        setAccessibilityRole(.staticText)
+        setAccessibilityLabel([row.title, row.detail].filter { !$0.isEmpty }.joined(separator: ". "))
+        let title = NSTextField(wrappingLabelWithString: row.title)
+        title.font = MacTheme.Ramp.font(.rowTitle)
+        title.textColor = MacTheme.Color.secondaryLabel
+        title.isSelectable = false
+        let detail = NSTextField(wrappingLabelWithString: row.detail)
+        detail.font = MacTheme.Ramp.font(.rowNote)
+        detail.textColor = MacTheme.Color.tertiaryLabel
+        detail.isSelectable = false
+        detail.isHidden = row.detail.isEmpty
+        title.preferredMaxLayoutWidth = Self.messageWidth
+        detail.preferredMaxLayoutWidth = Self.messageWidth
+        let stack = NSStackView(views: [title, detail])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 2
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            title.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            detail.widthAnchor.constraint(equalTo: stack.widthAnchor),
+        ])
+    }
+
+    /// A pinned pair's level, drawn the way the pill draws it: the word in quiet ink and the five
+    /// bars carrying the heat, so a pair reads the same in the list as it will on the pill.
+    private static func levelView(_ level: ModelDialRow.Level) -> NSView {
+        let size = MacTheme.Ramp.font(.rowNote).pointSize
+        let word = NSTextField(labelWithString: "")
+        let meter = EffortMeterView()
+        if level.isPower {
+            word.attributedStringValue = DialPill.rainbow(level.word, pointSize: size)
+            meter.set(lit: level.heat, tint: nil, rainbow: true, cold: false, glow: 6)
+        } else if level.isServer {
+            word.attributedStringValue = NSAttributedString(
+                string: level.word,
+                attributes: EffortHeat.attributes(
+                    EffortHeat.Style(weight: .regular, glow: 0), pointSize: size,
+                    colour: MacTheme.Color.tertiaryLabel))
+            meter.set(lit: 0, tint: nil, rainbow: false, cold: true, glow: 0)
+        } else {
+            word.attributedStringValue = NSAttributedString(
+                string: level.word,
+                attributes: EffortHeat.attributes(
+                    level.word, pointSize: size, colour: MacTheme.Color.secondaryLabel))
+            meter.set(
+                lit: level.heat,
+                tint: MacTheme.Color.modelEffort(level.word) ?? MacTheme.Color.secondaryLabel,
+                rainbow: false, cold: false, glow: EffortHeat.style(level.word).glow,
+                ember: level.isEmber)
+        }
+        word.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let stack = NSStackView(views: [word, meter])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 2
+        stack.setContentHuggingPriority(.required, for: .horizontal)
+        stack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return stack
     }
 
     @available(*, unavailable)
@@ -553,7 +797,7 @@ private final class DialModelRowView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard isFocused else { return }
+        guard isFocused, !row.isMessage else { return }
         let wash = NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7)
         MacTheme.Color.accent.withAlphaComponent(0.12).setFill()
         wash.fill()
@@ -565,8 +809,10 @@ private final class DialModelRowView: NSView {
     }
 }
 
-/// One rung of the ladder: its digit, its word in the tier's colour over what it means, and
-/// its bars. The rung in force wears the tier's wash and border; the power wears the rainbow.
+/// One rung of the ladder: its digit, its word in ink over what it means, and its bars in the
+/// tier's heat — hue is who answers and heat is how hard, so colour lives on the bars and the
+/// frame, never on the word. The rung in force wears the tier's wash and border; the power wears
+/// the rainbow.
 @MainActor
 private final class DialRungView: NSView {
     var onPress: (() -> Void)?
@@ -605,7 +851,7 @@ private final class DialRungView: NSView {
         } else {
             title.stringValue = rung.title
             title.font = MacTheme.Ramp.font(rung.isServer ? .rowTitle : .rowTitleStrong)
-            title.textColor = tint
+            title.textColor = rung.isServer ? MacTheme.Color.secondaryLabel : MacTheme.Color.label
         }
         title.lineBreakMode = .byTruncatingTail
         let caption = NSTextField(labelWithString: rung.caption)
@@ -703,4 +949,24 @@ private final class DialRungView: NSView {
 @MainActor
 private final class FlippedStackView: NSStackView {
     nonisolated override var isFlipped: Bool { true }
+}
+
+/// Pinned pairs over the chooser's fixture fleet, so the dial's pairs, previews and carry notices
+/// can be drawn on a desk with no servers and no pins of its own: one pair this chat runs, one
+/// whose level the model lacks, one on another machine kept as a bare star.
+enum ModelDialDemo {
+    static var presets: [ModelPreset] {
+        [
+            ModelPreset(selection: ModelChooserDemo.selected, effort: .level("high")),
+            ModelPreset(
+                selection: ModelSelection(providerID: "anthropic", modelID: "claude-sonnet-5"),
+                effort: .level("max")),
+            ModelPreset(
+                selection: ModelSelection(providerID: "opencode-go", modelID: "gpt-5.6-luna"),
+                effort: .server),
+            ModelPreset(
+                selection: ModelSelection(providerID: "ollama", modelID: "qwen3-coder:30b"),
+                effort: .keep),
+        ]
+    }
 }

@@ -989,6 +989,28 @@ enum MatrixTheme {
             border-color: alpha(\(text), 0.35);
         }
         .dial-hint { \(t(.hint)) color: \(textDim); opacity: 0.7; }
+        .dial-row-dot { \(t(.hint)) color: \(textDim); }
+        .dial-check { \(t(.hint)) color: \(accent); font-weight: 700; }
+        .dial-row-level { margin-left: 4px; }
+        .dial-level-word { \(t(.rowDetail)) color: \(text); }
+        .dial-level-word.dial-level-server { color: \(textDim); }
+        .dial-message-title { \(t(.rowTitle)) color: \(textDim); }
+        .dial-message-detail { \(t(.rowDetail)) color: \(textDim); opacity: 0.8; }
+        .dial-models, .dial-ladder { border-top: 2px solid transparent; }
+        .dial-models.dial-column-active, .dial-ladder.dial-column-active {
+            border-top-color: alpha(\(accent), 0.7);
+        }
+        .dial-ladder.dial-column-active .dial-section { color: \(accent); opacity: 1; }
+        .dial-ladder-preview button.dial-rung { opacity: 0.82; }
+        .dial-ladder-preview button.dial-rung-current { opacity: 1; }
+        .dial-preview-tag {
+            \(t(.badge))
+            color: \(textDim);
+            border: 1px solid \(rule);
+            border-radius: 4px;
+            padding: 0 4px;
+        }
+        .dial-carry { \(t(.rowDetail)) color: \(text); }
         \(dialTintCSS(for: palette))
 
         .chip {
@@ -1659,6 +1681,7 @@ enum MatrixTheme {
             }
         }
         for pair in pairs {
+            lines.append(".dial-dot.\(pair.cls), .dial-row-dot.\(pair.cls) { color: \(pair.hex); }")
             lines.append(
                 ".pill-row menubutton.\(pair.cls) > button { color: \(pair.hex); "
                     + "border-color: alpha(\(pair.hex), 0.55); }")

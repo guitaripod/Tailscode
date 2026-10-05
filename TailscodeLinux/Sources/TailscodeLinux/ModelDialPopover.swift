@@ -8,14 +8,16 @@ import TailscodeCore
 /// the model this chat runs, so which machine and how hard are decided in one place.
 ///
 /// Every decision is `ModelDialState`'s — the rows, the rungs, the cursor, what each key does.
-/// This class draws the answer and forwards presses: a model row commits through `onPick` and the
-/// popover closes; a rung is live through `onEffort` and the popover stays, because a level is
-/// something a person nudges while looking at the ladder, not something they submit.
+/// This class draws the answer and forwards presses: a model row commits through `onPick` with the
+/// level the ladder showed for it and the popover closes; a rung on this chat's own model is live
+/// through `onEffort` and the popover stays, because a level is something a person nudges while
+/// looking at the ladder, not something they submit. On any other row the ladder is a preview of
+/// that model's levels, and a rung pressed there only travels with the pick.
 final class ModelDialPopover: @unchecked Sendable {
     let popover: UnsafeMutablePointer<GtkWidget>
     private var state: ModelDialState?
     private let makeState: @Sendable () -> ModelDialState
-    private let onPick: @Sendable (ModelPick) -> Void
+    private let onPick: @Sendable (ModelPick, EffortAsk, String?) -> Void
     private let onEffort: @Sendable (String?) -> Void
     private let onOpenCatalog: @Sendable () -> Void
     private var entry: UnsafeMutablePointer<GtkWidget>?
@@ -24,10 +26,12 @@ final class ModelDialPopover: @unchecked Sendable {
     private var rowWidgets: [UInt] = []
     private var rungWidgets: [(level: String?, widget: UInt)] = []
     private var scroller: UnsafeMutablePointer<GtkWidget>?
+    private var modelsPane: UnsafeMutablePointer<GtkWidget>?
+    private var ladderSignature = ""
 
     init(
         makeState: @escaping @Sendable () -> ModelDialState,
-        onPick: @escaping @Sendable (ModelPick) -> Void,
+        onPick: @escaping @Sendable (ModelPick, EffortAsk, String?) -> Void,
         onEffort: @escaping @Sendable (String?) -> Void,
         onOpenCatalog: @escaping @Sendable () -> Void
     ) {
@@ -39,7 +43,7 @@ final class ModelDialPopover: @unchecked Sendable {
         Gtk.addClass(popover, "dial-pop")
         gtk_popover_set_has_arrow(ptr(popover), 1)
         Gtk.connect(UnsafeMutableRawPointer(popover), "map") { [weak self] in
-            Gtk.onMain { [weak self] in self?.open() }
+            Gtk.onMain { [weak self] in self?.fill() }
         }
         Gtk.connect(UnsafeMutableRawPointer(popover), "closed") { [weak self] in
             Gtk.onMain { [weak self] in self?.tearDown() }
@@ -52,13 +56,14 @@ final class ModelDialPopover: @unchecked Sendable {
 
     /// The dial re-reads the composer every time it opens: a chat may have changed model under
     /// it, and a level nudged with the wheel since is the level the ladder must light.
-    private func open() {
+    func fill() {
         state = makeState()
         let shell = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         let columns = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         let models = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         Gtk.addClass(models, "dial-models")
-        gtk_widget_set_size_request(models, 400, -1)
+        modelsPane = models
+        gtk_widget_set_size_request(models, 430, -1)
         let search = gtk_entry_new()!
         gtk_entry_set_placeholder_text(ptr(search), Localized.text("Search every model"))
         Gtk.addClass(search, "dial-search")
@@ -107,16 +112,43 @@ final class ModelDialPopover: @unchecked Sendable {
         modelsColumn = nil
         ladderColumn = nil
         scroller = nil
+        modelsPane = nil
+        ladderSignature = ""
         rowWidgets = []
         rungWidgets = []
         state = nil
         gtk_popover_set_child(ptr(popover), nil)
     }
 
+    /// What the dial holds right now, for a harness that has to prove what it drew.
+    var current: ModelDialState? { state }
+
+    /// A key arriving the way a press does, for the drive verbs and the self-test.
+    func press(keyval: UInt32, state: UInt32 = 0) -> Bool {
+        key(keyval: keyval, state: state)
+    }
+
+    func search(_ text: String) {
+        guard let entry else { return }
+        gtk_editable_set_text(op(entry), text)
+        queryChanged()
+    }
+
+    var drawsPreview: Bool {
+        ladderColumn.map { gtk_widget_has_css_class($0, "dial-ladder-preview") != 0 } ?? false
+    }
+
+    var activeColumnIsLadder: Bool {
+        ladderColumn.map { gtk_widget_has_css_class($0, "dial-column-active") != 0 } ?? false
+    }
+
+    var drawnRows: Int { rowWidgets.count }
+
     private func queryChanged() {
         guard let entry, let raw = gtk_editable_get_text(op(entry)) else { return }
         state?.search(String(cString: raw))
         renderModels()
+        renderLadder()
     }
 
     private func key(keyval: UInt32, state: UInt32) -> Bool {
@@ -135,22 +167,29 @@ final class ModelDialPopover: @unchecked Sendable {
             return false
         case .moved:
             syncCursor()
+            renderLadder()
             return true
         case .effort(let level):
             onEffort(level)
             syncLadder()
             return true
-        case .pick(let pick):
+        case .previewed:
+            renderLadder()
+            return true
+        case .pick(let pick, let effort):
+            let notice = state?.pickNotice
             gtk_popover_popdown(ptr(popover))
-            onPick(pick)
+            onPick(pick, effort, notice)
             return true
         case .openCatalog:
             gtk_popover_popdown(ptr(popover))
             onOpenCatalog()
             return true
-        case .starred(let selection):
-            ModelFavoritesStore.toggle(selection)
+        case .pinned(let preset):
+            ModelPresetStore.pin(preset)
+            SettingsFile.capture()
             renderModels()
+            renderLadder()
             return true
         case .dismiss:
             gtk_popover_popdown(ptr(popover))
@@ -158,7 +197,7 @@ final class ModelDialPopover: @unchecked Sendable {
         }
     }
 
-    /// The column is rebuilt when its rows change — a query, a star — and only re-lit when the
+    /// The column is rebuilt when its rows change — a query, a pin — and only re-lit when the
     /// cursor moves, so walking the list never scrolls it under the hand.
     private func renderModels() {
         guard let column = modelsColumn, let dial = state else { return }
@@ -171,17 +210,33 @@ final class ModelDialPopover: @unchecked Sendable {
                 gtk_box_append(ptr(column), heading)
             }
             if row.kind == .serverDefault || row.opensCatalog, index > 0,
-                dial.rows[index - 1].candidate != nil
+                dial.rows[index - 1].candidate != nil || dial.rows[index - 1].isMessage
             {
                 let rule = Gtk.hairline()
                 Gtk.margins(rule, top: 6, bottom: 4, leading: 6, trailing: 6)
                 gtk_box_append(ptr(column), rule)
             }
-            let button = makeRow(row, at: index)
-            rowWidgets.append(UInt(bitPattern: button))
-            gtk_box_append(ptr(column), button)
+            let widget = row.isMessage ? makeMessage(row) : makeRow(row, at: index)
+            rowWidgets.append(UInt(bitPattern: widget))
+            gtk_box_append(ptr(column), widget)
         }
         syncCursor()
+    }
+
+    /// A row that answers rather than offers — a search that found nothing — is two quiet lines
+    /// and no control: nothing to hover, nothing to press, no star to set.
+    private func makeMessage(_ row: ModelDialRow) -> UnsafeMutablePointer<GtkWidget> {
+        let box = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        Gtk.addClass(box, "dial-message")
+        Gtk.margins(box, top: 10, bottom: 10, leading: 12, trailing: 12)
+        let title = Gtk.label(row.title, css: "dial-message-title", wrap: true, selectable: false)
+        gtk_box_append(ptr(box), title)
+        if !row.detail.isEmpty {
+            gtk_box_append(
+                ptr(box),
+                Gtk.label(row.detail, css: "dial-message-detail", wrap: true, selectable: false))
+        }
+        return box
     }
 
     private func makeRow(_ row: ModelDialRow, at index: Int) -> UnsafeMutablePointer<GtkWidget> {
@@ -192,15 +247,17 @@ final class ModelDialPopover: @unchecked Sendable {
         if row.opensCatalog { Gtk.addClass(button, "dial-row-door") }
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.margins(line, top: 5, bottom: 5, leading: 8, trailing: 8)
-        if row.candidate != nil {
-            let star = Gtk.label(row.isStarred ? "★" : "☆", css: "dial-star", selectable: false)
-            if row.isStarred { Gtk.addClass(star, "dial-star-on") }
-            gtk_widget_set_valign(star, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(line), star)
-        }
+        let star = Gtk.label(
+            row.candidate == nil ? "" : (row.isStarred ? "★" : "☆"), css: "dial-star",
+            selectable: false)
+        if row.isStarred { Gtk.addClass(star, "dial-star-on") }
+        gtk_widget_set_size_request(star, 12, -1)
+        gtk_widget_set_valign(star, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(line), star)
+        gtk_box_append(ptr(line), Self.familyDot(for: row))
         let title = Gtk.label(row.title, css: "dial-title", selectable: false)
-        gtk_label_set_width_chars(op(title), 16)
-        gtk_widget_set_hexpand(title, 1)
+        gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
+        gtk_label_set_max_width_chars(op(title), 24)
         gtk_widget_set_valign(title, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(line), title)
         for fact in row.facts where fact == .vision || fact == .pdf || fact == .local {
@@ -210,17 +267,29 @@ final class ModelDialPopover: @unchecked Sendable {
             gtk_widget_set_tooltip_text(chip, fact.label)
             gtk_box_append(ptr(line), chip)
         }
+        let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_widget_set_hexpand(spacer, 1)
+        gtk_box_append(ptr(line), spacer)
         if let wall = row.wall {
             let note = Gtk.label(QuotaSurface.rowNote(wall), css: "dial-wall", selectable: false)
             gtk_widget_set_valign(note, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), note)
         }
-        if !row.detail.isEmpty {
+        let showsDetail = row.level == nil || row.candidate?.isElsewhere == true
+        if showsDetail, !row.detail.isEmpty {
             let detail = Gtk.label(row.detail, css: "dial-detail", selectable: false)
+            gtk_label_set_ellipsize(op(detail), PANGO_ELLIPSIZE_END)
             gtk_label_set_max_width_chars(op(detail), row.candidate == nil ? 28 : 16)
             gtk_widget_set_valign(detail, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), detail)
         }
+        if let level = row.level {
+            gtk_box_append(ptr(line), Self.levelMark(level))
+        }
+        let check = Gtk.label(row.isCurrent ? "✓" : "", css: "dial-check", selectable: false)
+        gtk_widget_set_size_request(check, 12, -1)
+        gtk_widget_set_valign(check, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(line), check)
         gtk_button_set_child(ptr(button), line)
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
             Gtk.onMain { [weak self] in
@@ -234,15 +303,71 @@ final class ModelDialPopover: @unchecked Sendable {
         return button
     }
 
+    /// Who answers, as a dot in the family's hue: the server's own choice is a ring, because it
+    /// names no model, and the door to the catalog wears nothing.
+    private static func familyDot(for row: ModelDialRow) -> UnsafeMutablePointer<GtkWidget> {
+        let dot = Gtk.label("", css: "dial-row-dot", selectable: false)
+        gtk_widget_set_size_request(dot, 10, -1)
+        gtk_widget_set_valign(dot, GTK_ALIGN_CENTER)
+        if let candidate = row.candidate {
+            gtk_label_set_text(op(dot), "●")
+            let chip = ModelBadge.chip(model: candidate.selection.modelID, effort: nil)
+            Gtk.addClass(
+                dot, ModelTint.identityClass(family: chip?.family, name: chip?.name ?? candidate.name))
+        } else if row.kind == .serverDefault {
+            gtk_label_set_text(op(dot), "○")
+        }
+        return dot
+    }
+
+    /// A pinned pair's level, drawn as the pill draws it: the word in ink beside the same five
+    /// bars in the tier's heat, so the row promises exactly what the pill will then say.
+    static func levelMark(_ level: ModelDialRow.Level) -> UnsafeMutablePointer<GtkWidget> {
+        let box = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        Gtk.addClass(box, "dial-row-level")
+        gtk_widget_set_valign(box, GTK_ALIGN_CENTER)
+        let word: UnsafeMutablePointer<GtkWidget>
+        if level.isPower {
+            word = Gtk.markupLabel(rainbowMarkup(level.word), css: "dial-level-word", wrap: false)
+            gtk_label_set_selectable(op(word), 0)
+        } else {
+            word = Gtk.label(level.word, css: "dial-level-word", selectable: false)
+        }
+        if level.isServer { Gtk.addClass(word, "dial-level-server") }
+        gtk_widget_set_valign(word, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(box), word)
+        let meter = meter(
+            heat: level.heat, tint: level.isServer ? nil : ModelTint.effortClass(level.word),
+            rainbow: level.isPower, ember: level.isEmber)
+        gtk_widget_set_valign(meter, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(box), meter)
+        return box
+    }
+
     private func syncCursor() {
         guard let dial = state else { return }
         for (index, bits) in rowWidgets.enumerated() {
             guard let widget = UnsafeMutablePointer<GtkWidget>(bitPattern: bits) else { continue }
-            if index == dial.cursor {
+            if index == dial.cursor, !dial.rows[index].isMessage {
                 gtk_widget_add_css_class(widget, "dial-row-cursor")
                 revealRow(widget)
             } else {
                 gtk_widget_remove_css_class(widget, "dial-row-cursor")
+            }
+        }
+        syncColumn()
+    }
+
+    /// The column the arrows drive wears the accent on its edge, so ⇥ moving them is seen
+    /// rather than discovered by pressing ↓ and watching the wrong thing move.
+    private func syncColumn() {
+        guard let dial = state else { return }
+        for (widget, column) in [(modelsPane, ModelDialState.Column.models), (ladderColumn, .ladder)] {
+            guard let widget else { continue }
+            if dial.column == column {
+                gtk_widget_add_css_class(widget, "dial-column-active")
+            } else {
+                gtk_widget_remove_css_class(widget, "dial-column-active")
             }
         }
     }
@@ -265,25 +390,56 @@ final class ModelDialPopover: @unchecked Sendable {
         }
     }
 
+    /// The ladder follows the cursor, so it is redrawn whenever what it is the ladder of changes —
+    /// another model's levels, a preview turning live, a carry sentence appearing — and only
+    /// re-lit when nothing but the level moved.
     private func renderLadder() {
         guard let ladder = ladderColumn, let dial = state else { return }
+        let signature = [
+            dial.rungs.map(\.id).joined(separator: ","), dial.headline,
+            dial.ladderIsPreview ? "preview" : "live", dial.carryNotice ?? "",
+        ].joined(separator: "|")
+        guard signature != ladderSignature else {
+            syncLadder()
+            return
+        }
+        ladderSignature = signature
         Gtk.removeChildren(of: ladder)
         rungWidgets = []
+        if dial.ladderIsPreview {
+            gtk_widget_add_css_class(ladder, "dial-ladder-preview")
+        } else {
+            gtk_widget_remove_css_class(ladder, "dial-ladder-preview")
+        }
         let head = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let word = Gtk.label(Localized.text("EFFORT"), css: "dial-section", selectable: false)
         gtk_widget_set_hexpand(word, 1)
         gtk_box_append(ptr(head), word)
-        let headline = Gtk.label(dial.headline, css: "dial-headline", selectable: false)
-        gtk_label_set_xalign(op(headline), 1)
-        gtk_box_append(ptr(head), headline)
-        Gtk.margins(head, bottom: 4, leading: 2, trailing: 2)
+        if dial.ladderIsPreview {
+            let tag = Gtk.label(Localized.text("preview"), css: "dial-preview-tag", selectable: false)
+            gtk_widget_set_tooltip_text(
+                tag, Localized.text("The ladder shows the levels of the row you are on."))
+            gtk_box_append(ptr(head), tag)
+        }
+        Gtk.margins(head, bottom: 2, leading: 2, trailing: 2)
         gtk_box_append(ptr(ladder), head)
-        for rung in dial.rungs {
+        let headline = Gtk.label(dial.headline, css: "dial-headline", wrap: true, selectable: false)
+        gtk_label_set_max_width_chars(op(headline), 34)
+        Gtk.margins(headline, bottom: 4, leading: 2, trailing: 2)
+        gtk_box_append(ptr(ladder), headline)
+        for rung in dial.rungs where ModelEffort.isOffered(options: dial.focusedOptions) {
             let button = makeRung(rung)
             rungWidgets.append((rung.level, UInt(bitPattern: button)))
             gtk_box_append(ptr(ladder), button)
         }
+        if let notice = dial.carryNotice {
+            let line = Gtk.label(notice, css: "dial-carry", wrap: true, selectable: false)
+            gtk_label_set_max_width_chars(op(line), 34)
+            Gtk.margins(line, top: 6, leading: 2, trailing: 2)
+            gtk_box_append(ptr(ladder), line)
+        }
         syncLadder()
+        syncColumn()
     }
 
     private func makeRung(_ rung: EffortRung) -> UnsafeMutablePointer<GtkWidget> {
@@ -315,21 +471,19 @@ final class ModelDialPopover: @unchecked Sendable {
                 ptr(words), Gtk.label(rung.caption, css: "dial-rung-caption", selectable: false))
         }
         gtk_box_append(ptr(line), words)
-        if !rung.isServer {
-            let meter = Self.meter(
-                heat: rung.heat, tint: rung.level.flatMap(ModelTint.effortClass),
-                rainbow: rung.isPower, ember: rung.isEmber)
-            gtk_widget_set_valign(meter, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(line), meter)
-        }
+        let meter = Self.meter(
+            heat: rung.heat, tint: rung.level.flatMap(ModelTint.effortClass),
+            rainbow: rung.isPower, ember: rung.isEmber)
+        gtk_widget_set_valign(meter, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(line), meter)
         gtk_button_set_child(ptr(button), line)
         let level = rung.level
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
             Gtk.onMain { [weak self] in
                 guard let self, var dial = self.state else { return }
-                dial.setEffort(level)
+                let outcome = dial.setEffort(level)
                 self.state = dial
-                _ = self.act(on: .effort(dial.effort))
+                _ = self.act(on: outcome)
             }
         }
         return button
@@ -337,9 +491,10 @@ final class ModelDialPopover: @unchecked Sendable {
 
     private func syncLadder() {
         guard let dial = state else { return }
+        let lit = dial.currentRung
         for (level, bits) in rungWidgets {
             guard let widget = UnsafeMutablePointer<GtkWidget>(bitPattern: bits) else { continue }
-            if level == dial.effort {
+            if let lit, level == lit.level {
                 gtk_widget_add_css_class(widget, "dial-rung-current")
             } else {
                 gtk_widget_remove_css_class(widget, "dial-rung-current")

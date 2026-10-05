@@ -289,7 +289,7 @@ struct ModelEffortTests {
         #expect(ModelEffort.surviving("high", options: ["low", "high"]) == "high")
     }
 
-    @Test("A model pick drops a level the new model cannot run")
+    @Test("A model pick carries a level the new model cannot run to the nearest cooler one")
     func adoptOnModelPick() {
         let maxOnly = ModelInfo(
             id: "a", name: "A", providerID: "opencode-go", variants: ["low", "medium", "high", "max"])
@@ -299,7 +299,7 @@ struct ModelEffortTests {
         #expect(
             ModelEffort.adopt(
                 "max", for: noMax.selection, models: [maxOnly, noMax, none], agentOptions: [])
-                == nil)
+                == "high")
         #expect(
             ModelEffort.adopt(
                 "high", for: noMax.selection, models: [maxOnly, noMax, none], agentOptions: [])
@@ -334,14 +334,14 @@ struct ModelEffortTests {
                 == ["low", "medium", "high", "xhigh"])
     }
 
-    @Test("A picked level the server cannot execute is handed back, not shipped")
+    @Test("A picked level the server cannot execute is carried down, not shipped")
     func strandedUnrunnableFallsBackToServerEffort() {
         let grok = ModelInfo(
             id: "grok-4.6", name: "Grok 4.6", providerID: "xai",
             variants: ["low", "medium", "high", "xhigh"])
         #expect(
             ModelEffort.adopt(
-                "xhigh", for: grok.selection, models: [grok], agentOptions: []) == nil)
+                "xhigh", for: grok.selection, models: [grok], agentOptions: []) == "high")
         #expect(
             ModelEffort.adopt(
                 "high", for: grok.selection, models: [grok], agentOptions: []) == "high")

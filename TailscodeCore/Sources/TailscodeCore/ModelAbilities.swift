@@ -179,19 +179,20 @@ public enum ModelEffort {
         return level
     }
 
-    /// What effort becomes after a model pick. Keep the level only where the new model offers it;
-    /// otherwise hand it back to the server. Every surface that changes the model runs the level
-    /// through here, so a stranded "max" can never stay named, checked nowhere, and shipped with
-    /// the next prompt.
+    /// What effort becomes after a model pick. Keep the level where the new model offers it; move
+    /// it to the nearest cooler level where it does not (`carry`); hand it back to the server only
+    /// where nothing cooler exists. Every surface that changes the model runs the level through
+    /// here, so a stranded "max" can never stay named, checked nowhere, and shipped with the next
+    /// prompt.
     public static func adopt(_ level: String?, for selection: ModelSelection?, models: [ModelInfo],
         agentOptions: [String]
     ) -> String? {
-        surviving(level, options: options(models: models, selection: selection, agentOptions: agentOptions))
+        adoption(level, for: selection, models: models, agentOptions: agentOptions).level
     }
 
     public static func adopt(
         _ level: String?, modelID: String?, models: [ModelInfo], agentOptions: [String]
     ) -> String? {
-        surviving(level, options: options(models: models, modelID: modelID, agentOptions: agentOptions))
+        carry(level, options: options(models: models, modelID: modelID, agentOptions: agentOptions)).level
     }
 }

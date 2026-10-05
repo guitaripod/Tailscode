@@ -90,7 +90,7 @@ struct ModelDialTests {
         var state = ModelDialState(
             sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,
             effort: effort, options: claude, modelWord: "Opus", quotas: [],
-            recents: ModelChooserDemo.recents, favorites: [])
+            recents: ModelChooserDemo.recents, presets: [])
         if !query.isEmpty { state.search(query) }
         return state
     }
@@ -114,7 +114,7 @@ struct ModelDialTests {
         #expect(dial.cursor == start + 1)
         #expect(dial.effort == "high")
         let picked = dial.handle(.activate)
-        guard case .pick(let pick) = picked else {
+        guard case .pick(let pick, _) = picked else {
             Issue.record("enter did not pick")
             return
         }
@@ -161,8 +161,10 @@ struct ModelDialTests {
         #expect(ModelDialState.command(for: chord(Keymap.enter, control: true), digitsLive: true) == .openAll)
         #expect(ModelDialState.command(for: chord(0x33), digitsLive: true) == .digit(3))
         #expect(ModelDialState.command(for: chord(0x33), digitsLive: false) == nil)
-        #expect(ModelDialState.command(for: chord(0x73, control: true), digitsLive: true) == .star)
+        #expect(ModelDialState.command(for: chord(0x73, control: true), digitsLive: true) == .pin)
         #expect(ModelDialState.command(for: chord(Keymap.escape), digitsLive: true) == .dismiss)
+        #expect(ModelDialState.command(for: chord(Keymap.tab), digitsLive: false) == .switchColumn)
+        #expect(ModelDialState.command(for: chord(0xFE20), digitsLive: false) == .switchColumn)
     }
 
     @Test("The dial's chords are registered on both desktops' composer")

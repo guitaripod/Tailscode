@@ -2461,6 +2461,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                 forContextID: aim.resolutionContext ?? aim.profile.id)
         let state = [
             aim.lane.rawValue, aim.profile.id, aim.directory ?? "", title, modelLabel ?? "",
+            dialOptions(for: aim).joined(separator: ","),
         ].joined(separator: "|")
         guard state != appliedComposerState else { return }
         appliedComposerState = state
@@ -2481,7 +2482,7 @@ extension HomeViewController: HomeComposerBarDelegate {
     private func updateVideoComposer() {
         let board = ForgeRunner.shared.board
         let configured = ForgeRunner.shared.endpoint != nil
-        composerBar.setModel(title: nil, menu: nil)
+        composerBar.setDial(nil, menu: nil)
         composerBar.showsAttach = false
         composerBar.ultracodeEffort = nil
         let title = board.value(of: .endpoint)
@@ -2508,7 +2509,7 @@ extension HomeViewController: HomeComposerBarDelegate {
     private func updateImageComposer() {
         let studio = ImageStudio.shared
         let door = studio.door
-        composerBar.setModel(title: nil, menu: nil)
+        composerBar.setDial(nil, menu: nil)
         composerBar.showsAttach = false
         composerBar.ultracodeEffort = nil
         let title = door.machine ?? ImageGenSurface.title
@@ -2631,12 +2632,77 @@ extension HomeViewController: HomeComposerBarDelegate {
     }
 
     private func updateModelChip(for aim: ComposerAim, label: String?) {
-        guard let label, let backend = viewModel.backend(forProfileID: aim.profile.id) else {
-            composerBar.setModel(title: nil, menu: nil)
+        guard label != nil, let backend = viewModel.backend(forProfileID: aim.profile.id) else {
+            composerBar.setDial(nil, menu: nil)
             return
         }
-        composerBar.setModel(title: label, menu: modelMenu(for: aim, backend: backend))
+        configureDialPill()
+        let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
+        let options = dialOptions(for: aim)
+        composerBar.setDial(
+            ModelDialPill.Content(
+                modelWord: choice.model.map { ModelBadge.shortName($0.modelID) }
+                    ?? String(localized: "Auto"),
+                chip: choice.model.flatMap { ModelBadge.chip(model: $0.modelID, effort: nil) },
+                effort: ModelEffort.surviving(choice.effort, options: options), options: options,
+                choosesModel: backend.capabilities.supportsModelSelection),
+            menu: modelMenu(for: aim, backend: backend))
         resolveModelChoiceIfNeeded(for: aim, backend: backend)
+    }
+
+    /// The levels the model aimed at takes, which is what the pill offers: none draws no effort half.
+    private func dialOptions(for aim: ComposerAim) -> [String] {
+        guard let backend = viewModel.backend(forProfileID: aim.profile.id),
+            backend.capabilities.supportsReasoningEffort
+        else { return [] }
+        let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
+        return ModelEffort.options(
+            models: ModelCatalog.cached(for: aim.profile.id), selection: choice.model,
+            agentOptions: backend.reasoningEffortOptions)
+    }
+
+    private func configureDialPill() {
+        let pill = composerBar.dialPill
+        pill.railHost = view
+        pill.railBelow = composerBar
+        pill.onEffort = { [weak self] level in
+            guard let self, let aim = self.composerAim else { return }
+            self.setComposeEffort(level, for: aim)
+        }
+        pill.onCycle = { [weak self] delta in self?.cycleComposePreset(by: delta) }
+        pill.footer = { rung in EffortRail.footer(for: rung, yours: nil) }
+    }
+
+    /// The pinned pairs the aimed server can run, in the order they were pinned.
+    private func composePresets(for aim: ComposerAim) -> [ModelPreset] {
+        ModelPresetCycle.reachable(
+            ModelPresetStore.all(), models: ModelCatalog.cached(for: aim.profile.id),
+            acceptsAnyModelID: aim.profile.backend == .claudeCode)
+    }
+
+    private func cycleComposePreset(by delta: Int) {
+        guard let aim = composerAim else { return }
+        let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
+        guard
+            let preset = ModelPresetCycle.step(
+                composePresets(for: aim), model: choice.model, effort: choice.effort, by: delta)
+        else {
+            toast(String(localized: "Pin a model and level in the model menu"))
+            return
+        }
+        setComposePreset(preset, for: aim)
+    }
+
+    private func setComposePreset(_ preset: ModelPreset, for aim: ComposerAim) {
+        let backend = viewModel.backend(forProfileID: aim.profile.id)
+        let current = (modelChoices[aim.memoryKey] ?? ModelChoice()).effort
+        let carry = preset.applied(
+            currentEffort: current, models: ModelCatalog.cached(for: aim.profile.id),
+            agentOptions: backend?.reasoningEffortOptions ?? [])
+        setComposeModel(preset.selection, for: aim, announces: false)
+        setComposeEffort(carry.level, for: aim)
+        let name = ModelBadge.shortName(preset.selection.modelID)
+        toast(carry.notice(modelName: name) ?? ModelPresetCycle.said(preset, modelName: name))
     }
 
     private func resolveModelChoiceIfNeeded(for aim: ComposerAim, backend: any CodingAgentBackend) {
@@ -2675,12 +2741,16 @@ extension HomeViewController: HomeComposerBarDelegate {
                             allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
                             quotas: QuotaSurface.relevantQuotas(
                                 for: backend.agentType, among: UsageWidgetStore.cachedQuotas()),
+                            includesEffort: false,
                             actions: ModelMenu.Actions(
                                 selectModel: { [weak self] selection in
                                     self?.setComposeModel(selection, for: aim)
                                 },
                                 selectEffort: { [weak self] level in
                                     self?.setComposeEffort(level, for: aim)
+                                },
+                                selectPreset: { [weak self] preset in
+                                    self?.setComposePreset(preset, for: aim)
                                 },
                                 browseAll: { [weak self] in
                                     self?.presentComposeModelPicker(
@@ -2720,7 +2790,9 @@ extension HomeViewController: HomeComposerBarDelegate {
 
     /// A pick in the ask lane claims that lane's own memory and leaves the server's exactly as it
     /// was: pointing lookups at something cheap may never re-aim the project chats.
-    private func setComposeModel(_ selection: ModelSelection?, for aim: ComposerAim) {
+    private func setComposeModel(
+        _ selection: ModelSelection?, for aim: ComposerAim, announces: Bool = true
+    ) {
         let backend = viewModel.backend(forProfileID: aim.profile.id)
         let models = ModelCatalog.cached(for: aim.profile.id)
         let agentOptions = backend?.reasoningEffortOptions ?? []
@@ -2732,14 +2804,15 @@ extension HomeViewController: HomeComposerBarDelegate {
             } else {
                 var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
                 choice.model = selection
-                let kept = ModelEffort.adopt(
+                let carry = ModelEffort.adoption(
                     choice.effort, for: selection, models: models, agentOptions: agentOptions)
-                if kept != choice.effort {
-                    choice.effort = kept
+                if carry.level != choice.effort {
+                    choice.effort = carry.level
                     EffortPreferenceStore.recordPick(
-                        kept, sessionKey: nil, contextID: aim.profile.id)
+                        carry.level, sessionKey: nil, contextID: aim.profile.id)
                 }
                 modelChoices[aim.memoryKey] = choice
+                announce(carry, selection: selection, if: announces)
             }
         case .video, .image:
             assertionFailure("a render lane has no ComposerAim")
@@ -2747,17 +2820,25 @@ extension HomeViewController: HomeComposerBarDelegate {
             QuickAskDefaults.recordModel(selection, forProfileID: aim.profile.id)
             var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
             choice.model = selection
-            let kept = ModelEffort.adopt(
+            let carry = ModelEffort.adoption(
                 choice.effort, for: selection, models: models, agentOptions: agentOptions)
-            if kept != choice.effort {
-                choice.effort = kept
-                QuickAskDefaults.recordEffort(kept, forProfileID: aim.profile.id)
+            if carry.level != choice.effort {
+                choice.effort = carry.level
+                QuickAskDefaults.recordEffort(carry.level, forProfileID: aim.profile.id)
             }
             modelChoices[aim.memoryKey] = choice
+            announce(carry, selection: selection, if: announces)
         }
         Theme.Haptics.selection()
         appliedComposerState = nil
         updateComposer()
+    }
+
+    /// A level that moved because the model under it changed is said, not left to be noticed.
+    private func announce(_ carry: EffortCarry, selection: ModelSelection?, if announces: Bool) {
+        guard announces else { return }
+        let name = selection.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto")
+        if let notice = carry.notice(modelName: name) { toast(notice) }
     }
 
     private func setComposeEffort(_ level: String?, for aim: ComposerAim) {
@@ -2789,7 +2870,8 @@ extension HomeViewController: HomeComposerBarDelegate {
                 currentModels: models, allowsServerDefault: profile.backend == .claudeCode),
             selected: modelChoices[aim.memoryKey]?.model,
             quotas: QuotaSurface.relevantQuotas(
-                for: profile.backend, among: UsageWidgetStore.cachedQuotas())
+                for: profile.backend, among: UsageWidgetStore.cachedQuotas()),
+            dial: composePickerDial(for: aim, backend: backend)
         ) { [weak self] pick in
             guard let self else { return }
             guard pick.isElsewhere else {
@@ -2827,6 +2909,18 @@ extension HomeViewController: HomeComposerBarDelegate {
             let fresh = await ModelCatalog.fresh(for: contextID, backend: backend)
             picker.update(sources: sources(fresh))
         }
+    }
+
+    private func composePickerDial(
+        for aim: ComposerAim, backend: any CodingAgentBackend
+    ) -> ModelPickerViewController.Dial {
+        let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
+        return ModelPickerViewController.Dial(
+            modelName: choice.model.map { ModelBadge.shortName($0.modelID) }
+                ?? String(localized: "Auto"),
+            options: dialOptions(for: aim), agentOptions: backend.reasoningEffortOptions,
+            effort: choice.effort, contextTokens: nil,
+            onEffort: { [weak self] level in self?.setComposeEffort(level, for: aim) })
     }
 
     private func composerTargetMenu(for aim: ComposerAim) -> UIMenu {
@@ -3781,6 +3875,28 @@ extension HomeViewController: KeyActionHost {
             Task { await load(.user) }
         case .toggleHelp:
             ShortcutCheatsheetViewController.present(from: self)
+        case .effortHotter, .effortColder:
+            guard let aim = composerAim else { return false }
+            let options = dialOptions(for: aim)
+            guard ModelEffort.isOffered(options: options) else { return false }
+            let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
+            let next = ModelDial.step(
+                ModelEffort.surviving(choice.effort, options: options),
+                by: action == .effortHotter ? 1 : -1, options: options)
+            setComposeEffort(next, for: aim)
+            Theme.Haptics.notch()
+            toast(ModelDial.stepped(to: next))
+        case .modelDial:
+            composerBar.dialPill.openRail()
+        case .presetNext:
+            cycleComposePreset(by: 1)
+        case .presetPrevious:
+            cycleComposePreset(by: -1)
+        case .preset(let number):
+            guard let aim = composerAim else { return false }
+            let presets = composePresets(for: aim)
+            guard presets.indices.contains(number - 1) else { return false }
+            setComposePreset(presets[number - 1], for: aim)
         default:
             return false
         }

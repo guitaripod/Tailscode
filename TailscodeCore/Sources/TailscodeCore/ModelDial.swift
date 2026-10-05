@@ -250,7 +250,7 @@ public enum ModelDial {
 
     /// The footer under the popover: every key it answers, in the order a hand finds them.
     public static var hint: String {
-        Localized.text("↑↓ model · ←→ 0–9 effort · ⌃S star · ⏎ keep · ⌃⏎ all models · esc")
+        Localized.text("↑↓ model · ←→ 0–9 effort · ⇥ column · ⌃S pin the pair · ⏎ use · ⌃⏎ all models · esc")
     }
 
     /// What the wheel over the closed pill says it did, for a toast or a tooltip.
@@ -265,7 +265,19 @@ public struct ModelDialRow: Sendable, Hashable, Identifiable {
     public enum Kind: Sendable, Hashable {
         case serverDefault
         case candidate(ModelCandidate)
+        case preset(ModelPreset, ModelCandidate)
         case allModels
+        case noResults
+    }
+
+    /// The level a pinned pair carries, drawn on its row as the same meter the pill wears. Nil on a
+    /// row that is a model alone.
+    public struct Level: Sendable, Hashable {
+        public let word: String
+        public let heat: Int
+        public let isPower: Bool
+        public let isServer: Bool
+        public let isEmber: Bool
     }
 
     public let kind: Kind
@@ -277,17 +289,27 @@ public struct ModelDialRow: Sendable, Hashable, Identifiable {
     public let isCurrent: Bool
     public let wall: QuotaExhaustion?
     public let facts: [ModelFact]
+    public let level: Level?
 
     public var id: String {
         switch kind {
         case .serverDefault: return "·server"
         case .candidate(let candidate): return candidate.id
+        case .preset(let preset, let candidate): return "·preset·" + candidate.id + "·" + preset.effort.raw
         case .allModels: return "·all"
+        case .noResults: return "·none"
         }
     }
 
     public var candidate: ModelCandidate? {
-        if case .candidate(let candidate) = kind { return candidate }
+        switch kind {
+        case .candidate(let candidate), .preset(_, let candidate): return candidate
+        default: return nil
+        }
+    }
+
+    public var preset: ModelPreset? {
+        if case .preset(let preset, _) = kind { return preset }
         return nil
     }
 
@@ -296,17 +318,18 @@ public struct ModelDialRow: Sendable, Hashable, Identifiable {
         switch kind {
         case .serverDefault:
             return ModelPick(profileID: "", selection: nil, isElsewhere: false, serverName: "")
-        case .candidate(let candidate):
+        case .candidate(let candidate), .preset(_, let candidate):
             return ModelPick(
                 profileID: candidate.profileID, selection: candidate.selection,
                 isElsewhere: candidate.isElsewhere, serverName: candidate.serverName,
                 modelName: candidate.name)
-        case .allModels:
+        case .allModels, .noResults:
             return nil
         }
     }
 
     public var opensCatalog: Bool { kind == .allModels }
+    public var isMessage: Bool { kind == .noResults }
 }
 
 public enum ModelDialCommand: Sendable, Equatable {
@@ -315,32 +338,55 @@ public enum ModelDialCommand: Sendable, Equatable {
     case digit(Int)
     case activate
     case dismiss
-    case star
+    case pin
     case openAll
+    case switchColumn
 }
 
-/// What a command did, for the client to draw. Effort changes are live — the composer carries
-/// the new level the moment it is stepped — while a model is committed by Enter or a click, so
-/// walking the list with the arrows changes nothing until a row is taken.
+/// What a pick does to the level, so a client applies the pair the person saw rather than the
+/// model alone. `unchanged` is the cursor on the model this chat already runs, where the level is
+/// live and already applied; `set` is a pair — a preset, a model with its carried level, or a level
+/// stepped on the ladder before the row was taken — and nil in it is the server deciding.
+public enum EffortAsk: Sendable, Equatable {
+    case unchanged
+    case set(String?)
+}
+
+/// What a command did, for the client to draw. Effort changes on the model this chat runs are live
+/// — the composer carries the new level the moment it is stepped — while a model is committed by
+/// Enter or a click together with the level the ladder showed for it, so walking the list with the
+/// arrows changes nothing until a row is taken.
 public enum ModelDialOutcome: Sendable, Equatable {
     case unhandled
     case moved
     case effort(String?)
-    case pick(ModelPick)
+    case previewed(String?)
+    case pick(ModelPick, effort: EffortAsk)
     case openCatalog
-    case starred(ModelSelection)
+    case pinned(ModelPreset)
     case dismiss
 }
 
 /// The popover's whole state: the model column with its cursor and query, the ladder with the
 /// level it currently sends, and the keys. The client draws it and forwards presses.
+///
+/// The ladder follows the cursor. On the model this chat runs it is the live control it always
+/// was; on any other row it is a preview of that model's own levels with the level the pair would
+/// take selected, and stepping it there is part of the pick rather than a change to the chat — so
+/// the person sees, before committing, that a level will carry over or that a model has fewer.
 public struct ModelDialState: Sendable {
+    public enum Column: Sendable, Equatable {
+        case models
+        case ladder
+    }
+
     public private(set) var rows: [ModelDialRow]
     public private(set) var cursor: Int
     public private(set) var query: String
-    public private(set) var rungs: [EffortRung]
+    public private(set) var column: Column
+    /// The level the composer carries now. Not what the ladder shows while a preview is up — that
+    /// is `ladderEffort`.
     public private(set) var effort: String?
-    public let headline: String
     public let catalogSummary: String
     /// How many models the catalog holds beyond what the column shows, for the row that opens it.
     public let catalogCount: Int
@@ -349,41 +395,114 @@ public struct ModelDialState: Sendable {
     private let selected: ModelSelection?
     private let quotas: [UsageQuota]
     private let options: [String]
+    private let agentOptions: [String]
+    private let catalog: [ModelInfo]
+    private let modelWord: String
     private let recents: [ModelSelection]
-    private var starred: Set<String>
+    private var pinned: [ModelPreset]
+    private var stepped: (rowID: String, level: String?)?
+
+    static let shortlistLimit = 9
 
     public init(
         sources: [ModelSource], selected: ModelSelection?, effort: String?, options: [String],
         modelWord: String, quotas: [UsageQuota] = [],
         recents: [ModelSelection] = RecentModelsStore.all(),
-        favorites: [ModelSelection] = ModelFavoritesStore.all()
+        presets: [ModelPreset] = ModelPresetStore.all(), agentOptions: [String]? = nil
     ) {
         self.sources = sources
         self.selected = selected
         self.quotas = quotas
         self.options = options
+        self.agentOptions = agentOptions ?? options
+        self.catalog = sources.flatMap(\.models)
+        self.modelWord = modelWord
         self.recents = recents
-        self.starred = Set(favorites.map(\.rawValue))
+        self.pinned = presets
         self.effort = ModelEffort.surviving(effort, options: options)
-        self.rungs = ModelDial.rungs(options: options)
-        self.headline = ModelDial.headline(modelName: modelWord, options: options)
         let chooser = ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas)
         self.catalogSummary = chooser.summary
         self.catalogCount = sources.reduce(0) { $0 + $1.models.count }
         self.query = ""
+        self.column = .models
         self.rows = []
         self.cursor = 0
         rebuild()
-        cursor = rows.firstIndex { $0.isCurrent } ?? 0
+        cursor = rows.firstIndex { $0.isCurrent } ?? firstSelectable
     }
 
     public var focused: ModelDialRow? {
         rows.indices.contains(cursor) ? rows[cursor] : nil
     }
 
+    /// Whether the ladder is the live control of this chat's model. On any other row it is a
+    /// preview, and a step on it travels with the pick instead.
+    public var effortIsLive: Bool {
+        guard let row = focused, let candidate = row.candidate else { return true }
+        if row.preset != nil { return false }
+        return !candidate.isElsewhere && candidate.carries(selected)
+    }
+
+    /// The levels of the model the ladder is drawn for: the cursor's, which is this chat's own
+    /// whenever the cursor rests there.
+    public var focusedOptions: [String] {
+        guard !effortIsLive, let candidate = focused?.candidate else { return options }
+        return ModelEffort.options(
+            models: catalog, selection: candidate.selection, agentOptions: agentOptions)
+    }
+
+    public var rungs: [EffortRung] { ModelDial.rungs(options: focusedOptions) }
+
+    public var headline: String {
+        let name = effortIsLive ? modelWord : (focused?.candidate?.name ?? modelWord)
+        return ModelDial.headline(modelName: name, options: focusedOptions)
+    }
+
+    /// The level the ladder lights: the live one on this chat's model, and on any other row the
+    /// level that row's pair would take — a preset's own, a stepped one, or the current level
+    /// carried onto that model.
+    public var ladderEffort: String? {
+        if effortIsLive { return effort }
+        guard let row = focused, row.candidate != nil else { return effort }
+        if let stepped, stepped.rowID == row.id {
+            return ModelEffort.surviving(stepped.level, options: focusedOptions)
+        }
+        let asked = row.preset.map { $0.asks(current: effort) } ?? effort
+        return ModelEffort.carry(asked, options: focusedOptions).level
+    }
+
+    /// Whether the ladder is showing a level that is not the chat's own, for the client to say so:
+    /// a preview of another model, or of a pair the chat is not at. The pair the chat runs right
+    /// now is just the chat, and wears no tag.
+    public var ladderIsPreview: Bool {
+        if effortIsLive { return false }
+        guard let row = focused else { return false }
+        return !(row.isCurrent && stepped?.rowID != row.id)
+    }
+
     /// The rung the composer will send with, for the client to light.
-    public var currentRung: EffortRung? { rungs.first { $0.level == effort } }
+    public var currentRung: EffortRung? { rungs.first { $0.level == ladderEffort } }
+
+    /// What would become of the level if the cursor's row were taken as it stands, when that is
+    /// not nothing: said under the ladder so a level that will move is never a surprise.
+    public var carryNotice: String? {
+        guard !effortIsLive, let row = focused, row.preset == nil,
+            stepped?.rowID != row.id, let candidate = row.candidate, let asked = effort
+        else { return nil }
+        return ModelEffort.carry(asked, options: focusedOptions)
+            .forecast(modelName: candidate.name)
+    }
+
+    /// The sentence a client says after a pick that moved the level on its own — the model has no
+    /// such level — read from the state the pick was taken in. Nil where the person chose the level
+    /// (a pair, a step on the preview) or nothing moved.
+    public var pickNotice: String? {
+        guard !effortIsLive, let row = focused, row.preset == nil, stepped?.rowID != row.id,
+            let candidate = row.candidate, let asked = effort
+        else { return nil }
+        return ModelEffort.carry(asked, options: focusedOptions).notice(modelName: candidate.name)
+    }
 
     /// Digits pick rungs only while the search field is empty: a model's name has digits in it,
     /// and a person typing "gpt-5" is naming a model, not asking for five bars.
@@ -392,61 +511,85 @@ public struct ModelDialState: Sendable {
     public mutating func search(_ text: String) {
         query = text.trimmingCharacters(in: .whitespacesAndNewlines)
         rebuild()
-        cursor = rows.firstIndex { $0.candidate != nil } ?? 0
+        cursor = rows.firstIndex { $0.candidate != nil } ?? firstSelectable
+        cursorMoved()
     }
 
-    public mutating func setEffort(_ level: String?) {
-        effort = ModelEffort.surviving(level, options: options)
+    /// A level chosen by hand on the ladder: live on this chat's model, part of the pending pick on
+    /// any other row.
+    @discardableResult
+    public mutating func setEffort(_ level: String?) -> ModelDialOutcome {
+        guard ModelEffort.isOffered(options: focusedOptions) else { return .unhandled }
+        let level = ModelEffort.surviving(level, options: focusedOptions)
+        if effortIsLive {
+            effort = level
+            return .effort(level)
+        }
+        guard let row = focused else { return .unhandled }
+        stepped = (row.id, level)
+        return .previewed(level)
     }
 
     public mutating func move(to index: Int) {
-        guard rows.indices.contains(index) else { return }
+        guard rows.indices.contains(index), !rows[index].isMessage else { return }
         cursor = index
+        cursorMoved()
     }
 
     public mutating func handle(_ command: ModelDialCommand) -> ModelDialOutcome {
         switch command {
         case .up:
+            if column == .ladder { return stepLadder(by: 1) }
             guard !rows.isEmpty else { return .unhandled }
-            cursor = max(0, cursor - 1)
+            cursor = previousSelectable(from: cursor)
+            cursorMoved()
             return .moved
         case .down:
+            if column == .ladder { return stepLadder(by: -1) }
             guard !rows.isEmpty else { return .unhandled }
-            cursor = min(rows.count - 1, cursor + 1)
+            cursor = nextSelectable(from: cursor)
+            cursorMoved()
             return .moved
         case .top:
-            cursor = 0
+            cursor = firstSelectable
+            cursorMoved()
             return .moved
         case .bottom:
             cursor = max(0, rows.count - 1)
+            cursorMoved()
             return .moved
         case .hotter:
-            guard !options.isEmpty else { return .unhandled }
-            effort = ModelDial.step(effort, by: 1, options: options)
-            return .effort(effort)
+            return stepLadder(by: 1)
         case .colder:
-            guard !options.isEmpty else { return .unhandled }
-            effort = ModelDial.step(effort, by: -1, options: options)
-            return .effort(effort)
+            return stepLadder(by: -1)
         case .digit(let key):
-            guard digitsPickEffort, let rung = ModelDial.rung(forKey: key, options: options) else {
-                return .unhandled
-            }
-            effort = rung.level
-            return .effort(effort)
+            guard digitsPickEffort, let rung = ModelDial.rung(forKey: key, options: focusedOptions)
+            else { return .unhandled }
+            return setEffort(rung.level)
+        case .switchColumn:
+            column =
+                column == .models && ModelEffort.isOffered(options: focusedOptions)
+                ? .ladder : .models
+            return .moved
         case .activate:
             guard let row = focused else { return .dismiss }
             if row.opensCatalog { return .openCatalog }
+            if row.isMessage { return .unhandled }
             guard let pick = row.pick else { return .dismiss }
-            return .pick(pick)
+            return .pick(pick, effort: effortAsk(for: row))
         case .dismiss:
             return .dismiss
-        case .star:
-            guard let candidate = focused?.candidate else { return .unhandled }
-            let key = candidate.selection.rawValue
-            if starred.contains(key) { starred.remove(key) } else { starred.insert(key) }
+        case .pin:
+            guard let row = focused, let candidate = row.candidate else { return .unhandled }
+            let preset = row.preset ?? ModelPreset(
+                selection: candidate.selection, effort: pairedEffort(for: row, candidate: candidate))
+            pinned = ModelPresetStore.toggled(pinned, preset)
             rebuild()
-            return .starred(candidate.selection)
+            if let moved = rows.firstIndex(where: { $0.candidate?.id == candidate.id }) {
+                cursor = moved
+            }
+            cursorMoved()
+            return .pinned(preset)
         case .openAll:
             return .openCatalog
         }
@@ -458,11 +601,12 @@ public struct ModelDialState: Sendable {
     public static func command(for chord: KeyChord, digitsLive: Bool) -> ModelDialCommand? {
         if chord.keyval == Keymap.escape { return .dismiss }
         if chord.keyval == Keymap.enter { return chord.control ? .openAll : .activate }
+        if chord.keyval == Keymap.tab || chord.keyval == 0xFE20 { return .switchColumn }
         if chord.keyval == Keymap.up { return chord.control ? .top : .up }
         if chord.keyval == Keymap.down { return chord.control ? .bottom : .down }
         if chord.keyval == 0xFF51, digitsLive || chord.control { return .colder }
         if chord.keyval == 0xFF53, digitsLive || chord.control { return .hotter }
-        if chord.control, Keymap.scalar(chord.keyval) == "s" { return .star }
+        if chord.control, Keymap.scalar(chord.keyval) == "s" { return .pin }
         if chord.control, Keymap.scalar(chord.keyval) == "n" { return .down }
         if chord.control, Keymap.scalar(chord.keyval) == "p" { return .up }
         if digitsLive, !chord.control, !chord.alt, let digit = Keymap.digit(chord.keyval) {
@@ -471,27 +615,53 @@ public struct ModelDialState: Sendable {
         return nil
     }
 
-    /// The column: this chat's model, then what the person reaches for, then the other machines
-    /// under their own names — a pick there opens a chat there, said once on the row rather than
-    /// once per row's chips — then the server's own choice and the door to the catalog. A query
-    /// answers from the whole fleet through the chooser's own search, so a model nobody starred is
-    /// still one typed name away without leaving the composer.
+    private mutating func stepLadder(by delta: Int) -> ModelDialOutcome {
+        guard ModelEffort.isOffered(options: focusedOptions) else { return .unhandled }
+        return setEffort(ModelDial.step(ladderEffort, by: delta, options: focusedOptions))
+    }
+
+    private mutating func cursorMoved() {
+        if let stepped, stepped.rowID != focused?.id { self.stepped = nil }
+        if column == .ladder, !ModelEffort.isOffered(options: focusedOptions) { column = .models }
+    }
+
+    private func effortAsk(for row: ModelDialRow) -> EffortAsk {
+        if row.kind == .serverDefault || effortIsLive { return .unchanged }
+        return .set(ladderEffort)
+    }
+
+    private func pairedEffort(for row: ModelDialRow, candidate: ModelCandidate) -> PresetEffort {
+        let levels = ModelEffort.options(
+            models: catalog, selection: candidate.selection, agentOptions: agentOptions)
+        guard ModelEffort.isOffered(options: levels) else { return .keep }
+        let level = effortIsLive ? effort : ladderEffort
+        return level.map { .level($0) } ?? .server
+    }
+
+    private var firstSelectable: Int { rows.firstIndex { !$0.isMessage } ?? 0 }
+
+    private func nextSelectable(from index: Int) -> Int {
+        guard let next = rows.indices.first(where: { $0 > index && !rows[$0].isMessage })
+        else { return index }
+        return next
+    }
+
+    private func previousSelectable(from index: Int) -> Int {
+        guard let previous = rows.indices.last(where: { $0 < index && !rows[$0].isMessage })
+        else { return index }
+        return previous
+    }
+
+    /// The column: the pairs pinned, this chat's own model where no pair already says it, what the
+    /// person reached for lately, then the other machines under their own names — a pick there
+    /// opens a chat there, said once on the row rather than once per row's chips — then the
+    /// server's own choice and the door to the catalog. A query answers from the whole fleet
+    /// through the chooser's own search, so a model nobody pinned is still one typed name away
+    /// without leaving the composer.
     private mutating func rebuild() {
         var built: [ModelDialRow] = []
         if query.isEmpty {
-            let shortlist = ModelChooser.shortlist(
-                sources: sources, selected: selected, limit: 9, recents: recents,
-                favorites: starred.compactMap(ModelSelection.init(string:)))
-            let here = shortlist.filter { !$0.isElsewhere }
-            let elsewhere = shortlist.filter(\.isElsewhere)
-            built += rowsFor(here, section: Localized.text("Yours"))
-            for (profileID, group) in Dictionary(grouping: elsewhere, by: \.profileID)
-                .sorted(by: { $0.key < $1.key })
-            {
-                let title = sources.first { $0.profileID == profileID }?.title
-                    ?? group.first?.serverName ?? ""
-                built += rowsFor(group, section: Localized.text("Also on %@", title))
-            }
+            built += shortlistRows()
         } else {
             var chooser = ModelChooser(
                 sources: sources, selected: selected, recents: recents, quotas: quotas)
@@ -501,47 +671,174 @@ public struct ModelDialState: Sendable {
                 return nil
             }
             var seen: Set<String> = []
-            let unique = found.filter { seen.insert($0.id).inserted }.prefix(9)
-            built += rowsFor(Array(unique), section: Localized.text("Found"), namesMachine: true)
+            let unique = found.filter { seen.insert($0.id).inserted }.prefix(Self.shortlistLimit)
+            if unique.isEmpty {
+                built.append(noResultsRow())
+            } else {
+                let policy = ModelFactPolicy.over(Array(unique))
+                built += unique.enumerated().map { index, candidate in
+                    row(
+                        candidate, preset: nil, section: index == 0 ? Localized.text("Found") : nil,
+                        namesMachine: true, policy: policy)
+                }
+            }
         }
         if selected != nil || query.isEmpty {
             built.append(
                 ModelDialRow(
                     kind: .serverDefault, section: nil, title: Localized.text("Server default"),
                     detail: Localized.text("the machine decides"), isStarred: false,
-                    isCurrent: selected == nil, wall: nil, facts: []))
+                    isCurrent: selected == nil, wall: nil, facts: [], level: nil))
         }
         built.append(
             ModelDialRow(
                 kind: .allModels, section: nil, title: Localized.text("All models…"),
-                detail: catalogSummary, isStarred: false, isCurrent: false, wall: nil, facts: []))
+                detail: catalogSummary, isStarred: false, isCurrent: false, wall: nil, facts: [],
+                level: nil))
         rows = built
         cursor = max(0, min(cursor, rows.count - 1))
+    }
+
+    private func shortlistRows() -> [ModelDialRow] {
+        let candidates = sources.flatMap { ModelChooser.fold(source: $0, preferred: selected) }
+        func find(_ selection: ModelSelection) -> ModelCandidate? {
+            candidates.first { $0.carries(selection) }
+        }
+        var pairs: [(ModelPreset, ModelCandidate)] = pinned.compactMap { preset in
+            find(preset.selection).map { (preset, $0) }
+        }
+        pairs = Array(pairs.prefix(Self.shortlistLimit))
+        let pinnedModels = Set(pairs.map(\.1.id))
+        let covered = pairs.contains { !$0.1.isElsewhere && $0.0.matches(model: selected, effort: effort) }
+
+        var here: [ModelCandidate] = []
+        var recent: [ModelCandidate] = []
+        var budget = Self.shortlistLimit - pairs.count
+        if let selected, !covered, budget > 0,
+            let current = candidates.first(where: { !$0.isElsewhere && $0.carries(selected) })
+        {
+            here.append(current)
+            budget -= 1
+        }
+        for selection in recents where budget > 0 {
+            guard let candidate = find(selection), !pinnedModels.contains(candidate.id),
+                !here.contains(where: { $0.id == candidate.id }),
+                !recent.contains(where: { $0.id == candidate.id })
+            else { continue }
+            recent.append(candidate)
+            budget -= 1
+        }
+        if pairs.isEmpty, here.isEmpty, recent.isEmpty {
+            recent = ModelChooser.shortlist(
+                sources: sources, selected: selected, limit: Self.shortlistLimit, recents: [],
+                favorites: [])
+        }
+
+        let policy = ModelFactPolicy.over(pairs.map(\.1) + here + recent)
+        var built: [ModelDialRow] = []
+        func append(_ group: [ModelDialRow]) { built += group }
+
+        append(
+            labelled(
+                pairs.filter { !$0.1.isElsewhere }.map { row($0.1, preset: $0.0, section: nil, policy: policy) },
+                Localized.text("Pinned")))
+        append(
+            labelled(
+                here.map { row($0, preset: nil, section: nil, policy: policy) },
+                Localized.text("This chat")))
+        append(
+            labelled(
+                recent.filter { !$0.isElsewhere }.map { row($0, preset: nil, section: nil, policy: policy) },
+                Localized.text("Recent")))
+
+        let elsewhere = pairs.filter { $0.1.isElsewhere }.map { (Optional($0.0), $0.1) }
+            + recent.filter(\.isElsewhere).map { (Optional<ModelPreset>.none, $0) }
+        for (profileID, group) in Dictionary(grouping: elsewhere, by: { $0.1.profileID })
+            .sorted(by: { $0.key < $1.key })
+        {
+            let title = sources.first { $0.profileID == profileID }?.title
+                ?? group.first?.1.serverName ?? ""
+            append(
+                labelled(
+                    group.map { row($0.1, preset: $0.0, section: nil, policy: policy) },
+                    Localized.text("Also on %@", title)))
+        }
+        return built
+    }
+
+    private func labelled(_ rows: [ModelDialRow], _ section: String) -> [ModelDialRow] {
+        guard let first = rows.first else { return [] }
+        return [first.withSection(section)] + rows.dropFirst()
     }
 
     /// `namesMachine` is for a list that mixes machines — a search — where a row from another
     /// server has no heading to say so and must say it itself; a search row keeps only the
     /// local mark, because a name typed is a name looked for and the catalog carries the rest.
-    private func rowsFor(
-        _ candidates: [ModelCandidate], section: String, namesMachine: Bool = false
-    ) -> [ModelDialRow] {
-        let policy = ModelFactPolicy.over(candidates)
-        return candidates.enumerated().map { index, candidate in
-            let providers = candidate.providerNames.joined(separator: " · ")
-            let machine = sources.first { $0.profileID == candidate.profileID }?.title
-                ?? candidate.serverName
-            let detail =
-                candidate.isElsewhere
-                ? (namesMachine ? Localized.text("new chat on %@", machine) : Localized.text("new chat there"))
-                : providers
-            return ModelDialRow(
-                kind: .candidate(candidate), section: index == 0 ? section : nil,
-                title: candidate.name, detail: detail,
-                isStarred: starred.contains(candidate.selection.rawValue),
-                isCurrent: !candidate.isElsewhere && candidate.carries(selected),
-                wall: ModelChooser.wall(for: candidate, quotas: quotas),
-                facts: ModelFact.of(candidate, policy: policy)
-                    .filter { !namesMachine || $0 == .local })
+    private func row(
+        _ candidate: ModelCandidate, preset: ModelPreset?, section: String?,
+        namesMachine: Bool = false, policy: ModelFactPolicy
+    ) -> ModelDialRow {
+        let providers = candidate.providerNames.joined(separator: " · ")
+        let machine = sources.first { $0.profileID == candidate.profileID }?.title
+            ?? candidate.serverName
+        let detail =
+            candidate.isElsewhere
+            ? (namesMachine ? Localized.text("new chat on %@", machine) : Localized.text("new chat there"))
+            : providers
+        let starred = pinned.contains { candidate.carries($0.selection) }
+        let facts = ModelFact.of(candidate, policy: policy).filter { !namesMachine || $0 == .local }
+        let current: Bool
+        let kind: ModelDialRow.Kind
+        if let preset {
+            current = !candidate.isElsewhere && preset.matches(model: selected, effort: effort)
+            kind = .preset(preset, candidate)
+        } else {
+            current = !candidate.isElsewhere && candidate.carries(selected)
+            kind = .candidate(candidate)
         }
+        return ModelDialRow(
+            kind: kind, section: section, title: candidate.name, detail: detail,
+            isStarred: starred, isCurrent: current,
+            wall: ModelChooser.wall(for: candidate, quotas: quotas), facts: facts,
+            level: preset.flatMap { level(of: $0, on: candidate) })
+    }
+
+    private func level(of preset: ModelPreset, on candidate: ModelCandidate) -> ModelDialRow.Level? {
+        let levels = ModelEffort.options(
+            models: catalog, selection: candidate.selection, agentOptions: agentOptions)
+        guard ModelEffort.isOffered(options: levels) else { return nil }
+        let asked: String?
+        switch preset.effort {
+        case .keep: return nil
+        case .server: asked = nil
+        case .level(let level): asked = ModelEffort.carry(level, options: levels).level
+        }
+        let face = ModelDial.face(modelWord: candidate.name, effort: asked, options: levels)
+        return ModelDialRow.Level(
+            word: face.effortWord ?? Localized.text("server"), heat: face.heat,
+            isPower: face.isPower, isServer: face.isServer, isEmber: face.isEmber)
+    }
+
+    private func noResultsRow() -> ModelDialRow {
+        let asked = sources.filter { $0.isReachable != false }.map(\.title)
+        let offline = sources.filter { $0.isReachable == false }.map(\.title)
+        var detail = asked.isEmpty ? "" : Localized.text("Searched %@.", asked.joined(separator: ", "))
+        if !offline.isEmpty {
+            let note = Localized.text(
+                "%@ is offline, so it was not searched.", offline.joined(separator: ", "))
+            detail = detail.isEmpty ? note : detail + " " + note
+        }
+        return ModelDialRow(
+            kind: .noResults, section: nil,
+            title: Localized.text("No model matches “%@”", query), detail: detail,
+            isStarred: false, isCurrent: false, wall: nil, facts: [], level: nil)
+    }
+}
+
+extension ModelDialRow {
+    fileprivate func withSection(_ section: String) -> ModelDialRow {
+        ModelDialRow(
+            kind: kind, section: section, title: title, detail: detail, isStarred: isStarred,
+            isCurrent: isCurrent, wall: wall, facts: facts, level: level)
     }
 }

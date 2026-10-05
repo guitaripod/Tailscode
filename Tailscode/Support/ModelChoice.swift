@@ -171,15 +171,32 @@ enum ChatModelResolver {
     }
 }
 
-/// The one model-and-effort menu in the app: Home's composer chip and the chat
-/// screen's title chip build the same list from it, so a model picked before a
-/// chat exists and one picked inside it look and behave identically.
+/// The one model menu in the app: Home's composer pill, the chat's pill and the server screen's
+/// default-model chip build the same list from it, so a model picked before a chat exists and one
+/// picked inside it look and behave identically.
+///
+/// Pinned pairs lead — a model and a level, one tap for both — then the models a person has
+/// reached for, then the way to the whole catalog. The level itself is the pill's rail, so the
+/// pill's menu leaves it out; a surface with no rail (the server screen) asks for it inline.
 @MainActor
 enum ModelMenu {
     struct Actions {
         var selectModel: (ModelSelection?) -> Void
         var selectEffort: (String?) -> Void
+        var selectPreset: ((ModelPreset) -> Void)?
         var browseAll: (() -> Void)?
+
+        init(
+            selectModel: @escaping (ModelSelection?) -> Void,
+            selectEffort: @escaping (String?) -> Void,
+            selectPreset: ((ModelPreset) -> Void)? = nil,
+            browseAll: (() -> Void)? = nil
+        ) {
+            self.selectModel = selectModel
+            self.selectEffort = selectEffort
+            self.selectPreset = selectPreset
+            self.browseAll = browseAll
+        }
     }
 
     /// Catalogs run from four aliases (Claude Code) to several hundred entries
@@ -207,17 +224,73 @@ enum ModelMenu {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// The quick menu answers over the whole fleet, not the one server whose chip was pressed —
-    /// stars and other machines' models belong inline where the pick happens.
+    private static func identity(_ candidate: ModelCandidate) -> UIColor {
+        let chip = ModelBadge.chip(model: candidate.selection.modelID, effort: nil)
+        return chip.map { Theme.Color.modelIdentity($0) } ?? Theme.Color.tertiaryLabel
+    }
+
+    /// The pinned pairs this server can run, as rows: the model's name over its level, wearing the
+    /// family's dot and the level's bars.
+    private static func pinned(
+        sources: [ModelSource], candidates: [ModelCandidate], choice: ModelChoice, efforts: [String],
+        actions: Actions
+    ) -> [UIMenuElement] {
+        guard let select = actions.selectPreset, let here = sources.first(where: \.isCurrent) else {
+            return []
+        }
+        let presets = ModelPresetCycle.reachable(
+            ModelPresetStore.all(), models: here.models, acceptsAnyModelID: here.acceptsAnyModelID)
+        return presets.map { preset in
+            let candidate = candidates.first { $0.carries(preset.selection) }
+            let name =
+                candidate?.name ?? ModelBadge.shortName(preset.selection.modelID)
+            let levels = ModelEffort.options(
+                models: here.models, selection: preset.selection, agentOptions: efforts)
+            let asked = preset.asks(current: choice.effort)
+            let level = ModelEffort.carry(asked, options: levels).level
+            let hue =
+                ModelBadge.chip(model: preset.selection.modelID, effort: nil)
+                .map { Theme.Color.modelIdentity($0) } ?? Theme.Color.tertiaryLabel
+            let image: UIImage
+            var detail: String?
+            if ModelEffort.isOffered(options: levels), preset.effort != .keep {
+                image = EffortMeterView.image(
+                    for: EffortMeterView.Reading(level: level, options: levels), dot: hue)
+                detail = level.map { ModelDial.isPower($0) ? Ultracode.menuTitle.lowercased() : $0 }
+                    ?? String(localized: "server decides")
+            } else {
+                image = EffortMeterView.dotImage(hue)
+            }
+            return UIAction(
+                title: name, subtitle: detail, image: image,
+                state: preset.matches(model: choice.model, effort: choice.effort) ? .on : .off
+            ) { _ in select(preset) }
+        }
+    }
+
+    /// The quick menu answers over the whole fleet, not the one server whose pill was pressed —
+    /// recents and other machines' models belong inline where the pick happens.
     static func elements(
         sources: [ModelSource], choice: ModelChoice, efforts: [String],
-        allowsServerDefault: Bool, quotas: [UsageQuota] = [], actions: Actions
+        allowsServerDefault: Bool, quotas: [UsageQuota] = [], includesEffort: Bool = true,
+        actions: Actions
     ) -> [UIMenuElement] {
         var sections: [UIMenuElement] = []
-        let shortlist = ModelChooser.shortlist(
-            sources: sources, selected: choice.model, limit: inlineLimit)
         let directory = ModelChooser(sources: sources, selected: choice.model, quotas: quotas)
         let candidates = directory.candidates
+        let pairs = pinned(
+            sources: sources, candidates: candidates, choice: choice, efforts: efforts,
+            actions: actions)
+        if !pairs.isEmpty {
+            sections.append(
+                UIMenu(
+                    title: String(localized: "Pinned"), options: .displayInline, children: pairs))
+        }
+        let pinnedModels = Set(
+            (actions.selectPreset == nil ? [] : ModelPresetStore.all()).map(\.selection))
+        let shortlist = ModelChooser.shortlist(
+            sources: sources, selected: choice.model, limit: inlineLimit, favorites: []
+        ).filter { candidate in !pinnedModels.contains { candidate.carries($0) } }
         var picks: [UIMenuElement] = []
         if allowsServerDefault {
             picks.append(
@@ -230,15 +303,13 @@ enum ModelMenu {
         }
         let showsProvider = Set(candidates.flatMap { $0.offers.map(\.providerID) }).count > 1
         picks += shortlist.map { candidate in
-            let pinned = ModelFavoritesStore.isFavorite(candidate.selection)
             let walled = ModelChooser.wall(for: candidate, quotas: quotas) != nil
             return UIAction(
-                title: (pinned ? "★ " : "") + candidate.name,
+                title: candidate.name,
                 subtitle: subtitle(candidate, quotas: quotas, showsProvider: showsProvider),
-                image: pinned
-                    ? UIImage(systemName: "star.fill")
-                    : (walled
-                        ? UIImage(systemName: "gauge.with.dots.needle.100percent") : nil),
+                image: walled
+                    ? UIImage(systemName: "gauge.with.dots.needle.100percent")
+                    : EffortMeterView.dotImage(identity(candidate)),
                 state: candidate.carries(choice.model) ? .on : .off
             ) { _ in actions.selectModel(candidate.selection) }
         }
@@ -246,9 +317,12 @@ enum ModelMenu {
             picks.append(
                 UIAction(title: String(localized: "No models reported"), attributes: .disabled) { _ in })
         }
-        sections.append(UIMenu(options: .displayInline, children: picks))
+        sections.append(
+            UIMenu(
+                title: pairs.isEmpty ? "" : String(localized: "Recent"), options: .displayInline,
+                children: picks))
         if let browseAll = actions.browseAll,
-            candidates.count > shortlist.count
+            candidates.count > shortlist.count + pairs.count
         {
             sections.append(
                 UIMenu(
@@ -261,6 +335,7 @@ enum ModelMenu {
                         ) { _ in browseAll() }
                     ]))
         }
+        guard includesEffort else { return sections }
         let options = ModelEffort.options(
             models: sources.flatMap(\.models), selection: choice.model, agentOptions: efforts)
         if !options.isEmpty {

@@ -34,14 +34,26 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     var showsAttach = true {
         didSet {
             attachButton.isHidden = !showsAttach
-            if showsAttach {
-                textViewLeadingToBar?.isActive = false
-                textViewLeadingToAttach?.isActive = true
-            } else {
-                textViewLeadingToAttach?.isActive = false
-                textViewLeadingToBar?.isActive = true
-            }
+            applyLayout()
         }
+    }
+
+    /// A control that lives in the box's bottom row, between the paperclip and Send — the pill
+    /// for model and effort. With one, the words take the whole width above it and the row below
+    /// holds the controls; without, the box is the single line it always was.
+    var accessory: UIView? {
+        didSet {
+            guard accessory !== oldValue else { return }
+            oldValue?.removeFromSuperview()
+            installAccessory()
+            applyLayout()
+        }
+    }
+
+    /// The colour of a hot level, drawn as a line along the top of the box from xhigh up so the
+    /// cost of the next send is felt before it is made. Ultracode has the aura instead.
+    var heatColor: UIColor? {
+        didSet { refreshHeatLine() }
     }
     /// A picture handed over with no words is still a question, so the composer with something in
     /// its strip is a composer that can send. The strip belongs to whoever owns the attachments,
@@ -62,6 +74,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     private var textViewLeadingToAttach: NSLayoutConstraint?
     private var textViewLeadingToBar: NSLayoutConstraint?
+    private var lineConstraints: [NSLayoutConstraint] = []
+    private var stackedConstraints: [NSLayoutConstraint] = []
+    private var accessoryConstraints: [NSLayoutConstraint] = []
+    private var accessoryToAttach: NSLayoutConstraint?
+    private var accessoryToBar: NSLayoutConstraint?
+    private let heatLine = CAGradientLayer()
     private var lastMeasuredWidth: CGFloat = 0
     private let auraHost = UIView()
     private lazy var aura = UltracodeAura(around: auraHost, cornerRadius: 23)
@@ -171,6 +189,18 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textViewLeadingToBar = textView.leadingAnchor.constraint(
             equalTo: bar.leadingAnchor, constant: Theme.Spacing.m)
 
+        let textBottom = textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -11)
+        let sendLeading = sendButton.leadingAnchor.constraint(
+            equalTo: textView.trailingAnchor, constant: Theme.Spacing.xs)
+        let placeholderCenter = placeholder.centerYAnchor.constraint(equalTo: attachButton.centerYAnchor)
+        lineConstraints = [textBottom, sendLeading, placeholderCenter]
+        stackedConstraints = [
+            textView.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.l),
+            textView.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.l),
+            textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -(Self.accessoryRow + 10)),
+            placeholder.topAnchor.constraint(equalTo: textView.topAnchor, constant: 1),
+        ]
+
         NSLayoutConstraint.activate([
             auraHost.topAnchor.constraint(equalTo: bar.topAnchor),
             auraHost.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
@@ -187,24 +217,29 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             attachButton.heightAnchor.constraint(equalToConstant: 32),
 
             textView.topAnchor.constraint(equalTo: bar.topAnchor, constant: 11),
-            textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -11),
+            textBottom,
             leading,
             heightConstraint,
 
-            sendButton.leadingAnchor.constraint(equalTo: textView.trailingAnchor, constant: Theme.Spacing.xs),
+            sendLeading,
             sendButton.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.xs),
             sendButton.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -5),
             sendButton.widthAnchor.constraint(equalToConstant: 34),
             sendButton.heightAnchor.constraint(equalToConstant: 34),
 
             placeholder.leadingAnchor.constraint(equalTo: textView.leadingAnchor, constant: 2),
-            placeholder.centerYAnchor.constraint(equalTo: attachButton.centerYAnchor),
+            placeholderCenter,
 
             enhanceBadge.widthAnchor.constraint(equalToConstant: 16),
             enhanceBadge.heightAnchor.constraint(equalToConstant: 16),
             enhanceBadge.centerXAnchor.constraint(equalTo: sendButton.trailingAnchor, constant: -1),
             enhanceBadge.centerYAnchor.constraint(equalTo: sendButton.topAnchor, constant: 1),
         ])
+
+        heatLine.startPoint = CGPoint(x: 0, y: 0.5)
+        heatLine.endPoint = CGPoint(x: 1, y: 0.5)
+        heatLine.isHidden = true
+        layer.addSublayer(heatLine)
 
         let focusTap = UITapGestureRecognizer(target: self, action: #selector(focusInput))
         focusTap.cancelsTouchesInView = false
@@ -218,12 +253,63 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         updateSendButton()
     }
 
+    private static let accessoryRow: CGFloat = 36
+
+    private func installAccessory() {
+        guard let accessory else { return }
+        accessory.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(accessory)
+        accessoryToAttach = accessory.leadingAnchor.constraint(
+            equalTo: attachButton.trailingAnchor, constant: Theme.Spacing.xs)
+        accessoryToBar = accessory.leadingAnchor.constraint(
+            equalTo: bar.leadingAnchor, constant: Theme.Spacing.m)
+        accessoryConstraints = [
+            accessory.centerYAnchor.constraint(equalTo: attachButton.centerYAnchor),
+            accessory.trailingAnchor.constraint(
+                lessThanOrEqualTo: sendButton.leadingAnchor, constant: -Theme.Spacing.s),
+        ]
+    }
+
+    /// One place decides which layout is live, so the box is never half of each: the single line
+    /// it was, or the words over a row of controls.
+    private func applyLayout() {
+        let stacked = accessory != nil
+        let off: [NSLayoutConstraint?] =
+            stacked
+            ? lineConstraints + [textViewLeadingToAttach, textViewLeadingToBar]
+            : stackedConstraints + accessoryConstraints + [accessoryToAttach, accessoryToBar]
+        NSLayoutConstraint.deactivate(off.compactMap { $0 })
+        if stacked {
+            NSLayoutConstraint.activate(
+                stackedConstraints + accessoryConstraints
+                    + [showsAttach ? accessoryToAttach : accessoryToBar].compactMap { $0 })
+        } else {
+            NSLayoutConstraint.activate(
+                lineConstraints + [showsAttach ? textViewLeadingToAttach : textViewLeadingToBar]
+                    .compactMap { $0 })
+        }
+        setNeedsLayout()
+    }
+
+    private func refreshHeatLine() {
+        guard let heatColor else {
+            heatLine.isHidden = true
+            return
+        }
+        heatLine.colors = [
+            heatColor.withAlphaComponent(0).cgColor, heatColor.cgColor, heatColor.withAlphaComponent(0).cgColor,
+        ]
+        heatLine.isHidden = false
+        setNeedsLayout()
+    }
+
     @objc private func focusInput() { textView.becomeFirstResponder() }
 
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch
     ) -> Bool {
-        !(touch.view is UIControl)
+        guard let view = touch.view else { return true }
+        return !(view is UIControl) && !(accessory.map(view.isDescendant(of:)) ?? false)
     }
 
     /// While a turn runs the button is Stop, unless the user has typed —
@@ -261,6 +347,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     override func layoutSubviews() {
         super.layoutSubviews()
         aura.layout()
+        let barFrame = bar.frame
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        heatLine.frame = CGRect(
+            x: barFrame.minX + 26, y: barFrame.minY, width: max(0, barFrame.width - 52), height: 1.5)
+        CATransaction.commit()
         if textView.bounds.width != lastMeasuredWidth {
             updateHeight()
         }

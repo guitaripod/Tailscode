@@ -553,14 +553,9 @@ final class ChatPane: @unchecked Sendable {
                     ?? ModelDialState(
                         sources: [], selected: nil, effort: nil, options: [], modelWord: "")
             },
-            onPick: { [weak self] pick in
+            onPick: { [weak self] pick, effort, notice in
                 Gtk.onMain { [weak self] in
-                    guard let self else { return }
-                    if pick.selection == nil, !pick.isElsewhere {
-                        self.setChosenModel(nil)
-                    } else {
-                        self.apply(pick)
-                    }
+                    self?.take(pick, effort: effort, notice: notice)
                 }
             },
             onEffort: { [weak self] level in
@@ -582,17 +577,96 @@ final class ChatPane: @unchecked Sendable {
         ModelDialState(
             sources: modelSources(), selected: chosenModel ?? activeSelection,
             effort: resolvedEffort(), options: effortOptions(), modelWord: modelPillText(),
-            quotas: modelQuotas())
+            quotas: modelQuotas(), agentOptions: backend?.reasoningEffortOptions ?? [])
+    }
+
+    /// A row taken in the dial: the model first, then the level the ladder showed for it through
+    /// the same road a live step takes, and the carry said once — by the dial, which saw it,
+    /// rather than again by the model change underneath.
+    private func take(_ pick: ModelPick, effort: EffortAsk, notice: String?) {
+        if pick.isElsewhere {
+            ModelFleet.adopt(pick)
+            if case .set(let level) = effort {
+                EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: pick.profileID)
+                SettingsFile.capture()
+            }
+            host?.startChat(on: pick.profileID, into: self)
+            return
+        }
+        guard case .set(let level) = effort else {
+            setChosenModel(pick.selection)
+            return
+        }
+        setChosenModel(pick.selection, announcing: false)
+        setChosenEffort(level)
+        if let notice { host?.toast(notice) }
     }
 
     /// One notch of the wheel or one chord from the editor: the level moves one stop along the
-    /// model's own ladder, pinned at the ends, and the pill shows where it landed.
+    /// model's own ladder, pinned at the ends, and the pill shows where it landed — and says so,
+    /// because a notch at the end of the ladder otherwise reads as a wheel that did nothing.
     func stepEffort(by delta: Int) {
         let options = effortOptions()
-        guard ModelEffort.isOffered(options: options) else { return }
+        guard ModelEffort.isOffered(options: options) else {
+            host?.flash(ModelDial.headline(modelName: modelPillText(), options: []))
+            return
+        }
         let next = ModelDial.step(resolvedEffort(), by: delta, options: options)
+        host?.flash(ModelDial.stepped(to: next))
         guard next != resolvedEffort() else { return }
         setChosenEffort(next)
+    }
+
+    /// The pinned pairs this chat's machine can run, in the order they were pinned.
+    private func reachablePresets() -> [ModelPreset] {
+        let accepts =
+            modelSources().first { $0.profileID == entry?.profileID }?.acceptsAnyModelID
+            ?? (backend?.agentType == .claudeCode)
+        return ModelPresetCycle.reachable(
+            ModelPresetStore.all(), models: models, acceptsAnyModelID: accepts)
+    }
+
+    /// ⌃⌥←/→: the next pinned pair round the ring, from the one this chat runs now.
+    func stepPreset(by delta: Int) {
+        let presets = reachablePresets()
+        guard
+            let preset = ModelPresetCycle.step(
+                presets, model: chosenModel ?? activeSelection, effort: resolvedEffort(), by: delta)
+        else {
+            host?.flash(Localized.text("Pin a model and level with ⌃S in the model dial"))
+            return
+        }
+        take(preset)
+    }
+
+    /// ⌃⌥1–9: the nth pinned pair this machine can run.
+    func takePreset(number: Int) {
+        let presets = reachablePresets()
+        guard !presets.isEmpty else {
+            host?.flash(Localized.text("Pin a model and level with ⌃S in the model dial"))
+            return
+        }
+        guard presets.indices.contains(number - 1) else { return }
+        take(presets[number - 1])
+    }
+
+    /// A pair is a model pick followed by its level, so the level goes through the same carry any
+    /// pick does and the toast says what the chat now runs at, and what moved if anything did.
+    private func take(_ preset: ModelPreset) {
+        let carry = preset.applied(
+            currentEffort: resolvedEffort(), models: models,
+            agentOptions: backend?.reasoningEffortOptions ?? [])
+        setChosenModel(preset.selection, announcing: false)
+        setChosenEffort(carry.level)
+        let name = modelName(of: preset.selection)
+        let said = ModelPresetCycle.said(preset, modelName: name)
+        host?.flash(carry.notice(modelName: name).map { said + " — " + $0 } ?? said)
+    }
+
+    private func modelName(of selection: ModelSelection) -> String {
+        models.first { $0.providerID == selection.providerID && $0.id == selection.modelID }?.name
+            ?? models.first { $0.id == selection.modelID }?.name
+            ?? ModelBadge.label(model: selection, effort: nil)
     }
 
     func openModelDial() {
@@ -3283,17 +3357,22 @@ final class ChatPane: @unchecked Sendable {
         host?.startChat(on: pick.profileID, into: self)
     }
 
-    private func setChosenModel(_ selection: ModelSelection?) {
+    /// A level the new model has no word for moves to the nearest cooler one it takes and is said
+    /// aloud; `announcing` is false where the caller sets the level itself and says it once.
+    private func setChosenModel(_ selection: ModelSelection?, announcing: Bool = true) {
         chosenModel = selection
         if let entry {
             ModelPreferenceStore.recordPick(
                 selection, sessionKey: Self.preferenceKey(entry), contextID: entry.profileID)
         }
-        let kept = ModelEffort.adopt(
+        let carry = ModelEffort.adoption(
             chosenEffort, for: selection, models: models,
             agentOptions: backend?.reasoningEffortOptions ?? [])
-        if kept != chosenEffort {
-            setChosenEffort(kept)
+        if announcing, let notice = carry.notice(modelName: selection.map(modelName(of:)) ?? modelPillText()) {
+            host?.toast(notice)
+        }
+        if carry.level != chosenEffort {
+            setChosenEffort(carry.level)
             return
         }
         if let entry {

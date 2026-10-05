@@ -13,6 +13,7 @@ final class ChatViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, String>!
     private let composer = ComposerView()
+    private let dialPill = ModelDialPill()
     private let commandPalette = SlashCommandPalette()
     private let banner = BannerView()
     private let emptyState = ChatEmptyStateView()
@@ -321,6 +322,24 @@ final class ChatViewController: UIViewController {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
                     self?.composer.setDraft(draft)
+                }
+            }
+            if let dial = ProcessInfo.processInfo.environment["TAILSCODE_DIAL"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(7))
+                    guard let self else { return }
+                    if dial.hasPrefix("pins") {
+                        for preset in [
+                            ModelPreset(selection: ModelSelection(providerID: "anthropic", modelID: "sonnet"), effort: .level("medium")),
+                            ModelPreset(selection: ModelSelection(providerID: "anthropic", modelID: "opus"), effort: .level("xhigh")),
+                        ] where !ModelPresetStore.all().contains(preset) {
+                            ModelPresetStore.pin(preset)
+                        }
+                        self.updateNavControls()
+                    }
+                    if dial == "rail" { self.dialPill.openRail() }
+                    if dial == "step" { self.stepEffort(by: -1) }
+                    if dial == "pinscycle" { self.cyclePreset(by: 1) }
                 }
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_MODELS"] != nil {
@@ -3401,13 +3420,9 @@ final class ChatViewController: UIViewController {
     }
 
     private func updateNavControls() {
-        var items: [UIBarButtonItem] = []
-        if viewModel.supportsModelSelection || viewModel.supportsReasoningEffort {
-            items.append(modelBarButton())
-        }
-        items.append(overflowBarButton())
-        navigationItem.rightBarButtonItems = items
+        navigationItem.rightBarButtonItems = [overflowBarButton()]
         refreshAttachmentGating()
+        refreshDial()
         composer.ultracodeEffort = viewModel.currentEffort
         composer.ultracodeInFlight = viewModel.ultracodeInFlight
     }
@@ -4436,32 +4451,7 @@ final class ChatViewController: UIViewController {
     }
 
     private func presentEffortSheet() {
-        let sheet = UIAlertController(
-            title: String(localized: "Reasoning effort"), message: nil,
-            preferredStyle: .actionSheet)
-        sheet.addAction(
-            UIAlertAction(
-                title: viewModel.currentEffort == nil
-                    ? String(localized: "Default") + " ✓" : String(localized: "Default"),
-                style: .default
-            ) { [weak self] _ in
-                self?.viewModel.setEffort(nil)
-                self?.updateNavControls()
-            })
-        for level in viewModel.reasoningEffortOptions {
-            let selected = viewModel.currentEffort == level
-            sheet.addAction(
-                UIAlertAction(
-                    title: selected ? "\(level.capitalized) ✓" : level.capitalized, style: .default
-                ) { [weak self] _ in
-                    self?.viewModel.setEffort(level)
-                    self?.updateNavControls()
-                })
-        }
-        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        sheet.popoverPresentationController?.sourceView = composer
-        sheet.popoverPresentationController?.sourceRect = composer.bounds
-        present(sheet, animated: true)
+        dialPill.openRail()
     }
 
     private func presentUsage() {
@@ -4612,48 +4602,124 @@ final class ChatViewController: UIViewController {
         toast.flash(in: view, above: composer.topAnchor, duration: duration)
     }
 
-    /// One chip carries both the model and the effort, and names them: which
-    /// model a chat is running was previously hidden behind a bare `cpu` icon.
-    /// The title reads the displayed derivation — pick, then transcript, then
-    /// session record — while the menu's checkmarks stay on the explicit pick,
-    /// so "Auto" remains checked for a chat the server is still deciding for.
-    private func modelBarButton() -> UIBarButtonItem {
-        let choice = ModelChoice(model: viewModel.selectedModel, effort: viewModel.currentEffort)
-        let label = ModelBadge.label(
-            model: viewModel.displayedModel, effort: viewModel.displayedEffort)
-        let elements = ModelMenu.elements(
+    /// The pill in the composer carries both the model and the effort, and names them. It reads the
+    /// displayed derivation — pick, then transcript, then session record — while the menu's
+    /// checkmarks stay on the explicit pick, so "Auto" remains checked for a chat the server is
+    /// still deciding for.
+    private func refreshDial() {
+        guard viewModel.supportsModelSelection || viewModel.supportsReasoningEffort else {
+            composer.accessory = nil
+            composer.heatColor = nil
+            return
+        }
+        if composer.accessory !== dialPill {
+            dialPill.railHost = view
+            dialPill.railBelow = composer
+            dialPill.onEffort = { [weak self] level in self?.setEffortFromDial(level) }
+            dialPill.onCycle = { [weak self] delta in self?.cyclePreset(by: delta) }
+            dialPill.footer = { [weak self] rung in self?.railFooter(for: rung) }
+            composer.accessory = dialPill
+        }
+        let model = viewModel.displayedModel
+        let effort = viewModel.displayedEffort
+        dialPill.content = ModelDialPill.Content(
+            modelWord: model.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto"),
+            chip: model.flatMap { ModelBadge.chip(model: $0.modelID, effort: nil) },
+            effort: effort, options: viewModel.reasoningEffortOptions,
+            choosesModel: viewModel.supportsModelSelection)
+        dialPill.modelMenu = UIMenu(title: String(localized: "Model"), children: dialMenuElements())
+        composer.heatColor = Self.heatColor(for: effort)
+    }
+
+    /// A hot level, from xhigh up, marks the top of the box; ultracode has its own aura.
+    private static func heatColor(for effort: String?) -> UIColor? {
+        guard let effort, !ModelDial.isPower(effort), (ModelDial.rank(effort) ?? 0) >= 4 else {
+            return nil
+        }
+        return Theme.Color.modelEffort(effort)
+    }
+
+    private func dialMenuElements() -> [UIMenuElement] {
+        let allowsAuto = ChatModelResolver.honoursServerDefault(viewModel.backend)
+        return ModelMenu.elements(
             sources: ModelFleet.sources(
                 profiles: ConnectionController.shared.profiles, current: viewModel.contextID,
                 currentModels: viewModel.supportsModelSelection ? availableModels : [],
-                allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend),
-                reachability: pickerReachability),
-            choice: choice,
-            efforts: viewModel.reasoningEffortOptions,
-            allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend),
+                allowsServerDefault: allowsAuto, reachability: pickerReachability),
+            choice: ModelChoice(model: viewModel.selectedModel, effort: viewModel.currentEffort),
+            efforts: viewModel.backend.reasoningEffortOptions,
+            allowsServerDefault: allowsAuto,
             quotas: QuotaSurface.relevantQuotas(
                 for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas()),
+            includesEffort: false,
             actions: ModelMenu.Actions(
-                selectModel: { [weak self] selection in
-                    Theme.Haptics.selection()
-                    self?.viewModel.selectModel(selection)
-                    self?.updateNavControls()
-                },
-                selectEffort: { [weak self] level in
-                    Theme.Haptics.selection()
-                    self?.viewModel.setEffort(level)
-                    self?.updateNavControls()
-                },
+                selectModel: { [weak self] selection in self?.chooseModel(selection) },
+                selectEffort: { [weak self] level in self?.setEffortFromDial(level) },
+                selectPreset: { [weak self] preset in self?.choose(preset) },
                 browseAll: { [weak self] in self?.presentModelPicker() }))
-        let item = UIBarButtonItem(
-            title: label, image: nil, primaryAction: nil,
-            menu: UIMenu(title: String(localized: "Model"), children: elements))
-        if let raw = viewModel.displayedModel?.modelID,
-            let chip = ModelBadge.chip(model: raw, effort: nil)
-        {
-            item.tintColor = Theme.Color.modelIdentity(chip)
+    }
+
+    private func chooseModel(_ selection: ModelSelection?) {
+        Theme.Haptics.selection()
+        let carry = viewModel.selectModel(selection)
+        updateNavControls()
+        saySwitch(carry, selection: selection)
+    }
+
+    private func choose(_ preset: ModelPreset) {
+        Theme.Haptics.selection()
+        let carry = viewModel.apply(preset)
+        updateNavControls()
+        saySwitch(carry, selection: preset.selection)
+    }
+
+    /// What a model change did to the level, said where it happened: a word that moved on its own
+    /// is a surprise, and one that is told is a fact.
+    private func saySwitch(_ carry: EffortCarry, selection: ModelSelection?) {
+        let name = selection.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto")
+        guard let notice = carry.notice(modelName: name) else { return }
+        presentToast(notice, duration: 3)
+    }
+
+    private func setEffortFromDial(_ level: String?) {
+        viewModel.setEffort(level)
+        updateNavControls()
+    }
+
+    private func railFooter(for rung: EffortRung) -> String? {
+        EffortRail.footer(
+            for: rung,
+            yours: EffortHistory.line(level: rung.level, messages: viewModel.state.messages))
+    }
+
+    /// Steps along the pinned pairs without opening anything: a swipe on the pill, a chord.
+    private func cyclePreset(by delta: Int) {
+        guard let preset = viewModel.presetStep(by: delta) else {
+            presentToast(String(localized: "Pin a model and level in the model menu"))
+            return
         }
-        item.accessibilityLabel = String(localized: "Model: \(label)")
-        return item
+        applyPreset(preset)
+    }
+
+    private func applyPreset(_ preset: ModelPreset) {
+        let carry = viewModel.apply(preset)
+        updateNavControls()
+        let name = ModelBadge.shortName(preset.selection.modelID)
+        presentToast(carry.notice(modelName: name) ?? ModelPresetCycle.said(preset, modelName: name))
+    }
+
+    /// One notch hotter or colder from a hardware key, said the way the desktops say it.
+    private func stepEffort(by delta: Int) {
+        let options = viewModel.reasoningEffortOptions
+        guard ModelEffort.isOffered(options: options) else {
+            let name = viewModel.displayedModel.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto")
+            presentToast(ModelDial.headline(modelName: name, options: []))
+            return
+        }
+        let next = ModelDial.step(viewModel.displayedEffort, by: delta, options: options)
+        setEffortFromDial(next)
+        Theme.Haptics.notch()
+        presentToast(ModelDial.stepped(to: next))
     }
 
     @objc private func presentModelPicker() {
@@ -4672,7 +4738,8 @@ final class ChatViewController: UIViewController {
                     reachability: pickerReachability),
                 selected: viewModel.selectedModel,
                 quotas: QuotaSurface.relevantQuotas(
-                    for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
+                    for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas()),
+                dial: pickerDial()
             ) { [weak self] pick in
                 self?.apply(pick)
             }
@@ -4717,6 +4784,17 @@ final class ChatViewController: UIViewController {
         present(nav, animated: true)
     }
 
+    /// What the picker needs from this chat to set the level and pin pairs from its own sheet.
+    private func pickerDial() -> ModelPickerViewController.Dial {
+        let model = viewModel.displayedModel
+        return ModelPickerViewController.Dial(
+            modelName: model.map { ModelBadge.shortName($0.modelID) } ?? String(localized: "Auto"),
+            options: viewModel.reasoningEffortOptions,
+            agentOptions: viewModel.backend.reasoningEffortOptions,
+            effort: viewModel.displayedEffort, contextTokens: transcriptFill?.used,
+            onEffort: { [weak self] level in self?.setEffortFromDial(level) })
+    }
+
     /// What the picker names the current server's ask as: `nil` while it is still out.
     private var pickerReachability: [String: Bool] {
         guard let reachable = modelsReachable else { return [:] }
@@ -4747,8 +4825,7 @@ final class ChatViewController: UIViewController {
     /// only thing it can honour: the same model, on that machine, in a new chat.
     private func apply(_ pick: ModelPick) {
         guard pick.isElsewhere else {
-            viewModel.selectModel(pick.selection)
-            updateNavControls()
+            chooseModel(pick.selection)
             return
         }
         let alert = UIAlertController(
@@ -6001,6 +6078,19 @@ extension ChatViewController: KeyActionHost {
         case .toggleSidebar:
             guard let workspace else { return false }
             workspace.toggleColumns()
+        case .effortHotter:
+            stepEffort(by: 1)
+        case .effortColder:
+            stepEffort(by: -1)
+        case .modelDial:
+            dialPill.openRail()
+        case .presetNext:
+            cyclePreset(by: 1)
+        case .presetPrevious:
+            cyclePreset(by: -1)
+        case .preset(let number):
+            guard let preset = viewModel.preset(number: number) else { return false }
+            applyPreset(preset)
         default:
             return false
         }

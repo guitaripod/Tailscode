@@ -578,10 +578,12 @@ final class QuickAskPanel: NSPanel {
                 QuickAskDefaults.recordEffort(level, forProfileID: self.targetServer.id)
                 self.refreshAim()
             },
-            onPick: { [weak self] pick in self?.takePick(pick) },
+            onPick: { [weak self] pick, effort, notice in
+                self?.takePick(pick, effort: effort, notice: notice)
+            },
             onOpenCatalog: { [weak self] in self?.openModelDirectoryNow() },
-            onStarred: { [weak self] selection in
-                ModelFavoritesStore.toggle(selection)
+            onPinned: { [weak self] preset in
+                ModelPresetStore.pin(preset)
                 self?.refreshAim()
             },
             onClosed: { [weak self] in
@@ -593,15 +595,38 @@ final class QuickAskPanel: NSPanel {
 
     /// The server's own default is a real answer on the machine already aimed at, and it is
     /// filed there rather than adopted: `adopt` re-aims at the pick's server, which for a default
-    /// picked here is the server the question is already on.
-    private func takePick(_ pick: ModelPick) {
+    /// picked here is the server the question is already on. The level follows the model into the
+    /// quick ask's own memory — the pair's level where the dial showed one, otherwise the level
+    /// already remembered, carried to the nearest cooler one the model takes — and a level that
+    /// moved is said on the status line, never in the chat's composer.
+    private func takePick(_ pick: ModelPick, effort: EffortAsk = .unchanged, notice: String? = nil) {
+        let profileID: String
         if pick.selection == nil, !pick.isElsewhere {
-            QuickAskDefaults.recordModel(nil, forProfileID: targetServer.id)
+            profileID = targetServer.id
+            QuickAskDefaults.recordModel(nil, forProfileID: profileID)
         } else {
+            profileID = pick.profileID
             QuickAskDefaults.adopt(pick)
             aim(at: pick.profileID)
         }
+        let asked: String?
+        switch effort {
+        case .unchanged: asked = QuickAskDefaults.effort(forProfileID: profileID)
+        case .set(let level): asked = level
+        }
+        let agent =
+            servers.first { $0.id == profileID }
+            .flatMap { ServerDirectory.shared.backend(for: $0)?.reasoningEffortOptions } ?? []
+        let carry = ModelEffort.adoption(
+            asked, for: pick.selection, models: ModelCatalogStore.cached(profileID),
+            agentOptions: agent)
+        if effort != .unchanged || carry.level != asked {
+            QuickAskDefaults.recordEffort(carry.level, forProfileID: profileID)
+        }
         refreshAim()
+        let name = pick.modelName.isEmpty
+            ? ModelBadge.label(model: pick.selection, effort: nil) : pick.modelName
+        if let said = notice ?? carry.notice(modelName: name), !asking { setStatus(said) }
         editor.focus()
     }
 
@@ -611,21 +636,28 @@ final class QuickAskPanel: NSPanel {
             sources: chooserSources(for: server),
             selected: QuickAskDefaults.model(forProfileID: server.id),
             effort: QuickAskDefaults.effort(forProfileID: server.id), options: effortOptions(),
-            modelWord: modelWord(for: server), quotas: [])
+            modelWord: modelWord(for: server), quotas: [],
+            agentOptions: ServerDirectory.shared.backend(for: server)?.reasoningEffortOptions ?? [])
     }
 
     /// One notch of the wheel or one ⌃⌥ arrow: the next stop cold-to-hot from the level the dial
-    /// shows, pinned at both ends. Nothing opens; the pill is the whole answer.
+    /// shows, pinned at both ends. Nothing opens; the pill and the status line are the whole
+    /// answer, and a model that takes no level says so rather than letting the wheel turn mute.
     private func stepEffort(by delta: Int) {
         guard !asking else { return }
         let server = targetServer
         let options = effortOptions()
-        guard ModelEffort.isOffered(options: options) else { return }
+        guard ModelEffort.isOffered(options: options) else {
+            setStatus(ModelDial.headline(modelName: modelWord(for: server), options: []))
+            return
+        }
         let current = QuickAskDefaults.effort(forProfileID: server.id)
         let next = ModelDial.step(current, by: delta, options: options)
-        guard next != current else { return }
-        QuickAskDefaults.recordEffort(next, forProfileID: server.id)
-        refreshAim()
+        if next != current {
+            QuickAskDefaults.recordEffort(next, forProfileID: server.id)
+            refreshAim()
+        }
+        setStatus(ModelDial.stepped(to: next))
     }
 
     /// The catalog is asked once per aim, in the background: a server that has never been
@@ -733,13 +765,15 @@ final class QuickAskPanel: NSPanel {
     }
 
     /// A model whose levels are its own can make the level already picked unrunnable. The aim
-    /// then hands the choice back to the machine rather than keeping a word the question could
-    /// not be asked with — a control may never name a level the send would not carry.
+    /// then carries it to the nearest cooler level the model takes, or hands it back to the
+    /// machine where there is none, rather than keeping a word the question could not be asked
+    /// with — a control may never name a level the send would not carry.
     private func dropUnofferedEffort(on profileID: String, options: [String]) {
         guard let chosen = QuickAskDefaults.effort(forProfileID: profileID), !chosen.isEmpty,
             !options.contains(chosen)
         else { return }
-        QuickAskDefaults.recordEffort(nil, forProfileID: profileID)
+        QuickAskDefaults.recordEffort(
+            ModelEffort.carry(chosen, options: options).level, forProfileID: profileID)
     }
 
     /// What the aim can be handed, re-read whenever either half of it moves. A picture already in
