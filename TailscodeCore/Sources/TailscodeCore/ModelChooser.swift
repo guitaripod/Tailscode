@@ -935,6 +935,11 @@ public struct ModelChooser: Sendable, Equatable {
         }
     }
 
+    /// What the strip's every-door chip counts: the shown machine's models, each once. The doors'
+    /// own counts add up to more — a model two doors both reach is in each — and a chip that read
+    /// 20 over a tab that read 18 would be two numbers for one list.
+    public var allDoorsCount: Int { wholeMachine.count }
+
     public var showsDoors: Bool { doors.count > 1 }
 
     /// The door showing, whole.

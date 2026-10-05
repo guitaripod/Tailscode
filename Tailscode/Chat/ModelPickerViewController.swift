@@ -218,7 +218,7 @@ final class ModelPickerViewController: UIViewController {
         doorStrip.isHidden = !shown
         guard shown else { return }
         let every = ChipStripView.Chip(
-            title: String(localized: "All"), count: chooser.doors.reduce(0) { $0 + $1.count },
+            title: String(localized: "All"), count: chooser.allDoorsCount,
             detail: String(localized: "Every provider this server reaches"), dot: nil)
         doorStrip.render(
             [every] + chooser.doors.map(ChipStripView.Chip.init), selected: chooser.doorIndex)

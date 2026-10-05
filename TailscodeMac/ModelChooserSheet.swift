@@ -382,7 +382,7 @@ final class ModelChooserSheet: NSObject {
         var chips: [NSView] = []
         chips.append(
             MachineChip(
-                title: Localized.text("All"), count: chooser.doors.reduce(0) { $0 + $1.count },
+                title: Localized.text("All"), count: chooser.allDoorsCount,
                 detail: Localized.text("Every provider this server reaches"), dot: nil,
                 selected: chooser.doorIndex == 0
             ) { [weak self] in

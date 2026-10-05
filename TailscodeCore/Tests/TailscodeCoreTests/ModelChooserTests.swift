@@ -51,6 +51,8 @@ struct ModelChooserTests {
         #expect(chooser.doors.map(\.providerID) == ["ollama-cloud", "ollama", "opencode-go", "openrouter"])
         #expect(chooser.doors.first { $0.providerID == "ollama" }?.isLocal == true)
         #expect(chooser.doorIndex == 0)
+        #expect(chooser.doors.reduce(0) { $0 + $1.count } == 5)
+        #expect(chooser.allDoorsCount == 4)
         let openrouter = chooser.setDoor("openrouter")
         #expect(openrouter)
         #expect(chooser.doorIndex == 4)
