@@ -92,6 +92,7 @@ public final class ConversationHub: @unchecked Sendable {
         var sequence: UInt64 = 0
         var releaseDue: TimeInterval?
         var graceID: UInt64 = 0
+        var redials = 0
     }
 
     private let open: @Sendable (LiveKey) async -> AgentConversation?
@@ -304,14 +305,28 @@ public final class ConversationHub: @unchecked Sendable {
 
     /// A subscription that ended on its own — an open that failed, a stream that finished — leaves
     /// the entry ready for the next lease or reevaluation to try again, rather than looking live.
+    /// A stream that opened and then ended while leases still hold the key is dialled again after a
+    /// backoff (2, 4, 8 … 30 s, reset by a live state), because the Kit finishes its subscribers on
+    /// a failure it calls terminal and a pane that is still showing the chat must not go quiet for
+    /// good; an open that failed waits for the next lease, as a server nobody has configured does.
     private func subscriptionEnded(_ key: LiveKey, id: UInt64, opened: Bool) {
         lock.lock()
         defer { lock.unlock() }
         guard let entry = entries[key], entry.subscriptionID == id else { return }
         entry.subscription = nil
         if !opened { entry.opening = nil }
-        if entry.leases.isEmpty { drop(key, entry: entry) }
+        if entry.leases.isEmpty {
+            drop(key, entry: entry)
+            return
+        }
+        guard opened else { return }
+        entry.redials += 1
+        let delay = min(Self.maxRedialDelay, pow(2, Double(min(entry.redials, 5))))
+        schedule(delay) { [weak self] in self?.reconcile(key) }
     }
+
+    /// The longest wait before a finished stream is dialled again.
+    public static let maxRedialDelay: TimeInterval = 30
 
     private func receive(_ key: LiveKey, _ state: ConversationState, subscriptionID: UInt64) {
         lock.lock()
@@ -320,6 +335,7 @@ public final class ConversationHub: @unchecked Sendable {
             return
         }
         entry.sequence &+= 1
+        if state.connection == .live { entry.redials = 0 }
         let frame = LiveFrame(state: state, sequence: entry.sequence)
         entry.latest = frame
         let records = Array(entry.leases.values)

@@ -269,4 +269,52 @@ struct HubTests {
         world.scheduled.runAll()
         #expect(!hub.isStreaming(key))
     }
+
+    @Test("A stream that finishes on its own is dialled again after a backoff while a lease holds it")
+    func redialAfterFinish() async {
+        let clock = ManualClock()
+        let scheduled = Scheduled()
+        let opens = Tally<LiveKey>()
+        let hub = ConversationHub(
+            open: { key in
+                opens.add(key)
+                let backend = MockBackend(
+                    agentType: .claudeCode,
+                    script: [
+                        MockScriptStep(
+                            .messageUpserted(
+                                ChatMessage(
+                                    id: "m", role: .assistant, agentType: .claudeCode,
+                                    parts: [MessagePart(id: "p", kind: .text("word"))],
+                                    createdAt: Date(timeIntervalSince1970: 1)),
+                                replaceParts: true),
+                            delay: .milliseconds(5))
+                    ])
+                return AgentConversation(
+                    backend: backend, sessionID: key.sessionID,
+                    policy: ConnectionPolicy(maxReconnectAttempts: 0))
+            }, clock: clock, edges: Edges(), schedule: scheduled.scheduler)
+        let lease = hub.lease(key, interest: .full) {}
+        #expect(await eventually { !hub.isStreaming(key) && scheduled.pending == 1 })
+        scheduled.runAll()
+        #expect(hub.isStreaming(key))
+        #expect(opens.count == 1)
+        lease.cancel()
+        #expect(await eventually { !hub.isStreaming(key) || scheduled.pending > 0 })
+        clock.advance(60)
+        for _ in 0..<4 { scheduled.runAll() }
+        #expect(await eventually { hub.keys.isEmpty })
+    }
+
+    @Test("A finished stream with no lease left is dropped rather than redialled")
+    func noRedialWithoutLease() async {
+        let world = World()
+        let lease = world.hub.lease(key, interest: .full) {}
+        #expect(await eventually { world.hub.latest(key) != nil })
+        lease.cancel()
+        world.clock.advance(6)
+        world.scheduled.runAll()
+        #expect(world.hub.keys.isEmpty)
+        #expect(world.scheduled.pending == 0)
+    }
 }
