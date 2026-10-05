@@ -74,4 +74,63 @@ public enum SessionListCache {
         pending = nil
         save(entries)
     }
+    private static let coalescer = SessionListSaveCoalescer<[SessionEntry]>(delay: 2) { save($0) }
+
+    /// The same two-second coalescing as ``scheduleSave(_:)`` for a caller that is not on the main
+    /// actor — the Linux client's GTK thread, where libdispatch's main queue is never drained. The
+    /// encode and write happen on a utility queue; the newest list wins.
+    public static func enqueueSave(_ entries: [SessionEntry]) {
+        coalescer.schedule(entries)
+    }
+
+    /// Writes whatever ``enqueueSave(_:)`` is holding, now, on the calling thread: for every exit
+    /// path, where the coalescing window may never elapse.
+    public static func flushEnqueuedSave() {
+        coalescer.flush()
+    }
+}
+
+/// One trailing write of the newest value, `delay` after the first value of a burst, on a serial
+/// utility queue; `flush` writes what is pending at once and in order with any write in flight.
+final class SessionListSaveCoalescer<Value: Sendable>: @unchecked Sendable {
+    private let delay: TimeInterval
+    private let write: @Sendable (Value) -> Void
+    private let queue = DispatchQueue(label: "tailscode.session-list-cache", qos: .utility)
+    private let lock = NSLock()
+    private var pending: Value?
+    private var scheduled = false
+
+    init(delay: TimeInterval, write: @escaping @Sendable (Value) -> Void) {
+        self.delay = delay
+        self.write = write
+    }
+
+    func schedule(_ value: Value) {
+        lock.lock()
+        pending = value
+        let arm = !scheduled
+        scheduled = true
+        lock.unlock()
+        guard arm else { return }
+        queue.asyncAfter(deadline: .now() + delay) { [self] in drain() }
+    }
+
+    func flush() {
+        queue.sync { drain() }
+    }
+
+    var isPending: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return pending != nil
+    }
+
+    private func drain() {
+        lock.lock()
+        let value = pending
+        pending = nil
+        scheduled = false
+        lock.unlock()
+        if let value { write(value) }
+    }
 }
