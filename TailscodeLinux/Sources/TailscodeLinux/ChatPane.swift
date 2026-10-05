@@ -928,8 +928,8 @@ final class ChatPane: @unchecked Sendable {
     /// still in flight is handed to the window's watch so the chat list keeps its LIVE NOW seat.
     func park() {
         guard !isParked else { return }
-        isParked = true
         if let entry, presence.isInFlight { host?.keepWatching(entry) }
+        isParked = true
         leaveFreshCanvas()
         releaseStream()
         agentStreamTask?.cancel()
