@@ -30,6 +30,25 @@ public struct LoopLoad: Sendable, Equatable {
     /// Records a slice that ran from `start` to `end` on the monotonic clock. A slice longer than
     /// the whole window is clipped to it; its full length still counts as the worst busy slice.
     public mutating func record(_ slice: LoopSlice, from start: TimeInterval, to end: TimeInterval) {
+        let busy = slice == .busy
+        spread(from: start, to: end, busyShare: busy ? 1 : 0, worst: busy ? end - start : 0)
+    }
+
+    /// Records a span the platform summed rather than sliced: `busy` seconds of it ran work, spread
+    /// evenly across it, and its longest busy slice lasted `worst`. A loop meter read once a second
+    /// reports this way, so a loop that iterates a thousand times a second costs one call rather
+    /// than two thousand.
+    public mutating func record(
+        spanFrom start: TimeInterval, to end: TimeInterval, busy: TimeInterval, worst: TimeInterval
+    ) {
+        guard end > start else { return }
+        let share = min(1, max(0, busy / (end - start)))
+        spread(from: start, to: end, busyShare: share, worst: max(0, worst))
+    }
+
+    private mutating func spread(
+        from start: TimeInterval, to end: TimeInterval, busyShare: Double, worst: TimeInterval
+    ) {
         guard end > start else { return }
         let width = Self.bucketWidth
         let windowStart = end - width * Double(Self.bucketCount)
@@ -43,12 +62,12 @@ public struct LoopLoad: Sendable, Equatable {
             if buckets[slot].index != index { buckets[slot] = Bucket(index: index) }
             let span = stop - cursor
             buckets[slot].covered += span
-            if slice == .busy { buckets[slot].busy += span }
+            buckets[slot].busy += span * busyShare
             lastSlot = slot
             cursor = stop
         }
-        if slice == .busy, let lastSlot {
-            buckets[lastSlot].worst = max(buckets[lastSlot].worst, end - start)
+        if worst > 0, let lastSlot {
+            buckets[lastSlot].worst = max(buckets[lastSlot].worst, worst)
         }
     }
 

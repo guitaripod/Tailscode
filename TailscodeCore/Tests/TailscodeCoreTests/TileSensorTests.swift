@@ -42,6 +42,21 @@ struct TileSensorTests {
         #expect(load.busy(over: 2, now: 5) == 1)
     }
 
+    @Test("A summed span spreads its busy share and keeps its worst slice")
+    func loopSpan() {
+        var load = LoopLoad()
+        load.record(spanFrom: 100, to: 101, busy: 0.25, worst: 0.12)
+        load.record(spanFrom: 101, to: 102, busy: 0.75, worst: 0.3)
+        #expect(abs(load.busy(over: 1, now: 102) - 0.75) < 0.02)
+        #expect(abs(load.busy(over: 2, now: 102) - 0.5) < 0.02)
+        #expect(abs(load.worstSlice(over: 1, now: 102) - 0.3) < 1e-9)
+        #expect(abs(load.worstSlice(over: 2, now: 102) - 0.3) < 1e-9)
+        load.record(spanFrom: 102, to: 103, busy: 5, worst: 0)
+        #expect(load.busy(over: 1, now: 103) == 1)
+        load.record(spanFrom: 103, to: 103, busy: 1, worst: 9)
+        #expect(load.worstSlice(over: 1, now: 103) < 9)
+    }
+
     @Test("The stall policy's thresholds")
     func stallPolicy() {
         let policy = StallPolicy()
