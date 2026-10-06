@@ -36,7 +36,6 @@ final class ChatPane: @unchecked Sendable {
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     private let authBanner = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     private let laneRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
-    private var laneObservers: [NSObjectProtocol] = []
     private let statusBand = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     let bandState = StatusBand.State()
     private var agents: [SubagentSummary] = []
@@ -498,12 +497,13 @@ final class ChatPane: @unchecked Sendable {
     /// and without anybody restarting anything.
     private func observeLaneDoors() {
         for name in [ForgeStore.didChange, ImageGenStore.didChange] {
-            laneObservers.append(
+            let token = ObserverToken(
                 NotificationCenter.default.addObserver(
                     forName: name, object: nil, queue: nil
                 ) { [weak self] _ in
                     Gtk.onMain { [weak self] in self?.fillLaneRow() }
                 })
+            lifetime.add { NotificationCenter.default.removeObserver(token.observer) }
         }
     }
 
@@ -1642,8 +1642,6 @@ final class ChatPane: @unchecked Sendable {
         lifetime.cancelAll()
         cascade.release()
         repairingTail = false
-        for observer in laneObservers { NotificationCenter.default.removeObserver(observer) }
-        laneObservers = []
         draw?.shutdown()
         draw = nil
         video?.shutdown()
@@ -2284,13 +2282,13 @@ final class ChatPane: @unchecked Sendable {
     /// tick dragging the status band and its network facts along behind it.
     private func startResumeClock() {
         guard resumeTask == nil, !resume.isEmpty else { return }
-        resumeTask = Task { [weak self] in
+        resumeTask = track(Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(Self.resumeTickSeconds))
                 guard !Task.isCancelled else { break }
                 Gtk.onMain { [weak self] in self?.serviceResume() }
             }
-        }
+        })
     }
 
     private static let resumeTickSeconds: TimeInterval = 15
@@ -6085,6 +6083,12 @@ final class ChatPane: @unchecked Sendable {
         vim.reset(to: text, cursor: text.count, mode: .insert)
         gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), text, -1)
     }
+}
+
+/// A notification observer carried into a pane's lifetime, which only holds `Sendable` cancels.
+private final class ObserverToken: @unchecked Sendable {
+    let observer: NSObjectProtocol
+    init(_ observer: NSObjectProtocol) { self.observer = observer }
 }
 
 /// One first-fill hop per frame, across every pane in the window.
