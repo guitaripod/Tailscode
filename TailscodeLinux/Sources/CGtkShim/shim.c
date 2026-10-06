@@ -3562,3 +3562,31 @@ void tailscode_between_frames(GtkWidget *widget, void (*handler)(void *), void *
     box->signal = g_signal_connect(clock, "after-paint", G_CALLBACK(tailscode_after_frame_fired), box);
     gdk_frame_clock_request_phase(clock, GDK_FRAME_CLOCK_PHASE_AFTER_PAINT);
 }
+
+#include <malloc.h>
+
+/// Bytes malloc reports in use, for the soak: growth here is retention, growth in RSS beside a
+/// flat figure here is fragmentation.
+long tailscode_heap_in_use(void) {
+    struct mallinfo2 info = mallinfo2();
+    return (long)info.uordblks;
+}
+
+
+static atomic_long tailscode_soak_rows_alive = 0;
+
+static void tailscode_soak_row_finalized(gpointer data, GObject *gone) {
+    (void)data;
+    (void)gone;
+    atomic_fetch_sub_explicit(&tailscode_soak_rows_alive, 1, memory_order_relaxed);
+}
+
+/// Counts a transcript row widget until it is finalized, so the soak can tell rows that were
+/// dropped from rows that were only removed from the screen.
+void tailscode_soak_track_row(GtkWidget *widget) {
+    if (!widget) return;
+    atomic_fetch_add_explicit(&tailscode_soak_rows_alive, 1, memory_order_relaxed);
+    g_object_weak_ref(G_OBJECT(widget), tailscode_soak_row_finalized, NULL);
+}
+
+long tailscode_soak_rows(void) { return atomic_load(&tailscode_soak_rows_alive); }

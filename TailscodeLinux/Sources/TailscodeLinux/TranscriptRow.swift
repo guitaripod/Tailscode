@@ -770,6 +770,12 @@ struct TranscriptRow: Hashable {
     }
 
     func makeWidget(context: TranscriptContext) -> UnsafeMutablePointer<GtkWidget> {
+        let widget = buildWidget(context: context)
+        if Soak.isOn { tailscode_soak_track_row(widget) }
+        return widget
+    }
+
+    private func buildWidget(context: TranscriptContext) -> UnsafeMutablePointer<GtkWidget> {
         switch kind {
         case .userText(let text, let messageID):
             return Self.prompt(text, messageID: messageID, context: context)

@@ -8,10 +8,12 @@ import TailscodeCore
 /// world and turns them on; nothing here runs otherwise. Every five seconds, from a thread of its
 /// own so a wedged main loop still reports, one line goes to stdout:
 ///
-/// `SOAK t= dt= rss= anon= thr= fds= pending= maxPending= lag50= lag95= lagMax= lagN= ticks= tickRuns=
+/// `SOAK t= dt= rss= anon= thr= fds= heap= rows= pending= maxPending= lag50= lag95= lagMax= lagN= ticks= tickRuns=
 /// frames= parses= parseHits= listSaves= listSaveMs= applies= applyMs= paints= paintMs= drains= guarded= ready=
 /// drainMs= drainP95= drainMax= frameMs= layoutMs= phasePaintMs= cpu= mainCpu=`
 ///
+/// `heap` is the KiB malloc reports in use (`mallinfo2`), which tells retention from fragmentation;
+/// `rows` is transcript row widgets made and not yet finalized.
 /// `frameMs` is the time spent inside frame cycles — ticks, layout and paint — over the window,
 /// `layoutMs` the part up to the end of the layout phase and `phasePaintMs` the paint phase.
 ///
@@ -148,6 +150,8 @@ enum Soak {
                 "anon=\(status["RssAnon"] ?? 0)",
                 "thr=\(status["Threads"] ?? 0)",
                 "fds=\(fds)",
+                "heap=\(tailscode_heap_in_use() / 1024)",
+                "rows=\(tailscode_soak_rows())",
                 "pending=\(sample.pending)",
                 "maxPending=\(sample.pending_max)",
                 "lag50=\(String(format: "%.1f", sample.lag50_ms))",

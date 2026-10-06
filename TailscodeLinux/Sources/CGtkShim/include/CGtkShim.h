@@ -627,3 +627,10 @@ gboolean tailscode_drain_pending(TailscodeDrain *drain);
 /// Runs `handler(data)` once after `widget`'s next frame has been laid out and painted (asking for
 /// that frame), from an idle below the frame clock. Same ownership rule as `tailscode_on_main`.
 void tailscode_between_frames(GtkWidget *widget, void (*handler)(void *), void *data);
+
+/// Bytes malloc reports in use (`mallinfo2().uordblks`), for the soak line.
+long tailscode_heap_in_use(void);
+
+/// Transcript row widgets made and not yet finalized, counted while the soak runs.
+void tailscode_soak_track_row(GtkWidget *widget);
+long tailscode_soak_rows(void);
