@@ -135,6 +135,11 @@ enum TileChecks {
         } catch {
             failures.append("room: \(error)")
         }
+        do {
+            try await checkCanvas(entries: Array(entries), backend: backend)
+        } catch {
+            failures.append("tile canvas: \(error)")
+        }
         first.shutdownPane()
         second.shutdownPane()
         runtime.stopWatching(TileRuntime.key(entries[0]))
@@ -248,21 +253,208 @@ enum TileChecks {
         try expect(released == nil, "a shut-down pane was never freed")
     }
 
-    /// A pane too small to halve refuses with a reason; a roomy one may split.
+    /// A pane too small to halve refuses with a reason; a roomy one may split — in the canvas and
+    /// in the legacy host alike.
     private static func checkRoom() throws {
-        let host = SplitPaneHost()
+        let legacy = SplitPaneHost()
+        legacy.makePane = { TranscriptViewController() }
+        legacy.view.frame = NSRect(x: 0, y: 0, width: 1200, height: 800)
+        legacy.bootstrap()
+        try expect(legacy.canSplit(legacy.layout.focusedPane, axis: .horizontal), "a 1200-point pane may not split")
+        let canvas = TileHost()
+        canvas.makePane = { TranscriptViewController() }
+        canvas.view.frame = NSRect(x: 0, y: 0, width: 1200, height: 800)
+        canvas.bootstrap()
+        try expect(canvas.canSplit(canvas.layout.focusedPane, axis: .horizontal), "a 1200-point canvas pane may not split")
+        for host in [legacy, canvas] as [any PaneTiling] {
+            var refusals: [String] = []
+            host.onRefused = { refusals.append($0) }
+            host.view.frame = NSRect(x: 0, y: 0, width: 300, height: 300)
+            host.view.layoutSubtreeIfNeeded()
+            host.splitActive(axis: .horizontal)
+            try expect(host.paneCount == 1, "a 300-point pane split")
+            try expect(refusals.count == 1, "the refusal was not said")
+            host.eachPane { $0.shutdownPane() }
+        }
+        try expect(legacy.ratioCaptures == 0, "a programmatic layout wrote a ratio")
+        try expect(canvas.ratioCaptures == 0, "a programmatic layout wrote a ratio in the canvas")
+    }
+
+    /// The frame-placed canvas: every shell sits exactly where Core's placement puts it for a run
+    /// of trees; a pane the placement hides is hidden and never takes a press; no pane view changes
+    /// superview across a hammer of verbs; first responder survives a split; a divider drag moves
+    /// the rectangles and writes one ratio when it ends; a pane squeezed below the full minimum, or
+    /// over the governor's budget, becomes a glance that owns no clock of its own and lets go of
+    /// its rows; a closed pane is freed.
+    private static func checkCanvas(
+        entries: [SessionEntry], backend: any CodingAgentBackend
+    ) async throws {
+        let host = TileHost()
         host.makePane = { TranscriptViewController() }
-        host.view.frame = NSRect(x: 0, y: 0, width: 1200, height: 800)
+        host.demotedKeep = 0.4
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800), styleMask: [.borderless],
+            backing: .buffered, defer: false)
+        window.contentView = host.view
         host.bootstrap()
-        let id = host.layout.focusedPane
-        try expect(host.canSplit(id, axis: .horizontal), "a 1200-point pane may not split")
-        var refusals: [String] = []
-        host.onRefused = { refusals.append($0) }
-        host.view.frame = NSRect(x: 0, y: 0, width: 300, height: 300)
+        host.view.layoutSubtreeIfNeeded()
+
+        func framesMatch(_ label: String) throws {
+            host.view.layoutSubtreeIfNeeded()
+            let size = host.view.bounds.size
+            let expected = host.layout.placement(
+                in: SplitSize(width: Double(size.width), height: Double(size.height)),
+                scale: Double(window.backingScaleFactor)
+            ) { id in
+                PaneSizing.layoutMinimum(kind: host.panes[id]?.paneKind(held: false) ?? .empty)
+            }
+            for id in host.layout.paneIDs {
+                guard let shell = host.shells[id] else { throw Failure(description: "\(label): a pane has no shell") }
+                if let rect = expected.frames[id] {
+                    let frame = NSRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
+                    try expect(shell.frame == frame, "\(label): a shell sits at \(shell.frame), not \(frame)")
+                    try expect(!shell.isHidden, "\(label): a placed pane is hidden")
+                } else {
+                    try expect(shell.isHidden, "\(label): a pane the placement hides is shown")
+                }
+            }
+            try expect(
+                host.dividerViews.count == expected.dividers.count,
+                "\(label): \(host.dividerViews.count) dividers for \(expected.dividers.count) seams")
+        }
+
+        try framesMatch("one pane")
         host.splitActive(axis: .horizontal)
-        try expect(host.paneCount == 1, "a 300-point pane split")
-        try expect(refusals.count == 1, "the refusal was not said")
-        try expect(host.ratioCaptures == 0, "a programmatic layout wrote a ratio")
+        try framesMatch("two columns")
+        host.splitActive(axis: .vertical)
+        try framesMatch("a column and a stack")
+        host.splitActive(axis: .horizontal)
+        try framesMatch("four panes")
+        for arrangement in SplitArrangement.cycle {
+            host.arrange(arrangement)
+            try framesMatch(arrangement.rawValue)
+        }
+        try expect(host.paneCount == 4, "\(host.paneCount) panes after the splits")
+
+        let superviews = host.layout.paneIDs.map { id in
+            (ObjectIdentifier(host.shells[id]!.superview!), ObjectIdentifier(host.panes[id]!.view.superview!))
+        }
+        let adds = host.canvas.paneAdds
+        host.exchangeActive()
+        host.rotate(forward: true)
+        host.promoteActive()
+        host.arrange(nil)
+        host.zoomActive()
+        try framesMatch("zoomed")
+        let zoomed = host.layout.focusedPane
+        for id in host.layout.paneIDs where id != zoomed {
+            let shell = host.shells[id]!
+            try expect(shell.isHidden, "a pane the zoom hides is shown")
+            try expect(host.panes[id]!.isParked, "a pane the zoom hides is not parked")
+        }
+        try expect(!host.stripView.isHidden, "a zoom shows no strip")
+        try expect(
+            host.stripView.chips.count == host.paneCount - 1,
+            "the strip names \(host.stripView.chips.count) of \(host.paneCount - 1) hidden panes")
+        host.zoomActive()
+        host.equalize()
+        host.cycleFocus(forward: true)
+        host.moveActiveToEdge(.left)
+        host.resizeActive(.right, large: false)
+        host.arrange(.mainStack)
+        let after = host.layout.paneIDs.map { id in
+            (ObjectIdentifier(host.shells[id]!.superview!), ObjectIdentifier(host.panes[id]!.view.superview!))
+        }
+        try expect(
+            Set(superviews.map(\.0)) == Set(after.map(\.0)) && Set(superviews.map(\.1)) == Set(after.map(\.1)),
+            "a pane changed superview across the verbs")
+        try expect(host.canvas.reparents == 0, "\(host.canvas.reparents) panes were re-parented")
+        try expect(host.canvas.paneAdds == adds, "the verbs added \(host.canvas.paneAdds - adds) pane views")
+        try expect(host.canvas.paneRemovals == 0, "the verbs removed \(host.canvas.paneRemovals) pane views")
+        try framesMatch("main and stack")
+        notes.append("canvas: 4 panes, \(SplitArrangement.cycle.count) arrangements and 11 verbs, 0 re-parents")
+
+        host.view.setFrameSize(NSSize(width: 320, height: 800))
+        try framesMatch("narrow")
+        let placement = host.placement
+        try expect(placement?.hiddenReason == .noRoom, "a narrow window hid nothing")
+        for id in placement?.hidden ?? [] {
+            guard let pane = host.panes[id], let shell = host.shells[id] else { continue }
+            try expect(shell.isHidden, "a pane with no room is shown")
+            let center = NSPoint(x: shell.frame.midX, y: shell.frame.midY)
+            let inWindow = host.view.convert(center, to: nil)
+            try expect(host.pane(atWindowPoint: inWindow) !== pane, "a hidden pane took a press")
+        }
+        if let hidden = placement?.hidden.first {
+            host.reveal(hidden)
+            try expect(host.placement?.isPlaced(hidden) == true, "a chip pressed did not bring its pane in")
+        }
+        host.view.setFrameSize(NSSize(width: 1200, height: 800))
+        try framesMatch("grown back")
+        try expect(host.placement?.hidden.isEmpty == true, "growing the window back left a pane hidden")
+
+        let field = NSTextField(frame: NSRect(x: 20, y: 20, width: 200, height: 22))
+        host.active.view.addSubview(field)
+        try expect(window.makeFirstResponder(field), "a field in a pane could not take the keyboard")
+        let responder = window.firstResponder
+        host.splitActive(axis: .vertical)
+        try expect(window.firstResponder === responder, "a split took the first responder")
+        field.removeFromSuperview()
+        try framesMatch("five panes")
+
+        let captures = host.ratioCaptures
+        if let divider = host.placement?.dividers.first {
+            let before = host.shells.values.map(\.frame)
+            host.drag(divider.id, to: divider.position + 40)
+            try expect(host.shells.values.map(\.frame) != before, "a divider drag moved nothing")
+            try framesMatch("dragged")
+            try expect(host.ratioCaptures == captures, "a drag step wrote a ratio before it ended")
+        }
+
+        let chat = host.active
+        chat.open(entries[2], backend: backend)
+        await wait(3) { chat.appliedFrames > 0 }
+        try expect(chat.appliedFrames > 0, "the chat in the canvas never drew")
+        host.collapse(to: chat)
+        host.splitActive(axis: .horizontal)
+        let chatID = host.id(of: chat)!
+        let peer = host.active
+        try expect(peer !== chat, "the split did not focus the new pane")
+        peer.open(entries[1], backend: backend)
+        await wait(3) { peer.appliedFrames > 0 }
+        var governor = TileGovernor(cores: 8)
+        let decision = governor.evaluate(
+            now: 100, sample: GovernorSample(), panes: host.seatbeltPanes(held: [:]).facts,
+            setting: .count(1))
+        host.applyGovernor(decision)
+        try expect(host.face(of: chatID) == .glance, "a peer over the budget is \(String(describing: host.face(of: chatID)))")
+        try expect(!chat.ownsClocks, "a glance's conversation still owns a clock or a lease")
+        try expect(host.feedCount() == 1, "the glance holds \(host.feedCount()) feeds")
+        await wait(1.5) { !chat.holdsRows }
+        try expect(!chat.holdsRows, "a demoted pane kept its rows past its keep")
+        host.focus(chat, grabKeyboard: false)
+        try expect(host.face(of: chatID) == .full, "a focused glance did not become whole")
+        await wait(3) { chat.holdsRows }
+        try expect(chat.holdsRows, "a pane made whole again never rebuilt its rows")
+        host.view.setFrameSize(NSSize(width: 460, height: 800))
+        host.view.layoutSubtreeIfNeeded()
+        await wait(0.3)
+        let squeezed = host.layout.paneIDs.filter { host.face(of: $0) == .glance }.count
+        try expect(squeezed >= 1, "a pane under the full minimum stayed whole")
+        host.view.setFrameSize(NSSize(width: 1200, height: 800))
+        host.view.layoutSubtreeIfNeeded()
+
+        weak var closed: TranscriptViewController?
+        weak var closedShell: TileShellView?
+        host.splitActive(axis: .vertical)
+        host.active.open(entries[0], backend: backend)
+        closed = host.active
+        closedShell = host.shells[host.layout.focusedPane]
+        host.closeActive()
+        await wait(3) { closed == nil && closedShell == nil }
+        try expect(closed == nil, "a closed pane was never freed")
+        try expect(closedShell == nil, "a closed pane's shell was never freed")
         host.eachPane { $0.shutdownPane() }
+        notes.append("canvas glance: demoted, released rows, came back whole")
     }
 }

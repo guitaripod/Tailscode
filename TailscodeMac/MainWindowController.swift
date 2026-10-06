@@ -10,7 +10,12 @@ import TailscodeCore
 @MainActor
 final class MainWindowController: NSWindowController {
     let sidebar = SidebarViewController()
-    let splitPanes = SplitPaneHost()
+    /// The panes: the frame-placed canvas, or for one release the nested split controllers it
+    /// replaced when `tailscode.legacyTiling` is set.
+    let splitPanes: any PaneTiling = MainWindowController.makeTiling()
+    /// The toolbar's `Live 2 of 5`.
+    let liveChip = LiveChip()
+    private var liveChipItem: NSToolbarItem?
     #if !TAILSCODE_MAS
         let terminalPane = TerminalPane()
     #endif
@@ -129,7 +134,18 @@ final class MainWindowController: NSWindowController {
         runtime.onPresenceChanged = { [weak self] in self?.sidebar.notePresenceChanged() }
         splitPanes.onRefused = { [weak self] text in self?.toast(text) }
         Seatbelts.shared.onDecision = { [weak self] decision in
-            self?.splitPanes.applyGovernor(decision.densities)
+            self?.splitPanes.applyGovernor(decision)
+            self?.refreshLiveChip(decision)
+        }
+        liveChip.keepAllLive = { Seatbelts.shared.liveBudget == .all }
+        liveChip.setKeepAllLive = { [weak self] keep in
+            Seatbelts.shared.liveBudget = keep ? .all : .auto
+            Seatbelts.shared.sample()
+            self?.refreshLiveChip(Seatbelts.shared.decision)
+        }
+        splitPanes.onResume = { [weak self] paneID in self?.wakeParked(paneID) }
+        if let tiles = splitPanes as? TileHost {
+            tiles.listFace = { [weak self] session in self?.listFace(session) }
         }
         NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
@@ -139,6 +155,12 @@ final class MainWindowController: NSWindowController {
                 self.splitPanes.setOccluded(!window.occlusionState.contains(.visible))
             }
         }
+    }
+
+    static let legacyTilingKey = "tailscode.legacyTiling"
+
+    private static func makeTiling() -> any PaneTiling {
+        UserDefaults.standard.bool(forKey: legacyTilingKey) ? SplitPaneHost() : TileHost()
     }
 
     /// The smallest window a chat still reads in: the chat list at its own minimum beside a
@@ -254,6 +276,8 @@ final class MainWindowController: NSWindowController {
         let present = Set(splitPanes.layout.paneIDs)
         parkedBindings = parkedBindings.filter { present.contains($0.key) }
         wakingBindings = wakingBindings.filter { present.contains($0.key) }
+        splitPanes.setHeld(parkedBindings)
+        refreshLiveChip(Seatbelts.shared.decision)
         if parkedBindings.isEmpty {
             dismissRestoreBanner()
         } else {
@@ -282,11 +306,13 @@ final class MainWindowController: NSWindowController {
         banner.onDismiss = { [weak self] in self?.dismissRestoreBanner() }
         splitPanes.installOverlay(banner)
         restoreBanner = banner
+        splitPanes.setHeld(parkedBindings)
     }
 
     private func resumeAllParked() {
         pendingBindings.merge(parkedBindings) { held, _ in held }
         parkedBindings = [:]
+        splitPanes.setHeld([:])
         dismissRestoreBanner()
         resolvePendingBindings()
     }
@@ -306,6 +332,7 @@ final class MainWindowController: NSWindowController {
     private func wakeParked(_ paneID: PaneID) {
         guard let binding = parkedBindings.removeValue(forKey: paneID) else { return }
         pendingBindings[paneID] = binding
+        splitPanes.setHeld(parkedBindings)
         if parkedBindings.isEmpty {
             dismissRestoreBanner()
         } else {
@@ -314,47 +341,35 @@ final class MainWindowController: NSWindowController {
         resolvePendingBindings()
     }
 
-    /// What the seatbelts sample each second: today's panes as the governor ranks them, and the
+    /// What the seatbelts sample each second: the panes as the governor ranks them, and the
     /// counts the flight recorder keeps.
     private func seatbeltPanes() -> SeatbeltPanes {
-        var seen = SeatbeltPanes()
-        let layout = splitPanes.layout
-        let held = heldSessions
-        for paneID in layout.paneIDs {
-            guard let pane = splitPanes.panes[paneID] else { continue }
-            let placed = layout.zoomedPane == nil || layout.zoomedPane == paneID
-            let kind: PaneKind
-            if pane.isDrawing {
-                kind = .draw
-            } else if pane.webTarget != nil {
-                kind = .web
-            } else if pane.currentEntry != nil || held[paneID] != nil {
-                kind = .chat
-            } else {
-                kind = .empty
-            }
-            #if !TAILSCODE_MAS
-                let video = pane.videoTarget != nil
-            #else
-                let video = false
-            #endif
-            let size = pane.isViewLoaded ? pane.view.bounds.size : .zero
-            let running = pane.currentState?.status == .running
-            seen.facts.append(
-                PaneFacts(
-                    id: paneID, kind: video ? .video : kind, focused: paneID == layout.focusedPane,
-                    placed: placed, width: Double(size.width), height: Double(size.height),
-                    attention: running ? .running : .quiet))
-            if !placed {
-                seen.hidden += 1
-            } else if held[paneID] != nil {
-                seen.parked += 1
-            } else {
-                seen.live += 1
-            }
-        }
+        var seen = splitPanes.seatbeltPanes(held: heldSessions)
         seen.occluded = !(window?.occlusionState.contains(.visible) ?? false)
         return seen
+    }
+
+    /// The live chip's numbers and its place in the toolbar: shown once two chats can be counted,
+    /// and only by a host that gives panes densities at all.
+    private func refreshLiveChip(_ decision: GovernorDecision?) {
+        guard let tiles = splitPanes as? TileHost else {
+            liveChipItem?.isHidden = true
+            return
+        }
+        let counts = tiles.liveCounts
+        liveChip.update(decision: decision, live: counts.live, chats: counts.chats)
+        liveChipItem?.isHidden = !liveChip.isShown
+    }
+
+    /// What the chat list last heard about a conversation, for a paused pane and an overflow chip.
+    private func listFace(_ session: SplitPaneSession) -> (title: String, activity: ActivityKind?)? {
+        guard
+            let entry = sidebar.allEntries.first(where: {
+                $0.profileID == session.profileID && $0.session.id == session.sessionID
+            })
+        else { return nil }
+        let row = SessionRowModel(entry: entry, unreachable: false, unread: false, saved: false)
+        return (row.title, row.state.activity)
     }
 
     /// The arrangement comes back before anything can stream into it, and how its chats come back
@@ -673,12 +688,38 @@ final class MainWindowController: NSWindowController {
             splitPanes.equalize()
         case .exchangeSplit:
             splitPanes.exchangeActive()
-        case .cycleSplit, .promoteSplit, .rotateSplits, .moveSplitToEdge, .resizeSplit,
-            .arrangeSplits:
+        case .cycleSplit(let forward):
+            guard splitPanes.paneCount > 1 else { return false }
             focused = .transcript
-            splitPanes.perform(action)
-        case .pinSplit, .parkSplit:
-            return false
+            splitPanes.cycleFocus(forward: forward)
+        case .promoteSplit:
+            guard splitPanes.paneCount > 1 else { return false }
+            focused = .transcript
+            splitPanes.promoteActive()
+        case .rotateSplits(let forward):
+            guard splitPanes.paneCount > 1 else { return false }
+            focused = .transcript
+            splitPanes.rotate(forward: forward)
+        case .moveSplitToEdge(let edge):
+            guard splitPanes.paneCount > 1 else { return false }
+            focused = .transcript
+            splitPanes.moveActiveToEdge(edge)
+        case .resizeSplit(let direction):
+            guard splitPanes.paneCount > 1 else { return false }
+            focused = .transcript
+            splitPanes.resizeActive(direction, large: false)
+        case .arrangeSplits:
+            guard splitPanes.paneCount > 1 else { return false }
+            focused = .transcript
+            splitPanes.arrange(nil)
+        case .pinSplit:
+            guard splitPanes.supportsDensity, splitPanes.paneCount > 1 else { return false }
+            splitPanes.togglePinActive()
+            refreshLiveChip(Seatbelts.shared.decision)
+        case .parkSplit:
+            guard splitPanes.supportsDensity, splitPanes.paneCount > 1 else { return false }
+            splitPanes.toggleParkActive()
+            refreshLiveChip(Seatbelts.shared.decision)
         case .toggleProjectScope:
             sidebar.toggleProjectScope(fallback: currentEntry)
         case .quickAsk:
@@ -1292,6 +1333,7 @@ final class MainWindowController: NSWindowController {
         splitPanes.makePane = { [weak self] in
             self?.makePane() ?? TranscriptViewController()
         }
+        (splitPanes as? TileHost)?.paneHost = self
         splitPanes.onPaneOpened = { [weak self] pane, source in
             self?.presentChooser(in: pane, preferring: source)
         }
@@ -1316,30 +1358,11 @@ final class MainWindowController: NSWindowController {
         }
     }
 
-    /// Every pane is wired at birth: its state feeds the notifier with its own session, its
-    /// toasts land in the shared queue, and its band steers the pane it belongs to.
+    /// Every pane is wired at birth to this window as its `PaneHost`: its state feeds the chat
+    /// list, its toasts land in the shared queue, and its band steers the pane it belongs to.
     private func makePane() -> TranscriptViewController {
         let pane = TranscriptViewController()
-        pane.composer.onAuraChanged = { [weak self] in self?.sidebar.refreshOrb() }
-        pane.onBackgroundWatch = { entry, backend in
-            TileRuntime.shared.watch(entry, backend: backend)
-        }
-        pane.onStopWatch = { key in TileRuntime.shared.stopWatching(key) }
-        pane.onState = { [weak self] _ in
-            self?.sidebar.notePresenceChanged()
-        }
-        pane.onToast = { [weak self] text in self?.toast(text) }
-        pane.onDialToast = { [weak self] text in self?.dialToast(text) }
-        pane.onVideoChanged = { [weak self] in self?.splitPanes.persist() }
-        pane.onBandAction = { [weak self, weak pane] action in
-            guard let pane else { return }
-            self?.perform(bandAction: action, on: pane)
-        }
-        pane.onChooserAction = { [weak self, weak pane] action in
-            guard let pane else { return }
-            self?.pane(pane, chose: action)
-        }
-        pane.quotasForStatus = { [weak self] in self?.lastQuotas.map(\.1) ?? [] }
+        pane.connect(to: self)
         return pane
     }
 
@@ -2325,6 +2348,32 @@ final class MainWindowController: NSWindowController {
     }
 }
 
+extension MainWindowController: PaneHost {
+    func paneToast(_ text: String) { toast(text) }
+    func paneDialToast(_ text: String) { dialToast(text) }
+    func paneAuraChanged() { sidebar.refreshOrb() }
+    func paneStateChanged(_ pane: TranscriptViewController) { sidebar.notePresenceChanged() }
+    func paneSlotChanged(_ pane: TranscriptViewController) { splitPanes.persist() }
+
+    func pane(_ pane: TranscriptViewController, pressedBand action: StatusFacts.Action) {
+        perform(bandAction: action, on: pane)
+    }
+
+    func pane(_ pane: TranscriptViewController, answeredChooser action: PaneChooserAction) {
+        self.pane(pane, chose: action)
+    }
+
+    func paneQuotas() -> [UsageQuota] { lastQuotas.map(\.1) }
+
+    func paneWatchInBackground(_ entry: SessionEntry, backend: any CodingAgentBackend) {
+        TileRuntime.shared.watch(entry, backend: backend)
+    }
+
+    func paneStopWatching(_ key: LiveKey) {
+        TileRuntime.shared.stopWatching(key)
+    }
+}
+
 extension MainWindowController: NSToolbarDelegate {
     private enum ToolbarID {
         static let sidebar = NSToolbarItem.Identifier("tailscode.toolbar.sidebar")
@@ -2335,12 +2384,13 @@ extension MainWindowController: NSToolbarDelegate {
         static let usage = NSToolbarItem.Identifier("tailscode.toolbar.usage")
         static let servers = NSToolbarItem.Identifier("tailscode.toolbar.servers")
         static let settings = NSToolbarItem.Identifier("tailscode.toolbar.settings")
+        static let live = NSToolbarItem.Identifier("tailscode.toolbar.live")
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             ToolbarID.sidebar, ToolbarID.newChat, .sidebarTrackingSeparator, .flexibleSpace,
-            ToolbarID.actions,
+            ToolbarID.live, ToolbarID.actions,
         ] + terminalToolbarItems
             + [ToolbarID.video, ToolbarID.usage, ToolbarID.servers, ToolbarID.settings]
     }
@@ -2362,6 +2412,14 @@ extension MainWindowController: NSToolbarDelegate {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
+        case ToolbarID.live:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = Localized.text("Live")
+            item.paletteLabel = Localized.text("Live")
+            item.view = liveChip.button
+            item.isHidden = !liveChip.isShown
+            liveChipItem = item
+            return item
         case ToolbarID.sidebar:
             return makeToolbarItem(
                 itemIdentifier, symbol: "sidebar.leading", label: Localized.text("Chats"),
@@ -2637,8 +2695,55 @@ private final class CheatsheetPanel: NSPanel {
 #if DEBUG
     extension MainWindowController {
         /// `split=<n>`: the first chats of the list opened as one tiling, the way marking them does.
-        func driveSplit(_ count: Int) {
-            openMarkedSplit(Array(sidebar.entries.prefix(count)), as: .grid)
+        func driveSplit(_ count: Int, as arrangement: SplitArrangement? = nil) {
+            let chosen = arrangement ?? (count >= 3 ? .grid : .sideBySide)
+            openMarkedSplit(Array(sidebar.entries.prefix(count)), as: chosen)
+        }
+
+        /// `tile=<verb>`: the canvas's own verbs, by name, for a run nobody is sitting at.
+        func driveTile(_ verb: String) {
+            let parts = verb.split(separator: ",").map(String.init)
+            switch parts.first ?? "" {
+            case "zoom": perform(.zoomSplit)
+            case "next": perform(.cycleSplit(true))
+            case "promote": perform(.promoteSplit)
+            case "rotate": perform(.rotateSplits(true))
+            case "arrange": perform(.arrangeSplits)
+            case "pin": perform(.pinSplit)
+            case "park": perform(.parkSplit)
+            case "equal": perform(.equalizeSplits)
+            case "wider": perform(.resizeSplit(.right))
+            case "focus":
+                let index = Int(parts.dropFirst().first ?? "") ?? 1
+                let panes = splitPanes.orderedPanes
+                if panes.indices.contains(index - 1) {
+                    splitPanes.focus(panes[index - 1], grabKeyboard: false)
+                }
+            case "size":
+                let width = Double(parts.dropFirst().first ?? "") ?? 1400
+                let height = Double(parts.dropFirst(2).first ?? "") ?? 900
+                window?.setContentSize(NSSize(width: width, height: height))
+            case "sidebar": togglePane(.sidebar)
+            default: break
+            }
+        }
+
+        /// `tiles`: what the canvas holds, in counts and faces.
+        func driveTilesReport() -> String {
+            guard let tiles = splitPanes as? TileHost else { return "TILES legacy host" }
+            let faces = tiles.layout.paneIDs.map { id -> String in
+                switch tiles.face(of: id) {
+                case .full?: return "F"
+                case .glance?: return "G"
+                case .paused?: return "P"
+                case nil: return "?"
+                }
+            }
+            let hidden = tiles.placement?.hidden.count ?? 0
+            return
+                "TILES panes=\(tiles.paneCount) faces=\(faces.joined()) hidden=\(hidden) "
+                + "feeds=\(tiles.feedCount()) reparents=\(tiles.canvas.reparents) "
+                + "chip=\"\(liveChip.button.title)\""
         }
 
         /// `restore`: what the safe restore is holding, in counts.

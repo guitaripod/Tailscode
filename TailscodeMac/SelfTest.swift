@@ -510,7 +510,7 @@ enum SelfTest {
         if tiles.failures.isEmpty {
             report(
                 "tiles: a frame applies the newest state, one conversation per chat, parked panes "
-                    + "own nothing, closed panes are freed, a split needs room (\(tiles.notes))")
+                    + "own nothing, closed panes are freed, a split needs room, the canvas places every pane where Core says and never re-parents one (\(tiles.notes))")
         } else {
             report("tiles: \(tiles.failures.joined(separator: " · "))")
             failures += 1

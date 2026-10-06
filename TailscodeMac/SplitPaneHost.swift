@@ -7,7 +7,7 @@ import TailscodeCore
 /// surviving panes, and the zoom is collapse, not structure, so unzooming restores the exact
 /// arrangement. Each pane is one `TranscriptViewController`, a complete conversation.
 @MainActor
-final class SplitPaneHost: NSViewController {
+final class SplitPaneHost: NSViewController, PaneTiling {
     private(set) var layout = SplitLayout()
     private(set) var panes: [PaneID: TranscriptViewController] = [:]
     /// A pane born empty, with the server the split came from — the hub answers it with the
@@ -36,6 +36,7 @@ final class SplitPaneHost: NSViewController {
     var heldSessions: (() -> [PaneID: SplitPaneSession])?
     /// A verb refused with a reason — a split with no room for another pane.
     var onRefused: ((String) -> Void)?
+    var onResume: ((PaneID) -> Void)?
     /// Panes the governor parks on top of what zoom and occlusion already hide.
     private var governorParked: Set<PaneID> = []
     private var occluded = false
@@ -800,11 +801,95 @@ final class SplitPaneHost: NSViewController {
     }
 
     /// The governor's parked panes, from the seatbelts' one-second decision.
-    func applyGovernor(_ densities: [PaneID: PaneDensity]) {
-        let parked = Set(densities.filter { $0.value == .parked }.keys)
+    func applyGovernor(_ decision: GovernorDecision) {
+        let parked = Set(decision.densities.filter { $0.value == .parked }.keys)
         guard parked != governorParked else { return }
         governorParked = parked
         applyParking()
+    }
+
+    /// The canvas's verbs, answered by restructuring the tree and rebuilding the controllers around
+    /// it the way every structural verb here does.
+    @discardableResult
+    func cycleFocus(forward: Bool) -> Bool {
+        let wasZoomed = layout.zoomedPane != nil
+        guard layout.cycleFocus(forward: forward) != nil else { return false }
+        if wasZoomed { applyZoom() }
+        applyFocusStyling()
+        onFocusChanged?()
+        persist()
+        return true
+    }
+
+    func promoteActive() {
+        guard layout.promote(layout.focusedPane) else { return }
+        rebuild()
+        onFocusChanged?()
+        persist()
+    }
+
+    func rotate(forward: Bool) {
+        guard layout.rotate(forward: forward) else { return }
+        rebuild()
+        persist()
+    }
+
+    func moveActiveToEdge(_ edge: SplitDirection) {
+        guard layout.moveToEdge(layout.focusedPane, edge: edge) else { return }
+        rebuild()
+        persist()
+    }
+
+    func arrange(_ arrangement: SplitArrangement?) {
+        let next = arrangement ?? SplitEven.shape(of: layout).nextInCycle
+        guard layout.arrange(next) else { return }
+        rebuild()
+        persist()
+    }
+
+    func resizeActive(_ direction: SplitDirection, large: Bool) {
+        let size = view.bounds.size
+        guard size.width > 0, size.height > 0 else { return }
+        let placement = layout.placement(
+            in: SplitSize(width: Double(size.width), height: Double(size.height)),
+            scale: Double(view.window?.backingScaleFactor ?? 2))
+        let step = large ? PaneSizing.keyboardStepLarge : PaneSizing.keyboardStep
+        guard layout.resize(layout.focusedPane, direction, step: step, in: placement) else { return }
+        applyRatios()
+        schedulePersist()
+    }
+
+    func togglePinActive() {}
+    func toggleParkActive() {}
+    var activeIsPinned: Bool { false }
+    var activeIsParked: Bool { false }
+    var supportsDensity: Bool { false }
+    func setHeld(_ held: [PaneID: SplitPaneSession]) {}
+
+    /// Today's panes as the governor ranks them, and the counts the flight recorder keeps.
+    func seatbeltPanes(held: [PaneID: SplitPaneSession]) -> SeatbeltPanes {
+        var seen = SeatbeltPanes()
+        for paneID in layout.paneIDs {
+            guard let pane = panes[paneID] else { continue }
+            let placed = layout.zoomedPane == nil || layout.zoomedPane == paneID
+            let size = pane.isViewLoaded ? pane.view.bounds.size : .zero
+            let running = pane.currentState?.status == .running
+            seen.facts.append(
+                PaneFacts(
+                    id: paneID, kind: pane.paneKind(held: held[paneID] != nil),
+                    focused: paneID == layout.focusedPane, placed: placed,
+                    width: Double(size.width), height: Double(size.height),
+                    attention: running ? .running : .quiet))
+            if !placed {
+                seen.hidden += 1
+            } else if held[paneID] != nil {
+                seen.parked += 1
+            } else {
+                seen.live += 1
+            }
+        }
+        seen.occluded = occluded
+        return seen
     }
 
     /// A hairline accent on the focused pane, only once a second pane exists to be told apart

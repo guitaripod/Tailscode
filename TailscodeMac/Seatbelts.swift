@@ -8,10 +8,12 @@ struct SeatbeltPanes: Sendable {
     var facts: [PaneFacts] = []
     /// Panes on screen and live.
     var live = 0
-    /// Panes in the tree but not on screen: zoomed away.
+    /// Panes on screen as glance tiles.
+    var glance = 0
+    /// Panes in the tree but not on screen: zoomed away or stepped aside for want of room.
     var hidden = 0
-    /// Chat panes holding a restored session they have not opened: parked by a safe restore or
-    /// waiting their turn in a staggered one.
+    /// Chat panes holding a session they are not streaming: parked by a safe restore, waiting
+    /// their turn in a staggered one, or paused by the person.
     var parked = 0
     /// The window is minimized or not visible at all.
     var occluded = false
@@ -107,6 +109,9 @@ final class Seatbelts {
     var panes: (() -> SeatbeltPanes)?
     /// Told every decision, so the window can park what the governor parks.
     var onDecision: ((GovernorDecision) -> Void)?
+    /// How many chats the person asked to keep whole: `Keep all live` is `.all`, otherwise the
+    /// governor's own budget. Held for the session; at strained and above the governor caps it.
+    var liveBudget: LiveBudget = .auto
 
     /// Starts everything: the ring and its launch record, the loop meter, the watchdog, the
     /// pressure source, the one-second sample and the SIGTERM path to a clean quit. Called once
@@ -239,7 +244,8 @@ final class Seatbelts {
             ownMemory: memory.ownMemory, thermal: memory.thermal, lowPower: memory.lowPower,
             reducedMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
             occluded: seen.occluded, watchdog: hint)
-        let decision = governor.evaluate(now: now, sample: sample, panes: seen.facts, setting: .auto)
+        let decision = governor.evaluate(
+            now: now, sample: sample, panes: seen.facts, setting: liveBudget)
         self.decision = decision
         onDecision?(decision)
         let previous = level
@@ -265,7 +271,7 @@ final class Seatbelts {
         var record = FlightRecord(
             t: FlightRecord.epochMilliseconds(),
             rss: memory.footprintBytes.map { $0 / 1024 }, thr: counts.threads, fds: counts.fds,
-            panes: FlightPanes(full: seen.live, glance: 0, parked: seen.hidden + seen.parked),
+            panes: FlightPanes(full: seen.live, glance: seen.glance, parked: seen.hidden + seen.parked),
             lv: next.rawValue, busy: loop.busy1, stall: Int((loop.worst1 * 1000).rounded()),
             ps: memory.host.code, own: memory.ownMemory, ev: events.first)
         writer?.write(record)

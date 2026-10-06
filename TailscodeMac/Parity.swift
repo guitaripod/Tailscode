@@ -178,15 +178,15 @@ enum ParityManifest {
                 because:
                     "The pane runs a login shell against this Mac's own directories, and a copy the App Store installs is sealed in a container that may neither spawn that process nor see the folder it would run in. A shell that could only reach the app's own container is not a shell beside the conversation, and offering one would be worth less than saying so.")
         case .listBesideConversation: return .implemented("NSSplitViewItem(sidebarWithViewController")
-        case .paneDensity: return .gap("panes are all full; glance and parked faces, the live chip and the governor that assigns density are built in the canvas milestone")
+        case .paneDensity: return .implemented("GlanceTileView")
         case .paneArrangements: return .implemented("PaneMenu")
-        case .paneOverflow: return .gap("the nested split host has no overflow strip and never hides a pane for want of room; built in the canvas milestone")
+        case .paneOverflow: return .implemented("OverflowStripView")
         case .paneResizeByKey: return .implemented("DividerAccessibilityElement")
         case .paneRearrange: return .implemented("receivePaneDrop")
         case .safeRestore: return .implemented("RestoreBannerView")
         case .flightRecorder: return .implemented("FlightWriter")
         case .resourceGuard: return .partial("MemoryPressure", missing: "macOS has no cgroups; the governor, memory-pressure response and the critical-level banner are the whole mechanism")
-        case .splitPanes: return .implemented("SplitPaneHost")
+        case .splitPanes: return .implemented("TileHost")
         case .videoSlot:
             return .varies(
                 direct: .implemented("VideoSlotView"),
