@@ -91,6 +91,9 @@ final class TranscriptViewController: NSViewController {
     private(set) var skippedFrames = 0
     /// Main-thread time spent building and applying those frames.
     private(set) var applyTime: TimeInterval = 0
+    /// Frames the wave painted on its own clock, and the main-thread time they took.
+    private(set) var cascadeFrames = 0
+    private(set) var cascadeTime: TimeInterval = 0
     /// The drain's name for this pane's slot.
     let paneID = PaneID()
     /// Everything this pane started that has to stop when it stops being alive: the lease, the
@@ -1097,6 +1100,11 @@ final class TranscriptViewController: NSViewController {
         apply(state: state, rows: rows)
     }
 
+    func noteCascadeFrame(_ seconds: TimeInterval) {
+        cascadeFrames += 1
+        cascadeTime += seconds
+    }
+
     /// How many rows this pane realises. The focused pane keeps the person's window; a full peer
     /// keeps the window the governor's decision gave it — every realised row joins the window's one
     /// layout engine, whose cost grows faster than the row count, so eight panes of full windows is
@@ -1429,7 +1437,7 @@ final class TranscriptViewController: NSViewController {
         statusBand.perform = { [weak self] action in self?.onBandAction?(action) }
 
         composer.isHidden = true
-        cascade.onFrame = { [weak self] in self?.paintCascade() }
+        cascade.onFrame = { [weak self] in self?.paintCascadeFrame() }
         cascade.onStalled = { [weak self] in self?.giveUpCascade() }
         context.editQueued = { [weak self] id in self?.editQueued(id) }
         context.pendingAct = { [weak self] id, act in self?.actOnPending(id, act) }

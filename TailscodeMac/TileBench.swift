@@ -42,7 +42,13 @@ enum TileBench {
         var footprints: [(TimeInterval, Double)] = []
         var applied = 0
         var skipped = 0
+        var mainCPU: Double = 0
+        var applyShare: Double = 0
     }
+
+    /// The main thread's port, for its CPU time: a second reading of how busy it is that does not
+    /// depend on where the run loop says it slept.
+    private static let mainThread = pthread_mach_thread_np(pthread_self())
 
     private static var lagStart: CFTimeInterval = 0
     private static var lags: [Double] = []
@@ -86,6 +92,8 @@ enum TileBench {
     ) async -> Window {
         var window = Window()
         let before = panes.map(\.benchFrames)
+        let applyBefore = panes.map(\.benchApplySeconds).reduce(0, +)
+        let cpuBefore = Watchdog.cpuState(of: mainThread)?.cpu ?? 0
         lags = []
         lagStart = 0
         lagRunning = true
@@ -103,6 +111,10 @@ enum TileBench {
         }
         lagRunning = false
         window.lags = lags
+        let elapsed = CACurrentMediaTime() - start
+        window.mainCPU = ((Watchdog.cpuState(of: mainThread)?.cpu ?? 0) - cpuBefore) / elapsed
+        window.applyShare =
+            (panes.map(\.benchApplySeconds).reduce(0, +) - applyBefore) / elapsed
         for (pane, was) in zip(panes, before) {
             window.applied += pane.benchFrames.applied - was.applied
             window.skipped += pane.benchFrames.skipped - was.skipped
@@ -115,8 +127,9 @@ enum TileBench {
         print(
             String(
                 format:
-                    "%@: busy mean %.2f p95 %.2f · worst slice %.0f ms · lag p50 %.1f p95 %.1f worst %.0f ms · footprint %.0f MiB, slope %.1f MiB/min · applied %.1f/s/pane, skipped %.1f/s/pane",
-                label, mean, pct(window.busy, 0.95), window.worst * 1000, pct(window.lags, 0.5),
+                    "%@: busy mean %.2f p95 %.2f · main cpu %.2f, applying %.2f · worst slice %.0f ms · lag p50 %.1f p95 %.1f worst %.0f ms · footprint %.0f MiB, slope %.1f MiB/min · applied %.1f/s/pane, skipped %.1f/s/pane",
+                label, mean, pct(window.busy, 0.95), window.mainCPU, window.applyShare,
+                window.worst * 1000, pct(window.lags, 0.5),
                 pct(window.lags, 0.95), window.lags.max() ?? 0, window.footprints.last?.1 ?? 0,
                 slope(window.footprints), Double(window.applied) / seconds / Double(panes),
                 Double(window.skipped) / seconds / Double(panes)))
@@ -188,6 +201,13 @@ enum TileBench {
                 (processCPU() - cpuBefore) / (seconds + 2) * 100))
         print("clock: \(TranscriptViewController.benchClock)")
         print(
+            "cascade frames per s, ms each: "
+                + panes.map {
+                    String(
+                        format: "%.0f×%.2f", Double($0.cascadeFrames) / (seconds + 2),
+                        $0.cascadeFrames == 0 ? 0 : $0.cascadeTime / Double($0.cascadeFrames) * 1000)
+                }.joined(separator: " "))
+        print(
             "apply cost per frame (ms): "
                 + panes.map { String(format: "%.1f", $0.benchApplyCost) }.joined(separator: " "))
         for pane in panes.dropFirst() { pane.benchHide(true) }
@@ -218,6 +238,9 @@ extension TranscriptViewController {
     /// Frames applied and states skipped, for the bench.
     var benchFrames: (applied: Int, skipped: Int) { (appliedFrames, skippedFrames) }
 
+    /// Main-thread seconds this pane has spent building and applying frames.
+    var benchApplySeconds: Double { applyTime }
+
     /// Mean main-thread cost of one applied frame, in milliseconds.
     var benchApplyCost: Double { appliedFrames == 0 ? 0 : applyTime / Double(appliedFrames) * 1000 }
 
@@ -239,3 +262,4 @@ extension TranscriptViewController {
         setParked(hidden)
     }
 }
+
