@@ -22,14 +22,22 @@ import Foundation
 public struct TableDraft: Hashable, Sendable {
     public let columnCount: Int
     public let rowCount: Int
+    /// The identity of the finished table this card stands for.
+    ///
+    /// The card is not the table: it is a different row, wearing a different cell, holding the
+    /// table's place while the rows are still arriving. What it owes the table is this name — the
+    /// wash a finished table arrives on is owed to the table, and the card is the one thing that
+    /// knows it was a draft on this screen a moment ago.
+    public let key: String
 
-    public init(columnCount: Int, rowCount: Int) {
+    public init(columnCount: Int, rowCount: Int, key: String = "") {
         self.columnCount = max(0, columnCount)
         self.rowCount = max(0, rowCount)
+        self.key = key
     }
 
-    public init(_ table: MarkdownTable) {
-        self.init(columnCount: table.columnCount, rowCount: table.rows.count)
+    public init(_ table: MarkdownTable, key: String = "") {
+        self.init(columnCount: table.columnCount, rowCount: table.rows.count, key: key)
     }
 
     /// Whether the table in a segment is still being written: it is the last thing in a message

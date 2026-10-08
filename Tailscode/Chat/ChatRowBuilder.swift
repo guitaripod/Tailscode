@@ -228,14 +228,14 @@ enum ChatRowBuilder {
         var rows: [ChatRow] = []
         let segments = MessageSegment.split(text, sealed: sealed)
         for (index, segment) in segments.enumerated() {
-            let rowID = "\(id):seg\(index)"
+            let tableID = "\(id):seg\(index)"
             var content = segment.chatContent
-            // A table still being written holds its rows rather than being measured on every
-            // arrival: TableDraft says why, and the card that stands in for it says so on screen.
+            var rowID = tableID
             if case .table(let table) = content,
                 TableDraft.isGrowing(segment: index, of: segments.count, sealed: sealed)
             {
-                content = .tableDraft(TableDraft(table))
+                content = .tableDraft(TableDraft(table, key: tableID))
+                rowID = tableID + Self.growingTableSuffix
             }
             rows.append(
                 ChatRow(
@@ -251,6 +251,16 @@ enum ChatRowBuilder {
         }
         return rows
     }
+
+    /// The row id a table being written carries, so the card standing in for it and the finished
+    /// table are two items rather than one.
+    ///
+    /// A diffable snapshot updates an item by reconfiguring it in place, and UIKit refuses a
+    /// reconfigure that would hand an item a cell of another kind than the one already standing for
+    /// it — which is exactly what the moment a table lands is: the row that wore the draft card now
+    /// wants the table cell. Two identities make that arrival the delete and insert it always
+    /// really was: the card was never the table, it was standing where the table would be.
+    private static let growingTableSuffix = ":growing"
 
     /// The addresses one prose segment earns a preview card for: http(s) only, deduplicated, and
     /// capped so a paragraph of references stays a shelf rather than a wall. The address itself is

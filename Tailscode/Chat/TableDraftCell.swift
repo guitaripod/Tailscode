@@ -72,8 +72,8 @@ final class TableDraftCell: UICollectionViewCell {
         didSet { cardTop.constant = Theme.Spacing.xs + turnInset }
     }
 
-    func configure(_ draft: TableDraft, key: String) {
-        TableCell.Wash.note(draft: key)
+    func configure(_ draft: TableDraft) {
+        TableCell.Wash.note(draft: draft.key)
         title.text = draft.title
         count.text = draft.detail
         count.isHidden = draft.detail == nil

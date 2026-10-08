@@ -1826,7 +1826,7 @@ final class ChatViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: TableDraftCell.reuseID, for: indexPath) as! TableDraftCell
                 cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(draft, key: row.id)
+                cell.configure(draft)
                 return cell
             case .activity(let steps):
                 let cell = collectionView.dequeueReusableCell(
