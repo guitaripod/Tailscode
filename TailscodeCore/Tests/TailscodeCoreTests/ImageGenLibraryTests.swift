@@ -142,6 +142,17 @@ struct ImageGenLibraryTests {
         #expect(PNGHead.graph(data)?.count == 13)
     }
 
+    @Test func aTurboPictureReadsBackAsTurboInEightSteps() throws {
+        #expect(ComfyRecipe.engine(forModel: "qwen_image_2.1_turbo_bf16.safetensors") == .turbo)
+        #expect(ComfyRecipe.engine(forModel: "qwen_image_2.1_int8_convrot.safetensors") == .quality)
+        let graph = ImageGenClient.graph(
+            prompt: "dusk", engine: .turbo, mode: .generate, aspect: .square, seed: 5,
+            referenceName: nil)
+        let recipe = try #require(ComfyRecipe.read(graph: graph))
+        #expect(recipe.engine == .turbo && recipe.steps == 8)
+        #expect(recipe.prompt == "dusk" && recipe.negative == "")
+    }
+
     @Test func qwenTextRecipe() throws {
         let recipe = try #require(ComfyRecipe.read(graph: Self.graph(Self.qwenTextGraph)))
         #expect(recipe.prompt == "a serene mountain lake at dusk")

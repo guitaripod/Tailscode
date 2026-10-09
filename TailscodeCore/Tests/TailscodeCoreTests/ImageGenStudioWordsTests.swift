@@ -6,6 +6,7 @@ import Testing
 @Suite struct ImageGenStudioWordsTests {
     @Test func countNudgesOnlyTheEngineTrainedBehindARewriter() {
         #expect(ImageGenStudioWords.countLine(words: 3, engine: .quality).contains("paragraph"))
+        #expect(ImageGenStudioWords.countLine(words: 3, engine: .turbo).contains("paragraph"))
         #expect(!ImageGenStudioWords.countLine(words: 3, engine: .fast).contains("paragraph"))
         #expect(!ImageGenStudioWords.countLine(words: 40, engine: .quality).contains("paragraph"))
         #expect(ImageGenStudioWords.countLine(words: 1, engine: .fast) == "1 word")

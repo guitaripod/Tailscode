@@ -34,7 +34,7 @@ public enum ImageGenStudioWords {
         let count =
             words == 1
             ? Localized.text("1 word") : Localized.text("%@ words", "\(words)")
-        guard engine == .quality, words < ImageGenBrief.thinWordCount else { return count }
+        guard engine != .fast, words < ImageGenBrief.thinWordCount else { return count }
         return Localized.text("%@ · Qwen likes a paragraph", count)
     }
 

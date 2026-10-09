@@ -103,14 +103,16 @@ public struct ImageGenEndpoint: Sendable, Equatable, Codable {
     }
 }
 
-/// The two editors the store runs, named for what they are good at rather than by version.
+/// The editors the store runs, named for what they are good at rather than by version.
 public enum ImageGenEngine: String, Codable, Sendable, CaseIterable {
     case quality
+    case turbo
     case fast
 
     public var label: String {
         switch self {
         case .quality: return Localized.text("Quality")
+        case .turbo: return Localized.text("Turbo")
         case .fast: return Localized.text("Fast")
         }
     }
@@ -119,6 +121,7 @@ public enum ImageGenEngine: String, Codable, Sendable, CaseIterable {
     public var short: String {
         switch self {
         case .quality: return Localized.text("Qwen")
+        case .turbo: return Localized.text("Qwen Turbo")
         case .fast: return Localized.text("Klein")
         }
     }
@@ -127,6 +130,7 @@ public enum ImageGenEngine: String, Codable, Sendable, CaseIterable {
     public var detail: String {
         switch self {
         case .quality: return Localized.text("Qwen Image 2.1 · 25 steps · edits and paints")
+        case .turbo: return Localized.text("Qwen Image 2.1 Turbo · 8 steps · edits and paints")
         case .fast: return Localized.text("FLUX.2 Klein · 4 steps · seconds, not a minute")
         }
     }
@@ -134,7 +138,11 @@ public enum ImageGenEngine: String, Codable, Sendable, CaseIterable {
     /// The files this engine cannot run without. A machine is checked file by file, and an engine
     /// whose files are all there is offered even when the other's are not.
     public var files: [ImageGenModelFile] {
-        ImageGenModelFile.all.filter { $0.engine == self }
+        switch self {
+        case .quality: return [.qwenDiffusion, .qwenText, .qwenVAE]
+        case .turbo: return [.turboDiffusion, .qwenText, .qwenVAE]
+        case .fast: return [.kleinDiffusion, .kleinText, .kleinVAE]
+        }
     }
 }
 
@@ -152,24 +160,35 @@ public struct ImageGenModelFile: Sendable, Equatable, Hashable, Codable, Identif
 
     public var directory: String { (path as NSString).deletingLastPathComponent }
 
+    public static let qwenDiffusion = ImageGenModelFile(
+        path: "diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+        role: Localized.text("Qwen diffusion model"), engine: .quality)
+
+    public static let turboDiffusion = ImageGenModelFile(
+        path: "diffusion_models/qwen_image_2.1_turbo_bf16.safetensors",
+        role: Localized.text("Qwen Turbo diffusion model"), engine: .turbo)
+
+    public static let qwenText = ImageGenModelFile(
+        path: "text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+        role: Localized.text("Qwen text encoder"), engine: .quality)
+
+    public static let qwenVAE = ImageGenModelFile(
+        path: "vae/qwen_image_2.1_vae_bf16.safetensors", role: Localized.text("Qwen VAE"),
+        engine: .quality)
+
+    public static let kleinDiffusion = ImageGenModelFile(
+        path: "diffusion_models/flux-2-klein-4b.safetensors",
+        role: Localized.text("Klein diffusion model"), engine: .fast)
+
+    public static let kleinText = ImageGenModelFile(
+        path: "text_encoders/qwen_3_4b.safetensors", role: Localized.text("Klein text encoder"),
+        engine: .fast)
+
+    public static let kleinVAE = ImageGenModelFile(
+        path: "vae/flux2-vae.safetensors", role: Localized.text("Klein VAE"), engine: .fast)
+
     public static let all: [ImageGenModelFile] = [
-        ImageGenModelFile(
-            path: "diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
-            role: Localized.text("Qwen diffusion model"), engine: .quality),
-        ImageGenModelFile(
-            path: "text_encoders/qwen3vl_8b_int8_convrot.safetensors",
-            role: Localized.text("Qwen text encoder"), engine: .quality),
-        ImageGenModelFile(
-            path: "vae/qwen_image_2.1_vae_bf16.safetensors", role: Localized.text("Qwen VAE"),
-            engine: .quality),
-        ImageGenModelFile(
-            path: "diffusion_models/flux-2-klein-4b.safetensors",
-            role: Localized.text("Klein diffusion model"), engine: .fast),
-        ImageGenModelFile(
-            path: "text_encoders/qwen_3_4b.safetensors", role: Localized.text("Klein text encoder"),
-            engine: .fast),
-        ImageGenModelFile(
-            path: "vae/flux2-vae.safetensors", role: Localized.text("Klein VAE"), engine: .fast),
+        qwenDiffusion, qwenText, qwenVAE, kleinDiffusion, kleinText, kleinVAE, turboDiffusion,
     ]
 
     public static func named(_ path: String) -> ImageGenModelFile? {
@@ -545,12 +564,12 @@ public struct ImageGenSlot: Sendable, Equatable {
         }
     }
 
-    /// Whether painting on transparency is on the table: only the quality engine has a VAE that
-    /// keeps an alpha channel.
-    public var cutoutApplies: Bool { engine == .quality }
+    /// Whether painting on transparency is on the table: the Qwen engines share a VAE that keeps
+    /// an alpha channel, and the fast engine's does not.
+    public var cutoutApplies: Bool { engine != .fast }
 
-    /// Whether an avoid list would be read. Guidance rises to make it count, which the fast
-    /// engine's four distilled steps cannot afford.
+    /// Whether an avoid list would be read. Guidance rises to make it count, which the fast and
+    /// turbo engines' distilled steps cannot afford.
     public var negativeApplies: Bool { engine == .quality }
 
     /// Everything the next render is, gathered in one place so a client hands the runner a
