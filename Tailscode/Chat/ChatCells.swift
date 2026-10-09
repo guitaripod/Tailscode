@@ -1243,10 +1243,11 @@ final class ActivityGroupCell: UICollectionViewCell {
     func configure(
         steps: [ActivityStep], expanded: Bool, streaming: Bool, compact: Bool,
         onToggle: @escaping () -> Void, onToolTap: ((ToolCall) -> Void)? = nil,
-        onLinkTap: ((URL) -> Void)? = nil
+        onToolOpen: ((ToolCall) -> Bool)? = nil, onLinkTap: ((URL) -> Void)? = nil
     ) {
         self.onToggle = onToggle
         renderer.onToolTap = onToolTap
+        renderer.onToolOpen = onToolOpen
         renderer.onLinkTap = onLinkTap
         let failed = !streaming && steps.contains {
             if case .tool(let call) = $0, call.status == .error { return true }

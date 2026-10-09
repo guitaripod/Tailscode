@@ -42,8 +42,8 @@ final class WorkspaceSplitViewController: UISplitViewController {
         minimumPrimaryColumnWidth = 232
         maximumPrimaryColumnWidth = 320
         preferredSupplementaryColumnWidth = 340
-        minimumSupplementaryColumnWidth = 300
-        maximumSupplementaryColumnWidth = 420
+        minimumSupplementaryColumnWidth = Self.listWidths.minimum
+        maximumSupplementaryColumnWidth = Self.listWidths.maximum
         showsSecondaryOnlyButton = true
         sidebar.owner = self
         adopt(chatList)
@@ -60,6 +60,9 @@ final class WorkspaceSplitViewController: UISplitViewController {
         super.viewDidLoad()
         view.backgroundColor = Theme.Color.background
         installPressRouting()
+        registerForTraitChanges([UITraitVerticalSizeClass.self]) { (self: Self, _) in
+            self.holdOneStackWhenShort()
+        }
         #if DEBUG
             flipWidthForVerification()
             walkForVerification()
@@ -82,6 +85,7 @@ final class WorkspaceSplitViewController: UISplitViewController {
 
     override func viewIsAppearing(_ animated: Bool) {
         super.viewIsAppearing(animated)
+        holdOneStackWhenShort()
         arrange(collapsed: isCollapsed)
         refreshMarks()
     }
@@ -89,6 +93,7 @@ final class WorkspaceSplitViewController: UISplitViewController {
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
         fitColumns(to: view.bounds.width)
+        fitFold()
     }
 
     override func viewWillTransition(
@@ -96,6 +101,17 @@ final class WorkspaceSplitViewController: UISplitViewController {
     ) {
         super.viewWillTransition(to: size, with: coordinator)
         fitColumns(to: size.width)
+    }
+
+    /// Columns need height as well as width: a phone turned on its side is regular wide and
+    /// compact tall, and three columns across 430 points would leave the conversation no room.
+    /// A short window therefore reads as a compact one, and keeps the phone's single stack.
+    private func holdOneStackWhenShort() {
+        if traitCollection.verticalSizeClass == .compact {
+            traitOverrides.horizontalSizeClass = .compact
+        } else {
+            traitOverrides.remove(UITraitHorizontalSizeClass.self)
+        }
     }
 
     private enum WidthBand { case narrow, medium, wide }
@@ -126,6 +142,92 @@ final class WorkspaceSplitViewController: UISplitViewController {
             preferredDisplayMode = .secondaryOnly
         }
         AppLogger.ui.info("workspace width \(Int(width)) band=\(String(describing: band))")
+    }
+
+    private var bookPage: CGFloat?
+    let inspector = ChatInspector()
+    private var inspectedConversation: String?
+
+    /// A window held open like a book shows two pages with a fold between them, and nothing may
+    /// sit on the fold. A conversation takes the whole window and lays itself across both pages
+    /// (transcript on one, inspector on the other), so the list steps back to an overlay; any
+    /// other screen takes the page beside a list that is exactly one page wide.
+    private func fitFold() {
+        let book = isShowingColumns ? FoldReading.read(in: view).flatMap { $0.isBook ? $0 : nil } : nil
+        guard let book else {
+            releaseBook()
+            return
+        }
+        let page = book.frame.minX
+        let conversation = detailNav.topViewController is ChatViewController
+        if bookPage != page {
+            bookPage = page
+            minimumSupplementaryColumnWidth = page
+            maximumSupplementaryColumnWidth = page
+            preferredSupplementaryColumnWidth = page
+        }
+        let mode: UISplitViewController.DisplayMode =
+            conversation ? .secondaryOnly : .oneBesideSecondary
+        if preferredDisplayMode != mode, !(conversation && displayMode == .oneOverSecondary) {
+            preferredDisplayMode = mode
+        }
+        keepDetailOffFold(book, conversation: conversation)
+        keepInspector(book, beside: detailNav.topViewController as? ChatViewController)
+    }
+
+    /// A conversation learns it works inside a repository a moment after it opens; the second page
+    /// was waiting on a picture until then, and gives it up for the repository's state.
+    func inspectorMayShowRepository(of chat: ChatViewController) {
+        guard inspector.isInstalled, detailNav.topViewController === chat,
+            inspector.navigation.viewControllers.count == 1,
+            inspector.navigation.viewControllers.first is InspectorPlaceholderViewController
+        else { return }
+        inspector.show(chat.inspectorRoot())
+    }
+
+    /// The second page belongs to the conversation open beside it, and is rebuilt for each one.
+    private func keepInspector(_ fold: FoldReading, beside chat: ChatViewController?) {
+        guard let chat else {
+            inspector.uninstall()
+            inspectedConversation = nil
+            return
+        }
+        if inspectedConversation != chat.sessionID {
+            inspector.uninstall()
+            inspectedConversation = chat.sessionID
+        }
+        inspector.install(
+            in: self, leadingEdge: fold.frame.maxX,
+            trailingInset: detailNav.view.safeAreaInsets.right, root: chat.inspectorRoot)
+    }
+
+    private func releaseBook() {
+        guard bookPage != nil else { return }
+        bookPage = nil
+        minimumSupplementaryColumnWidth = Self.listWidths.minimum
+        maximumSupplementaryColumnWidth = Self.listWidths.maximum
+        preferredSupplementaryColumnWidth = widthBand == .wide ? 360 : 320
+        preferredDisplayMode = bandDisplayMode
+        detailNav.additionalSafeAreaInsets.left = 0
+        inspector.uninstall()
+        inspectedConversation = nil
+    }
+
+    private static let listWidths = (minimum: CGFloat(300), maximum: CGFloat(420))
+
+    /// The conversation lays out across the fold itself; anything else in the detail column is
+    /// held clear of it by the safe area, which the column's own bar and large title already obey.
+    private func keepDetailOffFold(_ fold: FoldReading, conversation: Bool) {
+        guard !conversation else {
+            detailNav.additionalSafeAreaInsets.left = 0
+            return
+        }
+        let left = view.convert(detailNav.view.bounds, from: detailNav.view).minX
+        let system = detailNav.view.safeAreaInsets.left - detailNav.additionalSafeAreaInsets.left
+        let wanted = max(0, fold.frame.maxX - left - system)
+        if abs(detailNav.additionalSafeAreaInsets.left - wanted) > 0.5 {
+            detailNav.additionalSafeAreaInsets.left = wanted
+        }
     }
 
     /// Whether the window is showing columns right now rather than the phone's single stack.
@@ -345,7 +447,9 @@ final class WorkspaceSplitViewController: UISplitViewController {
     private var bandDisplayMode: UISplitViewController.DisplayMode {
         switch widthBand {
         case .wide: return .twoBesideSecondary
-        case .medium, nil: return .oneBesideSecondary
+        case .medium, nil:
+            return bookPage != nil && detailNav.topViewController is ChatViewController
+                ? .oneOverSecondary : .oneBesideSecondary
         case .narrow: return .oneOverSecondary
         }
     }
@@ -599,6 +703,7 @@ extension WorkspaceSplitViewController: UINavigationControllerDelegate {
         animated: Bool
     ) {
         refreshMarks()
+        fitFold()
     }
 }
 

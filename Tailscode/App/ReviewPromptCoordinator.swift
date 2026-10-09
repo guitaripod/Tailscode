@@ -35,6 +35,9 @@ final class ReviewPromptCoordinator {
     }
 
     private func askIfEligible() {
+        #if DEBUG
+            guard !CommandLine.arguments.contains("--demo") else { return }
+        #endif
         guard ReviewPromptPolicy.isDue() else {
             AppLogger.ui.info("review: skipped (not due)")
             return

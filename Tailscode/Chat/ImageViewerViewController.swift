@@ -29,6 +29,7 @@ final class ImageViewerViewController: UIViewController {
 
     private let backdrop = UIView()
     private let collectionView: UICollectionView
+    private var pagerBottom: NSLayoutConstraint!
     private let transitionView = UIImageView()
     private let topBar = Theme.Glass.view()
     private let bottomBar = Theme.Glass.view()
@@ -102,15 +103,16 @@ final class ImageViewerViewController: UIViewController {
 
         buildChrome()
 
+        pagerBottom = collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         NSLayoutConstraint.activate([
             backdrop.topAnchor.constraint(equalTo: view.topAnchor),
             backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            pagerBottom,
+            collectionView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
         ])
 
         let drag = UIPanGestureRecognizer(target: self, action: #selector(handleDrag))
@@ -121,13 +123,25 @@ final class ImageViewerViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        adaptToFold()
         guard let layout = collectionView.collectionViewLayout as? UICollectionViewFlowLayout,
-            layout.itemSize != view.bounds.size, view.bounds.width > 0
+            layout.itemSize != collectionView.bounds.size, collectionView.bounds.width > 0
         else { return }
-        layout.itemSize = view.bounds.size
+        layout.itemSize = collectionView.bounds.size
         layout.invalidateLayout()
+        collectionView.layoutIfNeeded()
         collectionView.setContentOffset(
-            CGPoint(x: CGFloat(index) * view.bounds.width, y: 0), animated: false)
+            CGPoint(x: CGFloat(index) * collectionView.bounds.width, y: 0), animated: false)
+    }
+
+    /// A picture is media and stays off the fold: held open like a book it keeps to the page
+    /// before the fold with its controls; held like a laptop it fills the top region, and the
+    /// controls stay on the base below.
+    private func adaptToFold() {
+        let fold = FoldReading.read(in: view)
+        keepToPageBeforeFold(fold)
+        let wanted = fold.flatMap { $0.isLaptop ? -(view.bounds.height - $0.frame.minY) : nil } ?? 0
+        if abs(pagerBottom.constant - wanted) > 0.5 { pagerBottom.constant = wanted }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -214,7 +228,7 @@ final class ImageViewerViewController: UIViewController {
             closeButton.centerYAnchor.constraint(equalTo: topBar.contentView.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 28),
             closeButton.heightAnchor.constraint(equalToConstant: 28),
-            bottomBar.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            bottomBar.centerXAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerXAnchor),
             bottomBar.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Theme.Spacing.m),
             actions.topAnchor.constraint(
@@ -398,7 +412,10 @@ final class ImageViewerViewController: UIViewController {
     /// the image appears to grow out of the bubble instead of fading in over it.
     private func animateIn() {
         guard let source = sourceView, source.window != nil, let image = currentCell?.image,
-            let target = currentCell?.fittedFrame(in: view.bounds.size)
+            let target = currentCell.map({
+                $0.fittedFrame(in: collectionView.bounds.size)
+                    .offsetBy(dx: collectionView.frame.minX, dy: collectionView.frame.minY)
+            })
         else { return }
         let origin = source.convert(source.bounds, to: view)
         guard target.width > 0, target.height > 0, origin.width > 0 else { return }
@@ -491,8 +508,10 @@ extension ImageViewerViewController: UICollectionViewDataSource {
 
 extension ImageViewerViewController: UICollectionViewDelegate {
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard scrollView === collectionView, view.bounds.width > 0, !isDismissing else { return }
-        let page = Int((scrollView.contentOffset.x / view.bounds.width).rounded())
+        guard scrollView === collectionView, collectionView.bounds.width > 0, !isDismissing else {
+            return
+        }
+        let page = Int((scrollView.contentOffset.x / collectionView.bounds.width).rounded())
         guard page != index, items.indices.contains(page) else { return }
         index = page
         currentCell?.setLiveText(liveTextOn)
@@ -596,23 +615,9 @@ final class ImagePageCell: UICollectionViewCell {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let page = pageFrame(in: contentView.bounds)
-        guard scrollView.frame != page else { return }
-        scrollView.frame = page
+        guard scrollView.frame != contentView.bounds else { return }
+        scrollView.frame = contentView.bounds
         layoutImage()
-    }
-
-    override func safeAreaInsetsDidChange() {
-        super.safeAreaInsetsDidChange()
-        setNeedsLayout()
-    }
-
-    /// The page a picture is fitted to: the cell less the side the system keeps for its bar, so a
-    /// picture never slides under the status column or the camera while its backdrop still fills
-    /// the whole screen.
-    private func pageFrame(in bounds: CGRect) -> CGRect {
-        let sides = contentView.safeAreaInsets
-        return bounds.inset(by: UIEdgeInsets(top: 0, left: sides.left, bottom: 0, right: sides.right))
     }
 
     override func prepareForReuse() {
@@ -725,10 +730,9 @@ final class ImagePageCell: UICollectionViewCell {
 
     func fittedFrame(in bounds: CGSize) -> CGRect {
         guard let image else { return .zero }
-        let page = pageFrame(in: CGRect(origin: .zero, size: bounds))
-        let size = Self.fitted(image.size, in: page.size)
+        let size = Self.fitted(image.size, in: bounds)
         return CGRect(
-            x: page.minX + (page.width - size.width) / 2, y: page.minY + (page.height - size.height) / 2,
+            x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2,
             width: size.width, height: size.height)
     }
 

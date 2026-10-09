@@ -88,6 +88,11 @@ final class ServerSetupViewController: UIViewController {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        keepToPageBeforeFold(FoldReading.read(in: view))
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = mode == .firstRun ? String(localized: "Set up") : String(localized: "Add a server")

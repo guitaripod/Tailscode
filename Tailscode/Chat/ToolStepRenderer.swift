@@ -8,8 +8,9 @@ import UIKit
 /// the same vocabulary as its parent's.
 @MainActor
 final class ToolStepRenderer {
-    private(set) var tappableRows: [(view: UIView, action: () -> Void)] = []
+    private(set) var tappableRows: [(view: UIView, action: () -> Bool)] = []
     var onToolTap: ((ToolCall) -> Void)?
+    var onToolOpen: ((ToolCall) -> Bool)?
     var onLinkTap: ((URL) -> Void)?
 
     func reset() { tappableRows = [] }
@@ -33,8 +34,7 @@ final class ToolStepRenderer {
     /// and the caller should fall back to its own handling.
     func handleTap(at location: CGPoint, in view: UIView) -> Bool {
         for (row, action) in tappableRows where row.superview != nil {
-            if row.bounds.contains(view.convert(location, to: row)) {
-                action()
+            if row.bounds.contains(view.convert(location, to: row)), action() {
                 return true
             }
         }
@@ -87,7 +87,16 @@ final class ToolStepRenderer {
             addBody(of: call, summary: summary, to: column)
         }
         if linkable {
-            tappableRows.append((column, { [weak self] in self?.onToolTap?(call) }))
+            tappableRows.append(
+                (
+                    column,
+                    { [weak self] in
+                        self?.onToolTap?(call)
+                        return true
+                    }
+                ))
+        } else if call.output?.isEmpty == false {
+            tappableRows.append((column, { [weak self] in self?.onToolOpen?(call) ?? false }))
         }
         return column
     }
@@ -298,7 +307,14 @@ final class ToolStepRenderer {
         }
         label.attributedText = attributed
         if onLinkTap != nil {
-            tappableRows.append((label, { [weak self] in self?.onLinkTap?(link.url) }))
+            tappableRows.append(
+                (
+                    label,
+                    { [weak self] in
+                        self?.onLinkTap?(link.url)
+                        return true
+                    }
+                ))
         }
         return label
     }

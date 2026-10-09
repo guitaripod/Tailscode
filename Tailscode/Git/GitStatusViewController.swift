@@ -43,6 +43,10 @@ extension GitTone {
 /// — which branch, how far from the upstream, what the agent has already touched, what a file's
 /// change actually is — and offers no button that writes.
 final class GitStatusViewController: UIViewController {
+    /// Held on the page beside a conversation rather than presented over it, so there is nothing
+    /// to be done with and no Done to press.
+    var isBesideConversation = false
+
     private enum Section: Hashable {
         case header
         case files(GitSection.Kind)
@@ -81,9 +85,11 @@ final class GitStatusViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = Theme.Color.groupedBackground
         title = String(localized: "Repository")
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            systemItem: .done,
-            primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        if !isBesideConversation {
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                systemItem: .done,
+                primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        }
 
         var configuration = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         configuration.headerMode = .supplementary

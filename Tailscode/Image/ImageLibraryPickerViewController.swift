@@ -26,8 +26,10 @@ final class ImageLibraryPickerViewController: UIViewController {
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             systemItem: .cancel,
             primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
-        let layout = UICollectionViewCompositionalLayout { _, environment in
-            ImageStudioLayout.grid(environment: environment)
+        let layout = UICollectionViewCompositionalLayout { [weak self] _, environment in
+            ImageStudioLayout.grid(
+                environment: environment,
+                evenColumns: self.map { FoldReading.prefersEvenColumns(in: $0.view) } ?? false)
         }
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = .clear
@@ -76,14 +78,18 @@ extension ImageLibraryPickerViewController: UICollectionViewDelegate {
 enum ImageStudioLayout {
     static let gap: CGFloat = 2
 
-    static func columns(for width: CGFloat) -> Int {
-        max(3, min(6, Int(width / 128)))
+    /// - Parameter even: whether the count rounds up to an even one, so that no column sits on the
+    ///   fold of a device held open like a book.
+    static func columns(for width: CGFloat, even: Bool = false) -> Int {
+        let fitted = max(3, min(6, Int(width / 128)))
+        return even ? fitted + fitted % 2 : fitted
     }
 
-    static func grid(environment: NSCollectionLayoutEnvironment, header: Bool = false)
-        -> NSCollectionLayoutSection
-    {
-        let columns = columns(for: environment.container.effectiveContentSize.width)
+    static func grid(
+        environment: NSCollectionLayoutEnvironment, header: Bool = false, evenColumns: Bool = false
+    ) -> NSCollectionLayoutSection {
+        let columns = columns(
+            for: environment.container.effectiveContentSize.width, even: evenColumns)
         let item = NSCollectionLayoutItem(
             layoutSize: NSCollectionLayoutSize(
                 widthDimension: .fractionalWidth(1 / CGFloat(columns)),

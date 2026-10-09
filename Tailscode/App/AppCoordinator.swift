@@ -74,15 +74,17 @@ final class AppCoordinator: NSObject {
             if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
                 deliver(URL(string: "tailscode://session/\(sessionID)")!)
             }
-            if CommandLine.arguments.contains("--usage") {
+            let duoScreen = ProcessInfo.processInfo.environment["TAILSCODE_DUO_SCREEN"]
+            if CommandLine.arguments.contains("--usage") || duoScreen == "usage" {
                 openUsageForDebug()
             }
-            if CommandLine.arguments.contains("--analytics") {
+            if CommandLine.arguments.contains("--analytics") || duoScreen == "analytics" {
                 openAnalyticsForDebug()
             }
-            if CommandLine.arguments.contains("--video") {
+            if CommandLine.arguments.contains("--video") || duoScreen == "forgesweep" {
                 openVideoForDebug(staging: nil)
             }
+            if duoScreen == "designboard" { TourDriver.startDesignWalk(in: window) }
             if let state = ProcessInfo.processInfo.environment["TAILSCODE_VIDEO_STATE"] {
                 openVideoForDebug(staging: state)
             }
@@ -449,8 +451,10 @@ final class AppCoordinator: NSObject {
         return nav
     }
 
-    /// The phone's app is one stack with Home at its root. The iPad's is the workspace, whose
-    /// columns fold back into that same stack whenever the window is too narrow for them.
+    /// Every window is the workspace: columns when the window is wide and tall enough for them, and
+    /// the phone's one stack with Home at its root when it is not. An iPhone on its outer display
+    /// is that stack; opened out to its inner display it is the iPad's columns, and folded shut
+    /// again the same view controllers fold back into the stack.
     private func makeMain() -> UIViewController {
         let home = HomeViewController()
         mainHome = home
@@ -458,13 +462,11 @@ final class AppCoordinator: NSObject {
             guard let self, let home else { return }
             self.presentSettings(from: home.navigationController ?? home)
         }
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            return WorkspaceSplitViewController(
-                home: home, startsCollapsed: window.traitCollection.horizontalSizeClass == .compact)
-        }
-        let nav = UINavigationController(rootViewController: home)
-        nav.navigationBar.prefersLargeTitles = true
-        return nav
+        let traits = window.traitCollection
+        return WorkspaceSplitViewController(
+            home: home,
+            startsCollapsed: traits.horizontalSizeClass == .compact
+                || traits.verticalSizeClass == .compact)
     }
 
     private func presentSettings(

@@ -59,9 +59,9 @@ final class GitDiffViewController: UIViewController {
             emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             emptyLabel.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.xl),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.xl),
             emptyLabel.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.xl),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.xl),
         ])
 
         let cell = UICollectionView.CellRegistration<GitDiffLineCell, GitDiffLine> { cell, _, line in

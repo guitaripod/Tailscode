@@ -11,6 +11,7 @@ final class ChatViewController: UIViewController {
 
     private let viewModel: ChatViewModel
     private var collectionView: UICollectionView!
+    private var transcriptBottom: NSLayoutConstraint!
     private var dataSource: UICollectionViewDiffableDataSource<Section, String>!
     private let composer = ComposerView()
     private let dialPill = ModelDialPill()
@@ -180,7 +181,15 @@ final class ChatViewController: UIViewController {
     /// arrangement or back. Leaving one navigation stack for another is not the reader leaving the
     /// conversation, so the stream, the enhancement in flight and the binding all stay; the chat
     /// clears the mark itself when it is on screen again.
-    var isChangingColumns = false
+    var isChangingColumns = false {
+        didSet {
+            if isChangingColumns, !oldValue { carriesEndThroughMove = isParkedOnEnd() }
+        }
+    }
+    /// Whether the reader was on the end of the page when the window moved this conversation
+    /// between a column and a stack — folding a phone shut does exactly that — so the end is put
+    /// back under the composer once the transcript has been measured at its new width.
+    private var carriesEndThroughMove = false
 
     /// A question handed to this conversation from somewhere else — a quick ask that minted it, or
     /// one aimed at the chat this device is already looking at.
@@ -378,10 +387,18 @@ final class ChatViewController: UIViewController {
                     self.presentGit()
                     guard hook == "diff" || hook == "commit" else { return }
                     try? await Task.sleep(for: .seconds(2))
-                    (self.presentedViewController as? UINavigationController)?
-                        .topViewController
-                        .flatMap { $0 as? GitStatusViewController }?
-                        .openFirst(hook == "commit" ? .commit : .change)
+                    let beside = self.workspace?.inspector.navigation.viewControllers.first
+                    let status =
+                        (beside as? GitStatusViewController)
+                        ?? (self.presentedViewController as? UINavigationController)?
+                        .topViewController as? GitStatusViewController
+                    status?.openFirst(hook == "commit" ? .commit : .change)
+                }
+            }
+            if let what = ProcessInfo.processInfo.environment["TAILSCODE_INSPECT"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(5))
+                    self?.inspectForVerification(what)
                 }
             }
         #endif
@@ -405,6 +422,12 @@ final class ChatViewController: UIViewController {
             "chat appeared session=\(viewModel.session.id) title=\(viewModel.displayTitle)")
         AppActivityController.shared.shown(viewModel.session.id, in: self)
         isChangingColumns = false
+        if carriesEndThroughMove {
+            carriesEndThroughMove = false
+            settleUntil = CACurrentMediaTime() + 4
+            collectionView.layoutIfNeeded()
+            carryEnd()
+        }
         if UIApplication.shared.applicationState == .active {
             AppActivityController.shared.seen(viewModel.session.id)
         }
@@ -606,6 +629,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        adaptToFold()
         updateTranscriptInsets()
     }
 
@@ -618,10 +642,12 @@ final class ChatViewController: UIViewController {
         let composerTop = composerAccessories.bounds.height > 0
             ? min(composer.frame.minY, composerAccessories.frame.minY)
             : composer.frame.minY
+        let transcriptEnd = collectionView.frame.maxY
         let composerInset = max(
-            0, view.bounds.height - composerTop - collectionView.safeAreaInsets.bottom)
+            0, transcriptEnd - composerTop - collectionView.safeAreaInsets.bottom)
         let bannerInset: CGFloat = banner.isHidden ? 0 : banner.bounds.height
-        let available = composerTop - collectionView.safeAreaInsets.top - bannerInset
+        let available =
+            min(composerTop, transcriptEnd) - collectionView.safeAreaInsets.top - bannerInset
         canvasPadding = freshCanvasPadding(
             chrome: collectionView.safeAreaInsets.top + bannerInset + composerInset)
         let bottomInset = composerInset + canvasPadding
@@ -1122,15 +1148,16 @@ final class ChatViewController: UIViewController {
         chips.widthAnchor.constraint(lessThanOrEqualTo: composerAccessories.widthAnchor).isActive = true
         view.addSubview(composerAccessories)
 
+        transcriptBottom = collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
-            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            collectionView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            transcriptBottom,
 
             banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            banner.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            banner.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
 
             composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
         ])
@@ -1191,7 +1218,8 @@ final class ChatViewController: UIViewController {
             emptyState.topAnchor.constraint(equalTo: collectionView.topAnchor),
             emptyState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
             emptyState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
-            emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor),
+            emptyState.bottomAnchor.constraint(lessThanOrEqualTo: collectionView.bottomAnchor),
+            emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor).withPriority(.defaultHigh),
         ])
 
         loadingState.translatesAutoresizingMaskIntoConstraints = false
@@ -1202,7 +1230,8 @@ final class ChatViewController: UIViewController {
             loadingState.topAnchor.constraint(equalTo: collectionView.topAnchor),
             loadingState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
             loadingState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
-            loadingState.bottomAnchor.constraint(equalTo: composer.topAnchor),
+            loadingState.bottomAnchor.constraint(lessThanOrEqualTo: collectionView.bottomAnchor),
+            loadingState.bottomAnchor.constraint(equalTo: composer.topAnchor).withPriority(.defaultHigh),
         ])
     }
 
@@ -1375,9 +1404,9 @@ final class ChatViewController: UIViewController {
             findBar.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.s),
             findBar.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             findBar.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             row.topAnchor.constraint(equalTo: findBar.topAnchor, constant: Theme.Spacing.xs),
             row.bottomAnchor.constraint(equalTo: findBar.bottomAnchor, constant: -Theme.Spacing.xs),
             row.leadingAnchor.constraint(equalTo: findBar.leadingAnchor, constant: Theme.Spacing.m),
@@ -1587,7 +1616,7 @@ final class ChatViewController: UIViewController {
         fab.addTarget(self, action: #selector(fabTapped), for: .touchUpInside)
         view.addSubview(fab)
         NSLayoutConstraint.activate([
-            fab.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+            fab.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             fab.bottomAnchor.constraint(equalTo: composer.topAnchor, constant: -Theme.Spacing.m),
             fab.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
             fab.heightAnchor.constraint(equalToConstant: 44),
@@ -1842,6 +1871,7 @@ final class ChatViewController: UIViewController {
                     streaming: streaming, compact: AppPreferences.compactActivity,
                     onToggle: { [weak self] in self?.toggleReasoning(id) },
                     onToolTap: toolTap,
+                    onToolOpen: { [weak self] call in self?.inspect(tool: call) ?? false },
                     onLinkTap: { [weak self] url in self?.openWebLink(url) })
                 return cell
             case .workflow(let run):
@@ -3173,6 +3203,11 @@ final class ChatViewController: UIViewController {
         let panel = GitStatusViewController(
             backend: backend, directory: viewModel.session.directory,
             sessionID: viewModel.session.id)
+        if let inspector = workspace?.inspector, inspector.isInstalled {
+            panel.isBesideConversation = true
+            inspector.show(panel)
+            return
+        }
         let nav = UINavigationController(rootViewController: panel)
         nav.modalPresentationStyle = .pageSheet
         nav.sheetPresentationController?.detents = [.medium(), .large()]
@@ -3193,6 +3228,7 @@ final class ChatViewController: UIViewController {
             guard self.viewModel.session.id == sessionID else { return }
             self.git = snapshot.map { GitState(snapshot: $0) }
             self.updateGitChip()
+            self.workspace?.inspectorMayShowRepository(of: self)
         }
     }
 
@@ -5736,15 +5772,21 @@ extension ChatViewController: UICollectionViewDelegate {
     func collectionView(
         _ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath
     ) -> Bool {
-        dataSource.itemIdentifier(for: indexPath)?.hasPrefix("queued:") == true
+        guard let id = dataSource.itemIdentifier(for: indexPath) else { return false }
+        return id.hasPrefix("queued:") || inspectableTable(id) != nil
     }
 
     func collectionView(
         _ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath
     ) {
         collectionView.deselectItem(at: indexPath, animated: false)
-        guard let id = dataSource.itemIdentifier(for: indexPath),
-            let message = viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
+        guard let id = dataSource.itemIdentifier(for: indexPath) else { return }
+        if let table = inspectableTable(id) {
+            Theme.Haptics.tap()
+            workspace?.inspector.show(TableInspectorViewController(table: table))
+            return
+        }
+        guard let message = viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
         else { return }
         editQueued(message)
     }
@@ -6318,3 +6360,89 @@ private final class AccessoryStack: UIStackView {
         }
     }
 #endif
+
+extension ChatViewController {
+    /// Lays the conversation out for the fold it is held across, read afresh on every pass. Opened
+    /// like a book the transcript and composer keep to the page they started on and the second
+    /// page becomes the inspector; closed like a laptop the transcript keeps to the top region.
+    fileprivate func adaptToFold() {
+        let reading = FoldReading.read(in: view)
+        adaptToBook(reading?.isBook == true ? reading : nil)
+        adaptToLaptop(reading?.isLaptop == true ? reading : nil)
+    }
+
+    /// Held like a laptop the transcript fills the top region and stops at the fold, and everything
+    /// to be touched — the composer, its chips and the dial — stays below it on the base. The
+    /// transcript is not a control, so it scrolls in its own region instead of under the crease.
+    private func adaptToLaptop(_ fold: FoldReading?) {
+        let wanted = fold.map { -(view.bounds.height - $0.frame.minY) } ?? 0
+        if abs(transcriptBottom.constant - wanted) > 0.5 { transcriptBottom.constant = wanted }
+    }
+
+    private func adaptToBook(_ fold: FoldReading?) {
+        guard keepToPageBeforeFold(fold), let fold else {
+            navTitleContainer.transform = .identity
+            return
+        }
+        centerStatusOnPage(ending: fold.frame.minX)
+    }
+
+    /// The status the bar centres over the whole window is moved to the middle of the page the
+    /// transcript is on, so it neither lands on the fold nor runs under the second page.
+    private func centerStatusOnPage(ending edge: CGFloat) {
+        guard navTitleContainer.window != nil else { return }
+        let resting = navTitleContainer.transform.tx
+        let current = view.convert(navTitleContainer.bounds, from: navTitleContainer).midX
+        let wanted = edge / 2 - (current - resting)
+        guard abs(wanted - resting) > 0.5 else { return }
+        navTitleContainer.transform = CGAffineTransform(translationX: wanted, y: 0)
+    }
+
+    /// What the second page shows when a conversation opens beside it: the repository's state
+    /// when the conversation works in one, and a picture otherwise.
+    func inspectorRoot() -> UIViewController {
+        guard let backend = viewModel.backend as? any GitObservingBackend, git?.isRepository == true
+        else { return ChatInspector.placeholder() }
+        let panel = GitStatusViewController(
+            backend: backend, directory: viewModel.session.directory, sessionID: viewModel.session.id)
+        panel.isBesideConversation = true
+        return panel
+    }
+
+    /// Opens a tool's whole output on the second page when the conversation has one, and says so;
+    /// anywhere else the tap keeps meaning what it always did.
+    fileprivate func inspect(tool call: ToolCall) -> Bool {
+        guard let inspector = workspace?.inspector, inspector.isInstalled else { return false }
+        Theme.Haptics.tap()
+        inspector.show(ToolOutputViewController(call: call))
+        return true
+    }
+
+    fileprivate func inspectableTable(_ id: String) -> MarkdownTable? {
+        guard workspace?.inspector.isInstalled == true, case .table(let table)? = rowsByID[id]?.content
+        else { return nil }
+        return table
+    }
+
+    #if DEBUG
+        /// `TAILSCODE_INSPECT=tool|table` puts the first tool output or the first table of the
+        /// transcript on the second page, so the open book can be photographed without a tap.
+        fileprivate func inspectForVerification(_ what: String) {
+            guard let inspector = workspace?.inspector, inspector.isInstalled else { return }
+            for id in orderedIDs {
+                switch rowsByID[id]?.content {
+                case .table(let table)? where what == "table":
+                    inspector.show(TableInspectorViewController(table: table))
+                    return
+                case .activity(let steps)? where what == "tool":
+                    for case .tool(let call) in steps where call.output?.isEmpty == false {
+                        inspector.show(ToolOutputViewController(call: call))
+                        return
+                    }
+                default:
+                    break
+                }
+            }
+        }
+    #endif
+}

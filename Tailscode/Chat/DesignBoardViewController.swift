@@ -169,6 +169,7 @@ final class DesignBoardViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        keepToPageBeforeFold(FoldReading.read(in: view))
         bottomBar.layer.cornerRadius = bottomBar.bounds.height / 2
         scrollToSelection(animated: false)
     }

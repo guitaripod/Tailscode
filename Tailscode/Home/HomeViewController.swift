@@ -257,6 +257,12 @@ final class HomeViewController: UIViewController {
                         StreamRendererViewController(), animated: false)
                 }
             }
+            if let name = ProcessInfo.processInfo.environment["TAILSCODE_DUO_SCREEN"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.presentDuoScreen(named: name)
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SETTINGS"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
@@ -385,13 +391,22 @@ final class HomeViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        keepBoardAboveFold()
         let top = min(composerBar.frame.minY, accessories.frame.minY)
-        let overlap = max(0, view.bounds.height - top - view.safeAreaInsets.bottom)
+        let overlap = max(0, collectionView.frame.maxY - top - collectionView.safeAreaInsets.bottom)
         let inset = composerBar.isHidden ? 0 : overlap + Theme.Spacing.s
         if collectionView.contentInset.bottom != inset {
             collectionView.contentInset.bottom = inset
             collectionView.verticalScrollIndicatorInsets.bottom = inset
         }
+    }
+
+    /// Held like a laptop the board fills the top region and stops at the fold, and the box to type
+    /// in stays on the base below it, so nothing a person reads or taps sits on the crease.
+    private func keepBoardAboveFold() {
+        let fold = FoldReading.read(in: view)
+        let wanted = fold.flatMap { $0.isLaptop ? -(view.bounds.height - $0.frame.minY) : nil } ?? 0
+        if abs(collectionBottom.constant - wanted) > 0.5 { collectionBottom.constant = wanted }
     }
 
     func focusComposer() {
@@ -1781,7 +1796,7 @@ final class HomeViewController: UIViewController {
             return section
         }
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
-        collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
         collectionView.backgroundColor = .clear
         collectionView.delegate = self
         collectionView.refreshControl = refreshControl
@@ -1791,6 +1806,13 @@ final class HomeViewController: UIViewController {
         collectionView.addGestureRecognizer(dismissTap)
         refreshControl.addTarget(self, action: #selector(refresh), for: .valueChanged)
         view.addSubview(collectionView)
+        collectionBottom = collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        NSLayoutConstraint.activate([
+            collectionView.topAnchor.constraint(equalTo: view.topAnchor),
+            collectionBottom,
+            collectionView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+        ])
     }
 
     /// Tapping anywhere outside the composer puts the keyboard away; the tap
@@ -1807,6 +1829,7 @@ final class HomeViewController: UIViewController {
     }
 
     private var rails: [ReadableRail] = []
+    private var collectionBottom: NSLayoutConstraint!
 
     private func configureComposer() {
         composerBar.delegate = self
@@ -1953,7 +1976,7 @@ final class HomeViewController: UIViewController {
         orbView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(orbView)
         NSLayoutConstraint.activate([
-            orbView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            orbView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             orbView.bottomAnchor.constraint(equalTo: accessories.topAnchor, constant: -10),
             orbView.widthAnchor.constraint(equalToConstant: 76),
             orbView.heightAnchor.constraint(equalToConstant: 76),
@@ -4082,3 +4105,41 @@ extension HomeViewController: KeyActionHost {
         collectionView.setContentOffset(CGPoint(x: 0, y: target), animated: true)
     }
 }
+
+#if DEBUG
+    extension HomeViewController {
+        /// Puts one of the screens no other launch hook reaches on screen, so the whole set can be
+        /// photographed on every display and pose without a finger driving it.
+        fileprivate func presentDuoScreen(named name: String) {
+            let profile = viewModel.servers.first
+            switch name {
+            case "newchat":
+                guard let profile else { return }
+                NewChatFlow.begin(from: self, profile: profile, viewModel: viewModel) { _ in }
+            case "proupgrade":
+                ProUpgradeViewController.present(from: self)
+            case "serveredit":
+                guard let profile else { return }
+                present(UINavigationController(rootViewController: ServerEditViewController(profile: profile)), animated: false)
+            case "manualconnect":
+                let device = TailscaleDevice(
+                    name: "studio.tailnet-demo.ts.net", hostname: "studio", addresses: ["100.64.0.5"],
+                    os: "macOS")
+                present(
+                    UINavigationController(rootViewController: ManualConnectViewController(device: device)),
+                    animated: false)
+            case "discovery":
+                present(UINavigationController(rootViewController: DiscoveryViewController()), animated: false)
+            case "librarypicker":
+                let picker = ImageLibraryPickerViewController(library: DuoFixtures.library()) { _ in }
+                present(UINavigationController(rootViewController: picker), animated: false)
+            case "imageviewer":
+                let viewer = ImageViewerViewController(
+                    items: DuoFixtures.gallery(), startIndex: 1, backend: nil, from: nil)
+                present(viewer, animated: false)
+            default:
+                break
+            }
+        }
+    }
+#endif

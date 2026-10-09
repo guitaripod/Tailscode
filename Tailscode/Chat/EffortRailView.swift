@@ -279,15 +279,11 @@ final class EffortRailPresenter {
 
     var isPresented: Bool { rail != nil }
 
-    private nonisolated(unsafe) var keyboardWatch: NSObjectProtocol?
+    private var keyboardProbe: KeyboardEdgeProbe?
 
     init(host: UIView, below: UIView?) {
         self.host = host
         self.below = below
-    }
-
-    deinit {
-        if let keyboardWatch { NotificationCenter.default.removeObserver(keyboardWatch) }
     }
 
     func present(anchor: UIView, rungs: [EffortRung], current: String?) {
@@ -300,7 +296,7 @@ final class EffortRailPresenter {
         let anchorFrame = anchor.convert(anchor.bounds, to: host)
         let belowTop = below.map { $0.convert($0.bounds, to: host).minY } ?? anchorFrame.minY
         let bottom = min(anchorFrame.minY, belowTop) - 10
-        let available = bottom - host.safeAreaInsets.top - 8
+        let available = bottom - Self.ceiling(in: host, above: bottom, rungCount: rungs.count) - 8
         let view = EffortRailView(
             rungs: rungs, current: current, density: Self.density(rungs: rungs, available: available))
         rail = view
@@ -337,11 +333,7 @@ final class EffortRailPresenter {
         view.addGestureRecognizer(touch)
 
         Theme.Haptics.tap()
-        keyboardWatch = NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.dismiss(committing: false) }
-        }
+        watchKeyboardEdge(in: host)
         UIAccessibility.post(notification: .screenChanged, argument: view)
         let appear = {
             scrim.alpha = 1
@@ -354,6 +346,25 @@ final class EffortRailPresenter {
         UIView.animate(
             withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.3,
             options: [.allowUserInteraction], animations: appear)
+    }
+
+    /// A rail is drawn where the keyboard was when it opened, so a keyboard that moves — up, down,
+    /// undocked, or resized by a fold — closes it. The keyboard's edge is read from the host's own
+    /// keyboard guide rather than from a notification, so it follows whichever window and display
+    /// the host is in.
+    private func watchKeyboardEdge(in host: UIView) {
+        let probe = KeyboardEdgeProbe()
+        probe.translatesAutoresizingMaskIntoConstraints = false
+        probe.isUserInteractionEnabled = false
+        probe.onMove = { [weak self] in self?.dismiss(committing: false) }
+        host.addSubview(probe)
+        NSLayoutConstraint.activate([
+            probe.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            probe.widthAnchor.constraint(equalToConstant: 1),
+            probe.heightAnchor.constraint(equalToConstant: 0),
+            probe.bottomAnchor.constraint(equalTo: host.keyboardLayoutGuide.topAnchor),
+        ])
+        keyboardProbe = probe
     }
 
     /// A finger on the rail: where it comes down on a level picks that level, and sliding moves the
@@ -400,10 +411,8 @@ final class EffortRailPresenter {
     func dismiss(committing: Bool) {
         guard let rail else { return }
         let chosen = rungs.indices.contains(held) ? rungs[held] : nil
-        if let keyboardWatch {
-            NotificationCenter.default.removeObserver(keyboardWatch)
-            self.keyboardWatch = nil
-        }
+        keyboardProbe?.removeFromSuperview()
+        keyboardProbe = nil
         let scrim = self.scrim
         self.rail = nil
         self.scrim = nil
@@ -426,6 +435,18 @@ final class EffortRailPresenter {
         ) { _ in finish() }
     }
 
+    /// The highest the rail may reach. Held like a laptop the rail belongs on the base with the
+    /// composer, below the fold; when the keyboard leaves the base too little room for even the
+    /// tightest rail it reaches into the top region rather than not opening at all.
+    private static func ceiling(in host: UIView, above bottom: CGFloat, rungCount: Int) -> CGFloat {
+        let top = host.safeAreaInsets.top
+        guard let fold = FoldReading.read(in: host), fold.isLaptop, bottom > fold.frame.maxY else {
+            return top
+        }
+        let tightest = CGFloat(rungCount) * EffortRailView.Density.tight.rowHeight + 38
+        return bottom - fold.frame.maxY >= tightest ? fold.frame.maxY : top
+    }
+
     private static func density(rungs: [EffortRung], available: CGFloat) -> EffortRailView.Density {
         let gaps: CGFloat = 26
         let chrome: CGFloat = 12
@@ -435,5 +456,29 @@ final class EffortRailPresenter {
             if need <= available { return density }
         }
         return .tight
+    }
+}
+
+/// Zero-height view that sits on the keyboard guide's top edge and reports when that edge moves
+/// after its first resting position.
+@MainActor
+private final class KeyboardEdgeProbe: UIView {
+    var onMove: (() -> Void)?
+    private var restingEdge: CGFloat?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard window != nil else { return }
+        guard let restingEdge else {
+            restingEdge = frame.maxY
+            return
+        }
+        if abs(frame.maxY - restingEdge) > 0.5 { onMove?() }
     }
 }

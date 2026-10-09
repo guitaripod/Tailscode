@@ -13,6 +13,11 @@ final class WelcomeViewController: UIViewController {
     private let scroll = UIScrollView()
     private let column = UIStackView()
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        keepToPageBeforeFold(FoldReading.read(in: view))
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Theme.Color.groupedBackground

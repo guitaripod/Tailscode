@@ -199,7 +199,9 @@ final class ImageStudioViewController: UIViewController {
                 if items.contains(.libraryState) {
                     return ImageStudioLayout.rows(environment: environment, header: true)
                 }
-                return ImageStudioLayout.grid(environment: environment, header: true)
+                return ImageStudioLayout.grid(
+                    environment: environment, header: true,
+                    evenColumns: FoldReading.prefersEvenColumns(in: self.view))
             }
         }
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
@@ -271,8 +273,8 @@ final class ImageStudioViewController: UIViewController {
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: dock.topAnchor),
-            dock.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            dock.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            dock.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            dock.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             dock.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             chipScroll.topAnchor.constraint(
                 equalTo: dock.contentView.topAnchor, constant: Theme.Spacing.s),
@@ -915,7 +917,8 @@ final class ImageStudioViewController: UIViewController {
         default: title = ImageGenWords.attachedCount(count)
         }
         let button = ImageChip.button(
-            symbol: count == 0 ? "photo.badge.plus" : "photo.fill", title: title, image: thumb)
+            symbol: count == 0 ? "photo.badge.plus" : "photo.fill", title: title, image: thumb,
+            traits: traitCollection)
         button.isEnabled = !slot.isBusy
         button.accessibilityLabel = holding.map(ImageGenWords.referenceHint) ?? ImageGenWords.attachTitle
         button.accessibilityHint = count == 0 ? nil : ImageGenWords.attachMoreHint
