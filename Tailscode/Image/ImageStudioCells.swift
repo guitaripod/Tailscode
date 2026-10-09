@@ -692,7 +692,9 @@ final class ImageLibraryStateCell: UICollectionViewListCell {
 /// shapes are called.
 enum ImageChip {
     @MainActor
-    static func button(symbol: String, title: String, image: UIImage? = nil) -> UIButton {
+    static func button(
+        symbol: String, title: String, image: UIImage? = nil, traits: UITraitCollection = .current
+    ) -> UIButton {
         var config = Theme.Glass.buttonConfiguration()
         config.cornerStyle = .capsule
         config.buttonSize = .small
@@ -700,8 +702,7 @@ enum ImageChip {
         config.titleLineBreakMode = .byTruncatingTail
         if let image {
             let side: CGFloat = 20
-            let format = UIGraphicsImageRendererFormat.default()
-            format.scale = UIScreen.main.scale
+            let format = UIGraphicsImageRendererFormat.matching(traits)
             let thumb = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
                 .image { _ in
                     let path = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: side, height: side), cornerRadius: 5)

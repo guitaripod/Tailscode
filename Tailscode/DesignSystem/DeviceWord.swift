@@ -4,7 +4,9 @@ import UIKit
 /// on an iPad every one of those sentences must say iPad, and the hero must draw one.
 @MainActor
 enum DeviceWord {
-    static var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    /// Whether the hardware calls itself an iPad. Only copy asks: layout is decided by size classes
+    /// and the space a window has, never by what the device is.
+    static var isPad: Bool { UIDevice.current.model.hasPrefix("iPad") }
 
     static var heroSymbol: String { isPad ? "ipad" : "iphone" }
 

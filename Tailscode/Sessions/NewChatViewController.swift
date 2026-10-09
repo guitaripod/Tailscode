@@ -172,37 +172,37 @@ final class NewChatViewController: UIViewController {
             serverButton.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.s),
             serverButton.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             serverButton.trailingAnchor.constraint(
-                lessThanOrEqualTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
 
             defaultsLabel.topAnchor.constraint(
                 equalTo: serverButton.bottomAnchor, constant: Theme.Spacing.xs),
             defaultsLabel.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             defaultsLabel.trailingAnchor.constraint(
-                lessThanOrEqualTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
 
             field.topAnchor.constraint(
                 equalTo: defaultsLabel.bottomAnchor,
                 constant: Theme.Spacing.s),
-            field.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
-            field.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+            field.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            field.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             field.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
 
             hintLabel.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             hintLabel.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             hintLabel.bottomAnchor.constraint(
                 equalTo: view.keyboardLayoutGuide.topAnchor, constant: -Theme.Spacing.s),
 
             statusView.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.xl),
             statusView.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             statusView.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
         ])
     }
 
@@ -227,9 +227,9 @@ final class NewChatViewController: UIViewController {
                 equalTo: hintLabel.topAnchor, constant: -Theme.Spacing.xs),
             emptyLabel.centerYAnchor.constraint(equalTo: collectionView.centerYAnchor),
             emptyLabel.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.xl),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.xl),
             emptyLabel.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.xl),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.xl),
         ])
     }
 

@@ -262,11 +262,10 @@ final class TableCell: UICollectionViewCell {
             header.backgroundColor = Theme.Color.accent.withAlphaComponent(
                 CGFloat(TableStyle.headerWash))
             grid.addArrangedSubview(header)
-            let rule = UIView()
+            let rule = HairlineView()
             rule.backgroundColor = Theme.Color.label.withAlphaComponent(
                 CGFloat(TableStyle.headerRule))
             rule.translatesAutoresizingMaskIntoConstraints = false
-            rule.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
             grid.addArrangedSubview(rule)
         }
         for row in table.rows.indices where row >= (first ?? 0) {

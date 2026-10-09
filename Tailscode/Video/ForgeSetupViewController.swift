@@ -142,8 +142,8 @@ final class ForgeSetupViewController: UIViewController {
 
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: dock.topAnchor),
             column.topAnchor.constraint(
                 equalTo: scroll.contentLayoutGuide.topAnchor, constant: Theme.Spacing.l),
@@ -155,8 +155,8 @@ final class ForgeSetupViewController: UIViewController {
                 equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             column.widthAnchor.constraint(
                 equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -2 * Theme.Spacing.l),
-            dock.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            dock.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            dock.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            dock.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             dock.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
             primary.topAnchor.constraint(
                 equalTo: dock.contentView.topAnchor, constant: Theme.Spacing.s),

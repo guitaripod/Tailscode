@@ -81,8 +81,8 @@ final class StreamRendererViewController: UIViewController {
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: view.topAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             stack.topAnchor.constraint(
                 equalTo: scroll.contentLayoutGuide.topAnchor, constant: Theme.Spacing.l),
             stack.bottomAnchor.constraint(

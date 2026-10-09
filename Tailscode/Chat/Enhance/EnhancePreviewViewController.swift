@@ -91,8 +91,8 @@ final class EnhancePreviewViewController: UIViewController, PromptEnhanceOverlay
             container.addSubview(bubble)
             view.addSubview(container)
             NSLayoutConstraint.activate([
-                container.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
-                container.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                container.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+                container.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
                 container.topAnchor.constraint(
                     equalTo: last?.bottomAnchor ?? view.safeAreaLayoutGuide.topAnchor,
                     constant: Theme.Spacing.m),

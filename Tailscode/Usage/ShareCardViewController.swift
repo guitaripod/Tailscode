@@ -78,8 +78,8 @@ final class ShareCardViewController: UIViewController {
                 lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor,
                 constant: -Theme.Spacing.l),
             scroll.topAnchor.constraint(equalTo: stylePicker.bottomAnchor, constant: Theme.Spacing.m),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             preview.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
             preview.leadingAnchor.constraint(
@@ -106,7 +106,7 @@ final class ShareCardViewController: UIViewController {
         let actions = CardStyle.all.map { candidate in
             UIAction(
                 title: candidate.name, subtitle: candidate.tagline,
-                image: AnalyticsCardRenderer.swatch(candidate),
+                image: AnalyticsCardRenderer.swatch(candidate, traits: traitCollection),
                 state: candidate.id == style.id ? .on : .off
             ) { [weak self] _ in self?.pick(candidate) }
         }
@@ -124,7 +124,7 @@ final class ShareCardViewController: UIViewController {
 
     private func dressPicker() {
         stylePicker.configuration?.title = style.name
-        stylePicker.configuration?.image = AnalyticsCardRenderer.swatch(style, size: 18)
+        stylePicker.configuration?.image = AnalyticsCardRenderer.swatch(style, size: 18, traits: traitCollection)
         stylePicker.accessibilityLabel = String(localized: "Card style: \(style.name)")
     }
 

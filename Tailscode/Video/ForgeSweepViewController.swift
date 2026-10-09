@@ -122,9 +122,9 @@ final class ForgeSweepViewController: UIViewController {
         NSLayoutConstraint.activate([
             column.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.l),
-            column.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+            column.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             column.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             radar.heightAnchor.constraint(equalToConstant: 168),
             collectionView.topAnchor.constraint(equalTo: column.bottomAnchor),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),

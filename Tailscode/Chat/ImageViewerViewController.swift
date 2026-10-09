@@ -90,7 +90,6 @@ final class ImageViewerViewController: UIViewController {
         collectionView.isPagingEnabled = true
         collectionView.backgroundColor = .clear
         collectionView.showsHorizontalScrollIndicator = false
-        collectionView.contentInsetAdjustmentBehavior = .never
         collectionView.register(ImagePageCell.self, forCellWithReuseIdentifier: ImagePageCell.reuseID)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -199,9 +198,9 @@ final class ImageViewerViewController: UIViewController {
         NSLayoutConstraint.activate([
             topBar.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.s),
-            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+            topBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             topBar.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             titles.leadingAnchor.constraint(
                 equalTo: topBar.contentView.leadingAnchor, constant: Theme.Spacing.m),
             titles.topAnchor.constraint(
@@ -549,7 +548,7 @@ final class ImagePageCell: UICollectionViewCell {
         scrollView.delegate = self
         scrollView.showsVerticalScrollIndicator = false
         scrollView.showsHorizontalScrollIndicator = false
-        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.contentInsetAdjustmentBehavior = .scrollableAxes
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = 4
         scrollView.bouncesZoom = true
@@ -597,9 +596,23 @@ final class ImagePageCell: UICollectionViewCell {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard scrollView.frame != contentView.bounds else { return }
-        scrollView.frame = contentView.bounds
+        let page = pageFrame(in: contentView.bounds)
+        guard scrollView.frame != page else { return }
+        scrollView.frame = page
         layoutImage()
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        setNeedsLayout()
+    }
+
+    /// The page a picture is fitted to: the cell less the side the system keeps for its bar, so a
+    /// picture never slides under the status column or the camera while its backdrop still fills
+    /// the whole screen.
+    private func pageFrame(in bounds: CGRect) -> CGRect {
+        let sides = contentView.safeAreaInsets
+        return bounds.inset(by: UIEdgeInsets(top: 0, left: sides.left, bottom: 0, right: sides.right))
     }
 
     override func prepareForReuse() {
@@ -712,9 +725,10 @@ final class ImagePageCell: UICollectionViewCell {
 
     func fittedFrame(in bounds: CGSize) -> CGRect {
         guard let image else { return .zero }
-        let size = Self.fitted(image.size, in: bounds)
+        let page = pageFrame(in: CGRect(origin: .zero, size: bounds))
+        let size = Self.fitted(image.size, in: page.size)
         return CGRect(
-            x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2,
+            x: page.minX + (page.width - size.width) / 2, y: page.minY + (page.height - size.height) / 2,
             width: size.width, height: size.height)
     }
 

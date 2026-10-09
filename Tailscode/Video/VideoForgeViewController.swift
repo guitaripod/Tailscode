@@ -113,8 +113,8 @@ final class VideoForgeViewController: UIViewController {
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: dock.topAnchor),
-            dock.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            dock.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            dock.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            dock.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             dock.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
             call.topAnchor.constraint(equalTo: dock.contentView.topAnchor, constant: Theme.Spacing.s),
             call.bottomAnchor.constraint(

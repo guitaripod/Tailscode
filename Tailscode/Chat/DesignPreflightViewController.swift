@@ -90,13 +90,13 @@ final class DesignPreflightViewController: UIViewController {
         let content = scroll.contentLayoutGuide
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: action.topAnchor, constant: -Theme.Spacing.m),
 
-            action.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+            action.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             action.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             action.bottomAnchor.constraint(
                 equalTo: view.keyboardLayoutGuide.topAnchor, constant: -Theme.Spacing.l),
 

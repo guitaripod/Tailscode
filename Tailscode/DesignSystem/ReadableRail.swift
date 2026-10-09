@@ -14,8 +14,8 @@ final class ReadableRail {
         self.init(
             host: host,
             compact: [
-                view.leadingAnchor.constraint(equalTo: host.leadingAnchor),
-                view.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+                view.leadingAnchor.constraint(equalTo: host.safeAreaLayoutGuide.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: host.safeAreaLayoutGuide.trailingAnchor),
             ],
             regular: [
                 view.leadingAnchor.constraint(equalTo: host.readableContentGuide.leadingAnchor),

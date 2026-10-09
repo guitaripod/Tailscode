@@ -61,8 +61,8 @@ final class SpendViewController: UIViewController {
         view.addSubview(scroll)
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             column.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
             column.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),

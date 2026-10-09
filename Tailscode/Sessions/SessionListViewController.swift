@@ -298,8 +298,8 @@ final class SessionListViewController: UIViewController {
         chipBarHeight = chipBar.heightAnchor.constraint(equalToConstant: 36)
         NSLayoutConstraint.activate([
             chipBarTop,
-            chipBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            chipBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            chipBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            chipBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             chipBarHeight,
             chipStack.topAnchor.constraint(equalTo: chipBar.contentLayoutGuide.topAnchor),
             chipStack.bottomAnchor.constraint(equalTo: chipBar.contentLayoutGuide.bottomAnchor),
@@ -309,7 +309,7 @@ final class SessionListViewController: UIViewController {
 
             unreachableLabel.topAnchor.constraint(equalTo: chipBar.bottomAnchor, constant: Theme.Spacing.xs),
             unreachableLabel.trailingAnchor.constraint(
-                lessThanOrEqualTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
         ])
     }
 
@@ -507,8 +507,8 @@ final class SessionListViewController: UIViewController {
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             unreachableLabel.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
-            selectionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            selectionBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
         ]
         columnEdges = [
             collectionView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
@@ -613,7 +613,7 @@ final class SessionListViewController: UIViewController {
         selectionBar.contentView.addSubview(selectionStack)
         view.addSubview(selectionBar)
         NSLayoutConstraint.activate([
-            selectionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            selectionBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             selectionBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             selectionStack.topAnchor.constraint(
                 equalTo: selectionBar.contentView.topAnchor, constant: Theme.Spacing.s),

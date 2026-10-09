@@ -74,7 +74,6 @@ final class DesignBoardViewController: UIViewController {
         pager.isPagingEnabled = true
         pager.showsHorizontalScrollIndicator = false
         pager.delegate = self
-        pager.contentInsetAdjustmentBehavior = .never
         pages.axis = .horizontal
         pages.distribution = .fillEqually
         pages.translatesAutoresizingMaskIntoConstraints = false
@@ -130,13 +129,13 @@ final class DesignBoardViewController: UIViewController {
         NSLayoutConstraint.activate([
             picker.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.xs),
-            picker.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+            picker.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             picker.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
 
             pager.topAnchor.constraint(equalTo: picker.bottomAnchor, constant: Theme.Spacing.s),
-            pager.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            pager.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            pager.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            pager.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             pager.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             pages.topAnchor.constraint(equalTo: pager.contentLayoutGuide.topAnchor),
             pages.bottomAnchor.constraint(equalTo: pager.contentLayoutGuide.bottomAnchor),
@@ -147,14 +146,14 @@ final class DesignBoardViewController: UIViewController {
             statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             statusLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             statusLabel.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.xl),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.xl),
             statusLabel.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.xl),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.xl),
 
             bottomBar.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: Theme.Spacing.m),
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.m),
             bottomBar.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -Theme.Spacing.m),
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.m),
             bottomBar.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Theme.Spacing.s),
             row.topAnchor.constraint(
@@ -309,7 +308,6 @@ final class DesignBoardViewController: UIViewController {
         web.isOpaque = false
         web.backgroundColor = .clear
         web.scrollView.backgroundColor = .clear
-        web.scrollView.contentInsetAdjustmentBehavior = .never
         return web
     }
 
@@ -471,8 +469,8 @@ final class DesignNotesViewController: UIViewController {
         NSLayoutConstraint.activate([
             scroller.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scroller.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            scroller.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroller.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroller.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scroller.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             stack.topAnchor.constraint(
                 equalTo: scroller.contentLayoutGuide.topAnchor, constant: Theme.Spacing.l),
             stack.bottomAnchor.constraint(

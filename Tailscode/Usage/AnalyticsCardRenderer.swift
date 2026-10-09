@@ -185,10 +185,9 @@ enum AnalyticsCardRenderer {
 
     /// A swatch for the menu: the style's canvas as a disc with its accent as a dot, so a name
     /// like Ember is shown rather than described.
-    static func swatch(_ style: CardStyle, size: CGFloat = 22) -> UIImage {
+    static func swatch(_ style: CardStyle, size: CGFloat = 22, traits: UITraitCollection) -> UIImage {
         let palette = style.palette(dark: true)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
+        let format = UIGraphicsImageRendererFormat.matching(traits)
         return UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format)
             .image { context in
                 let ctx = context.cgContext

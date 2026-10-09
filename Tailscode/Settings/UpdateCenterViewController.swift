@@ -131,8 +131,8 @@ final class UpdateLogViewController: UIViewController {
         NSLayoutConstraint.activate([
             text.topAnchor.constraint(equalTo: view.topAnchor),
             text.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            text.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            text.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            text.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            text.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
         ])
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             systemItem: .done,
@@ -254,8 +254,8 @@ final class UpdateCenterViewController: UIViewController {
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: view.topAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             column.topAnchor.constraint(equalTo: content.topAnchor, constant: Theme.Spacing.l),
             column.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -Theme.Spacing.xl),
             column.leadingAnchor.constraint(

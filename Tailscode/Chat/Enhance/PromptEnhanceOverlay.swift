@@ -137,8 +137,8 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
             scrim.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrim.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            bubble.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
-            bubble.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
+            bubble.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            bubble.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             bubble.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.s),
             bubble.heightAnchor.constraint(equalToConstant: 300),
 
@@ -196,7 +196,6 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = .clear
         collectionView.showsHorizontalScrollIndicator = false
-        collectionView.contentInsetAdjustmentBehavior = .never
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         collectionView.register(EnhancedPromptCell.self, forCellWithReuseIdentifier: EnhancedPromptCell.reuseID)
         collectionView.register(EnhanceSkeletonCell.self, forCellWithReuseIdentifier: EnhanceSkeletonCell.reuseID)
