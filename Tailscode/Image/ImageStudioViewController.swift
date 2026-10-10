@@ -4,51 +4,45 @@ import UIKit
 
 /// Asking for a picture, and everything that happens to it afterwards.
 ///
-/// This is an app inside the app rather than a button that makes a file appear somewhere: the
-/// picture is the room, what it cost is stated under it, the verbs that get it out — into Photos,
-/// to another app, onto the pasteboard, rolled again, or used as the reference the next render
-/// starts from — sit where the hand already is, and under all of it is the shelf: every picture
-/// the machine keeps, whoever made it, newest first, with the one on the stage marked. A render
-/// made here is simply the newest thing on that shelf.
+/// The stage is the room and it owns the screen: the picture, or the machine's own sketch of it
+/// while it is painted, at the size the render will land in, with the verbs that get it out — into
+/// Photos, to another app, onto the pasteboard, rolled again, used as the reference the next
+/// render starts from, or animated into a clip — directly under it. Under the verbs is the shelf:
+/// every picture the machine keeps, whoever made it, newest first, the render in flight leading
+/// it, with the one on the stage ringed. At the foot is the brief, written like a sentence: what
+/// to start from, the words, how, go.
 ///
 /// The render itself is `ImageStudio`'s, not this screen's: backing out closes a screen, and
 /// coming back finds the same picture exactly where it was.
 @MainActor
 final class ImageStudioViewController: UIViewController {
-    private enum Section: Hashable {
-        case stage
-        case details
-        case library
-    }
-
-    private enum Item: Hashable {
-        case stage
-        case caption
-        case actions
-        case dismissNote
-        case setup
-        case libraryState
+    private enum StripItem: Hashable {
+        case job
         case tile(String)
+        case note
     }
 
     private let studio = ImageStudio.shared
-    private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
-    private let refresher = UIRefreshControl()
-    private let machineButton = UIButton(type: .system)
-    private let startOverButton = UIButton(type: .system)
-    private lazy var machineItem = UIBarButtonItem(customView: machineButton)
-    private lazy var startOverItem = UIBarButtonItem(customView: startOverButton)
+    private let stage = StudioStageView()
+    private let verbs = StudioVerbsBar()
+    private var strip: UICollectionView!
+    private var stripSource: UICollectionViewDiffableDataSource<Int, StripItem>!
+    private let pill = StudioMachinePill()
+    private lazy var menuItem = UIBarButtonItem(
+        image: UIImage(systemName: "ellipsis.circle"), menu: UIMenu())
 
     private let dock = Theme.Glass.view()
-    private let chipRow = UIStackView()
-    private let promptView = UITextView()
+    private let chipFlow = StudioChipFlow()
+    private let promptView = StudioPromptView()
     private let placeholder = UILabel()
     private let clearButton = UIButton(type: .system)
+    private let startFrom = UIButton(type: .system)
+    private let startFromRing = CAShapeLayer()
+    private let enhanceControl = StudioEnhanceControl()
     private let renderButton = UIButton(type: .system)
     private var promptHeight: NSLayoutConstraint!
+    private var growing = false
     private var appliedChips: String?
-    /// The words as they were before a rewrite, kept for exactly one undo.
     private var beforeEnhance: String?
     private let enhancement = PromptEnhancementController()
     private weak var enhanceOverlay: PromptEnhanceOverlay?
@@ -56,6 +50,8 @@ final class ImageStudioViewController: UIViewController {
     private var wasPainting = false
     private var loadingOriginal: String?
     private var shownExhibitID: String?
+    private var clock: Task<Void, Never>?
+    private var referenceRatios: [String: CGFloat] = [:]
 
     private var slot: ImageGenSlot { studio.slot }
     private var library: ImageLibrary { studio.library }
@@ -63,17 +59,22 @@ final class ImageStudioViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = ImageGenSurface.title
+        navigationItem.largeTitleDisplayMode = .never
         view.backgroundColor = Theme.Color.groupedBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             title: ImageGenSurface.dismissTitle,
             primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
-        configureMachineControl()
+        navigationItem.leftBarButtonItem = menuItem
+        navigationItem.titleView = pill
+        menuItem.accessibilityLabel = ImageGenWords.moreTitle
+        pill.addAction(UIAction { [weak self] _ in self?.presentMachine() }, for: .touchUpInside)
         intake = ImageReferenceIntake(presenter: self, studio: studio) { [weak self] in
             self?.presentLibraryPicker()
         }
-        configureCollectionView()
+        configureStage()
+        configureStrip()
         configureDock()
-        configureDataSource()
+        configureStripSource()
         for name in [ImageStudio.didChange, ImageGenStore.didChange, ForgeStore.didChange] {
             NotificationCenter.default.addObserver(
                 self, selector: #selector(studioDidChange), name: name, object: nil)
@@ -88,12 +89,13 @@ final class ImageStudioViewController: UIViewController {
             object: nil)
         wasPainting = studio.isPainting
         setPrompt(slot.promptDraft)
-        apply(animated: false)
+        render(animated: false)
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         grow()
+        layoutStartFrom()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -110,75 +112,22 @@ final class ImageStudioViewController: UIViewController {
             if environment["TAILSCODE_IMAGE_MACHINE"] != nil, presentedViewController == nil {
                 presentMachine()
             }
+            if environment["TAILSCODE_IMAGE_FOCUS"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    self?.promptView.becomeFirstResponder()
+                }
+            }
             if environment["TAILSCODE_IMAGE_SCROLL"] == "library" {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(4))
-                    guard let self, let first = self.library.items.first,
-                        let path = self.dataSource.indexPath(for: .tile(first.id))
+                    guard let self, let last = self.library.items.last,
+                        let path = self.stripSource.indexPath(for: .tile(last.id))
                     else { return }
-                    self.collectionView.scrollToItem(at: path, at: .top, animated: true)
+                    self.strip.scrollToItem(at: path, at: .right, animated: true)
                 }
             }
         #endif
-    }
-
-    /// The machine lives in the bar: one control wearing the door's tone that opens the sheet, and
-    /// — where the bar can carry a second line — what the machine last said about itself under
-    /// the title, so a reader knows before the first send whether it is ready and for what.
-    private func configureMachineControl() {
-        var config = UIButton.Configuration.plain()
-        config.contentInsets = .zero
-        machineButton.configuration = config
-        machineButton.addAction(UIAction { [weak self] _ in self?.presentMachine() }, for: .touchUpInside)
-        machineButton.accessibilityHint = ImageGenMachineWords.title
-        var reset = UIButton.Configuration.plain()
-        reset.contentInsets = .zero
-        reset.image = UIImage(
-            systemName: "arrow.counterclockwise",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .medium))
-        startOverButton.configuration = reset
-        startOverButton.accessibilityLabel = ImageGenWords.startOver
-        startOverButton.accessibilityHint = ImageGenWords.startOverHint
-        startOverButton.addAction(UIAction { [weak self] _ in self?.startOver() }, for: .touchUpInside)
-        navigationItem.leftBarButtonItems = [machineItem]
-        updateMachineControl()
-    }
-
-    /// Back to blank. The words in the box go with it, so a person who only wanted the stage gone
-    /// is told beforehand what else goes — and every picture stays on the shelf.
-    private func startOver() {
-        Theme.Haptics.tap()
-        view.endEditing(true)
-        studio.startOver()
-        setPrompt("")
-        scrollToStage()
-    }
-
-    private func updateMachineControl() {
-        let door = studio.door
-        let sighting = door.currentSighting
-        let tone = door.tone
-        var config = machineButton.configuration ?? .plain()
-        config.image = UIImage(
-            systemName: tone == nil
-                ? "desktopcomputer" : "desktopcomputer.trianglebadge.exclamationmark",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .medium))
-        config.baseForegroundColor = tone == .attention ? Theme.Color.warning : Theme.Color.accent
-        machineButton.configuration = config
-        machineButton.isHidden = !door.isOpen
-        let promptWords = (promptView.text ?? "").trimmed()
-        let items = studio.canStartOver || !promptWords.isEmpty
-            ? [machineItem, startOverItem] : [machineItem]
-        if navigationItem.leftBarButtonItems?.count != items.count {
-            navigationItem.setLeftBarButtonItems(items, animated: true)
-        }
-        let summary = ImageGenMachineWords.summary(sighting)
-        let words = [studio.endpoint.shortName, summary, sighting?.version.map { "ComfyUI \($0)" }]
-            .compactMap { $0 }.joined(separator: " · ")
-        machineButton.accessibilityLabel = words
-        if #available(iOS 26.0, *) {
-            navigationItem.subtitle = door.isOpen ? words : nil
-        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -186,51 +135,55 @@ final class ImageStudioViewController: UIViewController {
         studio.rememberDraft(promptView.text ?? "")
     }
 
-    private func configureCollectionView() {
-        let layout = UICollectionViewCompositionalLayout { [weak self] index, environment in
-            guard let self, let section = self.dataSource?.sectionIdentifier(for: index) else {
-                return ImageStudioLayout.rows(environment: environment)
-            }
-            switch section {
-            case .stage, .details:
-                return ImageStudioLayout.rows(environment: environment)
-            case .library:
-                let items = self.dataSource.snapshot().itemIdentifiers(inSection: .library)
-                if items.contains(.libraryState) {
-                    return ImageStudioLayout.rows(environment: environment, header: true)
-                }
-                return ImageStudioLayout.grid(
-                    environment: environment, header: true,
-                    evenColumns: FoldReading.prefersEvenColumns(in: self.view))
-            }
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        if previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory {
+            appliedChips = nil
+            updateChips()
+            updateVerbs()
+            updateRenderButton()
         }
-        collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = .clear
-        collectionView.contentInset.bottom = Theme.Spacing.m
-        collectionView.keyboardDismissMode = .interactive
-        collectionView.delegate = self
-        collectionView.translatesAutoresizingMaskIntoConstraints = false
-        refresher.addAction(UIAction { [weak self] _ in self?.pulled() }, for: .valueChanged)
-        collectionView.refreshControl = refresher
-        view.addSubview(collectionView)
     }
 
-    /// The prompt, the two decisions the picture is made from, and the one control that starts or
-    /// stops the render — all on the keyboard's own edge, because composing a picture is typing
-    /// with two settings beside it rather than filling in a form.
-    /// The dock is the floor of the screen: its glass runs to the bottom edge and under the home
-    /// indicator, and only its contents ride the keyboard — a slab that stopped at the safe area
-    /// read as a card someone had left on the page.
+    private func configureStage() {
+        stage.translatesAutoresizingMaskIntoConstraints = false
+        stage.onOpen = { [weak self] in self?.openStage() }
+        stage.onStarter = { [weak self] index in self?.useStarter(index) }
+        stage.onRemedy = { [weak self] in self?.remedyTapped() }
+        verbs.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stage)
+        view.addSubview(verbs)
+    }
+
+    private func configureStrip() {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .horizontal
+        layout.itemSize = CGSize(width: Self.tile, height: Self.tile)
+        layout.minimumLineSpacing = Theme.Spacing.s
+        layout.sectionInset = UIEdgeInsets(
+            top: 1, left: Theme.Spacing.m, bottom: 1, right: Theme.Spacing.m)
+        strip = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        strip.backgroundColor = .clear
+        strip.showsHorizontalScrollIndicator = false
+        strip.delegate = self
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        strip.accessibilityLabel = ImageGenLibraryWords.title
+        view.addSubview(strip)
+    }
+
+    private static let tile: CGFloat = 64
+
+    /// The brief, in the order it is read: what to start from, the words, how, go. The dock is the
+    /// floor of the screen — its glass runs to the bottom edge and under the home indicator, and
+    /// only its contents ride the keyboard — and the stage and the shelf above it never move
+    /// under a finger, they only give way.
     private func configureDock() {
         dock.translatesAutoresizingMaskIntoConstraints = false
         if #available(iOS 26.0, *) {
             dock.cornerConfiguration = .uniformEdges(
                 topRadius: .fixed(Theme.Radius.card), bottomRadius: .fixed(0))
         }
-        chipRow.axis = .horizontal
-        chipRow.spacing = Theme.Spacing.xs
-        chipRow.alignment = .center
-        chipRow.translatesAutoresizingMaskIntoConstraints = false
+        chipFlow.translatesAutoresizingMaskIntoConstraints = false
 
         promptView.backgroundColor = Theme.Color.codeBackground
         promptView.layer.cornerRadius = Theme.Radius.control
@@ -238,13 +191,16 @@ final class ImageStudioViewController: UIViewController {
         promptView.font = Theme.Ramp.font(.composer)
         promptView.textColor = Theme.Color.label
         promptView.delegate = self
-        promptView.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 38)
+        promptView.onWidth = { [weak self] in self?.grow() }
+        promptView.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 38)
         promptView.translatesAutoresizingMaskIntoConstraints = false
-        placeholder.numberOfLines = 1
+        promptView.accessibilityLabel = ImageGenStudioWords.wordsTitle
+        placeholder.numberOfLines = 2
         placeholder.translatesAutoresizingMaskIntoConstraints = false
         promptView.addSubview(placeholder)
 
         configureClearButton()
+        configureStartFrom()
 
         renderButton.translatesAutoresizingMaskIntoConstraints = false
         renderButton.addAction(
@@ -256,184 +212,277 @@ final class ImageStudioViewController: UIViewController {
             guard let self else { return }
             self.enhanceOverlay?.render(status, original: self.enhancement.latestInput)
         }
-
-        let chipScroll = UIScrollView()
-        chipScroll.showsHorizontalScrollIndicator = false
-        chipScroll.translatesAutoresizingMaskIntoConstraints = false
-        chipScroll.addSubview(chipRow)
+        enhanceControl.translatesAutoresizingMaskIntoConstraints = false
+        enhanceControl.onEnhance = { [weak self] in self?.enhancePressed() }
 
         view.addSubview(dock)
-        dock.contentView.addSubview(chipScroll)
+        dock.contentView.addSubview(chipFlow)
+        dock.contentView.addSubview(startFrom)
         dock.contentView.addSubview(promptView)
         dock.contentView.addSubview(clearButton)
+        dock.contentView.addSubview(enhanceControl)
         dock.contentView.addSubview(renderButton)
-        promptHeight = promptView.heightAnchor.constraint(equalToConstant: 44)
+        promptHeight = promptView.heightAnchor.constraint(equalToConstant: Self.promptMinimum)
+        let margin = Theme.Spacing.m
+        let stageFloor = stage.heightAnchor.constraint(greaterThanOrEqualToConstant: 96)
+        stageFloor.priority = UILayoutPriority(750)
+        let verbsWidth = verbs.widthAnchor.constraint(equalTo: stage.widthAnchor)
+        verbsWidth.priority = UILayoutPriority(750)
+        let verbsFit = verbs.heightAnchor.constraint(equalToConstant: StudioVerbsBar.height)
+        verbsFit.priority = UILayoutPriority(760)
+        let stripFit = strip.heightAnchor.constraint(equalToConstant: Self.tile + 2)
+        stripFit.priority = UILayoutPriority(770)
         NSLayoutConstraint.activate([
-            collectionView.topAnchor.constraint(equalTo: view.topAnchor),
-            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: dock.topAnchor),
+            stage.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 2),
+            stage.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: margin),
+            stage.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -margin),
+            stageFloor,
+            verbs.topAnchor.constraint(equalTo: stage.bottomAnchor),
+            verbs.centerXAnchor.constraint(equalTo: stage.centerXAnchor),
+            verbs.leadingAnchor.constraint(greaterThanOrEqualTo: stage.leadingAnchor),
+            verbs.trailingAnchor.constraint(lessThanOrEqualTo: stage.trailingAnchor),
+            verbs.widthAnchor.constraint(lessThanOrEqualToConstant: 520),
+            verbsWidth,
+            verbsFit,
+            strip.topAnchor.constraint(equalTo: verbs.bottomAnchor),
+            strip.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            strip.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            stripFit,
+            dock.topAnchor.constraint(equalTo: strip.bottomAnchor),
             dock.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             dock.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             dock.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            chipScroll.topAnchor.constraint(
-                equalTo: dock.contentView.topAnchor, constant: Theme.Spacing.s),
-            chipScroll.leadingAnchor.constraint(equalTo: dock.contentView.leadingAnchor),
-            chipScroll.trailingAnchor.constraint(equalTo: dock.contentView.trailingAnchor),
-            chipScroll.heightAnchor.constraint(equalTo: chipRow.heightAnchor),
-            chipRow.topAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.topAnchor),
-            chipRow.bottomAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.bottomAnchor),
-            chipRow.leadingAnchor.constraint(
-                equalTo: chipScroll.contentLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
-            chipRow.trailingAnchor.constraint(
-                equalTo: chipScroll.contentLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
-            promptView.topAnchor.constraint(
-                equalTo: chipScroll.bottomAnchor, constant: Theme.Spacing.s),
-            promptView.leadingAnchor.constraint(
-                equalTo: dock.contentView.leadingAnchor, constant: Theme.Spacing.l),
+            chipFlow.topAnchor.constraint(equalTo: dock.contentView.topAnchor, constant: 4),
+            chipFlow.leadingAnchor.constraint(equalTo: dock.contentView.leadingAnchor, constant: margin),
+            chipFlow.trailingAnchor.constraint(equalTo: dock.contentView.trailingAnchor, constant: -margin),
+            startFrom.leadingAnchor.constraint(equalTo: dock.contentView.leadingAnchor, constant: margin),
+            startFrom.widthAnchor.constraint(equalToConstant: Self.slotSide),
+            startFrom.heightAnchor.constraint(equalToConstant: Self.slotSide),
+            startFrom.bottomAnchor.constraint(equalTo: promptView.bottomAnchor),
+            promptView.topAnchor.constraint(equalTo: chipFlow.bottomAnchor, constant: 6),
+            promptView.leadingAnchor.constraint(equalTo: startFrom.trailingAnchor, constant: Theme.Spacing.s),
             promptView.bottomAnchor.constraint(
-                equalTo: view.keyboardLayoutGuide.topAnchor, constant: -Theme.Spacing.s),
+                equalTo: view.keyboardLayoutGuide.topAnchor, constant: -Theme.Spacing.xs),
             promptHeight,
             clearButton.topAnchor.constraint(equalTo: promptView.topAnchor, constant: 2),
             clearButton.trailingAnchor.constraint(equalTo: promptView.trailingAnchor, constant: -2),
             clearButton.widthAnchor.constraint(equalToConstant: 40),
             clearButton.heightAnchor.constraint(equalToConstant: 40),
-            renderButton.leadingAnchor.constraint(
-                equalTo: promptView.trailingAnchor, constant: Theme.Spacing.s),
-            renderButton.trailingAnchor.constraint(
-                equalTo: dock.contentView.trailingAnchor, constant: -Theme.Spacing.l),
+            enhanceControl.trailingAnchor.constraint(
+                equalTo: promptView.trailingAnchor, constant: -Self.enhanceMargin),
+            enhanceControl.bottomAnchor.constraint(
+                equalTo: promptView.bottomAnchor, constant: -Self.enhanceMargin),
+            renderButton.leadingAnchor.constraint(equalTo: promptView.trailingAnchor, constant: Theme.Spacing.s),
+            renderButton.trailingAnchor.constraint(equalTo: dock.contentView.trailingAnchor, constant: -margin),
             renderButton.bottomAnchor.constraint(equalTo: promptView.bottomAnchor),
-            placeholder.leadingAnchor.constraint(
-                equalTo: promptView.leadingAnchor, constant: 13),
-            placeholder.topAnchor.constraint(equalTo: promptView.topAnchor, constant: 10),
+            renderButton.widthAnchor.constraint(equalToConstant: 64),
+            renderButton.heightAnchor.constraint(equalToConstant: 56),
+            placeholder.leadingAnchor.constraint(equalTo: promptView.leadingAnchor, constant: 13),
+            placeholder.trailingAnchor.constraint(equalTo: promptView.trailingAnchor, constant: -40),
+            placeholder.topAnchor.constraint(equalTo: promptView.topAnchor, constant: 12),
         ])
         updateChips()
         updateRenderButton()
         updatePlaceholder()
+        updateEnhance()
     }
 
-    private func configureDataSource() {
-        let stage = UICollectionView.CellRegistration<ImageStageCell, Item> {
+    private static let slotSide: CGFloat = 52
+
+    private static var promptMinimum: CGFloat {
+        ceil(Theme.Ramp.font(.composer).lineHeight * 2) + 24
+    }
+
+    private static var promptMaximum: CGFloat {
+        ceil(Theme.Ramp.font(.composer).lineHeight * 6) + 24
+    }
+
+    private func configureStripSource() {
+        let job = UICollectionView.CellRegistration<ImageJobTileCell, StripItem> {
             [weak self] cell, _, _ in
             guard let self else { return }
-            cell.apply(self.stageReading(), ceiling: self.view.bounds.height * 0.5)
-            cell.onOpen = { [weak self] in self?.openStage() }
-        }
-        let caption = UICollectionView.CellRegistration<ImageCaptionCell, Item> {
-            [weak self] cell, _, _ in
-            guard let self, let exhibit = self.studio.exhibit else { return }
-            switch exhibit {
-            case .made(let picture):
-                cell.apply(
-                    caption: ImageGenFacts.caption(for: picture),
-                    facts: ImageGenFacts.line(for: picture), note: nil, known: true)
-            case .kept(let item):
-                let facts = self.library.facts(of: item)
-                cell.apply(
-                    caption: ImageGenFacts.caption(for: facts), facts: ImageGenFacts.line(for: facts),
-                    note: facts == nil ? nil : ImageGenWords.keptNote,
-                    known: facts?.recipe?.prompt?.isEmpty == false)
-            }
-        }
-        let actions = UICollectionView.CellRegistration<ImageActionsCell, Item> {
-            [weak self] cell, _, _ in
-            guard let self, let exhibit = self.studio.exhibit else { return }
             cell.apply(
-                self.actions(for: exhibit), referenceHeld: self.studio.isReference(exhibit),
-                busy: self.studio.isPainting)
-            cell.onAction = { [weak self] action in self?.perform(action) }
+                sketch: self.studio.sketch, progress: self.studio.progress,
+                words: self.slot.waitingLine(since: self.studio.startedAt, progress: self.studio.progress))
         }
-        let note = UICollectionView.CellRegistration<ForgeNoteCell, Item> { [weak self] cell, _, _ in
-            guard let self, let words = ImageGenSurface.dismissNote(painting: self.studio.isPainting)
-            else { return }
-            cell.apply(words, tone: .quiet)
-        }
-        let setup = UICollectionView.CellRegistration<ImageSetupCell, Item> { [weak self] cell, _, _ in
-            cell.apply()
-            cell.onSetup = { [weak self] in self?.presentSetup() }
-        }
-        let state = UICollectionView.CellRegistration<ImageLibraryStateCell, Item> {
-            [weak self] cell, _, _ in
-            guard let self else { return }
-            cell.apply(self.library.state)
-        }
-        let tile = UICollectionView.CellRegistration<ImageTileCell, Item> { [weak self] cell, _, item in
+        let tile = UICollectionView.CellRegistration<ImageTileCell, StripItem> {
+            [weak self] cell, _, item in
             guard let self, case .tile(let id) = item, let kept = self.library.item(named: id) else {
                 return
             }
+            cell.ringWidth = 2
             cell.apply(kept, library: self.library, onStage: self.studio.exhibit?.libraryID == id)
         }
-        let header = UICollectionView.SupplementaryRegistration<ImageLibraryHeader>(
-            elementKind: UICollectionView.elementKindSectionHeader
-        ) { [weak self] view, _, _ in
+        let note = UICollectionView.CellRegistration<ImageStripNoteCell, StripItem> {
+            [weak self] cell, _, _ in
             guard let self else { return }
-            view.apply(
-                machine: self.library.machine, line: self.library.line,
-                loading: self.library.state == .loading)
-            view.onRefresh = { [weak self] in
-                Theme.Haptics.tap()
-                self?.library.refresh()
-            }
+            cell.apply(self.library.state, machine: self.library.machine)
         }
-        dataSource = UICollectionViewDiffableDataSource<Section, Item>(
-            collectionView: collectionView
-        ) { view, indexPath, item in
+        stripSource = UICollectionViewDiffableDataSource<Int, StripItem>(collectionView: strip) {
+            view, indexPath, item in
             switch item {
-            case .stage: return view.dequeueConfiguredReusableCell(using: stage, for: indexPath, item: item)
-            case .caption:
-                return view.dequeueConfiguredReusableCell(using: caption, for: indexPath, item: item)
-            case .actions:
-                return view.dequeueConfiguredReusableCell(using: actions, for: indexPath, item: item)
-            case .dismissNote:
-                return view.dequeueConfiguredReusableCell(using: note, for: indexPath, item: item)
-            case .setup: return view.dequeueConfiguredReusableCell(using: setup, for: indexPath, item: item)
-            case .libraryState:
-                return view.dequeueConfiguredReusableCell(using: state, for: indexPath, item: item)
+            case .job: return view.dequeueConfiguredReusableCell(using: job, for: indexPath, item: item)
             case .tile: return view.dequeueConfiguredReusableCell(using: tile, for: indexPath, item: item)
+            case .note: return view.dequeueConfiguredReusableCell(using: note, for: indexPath, item: item)
             }
-        }
-        dataSource.supplementaryViewProvider = { view, _, indexPath in
-            view.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
         }
     }
 
-    /// What the stage is told. A kept picture whose original is not here yet shows its tile while
-    /// the bytes come, and asks for them once.
-    private func stageReading() -> ImageStageReading {
+    /// The whole stage as one value. A kept picture whose original is not here yet shows its tile
+    /// while the bytes come, and asks for them once.
+    private func stageState() -> StudioStageState {
+        var state = StudioStageState()
         let exhibit = studio.exhibit
         var image: UIImage?
-        var placeholder: UIImage?
-        var ratio = CGFloat(slot.aspect.pixels.height) / CGFloat(slot.aspect.pixels.width)
+        var thumbnail: UIImage?
+        var ratio: CGFloat?
         switch exhibit {
         case .made(let picture):
             image = studio.image(of: picture)
-            ratio = CGFloat(picture.aspect.pixels.height) / CGFloat(picture.aspect.pixels.width)
         case .kept(let item):
             image = studio.image(of: item)
-            placeholder = library.cachedThumbnail(of: item)
+            thumbnail = library.cachedThumbnail(of: item)
             if let facts = library.facts(of: item), let width = facts.width, let height = facts.height,
                 width > 0
             {
                 ratio = CGFloat(height) / CGFloat(width)
-            } else if let shown = image ?? placeholder, shown.size.width > 0 {
-                ratio = shown.size.height / shown.size.width
             }
             if image == nil { fetchOriginal(of: item) }
             library.describe(item)
         case nil:
-            if !studio.isPainting { ratio = 0.5 }
+            break
         }
-        if let image, image.size.width > 0 { ratio = image.size.height / image.size.width }
-        let caption: String?
-        switch exhibit {
-        case .made(let picture): caption = ImageGenFacts.caption(for: picture)
-        case .kept(let item): caption = library.facts(of: item).map(ImageGenFacts.caption(for:))
-        case nil: caption = nil
+        let held = image ?? thumbnail
+        if let shown = held, shown.size.width > 0 {
+            ratio = ratio ?? shown.size.height / shown.size.width
+            if let image, image.size.width > 0 { ratio = image.size.height / image.size.width }
         }
-        return ImageStageReading(
-            slot: slot, exhibit: exhibit, image: image, placeholder: placeholder, ratio: ratio,
-            caption: caption, startedAt: studio.startedAt, progress: studio.progress,
-            sketch: studio.sketch, shelfHasPictures: !library.isEmpty)
+        let paint = expectedRatio()
+        switch slot.phase {
+        case .painting:
+            state.picture = held
+            state.sketch = studio.sketch
+            state.ratio = paint
+            state.face = studio.sketch == nil ? .waiting : .painting
+            state.sentence = slot.waitingLine(since: studio.startedAt, progress: studio.progress)
+            state.activity = .working
+            state.tone = .live
+            if state.face == .painting {
+                state.sketchCaption = ImageGenPreviewWords.caption(studio.progress)
+                if let stage = studio.progress?.stage, stage == .decoding || stage == .saving {
+                    state.dim = 0.25
+                }
+            } else {
+                state.dim = held == nil ? 0 : 0.6
+            }
+            state.bar = studio.progress?.bar.map { [$0] } ?? []
+            state.spoken = state.sentence
+        case .failed(let prompt, let reason):
+            let stopped = reason == ImageGenWords.stoppedNotice
+            state.ratio = ratio ?? paint
+            state.sentence = reason
+            if stopped {
+                state.face = .stopped
+                state.picture = held
+                state.tone = .attention
+                state.dim = 0.45
+                state.spoken = reason
+            } else {
+                state.face = .failed
+                state.tone = .danger
+                state.caption = prompt
+                state.remedy = failureRemedy()
+                state.spoken = [reason, prompt].filter { !$0.isEmpty }.joined(separator: ", ")
+            }
+        case .asking, .composing:
+            if let exhibit, held != nil {
+                state.face = .finished
+                state.picture = held
+                state.ratio = ratio ?? paint
+                state.isOpenable = image != nil
+                switch exhibit {
+                case .made(let picture):
+                    state.caption = ImageGenFacts.caption(for: picture)
+                    state.facts = ImageGenFacts.line(for: picture)
+                    state.spoken = [state.caption, state.facts].compactMap { $0 }
+                        .filter { !$0.isEmpty }.joined(separator: ", ")
+                case .kept(let item):
+                    let facts = library.facts(of: item)
+                    state.caption = facts.map { ImageGenFacts.caption(for: $0) }
+                    state.facts = facts.map { ImageGenFacts.line(for: $0) }
+                    state.spoken = [
+                        state.caption, state.facts, facts == nil ? nil : ImageGenWords.keptNote,
+                    ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+                }
+            } else {
+                state.face = .empty
+                state.ratio = 0.7
+                state.emptyTitle = ImageGenWords.emptyTitle
+                state.emptyBody = library.isEmpty ? ImageGenWords.emptyBody : ImageGenWords.stageEmptyKept
+                state.starters = ImageGenBrief.examples.prefix(4).map { StudioStarter(title: $0.title) }
+                state.behind = library.items.first.flatMap { library.cachedThumbnail(of: $0) }
+                state.spoken = [state.emptyTitle, state.emptyBody].compactMap { $0 }.joined(separator: ", ")
+                if !studio.door.isOpen {
+                    state.emptyTitle = ImageGenEntryPoint.tooltip(configured: false)
+                    state.emptyBody = ImageGenWords.emptyBody
+                    state.starters = []
+                    state.behind = nil
+                    state.remedy = ForgeSetup.title
+                    state.spoken = [state.emptyTitle, state.emptyBody].compactMap { $0 }.joined(separator: ", ")
+                }
+            }
+        }
+        return state
+    }
+
+    /// The rectangle the render will land in, decided before it starts: the shape asked for, or —
+    /// when a reference is held and both editors take their size from it — the reference's own.
+    private func expectedRatio() -> CGFloat {
+        if !slot.aspectApplies, let reference = slot.references.first {
+            if let known = referenceRatios[reference.path] { return known }
+            let source = reference.kept.flatMap { library.cachedThumbnail(of: $0) }
+                ?? UIImage(contentsOfFile: reference.path)
+            if let source, source.size.width > 0 {
+                let ratio = source.size.height / source.size.width
+                referenceRatios[reference.path] = ratio
+                return ratio
+            }
+        }
+        let pixels = slot.aspect.pixels
+        return CGFloat(pixels.height) / CGFloat(max(pixels.width, 1))
+    }
+
+    private func failureRemedy() -> String {
+        if let reading = StudioMachineReading.image(studio.door), reading.cannotPaint {
+            return ImageGenMachineWords.title
+        }
+        return String(localized: "Try again")
+    }
+
+    private func remedyTapped() {
+        guard studio.door.isOpen else {
+            presentSetup()
+            return
+        }
+        if let reading = StudioMachineReading.image(studio.door), reading.cannotPaint {
+            presentMachine()
+            return
+        }
+        guard let words = slot.activePrompt, !words.isEmpty else { return }
+        Theme.Haptics.send()
+        studio.submit(prompt: words)
+    }
+
+    private func useStarter(_ index: Int) {
+        let examples = ImageGenBrief.examples
+        guard examples.indices.contains(index) else { return }
+        let example = examples[index]
+        Theme.Haptics.tap()
+        studio.choose(aspect: example.aspect)
+        setPrompt(example.prompt)
+        studio.rememberDraft(example.prompt)
+        updateChips()
+        promptView.becomeFirstResponder()
     }
 
     private func fetchOriginal(of item: ImageGenLibraryItem) {
@@ -443,7 +492,8 @@ final class ImageStudioViewController: UIViewController {
             _ = await self?.studio.payload(of: item)
             guard let self else { return }
             if self.loadingOriginal == item.id { self.loadingOriginal = nil }
-            self.reconfigure([.stage, .caption, .actions])
+            self.renderStage()
+            self.updateVerbs()
         }
     }
 
@@ -463,96 +513,174 @@ final class ImageStudioViewController: UIViewController {
     @objc private func studioDidChange() {
         let landed = wasPainting && !studio.isPainting && slot.failure == nil
         wasPainting = studio.isPainting
-        apply(animated: true)
-        updateChips()
-        updateRenderButton()
-        updatePlaceholder()
-        updateMachineControl()
-        if landed { scrollToStage() }
+        render(animated: true)
+        if landed { announceLanding() }
     }
 
     @objc private func progressDidChange() {
-        guard let path = dataSource.indexPath(for: .stage),
-            let cell = collectionView.cellForItem(at: path) as? ImageStageCell
-        else { return }
-        cell.applyProgress(studio.progress, startedAt: studio.startedAt, sketch: studio.sketch)
+        renderStage()
+        var snapshot = stripSource.snapshot()
+        if snapshot.indexOfItem(.job) != nil {
+            snapshot.reconfigureItems([.job])
+            stripSource.apply(snapshot, animatingDifferences: false)
+        }
     }
 
     @objc private func libraryDidChange() {
-        if library.state != .loading { refresher.endRefreshing() }
-        apply(animated: true)
+        render(animated: true)
     }
 
     @objc private func itemDidChange(_ note: Notification) {
         guard let id = note.userInfo?["id"] as? String else { return }
-        var items: [Item] = [.tile(id)]
-        if studio.exhibit?.libraryID == id { items += [.stage, .caption, .actions] }
-        reconfigure(items)
-    }
-
-    /// The stage is reconfigured in place because it holds a clock and a bar; the caption and the
-    /// verbs are reloaded, because a reconfigured self-sizing row keeps the height it was first
-    /// measured at and a caption that grew two lines was drawn as one.
-    private func reconfigure(_ items: [Item]) {
-        var snapshot = dataSource.snapshot()
-        let present = items.filter { snapshot.indexOfItem($0) != nil }
-        guard !present.isEmpty else { return }
-        let resized = present.filter { $0 == .caption || $0 == .actions }
-        if !resized.isEmpty { snapshot.reloadItems(resized) }
-        snapshot.reconfigureItems(present.filter { !resized.contains($0) })
-        dataSource.apply(snapshot, animatingDifferences: false)
-    }
-
-    private func apply(animated: Bool) {
-        var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
-        snapshot.appendSections([.stage, .details, .library])
-        snapshot.appendItems([.stage], toSection: .stage)
-        var details: [Item] = []
-        if !studio.door.isOpen {
-            details.append(.setup)
-        } else if studio.exhibit != nil, !studio.isPainting, slot.failure == nil {
-            details.append(.caption)
-            details.append(.actions)
+        var snapshot = stripSource.snapshot()
+        if snapshot.indexOfItem(.tile(id)) != nil {
+            snapshot.reconfigureItems([.tile(id)])
+            stripSource.apply(snapshot, animatingDifferences: false)
         }
-        if studio.isPainting { details.append(.dismissNote) }
-        snapshot.appendItems(details, toSection: .details)
+        if studio.exhibit?.libraryID == id {
+            renderStage()
+            updateVerbs()
+        }
+    }
+
+    private func render(animated: Bool) {
+        renderStage()
+        updateVerbs()
+        applyStrip(animated: animated)
+        updateChips()
+        updateRenderButton()
+        updatePlaceholder()
+        updateEnhance()
+        updateChrome()
+        runClock()
+    }
+
+    private func renderStage() {
+        stage.apply(stageState())
+    }
+
+    /// One second is the whole resolution a wait like this needs, and the clock stops the moment
+    /// the render does — a screen that keeps a timer alive over a settled state spends frames on
+    /// nothing.
+    private func runClock() {
+        guard studio.isPainting else {
+            clock?.cancel()
+            clock = nil
+            return
+        }
+        guard clock == nil else { return }
+        clock = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                self.renderStage()
+            }
+        }
+    }
+
+    private func updateVerbs() {
+        let painting = studio.isPainting
+        guard let exhibit = studio.exhibit, !painting, slot.failure == nil else {
+            verbs.apply(
+                verbs: [], more: [], holding: true,
+                waiting: ImageGenSurface.dismissNote(painting: painting))
+            return
+        }
+        let held = studio.isReference(exhibit)
+        let offered = actions(for: exhibit).map { action in
+            StudioVerb(
+                title: action.phoneTitle, hint: action.hint,
+                symbol: action == .reference && held ? "checkmark.circle.fill" : action.symbol,
+                value: action == .reference && held ? String(localized: "Already the reference") : nil
+            ) { [weak self] in self?.perform(action, on: exhibit) }
+        }
+        var more: [UIMenuElement] = [
+            UIAction(
+                title: ForgeWords.animateTitle, subtitle: ForgeWords.animateHint,
+                image: UIImage(systemName: "film")
+            ) { [weak self] _ in self?.animate(exhibit) },
+            UIAction(
+                title: ImageGenAction.open.title, image: UIImage(systemName: ImageGenAction.open.symbol)
+            ) { [weak self] _ in self?.perform(.open, on: exhibit) },
+        ]
+        if case .made = exhibit {
+            more.append(
+                UIAction(
+                    title: ImageGenAction.discard.title,
+                    image: UIImage(systemName: ImageGenAction.discard.symbol),
+                    attributes: .destructive
+                ) { [weak self] _ in self?.perform(.discard, on: exhibit) })
+        }
+        verbs.apply(verbs: offered, more: more, holding: false, waiting: nil)
+    }
+
+    private func applyStrip(animated: Bool) {
+        var snapshot = NSDiffableDataSourceSnapshot<Int, StripItem>()
+        snapshot.appendSections([0])
+        if studio.isPainting { snapshot.appendItems([.job]) }
         if library.items.isEmpty {
-            snapshot.appendItems([.libraryState], toSection: .library)
+            snapshot.appendItems([.note])
         } else {
-            snapshot.appendItems(library.items.map { .tile($0.id) }, toSection: .library)
+            snapshot.appendItems(library.items.map { .tile($0.id) })
         }
-        var refresh: [Item] = [.stage, .dismissNote, .setup, .libraryState]
+        var refresh: [StripItem] = [.note]
         let shown = studio.exhibit?.libraryID
         if shown != shownExhibitID {
             for id in [shown, shownExhibitID].compactMap({ $0 }) { refresh.append(.tile(id)) }
             shownExhibitID = shown
         }
         snapshot.reconfigureItems(refresh.filter { snapshot.indexOfItem($0) != nil })
-        snapshot.reloadItems([Item.caption, .actions].filter { snapshot.indexOfItem($0) != nil })
-        dataSource.apply(snapshot, animatingDifferences: animated)
-        collectionView.collectionViewLayout.invalidateLayout()
-        if let header = collectionView.supplementaryView(
-            forElementKind: UICollectionView.elementKindSectionHeader,
-            at: IndexPath(item: 0, section: 2)) as? ImageLibraryHeader
-        {
-            header.apply(
-                machine: library.machine, line: library.line, loading: library.state == .loading)
-        }
+        stripSource.apply(snapshot, animatingDifferences: animated && view.window != nil)
+        strip.accessibilityValue = library.line
     }
 
-    private func scrollToStage() {
-        guard let path = dataSource.indexPath(for: .stage) else { return }
-        collectionView.scrollToItem(at: path, at: .top, animated: true)
+    /// The machine in the bar, and the menu behind the circle beside it: start over, ask the shelf
+    /// again, and the machine's own sheet. Starting over says beforehand what else goes with the
+    /// stage — the words — and every picture stays on the shelf.
+    private func updateChrome() {
+        pill.apply(StudioMachineReading.image(studio.door), working: studio.isPainting)
+        var items: [UIMenuElement] = []
+        let promptWords = (promptView.text ?? "").trimmed()
+        if studio.canStartOver || !promptWords.isEmpty {
+            items.append(
+                UIAction(
+                    title: ImageGenWords.startOver, subtitle: ImageGenWords.startOverHint,
+                    image: UIImage(systemName: "arrow.counterclockwise"), attributes: .destructive
+                ) { [weak self] _ in self?.startOver() })
+        }
+        items.append(
+            UIAction(
+                title: ImageGenLibraryWords.refresh, subtitle: library.line,
+                image: UIImage(systemName: "arrow.clockwise")
+            ) { [weak self] _ in
+                Theme.Haptics.tap()
+                self?.library.refresh()
+            })
+        items.append(
+            UIAction(
+                title: ImageGenMachineWords.title, image: UIImage(systemName: "desktopcomputer")
+            ) { [weak self] _ in self?.presentMachine() })
+        menuItem.menu = UIMenu(
+            title: ImageGenLibraryWords.heading(machine: library.machine), children: items)
     }
 
-    private func pulled() {
-        library.refresh()
-        studio.checkMachine(force: true)
-        if library.state != .loading {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                self?.refresher.endRefreshing()
-            }
-        }
+    /// Back to blank. The words in the box go with it, so a person who only wanted the stage gone
+    /// is told beforehand what else goes — and every picture stays on the shelf.
+    private func startOver() {
+        Theme.Haptics.tap()
+        view.endEditing(true)
+        studio.startOver()
+        setPrompt("")
+    }
+
+    private func announceLanding() {
+        guard let exhibit = studio.exhibit else { return }
+        var words: String?
+        if case .made(let picture) = exhibit { words = ImageGenFacts.caption(for: picture) }
+        let spoken = NSAttributedString(
+            string: StudioStageWords.landed(words: words),
+            attributes: [.accessibilitySpeechQueueAnnouncement: true])
+        UIAccessibility.post(notification: .announcement, argument: spoken)
     }
 
     private func updateChips() {
@@ -562,34 +690,80 @@ final class ImageStudioViewController: UIViewController {
             + "|\(slot.references.map(\.chip).joined(separator: ","))|\(slot.isBusy)"
             + "|\(slot.aspectApplies)|\(sighting?.readyEngines.map(\.rawValue).joined() ?? "?")"
             + "|\(intake.available.count)|\(slot.cutout)|\(slot.seed.chip)|\(slot.negative)"
-            + "|\(briefIsThin)|\(studio.enhancing)|\(beforeEnhance != nil)"
-            + "|\(studio.helper?.chip ?? "-")|\(studio.helper?.enabled == true)"
+            + "|\(briefIsThin)|\(traitCollection.preferredContentSizeCategory.rawValue)"
+            + "|\(slot.cutoutApplies)|\(slot.negativeApplies)"
+        updateStartFrom()
         guard identity != appliedChips else { return }
         appliedChips = identity
-        chipRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        chipRow.addArrangedSubview(engineChip(sighting: sighting))
-        chipRow.addArrangedSubview(aspectChip())
-        if slot.applies(.size) { chipRow.addArrangedSubview(sizeChip()) }
-        if slot.applies(.detail) { chipRow.addArrangedSubview(detailChip()) }
-        if slot.cutoutApplies { chipRow.addArrangedSubview(cutoutChip()) }
-        chipRow.addArrangedSubview(seedChip())
-        if slot.negativeApplies { chipRow.addArrangedSubview(avoidChip()) }
-        chipRow.addArrangedSubview(enhanceChip())
-        chipRow.addArrangedSubview(craftChip())
-        chipRow.addArrangedSubview(referenceChip())
+        var chips: [UIView] = [engineChip(sighting: sighting), aspectChip()]
+        if slot.applies(.size) { chips.append(sizeChip()) }
+        if slot.applies(.detail) { chips.append(detailChip()) }
+        chips.append(moreChip())
+        chipFlow.set(chips)
     }
 
     /// Whether the words in the box are thin enough that the model would invent most of the
-    /// frame. The craft chip wears the answer rather than a banner taking the composer's room.
+    /// frame. The More chip wears the answer rather than a banner taking the composer's room.
     private var briefIsThin: Bool {
         ImageGenBrief.isThin(promptView.text ?? "")
     }
 
-    private func sizeChip() -> UIButton {
-        let button = ImageChip.button(
-            symbol: ImageGenField.size.symbol, title: slot.value(of: .size))
+    private func chip(
+        _ field: ImageGenField, value: String, accessibility: String? = nil, tint: UIColor? = nil
+    ) -> UIButton {
+        let button = StudioChip.button(label: field.label, value: value, tint: tint)
         button.isEnabled = !slot.isBusy
-        button.accessibilityLabel = "\(ImageGenField.size.label), \(slot.aspect.label(slot.size))"
+        if let accessibility { button.accessibilityLabel = accessibility }
+        return button
+    }
+
+    private func engineChip(sighting: ImageGenSighting?) -> UIButton {
+        let unavailable = slot.engineAvailable(given: sighting) == false
+        let button = chip(
+            .engine, value: slot.value(of: .engine), tint: unavailable ? Theme.Color.warning : nil)
+        button.accessibilityLabel = "\(ImageGenField.engine.label), \(slot.value(of: .engine))"
+        if unavailable, let sighting {
+            button.accessibilityValue = ImageGenWords.engineUnavailable(
+                slot.engine, missing: sighting.missing(for: slot.engine).count)
+        }
+        button.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.selection()
+                self?.studio.advance(.engine)
+            }, for: .touchUpInside)
+        button.menu = ImageChip.engineMenu(slot: slot, sighting: sighting) { [weak self] engine in
+            Theme.Haptics.selection()
+            self?.studio.choose(engine: engine)
+        }
+        return button
+    }
+
+    /// The aspect chip stands down while a reference is held: both editors take the size from the
+    /// picture they start from, and a chip that changes nothing must not look like one that does.
+    private func aspectChip() -> UIButton {
+        guard slot.aspectApplies else {
+            let button = chip(.aspect, value: ImageGenWords.aspectFollowsReference)
+            button.isEnabled = false
+            button.accessibilityLabel = ImageGenWords.aspectFollowsReference
+            return button
+        }
+        let button = chip(.aspect, value: slot.value(of: .aspect))
+        button.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.selection()
+                self?.studio.advance(.aspect)
+            }, for: .touchUpInside)
+        button.menu = ImageChip.aspectMenu(slot: slot) { [weak self] aspect in
+            Theme.Haptics.selection()
+            self?.studio.choose(aspect: aspect)
+        }
+        return button
+    }
+
+    private func sizeChip() -> UIButton {
+        let button = chip(
+            .size, value: slot.value(of: .size),
+            accessibility: "\(ImageGenField.size.label), \(slot.aspect.label(slot.size))")
         button.addAction(
             UIAction { [weak self] _ in
                 Theme.Haptics.selection()
@@ -603,10 +777,9 @@ final class ImageStudioViewController: UIViewController {
     }
 
     private func detailChip() -> UIButton {
-        let button = ImageChip.button(
-            symbol: ImageGenField.detail.symbol, title: slot.value(of: .detail))
-        button.isEnabled = !slot.isBusy
-        button.accessibilityLabel = "\(ImageGenField.detail.label), \(slot.detail.detail)"
+        let button = chip(
+            .detail, value: slot.value(of: .detail),
+            accessibility: "\(ImageGenField.detail.label), \(slot.detail.detail)")
         button.addAction(
             UIAction { [weak self] _ in
                 Theme.Haptics.selection()
@@ -619,166 +792,156 @@ final class ImageStudioViewController: UIViewController {
         return button
     }
 
-    /// Painting on transparency rather than on a background: a switch worn as a chip, because it
-    /// changes the next picture and opens nothing.
-    private func cutoutChip() -> UIButton {
-        let button = ImageChip.button(
-            symbol: slot.cutout ? "checkmark.square.fill" : "square.on.square.dashed",
-            title: ImageGenWords.cutoutTitle)
-        button.isEnabled = !slot.isBusy
-        if slot.cutout { button.tintColor = Theme.Color.accent }
-        button.accessibilityLabel = ImageGenWords.cutoutTitle
-        button.accessibilityValue = ImageGenWords.cutoutHint
-        button.addAction(
-            UIAction { [weak self] _ in
-                guard let self else { return }
-                Theme.Haptics.selection()
-                self.studio.setCutout(!self.slot.cutout)
-            }, for: .touchUpInside)
-        return button
-    }
-
-    /// The number the noise starts from: rolling by default, held when a person has one they
-    /// want to change a single word against.
-    private func seedChip() -> UIButton {
-        let button = ImageChip.button(
-            symbol: slot.seed.isHeld ? "lock.fill" : "die.face.5", title: slot.seed.chip)
-        button.isEnabled = !slot.isBusy && (slot.seed.isHeld || slot.seed.last != nil)
-        if slot.seed.isHeld { button.tintColor = Theme.Color.accent }
-        button.accessibilityLabel = slot.seed.chip
-        button.accessibilityHint = slot.seed.isHeld
-            ? ImageGenWords.seedHeldHint : ImageGenWords.seedRollsHint
-        button.addAction(
-            UIAction { [weak self] _ in
-                Theme.Haptics.selection()
-                self?.studio.toggleSeedHold()
-            }, for: .touchUpInside)
-        return button
-    }
-
-    /// What the render must keep out. It costs a second pass, which is why the chip says so and
-    /// why an empty avoid list is the ordinary case.
-    private func avoidChip() -> UIButton {
-        let holding = !slot.negative.trimmed().isEmpty
-        let button = ImageChip.button(
-            symbol: holding ? "nosign" : "nosign",
-            title: holding ? slot.negative.ellipsized(to: 18) : ImageGenWords.avoidTitle)
-        button.isEnabled = !slot.isBusy
-        if holding { button.tintColor = Theme.Color.warning }
-        button.accessibilityLabel = ImageGenWords.avoidTitle
-        button.accessibilityValue = holding ? slot.negative : nil
-        button.addAction(
-            UIAction { [weak self] _ in
-                Theme.Haptics.tap()
-                self?.presentAvoid()
-            }, for: .touchUpInside)
-        return button
-    }
-
-    /// The one chip that writes words rather than choosing a value: a small model on the machine
-    /// that paints, asked to turn a thin brief into the paragraph this image model was trained
-    /// behind. Pressing again gives back the sentence the person actually typed.
-    private func enhanceChip() -> UIButton {
-        let undoing = beforeEnhance != nil
-        let busy = studio.enhancing
-        let title = busy
-            ? ImageGenWords.enhancingTitle
-            : (undoing ? ImageGenWords.undoTitle : ImageGenWords.enhanceTitle)
-        let button = ImageChip.button(
-            symbol: busy ? "hourglass" : (undoing ? "arrow.uturn.backward" : "wand.and.stars"),
-            title: title)
-        button.isEnabled = !slot.isBusy && !busy
-        if busy || undoing { button.tintColor = Theme.Color.accent }
-        button.accessibilityLabel = title
-        button.accessibilityHint = studio.helper.map(ImageGenWords.enhanceHint)
-            ?? ImageGenWords.enhanceLookingHint
-        button.addAction(
-            UIAction { [weak self] _ in
-                Theme.Haptics.tap()
-                self?.enhancePressed()
-            }, for: .touchUpInside)
-        button.menu = helperMenu()
-        return button
-    }
-
-    /// Which machine and which model: every door that answered, grouped by machine, each model
-    /// under the name its server gives it with the current one marked and the loaded ones
-    /// saying so. Filled from a real survey rather than a guess about ports.
-    private func helperMenu() -> UIMenu {
-        let current = studio.helper
-        let models = UIDeferredMenuElement.uncached { [weak self] complete in
-            guard let self else {
-                complete([])
-                return
-            }
-            let build: @MainActor @Sendable ([ImageGenHelperServer]) -> Void = { [weak self] servers in
-                guard let self else {
-                    complete([])
-                    return
-                }
-                var groups: [UIMenuElement] = servers.map { server in
-                    UIMenu(
-                        title: server.heading, options: .displayInline,
-                        children: server.models.prefix(24).map { model in
-                            let on = self.studio.helper?.address == server.address
-                                && self.studio.helper?.model == model.id
-                            return UIAction(
-                                title: model.label, subtitle: model.detail, state: on ? .on : .off
-                            ) { [weak self] _ in
-                                guard let self else { return }
-                                self.studio.setHelper(
-                                    ImageGenHelper(address: server.address, model: model))
-                                self.updateChips()
-                            }
-                        })
-                }
-                if groups.isEmpty {
-                    groups.append(
-                        UIAction(
-                            title: ImageGenRewriteWords.noneFoundTitle,
-                            subtitle: ImageGenRewriteWords.noneFoundHint, attributes: .disabled
-                        ) { _ in })
-                }
-                complete(groups)
-            }
-            if self.studio.helperServers.isEmpty {
-                self.studio.surveyHelpers(completion: build)
-            } else {
-                build(self.studio.helperServers)
-            }
-        }
-        var children: [UIMenuElement] = [models]
-        children.append(
-            UIAction(
-                title: ImageGenRewriteWords.lookAgainTitle,
-                subtitle: ImageGenRewriteWords.lookAgainHint,
-                image: UIImage(systemName: "arrow.clockwise")
-            ) { [weak self] _ in
-                self?.studio.surveyHelpers()
-            })
-        if let current {
+    /// Everything the four decisions do not cover — the seed, painting on transparency, what to
+    /// keep out, and the craft — in one chip that says which of them are in force, so a decision
+    /// that is made is never hidden and a value is never cut to make room for it.
+    private func moreChip() -> UIButton {
+        var active: [String] = []
+        if slot.seed.isHeld { active.append(slot.seed.chip) }
+        if slot.cutout { active.append(ImageGenWords.cutoutTitle) }
+        if !slot.negative.trimmed().isEmpty { active.append(ImageGenWords.avoidTitle) }
+        let value = active.isEmpty ? slot.seed.chip : active.joined(separator: ", ")
+        let button = StudioChip.button(
+            label: ImageGenWords.moreTitle, value: value,
+            tint: briefIsThin ? Theme.Color.warning : (active.isEmpty ? nil : Theme.Color.accent))
+        var children: [UIMenuElement] = []
+        if slot.cutoutApplies {
             children.append(
                 UIAction(
-                    title: current.enabled
-                        ? ImageGenRewriteWords.offTitle : ImageGenRewriteWords.onTitle,
-                    subtitle: current.enabled ? ImageGenWords.helperOffHint : current.displayHost,
-                    image: UIImage(systemName: current.enabled ? "wand.and.stars.inverse" : "wand.and.stars")
+                    title: ImageGenWords.cutoutTitle, subtitle: ImageGenWords.cutoutHint,
+                    image: UIImage(systemName: "square.on.square.dashed"),
+                    attributes: slot.isBusy ? .disabled : [], state: slot.cutout ? .on : .off
                 ) { [weak self] _ in
                     guard let self else { return }
-                    self.studio.toggleHelper()
-                    self.updateChips()
+                    Theme.Haptics.selection()
+                    self.studio.setCutout(!self.slot.cutout)
                 })
         }
-        return UIMenu(title: ImageGenRewriteWords.chooseTitle, children: children)
+        let seedCanHold = slot.seed.isHeld || slot.seed.last != nil
+        children.append(
+            UIAction(
+                title: ImageGenStudioWords.holdSeedTitle,
+                subtitle: ImageGenStudioWords.holdSeedDetail(seed: slot.seed),
+                image: UIImage(systemName: slot.seed.isHeld ? "lock.fill" : "die.face.5"),
+                attributes: slot.isBusy || !seedCanHold ? .disabled : [],
+                state: slot.seed.isHeld ? .on : .off
+            ) { [weak self] _ in
+                Theme.Haptics.selection()
+                self?.studio.toggleSeedHold()
+            })
+        if slot.negativeApplies {
+            let holding = !slot.negative.trimmed().isEmpty
+            children.append(
+                UIAction(
+                    title: ImageGenWords.avoidTitle,
+                    subtitle: holding ? slot.negative.ellipsized(to: 40) : ImageGenWords.avoidHint,
+                    image: UIImage(systemName: "nosign"),
+                    attributes: slot.isBusy ? .disabled : [], state: holding ? .on : .off
+                ) { [weak self] _ in
+                    Theme.Haptics.tap()
+                    self?.presentAvoid()
+                })
+        }
+        children.append(
+            ImageChip.craftMenu { [weak self] example in
+                guard let self else { return }
+                Theme.Haptics.tap()
+                self.studio.choose(aspect: example.aspect)
+                self.setPrompt(example.prompt)
+                self.studio.rememberDraft(example.prompt)
+                self.updateChips()
+            })
+        button.menu = UIMenu(children: children)
+        button.showsMenuAsPrimaryAction = true
+        button.accessibilityLabel = "\(ImageGenWords.moreTitle), \(value)"
+        button.accessibilityHint = briefIsThin ? ImageGenBrief.thinBody : nil
+        return button
+    }
+
+    /// Attaching a picture is the whole of asking for an edit, so this control is never a switch:
+    /// it holds one or it does not, wears the picture it holds, and opens the sources — or replace
+    /// and remove — as a menu, because the doors are five and a phone has no tooltip to name them.
+    private func configureStartFrom() {
+        startFrom.translatesAutoresizingMaskIntoConstraints = false
+        startFrom.clipsToBounds = false
+        startFromRing.fillColor = nil
+        startFromRing.lineWidth = 1.5
+        startFromRing.lineDashPattern = [4, 3]
+        startFrom.layer.addSublayer(startFromRing)
+        startFrom.showsMenuAsPrimaryAction = true
+        updateStartFrom()
+    }
+
+    private func layoutStartFrom() {
+        startFromRing.frame = startFrom.bounds
+        startFromRing.path = UIBezierPath(
+            roundedRect: startFrom.bounds.insetBy(dx: 1, dy: 1), cornerRadius: Theme.Radius.control
+        ).cgPath
+        startFromRing.strokeColor = Theme.Color.separator.cgColor
+    }
+
+    private func updateStartFrom() {
+        let holding = slot.references.last
+        let count = slot.references.count
+        let thumb = holding.flatMap { reference -> UIImage? in
+            if let kept = reference.kept, let tile = library.cachedThumbnail(of: kept) { return tile }
+            guard let data = FileManager.default.contents(atPath: reference.path),
+                let image = UIImage(data: data)
+            else { return nil }
+            return image.preparingThumbnail(of: CGSize(width: 120, height: 120)) ?? image
+        }
+        var config = UIButton.Configuration.plain()
+        config.cornerStyle = .fixed
+        config.background.cornerRadius = Theme.Radius.control
+        config.background.backgroundColor = Theme.Color.codeBackground
+        config.imagePlacement = .top
+        config.imagePadding = 2
+        config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 2, bottom: 4, trailing: 2)
+        if let thumb {
+            config.background.image = thumb
+            config.background.imageContentMode = .scaleAspectFill
+            config.image = nil
+            config.title = nil
+            if count > 1 {
+                var badge = AttributedString("\(count)")
+                badge.font = Theme.Ramp.font(.badge)
+                badge.foregroundColor = Theme.Color.onAccent
+                config.attributedTitle = badge
+                config.background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.3)
+            }
+        } else {
+            config.image = UIImage(
+                systemName: "photo.badge.plus",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular))
+            var caption = AttributedString(ForgeField.frame.label)
+            caption.font = Theme.Font.capped(.caption2, maximum: 11)
+            config.attributedTitle = caption
+            config.baseForegroundColor = Theme.Color.secondaryLabel
+        }
+        startFrom.configuration = config
+        startFromRing.isHidden = thumb != nil
+        startFrom.isEnabled = !slot.isBusy
+        startFrom.titleLabel?.adjustsFontSizeToFitWidth = true
+        startFrom.titleLabel?.minimumScaleFactor = 0.6
+        startFrom.menu = intake.menu(references: slot.references)
+        startFrom.accessibilityLabel = holding.map(ImageGenWords.referenceHint) ?? ImageGenWords.attachTitle
+        startFrom.accessibilityHint = count == 0 ? nil : ImageGenWords.attachMoreHint
+    }
+
+    private func updateEnhance() {
+        enhanceControl.apply(
+            busy: studio.enhancing, undoing: beforeEnhance != nil,
+            enabled: !slot.isBusy, helper: studio.helper)
     }
 
     /// Press once to have the brief written out, press again to get your own sentence back.
     private func enhancePressed() {
+        Theme.Haptics.tap()
         if let original = beforeEnhance {
             setPrompt(original)
             studio.rememberDraft(original)
             beforeEnhance = nil
-            updateChips()
+            updateEnhance()
             return
         }
         let brief = (promptView.text ?? "").trimmed()
@@ -800,29 +963,10 @@ final class ImageStudioViewController: UIViewController {
                     self.studio.helper == nil ? ImageGenWords.enhanceMissing : failure.reason)
                 Theme.Haptics.warning()
             }
+            self.updateEnhance()
             self.updateChips()
         }
-        updateChips()
-    }
-
-    /// The craft, one press away, and lit when the words in the box are thin enough to need it.
-    private func craftChip() -> UIButton {
-        let thin = briefIsThin
-        let button = ImageChip.button(
-            symbol: thin ? "lightbulb.fill" : "lightbulb", title: ImageGenBrief.craftTitle)
-        if thin { button.tintColor = Theme.Color.warning }
-        button.accessibilityLabel = ImageGenBrief.craftTitle
-        button.accessibilityHint = thin ? ImageGenBrief.thinBody : nil
-        button.menu = ImageChip.craftMenu { [weak self] example in
-            guard let self else { return }
-            Theme.Haptics.tap()
-            self.studio.choose(aspect: example.aspect)
-            self.setPrompt(example.prompt)
-            self.studio.rememberDraft(example.prompt)
-            self.updateChips()
-        }
-        button.showsMenuAsPrimaryAction = true
-        return button
+        updateEnhance()
     }
 
     /// A small box for the avoid list, because a phone has nowhere to keep a second field open
@@ -847,101 +991,27 @@ final class ImageStudioViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    private func engineChip(sighting: ImageGenSighting?) -> UIButton {
-        let unavailable = slot.engineAvailable(given: sighting) == false
-        let button = ImageChip.button(
-            symbol: unavailable ? "exclamationmark.triangle" : ImageGenField.engine.symbol,
-            title: slot.value(of: .engine))
-        button.isEnabled = !slot.isBusy
-        if unavailable { button.tintColor = Theme.Color.warning }
-        button.accessibilityLabel = "\(ImageGenField.engine.label), \(slot.value(of: .engine))"
-        if unavailable, let sighting {
-            button.accessibilityValue = ImageGenWords.engineUnavailable(
-                slot.engine, missing: sighting.missing(for: slot.engine).count)
-        }
-        button.addAction(
-            UIAction { [weak self] _ in
-                Theme.Haptics.selection()
-                self?.studio.advance(.engine)
-            }, for: .touchUpInside)
-        button.menu = ImageChip.engineMenu(slot: slot, sighting: sighting) { [weak self] engine in
-            Theme.Haptics.selection()
-            self?.studio.choose(engine: engine)
-        }
-        return button
-    }
-
-    /// The aspect chip stands down while a reference is held: both editors take the size from the
-    /// picture they start from, and a chip that changes nothing must not look like one that does.
-    private func aspectChip() -> UIButton {
-        guard slot.aspectApplies else {
-            let button = ImageChip.button(
-                symbol: ImageGenField.aspect.symbol, title: ImageGenWords.aspectFollowsReference)
-            button.isEnabled = false
-            button.accessibilityLabel = ImageGenWords.aspectFollowsReference
-            return button
-        }
-        let button = ImageChip.button(
-            symbol: ImageGenField.aspect.symbol, title: slot.value(of: .aspect))
-        button.isEnabled = !slot.isBusy
-        button.accessibilityLabel = "\(ImageGenField.aspect.label), \(slot.value(of: .aspect))"
-        button.addAction(
-            UIAction { [weak self] _ in
-                Theme.Haptics.selection()
-                self?.studio.advance(.aspect)
-            }, for: .touchUpInside)
-        button.menu = ImageChip.aspectMenu(slot: slot) { [weak self] aspect in
-            Theme.Haptics.selection()
-            self?.studio.choose(aspect: aspect)
-        }
-        return button
-    }
-
-    /// Attaching a picture is the whole of asking for an edit, so this control is never a switch:
-    /// it holds one or it does not, wears the picture it holds, and opens the sources — or replace
-    /// and remove — as a menu, because the doors are five and a phone has no tooltip to name them.
-    private func referenceChip() -> UIButton {
-        let holding = slot.references.last
-        let thumb = holding.flatMap { reference -> UIImage? in
-            if let kept = reference.kept, let tile = library.cachedThumbnail(of: kept) { return tile }
-            guard let data = FileManager.default.contents(atPath: reference.path),
-                let image = UIImage(data: data)
-            else { return nil }
-            return image.preparingThumbnail(of: CGSize(width: 60, height: 60)) ?? image
-        }
-        let count = slot.references.count
-        let title: String
-        switch count {
-        case 0: title = ImageGenWords.attachTitle
-        case 1: title = holding?.chip ?? ImageGenWords.attachTitle
-        default: title = ImageGenWords.attachedCount(count)
-        }
-        let button = ImageChip.button(
-            symbol: count == 0 ? "photo.badge.plus" : "photo.fill", title: title, image: thumb,
-            traits: traitCollection)
-        button.isEnabled = !slot.isBusy
-        button.accessibilityLabel = holding.map(ImageGenWords.referenceHint) ?? ImageGenWords.attachTitle
-        button.accessibilityHint = count == 0 ? nil : ImageGenWords.attachMoreHint
-        button.menu = intake.menu(references: slot.references)
-        button.showsMenuAsPrimaryAction = true
-        return button
-    }
-
     /// One control, two meanings, and it says which it is: a render out is stopped from the same
     /// place it was started, because a person who wants it to end should not have to find another
     /// button to end it with.
     private func updateRenderButton() {
         var config = Theme.Glass.buttonConfiguration(prominent: true)
-        config.cornerStyle = .capsule
+        config.cornerStyle = .large
+        config.imagePlacement = .top
+        config.imagePadding = 2
+        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4)
         config.image = UIImage(
             systemName: studio.isPainting ? "stop.fill" : ImageGenEntryPoint.symbol,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
-        config.imagePadding = Theme.Spacing.xs
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold))
         var title = AttributedString(
             studio.isPainting ? ImageGenWords.stopTitle : ImageGenWords.renderTitle(mode: slot.mode))
-        title.font = Theme.Ramp.font(.control)
-        config.attributedTitle = title
+        title.font = Theme.Font.capped(.caption1, maximum: 14)
+        if !traitCollection.preferredContentSizeCategory.isAccessibilityCategory {
+            config.attributedTitle = title
+        }
         renderButton.configuration = config
+        renderButton.titleLabel?.adjustsFontSizeToFitWidth = true
+        renderButton.titleLabel?.minimumScaleFactor = 0.6
         renderButton.isEnabled =
             studio.isPainting || !(promptView.text ?? "").trimmed().isEmpty
         renderButton.accessibilityLabel = studio.isPainting
@@ -973,6 +1043,7 @@ final class ImageStudioViewController: UIViewController {
         setPrompt("")
         studio.rememberDraft("")
         updateChips()
+        updateEnhance()
         promptView.becomeFirstResponder()
     }
 
@@ -1003,21 +1074,46 @@ final class ImageStudioViewController: UIViewController {
         grow()
     }
 
-    /// The box is as tall as what is in it, up to four lines, after which it scrolls — a prompt
-    /// worth two sentences must not be typed into a slot that shows one line of it.
+    /// The box is as tall as what is in it, from two lines to six, after which it scrolls — a
+    /// prompt worth two sentences must not be typed into a slot that shows one line of it. The
+    /// Enhance control sits over its trailing foot, and the words flow around it rather than under.
     private func grow() {
-        guard promptView.bounds.width > 0 else { return }
-        let fitted = promptView.sizeThatFits(
-            CGSize(width: promptView.bounds.width, height: .greatestFiniteMagnitude))
-        let height = min(max(44, fitted.height), 132)
+        guard promptView.bounds.width > 0, !growing else { return }
+        growing = true
+        defer { growing = false }
+        let width = promptView.bounds.width
+        var height = promptHeight.constant
+        for _ in 0..<3 {
+            flow(around: height)
+            let fitted = promptView.sizeThatFits(
+                CGSize(width: width, height: .greatestFiniteMagnitude))
+            let next = min(max(Self.promptMinimum, fitted.height), Self.promptMaximum)
+            guard abs(next - height) > 0.5 else { break }
+            height = next
+        }
+        flow(around: height)
         guard abs(height - promptHeight.constant) > 0.5 else { return }
         promptHeight.constant = height
-        view.layoutIfNeeded()
+        view.setNeedsLayout()
     }
+
+    /// Keeps the words out of the rectangle the Enhance control covers at a given box height.
+    private func flow(around height: CGFloat) {
+        let control = enhanceControl.size
+        let inset = promptView.textContainerInset
+        let width = promptView.bounds.width
+        let rect = CGRect(
+            x: width - Self.enhanceMargin - control.width - 4 - inset.left,
+            y: height - Self.enhanceMargin - control.height - 1 - inset.top,
+            width: control.width + 40, height: control.height + 200)
+        promptView.textContainer.exclusionPaths = [UIBezierPath(rect: rect)]
+    }
+
+    private static let enhanceMargin: CGFloat = 5
 
     /// Holding the button that makes the picture offers the brief written out first — the chat's
     /// hold-Send, answered by the machine that paints rather than by a coding model. Nothing is
-    /// replaced until the card is taken, and taking it leaves the chip's undo behind.
+    /// replaced until the card is taken, and taking it leaves the undo behind.
     @objc private func renderHeld(_ gesture: UILongPressGestureRecognizer) {
         let words = (promptView.text ?? "").trimmed()
         guard gesture.state == .began, !studio.isPainting, !words.isEmpty else { return }
@@ -1056,8 +1152,8 @@ final class ImageStudioViewController: UIViewController {
         guard !words.isEmpty else { return }
         Theme.Haptics.send()
         view.endEditing(true)
+        beforeEnhance = nil
         studio.submit(prompt: words)
-        scrollToStage()
     }
 
     /// Full size is the chat's own gallery, because a picture this app made deserves the same zoom,
@@ -1103,12 +1199,7 @@ final class ImageStudioViewController: UIViewController {
         return ImageViewerViewController(items: pages, startIndex: start, backend: nil, from: nil)
     }
 
-    private func perform(_ action: ImageGenAction) {
-        guard let exhibit = studio.exhibit else { return }
-        perform(action, on: exhibit)
-    }
-
-    private func stage(_ exhibit: ImageExhibit) {
+    private func putOnStage(_ exhibit: ImageExhibit) {
         switch exhibit {
         case .made(let picture): studio.show(picture.path)
         case .kept(let item): studio.show(kept: item)
@@ -1139,13 +1230,11 @@ final class ImageStudioViewController: UIViewController {
             present(viewer(from: exhibit), animated: true)
         case .again:
             Theme.Haptics.send()
-            if exhibit != studio.exhibit { stage(exhibit) }
+            if exhibit != studio.exhibit { putOnStage(exhibit) }
             studio.again()
-            scrollToStage()
         case .stage:
             Theme.Haptics.selection()
-            stage(exhibit)
-            scrollToStage()
+            putOnStage(exhibit)
         case .reference:
             Theme.Haptics.selection()
             switch exhibit {
@@ -1154,7 +1243,7 @@ final class ImageStudioViewController: UIViewController {
             case .kept(let item):
                 studio.hold(kept: item)
             }
-            if exhibit != studio.exhibit { stage(exhibit) }
+            if exhibit != studio.exhibit { putOnStage(exhibit) }
             promptView.becomeFirstResponder()
         case .discard:
             guard case .made(let picture) = exhibit else { return }
@@ -1162,6 +1251,52 @@ final class ImageStudioViewController: UIViewController {
             studio.discard(picture.path)
             notice(ImageGenWords.discardNotice)
         }
+    }
+
+    /// The bridge to the other thing this app makes: the video forge opened over the work, holding
+    /// this picture as the clip's first frame. A picture on the machine that renders the clip is
+    /// named where it is so no byte travels; anywhere else the picture goes with the render.
+    private func animate(_ exhibit: ImageExhibit) {
+        Theme.Haptics.tap()
+        Task { [weak self] in
+            guard let self, let start = await self.firstFrame(of: exhibit) else { return }
+            ForgeRunner.shared.start(from: start.frame, width: start.width, height: start.height)
+            let nav = UINavigationController(rootViewController: VideoForgeViewController())
+            nav.modalPresentationStyle = .fullScreen
+            self.present(nav, animated: true)
+        }
+    }
+
+    private func firstFrame(of exhibit: ImageExhibit) async -> (frame: ForgeFrame, width: Int?, height: Int?)? {
+        let sameMachine = ForgeRunner.shared.endpoint.map {
+            ImageGenEndpoint(sharing: $0).displayHost == studio.endpoint.displayHost
+        } ?? false
+        switch exhibit {
+        case .made(let picture):
+            let size = studio.image(of: picture).map(Self.pixels(of:))
+            if sameMachine, let remote = picture.remoteName {
+                return (.kept(ImageGenLibraryItem(filename: remote).annotatedName), size?.0, size?.1)
+            }
+            return (.file(picture.path), size?.0, size?.1)
+        case .kept(let item):
+            let facts = library.facts(of: item)
+            if sameMachine {
+                return (.kept(item.annotatedName), facts?.width, facts?.height)
+            }
+            guard let payload = await studio.payload(of: item),
+                let data = payload.data,
+                let path = ImageGenFiles.stage(data, named: payload.filename)
+            else {
+                notice(ForgeFailure.unconfigured.description)
+                return nil
+            }
+            let size = Self.pixels(of: payload.image)
+            return (.file(path), size.0, size.1)
+        }
+    }
+
+    private static func pixels(of image: UIImage) -> (Int, Int) {
+        (Int((image.size.width * image.scale).rounded()), Int((image.size.height * image.scale).rounded()))
     }
 
     /// Saving on a phone means the photo library, which is where a picture a person made goes —
@@ -1224,26 +1359,49 @@ final class ImageStudioViewController: UIViewController {
     }
 }
 
-extension ImageStudioViewController: UICollectionViewDelegate {
+extension ImageStudioViewController: UICollectionViewDelegate, UICollectionViewDelegateFlowLayout {
+    /// A tile is a picture made this session when the session made it, else the kept file.
+    private func exhibitFor(_ kept: ImageGenLibraryItem) -> ImageExhibit {
+        if let made = slot.pictures.first(where: { $0.remoteName == kept.id }) { return .made(made) }
+        return .kept(kept)
+    }
+
+    /// Pressing a tile puts that picture on the stage, because the stage is directly above it and
+    /// the answer is the stage changing — tapping the stage opens it full size, and nothing about
+    /// choosing a picture decides what the next render is about: that is the reference verb's,
+    /// pressed on purpose.
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
-        switch item {
-        case .tile(let id):
-            guard let kept = library.item(named: id) else { return }
-            Theme.Haptics.tap()
-            present(viewer(from: exhibitFor(kept)), animated: true)
-        default:
-            break
-        }
+        guard case .tile(let id) = stripSource.itemIdentifier(for: indexPath),
+            let kept = library.item(named: id)
+        else { return }
+        Theme.Haptics.selection()
+        view.endEditing(true)
+        putOnStage(exhibitFor(kept))
     }
 
     func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath)
         -> Bool
     {
-        switch dataSource.itemIdentifier(for: indexPath) {
-        case .tile: return true
-        default: return false
+        if case .tile = stripSource.itemIdentifier(for: indexPath) { return true }
+        return false
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath
+    ) -> Bool {
+        if case .tile = stripSource.itemIdentifier(for: indexPath) { return true }
+        return false
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout,
+        sizeForItemAt indexPath: IndexPath
+    ) -> CGSize {
+        if case .note = stripSource.itemIdentifier(for: indexPath) {
+            return CGSize(
+                width: max(120, collectionView.bounds.width - 2 * Theme.Spacing.m), height: Self.tile)
         }
+        return CGSize(width: Self.tile, height: Self.tile)
     }
 
     /// A tile that comes into view learns its own words, so a screen reader and a press-and-hold
@@ -1252,26 +1410,19 @@ extension ImageStudioViewController: UICollectionViewDelegate {
         _ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
         forItemAt indexPath: IndexPath
     ) {
-        guard case .tile(let id) = dataSource.itemIdentifier(for: indexPath),
+        guard case .tile(let id) = stripSource.itemIdentifier(for: indexPath),
             let kept = library.item(named: id)
         else { return }
         library.describe(kept)
     }
 
-    /// A tile is a picture made this session when the session made it, else the kept file.
-    private func exhibitFor(_ kept: ImageGenLibraryItem) -> ImageExhibit {
-        if let made = slot.pictures.first(where: { $0.remoteName == kept.id }) { return .made(made) }
-        return .kept(kept)
-    }
-
     /// Press and hold a tile for its verbs: the caption names it, the first verb puts it on the
-    /// stage, and the rest are the ones the stage offers. A tap opens the picture and decides
-    /// nothing about the next render.
+    /// stage, and the rest are the ones the stage offers.
     func collectionView(
         _ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath,
         point: CGPoint
     ) -> UIContextMenuConfiguration? {
-        guard case .tile(let id) = dataSource.itemIdentifier(for: indexPath),
+        guard case .tile(let id) = stripSource.itemIdentifier(for: indexPath),
             let kept = library.item(named: id)
         else { return nil }
         library.describe(kept)
@@ -1282,19 +1433,22 @@ extension ImageStudioViewController: UICollectionViewDelegate {
         case .made(let made): words = ImageGenFacts.caption(for: made)
         case .kept: words = ImageGenFacts.caption(for: facts)
         }
-        let offered = [ImageGenAction.stage] + ImageGenAction.offered(
+        let offered = [ImageGenAction.stage, .open] + ImageGenAction.offered(
             kept: true, hasWords: exhibit.isKept ? facts?.recipe?.prompt?.isEmpty == false : true,
             sharing: true, tapOpens: true)
         return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
             [weak self] _ in
-            UIMenu(
-                title: words.ellipsized(to: 80),
-                children: offered.map { action in
-                    UIAction(
-                        title: action.phoneTitle, image: UIImage(systemName: action.symbol),
-                        attributes: action.isDestructive ? .destructive : []
-                    ) { _ in self?.perform(action, on: exhibit) }
-                })
+            var children: [UIMenuElement] = offered.map { action in
+                UIAction(
+                    title: action.phoneTitle, image: UIImage(systemName: action.symbol),
+                    attributes: action.isDestructive ? .destructive : []
+                ) { _ in self?.perform(action, on: exhibit) }
+            }
+            children.append(
+                UIAction(
+                    title: ForgeWords.animateTitle, image: UIImage(systemName: "film")
+                ) { _ in self?.animate(exhibit) })
+            return UIMenu(title: words.ellipsized(to: 80), children: children)
         }
     }
 }
@@ -1304,7 +1458,8 @@ extension ImageStudioViewController: UITextViewDelegate {
         enhanceOverlay?.requestDismiss()
         updatePlaceholder()
         updateRenderButton()
-        updateMachineControl()
+        updateChrome()
+        updateChips()
         grow()
     }
 }
@@ -1326,6 +1481,7 @@ extension ImageStudioViewController: PromptEnhanceOverlayDelegate {
         beforeEnhance = before
         if let helper = studio.helper { notice(ImageGenWords.enhancedNotice(helper)) }
         updateChips()
+        updateEnhance()
     }
 
     func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didCopy prompt: EnhancedPrompt) {

@@ -23,6 +23,7 @@ final class PromptEnhancementController {
     enum Mode: Equatable {
         case coding
         case image
+        case video
     }
 
     var mode: Mode = .coding {
@@ -96,7 +97,7 @@ final class PromptEnhancementController {
     func requestNow(for raw: String) -> Bool {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         latestInput = text
-        if mode == .image {
+        if mode != .coding {
             if text == generatedInput, case .ready = status { return true }
             paint(text)
             return true
@@ -122,7 +123,7 @@ final class PromptEnhancementController {
     }
 
     func retry() {
-        if mode == .image {
+        if mode != .coding {
             guard !latestInput.isEmpty else { return }
             paint(latestInput)
             return
@@ -137,14 +138,17 @@ final class PromptEnhancementController {
     /// second request the studio would silently drop.
     private func paint(_ text: String) {
         generationTask?.cancel()
-        let studio = ImageStudio.shared
-        guard !studio.enhancing else {
+        let writing = mode
+        let busy = writing == .video ? ForgeRunner.shared.enhancing : ImageStudio.shared.enhancing
+        guard !busy else {
             status = .failed
             return
         }
         status = .generating
-        studio.enhance(text) { [weak self] result in
-            guard let self, self.mode == .image else { return }
+        let helper = writing == .video ? ForgeRunner.shared.helper : ImageStudio.shared.helper
+        let handle: @MainActor @Sendable (Result<(String, ImageGenAspect?), ImageGenEnhancer.Failure>) -> Void = {
+            [weak self] result in
+            guard let self, self.mode == writing else { return }
             switch result {
             case .success(let written):
                 guard !written.0.isEmpty else {
@@ -154,7 +158,9 @@ final class PromptEnhancementController {
                 self.generatedInput = text
                 self.status = .ready([
                     EnhancedPrompt(
-                        id: 0, label: studio.helper?.name ?? ImageGenSurface.title,
+                        id: 0,
+                        label: helper?.name
+                            ?? (writing == .video ? ForgeSurface.title : ImageGenSurface.title),
                         text: written.0, aspect: written.1)
                 ])
             case .failure(let failure):
@@ -164,9 +170,14 @@ final class PromptEnhancementController {
                     self.status = .unavailable(reason)
                 default:
                     self.status =
-                        studio.helper == nil ? .unavailable(ImageGenWords.enhanceMissing) : .failed
+                        helper == nil ? .unavailable(ImageGenWords.enhanceMissing) : .failed
                 }
             }
+        }
+        if writing == .video {
+            ForgeRunner.shared.enhance(text, completion: handle)
+        } else {
+            ImageStudio.shared.enhance(text, completion: handle)
         }
     }
 
