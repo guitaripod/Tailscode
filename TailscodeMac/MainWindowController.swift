@@ -888,11 +888,12 @@ final class MainWindowController: NSWindowController {
         }
     }
 
-    /// The Studio, raised: one panel for the whole app, beside the conversation rather than over it.
-    /// `brief` is words to start from — the composer's lanes send what was typed there — and nothing
-    /// is rendered until a hand says Generate or Render.
+    /// The Studio, raised: one sheet for the whole app, rising inside this window over the
+    /// conversation rather than opening beside it. `brief` is words to start from — the composer's
+    /// lanes send what was typed there — and nothing is rendered until a hand says Generate or Render.
     func presentStudio(lane: StudioLaneID = .image, brief: String? = nil) {
-        StudioWindowController.shared.show(lane: lane, brief: brief)
+        if window?.isVisible != true { showWindow(nil) }
+        StudioWindowController.shared.show(lane: lane, brief: brief, in: window)
     }
 
     #if DEBUG
@@ -927,8 +928,8 @@ final class MainWindowController: NSWindowController {
         }
     #endif
 
-    /// Video, which is the Studio's second lane: the same panel the pictures are made in, switched to
-    /// the clip. A render lives in `ForgeRunner`, so closing the panel never touches one, and opening
+    /// Video, which is the Studio's second lane: the same sheet the pictures are made in, switched to
+    /// the clip. A render lives in `ForgeRunner`, so closing the sheet never touches one, and opening
     /// it again finds the render exactly where it was.
     func presentForge() {
         presentStudio(lane: .video)
@@ -1643,7 +1644,9 @@ final class MainWindowController: NSWindowController {
     /// through the shared registry exactly like Linux `installKeymap`.
     private func installKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.window else { return event }
+            guard let self, event.window === self.window,
+                StudioWindowController.shared.state.conversationChordsEnabled
+            else { return event }
             return self.handle(event)
         }
     }
@@ -1664,7 +1667,8 @@ final class MainWindowController: NSWindowController {
     }
 
     private func pressLanded(_ event: NSEvent) {
-        guard event.window === window else { return }
+        guard event.window === window, StudioWindowController.shared.state.conversationChordsEnabled
+        else { return }
         let point = event.locationInWindow
         if let banner = restoreBanner, banner.bounds.contains(banner.convert(point, from: nil)) {
             return

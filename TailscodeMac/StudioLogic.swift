@@ -362,6 +362,15 @@ enum StudioKey: CaseIterable, Sendable {
     case open
     case copy
 
+    /// Whether a conversation's menu item wears the same chord, and sits earlier in the menu bar: ⌘↩
+    /// is Send, ⌘E is Archive and ⌘⇧E is Archived Chats.
+    var sharesChordWithConversation: Bool {
+        switch self {
+        case .generate, .enhance, .editThis: return true
+        default: return false
+        }
+    }
+
     /// The Mac's key, as the character a key equivalent is spelled with and the modifiers it needs.
     var chord: (key: String, command: Bool, shift: Bool) {
         switch self {

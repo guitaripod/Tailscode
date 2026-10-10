@@ -65,9 +65,7 @@ final class MainMenu: NSObject {
         menu.addItem(item(Localized.text("New Chat"), #selector(newChat), "n"))
         menu.addItem(item(Localized.text("Quick Ask…"), #selector(quickAsk), ""))
         menu.addItem(.separator())
-        menu.addItem(
-            withTitle: Localized.text("Close"), action: #selector(NSWindow.performClose(_:)),
-            keyEquivalent: "w")
+        menu.addItem(item(Localized.text("Close"), #selector(closeFront(_:)), "w"))
         return holder(menu)
     }
 
@@ -346,9 +344,10 @@ final class MainMenu: NSObject {
     }
 
     /// The Studio's verbs in the menu bar, where a person looks for what the keyboard can do. They
-    /// answer for the Studio that has focus — the panel's, or a pane that paints — and dim anywhere
-    /// else, so the three chords that are also a conversation's (⌘↩ sends, ⌘E archives, ⌘⇧E lists the
-    /// archive) read as the Studio's only while it is in front. The keys with no ⌘ in them — Esc,
+    /// answer for the Studio that has focus — the sheet's, or a pane that paints — and dim anywhere
+    /// else. The three chords that are also a conversation's (⌘↩ sends, ⌘E archives, ⌘⇧E lists the
+    /// archive) read as the Studio's only while it is in front: with the sheet up the conversation's
+    /// items are disabled, so the Studio's are the only ones left to answer them. The keys with no ⌘ in them — Esc,
     /// the arrows and Space — cannot be key equivalents without taking them from every text field, so
     /// each item wears its key in its title the way the pane verbs do.
     private func makeStudioMenu() -> NSMenuItem {
@@ -394,8 +393,6 @@ final class MainMenu: NSObject {
         menu.addItem(
             withTitle: Localized.text("Zoom"), action: #selector(NSWindow.performZoom(_:)),
             keyEquivalent: "")
-        menu.addItem(.separator())
-        menu.addItem(item(Localized.text("Studio"), #selector(openStudio), ""))
         menu.addItem(.separator())
         menu.addItem(
             withTitle: Localized.text("Bring All to Front"),
@@ -540,6 +537,24 @@ final class MainMenu: NSObject {
     @objc private func videoForge() { hub.presentForge() }
     @objc private func openStudio() { hub.presentStudio() }
 
+    /// Close is the Studio's before it is the window's: with the sheet up, the chord Core names for it
+    /// closes the sheet, and only the next press — or the window's own close button — closes the
+    /// window. The chord is read off this item's own key equivalent, so a rebinding stays honest.
+    @objc private func closeFront(_ sender: NSMenuItem) {
+        let mask = sender.keyEquivalentModifierMask
+        let scalar = sender.keyEquivalent.unicodeScalars.first.map { UInt32($0.value) } ?? 0
+        let state =
+            (mask.contains(.control) ? KeyChord.controlMask : 0) | (mask.contains(.shift) ? KeyChord.shiftMask : 0)
+            | (mask.contains(.option) ? KeyChord.altMask : 0)
+        if let chord = KeyChord.canonical(keyval: scalar, state: state),
+            StudioWindowController.shared.closesSheet(
+                chord: chord, command: mask.contains(.command), keyWindow: NSApp.keyWindow)
+        {
+            return
+        }
+        (NSApp.keyWindow ?? NSApp.mainWindow)?.performClose(sender)
+    }
+
     @objc private func studioVerb(_ sender: NSMenuItem) {
         let keys = StudioKey.allCases
         guard keys.indices.contains(sender.tag),
@@ -587,6 +602,11 @@ extension MainMenu: NSMenuItemValidation {
     /// reachable without an open chat, so the number is read before the menu is chosen, never
     /// after.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if !StudioWindowController.shared.state.conversationChordsEnabled, let action = menuItem.action,
+            !Self.answersWhileStudioIsUp(action)
+        {
+            return false
+        }
         let treeVerbs: Set<Selector> = [
             #selector(closeSplit), #selector(zoomSplit), #selector(focusSplitLeft),
             #selector(focusSplitRight), #selector(focusSplitUp), #selector(focusSplitDown),
@@ -671,6 +691,19 @@ extension MainMenu: NSMenuItemValidation {
             break
         }
         return true
+    }
+
+    /// What this menu still answers while the Studio is up: the allow-list, because a verb that acts
+    /// on the conversation or on the window's panes must never reach a chat nobody can see the focus
+    /// of. The Studio's own verbs and the ways in to it, Close (which closes the sheet first), and the
+    /// help pages are the only ones; Quit, Hide, Minimize, Zoom, Full Screen and the Edit menu's
+    /// standard actions are the responder chain's and never come through here.
+    static func answersWhileStudioIsUp(_ action: Selector) -> Bool {
+        let allowed: Set<Selector> = [
+            #selector(studioVerb(_:)), #selector(openStudio), #selector(videoForge),
+            #selector(closeFront(_:)), #selector(support), #selector(reportIssue), #selector(privacy),
+        ]
+        return allowed.contains(action)
     }
 
     /// The words the flipping verbs wear when there is nothing for them to describe. A dimmed item

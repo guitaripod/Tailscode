@@ -16,8 +16,11 @@
     /// - `split=<n>` opens the first chats as one tiling; `restore` prints what the safe restore
     ///   holds; `resume=all|one` presses the banner's buttons
     /// - `sopen[=state]` raises the Studio; `skey=<cmd-return|esc|cmd-e|cmd-shift-e|cmd-shift-r|cmd-1|
-    ///   cmd-2|cmd-s|left|right|space>` presses that key through the real event path into the
-    ///   Studio's window; `sstate` prints what the Studio is holding; `sanimate` presses Animate this
+    ///   cmd-2|cmd-s|cmd-w|cmd-n|left|right|space>` presses that key through the real event path into
+    ///   the Studio's window; `sheet` prints the sheet's state, frame against Core's and layout
+    ///   passes; `sheetat=<0…1>[,closing]` holds the sheet at that point of its motion for a picture;
+    ///   `sheetclose` presses Done; `sheetscrim` sends a real press at a point of the scrim;
+    ///   `sheetmenu` prints which menu items are enabled; `sstate` prints what the Studio is holding; `sanimate` presses Animate this
     ///   on the picture on the Image lane's stage; `smachineshot=<path>` writes the Video lane's
     ///   machine sheet to a PNG, since a popover is not part of the window's own picture; `sdemo=<state>` stages a Video lane state while the
     ///   Studio is up, so a render landing can be watched; `sfocus` gives the stage the keyboard, which is
@@ -166,16 +169,33 @@
             case "sdemo":
                 StudioVideoDemo.apply(argument)
             case "sfocus":
-                if let panel = StudioWindowController.shared.panel,
+                if let window = StudioWindowController.shared.sheet?.host,
                     let stage = StudioWindowController.shared.activeLane?.stage
                 {
-                    panel.makeFirstResponder(stage)
+                    window.makeFirstResponder(stage)
                 }
+            case "sheet":
+                say(StudioDrive.sheet() + " mainWindowVisible=\(main?.window?.isVisible ?? false)")
+            case "sheetat":
+                let fields = argument.split(separator: ",").map(String.init)
+                StudioDrive.hold(
+                    at: Double(fields.first ?? "") ?? 0.5, closing: fields.dropFirst().first == "closing")
+                say(StudioDrive.sheet())
+            case "sheetclose":
+                StudioWindowController.shared.sheet?.toolbar.done.performClick(nil)
+            case "sheetscrim":
+                say(StudioDrive.pressScrim())
+            case "sactivate":
+                NSApp.activate()
+                main?.window?.makeKeyAndOrderFront(nil)
+                say("SACTIVATE keyWindow=\(NSApp.keyWindow != nil)")
+            case "sheetmenu":
+                say(StudioDrive.menu())
             case "sanimate":
                 StudioWindowController.shared.image.animateStaged()
             case "smachine":
-                if let panel = StudioWindowController.shared.panel, let content = panel.contentView {
-                    StudioWindowController.shared.activeLane?.presentMachine(from: content)
+                if let sheet = StudioWindowController.shared.sheet {
+                    StudioWindowController.shared.activeLane?.presentMachine(from: sheet.toolbar.pill)
                 }
             case "sdraw":
                 say(StudioDrive.draws(main))
@@ -206,42 +226,107 @@
             "cmd-1": (18, "1", [.command]),
             "cmd-2": (19, "2", [.command]),
             "cmd-s": (1, "s", [.command]),
+            "cmd-w": (13, "w", [.command]),
+            "cmd-n": (45, "n", [.command]),
             "left": (123, "\u{F702}", [.function]),
             "right": (124, "\u{F703}", [.function]),
             "space": (49, " ", []),
         ]
 
         static func press(_ name: String) -> String {
-            guard let panel = StudioWindowController.shared.panel, let key = keys[name] else {
+            guard let window = StudioWindowController.shared.sheet?.host ?? NSApp.keyWindow ?? NSApp.mainWindow
+                ?? NSApp.windows.first(where: { $0.windowController is MainWindowController }),
+                let key = keys[name]
+            else {
                 return "SKEY \(name) no window or no such key"
             }
             guard
                 let event = NSEvent.keyEvent(
                     with: .keyDown, location: .zero, modifierFlags: key.flags, timestamp: ProcessInfo.processInfo.systemUptime,
-                    windowNumber: panel.windowNumber, context: nil, characters: key.characters,
+                    windowNumber: window.windowNumber, context: nil, characters: key.characters,
                     charactersIgnoringModifiers: key.characters, isARepeat: false, keyCode: key.code)
             else { return "SKEY \(name) could not be made" }
             NSApp.sendEvent(event)
             return "SKEY \(name) sent"
         }
 
-        /// Where the toolbar's items stand in the window, which the content view's own picture cannot
-        /// show: the lane switch, the machine pill, the queue and Done, with the pill's words.
+        /// Where the sheet's toolbar items stand, in the sheet's own coordinates, with the pill's words.
         static func toolbar() -> String {
-            guard let panel = StudioWindowController.shared.panel, let toolbar = panel.toolbar else {
-                return "STOOLBAR no window"
-            }
-            let height = panel.frame.height
-            let rows = toolbar.items.map { item -> String in
-                guard let view = item.view, view.window != nil else { return "\(item.itemIdentifier.rawValue) (no view)" }
-                let frame = view.convert(view.bounds, to: nil)
-                return String(
-                    format: "%@ x=%.0f y=%.0f w=%.0f h=%.0f", item.itemIdentifier.rawValue, frame.minX,
-                    height - frame.maxY, frame.width, frame.height)
+            guard let toolbar = StudioWindowController.shared.sheet?.toolbar else { return "STOOLBAR no sheet" }
+            toolbar.layoutSubtreeIfNeeded()
+            let rows = [
+                ("lane", toolbar.lanes as NSView), ("machine", toolbar.pill), ("queue", toolbar.queue),
+                ("done", toolbar.done),
+            ].map { name, view in
+                String(
+                    format: "%@ x=%.0f y=%.0f w=%.0f h=%.0f", name, view.frame.minX, view.frame.minY,
+                    view.frame.width, view.frame.height)
             }
             let machine = StudioWindowController.shared.activeLane?.machine
-            return "STOOLBAR window=\(Int(panel.frame.width))x\(Int(height)) " + rows.joined(separator: " | ")
+            return "STOOLBAR sheet=\(Int(toolbar.frame.width))x\(Int(toolbar.frame.height)) " + rows.joined(separator: " | ")
                 + " machine=[\(machine?.spoken ?? "-")] tone=\(String(describing: machine?.tone))"
+        }
+
+        /// The sheet as it stands: Core's state, the frame it has against the frame Core gives this
+        /// window, the title-bar clearance, how present it is and how many layout passes the
+        /// workspace has run — two reads with a motion between them show the motion lays nothing out.
+        static func sheet() -> String {
+            let controller = StudioWindowController.shared
+            guard let sheet = controller.sheet, let host = sheet.host else {
+                return "SHEET state=\(controller.state) not installed"
+            }
+            let expected = sheet.expectedFrame
+            let actual = sheet.sheetFrame
+            return String(
+                format:
+                    "SHEET state=%@ window=%.0fx%.0f titlebar=%.1f frame=(%.1f,%.1f %.1f×%.1f) core=(%.1f,%.1f %.1f×%.1f) "
+                    + "presence=%.3f moving=%@ layoutPasses=%d keys=%@ folded=%@ conversationChords=%@",
+                String(describing: controller.state), host.frame.width, host.frame.height,
+                StudioSheetView.titlebarClearance(in: host), actual.minX, actual.minY, actual.width,
+                actual.height, expected.x, expected.y, expected.width, expected.height, sheet.currentPresence,
+                String(sheet.isMoving), sheet.workspace.layoutPasses, String(controller.isKey),
+                String(sheet.workspace.folded), String(controller.state.conversationChordsEnabled))
+        }
+
+        /// Holds the sheet at `progress` of its motion with no animation, opening or closing, so a
+        /// frame in the middle of the move can be photographed.
+        static func hold(at progress: Double, closing: Bool) {
+            let controller = StudioWindowController.shared
+            if controller.state == .closed { controller.show() }
+            controller.hold(at: progress, closing: closing)
+        }
+
+        /// A real left-button press, handed to the application at a point of the scrim above the sheet.
+        static func pressScrim() -> String {
+            guard let sheet = StudioWindowController.shared.sheet, let host = sheet.host,
+                let point = sheet.scrimPointInWindow
+            else { return "SSCRIM no sheet" }
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                guard
+                    let event = NSEvent.mouseEvent(
+                        with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: host.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+                else { return "SSCRIM could not be made" }
+                NSApp.sendEvent(event)
+            }
+            return "SSCRIM pressed at \(Int(point.x)),\(Int(point.y)) state=\(StudioWindowController.shared.state)"
+        }
+
+        /// Which menu items are enabled and which are not after validation, so the allow-list can be
+        /// read straight off the menu bar.
+        static func menu() -> String {
+            guard let main = NSApp.mainMenu else { return "SMENU no menu bar" }
+            var on: [String] = []
+            var off: [String] = []
+            for holder in main.items {
+                guard let submenu = holder.submenu else { continue }
+                submenu.update()
+                for item in submenu.items where !item.isSeparatorItem && !item.hasSubmenu {
+                    let name = "\(submenu.title)/\(item.title.split(separator: " ").prefix(3).joined(separator: " "))"
+                    if item.isEnabled { on.append(name) } else { off.append(name) }
+                }
+            }
+            return "SMENU state=\(StudioWindowController.shared.state) ENABLED \(on.joined(separator: ", ")) || DISABLED \(off.joined(separator: ", "))"
         }
 
         /// A layout that held a draw slot, written and read back and rebuilt: which panes paint, on

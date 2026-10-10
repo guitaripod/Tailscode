@@ -34,8 +34,8 @@ enum StudioExhibit: Equatable {
 /// The picture being made, held above whatever is drawing it.
 ///
 /// A render is seconds to minutes of another machine's card, so the job, the slot, the decoded
-/// pictures and the machine's folder live here and the panel is only a view onto them. Closing the
-/// Studio closes a window rather than throwing away somebody's card, and opening it again finds the
+/// pictures and the machine's folder live here and the sheet is only a view onto them. Closing the
+/// Studio closes a sheet rather than throwing away somebody's card, and opening it again finds the
 /// same picture exactly where it was — which is also why a pane in the grid gets a studio of its
 /// own: two surfaces never share a prompt, and neither can stop the other's render.
 ///

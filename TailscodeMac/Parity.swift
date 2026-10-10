@@ -224,11 +224,11 @@ enum ParityManifest {
             return .partial(
                 "StudioWindowController",
                 missing:
-                    "The lane is on the composer's switch exactly when a machine that can paint is known, arrives and leaves with the door without a restart, wears the machine's own line, and opens the Studio on the Image lane with the words typed in the box as the brief — the Studio is a panel beside the conversation, and closing it never stops a render. What the Mac does not draw is the lane as a standing mode of the box: its pills row is a row of doors, so there are no image chips under the composer and no Render send word, because the chips live on the Studio's dock where the picture is.")
+                    "The lane is on the composer's switch exactly when a machine that can paint is known, arrives and leaves with the door without a restart, wears the machine's own line, and opens the Studio on the Image lane with the words typed in the box as the brief — the Studio is a sheet that rises inside the window over the conversation, and closing it never stops a render. What the Mac does not draw is the lane as a standing mode of the box: its pills row is a row of doors, so there are no image chips under the composer and no Render send word, because the chips live on the Studio's dock where the picture is.")
         case .imageLibrary: return .implemented("MacImageLibrary")
         case .imagePromptHelper: return .implemented("StudioEnhanceControl")
         case .imageLivePreview: return .implemented("sketchLayer")
-        case .studioSheet: return .gap("the sheet lands with the Mac sheet task")
+        case .studioSheet: return .implemented("StudioSheetView")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("onChatDropped")
         case .clickToActivate: return .implemented("pressLanded")

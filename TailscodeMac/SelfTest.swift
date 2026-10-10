@@ -259,7 +259,8 @@ enum SelfTest {
         if studioFailures.isEmpty {
             report(
                 "studio: both lanes' shelves, stage states, verbs, chips, the clip's start frame and passes, "
-                    + "what redraws on a change, the folds, the keys and the lane switch all hold")
+                    + "what redraws on a change, the folds, the keys, the lane switch and the sheet — its frame, motion, "
+                    + "keys, focus and menu — all hold")
         } else {
             report("studio: \(studioFailures.joined(separator: " · "))")
             failures += 1

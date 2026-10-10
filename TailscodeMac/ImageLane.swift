@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// The Image lane: `MacImageStudio` seen through the seam the shell draws every lane through. It
 /// owns the stage and the dock it hands over and answers for everything that is specific to making a
 /// picture — which verbs a stage offers, what a shelf tile is, what the machine pill says — and
-/// nothing else. A pane in the grid builds its own lane over a studio of its own, so the panel's
+/// nothing else. A pane in the grid builds its own lane over a studio of its own, so the sheet's
 /// picture and a pane's never share a prompt.
 @MainActor
 final class ImageLane: StudioLane {
