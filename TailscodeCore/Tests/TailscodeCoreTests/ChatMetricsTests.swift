@@ -77,10 +77,10 @@ import Testing
         }
     }
 
-    @Test func gapIsSymmetricForEveryPair() {
+    @Test func gapIsSymmetricForEveryPairThatDoesNotTouchAPrompt() {
         for (density, input, metrics) in everyTable() {
-            for a in ChatRowClass.allCases {
-                for b in ChatRowClass.allCases {
+            for a in ChatRowClass.allCases where a != .prompt {
+                for b in ChatRowClass.allCases where b != .prompt {
                     #expect(
                         metrics.gap(from: a, to: b) == metrics.gap(from: b, to: a),
                         "\(a) and \(b) at \(density) \(input)")
@@ -118,7 +118,8 @@ import Testing
         #expect(m.gap(from: .picture, to: .furniture) == 6)
         #expect(m.gap(from: .picture, to: .picture) == 8)
         #expect(m.gap(from: .prose, to: .prompt) == 16)
-        #expect(m.gap(from: .prompt, to: .prose) == 16)
+        #expect(m.gap(from: .prompt, to: .prose) == 8, "a prompt is the heading of its answer")
+        #expect(m.gap(from: .prompt, to: .furniture) == 8)
         #expect(m.gap(from: .furniture, to: .prompt) == 16)
     }
 
@@ -126,7 +127,8 @@ import Testing
         let m = ChatMetrics.metrics(for: .comfortable, input: .pointer)
         for a in ChatRowClass.allCases {
             for b in ChatRowClass.allCases {
-                let expected: Double = a == .prompt || b == .prompt ? 24 : (a == .picture && b == .picture ? 8 : 12)
+                let expected: Double =
+                    b == .prompt ? 24 : (a == .picture && b == .picture ? 8 : 12)
                 #expect(m.gap(from: a, to: b) == expected, "\(a) to \(b)")
             }
         }

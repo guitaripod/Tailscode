@@ -516,7 +516,7 @@ extension SelfTest {
             let role = tailscode_accessible_role(parts.widget)
             if count == 1 {
                 try expect(
-                    labelText(line.chevron) == "↗" && parts.model.reading.opensDirectlyHere,
+                    labelText(line.chevron) == "↗" && parts.model.reading.opensDirectly,
                     "1: a rail of one address is the link — a quiet ↗, not a disclosure")
                 try expect(
                     role == Int32(GTK_ACCESSIBLE_ROLE_LINK.rawValue),
@@ -532,7 +532,7 @@ extension SelfTest {
                 try expect(labelText(line.chevron) == "›", "\(count): collapsed reads ›")
                 try expect(
                     role == Int32(GTK_ACCESSIBLE_ROLE_BUTTON.rawValue)
-                        && !parts.model.reading.opensDirectlyHere,
+                        && !parts.model.reading.opensDirectly,
                     "\(count): a longer rail is a disclosure button: \(role)")
                 try expect(
                     LinkRailView.menuRows(model: parts.model, ref: WidgetRef(parts.widget)).map(\.title)

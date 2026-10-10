@@ -34,10 +34,6 @@ final class WidgetRef: @unchecked Sendable {
 }
 
 extension LinkRailReading {
-    /// A rail with exactly one address has nothing to expand: it is the link itself, opened by a
-    /// press, with no plate and no chevron.
-    var opensDirectlyHere: Bool { count == 1 }
-
     /// What a screen reader is told of a rail that is one link: its title and that it is a link,
     /// where a longer rail is a disclosure button.
     var spokenAsLink: String {
@@ -218,7 +214,7 @@ final class LinkRailLine: @unchecked Sendable {
         } else {
             gtk_widget_set_visible(more, 0)
         }
-        let direct = reading.opensDirectlyHere
+        let direct = reading.opensDirectly
         gtk_label_set_text(op(chevron), direct ? "↗" : expanded ? "⌄" : "›")
         if expanded {
             gtk_widget_add_css_class(widget, "link-rail-open")
@@ -311,7 +307,7 @@ enum LinkRailView {
     ) -> Parts {
         let model = LinkRailRegistry.shared.make(
             key: key, urls: urls, source: source, toast: context?.toast)
-        let direct = model.reading.opensDirectlyHere
+        let direct = model.reading.opensDirectly
         let widget = tailscode_box_new_with_role(
             GTK_ORIENTATION_HORIZONTAL, 6,
             direct ? GTK_ACCESSIBLE_ROLE_LINK : GTK_ACCESSIBLE_ROLE_BUTTON)!
@@ -426,7 +422,7 @@ enum LinkRailView {
     static func menuRows(
         model: LinkRailModel, ref: WidgetRef
     ) -> [(title: String, detail: String?, action: @Sendable () -> Void)] {
-        if model.reading.opensDirectlyHere, let url = model.urls.first {
+        if model.reading.opensDirectly, let url = model.urls.first {
             return [(title: Localized.text("Copy address"), detail: nil, action: { model.copy(url) })]
         }
         return [

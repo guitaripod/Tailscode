@@ -18,8 +18,7 @@ final class LinkRailModel {
 
     /// A rail of one address has nothing to expand: it is the link. A press opens the address, no
     /// plate comes up, and the line says so with an arrow where a longer rail has its chevron.
-    /// Core is to carry the same question on the reading; this is the one place to swap it.
-    var opensDirectly: Bool { urls.count == 1 }
+    var opensDirectly: Bool { reading.opensDirectly }
     private(set) var icons: [String: NSImage] = [:]
     private var fetches = LinkRailFetches()
     private var watchers: [(owner: Weak, change: () -> Void)] = []

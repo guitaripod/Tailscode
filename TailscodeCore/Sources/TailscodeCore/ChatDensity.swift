@@ -125,14 +125,16 @@ public struct ChatMetrics: Sendable, Equatable {
     }
 
     /// The air between two neighbouring rows, from the row above to the row below; zero above the
-    /// first. A prompt starts a turn, so the space on either side of one is the turn gap; a picture
+    /// first. A prompt starts a turn, so the space above one is the turn gap; below it the answer
+    /// sits at the paragraph gap, because a question is the heading of its own answer. A picture
     /// beside anything is the strip gap, and beside another picture the strip's gutter; code beside
     /// anything is the code gap; prose beside a flat line is the furniture-edge gap; two flat lines
-    /// sit nearly touching. Symmetric by construction, so a client never asks which way round a
-    /// pair is.
+    /// sit nearly touching. Every pair except the ones touching a prompt is symmetric, so a client
+    /// never asks which way round a pair is.
     public func gap(from previous: ChatRowClass?, to next: ChatRowClass) -> Double {
         guard let previous else { return 0 }
-        if previous == .prompt || next == .prompt { return turnGap }
+        if next == .prompt { return turnGap }
+        if previous == .prompt { return paragraphGap }
         if previous == .picture && next == .picture { return imageStripGap }
         if previous == .picture || next == .picture { return pictureStripGap }
         switch (previous, next) {
