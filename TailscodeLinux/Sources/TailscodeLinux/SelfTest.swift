@@ -191,6 +191,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkCascadeBudget()
+            report("cascade budget: \(checks) claims hold — calm writes on every frame the display draws")
+        } catch {
+            report("cascade budget: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkRepeatingMotion()
             report("repeating motion: \(checks) claims hold — every never-ending lap asks again")
         } catch {
@@ -3053,6 +3061,36 @@ public enum SelfTest {
     /// already moving, and reads what each one is left holding.
     ///
     /// The road itself is proved before its callers, because two surfaces agreeing means nothing if
+    /// The reveal's clock is the display's: a calm window moves it on every frame, however fast the
+    /// panel, and only a window the governor has shed is held to a cap. The cap was once applied at
+    /// every level, which left text stepping at thirty frames a second on a panel that draws a
+    /// hundred and sixty-five.
+    private static func checkCascadeBudget() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("cascade budget: \(label)") }
+            checks += 1
+        }
+        let before = (CascadeBudget.budget, CascadeBudget.level)
+        defer { CascadeBudget.apply(before.0, level: before.1) }
+        func settle(_ level: ShedLevel) {
+            CascadeBudget.apply(TileGovernor.animation(level: level, reducedMotion: false), level: level)
+        }
+        settle(.calm)
+        try expect(CascadeBudget.reveals, "a calm window reveals")
+        try expect(CascadeBudget.minimumInterval == nil, "and puts no gap between two frames")
+        settle(.busy)
+        try expect(CascadeBudget.reveals, "a busy window still reveals")
+        try expect(
+            CascadeBudget.minimumInterval.map { abs($0 - (1.0 / 30 - 0.004)) < 0.0001 } ?? false,
+            "but holds the clock to thirty frames a second")
+        settle(.loaded)
+        try expect(!CascadeBudget.reveals, "a loaded window hands text over at arrival granularity")
+        settle(.critical)
+        try expect(CascadeBudget.minimumInterval == nil && !CascadeBudget.reveals, "a critical one runs no clock at all")
+        return checks
+    }
+
     /// what they agree through is wrong: ``RepeatingMotion`` lays a clock exactly when the desk
     /// allows movement, never stacks a second on the first, takes it off again, and refuses a
     /// meaning the vocabulary calls still whatever the desk allows. GTK will not enumerate a

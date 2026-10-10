@@ -154,7 +154,9 @@ extension ChatPane {
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
             let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind)
         else { return false }
-        guard cascade.paint(label) else { return false }
+        var landed = false
+        Soak.timePaint { landed = cascade.paint(label) }
+        guard landed else { return false }
         if canvasPromptKey != nil {
             settleFreshCanvas()
         } else if followsBottom {

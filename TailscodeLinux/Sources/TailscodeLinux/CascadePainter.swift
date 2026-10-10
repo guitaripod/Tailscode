@@ -62,18 +62,24 @@ enum CascadeTint {
 enum CascadeBudget {
     nonisolated(unsafe) private(set) static var budget = TileGovernor.animation(
         level: .calm, reducedMotion: false)
+    nonisolated(unsafe) private(set) static var level = ShedLevel.calm
 
-    static func apply(_ next: AnimationBudget) {
+    static func apply(_ next: AnimationBudget, level newLevel: ShedLevel) {
         budget = next
+        level = newLevel
     }
 
     /// Whether the written-not-pasted reveal runs at all.
     static var reveals: Bool { budget.cascade == .focusedOnly && budget.tickCap > 0 }
 
     /// The shortest gap between two moves of the reveal, with a little slack so a 60 Hz clock
-    /// capped at 30 moves every second frame rather than every third.
+    /// capped at 30 moves every second frame rather than every third. Nil is no gap at all: at the
+    /// calm level the reveal moves on every frame the display draws — 144 or 165 times a second on
+    /// a fast panel, which is the whole of what makes written text read as written rather than as
+    /// stepping — and the governor's caps are what a window falls back to once it is no longer
+    /// calm, not what it starts under.
     static var minimumInterval: Double? {
-        guard budget.tickCap > 0 else { return nil }
+        guard level > .calm, budget.tickCap > 0 else { return nil }
         return 1 / budget.tickCap - 0.004
     }
 }

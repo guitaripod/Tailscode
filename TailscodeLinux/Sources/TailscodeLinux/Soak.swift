@@ -14,7 +14,7 @@ import TailscodeCore
 /// `lagN` is how many times the 100 ms lag timer fired in the window (zero means the main loop
 /// never reached it, and `lagMax` is then the time since it last did); `ticks` is the number of
 /// live frame-clock callbacks; `tickRuns`, `frames`, `parses`, `parseHits`, `listSaves`,
-/// `listSaveMs`, `applies` and `applyMs` are totals over the last `dt` seconds; `cpu` and
+/// `listSaveMs`, `applies`, `applyMs`, `paints` and `paintMs` are totals over the last `dt` seconds; `cpu` and
 /// `mainCpu` are the process's and the main thread's share of one core over the same window.
 enum Soak {
     static let requested = ProcessInfo.processInfo.environment["TAILSCODE_SOAK"].flatMap {
@@ -24,6 +24,7 @@ enum Soak {
     private static let running = Atomic<Bool>(false)
     private static let saves = Mutex((count: 0, nanoseconds: UInt64(0)))
     private static let applies = Mutex((count: 0, nanoseconds: UInt64(0)))
+    private static let paints = Mutex((count: 0, nanoseconds: UInt64(0)))
     private static let window = Mutex(Window())
 
     private struct Window {
@@ -80,6 +81,11 @@ enum Soak {
     /// live row's re-render.
     static func timeApply(_ apply: () -> Void) { time(apply, into: applies) }
 
+    /// One frame of the written-not-pasted reveal: the attributes and the row's re-layout. The
+    /// count over the window is the rate the text is actually moving at, which is the number to
+    /// compare with the display's refresh when text is said not to stream at it.
+    static func timePaint(_ paint: () -> Void) { time(paint, into: paints) }
+
     private static func time(
         _ work: () -> Void, into total: borrowing Mutex<(count: Int, nanoseconds: UInt64)>
     ) {
@@ -112,6 +118,7 @@ enum Soak {
         tailscode_soak_read(&sample)
         let (saveCount, saveNanoseconds) = drain(saves)
         let (applyCount, applyNanoseconds) = drain(applies)
+        let (paintCount, paintNanoseconds) = drain(paints)
         let status = procStatus()
         let fds = ((try? FileManager.default.contentsOfDirectory(atPath: "/proc/self/fd"))?.count ?? 1) - 1
         let cpuNow = cpuTicks(of: "/proc/self/stat")
@@ -144,6 +151,8 @@ enum Soak {
                 "listSaveMs=\(String(format: "%.1f", Double(saveNanoseconds) / 1e6))",
                 "applies=\(applyCount)",
                 "applyMs=\(String(format: "%.1f", Double(applyNanoseconds) / 1e6))",
+                "paints=\(paintCount)",
+                "paintMs=\(String(format: "%.1f", Double(paintNanoseconds) / 1e6))",
                 "cpu=\(String(format: "%.1f", cpu))",
                 "mainCpu=\(String(format: "%.1f", mainCpu))",
             ]

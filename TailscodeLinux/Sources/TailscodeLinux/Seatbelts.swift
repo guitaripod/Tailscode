@@ -178,7 +178,8 @@ final class Seatbelts: @unchecked Sendable {
             }
             level = effective
         }
-        CascadeBudget.apply(TileGovernor.animation(level: effective, reducedMotion: reducedMotion))
+        CascadeBudget.apply(
+            TileGovernor.animation(level: effective, reducedMotion: reducedMotion), level: effective)
         lock.lock()
         publication.busy = reading.loop.busy2
         publication.worstMs = max(publication.worstMs, Int((reading.worstSinceLast * 1000).rounded()))
