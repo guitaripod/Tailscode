@@ -615,9 +615,7 @@ final class MainWindow: @unchecked Sendable {
                             .utf8))
                 case "drawtype":
                     self.activePane.draw?.driverType(argument)
-                    let typed = self.activePane.draw.map { pane in
-                        gtk_editable_get_text(op(pane.entry)).map(String.init(cString:)) ?? ""
-                    } ?? ""
+                    let typed = self.activePane.draw?.promptText ?? ""
                     FileHandle.standardOutput.write(
                         Data("DRAWTYPE \(typed.isEmpty ? "-" : typed)\n".utf8))
                 case "drawenhance":
@@ -644,6 +642,25 @@ final class MainWindow: @unchecked Sendable {
                     ImageWindow.current?.driverType(argument)
                     FileHandle.standardOutput.write(
                         Data("IMAGETYPE \(argument.isEmpty ? "-" : argument)\n".utf8))
+                case "imageengine":
+                    if let engine = ImageGenEngine(rawValue: argument) {
+                        ImageStudio.shared.choose(engine: engine)
+                    }
+                    FileHandle.standardOutput.write(
+                        Data("IMAGEENGINE \(ImageStudio.shared.slot.engine.rawValue)\n".utf8))
+                case "imageaspect":
+                    if let aspect = ImageGenAspect(rawValue: argument) {
+                        ImageStudio.shared.choose(aspect: aspect)
+                    }
+                    FileHandle.standardOutput.write(
+                        Data("IMAGEASPECT \(ImageStudio.shared.slot.aspect.rawValue)\n".utf8))
+                case "imageattach":
+                    if let window = ImageWindow.current {
+                        window.driverAttach(argument)
+                    } else {
+                        self.activePane.draw?.attachFiles([argument])
+                    }
+                    FileHandle.standardOutput.write(Data("IMAGEATTACH \(argument)\n".utf8))
                 case "imagego":
                     ImageWindow.current?.driverSubmit()
                     FileHandle.standardOutput.write(
@@ -658,6 +675,10 @@ final class MainWindow: @unchecked Sendable {
                 case "imagerewrite":
                     FileHandle.standardOutput.write(
                         Data("IMAGEREWRITE \(ImageWindow.current?.rewriteSummary ?? "-") sketch=\(ImageStudio.shared.previewTexture != 0) anim=\(RepeatingMotion.allowed) arrival=\(ImageWindow.current?.arrivalSummary ?? "-")\n".utf8))
+                case "studio":
+                    let line = ImageWindow.current?.studioSummary
+                        ?? self.activePane.draw?.studioSummary ?? "-"
+                    FileHandle.standardOutput.write(Data("STUDIO \(line)\n".utf8))
                 case "imagesum":
                     FileHandle.standardOutput.write(
                         Data("IMAGESUM \(ImageStudio.shared.summary)\n".utf8))

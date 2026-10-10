@@ -169,6 +169,17 @@ void tailscode_set_text_scale(double scale);
 /// Swift directly.
 void tailscode_set_accessible_label(GtkWidget *widget, const char *label);
 
+/// Takes a widget out of the accessibility tree, or puts it back. A picture that is only the
+/// machine's sketch of another picture says nothing a screen reader should read twice.
+void tailscode_set_accessible_hidden(GtkWidget *widget, gboolean hidden);
+
+/// Makes `widget` a file the pointer can carry out of the window — to a file manager, to another
+/// app. `resolve` is asked when the press has become a drag and answers the local path of the
+/// file's own bytes (a string the shim frees), or NULL when this device does not hold them yet,
+/// in which case nothing is dragged and the press stays a click.
+void tailscode_make_file_drag_source(
+    GtkWidget *widget, char *(*resolve)(void *data), void *data);
+
 /// The widget that currently holds focus inside `root`, or NULL — how a key handler tells the
 /// prompt box apart from the search field without guessing from the event.
 GtkWidget *tailscode_focused_widget(GtkWidget *root);

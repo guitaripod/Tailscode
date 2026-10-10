@@ -6,6 +6,12 @@ import TailscodeCore
 /// what has been made on a machine by any device, of which a picture made this session is simply
 /// the newest entry. One shelf per machine: ``ImageStudio`` owns one and rebuilds it whenever it
 /// points somewhere else, so a pane's shelf and its renders always answer for the same endpoint.
+///
+/// A machine may keep hundreds of pictures and this device holds a decoded thumbnail only for the
+/// ones somebody can see: the shelf says which tiles are near the eye (``want(_:keeping:)``), the
+/// library decodes those off the main loop from its disk cache or the machine's own small copy,
+/// and lets go of the rest. The listing, the facts and the files stay on disk; only pixels are
+/// bounded.
 final class DrawLibrary: @unchecked Sendable {
     static let didChange = Notification.Name("tailscode.drawLibrary.didChange")
 
@@ -25,6 +31,10 @@ final class DrawLibrary: @unchecked Sendable {
     private var pendingDescribe: Set<String> = []
     private var pendingThumbnails: [ImageGenLibraryItem] = []
     private var decodingThumbnails = false
+    private var wanted: Set<String> = []
+    private var kept: Set<String> = []
+    private var fetchingOriginals: Set<String> = []
+    private var decoding: Set<String> = []
 
     init(endpoint: ImageGenEndpoint) {
         self.endpoint = endpoint
@@ -46,6 +56,8 @@ final class DrawLibrary: @unchecked Sendable {
             if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
         }
         textures = [:]
+        wanted = []
+        pendingThumbnails = []
     }
 
     /// Asks the machine what it has made, newest first. The cached listing is shown the moment
@@ -66,7 +78,6 @@ final class DrawLibrary: @unchecked Sendable {
                     self.failure = nil
                     self.staleSince = nil
                     self.cache.store(listing: items)
-                    self.queueThumbnails(for: items)
                 case .failure(let failure):
                     self.failure = failure
                 }
@@ -97,6 +108,23 @@ final class DrawLibrary: @unchecked Sendable {
 
     func originalURL(_ item: ImageGenLibraryItem) -> URL { cache.originalURL(item) }
 
+    /// The path of a picture's own bytes when this device already holds them — what a drag out
+    /// hands a file manager. Nil until they have been fetched once.
+    func localOriginal(_ item: ImageGenLibraryItem) -> String? {
+        let path = cache.originalURL(item).path
+        return FileManager.default.fileExists(atPath: path) ? path : nil
+    }
+
+    /// Fetches the original in the background so a drag out has something to carry by the time
+    /// the pointer moves: a tile the pointer has rested on is one somebody may pick up.
+    func prefetchOriginal(_ item: ImageGenLibraryItem) {
+        guard localOriginal(item) == nil, fetchingOriginals.insert(item.id).inserted else { return }
+        Task.detached { [weak self] in
+            _ = await self?.fetchOriginal(item)
+            Gtk.onMain { [weak self] in self?.fetchingOriginals.remove(item.id) }
+        }
+    }
+
     /// The file's own bytes: from disk when this device already has them, else fetched once and
     /// kept — a save, a reference or the stage never asks the machine for the same picture twice.
     func fetchOriginal(_ item: ImageGenLibraryItem) async -> Data? {
@@ -108,22 +136,34 @@ final class DrawLibrary: @unchecked Sendable {
         return data
     }
 
-    /// Small copies for the tiles, decoded a few at a time so a shelf of seventy pictures does not
-    /// hand the cairo renderer seventy textures in one frame.
-    private func queueThumbnails(for items: [ImageGenLibraryItem]) {
-        let missing = items.filter { textures[$0.id] == nil }
-        pendingThumbnails.append(contentsOf: missing)
+    /// Says which pictures somebody can see: their thumbnails are decoded, and every thumbnail
+    /// that is neither wanted nor named in `keeping` is let go of. The tiles ask this on every
+    /// scroll and on every listing, so a shelf of three hundred holds a few dozen.
+    func want(_ ids: [String], keeping: Set<String> = []) {
+        wanted = Set(ids)
+        kept = keeping
+        for (id, bits) in textures where !wanted.contains(id) && !kept.contains(id) {
+            textures.removeValue(forKey: id)
+            if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
+        }
+        let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        pendingThumbnails = ids.compactMap { id in
+            textures[id] == nil && !decoding.contains(id) ? byID[id] : nil
+        }
         pump()
     }
 
-    private static let batchSize = 6
-    private static let thumbnailDimension: Int32 = 256
+    /// Small copies for the tiles, decoded a few at a time so a shelf does not hand the cairo
+    /// renderer a texture per picture in one frame.
+    private static let batchSize = 4
+    private static let thumbnailDimension: Int32 = 176
 
     private func pump() {
         guard !decodingThumbnails, !pendingThumbnails.isEmpty else { return }
         decodingThumbnails = true
         let batch = Array(pendingThumbnails.prefix(Self.batchSize))
         pendingThumbnails.removeFirst(batch.count)
+        for item in batch { decoding.insert(item.id) }
         let client = self.client
         let cache = self.cache
         Task.detached { [weak self] in
@@ -134,7 +174,10 @@ final class DrawLibrary: @unchecked Sendable {
                     bytes = await client.thumbnail(item, format: .jpeg)
                     if let fresh = bytes { try? fresh.write(to: file, options: .atomic) }
                 }
-                guard let data = bytes else { continue }
+                guard let data = bytes else {
+                    Gtk.onMain { [weak self] in self?.decoding.remove(item.id) }
+                    continue
+                }
                 let bits: UInt = data.withUnsafeBytes { buffer in
                     guard let base = buffer.baseAddress else { return 0 }
                     var width: Int32 = 0
@@ -145,9 +188,22 @@ final class DrawLibrary: @unchecked Sendable {
                     else { return 0 }
                     return UInt(bitPattern: UnsafeMutableRawPointer(texture))
                 }
-                guard bits != 0 else { continue }
+                guard bits != 0 else {
+                    Gtk.onMain { [weak self] in self?.decoding.remove(item.id) }
+                    continue
+                }
                 Gtk.onMain { [weak self] in
-                    guard let self else { return }
+                    guard let self else {
+                        if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
+                        return
+                    }
+                    self.decoding.remove(item.id)
+                    guard self.wanted.contains(item.id) || self.kept.contains(item.id),
+                        self.textures[item.id] == nil
+                    else {
+                        if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
+                        return
+                    }
                     self.textures[item.id] = bits
                     self.announce()
                 }
@@ -159,6 +215,10 @@ final class DrawLibrary: @unchecked Sendable {
             }
         }
     }
+
+    /// How many decoded thumbnails this library is holding, for a harness that has to prove the
+    /// shelf stays bounded.
+    var heldThumbnails: Int { textures.count }
 
     /// News is batched rather than shouted: a listing of a hundred pictures decodes a hundred
     /// thumbnails and reads a hundred file heads, and a surface told about each one redrew a

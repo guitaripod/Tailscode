@@ -937,13 +937,15 @@ final class ChatPane: @unchecked Sendable {
     func handleDrawChord(_ chord: KeyChord) -> Bool {
         guard let draw else { return false }
         if Gtk.focusTakesText(draw.hostWindow ?? draw.root) {
-            guard let command = ImageGenCommand.command(for: chord), command == .submit else {
+            guard let command = ImageGenCommand.command(for: chord), command == .submit, !chord.shift
+            else {
                 return false
             }
             draw.handle(command)
             return true
         }
         guard let command = ImageGenCommand.command(for: chord) else { return false }
+        if command == .submit, Gtk.focusIsButton(in: draw.hostWindow ?? draw.root) { return false }
         draw.handle(command)
         return true
     }

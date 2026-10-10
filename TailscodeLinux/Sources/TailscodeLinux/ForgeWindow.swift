@@ -35,10 +35,11 @@ final class ForgeWindow: @unchecked Sendable {
 
     private let window: UnsafeMutablePointer<GtkWidget>
     private let pane: ForgePane
-    /// The header's own title widget: the subtitle is where the closing-keeps-rendering promise
-    /// is made while a render is out. A bar under the studio for one label and a Done button that
-    /// only repeated the window's own close was a row of chrome the stage paid for.
-    private let title: UnsafeMutablePointer<GtkWidget>
+    /// The header's own title widget: the machine pill, and under it the line where the
+    /// closing-keeps-rendering promise is made while a render is out. A bar under the studio for
+    /// one label and a Done button that only repeated the window's own close was a row of chrome
+    /// the stage paid for.
+    private let note = Gtk.label("", css: "studio-note", selectable: false)
 
     private init(parent: UnsafeMutablePointer<GtkWidget>?) {
         window = gtk_window_new()!
@@ -54,11 +55,17 @@ final class ForgeWindow: @unchecked Sendable {
         }
 
         let header = adw_header_bar_new()!
-        title = adw_window_title_new(ForgeSurface.title, ForgeSurface.subtitle)!
-        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), title)
-        gtk_window_set_titlebar(ptr(window), header)
-
         pane = ForgePane(parent: window)
+        let titleBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        gtk_widget_set_valign(titleBox, GTK_ALIGN_CENTER)
+        gtk_label_set_xalign(op(note), 0.5)
+        gtk_label_set_ellipsize(op(note), PANGO_ELLIPSIZE_END)
+        gtk_label_set_max_width_chars(op(note), 72)
+        gtk_widget_set_halign(note, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(titleBox), pane.machine.widget)
+        gtk_box_append(ptr(titleBox), note)
+        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), titleBox)
+        gtk_window_set_titlebar(ptr(window), header)
         gtk_window_set_child(ptr(window), pane.root)
 
         pane.onChange = { [weak self] in
@@ -82,9 +89,14 @@ final class ForgeWindow: @unchecked Sendable {
     /// leaves the render running. It rides the header's subtitle while a render is out and gives
     /// the line back when none is.
     private func drawSubtitle() {
-        let note = ForgeSurface.dismissNote(rendering: ForgeRunner.shared.isRendering)
-        adw_window_title_set_subtitle(op(UnsafeMutableRawPointer(title)), note ?? ForgeSurface.subtitle)
+        let line = ForgeSurface.dismissNote(rendering: ForgeRunner.shared.isRendering)
+        gtk_label_set_text(op(note), line ?? Self.reserved)
     }
+
+    /// What the note says when it has nothing to say: a no-break space, so the line keeps its
+    /// height and the window's header does not grow and shrink under the stage as a render starts
+    /// and lands.
+    private static let reserved = "\u{00A0}"
 
     /// The board's keys first, then the window's one key. Escape closes only what the board did not
     /// already close — an expanded section takes it first — so a person who opened the history

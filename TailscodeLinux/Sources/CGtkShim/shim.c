@@ -803,6 +803,61 @@ void tailscode_make_pane_drag_source(GtkWidget *widget, const char *payload) {
 }
 
 typedef struct {
+    char *(*resolve)(void *data);
+    void *data;
+} TailscodeFileDrag;
+
+/// Asked at the moment the pointer has moved far enough to be a drag: the file goes out as a
+/// file list, which GTK offers a file manager as `text/uri-list` and another GTK app as the list
+/// itself. A tile whose bytes are not on this device yet answers NULL and the press stays a click.
+static GdkContentProvider *tailscode_file_drag_prepare(
+    GtkDragSource *source, double x, double y, gpointer raw) {
+    (void)source; (void)x; (void)y;
+    TailscodeFileDrag *box = raw;
+    char *path = box->resolve(box->data);
+    if (!path) return NULL;
+    GFile *file = g_file_new_for_path(path);
+    g_free(path);
+    GSList *list = g_slist_append(NULL, file);
+    GValue value = G_VALUE_INIT;
+    g_value_init(&value, GDK_TYPE_FILE_LIST);
+    g_value_set_boxed(&value, list);
+    GdkContentProvider *content = gdk_content_provider_new_for_value(&value);
+    g_value_unset(&value);
+    g_slist_free_full(list, g_object_unref);
+    return content;
+}
+
+static void tailscode_file_drag_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodeFileDrag *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
+void tailscode_make_file_drag_source(
+    GtkWidget *widget, char *(*resolve)(void *data), void *data) {
+    TailscodeFileDrag *box = g_new0(TailscodeFileDrag, 1);
+    box->resolve = resolve;
+    box->data = data;
+    GtkDragSource *source = gtk_drag_source_new();
+    gtk_drag_source_set_actions(source, GDK_ACTION_COPY);
+    g_signal_connect_data(
+        source, "prepare", G_CALLBACK(tailscode_file_drag_prepare), box,
+        tailscode_file_drag_destroy, 0);
+    GdkPaintable *ghost = gtk_widget_paintable_new(widget);
+    gtk_drag_source_set_icon(source, ghost, 0, 0);
+    g_object_unref(ghost);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(source));
+}
+
+void tailscode_set_accessible_hidden(GtkWidget *widget, gboolean hidden) {
+    gtk_accessible_update_state(
+        GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_STATE_HIDDEN, hidden, -1);
+}
+
+typedef struct {
     void (*motion)(const char *payload, double x, double y, void *data);
     void (*leave)(void *data);
     gboolean (*drop)(const char *payload, double x, double y, void *data);

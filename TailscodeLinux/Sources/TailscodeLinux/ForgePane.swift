@@ -3,82 +3,68 @@ import CGtkShim
 import Foundation
 import TailscodeCore
 
-/// A video being asked for, made, and watched — the body of the forge modal.
+/// A video being asked for, made, and watched — the Studio's video lane, in the window it opens
+/// over the work.
 ///
-/// The whole of what this shows is `ForgeBoard`'s. The composition is `ForgeStudio`'s: the stage
-/// is the room, the words are typed once, the settings walk as chips, and what was made is a strip
-/// of clips. Nothing here is state — the board, the connection and the render's own task live in
-/// ``ForgeRunner`` so that closing the window cannot cancel four minutes of somebody else's card.
-///
-/// The stage is one stack of two faces — the board's own (a glyph, or the machine's sketch of the
-/// clip while it renders) and the player — and a finished clip crossfades from the last sketch
-/// into the player as the file loads, rather than replacing it. The prompt and the chips stay
-/// put, so the next one is one edit away.
+/// The whole of what this shows is `ForgeBoard`'s, and the room it is shown in is the same one the
+/// image lane has: the stage owns the window, the brief is one dock under it, the shelf is the
+/// machine's clips as posters, and the machine is a pill. The stage plays the finished clip
+/// inline; while one renders it shows the machine's own sketch of the first frame, and the
+/// progress line along its bottom edge is one segment per pass of the graph. Nothing here is
+/// state — the board, the connection and the render's own task live in ``ForgeRunner`` so that
+/// closing the window cannot cancel four minutes of somebody else's card.
 final class ForgePane: @unchecked Sendable {
-    let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    let chrome: StudioFrame
+    var root: UnsafeMutablePointer<GtkWidget> { chrome.root }
+    var machine: StudioMachineButton { chrome.machine }
+    var shell: StudioStageShell { chrome.shell }
+    var shelf: StudioShelfView { chrome.shelf }
+    var dock: StudioDock { chrome.dock }
+
     private var player: OpaquePointer?
     private var surface: UnsafeMutablePointer<GtkWidget>?
     private var callbackBox: UnsafeMutableRawPointer?
     private(set) var playing: ForgeAsset?
-    /// Whether the player has said the file is loaded. Until it has, the stage keeps the face
-    /// it had — the sketch, usually — so the crossfade goes from a picture to a picture rather
-    /// than through a black surface.
+    /// Whether the player has said the file is loaded. Until it has, the stage keeps the face it
+    /// had — the sketch, usually — so the crossfade goes from a picture to a picture rather than
+    /// through a black surface.
     private var loaded = false
     private var muted = false
     /// The clip the pane opened by itself when it landed, so a snapshot that arrives twice does
     /// not open it twice.
     private var autoPlayed: ForgeAsset?
 
-    private let briefColumn = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 14)
-    private let stageColumn = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private let shelfColumn = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private let shelfList = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
-    private let shelfCountLabel = Gtk.label("", css: "draw-count", selectable: false)
-    private let stageFrame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private let underRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-    private let captionLabel: UnsafeMutablePointer<GtkWidget>
-    private let factsLabel: UnsafeMutablePointer<GtkWidget>
-    private let actionRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-    private let countLabel = Gtk.label("", css: "draw-count", selectable: false)
-    private var shapeButtons: [ForgeSize: UnsafeMutablePointer<GtkWidget>] = [:]
-    private var secondButtons: [Int: UnsafeMutablePointer<GtkWidget>] = [:]
-    private var fpsButtons: [Int: UnsafeMutablePointer<GtkWidget>] = [:]
-    private let seedLabel: UnsafeMutablePointer<GtkWidget>
-    private let seedLink: UnsafeMutablePointer<GtkWidget>
-    private let keysLabel: UnsafeMutablePointer<GtkWidget>
-    private let stageStack = gtk_stack_new()!
-    private let stageFace = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private let sketchFace = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+    private let faces = gtk_stack_new()!
+    private let emptyOverlay = gtk_overlay_new()!
+    private let backdrop = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private var emptyColumn: UnsafeMutablePointer<GtkWidget>!
+    private let frame = gtk_aspect_frame_new(0.5, 0.5, 1.5, 0)!
+    private let art = gtk_stack_new()!
+    private let sketchOverlay = gtk_overlay_new()!
     private let sketchPicture = gtk_picture_new()!
-    private let sketchCaption: UnsafeMutablePointer<GtkWidget>
-    private let sketchBar = gtk_progress_bar_new()!
+    private let sketchBadge = Gtk.label("", css: "studio-badge", selectable: false)
+    private let heldSlot = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private var sketchTexture: UInt = 0
     private var shownSketch: ImageGenPreviewFrame?
-    private let statusLine = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-    private let rendererHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private let frameHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private let promptView = gtk_text_view_new()!
+    private var backdropKey: String?
+    private var heldKey: String?
+
+    private let sizeChip: StudioChip
+    private let lengthChip: StudioChip
+    private let smoothChip: StudioChip
+    private let soundChip: StudioChip
+    private let avoidChip: StudioChip
+    private let seedChip: StudioChip
     private let avoidEntry = gtk_entry_new()!
     private let soundEntry = gtk_entry_new()!
-    private let enhanceButton: UnsafeMutablePointer<GtkWidget>
     private let helperMenu: UnsafeMutablePointer<GtkWidget>
-    private let rewriteBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
-    private let rewriteHead: UnsafeMutablePointer<GtkWidget>
-    private let rewriteBody = gtk_text_view_new()!
-    private let rewriteInstruction = gtk_entry_new()!
-    private let rewriteVerbs = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-    private let rewriteUse: UnsafeMutablePointer<GtkWidget>
-    private let rewriteKeep: UnsafeMutablePointer<GtkWidget>
-    private let rewriteAgain: UnsafeMutablePointer<GtkWidget>
-    private let rewriteStop: UnsafeMutablePointer<GtkWidget>
-    private var rewriteShown = ""
-    private var rewriteWasWriting = false
-    private var surveyShown: Date?
+    private let slotView: StudioSlotView
+    private let rewrite = StudioRewriteCard()
+    private let posters = ForgePosterLibrary()
+    private var referenceTexture: (path: String, bits: UInt)?
     /// The sentence typed before the helper's paragraph replaced it, kept so one press puts it
     /// back.
     private var beforeEnhance: String?
-    private let call: UnsafeMutablePointer<GtkWidget>
-    private let reasonLabel: UnsafeMutablePointer<GtkWidget>
 
     private var parent: UnsafeMutablePointer<GtkWidget>?
     private let runner = ForgeRunner.shared
@@ -92,6 +78,9 @@ final class ForgePane: @unchecked Sendable {
     /// before a clip opens lands here, and it says so rather than leaving a pressed row silent.
     private var working: String?
     private var typing = false
+    private var fadeEnds: Date?
+    private var arrived: ForgeAsset?
+    private var entries: [ForgeEntry] = []
 
     /// Told to the pane's owner whenever what this surface says about itself changes, so the modal's
     /// own footer follows the render rather than lagging a state behind it.
@@ -101,26 +90,32 @@ final class ForgePane: @unchecked Sendable {
 
     init(parent: UnsafeMutablePointer<GtkWidget>?) {
         self.parent = parent
-        reasonLabel = Gtk.label("", css: "forge-reason", wrap: true, selectable: false)
-        sketchCaption = Gtk.label("", css: "forge-stage-caption", selectable: false)
-        captionLabel = Gtk.label("", css: "draw-caption-lead", wrap: true, selectable: false)
-        factsLabel = Gtk.label("", css: "draw-facts", selectable: false)
-        seedLabel = Gtk.label("", css: "draw-toggle-title", selectable: false)
-        seedLink = Gtk.button(Localized.text("New seed"), css: ["draw-link"], onClick: {})
-        keysLabel = Gtk.label(ForgeBoard().hint, css: "draw-keys", wrap: true, selectable: false)
-        call = Gtk.button(ForgeBoard().renderCall, css: ["draw-go", "draw-go-wide"], onClick: {})
-        enhanceButton = Gtk.button(ImageGenWords.enhanceTitle, css: ["draw-link"], onClick: {})
+        let me = Weak<ForgePane>(nil)
+        sizeChip = StudioChip.menu { me.value?.choiceRows(.size) ?? [] }
+        lengthChip = StudioChip.menu { me.value?.choiceRows(.seconds) ?? [] }
+        smoothChip = StudioChip.menu { me.value?.choiceRows(.fps) ?? [] }
+        let soundCard = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        soundChip = StudioChip.popover(content: soundCard)
+        let avoidCard = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        avoidChip = StudioChip.popover(content: avoidCard)
+        seedChip = StudioChip.button { Gtk.onMain { me.value?.runner.pick(.seed, id: "reroll") } }
         let held = ForgeRunner.shared
-        helperMenu = Gtk.menuButton("", css: ["draw-link", "draw-helper-link"]) {
-            HelperMenu.sections(held)
+        helperMenu = Gtk.menuButton("", css: ["draw-chip"]) { HelperMenu.sections(held) }
+        slotView = StudioSlotView(
+            rows: { me.value?.frameRows() ?? [] },
+            onRemove: { Gtk.onMain { me.value?.runner.start(from: nil) } })
+        chrome = StudioFrame(helper: helperMenu, window: true)
+        me.value = self
+        buildEntryCard(soundCard, entry: soundEntry, placeholder: ForgeWords.soundPlaceholder, hint: ForgeWords.soundHint) {
+            [weak self] in self?.typedSound()
         }
-        rewriteHead = Gtk.label("", css: "draw-rewrite-head", wrap: true, selectable: false)
-        rewriteUse = Gtk.button(ImageGenRewriteWords.useTitle, css: ["draw-action", "draw-action-lead"], onClick: {})
-        rewriteKeep = Gtk.button(ImageGenRewriteWords.keepTitle, css: ["draw-action"], onClick: {})
-        rewriteAgain = Gtk.button(ImageGenRewriteWords.againTitle, css: ["draw-action"], onClick: {})
-        rewriteStop = Gtk.button(ImageGenRewriteWords.stopTitle, css: ["draw-action", "danger"], onClick: {})
-        buildRewriteCard()
-        buildRoot()
+        buildEntryCard(
+            avoidCard, entry: avoidEntry, placeholder: Localized.text("Nothing in particular"),
+            hint: ForgeWords.negativeIgnoredHint
+        ) { [weak self] in self?.typedAvoid() }
+        buildStage()
+        buildShelf()
+        buildDock()
         runner.watch(self) { [weak self] in
             Gtk.onMain { [weak self] in self?.render() }
         }
@@ -141,352 +136,171 @@ final class ForgePane: @unchecked Sendable {
         syncPrompt()
         syncAvoid()
         syncSound()
+        chrome.arrange(width: 1080, height: 680)
         render()
     }
 
-    private func buildRoot() {
-        Gtk.addClass(root, "canvas")
-        Gtk.addClass(root, "draw-pane")
-        Gtk.addClass(root, "forge-pane")
-        gtk_widget_set_hexpand(root, 1)
-        gtk_widget_set_vexpand(root, 1)
-        let columns = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        gtk_widget_set_hexpand(columns, 1)
-        gtk_widget_set_vexpand(columns, 1)
-        gtk_box_append(ptr(columns), buildBrief())
-        gtk_box_append(ptr(columns), buildStageColumn())
-        gtk_box_append(ptr(columns), buildShelfColumn())
-        gtk_box_append(ptr(root), columns)
+    private func buildEntryCard(
+        _ card: UnsafeMutablePointer<GtkWidget>, entry: UnsafeMutablePointer<GtkWidget>,
+        placeholder: String, hint: String, changed: @escaping @Sendable () -> Void
+    ) {
+        Gtk.margins(card, 12)
+        gtk_widget_set_size_request(card, 360, -1)
+        let words = Gtk.label(hint, css: "draw-toggle-detail", wrap: true, selectable: false)
+        gtk_label_set_max_width_chars(op(words), 48)
+        gtk_entry_set_placeholder_text(ptr(entry), placeholder)
+        Gtk.addClass(entry, "draw-avoid")
+        gtk_widget_set_hexpand(entry, 1)
+        gtk_box_append(ptr(card), words)
+        gtk_box_append(ptr(card), entry)
+        Gtk.connect(UnsafeMutableRawPointer(entry), "changed", changed)
     }
 
-    /// The two side columns are a fixed width and the stage takes the rest, the same widths the
-    /// image studio uses, so the two surfaces read as one.
-    private static let briefWidth: Int32 = 340
-    private static let shelfWidth: Int32 = 320
+    // MARK: building
 
-    private func sectionLabel(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
-        let label = Gtk.label(text, css: "draw-lbl", selectable: false)
-        gtk_widget_set_margin_bottom(label, 4)
-        return label
-    }
-
-    private func section(_ title: String, _ body: UnsafeMutablePointer<GtkWidget>)
-        -> UnsafeMutablePointer<GtkWidget>
-    {
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        gtk_box_append(ptr(column), sectionLabel(title))
+    /// The stage: one canvas, two faces. Empty is the newest clip's poster held dimmed behind what
+    /// to do next; the other is a frame of exactly the clip's shape holding a stack of three
+    /// things — the machine's sketch, the player, and a held placeholder — of which only the
+    /// visible one changes while a render runs, so nothing moves when a clip lands.
+    private func buildStage() {
+        Gtk.addClass(emptyOverlay, "studio-drop")
+        gtk_widget_set_overflow(emptyOverlay, GTK_OVERFLOW_HIDDEN)
+        gtk_widget_set_hexpand(backdrop, 1)
+        gtk_widget_set_vexpand(backdrop, 1)
+        gtk_overlay_set_child(op(emptyOverlay), backdrop)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        gtk_widget_set_valign(column, GTK_ALIGN_CENTER)
+        gtk_widget_set_halign(column, GTK_ALIGN_CENTER)
+        let title = Gtk.label(ForgeBoard().prompt, css: "draw-empty-title", selectable: false)
+        gtk_label_set_xalign(op(title), 0.5)
+        let body = Gtk.label(ForgeWords.frameHint, css: "dim", wrap: true, selectable: false)
+        gtk_label_set_max_width_chars(op(body), 48)
+        gtk_label_set_justify(op(body), GTK_JUSTIFY_CENTER)
+        gtk_label_set_xalign(op(body), 0.5)
+        gtk_box_append(ptr(column), title)
         gtk_box_append(ptr(column), body)
-        return column
-    }
+        gtk_overlay_add_overlay(op(emptyOverlay), column)
+        emptyColumn = column
 
-    private func segment() -> UnsafeMutablePointer<GtkWidget> {
-        let box = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(box, "draw-seg")
-        gtk_box_set_homogeneous(ptr(box), 1)
-        return box
-    }
+        gtk_aspect_frame_set_child(op(frame), art)
+        gtk_widget_set_hexpand(frame, 1)
+        gtk_widget_set_vexpand(frame, 1)
+        gtk_widget_set_hexpand(art, 1)
+        gtk_widget_set_vexpand(art, 1)
+        gtk_widget_set_overflow(art, GTK_OVERFLOW_HIDDEN)
+        Gtk.addClass(art, "studio-art")
+        gtk_stack_set_transition_type(op(art), GTK_STACK_TRANSITION_TYPE_NONE)
+        gtk_stack_set_hhomogeneous(op(art), 1)
+        gtk_stack_set_vhomogeneous(op(art), 1)
 
-    /// The form down the left, in the image studio's order: the renderer, the words with the
-    /// helper under them, what to avoid, what is heard, the shape, the length and smoothness,
-    /// where the clip starts, the seed — and the one button under it all.
-    private func buildBrief() -> UnsafeMutablePointer<GtkWidget> {
-        Gtk.addClass(briefColumn, "draw-brief")
-        Gtk.margins(briefColumn, 14)
-        gtk_widget_set_vexpand(briefColumn, 1)
-
-        gtk_widget_set_hexpand(rendererHolder, 1)
-        gtk_box_append(ptr(briefColumn), section(ForgeField.endpoint.label, rendererHolder))
-
-        let frame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        Gtk.addClass(frame, "draw-textarea")
-        gtk_text_view_set_wrap_mode(ptr(promptView), GTK_WRAP_WORD_CHAR)
-        gtk_text_view_set_accepts_tab(ptr(promptView), 0)
-        gtk_text_view_set_top_margin(ptr(promptView), 10)
-        gtk_text_view_set_bottom_margin(ptr(promptView), 10)
-        gtk_text_view_set_left_margin(ptr(promptView), 12)
-        gtk_text_view_set_right_margin(ptr(promptView), 12)
-        gtk_widget_set_tooltip_text(promptView, ForgeBoard().prompt)
-        gtk_box_append(ptr(frame), Gtk.boundedScroller(promptView, minimum: 170, maximum: 300))
-        Gtk.connect(
-            UnsafeMutableRawPointer(gtk_text_view_get_buffer(ptr(promptView))), "changed"
-        ) { [weak self] in
-            self?.typed()
-        }
-        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
-        gtk_box_append(ptr(words), frame)
-        let countRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_widget_set_hexpand(countLabel, 1)
-        gtk_label_set_xalign(op(countLabel), 0)
-        gtk_box_append(ptr(countRow), countLabel)
-        Gtk.connect(UnsafeMutableRawPointer(enhanceButton), "clicked") { [weak self] in
-            Gtk.onMain { [weak self] in self?.enhancePressed() }
-        }
-        gtk_box_append(ptr(countRow), enhanceButton)
-        gtk_box_append(ptr(words), countRow)
-        gtk_menu_button_set_can_shrink(op(helperMenu), 0)
-        gtk_menu_button_set_always_show_arrow(op(helperMenu), 1)
-        gtk_widget_set_halign(helperMenu, GTK_ALIGN_END)
-        gtk_box_append(ptr(words), helperMenu)
-        gtk_box_append(ptr(words), rewriteBox)
-        gtk_box_append(ptr(briefColumn), section(ImageGenStudioWords.wordsTitle, words))
-
-        gtk_entry_set_placeholder_text(ptr(avoidEntry), Localized.text("Nothing in particular"))
-        Gtk.addClass(avoidEntry, "draw-avoid")
-        gtk_widget_set_hexpand(avoidEntry, 1)
-        gtk_widget_set_tooltip_text(avoidEntry, ForgeWords.negativeIgnoredHint)
-        Gtk.connect(UnsafeMutableRawPointer(avoidEntry), "changed") { [weak self] in
-            self?.typedAvoid()
-        }
-        gtk_box_append(ptr(briefColumn), section(ForgeField.negative.label, avoidEntry))
-
-        gtk_entry_set_placeholder_text(ptr(soundEntry), ForgeWords.soundPlaceholder)
-        Gtk.addClass(soundEntry, "draw-avoid")
-        gtk_widget_set_hexpand(soundEntry, 1)
-        gtk_widget_set_tooltip_text(soundEntry, ForgeWords.soundHint)
-        Gtk.connect(UnsafeMutableRawPointer(soundEntry), "changed") { [weak self] in
-            self?.typedSound()
-        }
-        gtk_box_append(ptr(briefColumn), section(ForgeField.sound.label, soundEntry))
-
-        let shapes = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        gtk_box_set_homogeneous(ptr(shapes), 1)
-        for size in ForgeSize.options {
-            let button = gtk_button_new()!
-            Gtk.addClass(button, "draw-shape")
-            let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
-            gtk_widget_set_halign(lines, GTK_ALIGN_CENTER)
-            let glyph = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-            Gtk.addClass(glyph, "draw-shape-glyph")
-            let longest: Double = 20
-            let wide = size.width >= size.height
-            let short = longest * Double(wide ? size.height : size.width) / Double(wide ? size.width : size.height)
-            gtk_widget_set_size_request(
-                glyph, Int32(wide ? longest : max(8, short)), Int32(wide ? max(8, short) : longest))
-            gtk_widget_set_halign(glyph, GTK_ALIGN_CENTER)
-            gtk_widget_set_valign(glyph, GTK_ALIGN_END)
-            gtk_widget_set_size_request(button, -1, 46)
-            gtk_widget_set_valign(lines, GTK_ALIGN_END)
-            let name = Gtk.label(size.label, css: "draw-shape-label", selectable: false)
-            gtk_label_set_ellipsize(op(name), PANGO_ELLIPSIZE_NONE)
-            gtk_widget_set_halign(name, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(lines), glyph)
-            gtk_box_append(ptr(lines), name)
-            gtk_button_set_child(ptr(button), lines)
-            gtk_widget_set_tooltip_text(button, size.name)
-            Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
-                Gtk.onMain { [weak self] in self?.runner.pick(.size, id: size.id) }
-            }
-            shapeButtons[size] = button
-            gtk_box_append(ptr(shapes), button)
-        }
-        gtk_box_append(ptr(briefColumn), section(ForgeField.size.label, shapes))
-
-        let pair = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_set_homogeneous(ptr(pair), 1)
-        let lengths = segment()
-        for seconds in ForgeBoard.secondsOptions {
-            let button = Gtk.button(Localized.text("%@s", "\(seconds)"), css: ["draw-seg-item"]) { [weak self] in
-                Gtk.onMain { [weak self] in self?.runner.pick(.seconds, id: "\(seconds)") }
-            }
-            gtk_widget_set_hexpand(button, 1)
-            secondButtons[seconds] = button
-            gtk_box_append(ptr(lengths), button)
-        }
-        gtk_box_append(ptr(pair), section(ForgeField.seconds.label, lengths))
-        let rates = segment()
-        for fps in ForgeRecipe.fpsOptions {
-            let button = Gtk.button("\(fps)", css: ["draw-seg-item"]) { [weak self] in
-                Gtk.onMain { [weak self] in self?.runner.pick(.fps, id: "\(fps)") }
-            }
-            gtk_widget_set_tooltip_text(button, Localized.text("%@ fps", "\(fps)"))
-            gtk_widget_set_hexpand(button, 1)
-            fpsButtons[fps] = button
-            gtk_box_append(ptr(rates), button)
-        }
-        gtk_box_append(ptr(pair), section(ForgeField.fps.label, rates))
-        gtk_box_append(ptr(briefColumn), pair)
-
-        gtk_widget_set_hexpand(frameHolder, 1)
-        gtk_box_append(ptr(briefColumn), section(ForgeField.frame.label, frameHolder))
-
-        let seedRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
-        gtk_widget_set_hexpand(seedLabel, 1)
-        gtk_label_set_xalign(op(seedLabel), 0)
-        gtk_box_append(ptr(seedRow), seedLabel)
-        gtk_widget_set_tooltip_text(seedLink, Localized.text("The same seed and prompt make the same clip"))
-        Gtk.connect(UnsafeMutableRawPointer(seedLink), "clicked") { [weak self] in
-            Gtk.onMain { [weak self] in self?.runner.pick(.seed, id: "reroll") }
-        }
-        gtk_box_append(ptr(seedRow), seedLink)
-        gtk_box_append(ptr(briefColumn), section(ForgeField.seed.label, seedRow))
-        gtk_box_append(ptr(briefColumn), reasonLabel)
-
-        let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_EXTERNAL, GTK_POLICY_AUTOMATIC)
-        gtk_scrolled_window_set_child(op(scroller), briefColumn)
-        gtk_widget_set_vexpand(scroller, 1)
-
-        let footer = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
-        Gtk.margins(footer, top: 10, bottom: 12, leading: 14, trailing: 14)
-        gtk_widget_set_hexpand(call, 1)
-        Gtk.connect(UnsafeMutableRawPointer(call), "clicked") { [weak self] in
-            Gtk.onMain { [weak self] in self?.callPressed() }
-        }
-        gtk_box_append(ptr(footer), call)
-        gtk_label_set_justify(op(keysLabel), GTK_JUSTIFY_CENTER)
-        gtk_label_set_xalign(op(keysLabel), 0.5)
-        gtk_box_append(ptr(footer), keysLabel)
-
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        Gtk.addClass(column, "draw-brief-scroller")
-        gtk_widget_set_size_request(column, Self.briefWidth, -1)
-        gtk_widget_set_hexpand(column, 0)
-        gtk_widget_set_vexpand(column, 1)
-        gtk_box_append(ptr(column), scroller)
-        gtk_box_append(ptr(column), Gtk.hairline())
-        gtk_box_append(ptr(column), footer)
-        return column
-    }
-
-    /// The stage is the room: the render's own status line over it, the stack of faces, and
-    /// under it the clip's words, its facts and its verbs — the same rows a picture gets.
-    private func buildStageColumn() -> UnsafeMutablePointer<GtkWidget> {
-        gtk_widget_set_hexpand(stageColumn, 1)
-        gtk_widget_set_vexpand(stageColumn, 1)
-        Gtk.addClass(stageFrame, "forge-stage")
-        Gtk.margins(stageFrame, top: 14, bottom: 10, leading: 24, trailing: 24)
-        gtk_widget_set_hexpand(stageFrame, 1)
-        gtk_widget_set_vexpand(stageFrame, 1)
-        gtk_stack_set_transition_type(
-            op(stageStack),
-            RepeatingMotion.allowed ? GTK_STACK_TRANSITION_TYPE_CROSSFADE : GTK_STACK_TRANSITION_TYPE_NONE)
-        gtk_stack_set_transition_duration(op(stageStack), Self.arrivalFade)
-        gtk_stack_set_hhomogeneous(op(stageStack), 1)
-        gtk_stack_set_vhomogeneous(op(stageStack), 1)
-        gtk_widget_set_hexpand(stageStack, 1)
-        gtk_widget_set_vexpand(stageStack, 1)
-        gtk_widget_set_hexpand(stageFace, 1)
-        gtk_widget_set_vexpand(stageFace, 1)
-        gtk_stack_add_child(op(stageStack), stageFace)
-        gtk_box_append(ptr(stageFrame), stageStack)
-        gtk_box_append(ptr(stageColumn), stageFrame)
-
-        g_object_ref_sink(sketchFace)
-        gtk_widget_set_hexpand(sketchFace, 1)
-        gtk_widget_set_vexpand(sketchFace, 1)
-        gtk_picture_set_content_fit(op(sketchPicture), GTK_CONTENT_FIT_CONTAIN)
+        gtk_picture_set_content_fit(op(sketchPicture), GTK_CONTENT_FIT_FILL)
         gtk_widget_set_hexpand(sketchPicture, 1)
         gtk_widget_set_vexpand(sketchPicture, 1)
-        Gtk.addClass(sketchPicture, "forge-sketch")
-        gtk_box_append(ptr(sketchFace), sketchPicture)
-        gtk_label_set_xalign(op(sketchCaption), 0.5)
-        gtk_box_append(ptr(sketchFace), sketchCaption)
-        Gtk.addClass(sketchBar, "forge-bar")
-        gtk_widget_set_size_request(sketchBar, 180, -1)
-        gtk_widget_set_halign(sketchBar, GTK_ALIGN_CENTER)
-        Gtk.margins(sketchBar, bottom: 6)
-        gtk_box_append(ptr(sketchFace), sketchBar)
+        Gtk.setHidden(sketchPicture, true)
+        gtk_overlay_set_child(op(sketchOverlay), sketchPicture)
+        gtk_widget_set_halign(sketchBadge, GTK_ALIGN_START)
+        gtk_widget_set_valign(sketchBadge, GTK_ALIGN_START)
+        Gtk.margins(sketchBadge, top: 10, leading: 10)
+        gtk_widget_set_can_target(sketchBadge, 0)
+        gtk_label_set_ellipsize(op(sketchBadge), PANGO_ELLIPSIZE_NONE)
+        gtk_overlay_add_overlay(op(sketchOverlay), sketchBadge)
+        gtk_widget_set_tooltip_text(sketchOverlay, ForgeWords.sketchNote)
+        gtk_widget_set_hexpand(heldSlot, 1)
+        gtk_widget_set_vexpand(heldSlot, 1)
+        gtk_stack_add_named(op(art), sketchOverlay, "sketch")
+        gtk_stack_add_named(op(art), heldSlot, "held")
 
-        gtk_box_append(ptr(stageColumn), Gtk.hairline())
-        Gtk.margins(underRow, top: 10, bottom: 14, leading: 24, trailing: 24)
-        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        gtk_widget_set_hexpand(words, 1)
-        gtk_label_set_xalign(op(captionLabel), 0)
-        gtk_label_set_lines(op(captionLabel), 2)
-        gtk_label_set_ellipsize(op(captionLabel), PANGO_ELLIPSIZE_END)
-        gtk_label_set_max_width_chars(op(captionLabel), 72)
-        gtk_label_set_xalign(op(factsLabel), 0)
-        gtk_label_set_ellipsize(op(factsLabel), PANGO_ELLIPSIZE_END)
-        gtk_label_set_max_width_chars(op(factsLabel), 72)
-        gtk_box_append(ptr(words), captionLabel)
-        gtk_box_append(ptr(words), factsLabel)
-        gtk_box_append(ptr(underRow), words)
-        gtk_widget_set_valign(statusLine, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(underRow), statusLine)
-        Gtk.addClass(actionRow, "draw-actions")
-        gtk_widget_set_halign(actionRow, GTK_ALIGN_START)
-        gtk_widget_set_valign(actionRow, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(underRow), actionRow)
-        gtk_box_append(ptr(stageColumn), underRow)
-        return stageColumn
-    }
+        gtk_stack_add_named(op(faces), emptyOverlay, "empty")
+        gtk_stack_add_named(op(faces), frame, "picture")
+        gtk_widget_set_hexpand(faces, 1)
+        gtk_widget_set_vexpand(faces, 1)
+        gtk_box_append(ptr(shell.content), faces)
 
-    /// The clips already made, as rows down the right, the way the image studio shelves its
-    /// pictures: the words that made each, its facts, and a press to play it.
-    private func buildShelfColumn() -> UnsafeMutablePointer<GtkWidget> {
-        Gtk.addClass(shelfColumn, "draw-shelf-column")
-        gtk_widget_set_size_request(shelfColumn, Self.shelfWidth, -1)
-        gtk_widget_set_hexpand(shelfColumn, 0)
-        gtk_widget_set_vexpand(shelfColumn, 1)
-        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        Gtk.margins(header, top: 12, bottom: 8, leading: 12, trailing: 12)
-        gtk_box_append(ptr(header), Gtk.label(ForgeWords.recentTitle, css: "draw-shelf-heading", selectable: false))
-        gtk_box_append(ptr(header), shelfCountLabel)
-        gtk_box_append(ptr(shelfColumn), header)
-        Gtk.margins(shelfList, top: 0, bottom: 12, leading: 12, trailing: 12)
-        let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_EXTERNAL, GTK_POLICY_AUTOMATIC)
-        gtk_scrolled_window_set_child(op(scroller), shelfList)
-        gtk_widget_set_vexpand(scroller, 1)
-        gtk_box_append(ptr(shelfColumn), scroller)
-        return shelfColumn
-    }
-
-    /// The card under the words. Built once; ``refreshRewrite()`` tells it what changed. The
-    /// same card the image studio draws, because it is the same draft.
-    private func buildRewriteCard() {
-        Gtk.addClass(rewriteBox, "draw-rewrite")
-        gtk_widget_set_visible(rewriteBox, 0)
-        gtk_label_set_xalign(op(rewriteHead), 0)
-        gtk_label_set_max_width_chars(op(rewriteHead), 48)
-        gtk_box_append(ptr(rewriteBox), rewriteHead)
-        gtk_text_view_set_editable(ptr(rewriteBody), 0)
-        gtk_text_view_set_cursor_visible(ptr(rewriteBody), 0)
-        gtk_text_view_set_wrap_mode(ptr(rewriteBody), GTK_WRAP_WORD_CHAR)
-        gtk_text_view_set_left_margin(ptr(rewriteBody), 10)
-        gtk_text_view_set_right_margin(ptr(rewriteBody), 10)
-        gtk_text_view_set_top_margin(ptr(rewriteBody), 8)
-        gtk_text_view_set_bottom_margin(ptr(rewriteBody), 8)
-        Gtk.addClass(rewriteBody, "draw-rewrite-body")
-        let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-        gtk_scrolled_window_set_min_content_height(op(scroller), 120)
-        gtk_scrolled_window_set_max_content_height(op(scroller), 220)
-        gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
-        gtk_scrolled_window_set_child(op(scroller), rewriteBody)
-        Gtk.addClass(scroller, "draw-rewrite-scroller")
-        gtk_box_append(ptr(rewriteBox), scroller)
-        gtk_entry_set_placeholder_text(ptr(rewriteInstruction), ImageGenRewriteWords.instructionPlaceholder)
-        gtk_widget_set_hexpand(rewriteInstruction, 1)
-        gtk_widget_set_tooltip_text(rewriteInstruction, ImageGenRewriteWords.reviseTitle)
-        gtk_box_append(ptr(rewriteBox), rewriteInstruction)
-        gtk_widget_set_tooltip_text(rewriteUse, ImageGenRewriteWords.useHint)
-        gtk_widget_set_tooltip_text(rewriteKeep, ImageGenRewriteWords.keepHint)
-        gtk_widget_set_tooltip_text(rewriteAgain, ImageGenRewriteWords.againHint)
-        for verb in [rewriteUse, rewriteAgain, rewriteKeep, rewriteStop] {
-            gtk_box_append(ptr(rewriteVerbs), verb)
-        }
-        gtk_widget_set_halign(rewriteVerbs, GTK_ALIGN_START)
-        gtk_box_append(ptr(rewriteBox), rewriteVerbs)
-        Gtk.connect(UnsafeMutableRawPointer(rewriteUse), "clicked") { [weak self] in
-            Gtk.onMain { [weak self] in self?.useRewrite() }
-        }
-        Gtk.connect(UnsafeMutableRawPointer(rewriteKeep), "clicked") { [weak self] in
-            Gtk.onMain { [weak self] in self?.runner.dismissRewrite() }
-        }
-        Gtk.connect(UnsafeMutableRawPointer(rewriteAgain), "clicked") { [weak self] in
+        Gtk.acceptFileDrops(on: shell.root) { [weak self] paths in
             Gtk.onMain { [weak self] in
-                guard let self, let draft = self.runner.draft else { return }
-                self.runner.rewrite(draft.original)
+                guard let path = paths.first(where: { ImageGenFileKind.of($0) != nil }) else { return }
+                self?.runner.start(from: .file(path))
             }
         }
-        Gtk.connect(UnsafeMutableRawPointer(rewriteStop), "clicked") { [weak self] in
-            Gtk.onMain { [weak self] in self?.runner.stopRewrite() }
+    }
+
+    private func buildShelf() {
+        let pane = Weak(self)
+        shelf.thumbnail = { id in pane.value?.posterBits(for: id) ?? 0 }
+        shelf.onChoose = { id in
+            Gtk.onMain {
+                guard let pane = pane.value, let entry = pane.entries.first(where: { $0.id == id })
+                else { return }
+                if let asset = entry.asset { pane.play(asset) } else { pane.runner.reuse(entry) }
+            }
         }
-        Gtk.connect(UnsafeMutableRawPointer(rewriteInstruction), "activate") { [weak self] in
-            Gtk.onMain { [weak self] in self?.revisePressed() }
+        shelf.onMenu = { id, widget, x, y in
+            guard let pane = pane.value, let entry = pane.entries.first(where: { $0.id == id }) else { return }
+            pane.presentClipMenu(entry, on: widget, x: x, y: y)
+        }
+        shelf.onWant = { ids in Gtk.onMain { pane.value?.wantPosters(ids) } }
+        shelf.onRefresh = { Gtk.onMain { pane.value?.runner.prepare() } }
+        posters.onChange = { Gtk.onMain { pane.value?.shelf.refreshPictures() } }
+    }
+
+    private func buildDock() {
+        dock.tray.fill([sizeChip, lengthChip, smoothChip, soundChip, avoidChip, seedChip])
+        gtk_box_append(ptr(dock.slotHolder), slotView.widget)
+        slotView.acceptDrops { [weak self] paths in
+            Gtk.onMain { [weak self] in
+                guard let path = paths.first(where: { ImageGenFileKind.of($0) != nil }) else { return }
+                self?.runner.start(from: .file(path))
+            }
+        }
+        dock.onChange = { [weak self] in self?.typed() }
+        dock.onSubmit = { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, !self.board.isBusy else { return }
+                self.callPressed()
+            }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(dock.go), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in self?.callPressed() }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(dock.enhance), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in self?.enhancePressed() }
+        }
+        shell.setLowerCard(rewrite.root)
+        shell.showLowerCard(false)
+        rewrite.onUse = { [weak self] in self?.useRewrite() }
+        rewrite.onKeep = { [weak self] in self?.runner.dismissRewrite() }
+        rewrite.onAgain = { [weak self] in
+            guard let self, let draft = self.runner.draft else { return }
+            self.runner.rewrite(draft.original)
+        }
+        rewrite.onStop = { [weak self] in self?.runner.stopRewrite() }
+        rewrite.onRevise = { [weak self] words in
+            guard let self, let draft = self.runner.draft, draft.isUsable else { return }
+            self.runner.rewrite(draft.original, instruction: words)
+        }
+        machine.details = { [weak self] in
+            guard let self else { return Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0) }
+            return StudioMachineDetails.forge(
+                board: self.board,
+                onCheck: { [weak self] in Gtk.onMain { [weak self] in self?.runner.probe() } },
+                onChange: { [weak self] in Gtk.onMain { [weak self] in self?.openSetup() } })
         }
     }
+
+    private func choiceRows(_ field: ForgeField)
+        -> [(title: String, detail: String?, action: @Sendable () -> Void)]
+    {
+        board.choices(of: field).map { choice in
+            (
+                title: choice.menuTitle, detail: choice.detail.isEmpty ? nil : choice.detail,
+                action: { @Sendable in
+                    Gtk.onMain { [weak self] in self?.runner.pick(field, id: choice.id) }
+                }
+            )
+        }
+    }
+
+    // MARK: the driver and the keys
 
     var isPlaying: Bool { playing != nil }
 
@@ -509,9 +323,17 @@ final class ForgePane: @unchecked Sendable {
         } else {
             draft = "-"
         }
-        let stackFace = gtk_stack_get_visible_child(op(stageStack)) == surface ? "player" : "face"
+        let stackFace = visibleArt == "player" ? "player" : "face"
         return
-            "\(jobWord) renderer=\(board.value(of: .endpoint))/\(reachWord) [\(board.job.title)] \(board.job.subtitle) badge=\(board.job.badge ?? "-") bar=\(bar) call=\(board.renderCall) [\(sections.joined(separator: " "))] cursor=\(board.focused?.title ?? "-") history=\(board.history.count) playing=\(playing?.filename ?? "-") aside=\(reason ?? working ?? "-") sketch=\(board.sketch != nil) shown=\(sketchTexture != 0) stack=\(stackFace) loaded=\(loaded) muted=\(muted) draft=\(draft) helper=\(runner.helper?.name ?? "-") expect=\(board.expectation ?? "-") frame=\(board.recipe.frame?.label ?? "-") sound=\(board.recipe.sound.isEmpty ? "-" : "set") size=\(board.recipe.size.id)\(board.sizeChosen ? "*" : "")"
+            "\(jobWord) renderer=\(board.value(of: .endpoint))/\(reachWord) [\(board.job.title)] \(board.job.subtitle) badge=\(board.job.badge ?? "-") bar=\(bar) call=\(board.renderCall) [\(sections.joined(separator: " "))] cursor=\(board.focused?.title ?? "-") history=\(board.history.count) playing=\(playing?.filename ?? "-") aside=\(reason ?? working ?? "-") sketch=\(board.sketch != nil) shown=\(sketchTexture != 0) stack=\(stackFace) loaded=\(loaded) muted=\(muted) draft=\(draft) helper=\(runner.helper?.name ?? "-") expect=\(board.expectation ?? "-") frame=\(board.recipe.frame?.label ?? "-") sound=\(board.recipe.sound.isEmpty ? "-" : "set") size=\(board.recipe.size.id)\(board.sizeChosen ? "*" : "") studio=[\(chrome.summary) \(shell.progressSummary) posters=\(posters.textures.count) art=\(visibleArt) face=\(visibleFace)]"
+    }
+
+    private var visibleArt: String {
+        gtk_stack_get_visible_child_name(op(art)).map { String(cString: $0) } ?? "-"
+    }
+
+    private var visibleFace: String {
+        gtk_stack_get_visible_child_name(op(faces)).map { String(cString: $0) } ?? "-"
     }
 
     private var jobWord: String {
@@ -538,31 +360,19 @@ final class ForgePane: @unchecked Sendable {
     }
 
     func focusPrompt() {
-        gtk_widget_grab_focus(promptView)
+        dock.focus()
     }
 
     /// Types into the prompt as a person would, so the driver exercises the same path a keystroke
     /// does rather than a private one that could drift from it.
     func describe(_ text: String) {
         typing = true
-        setPrompt(text)
+        dock.words = text
         typing = false
         typed()
     }
 
-    private var promptText: String {
-        let buffer = gtk_text_view_get_buffer(ptr(promptView))
-        var start = GtkTextIter()
-        var end = GtkTextIter()
-        gtk_text_buffer_get_bounds(buffer, &start, &end)
-        guard let raw = gtk_text_buffer_get_text(buffer, &start, &end, 0) else { return "" }
-        defer { g_free(raw) }
-        return String(cString: raw)
-    }
-
-    private func setPrompt(_ text: String) {
-        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(promptView)), text, -1)
-    }
+    private var promptText: String { dock.words }
 
     /// Puts the prompt box back in step with the recipe the board holds — after an old clip's
     /// settings are put back in the draft, or after the driver has stood the board in a state. The
@@ -571,7 +381,7 @@ final class ForgePane: @unchecked Sendable {
         let words = board.recipe.prompt
         guard promptText != words else { return }
         typing = true
-        setPrompt(words)
+        dock.words = words
         typing = false
     }
 
@@ -636,6 +446,7 @@ final class ForgePane: @unchecked Sendable {
         runner.onNotice = nil
         if let rewriteObserver { NotificationCenter.default.removeObserver(rewriteObserver) }
         rewriteObserver = nil
+        posters.onChange = nil
         openTask?.cancel()
         openTask = nil
     }
@@ -643,11 +454,16 @@ final class ForgePane: @unchecked Sendable {
     /// The window is closing. The render is deliberately not touched — it lives in the runner, and
     /// a person who closed a window asked for the window to go, never for the other machine to stop
     /// — so what is let go of here is exactly what belongs to this view: the player, the sketch's
-    /// texture and the lookup that would have fed the player.
+    /// texture, the posters and the lookup that would have fed the player.
     func shutdown() {
         stopDrawing()
         dropSketch()
-        g_object_unref(sketchFace)
+        posters.release()
+        if let held = referenceTexture, let raw = UnsafeMutableRawPointer(bitPattern: held.bits) {
+            g_object_unref(raw)
+        }
+        referenceTexture = nil
+        dock.tray.release()
         if let player {
             tailscode_mpv_free(player)
             self.player = nil
@@ -659,10 +475,10 @@ final class ForgePane: @unchecked Sendable {
         }
     }
 
-    private var promptHasFocus: Bool { gtk_widget_has_focus(promptView) != 0 }
+    private var promptHasFocus: Bool { dock.hasFocus }
     private var fieldHasFocus: Bool {
         promptHasFocus || gtk_widget_has_focus(avoidEntry) != 0
-            || gtk_widget_has_focus(soundEntry) != 0 || gtk_widget_has_focus(rewriteInstruction) != 0
+            || gtk_widget_has_focus(soundEntry) != 0 || rewrite.hasFocus
     }
 
     private func typed() {
@@ -711,9 +527,9 @@ final class ForgePane: @unchecked Sendable {
         case .prompt:
             focusPrompt()
         case .negative:
-            gtk_widget_grab_focus(avoidEntry)
+            avoidChip.open()
         case .sound:
-            gtk_widget_grab_focus(soundEntry)
+            soundChip.open()
         case .frame:
             offerFrame()
         case .size, .seconds, .fps, .seed:
@@ -737,11 +553,11 @@ final class ForgePane: @unchecked Sendable {
         }
     }
 
-    /// Where the clip starts: a file chosen here, the end of a clip already made, or nothing.
-    /// The same rows the Start from row's own menu offers, so a keyboard and a pointer reach the
-    /// same three doors.
+    /// Where the clip starts: a file chosen here, the end of a clip already made, or nothing. The
+    /// same rows the start-from slot's own menu offers, so a keyboard and a pointer reach the same
+    /// doors.
     private func offerFrame() {
-        Gtk.contextMenu(on: frameHolder, x: 8, y: 8, rows: frameRows())
+        slotView.open()
     }
 
     private func frameRows() -> [(title: String, detail: String?, action: @Sendable () -> Void)] {
@@ -749,6 +565,9 @@ final class ForgePane: @unchecked Sendable {
         rows.append(
             (ForgeWords.pickFileTitle, ForgeWords.pickFileHint,
              { [weak self] in Gtk.onMain { [weak self] in self?.pickFrameFile() } }))
+        rows.append(
+            (ImageGenReferenceSource.clipboard.title, nil,
+             { [weak self] in Gtk.onMain { [weak self] in self?.pasteFrame() } }))
         for entry in board.history.filter(\.isPlayable).prefix(3) {
             rows.append(
                 (ForgeWords.continueTitle(entry), ForgeWords.continueHint,
@@ -773,6 +592,29 @@ final class ForgePane: @unchecked Sendable {
             Gtk.onMain { [weak self] in
                 self?.runner.start(from: .file(path))
                 self?.focusPrompt()
+            }
+        }
+    }
+
+    /// A picture on the clipboard is a start: files first, then a picture written once to a file the
+    /// render can send.
+    private func pasteFrame() {
+        Gtk.readClipboard { [weak self] offer in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                if let path = offer.paths.first(where: { ImageGenFileKind.of($0) != nil }) {
+                    self.runner.start(from: .file(path))
+                    return
+                }
+                guard let data = offer.image else {
+                    self.reason = Localized.text("The clipboard holds no picture")
+                    self.render()
+                    return
+                }
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("tailscode-start-\(UUID().uuidString).png")
+                guard (try? data.write(to: url)) != nil else { return }
+                self.runner.start(from: .file(url.path))
             }
         }
     }
@@ -817,7 +659,7 @@ final class ForgePane: @unchecked Sendable {
     }
 
     /// Why a clip is not playing, in the sentence whoever refused it wrote — Core's for a file the
-    /// machine no longer has, mpv's for one it will not decode. The board stays up underneath it,
+    /// machine no longer has, mpv's for one it will not decode. The stage stays up underneath it,
     /// because a reason with nothing to press is a dead end.
     private func refuse(_ sentence: String) {
         working = nil
@@ -827,8 +669,8 @@ final class ForgePane: @unchecked Sendable {
         render()
     }
 
-    /// Back to the stage with the clip stopped and the recipe that made it still in the boxes —
-    /// the point of keeping a seed is that the next one is one edit away rather than a retype.
+    /// Back to the stage with the clip stopped and the recipe that made it still in the boxes — the
+    /// point of keeping a seed is that the next one is one edit away rather than a retype.
     private func showBoard() {
         guard isPlaying else { return }
         playing = nil
@@ -850,12 +692,16 @@ final class ForgePane: @unchecked Sendable {
         withCommand(arguments) { tailscode_mpv_command(player, $0) }
     }
 
+    // MARK: drawing
+
     private func render() {
-        drawAside()
+        entries = board.history
         openOnArrival()
-        drawStage()
-        drawControls()
-        refreshEnhance()
+        refreshStage()
+        refreshChips()
+        refreshDock()
+        refreshShelf()
+        refreshMachine()
         onChange?()
     }
 
@@ -869,76 +715,211 @@ final class ForgePane: @unchecked Sendable {
         play(asset)
     }
 
-    /// The one line the surface says on its own behalf, under the chips: what it is waiting on, or
-    /// why the last press did nothing. They share a line because they are the same slot in the
-    /// reading — the answer to "what happened when I pressed that" — and wear different tones so
-    /// a wait is never mistaken for a refusal.
-    private func drawAside() {
-        let line = reason ?? working
-        gtk_widget_remove_css_class(reasonLabel, "forge-working")
-        gtk_widget_remove_css_class(reasonLabel, "forge-refusal")
-        guard let line else {
-            gtk_widget_set_visible(reasonLabel, 0)
-            return
-        }
-        Gtk.addClass(reasonLabel, reason == nil ? "forge-working" : "forge-refusal")
-        gtk_label_set_text(op(reasonLabel), line)
-        gtk_widget_set_visible(reasonLabel, 1)
+    /// The shape of the clip, decided before it renders: the recipe's own frame, so the sketch, the
+    /// player and the held placeholder all sit in one rectangle.
+    private var ratio: Double {
+        let size = board.isBusy || board.job.isFinished ? board.job.recipe : board.recipe
+        return Double(size.width) / Double(max(size.height, 1))
     }
 
-    private func drawStage() {
-        Gtk.removeChildren(of: statusLine)
-        if let badge = board.job.badge {
-            let pill = Gtk.label(badge, css: "pill", selectable: false)
-            Gtk.addClass(pill, board.job.phase.tone == .danger ? "pill-error" : "pill-live")
-            gtk_label_set_ellipsize(op(pill), PANGO_ELLIPSIZE_NONE)
-            gtk_box_append(ptr(statusLine), pill)
-        }
-        if isPlaying {
-            let mark = Gtk.label(muted ? ForgeWords.soundOffMark : ForgeWords.soundOnMark, css: "pill", selectable: false)
-            Gtk.addClass(mark, muted ? "pill-offline" : "pill-source")
-            gtk_label_set_ellipsize(op(mark), PANGO_ELLIPSIZE_NONE)
-            gtk_widget_set_hexpand(mark, 0)
-            gtk_widget_set_tooltip_text(mark, ForgeWords.soundToggleHint)
-            Gtk.margins(mark, leading: 6)
-            gtk_box_append(ptr(statusLine), mark)
-        }
-        drawFace()
-        let showPlayer = isPlaying && loaded
-        if let surface, gtk_widget_get_parent(surface) == stageStack {
-            gtk_stack_set_visible_child(op(stageStack), showPlayer ? surface : stageFace)
-        }
-        drawUnderRow()
-        drawShelf()
-    }
-
-    /// The words under the stage: what the clip in hand is, its facts, and what it can be made
-    /// to do — the next clip from where it ended, or a copy of the file somewhere of your own.
-    private func drawUnderRow() {
+    /// Everything the stage says, from what the board and the player hold right now.
+    private func refreshStage() {
         let job = board.job
-        gtk_label_set_text(op(captionLabel), job.title)
-        gtk_label_set_text(op(factsLabel), job.detail)
-        Gtk.removeChildren(of: actionRow)
-        guard let asset = job.asset, let entry = board.history.first(where: { $0.asset == asset }) else {
-            gtk_widget_set_visible(actionRow, 0)
-            return
+        gtk_aspect_frame_set_ratio(op(frame), Float(ratio))
+        if let frame = job.sketch, frame != shownSketch { adoptSketch(frame) }
+        switch job.phase {
+        case .drafting, .failed, .cancelled: if !isPlaying { dropSketch() }
+        default: break
         }
-        gtk_widget_set_visible(actionRow, 1)
-        let save = Gtk.button("↓  \(Localized.text("Save…"))", css: ["flat", "draw-action"]) { [weak self] in
-            Gtk.onMain { [weak self] in self?.save(asset) }
+
+        var sentence: String?
+        var detail: String?
+        var tone: ActivityTone?
+        var breathing = false
+        var card: UnsafeMutablePointer<GtkWidget>?
+        var verbs: [StudioVerb] = []
+        var showVerbs = false
+        var spoken = ForgeBoard().prompt
+
+        if let aside = reason {
+            sentence = aside
+            tone = .danger
+        } else if let waiting = working {
+            sentence = waiting
+            tone = .live
+            breathing = true
         }
-        gtk_widget_set_tooltip_text(save, Localized.text("Write the clip somewhere of your own"))
-        gtk_box_append(ptr(actionRow), save)
-        let extend = Gtk.button("▶  \(ForgeWords.extendTitle)", css: ["flat", "draw-action"]) { [weak self] in
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                self.showBoard()
-                self.runner.extend(entry)
-                self.focusPrompt()
+
+        if board.isBusy {
+            showFace("picture")
+            if sentence == nil {
+                sentence = busyLine(job)
+                tone = .live
+                breathing = true
+            }
+            spoken = busyLine(job)
+            if sketchTexture != 0 {
+                gtk_stack_set_visible_child_name(op(art), "sketch")
+            } else {
+                showHeld(key: "working", bits: 0, opacity: 1)
+            }
+            verbs = clipVerbs(reserved: true)
+        } else if case .failed(let why) = job.phase, !isPlaying {
+            showFace("empty")
+            gtk_widget_set_visible(emptyColumn, 0)
+            refreshBackdrop(dim: 0.3)
+            card = failureCard(why)
+            tone = tone ?? .danger
+            spoken = why
+        } else if isPlaying {
+            showFace("picture")
+            if loaded { showPlayer() }
+            if sentence == nil, let entry = entries.first(where: { $0.asset == playing }) {
+                sentence = entry.title
+                detail = entry.detail
+            }
+            if let entry = entries.first(where: { $0.asset == playing }) {
+                verbs = clipVerbs(for: entry)
+                showVerbs = loaded
+                spoken = entry.title
+            }
+        } else if let asset = job.asset, let entry = entries.first(where: { $0.asset == asset }) {
+            showFace("picture")
+            let key = ForgePosters.key(for: asset)
+            showHeld(key: key, bits: posters.textures[key] ?? 0, opacity: 1)
+            if sentence == nil {
+                sentence = entry.title
+                detail = entry.detail
+            }
+            verbs = clipVerbs(for: entry)
+            showVerbs = true
+            spoken = entry.title
+        } else {
+            showFace("empty")
+            gtk_widget_set_visible(emptyColumn, 1)
+            refreshBackdrop(dim: 0.16)
+            if sentence == nil, case .cancelled = job.phase {
+                sentence = ImageGenWords.stoppedNotice
+                tone = .attention
+            }
+            if sentence == nil, backdropKey != nil, let name = board.endpoint?.shortName {
+                sentence = StudioWords.heldFromShelf(machine: name)
             }
         }
-        gtk_widget_set_tooltip_text(extend, ForgeWords.extendHint)
-        gtk_box_append(ptr(actionRow), extend)
+        shell.setState(sentence, detail: detail, tone: tone, breathing: breathing)
+        shell.setProgress(progressSegments(job))
+        shell.setVerbs(verbs, visible: showVerbs)
+        shell.setCard(card)
+        shell.describe(spoken)
+        refreshSketchBadge()
+    }
+
+    /// A picture held in the frame while nothing is playing and nothing is painting: a landed
+    /// clip's poster, or an empty placeholder in the clip's own shape until there is one.
+    private func showHeld(key: String, bits: UInt, opacity: Double) {
+        showFace("picture")
+        if heldKey != key {
+            Gtk.removeChildren(of: heldSlot)
+            if bits != 0, let picture = Gtk.studioPicture(bits: bits) {
+                Gtk.setHidden(picture, true)
+                gtk_box_append(ptr(heldSlot), picture)
+            } else {
+                let placeholder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+                Gtk.addClass(placeholder, "draw-working")
+                gtk_widget_set_hexpand(placeholder, 1)
+                gtk_widget_set_vexpand(placeholder, 1)
+                gtk_box_append(ptr(heldSlot), placeholder)
+            }
+            heldKey = key
+        }
+        gtk_widget_set_opacity(heldSlot, opacity)
+        gtk_stack_set_transition_type(op(art), GTK_STACK_TRANSITION_TYPE_NONE)
+        gtk_stack_set_visible_child_name(op(art), "held")
+    }
+
+    private func showFace(_ name: String) {
+        gtk_stack_set_visible_child_name(op(faces), name)
+    }
+
+    /// The sentence for a render in flight, in the order a person watches it: which pass, which
+    /// step, how long it has been going — or, before the machine is painting, what it is waiting on.
+    private func busyLine(_ job: ForgeJob) -> String {
+        let clock = job.spent() ?? ""
+        if job.samplerSteps > 0 {
+            let base = job.detail
+            return clock.isEmpty ? base : "\(base) · \(clock)"
+        }
+        let base = job.stageName ?? job.subtitle
+        return clock.isEmpty ? base : "\(base) · \(clock)"
+    }
+
+    /// The progress line, one segment per pass when the machine says which node is working and the
+    /// one bar it has otherwise — and nothing at all until there is a count to draw it from.
+    private func progressSegments(_ job: ForgeJob) -> [Double]? {
+        guard job.isBusy, let fraction = job.fraction else { return nil }
+        if let passes = StudioProgress.passes(
+            running: job.census?.running, step: job.samplerStep, steps: job.samplerSteps)
+        {
+            return passes
+        }
+        return [fraction]
+    }
+
+    private func refreshSketchBadge() {
+        let sketching = board.isBusy && visibleArt == "sketch"
+        gtk_widget_set_visible(sketchBadge, sketching ? 1 : 0)
+        if sketching { gtk_label_set_text(op(sketchBadge), ForgeWords.sketchCaption(board.job)) }
+    }
+
+    /// The newest clip's poster, held dimmed behind everything the empty stage says.
+    private func refreshBackdrop(dim: Double) {
+        let key = entries.first(where: \.isPlayable)?.asset.map(ForgePosters.key(for:))
+        let bits = key.flatMap { posters.textures[$0] } ?? 0
+        guard bits != 0, let key else {
+            if backdropKey != nil {
+                Gtk.removeChildren(of: backdrop)
+                backdropKey = nil
+            }
+            return
+        }
+        if backdropKey != key {
+            Gtk.removeChildren(of: backdrop)
+            if let picture = Gtk.studioPicture(bits: bits, fit: GTK_CONTENT_FIT_COVER) {
+                Gtk.setHidden(picture, true)
+                gtk_box_append(ptr(backdrop), picture)
+            }
+            backdropKey = key
+        }
+        gtk_widget_set_opacity(backdrop, dim)
+    }
+
+    /// The finished clip's verbs: a copy somewhere of the person's own, and the next clip from
+    /// where this one ended. They hold their room while a render is out.
+    private func clipVerbs(for entry: ForgeEntry) -> [StudioVerb] {
+        guard let asset = entry.asset else { return [] }
+        let pane = Weak(self)
+        return [
+            StudioVerb(
+                id: "save", glyph: "↓", title: ImageGenAction.save.title,
+                hint: Localized.text("Write the clip somewhere of your own"),
+                perform: { pane.value?.save(asset) }),
+            StudioVerb(
+                id: "extend", glyph: "⏭", title: ForgeWords.extendTitle, hint: ForgeWords.extendHint,
+                isPrimary: true,
+                perform: {
+                    guard let pane = pane.value else { return }
+                    pane.showBoard()
+                    pane.runner.extend(entry)
+                    pane.focusPrompt()
+                }),
+        ]
+    }
+
+    private func clipVerbs(reserved: Bool) -> [StudioVerb] {
+        [
+            StudioVerb(id: "save", glyph: "↓", title: ImageGenAction.save.title, hint: "", perform: {}),
+            StudioVerb(id: "extend", glyph: "⏭", title: ForgeWords.extendTitle, hint: "", perform: {}),
+        ]
     }
 
     /// The clip's bytes, fetched from the machine that wrote them, into a file of the person's
@@ -957,8 +938,9 @@ final class ForgePane: @unchecked Sendable {
                     Gtk.saveFile(parent: self.parent, suggestedName: asset.filename, data: data) { [weak self] path in
                         guard let path else { return }
                         Gtk.onMain { [weak self] in
-                            self?.reason = ImageGenWords.savedNotice(path: path)
-                            self?.render()
+                            self?.reason = nil
+                            self?.working = nil
+                            self?.flash(ImageGenWords.savedNotice(path: path))
                         }
                     }
                 }
@@ -973,326 +955,187 @@ final class ForgePane: @unchecked Sendable {
         }
     }
 
-    private func drawShelf() {
-        gtk_label_set_text(
-            op(shelfCountLabel),
-            board.history.isEmpty ? "" : Localized.text("%@ kept", "\(board.history.count)"))
-        Gtk.removeChildren(of: shelfList)
-        if board.history.isEmpty {
-            let empty = Gtk.label(Localized.text("Nothing rendered yet"), css: "watch-note", wrap: true, selectable: false)
-            gtk_label_set_xalign(op(empty), 0)
-            gtk_box_append(ptr(shelfList), empty)
-            return
-        }
-        let current = board.job.asset
-        for entry in board.history {
-            let button = gtk_button_new()!
-            Gtk.addClass(button, "draw-row")
-            if let current, entry.asset == current { Gtk.addClass(button, "draw-row-on") }
-            gtk_widget_set_focusable(button, 0)
-            let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
-            gtk_widget_set_hexpand(lines, 1)
-            let words = Gtk.label(entry.title, css: "draw-row-words", wrap: true, selectable: false)
-            gtk_label_set_lines(op(words), 2)
-            gtk_label_set_ellipsize(op(words), PANGO_ELLIPSIZE_END)
-            gtk_label_set_max_width_chars(op(words), 30)
-            gtk_label_set_xalign(op(words), 0)
-            let facts = Gtk.label(entry.detail, css: "draw-row-facts", selectable: false)
-            gtk_label_set_ellipsize(op(facts), PANGO_ELLIPSIZE_END)
-            gtk_label_set_max_width_chars(op(facts), 30)
-            gtk_label_set_xalign(op(facts), 0)
-            gtk_box_append(ptr(lines), words)
-            gtk_box_append(ptr(lines), facts)
-            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-            gtk_box_append(ptr(row), lines)
-            if let badge = entry.badge {
-                let pill = Gtk.label(badge, css: "pill", selectable: false)
-                Gtk.addClass(pill, entry.isPlayable ? "pill-source" : "pill-error")
-                gtk_label_set_ellipsize(op(pill), PANGO_ELLIPSIZE_NONE)
-                gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
-                gtk_box_append(ptr(row), pill)
-            }
-            gtk_button_set_child(ptr(button), row)
-            Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
-                Gtk.onMain { [weak self] in
-                    guard let self else { return }
-                    if let asset = entry.asset { self.play(asset) } else { self.runner.reuse(entry) }
-                }
-            }
-            let bits = UInt(bitPattern: button)
-            Gtk.onRightClick(button) { [weak self] x, y in
-                Gtk.onMain { [weak self] in
-                    guard let widget = UnsafeMutablePointer<GtkWidget>(bitPattern: bits) else { return }
-                    self?.presentClipMenu(entry, on: widget, x: x, y: y)
-                }
-            }
-            gtk_box_append(ptr(shelfList), button)
-        }
+    /// One line on the stage's own state row for a few seconds — a file written — and then the
+    /// stage says what it was saying.
+    private func flash(_ line: String) {
+        shell.setState(line, tone: .live, breathing: false)
+        Gtk.after(4000) { [weak self] in Gtk.onMain { [weak self] in self?.render() } }
     }
 
-    /// What the stage shows while nothing plays: the machine's sketch while one is coming and
-    /// until the player has taken over, else the phase's own glyph. The sketch's picture is swapped
-    /// in place, never rebuilt, so a frame changes pixels and nothing else.
-    private func drawFace() {
-        let job = board.job
-        if let frame = job.sketch, frame != shownSketch {
-            adoptSketch(frame)
-        }
-        if case .drafting = job.phase { dropSketch() }
-        if case .failed = job.phase { dropSketch() }
-        if case .cancelled = job.phase { dropSketch() }
-        if sketchTexture != 0 {
-            if gtk_widget_get_parent(sketchFace) != stageFace {
-                Gtk.removeChildren(of: stageFace)
-                gtk_box_append(ptr(stageFace), sketchFace)
-            }
-            let caption: String
-            if job.isBusy {
-                let left = job.remaining().map { " · " + $0 } ?? ""
-                caption = ForgeWords.sketchCaption(job) + left
-            } else {
-                caption = job.subtitle
-            }
-            gtk_label_set_text(op(sketchCaption), caption)
-            tailscode_set_accessible_label(sketchPicture, ForgeWords.sketchNote)
-            if let fraction = job.fraction {
-                gtk_progress_bar_set_fraction(op(sketchBar), min(max(fraction, 0), 1))
-                gtk_widget_set_visible(sketchBar, 1)
-            } else {
-                gtk_widget_set_visible(sketchBar, 0)
-            }
-            return
-        }
-        Gtk.removeChildren(of: stageFace)
-        gtk_box_append(ptr(stageFace), ForgeBoardView.stageFace(job))
+    /// The failure's one honest sentence and the remedies that follow from it: the same words
+    /// again, the machine's own account, and another look.
+    private func failureCard(_ why: String) -> UnsafeMutablePointer<GtkWidget> {
+        let pane = Weak(self)
+        return StudioFailureCard.make(
+            sentence: why, note: nil,
+            remedies: [
+                (title: Localized.text("Try again"), primary: true,
+                 perform: { pane.value?.callPressed() }),
+                (title: ImageGenMachineWords.title + "…", primary: false,
+                 perform: { pane.value?.machine.open() }),
+                (title: ImageGenMachineWords.checkAgain, primary: false,
+                 perform: { pane.value?.runner.probe() }),
+            ])
     }
 
-    private func adoptSketch(_ frame: ImageGenPreviewFrame) {
-        let bits: UInt = frame.bytes.withUnsafeBytes { buffer in
-            guard let base = buffer.baseAddress,
-                let texture = tailscode_texture_from_bytes(base, gsize(frame.bytes.count))
-            else { return 0 }
-            return UInt(bitPattern: UnsafeMutableRawPointer(texture))
+    // MARK: the dock
+
+    private func refreshChips() {
+        let readings = StudioChips.forge(for: board)
+        for reading in readings {
+            switch reading.id {
+            case .size: sizeChip.apply(reading, tooltip: nil)
+            case .length: lengthChip.apply(reading, tooltip: nil)
+            case .smoothness: smoothChip.apply(reading, tooltip: nil)
+            case .sound: soundChip.apply(reading, tooltip: ForgeWords.soundHint)
+            case .avoid: avoidChip.apply(reading, tooltip: ForgeWords.negativeIgnoredHint)
+            case .seed:
+                seedChip.apply(
+                    reading, tooltip: Localized.text("The same seed and prompt make the same clip"))
+            case .engine, .aspect, .detail, .cutout, .reference, .craft: break
+            }
         }
-        guard bits != 0 else { return }
-        dropSketch()
-        sketchTexture = bits
-        shownSketch = frame
-        gtk_picture_set_paintable(op(sketchPicture), OpaquePointer(UnsafeMutableRawPointer(bitPattern: bits)!))
+        dock.tray.relayout(force: false)
     }
 
-    private func dropSketch() {
-        guard sketchTexture != 0 else { return }
-        gtk_picture_set_paintable(op(sketchPicture), nil)
-        if let raw = UnsafeMutableRawPointer(bitPattern: sketchTexture) { g_object_unref(raw) }
-        sketchTexture = 0
-        shownSketch = nil
-        if gtk_widget_get_parent(sketchFace) == stageFace { gtk_box_remove(ptr(stageFace), sketchFace) }
-    }
-
-    private static let arrivalFade: UInt32 = 700
-
-    private func drawControls() {
-        Gtk.removeChildren(of: rendererHolder)
-        gtk_box_append(
-            ptr(rendererHolder),
-            ForgeBoardView.renderer(board) { [weak self] in
-                Gtk.onMain { [weak self] in self?.openSetup() }
-            })
-        Gtk.removeChildren(of: frameHolder)
-        gtk_box_append(
-            ptr(frameHolder),
-            ForgeBoardView.frame(board) { [weak self] in
-                self?.frameRows() ?? []
-            })
-        for (size, button) in shapeButtons {
-            mark(button, on: size == board.recipe.size)
-            gtk_widget_set_sensitive(button, board.isBusy ? 0 : 1)
-        }
-        for (seconds, button) in secondButtons {
-            mark(button, on: seconds == board.recipe.seconds)
-            gtk_widget_set_sensitive(button, board.isBusy ? 0 : 1)
-        }
-        for (fps, button) in fpsButtons {
-            mark(button, on: fps == board.recipe.fps)
-            gtk_widget_set_sensitive(button, board.isBusy ? 0 : 1)
-        }
-        gtk_label_set_text(op(seedLabel), "\(board.recipe.seed)")
-        gtk_widget_set_sensitive(seedLink, board.isBusy ? 0 : 1)
-        let count = ImageGenBrief.words(in: promptText)
-        gtk_label_set_text(op(countLabel), count == 1 ? Localized.text("1 word") : Localized.text("%@ words", "\(count)"))
-        gtk_button_set_label(ptr(call), board.renderCall)
-        gtk_widget_set_tooltip_text(call, board.expectation ?? board.job.hint)
-        gtk_widget_remove_css_class(call, "stopping")
-        if board.isBusy { Gtk.addClass(call, "stopping") }
+    private func refreshDock() {
         syncPrompt()
         syncAvoid()
         syncSound()
-        gtk_widget_set_sensitive(promptView, board.isBusy ? 0 : 1)
-        gtk_widget_set_sensitive(avoidEntry, board.isBusy ? 0 : 1)
-        gtk_widget_set_sensitive(soundEntry, board.isBusy ? 0 : 1)
-    }
-
-    private func mark(_ widget: UnsafeMutablePointer<GtkWidget>, on: Bool) {
-        if on {
-            Gtk.addClass(widget, "draw-chip-on")
-        } else {
-            gtk_widget_remove_css_class(widget, "draw-chip-on")
+        dock.setPlaceholder(board.prompt)
+        dock.setGo(title: board.renderCall, stopping: board.isBusy)
+        dock.setLocked(board.isBusy)
+        gtk_widget_set_tooltip_text(dock.go, board.expectation ?? board.job.hint)
+        let about = board.expectation.map { line -> String in
+            guard let name = board.endpoint?.shortName else { return line }
+            return Localized.text("%@ on %@", line, name)
         }
+        let words = ImageGenBrief.words(in: promptText.trimmingCharacters(in: .whitespacesAndNewlines))
+        dock.setFoot(
+            about,
+            tooltip: words == 1 ? Localized.text("1 word") : Localized.text("%@ words", "\(words)"))
+        refreshEnhance()
+        refreshSlot()
     }
 
-    /// The Enhance control and the link beside it that names who would write: the helper, or
-    /// where the survey stands. Press once to have the caption written, press again while it
-    /// writes to stop it, and once more after taking it to get your own sentence back.
-    private func refreshEnhance() {
-        let helper = runner.helper
-        let busy = runner.enhancing
-        gtk_button_set_label(
-            ptr(enhanceButton),
-            busy ? ImageGenWords.enhancingTitle
-                : (beforeEnhance == nil ? ImageGenWords.enhanceTitle : ImageGenWords.undoTitle))
-        gtk_widget_set_tooltip_text(
-            enhanceButton,
-            busy ? ImageGenRewriteWords.stopTitle
-                : helper.map(ImageGenWords.enhanceHint) ?? ImageGenWords.enhanceLookingHint)
-        gtk_widget_set_sensitive(enhanceButton, busy || !board.isBusy ? 1 : 0)
-        mark(enhanceButton, on: busy || beforeEnhance != nil)
-        gtk_menu_button_set_label(op(helperMenu), ImageGenRewriteWords.withLine(HelperMenu.label(runner)))
-        gtk_widget_set_tooltip_text(helperMenu, HelperMenu.tooltip(runner))
-        reopenHelperMenuIfSurveyLanded()
-        refreshRewrite()
-    }
-
-    /// A menu opened before the survey came back was a "Looking…" row; when the answer lands
-    /// while it is still open, it is rebuilt in place rather than left to be closed and opened.
-    private func reopenHelperMenuIfSurveyLanded() {
-        guard let landed = runner.surveyedAt, landed != surveyShown else { return }
-        surveyShown = landed
-        guard let popover = gtk_menu_button_get_popover(op(helperMenu)),
-            gtk_widget_get_mapped(UnsafeMutableRawPointer(popover).assumingMemoryBound(to: GtkWidget.self)) != 0
-        else { return }
-        gtk_menu_button_popdown(op(helperMenu))
-        gtk_menu_button_popup(op(helperMenu))
-    }
-
-    /// The card follows the draft: hidden with none, writing with a Stop, landed with the three
-    /// verbs and a line for what to change, failed with the reason and a way to try again.
-    private func refreshRewrite() {
-        guard let draft = runner.draft else {
-            gtk_widget_set_visible(rewriteBox, 0)
-            rewriteShown = ""
+    /// The start-from slot wears the picture the clip opens on, or a glyph for the end of a clip.
+    private func refreshSlot() {
+        guard let frame = board.recipe.frame else {
+            slotView.apply(count: 0, bits: 0, tooltip: ForgeWords.frameHint)
+            releaseReferenceTexture()
             return
         }
-        gtk_widget_set_visible(rewriteBox, 1)
-        gtk_label_set_text(op(rewriteHead), draft.headline)
-        if case .failed = draft.phase {
-            Gtk.addClass(rewriteHead, "danger")
-        } else {
-            gtk_widget_remove_css_class(rewriteHead, "danger")
-        }
-        let landedNow = !draft.isWriting && rewriteWasWriting
-        rewriteWasWriting = draft.isWriting
-        if draft.written != rewriteShown || landedNow {
-            rewriteShown = draft.written
-            let buffer = gtk_text_view_get_buffer(ptr(rewriteBody))
-            gtk_text_buffer_set_text(buffer, draft.written, -1)
-            var edge = GtkTextIter()
-            if draft.isWriting {
-                gtk_text_buffer_get_end_iter(buffer, &edge)
-            } else {
-                gtk_text_buffer_get_start_iter(buffer, &edge)
+        var bits: UInt = 0
+        var glyph: String? = "▤"
+        switch frame {
+        case .file(let path):
+            if referenceTexture?.path != path {
+                releaseReferenceTexture()
+                if let data = FileManager.default.contents(atPath: path) {
+                    let made: UInt = data.withUnsafeBytes { buffer in
+                        guard let base = buffer.baseAddress else { return 0 }
+                        var width: Int32 = 0
+                        var height: Int32 = 0
+                        guard
+                            let texture = tailscode_texture_scaled(
+                                base, gsize(data.count), 256, &width, &height)
+                        else { return 0 }
+                        return UInt(bitPattern: UnsafeMutableRawPointer(texture))
+                    }
+                    if made != 0 { referenceTexture = (path, made) }
+                }
             }
-            let mark = gtk_text_buffer_create_mark(buffer, nil, &edge, 0)
-            gtk_text_view_scroll_mark_onscreen(ptr(rewriteBody), mark)
-            gtk_text_buffer_delete_mark(buffer, mark)
+            bits = referenceTexture?.bits ?? 0
+            glyph = nil
+        case .kept: glyph = "▤"
+        case .clipEnd: glyph = "⏭"
         }
-        let scroller = gtk_widget_get_parent(rewriteBody)
-        gtk_widget_set_visible(scroller, draft.written.isEmpty ? 0 : 1)
-        gtk_widget_set_visible(rewriteStop, draft.isWriting ? 1 : 0)
-        gtk_widget_set_visible(rewriteUse, draft.isUsable ? 1 : 0)
-        gtk_widget_set_visible(rewriteAgain, draft.isWriting ? 0 : 1)
-        gtk_widget_set_visible(rewriteKeep, draft.isWriting ? 0 : 1)
-        gtk_widget_set_visible(rewriteInstruction, draft.isUsable ? 1 : 0)
-        gtk_widget_set_sensitive(rewriteUse, board.isBusy ? 0 : 1)
+        slotView.apply(
+            count: 1, bits: bits, glyph: glyph, tooltip: "\(frame.label) — \(frame.detail)")
     }
 
-    /// Takes the caption: into the box, where it can still be edited, with the typed sentence
-    /// one press away. The shape the helper chose is followed only where nobody chose one by
-    /// hand and the clip does not continue another, which takes its shape from that clip.
-    private func useRewrite() {
-        guard let draft = runner.draft, draft.isUsable else { return }
-        beforeEnhance = promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? draft.original : promptText
-        if let aspect = draft.aspect, board.recipe.frame?.isClipEnd != true {
-            runner.follow(size: ForgeSize.following(aspect))
+    private func releaseReferenceTexture() {
+        if let held = referenceTexture, let raw = UnsafeMutableRawPointer(bitPattern: held.bits) {
+            g_object_unref(raw)
         }
-        describe(draft.written)
-        runner.dismissRewrite()
-        reason = ImageGenWords.enhancedNotice(draft.helper)
-        render()
+        referenceTexture = nil
     }
 
-    /// One line of what to change sends the same caption back for a revision.
-    private func revisePressed() {
-        guard let draft = runner.draft, draft.isUsable,
-            let raw = gtk_editable_get_text(op(rewriteInstruction))
-        else { return }
-        let instruction = String(cString: raw).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !instruction.isEmpty else { return }
-        gtk_editable_set_text(op(rewriteInstruction), "")
-        runner.rewrite(draft.original, instruction: instruction)
+    private func refreshMachine() {
+        let section = board.sections.first(where: { $0.id == ForgeBoard.rendererID })
+        let row = board.rows.first(where: { $0.kind == .field(.endpoint) })
+        let name = board.endpoint.map { board.rendererName ?? $0.shortName } ?? ""
+        let state: String?
+        var tone: StudioMachinePill.Tone
+        switch section?.phase ?? .idle {
+        case .ready:
+            state = row?.badge
+            tone = .ready
+        case .failed(let why):
+            state = why
+            tone = .danger
+        case .checking:
+            state = row?.badge
+            tone = .unknown
+        case .idle:
+            state = board.endpoint == nil ? ForgeSetup.title : row?.badge
+            tone = .unknown
+        }
+        if board.isBusy { tone = .working }
+        machine.apply(StudioMachinePill(machine: name, state: state, version: nil, tone: tone))
     }
 
-    private func enhancePressed() {
-        if let original = beforeEnhance {
-            beforeEnhance = nil
-            describe(original)
-            refreshEnhance()
-            return
+    // MARK: the shelf
+
+    private func refreshShelf() {
+        var tiles: [StudioTile] = []
+        if board.isBusy {
+            tiles.append(
+                StudioTile(
+                    id: StudioShelf.inFlightID, inFlight: true, badge: board.job.badge,
+                    progress: board.job.fraction, glyph: "…", words: busyLine(board.job),
+                    tooltip: busyLine(board.job)))
         }
-        if runner.enhancing {
-            runner.stopRewrite()
-            return
+        for entry in entries {
+            let ago = ImageGenLibraryWords.ago(entry.finishedAt)
+            tiles.append(
+                StudioTile(
+                    id: entry.id,
+                    badge: entry.asset == nil
+                        ? entry.badge : StudioWords.duration(entry.recipe.seconds),
+                    glyph: entry.isPlayable ? "▶" : "✕",
+                    words: StudioWords.shelfTileLabel(words: entry.title, facts: entry.detail),
+                    tooltip: "\(ago) · \(entry.detail)"))
         }
-        let brief = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !brief.isEmpty else {
-            focusPrompt()
-            return
-        }
-        reason = nil
-        runner.rewrite(brief)
+        let selected = playing.flatMap { asset in entries.first(where: { $0.asset == asset })?.id }
+            ?? board.job.asset.flatMap { asset in entries.first(where: { $0.asset == asset })?.id }
+        shelf.describe(
+            heading: ForgeWords.recentTitle,
+            count: entries.isEmpty ? nil : Localized.text("%@ kept", "\(entries.count)"),
+            note: entries.isEmpty ? Localized.text("Nothing rendered yet") : nil)
+        shelf.update(tiles: tiles, selection: selected)
     }
 
-    private func choose(_ field: ForgeField) {
-        let rows = board.choices(of: field).map { choice in
-            (
-                choice.menuTitle,
-                choice.detail.isEmpty ? nil : choice.detail,
-                { [weak self] in
-                    Gtk.onMain { [weak self] in self?.runner.pick(field, id: choice.id) }
-                } as @Sendable () -> Void
-            )
-        }
-        Gtk.contextMenu(on: briefColumn, x: 8, y: 8, rows: rows)
+    /// The decoded poster a tile draws: the sketch for the render in flight, the clip's filed poster
+    /// for one that is made, and nothing for a clip with no poster, which wears its glyph.
+    private func posterBits(for id: String) -> UInt {
+        if id == StudioShelf.inFlightID { return sketchTexture }
+        guard let asset = entries.first(where: { $0.id == id })?.asset else { return 0 }
+        return posters.textures[ForgePosters.key(for: asset)] ?? 0
     }
 
-    private func activate(section: String, offset: Int) {
-        runner.focus(section: section, offset: offset)
-        guard let action = runner.activate() else {
-            render()
-            return
+    private func wantPosters(_ ids: [String]) {
+        var keys = ids.compactMap { id in
+            entries.first(where: { $0.id == id })?.asset.map(ForgePosters.key(for:))
         }
-        perform(action)
-    }
-
-    private func callPressed() {
-        guard let action = runner.begin() else { return }
-        perform(action)
+        if let newest = entries.first(where: \.isPlayable)?.asset { keys.append(ForgePosters.key(for: newest)) }
+        if let landed = board.job.asset { keys.append(ForgePosters.key(for: landed)) }
+        posters.want(keys)
     }
 
     /// What a kept clip offers besides being played: the next clip from where it ended, its
-    /// settings back in the draft, and the way to let it go. A receipt for a file that is no
-    /// longer on the other machine is exactly the kind of row a history has to be able to lose.
+    /// settings back in the draft, and the way to let it go. A receipt for a file that is no longer
+    /// on the other machine is exactly the kind of row a history has to be able to lose.
     private func presentClipMenu(
         _ entry: ForgeEntry, on widget: UnsafeMutablePointer<GtkWidget>, x: Double, y: Double
     ) {
@@ -1315,10 +1158,7 @@ final class ForgePane: @unchecked Sendable {
         rows.append(
             (Localized.text("Use it"), entry.recipe.summary,
              { [weak self] in
-                 Gtk.onMain { [weak self] in
-                     guard let self else { return }
-                     self.runner.reuse(entry)
-                 }
+                 Gtk.onMain { [weak self] in self?.runner.reuse(entry) }
              }))
         rows.append(
             (Localized.text("Forget it"), nil,
@@ -1326,6 +1166,61 @@ final class ForgePane: @unchecked Sendable {
                  Gtk.onMain { [weak self] in self?.runner.forget(entry) }
              }))
         Gtk.contextMenu(on: widget, x: x, y: y, rows: rows)
+    }
+
+    // MARK: sketch and player
+
+    private func adoptSketch(_ frame: ImageGenPreviewFrame) {
+        let bits: UInt = frame.bytes.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress,
+                let texture = tailscode_texture_from_bytes(base, gsize(frame.bytes.count))
+            else { return 0 }
+            return UInt(bitPattern: UnsafeMutableRawPointer(texture))
+        }
+        guard bits != 0 else { return }
+        Gtk.replacePicture(of: sketchPicture, bits: bits)
+        if sketchTexture != 0, let raw = UnsafeMutableRawPointer(bitPattern: sketchTexture) {
+            g_object_unref(raw)
+        }
+        sketchTexture = bits
+        shownSketch = frame
+        shelf.refreshPicture(StudioShelf.inFlightID)
+    }
+
+    private func dropSketch() {
+        guard sketchTexture != 0 else { return }
+        gtk_picture_set_paintable(op(sketchPicture), nil)
+        if let raw = UnsafeMutableRawPointer(bitPattern: sketchTexture) { g_object_unref(raw) }
+        sketchTexture = 0
+        shownSketch = nil
+    }
+
+    static let arrivalFade: UInt32 = 240
+
+    /// The player takes the stage. A clip that just landed crossfades from its last sketch once,
+    /// 240 milliseconds, ease-out; a clip chosen from the shelf is simply there.
+    private func showPlayer() {
+        guard surface != nil else { return }
+        let landing = visibleArt != "player" && sketchTexture != 0 && Gtk.animationsAllowed
+        if landing {
+            gtk_stack_set_transition_duration(op(art), Self.arrivalFade)
+            gtk_stack_set_transition_type(op(art), GTK_STACK_TRANSITION_TYPE_CROSSFADE)
+            gtk_stack_set_visible_child_name(op(art), "player")
+            fadeEnds = Date().addingTimeInterval(Double(Self.arrivalFade + 200) / 1000)
+            Gtk.after(Self.arrivalFade + 200) { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.fadeEnds = nil
+                    gtk_stack_set_transition_type(op(self.art), GTK_STACK_TRANSITION_TYPE_NONE)
+                    if self.loaded { self.dropSketch() }
+                }
+            }
+            return
+        }
+        if let fadeEnds, fadeEnds > Date(), visibleArt == "player" { return }
+        gtk_stack_set_transition_type(op(art), GTK_STACK_TRANSITION_TYPE_NONE)
+        gtk_stack_set_visible_child_name(op(art), "player")
+        if loaded { dropSketch() }
     }
 
     private func ensurePlayer() -> Bool {
@@ -1352,7 +1247,7 @@ final class ForgePane: @unchecked Sendable {
         surface = area
         gtk_widget_set_hexpand(area, 1)
         gtk_widget_set_vexpand(area, 1)
-        gtk_stack_add_child(op(stageStack), area)
+        gtk_stack_add_named(op(art), area, "player")
         return true
     }
 
@@ -1367,12 +1262,6 @@ final class ForgePane: @unchecked Sendable {
         case "loaded":
             loaded = true
             render()
-            Gtk.after(Self.arrivalFade + 400) { [weak self] in
-                Gtk.onMain { [weak self] in
-                    guard let self, self.loaded else { return }
-                    self.dropSketch()
-                }
-            }
         case "mute":
             muted = payload == "1"
             render()
@@ -1397,11 +1286,78 @@ final class ForgePane: @unchecked Sendable {
     }
 
     /// The C callback carries a raw pointer, so the pane reaches it through a box it owns and
-    /// releases at shutdown — an event arriving after the pane is gone finds nothing rather than
-    /// a dangling object.
+    /// releases at shutdown — an event arriving after the pane is gone finds nothing rather than a
+    /// dangling object.
     private final class Box {
         weak var pane: ForgePane?
         init(pane: ForgePane) { self.pane = pane }
+    }
+
+    // MARK: enhance and the rewrite card
+
+    /// The Enhance control and the link beside it that names who would write: the helper, or where
+    /// the survey stands. Press once to have the caption written, press again while it writes to
+    /// stop it, and once more after taking it to get your own sentence back.
+    private func refreshEnhance() {
+        dock.showEnhance(
+            host: runner, enhancing: runner.enhancing, canUndo: beforeEnhance != nil,
+            locked: board.isBusy)
+        refreshRewrite()
+    }
+
+    /// The card follows the draft, risen over the stage's lower third.
+    private func refreshRewrite() {
+        shell.showLowerCard(rewrite.refresh(runner.draft, canUse: !board.isBusy))
+    }
+
+    /// Takes the caption: into the box, where it can still be edited, with the typed sentence one
+    /// press away. The shape the helper chose is followed only where nobody chose one by hand and
+    /// the clip does not continue another, which takes its shape from that clip.
+    private func useRewrite() {
+        guard let draft = runner.draft, draft.isUsable else { return }
+        beforeEnhance = promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? draft.original : promptText
+        if let aspect = draft.aspect, board.recipe.frame?.isClipEnd != true {
+            runner.follow(size: ForgeSize.following(aspect))
+        }
+        describe(draft.written)
+        runner.dismissRewrite()
+        reason = ImageGenWords.enhancedNotice(draft.helper)
+        render()
+    }
+
+    private func enhancePressed() {
+        if let original = beforeEnhance {
+            beforeEnhance = nil
+            describe(original)
+            refreshEnhance()
+            return
+        }
+        if runner.enhancing {
+            runner.stopRewrite()
+            return
+        }
+        let brief = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !brief.isEmpty else {
+            focusPrompt()
+            return
+        }
+        reason = nil
+        runner.rewrite(brief)
+    }
+
+    private func choose(_ field: ForgeField) {
+        switch field {
+        case .size: sizeChip.open()
+        case .seconds: lengthChip.open()
+        case .fps: smoothChip.open()
+        default: break
+        }
+    }
+
+    private func callPressed() {
+        guard let action = runner.begin() else { return }
+        perform(action)
     }
 }
 

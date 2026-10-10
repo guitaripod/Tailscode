@@ -261490,6 +261490,77 @@
         }
       }
     },
+    "%@ on %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ on %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ auf %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ en %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ sur %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ su %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@で%1$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@에서 %1$@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ na %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ em %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在%2$@上%1$@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在%2$@上%1$@"
+          }
+        }
+      }
+    },
     "%@ ready": {
       "extractionState": "manual",
       "localizations": {
@@ -261538,7 +261609,7 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ gotowy"
+            "value": "%@ gotowe"
           }
         },
         "pt-BR": {
@@ -261550,13 +261621,84 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 已就绪"
+            "value": "%@ 就绪"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 已就緒"
+            "value": "%@ 就緒"
+          }
+        }
+      }
+    },
+    "A picture to edit: choose a file, paste, or take one from the machine's shelf": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A picture to edit: choose a file, paste, or take one from the machine's shelf"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Bild zum Bearbeiten: Datei wählen, einfügen oder aus dem Regal der Maschine nehmen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una imagen para editar: elige un archivo, pega o toma una del estante de la máquina"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une image à modifier : choisir un fichier, coller ou en prendre une sur l'étagère de la machine"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un'immagine da modificare: scegli un file, incolla o prendine una dallo scaffale della macchina"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集する画像：ファイルを選ぶ、貼り付ける、またはマシンの棚から選ぶ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집할 그림: 파일 선택, 붙여넣기 또는 머신의 선반에서 가져오기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obraz do edycji: wybierz plik, wklej lub weź z półki maszyny"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma imagem para editar: escolha um arquivo, cole ou pegue uma da prateleira da máquina"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要编辑的图片：选择文件、粘贴，或从机器的图库中选取"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要編輯的圖片：選擇檔案、貼上，或從機器的圖庫中選取"
           }
         }
       }
@@ -261573,7 +261715,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Beschreibe ein Bild oder lege eines zum Bearbeiten hier ab"
+            "value": "Beschreibe ein Bild oder lege hier eines zum Bearbeiten ab"
           }
         },
         "es": {
@@ -261591,43 +261733,43 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Descrivi un'immagine, oppure trascinane una qui per modificarla"
+            "value": "Descrivi un'immagine o rilasciane una qui per modificarla"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "画像を言葉で説明するか、編集したい画像をここにドロップします"
+            "value": "画像を説明するか、ここにドロップして編集"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "그림을 설명하거나, 편집할 그림을 여기에 놓으세요"
+            "value": "그림을 설명하거나 여기에 끌어다 놓아 편집하세요"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Opisz obraz albo upuść tutaj jeden, aby go edytować"
+            "value": "Opisz obraz lub upuść tu jeden, aby go edytować"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Descreva uma imagem ou solte uma aqui para editá-la"
+            "value": "Descreva uma imagem ou solte uma aqui para editar"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "描述一张图片，或将图片拖到这里进行编辑"
+            "value": "描述一张图片，或把图片拖到这里进行编辑"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "描述一張圖片，或將圖片拖到這裡進行編輯"
+            "value": "描述一張圖片，或把圖片拖到這裡進行編輯"
           }
         }
       }
@@ -261656,7 +261798,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Faites glisser dehors pour enregistrer"
+            "value": "Glisser dehors pour enregistrer"
           }
         },
         "it": {
@@ -261674,7 +261816,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "밖으로 끌어내어 저장"
+            "value": "밖으로 끌어 저장"
           }
         },
         "pl": {
@@ -261703,77 +261845,6 @@
         }
       }
     },
-    "Edit this picture": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edit this picture"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dieses Bild bearbeiten"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Editar esta imagen"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Modifier cette image"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Modifica questa immagine"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "この画像を編集"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "이 그림 편집"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edytuj ten obraz"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Editar esta imagem"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "编辑这张图片"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "編輯這張圖片"
-          }
-        }
-      }
-    },
     "Held from %@'s shelf, dimmed": {
       "extractionState": "manual",
       "localizations": {
@@ -261792,43 +261863,43 @@
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tomada del estante de %@, atenuada"
+            "value": "Del estante de %@, atenuado"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tirée de l'étagère de %@, atténuée"
+            "value": "Tiré de l'étagère de %@, atténué"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dallo scaffale di %@, attenuata"
+            "value": "Dallo scaffale di %@, attenuato"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ の棚から、薄く表示"
+            "value": "%@の棚から、薄く表示"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@의 보관함에서 가져옴, 흐리게 표시"
+            "value": "%@의 선반에서, 흐리게 표시"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Z półki %@, przyciemniony"
+            "value": "Z półki %@, przyciemnione"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Da prateleira de %@, esmaecida"
+            "value": "Da prateleira de %@, esmaecido"
           }
         },
         "zh-Hans": {
@@ -261845,73 +261916,144 @@
         }
       }
     },
-    "Next Picture": {
+    "No engine has all its files": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Next Picture"
+            "value": "No engine has all its files"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nächstes Bild"
+            "value": "Keine Engine hat alle ihre Dateien"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Imagen siguiente"
+            "value": "Ningún motor tiene todos sus archivos"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Image suivante"
+            "value": "Aucun moteur n'a tous ses fichiers"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Immagine successiva"
+            "value": "Nessun motore ha tutti i suoi file"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "次の画像"
+            "value": "すべてのファイルが揃ったエンジンがありません"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "다음 그림"
+            "value": "모든 파일을 갖춘 엔진이 없습니다"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Następny obraz"
+            "value": "Żaden silnik nie ma wszystkich plików"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Próxima imagem"
+            "value": "Nenhum motor tem todos os seus arquivos"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "下一张图片"
+            "value": "没有引擎拥有全部文件"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "下一張圖片"
+            "value": "沒有引擎擁有全部檔案"
+          }
+        }
+      }
+    },
+    "Nothing was sent. Your words are still in the box.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing was sent. Your words are still in the box."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nichts wurde gesendet. Deine Worte stehen noch im Feld."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se envió nada. Tus palabras siguen en el cuadro."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien n'a été envoyé. Vos mots sont toujours dans la zone."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è stato inviato nulla. Le tue parole sono ancora nella casella."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "何も送信されていません。入力した言葉はそのまま残っています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아무것도 전송되지 않았습니다. 입력한 글은 그대로 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nic nie zostało wysłane. Twoje słowa nadal są w polu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada foi enviado. Suas palavras continuam na caixa."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有发送任何内容。你的文字仍在输入框中。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有傳送任何內容。你的文字仍在輸入框中。"
           }
         }
       }
@@ -261928,61 +262070,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oder beginne mit einem dieser Beispiele"
+            "value": "Oder starte mit einem davon"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "O empieza con uno de estos"
+            "value": "O empieza con una de estas"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ou partez de l'un de ceux-ci"
+            "value": "Ou partez de l'une de celles-ci"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oppure parti da uno di questi"
+            "value": "Oppure parti da una di queste"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "または、次のどれかから始めます"
+            "value": "または、これらから始める"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "또는 아래 중 하나로 시작하세요"
+            "value": "또는 이 중 하나로 시작하세요"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Albo zacznij od jednego z tych"
+            "value": "Albo zacznij od jednego z nich"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ou comece por um destes"
+            "value": "Ou comece por uma destas"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "或者从下面的示例开始"
+            "value": "或从下面任选一个开始"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "或者從下面的範例開始"
+            "value": "或從下面任選一個開始"
           }
         }
       }
@@ -262023,19 +262165,19 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ で描く"
+            "value": "%@で描く"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@(으)로 그리기"
+            "value": "%@로 그리기"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Maluj w trybie %@"
+            "value": "Maluj przez %@"
           }
         },
         "pt-BR": {
@@ -262047,723 +262189,368 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "改用 %@ 绘制"
+            "value": "用 %@ 绘制"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "改用 %@ 繪製"
+            "value": "用 %@ 繪製"
           }
         }
       }
     },
-    "Picture": {
+    "The clipboard holds no picture": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Picture"
+            "value": "The clipboard holds no picture"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bild"
+            "value": "Die Zwischenablage enthält kein Bild"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Imagen"
+            "value": "El portapapeles no contiene ninguna imagen"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Image"
+            "value": "Le presse-papiers ne contient aucune image"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Immagine"
+            "value": "Gli appunti non contengono immagini"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "画像"
+            "value": "クリップボードに画像がありません"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "그림"
+            "value": "클립보드에 그림이 없습니다"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Obraz"
+            "value": "Schowek nie zawiera obrazu"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Imagem"
+            "value": "A área de transferência não contém imagem"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "图片"
+            "value": "剪贴板中没有图片"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "圖片"
+            "value": "剪貼簿中沒有圖片"
           }
         }
       }
     },
-    "Picture actions": {
+    "What to change in %@…": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Picture actions"
+            "value": "What to change in %@…"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bildaktionen"
+            "value": "Was soll in %@ geändert werden …"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Acciones de la imagen"
+            "value": "Qué cambiar en %@…"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Actions sur l'image"
+            "value": "Que modifier dans %@…"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Azioni sull'immagine"
+            "value": "Cosa cambiare in %@…"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "画像の操作"
+            "value": "%@のどこを変えますか…"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "그림 동작"
+            "value": "%@에서 무엇을 바꿀까요…"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Działania na obrazie"
+            "value": "Co zmienić w %@…"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ações da imagem"
+            "value": "O que mudar em %@…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "图片操作"
+            "value": "要如何修改 %@…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "圖片操作"
+            "value": "要如何修改 %@…"
           }
         }
       }
     },
-    "Previous Picture": {
+    "Write the clip somewhere of your own": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Previous Picture"
+            "value": "Write the clip somewhere of your own"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vorheriges Bild"
+            "value": "Den Clip an einem Ort deiner Wahl sichern"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Imagen anterior"
+            "value": "Guardar el clip donde quieras"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Image précédente"
+            "value": "Enregistrer le clip où vous voulez"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Immagine precedente"
+            "value": "Salva il clip dove preferisci"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "前の画像"
+            "value": "クリップを好きな場所に書き出す"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이전 그림"
+            "value": "클립을 원하는 곳에 저장"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Poprzedni obraz"
+            "value": "Zapisz klip w wybranym miejscu"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Imagem anterior"
+            "value": "Salvar o clipe onde quiser"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "上一张图片"
+            "value": "将片段保存到你选择的位置"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "上一張圖片"
+            "value": "將片段儲存到你選擇的位置"
           }
         }
       }
     },
-    "Shelf": {
+    "asleep": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Shelf"
+            "value": "asleep"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Regal"
+            "value": "schläft"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Estante"
+            "value": "dormida"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Étagère"
+            "value": "en veille"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Scaffale"
+            "value": "in pausa"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "棚"
+            "value": "スリープ中"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "보관함"
+            "value": "절전 중"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Półka"
+            "value": "uśpiona"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Prateleira"
+            "value": "dormindo"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "图库"
+            "value": "休眠中"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "圖庫"
+            "value": "休眠中"
           }
         }
       }
     },
-    "Space": {
+    "rolls": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Space"
+            "value": "rolls"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Leertaste"
+            "value": "würfelt"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Espacio"
+            "value": "aleatoria"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Espace"
+            "value": "aléatoire"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Spazio"
+            "value": "casuale"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "スペース"
+            "value": "ランダム"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "스페이스"
+            "value": "무작위"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Spacja"
+            "value": "losowe"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Espaço"
+            "value": "aleatória"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "空格"
+            "value": "随机"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "空白鍵"
-          }
-        }
-      }
-    },
-    "Start from: %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start from: %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ausgangsbild: %@"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Partir de: %@"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Point de départ : %@"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Parti da: %@"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "元の画像: %@"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "시작 그림: %@"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Punkt wyjścia: %@"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Partir de: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "起点：%@"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "起點：%@"
-          }
-        }
-      }
-    },
-    "Studio": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Studio"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Studio"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Estudio"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Studio"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Studio"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "スタジオ"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "스튜디오"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Studio"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Estúdio"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作室"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作室"
-          }
-        }
-      }
-    },
-    "Studio lane": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Studio lane"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Studio-Bereich"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Carril del estudio"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voie du studio"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Corsia dello studio"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "スタジオのレーン"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "스튜디오 레인"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tor studia"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Faixa do estúdio"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作室通道"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作室通道"
-          }
-        }
-      }
-    },
-    "The file stays where it was written. This only takes the picture off the stage and the shelf.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The file stays where it was written. This only takes the picture off the stage and the shelf."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Datei bleibt dort, wo sie geschrieben wurde. Dies nimmt das Bild nur von der Bühne und aus dem Regal."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "El archivo se queda donde se escribió. Esto solo quita la imagen del escenario y del estante."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Le fichier reste là où il a été écrit. Cela retire seulement l'image de la scène et de l'étagère."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Il file resta dove è stato scritto. Questo toglie l'immagine solo dalla scena e dallo scaffale."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ファイルは書き込まれた場所に残ります。ステージと棚から画像を外すだけです。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "파일은 저장된 곳에 그대로 남습니다. 무대와 보관함에서만 그림을 내립니다."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Plik zostaje tam, gdzie został zapisany. To tylko zdejmuje obraz ze sceny i z półki."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "O arquivo continua onde foi gravado. Isto apenas tira a imagem do palco e da prateleira."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文件仍保留在原处。这只会把图片从舞台和图库中移开。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "檔案仍保留在原處。這只會把圖片從舞台和圖庫中移開。"
-          }
-        }
-      }
-    },
-    "about %@ on %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "about %@ on %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "etwa %@ auf %@"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "unos %@ en %@"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "environ %@ sur %@"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "circa %@ su %@"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 前後（%@ 上）"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 정도 (%@에서)"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ok. %@ na %@"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "cerca de %@ em %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "约 %@（在 %@ 上）"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "約 %@（在 %@ 上）"
+            "value": "隨機"
           }
         }
       }
