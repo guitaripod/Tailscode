@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Compact chat mocks</title>
+<style>
+:root{color-scheme:dark light;--bg:#161618;--ink:#f3f3f5;--ink2:rgba(243,243,245,.66);--card:#202024;--line:rgba(255,255,255,.1)}
+@media (prefers-color-scheme:light){:root{--bg:#f2f2f5;--ink:#1d1d1f;--ink2:rgba(29,29,31,.66);--card:#fff;--line:rgba(0,0,0,.1)}}
+*{box-sizing:border-box}
+body{margin:0;padding:40px 32px 60px;background:var(--bg);color:var(--ink);font-family:-apple-system,"SF Pro",system-ui,sans-serif;max-width:1500px;margin:0 auto}
+h1{font-size:28px;margin:0 0 6px}p.l{color:var(--ink2);margin:0 0 28px;max-width:760px;line-height:1.5}
+h2{font-size:17px;margin:34px 0 14px}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:18px;align-items:start}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.c{display:block;background:var(--card);border-radius:14px;padding:12px;text-decoration:none;color:inherit;box-shadow:inset 0 0 0 1px var(--line)}
+.c.w{grid-column:1/-1}
+.c img{width:100%;display:block;border-radius:10px;background:#000}
+.c b{display:block;margin:10px 2px 3px;font-size:14px}.c span{display:block;margin:0 2px;color:var(--ink2);font-size:13px;line-height:1.4}
+.g.ph{grid-template-columns:repeat(auto-fill,minmax(260px,320px))}
+</style></head><body>
+<h1>Compact chat mocks</h1>
+<p class="l">Mocks of docs/compact-chat.md: the link rail (section 4), the other compactions (section 5) and the density table (section 6). 1 CSS px is 1 pt; PNGs are 2x. Magenta text is annotation, not UI. Click a card for the live HTML (it follows the system light/dark setting unless the file name says which).</p>
+<h2>Link rail: today against the rail, same excerpt, same scale</h2>
+<div class="pair"><div><a class="c" href="rail-old-dark.html"><img src="rail-old-dark.png" alt="rail-old-dark"><b>rail-old-dark</b><span>Today: three 56 pt link cards under the segment, the fourth address dropped; same excerpt as the rail (536 pt tall).</span></a></div><div><a class="c" href="rail-rest-dark.html"><img src="rail-rest-dark.png" alt="rail-rest-dark"><b>rail-rest-dark</b><span>The link rail at rest: one 24 pt line holds all four addresses (338 pt tall for the whole excerpt, drawn at the same scale).</span></a></div></div>
+<h2>Link rail: hover plate on the desktops</h2>
+<div class="pair"><a class="c" href="rail-hover-dark.html"><img src="rail-hover-dark.png" alt="rail-hover-dark"><b>rail-hover-dark</b><span>Pointer on the rail, plate open over the rows below: 4 x 36 pt rows, 440 pt wide, the hovered row highlighted; the rows underneath have not moved. Right-click shows Copy all addresses.</span></a><a class="c" href="rail-hover-light.html"><img src="rail-hover-light.png" alt="rail-hover-light"><b>rail-hover-light</b><span>The same, light.</span></a></div>
+<h2>Link rail: touch (402 pt)</h2>
+<div class="g ph"><a class="c" href="rail-phone-rest.html"><img src="rail-phone-rest.png" alt="rail-phone-rest"><b>rail-phone-rest</b><span>At rest, 24 pt row with the 44 pt hit area drawn over its neighbours.</span></a><a class="c" href="rail-phone-open.html"><img src="rail-phone-open.png" alt="rail-phone-open"><b>rail-phone-open</b><span>Tapped: expanded in place, rows 36 pt, the rail top held as the scroll anchor, the content below pushed down 144 pt.</span></a><a class="c" href="rail-phone-rest-dark.html"><img src="rail-phone-rest-dark.png" alt="rail-phone-rest-dark"><b>rail-phone-rest-dark</b><span>At rest, dark.</span></a><a class="c" href="rail-phone-open-dark.html"><img src="rail-phone-open-dark.png" alt="rail-phone-open-dark"><b>rail-phone-open-dark</b><span>Expanded, dark.</span></a></div>
+<h2>Before and after, phone (demo-c1 content)</h2>
+<div class="g"><a class="c w" href="before-after-phone-dark.html"><img src="before-after-phone-dark.png" alt="before-after-phone-dark"><b>before-after-phone-dark</b><span>Cards, 54 pt link card, 40 pt dead code space and 16 pt gaps against flat 24 pt lines, rail and gaps 8 / 4 / 2: 695 pt to 521 pt, 25 % shorter (dark).</span></a><a class="c w" href="before-after-phone-light.html"><img src="before-after-phone-light.png" alt="before-after-phone-light"><b>before-after-phone-light</b><span>The same, light.</span></a></div>
+<h2>Before and after, desktop (900 pt column)</h2>
+<div class="g"><a class="c w" href="before-after-desktop-dark.html"><img src="before-after-desktop-dark.png" alt="before-after-desktop-dark"><b>before-after-desktop-dark</b><span>Two stacked 340 x 236 pictures, seam card, header row and three link cards against one 160 pt strip, a divider, folded header and the rail: 1,222 pt to 558 pt, 54 % shorter (dark).</span></a><a class="c w" href="before-after-desktop-light.html"><img src="before-after-desktop-light.png" alt="before-after-desktop-light"><b>before-after-desktop-light</b><span>The same, light.</span></a></div>
+</body></html>
