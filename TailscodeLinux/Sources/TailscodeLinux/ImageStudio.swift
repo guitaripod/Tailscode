@@ -94,6 +94,16 @@ final class ImageStudio: @unchecked Sendable, HelperHost {
 
     var isPainting: Bool { slot.isBusy }
 
+    /// How many renders are ahead of or at this one on the machine: this studio's own while it
+    /// paints, else whatever the machine said it was running when last looked at.
+    var queueCount: Int {
+        if slot.isBusy {
+            if case .queued(let ahead)? = progress?.stage { return ahead + 1 }
+            return 1
+        }
+        return sighting?.running ?? 0
+    }
+
     var endpoint: ImageGenEndpoint { slot.endpoint }
 
     /// Points the studio at the machine the door resolves to, unless a render is in flight — a

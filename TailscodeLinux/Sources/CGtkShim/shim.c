@@ -3105,6 +3105,22 @@ GtkWidget *tailscode_box_new_with_role(
         NULL);
 }
 
+void tailscode_fixed_place(GtkWidget *fixed, GtkWidget *child, double x, double y) {
+    GskTransform *transform = gsk_transform_translate(
+        NULL, &GRAPHENE_POINT_INIT((float)x, (float)y));
+    gtk_fixed_set_child_transform(GTK_FIXED(fixed), child, transform);
+    gsk_transform_unref(transform);
+}
+
+void tailscode_set_accessible_description(GtkWidget *widget, const char *text) {
+    if (text && text[0] != '\0') {
+        gtk_accessible_update_property(
+            GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, text, -1);
+    } else {
+        gtk_accessible_reset_property(GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION);
+    }
+}
+
 int tailscode_accessible_role(GtkWidget *widget) {
     return (int)gtk_accessible_get_accessible_role(GTK_ACCESSIBLE(widget));
 }

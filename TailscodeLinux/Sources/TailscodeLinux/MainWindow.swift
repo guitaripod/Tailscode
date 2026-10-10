@@ -17,6 +17,8 @@ import TailscodeCore
 /// and the dialogs — and reaches the conversation through ``SplitHost``'s focused pane.
 final class MainWindow: @unchecked Sendable {
     private var window: UnsafeMutablePointer<GtkWidget>?
+    private var contentHeader: UnsafeMutablePointer<GtkWidget>?
+    private var studioSheet: StudioSheet?
     private let sidebarList = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let sidebarBanner = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let titleLabel = Gtk.label("", css: "mono", selectable: false)
@@ -220,7 +222,19 @@ final class MainWindow: @unchecked Sendable {
         let overlay = adw_toast_overlay_new()!
         adw_toast_overlay_set_child(op(overlay), stack)
         toastOverlay = overlay
-        adw_application_window_set_content(ptr(window), overlay)
+        let root = gtk_overlay_new()!
+        gtk_overlay_set_child(op(root), overlay)
+        let headerBits = UInt(bitPattern: contentHeader)
+        let rootWindow = window
+        studioSheet = StudioSheet(
+            overlay: root, content: overlay, window: rootWindow,
+            titlebar: {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: headerBits) else { return 0 }
+                let header: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+                return Double(gtk_widget_get_height(header))
+            })
+        studioSheet?.onRise = { [weak self] in self?.pendingChords = [] }
+        adw_application_window_set_content(ptr(window), root)
         gtk_window_present(ptr(window))
         Trace.stamp("window presented")
         Seatbelts.shared.start(window: window) { [weak self] in
@@ -646,7 +660,7 @@ final class MainWindow: @unchecked Sendable {
                         Data("IMAGE \(studio == nil ? "-" : ImageStudio.shared.endpoint.address)\n"
                             .utf8))
                 case "imagetype":
-                    ImageWindow.current?.driverType(argument)
+                    StudioSheet.current?.driverType(argument)
                     FileHandle.standardOutput.write(
                         Data("IMAGETYPE \(argument.isEmpty ? "-" : argument)\n".utf8))
                 case "imageengine":
@@ -662,37 +676,51 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(
                         Data("IMAGEASPECT \(ImageStudio.shared.slot.aspect.rawValue)\n".utf8))
                 case "imageattach":
-                    if let window = ImageWindow.current {
+                    if let window = StudioSheet.current {
                         window.driverAttach(argument)
                     } else {
                         self.activePane.draw?.attachFiles([argument])
                     }
                     FileHandle.standardOutput.write(Data("IMAGEATTACH \(argument)\n".utf8))
                 case "imagego":
-                    ImageWindow.current?.driverSubmit()
+                    StudioSheet.current?.driverSubmit()
                     FileHandle.standardOutput.write(
                         Data("IMAGEGO \(ImageStudio.shared.isPainting)\n".utf8))
                 case "imageenhance":
-                    ImageWindow.current?.driverEnhance()
+                    StudioSheet.current?.driverEnhance()
                     FileHandle.standardOutput.write(
                         Data("IMAGEENHANCE \(ImageStudio.shared.helper?.chip ?? "-")\n".utf8))
                 case "imageuse":
-                    ImageWindow.current?.driverUseRewrite()
+                    StudioSheet.current?.driverUseRewrite()
                     FileHandle.standardOutput.write(Data("IMAGEUSE\n".utf8))
                 case "imagerewrite":
                     FileHandle.standardOutput.write(
-                        Data("IMAGEREWRITE \(ImageWindow.current?.rewriteSummary ?? "-") sketch=\(ImageStudio.shared.previewTexture != 0) anim=\(RepeatingMotion.allowed) arrival=\(ImageWindow.current?.arrivalSummary ?? "-")\n".utf8))
+                        Data("IMAGEREWRITE \(StudioSheet.current?.rewriteSummary ?? "-") sketch=\(ImageStudio.shared.previewTexture != 0) anim=\(RepeatingMotion.allowed) arrival=\(StudioSheet.current?.arrivalSummary ?? "-")\n".utf8))
                 case "studio":
-                    let line = ImageWindow.current?.studioSummary
+                    let line = StudioSheet.current?.studioSummary
                         ?? self.activePane.draw?.studioSummary ?? "-"
                     FileHandle.standardOutput.write(Data("STUDIO \(line)\n".utf8))
                 case "imagesum":
                     FileHandle.standardOutput.write(
                         Data("IMAGESUM \(ImageStudio.shared.summary)\n".utf8))
+                case "sheet":
+                    let sheet = self.studioSheet
+                    switch argument {
+                    case "image": sheet?.show(.image)
+                    case "video": sheet?.show(.video)
+                    case "close": sheet?.dismiss()
+                    case "release": sheet?.release()
+                    default:
+                        if let presence = Double(argument.replacingOccurrences(of: "hold", with: "")) {
+                            sheet?.hold(at: presence)
+                        }
+                    }
+                    FileHandle.standardOutput.write(
+                        Data("SHEET \(sheet?.summary ?? "-")\n".utf8))
                 case "forge":
                     let forge = self.presentForge()
                     if !argument.isEmpty { forge.demonstrate(argument) }
-                    FileHandle.standardOutput.write(Data("FORGE \(forge.summary)\n".utf8))
+                    FileHandle.standardOutput.write(Data("FORGE \(forge.forgeSummary)\n".utf8))
                 case "delegate":
                     _ = self.presentDelegate(host: argument.isEmpty ? nil : argument)
                 case "dcompose":
@@ -709,20 +737,20 @@ final class MainWindow: @unchecked Sendable {
                         DelegateWindow.current?.openRun(id: argument)
                     }
                 case "fstate":
-                    ForgeWindow.current?.demonstrate(argument)
+                    StudioSheet.current?.demonstrate(argument)
                     FileHandle.standardOutput.write(
-                        Data("FORGE \(ForgeWindow.current?.summary ?? "-")\n".utf8))
+                        Data("FORGE \(StudioSheet.current?.forgeSummary ?? "-")\n".utf8))
                 case "ftype":
-                    ForgeWindow.current?.describe(argument)
+                    StudioSheet.current?.describe(argument)
                     FileHandle.standardOutput.write(
-                        Data("FORGE \(ForgeWindow.current?.summary ?? "-")\n".utf8))
+                        Data("FORGE \(StudioSheet.current?.forgeSummary ?? "-")\n".utf8))
                 case "fsum":
                     FileHandle.standardOutput.write(
-                        Data("FORGE \(ForgeWindow.current?.summary ?? "-")\n".utf8))
+                        Data("FORGE \(StudioSheet.current?.forgeSummary ?? "-")\n".utf8))
                 case "fenhance", "fuse", "fframe", "fextend", "fsound":
-                    ForgeWindow.current?.drive(verb, argument)
+                    StudioSheet.current?.drive(verb, argument)
                     FileHandle.standardOutput.write(
-                        Data("FORGE \(ForgeWindow.current?.summary ?? "-")\n".utf8))
+                        Data("FORGE \(StudioSheet.current?.forgeSummary ?? "-")\n".utf8))
                 case "fkey":
                     let keyval: UInt32
                     var state: UInt32 = 0
@@ -739,11 +767,11 @@ final class MainWindow: @unchecked Sendable {
                     }
                     var handled = false
                     if let chord = KeyChord.canonical(keyval: keyval, state: state) {
-                        handled = ForgeWindow.current?.handleChord(chord) ?? false
+                        handled = StudioSheet.current?.handleChord(chord) ?? false
                     }
                     FileHandle.standardOutput.write(
                         Data(
-                            "FKEY \(argument) handled=\(handled) \(ForgeWindow.current?.summary ?? "-")\n"
+                            "FKEY \(argument) handled=\(handled) \(StudioSheet.current?.forgeSummary ?? "-")\n"
                                 .utf8))
                 case "web":
                     let described = self.splitHost.orderedPanes.enumerated().map {
@@ -1181,6 +1209,7 @@ final class MainWindow: @unchecked Sendable {
             op(header),
             Gtk.button("⌨", css: ["flat"]) { [weak self] in self?.togglePane(.terminal) })
         adw_toolbar_view_add_top_bar(op(toolbar), header)
+        contentHeader = header
 
         adw_toolbar_view_set_content(op(toolbar), splitHost.container)
         return toolbar
@@ -1453,6 +1482,7 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func pressLanded(x: Double, y: Double, in window: UnsafeMutablePointer<GtkWidget>) {
+        guard StudioSheet.current == nil else { return }
         if let pane = splitHost.pane(at: x, y: y, in: window) {
             paneClicked(pane)
             return
@@ -2967,8 +2997,8 @@ final class MainWindow: @unchecked Sendable {
     /// the conversation behind it is left exactly as it was. One already open is raised rather than
     /// made a second time, and closing it never touches a render, which lives in `ForgeRunner`.
     @discardableResult
-    func presentForge() -> ForgeWindow {
-        ForgeWindow.present(parent: window)
+    func presentForge() -> StudioSheet {
+        studioSheet!.show(.video)
     }
 
     /// The image studio, opened over the work the same way the forge is. Making a picture is a
@@ -2977,9 +3007,9 @@ final class MainWindow: @unchecked Sendable {
     /// rather than made a second time, and closing it never touches a render, which lives in
     /// `ImageStudio`.
     @discardableResult
-    func presentImageStudio() -> ImageWindow? {
+    func presentImageStudio() -> StudioSheet? {
         guard ImageGenDoor.current().isOpen else { return nil }
-        return ImageWindow.present(parent: window)
+        return studioSheet?.show(.image)
     }
 
     /// The dispatcher board, opened over the work the same way the forge is: a thing you check on
@@ -3596,6 +3626,9 @@ final class MainWindow: @unchecked Sendable {
                 return false
             }
             let window: UnsafeMutablePointer<GtkWidget> = ptr(base)
+            if let sheet = StudioSheet.current, sheet.capturesKeys {
+                return sheet.handleKey(keyval: keyval, state: state)
+            }
             if keyval == Keymap.escape,
                 self.splitHost.orderedPanes.contains(where: { $0.rails.escape() })
             {
@@ -4080,6 +4113,7 @@ final class MainWindow: @unchecked Sendable {
         MatrixTheme.install()
         terminal.applyPalette(MatrixTheme.palette)
         splitHost.eachPane { $0.retheme() }
+        studioSheet?.rethemed()
     }
 
     /// The width the chat list may never fall under, and the reason the sidebar is allowed to be

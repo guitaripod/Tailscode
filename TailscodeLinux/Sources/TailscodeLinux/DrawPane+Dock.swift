@@ -556,6 +556,6 @@ extension DrawPane {
             return
         }
         ForgeRunner.shared.start(from: frame, width: width, height: height)
-        ForgeWindow.present(parent: hostWindow)
+        StudioSheet.shared?.show(.video)
     }
 }

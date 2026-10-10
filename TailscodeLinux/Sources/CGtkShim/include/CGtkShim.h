@@ -550,6 +550,15 @@ bool tailscode_ctrl_held(GtkWidget *near);
 GtkWidget *tailscode_box_new_with_role(
     GtkOrientation orientation, int spacing, GtkAccessibleRole role);
 
+/// Puts a widget's translation inside a `GtkFixed` at `(x, y)` without touching its allocation.
+/// A move made this way is drawn and picked at the new place and never measures or lays out the
+/// child again, which is what lets a sheet slide in over a studio that must not re-wrap per frame.
+void tailscode_fixed_place(GtkWidget *fixed, GtkWidget *child, double x, double y);
+
+/// The sentence assistive technology reads after a control's name — the hint on Done while a
+/// render is out. NULL or empty takes it away. The call is variadic, so Swift cannot make it.
+void tailscode_set_accessible_description(GtkWidget *widget, const char *text);
+
 /// The role a widget announces, as the `GtkAccessibleRole` raw value.
 int tailscode_accessible_role(GtkWidget *widget);
 

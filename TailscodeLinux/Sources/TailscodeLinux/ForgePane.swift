@@ -66,7 +66,6 @@ final class ForgePane: @unchecked Sendable {
     /// back.
     private var beforeEnhance: String?
 
-    private var parent: UnsafeMutablePointer<GtkWidget>?
     private let runner = ForgeRunner.shared
     private var openTask: Task<Void, Never>?
     private var rewriteObserver: NSObjectProtocol?
@@ -88,8 +87,7 @@ final class ForgePane: @unchecked Sendable {
 
     var board: ForgeBoard { runner.board }
 
-    init(parent: UnsafeMutablePointer<GtkWidget>?) {
-        self.parent = parent
+    init() {
         let me = Weak<ForgePane>(nil)
         sizeChip = StudioChip.menu { me.value?.choiceRows(.size) ?? [] }
         lengthChip = StudioChip.menu { me.value?.choiceRows(.seconds) ?? [] }
@@ -302,7 +300,31 @@ final class ForgePane: @unchecked Sendable {
 
     // MARK: the driver and the keys
 
+    /// The one main window this surface sits in, which every dialog it opens is a transient of.
+    var hostWindow: UnsafeMutablePointer<GtkWidget>? {
+        guard let root = gtk_widget_get_root(ptr(root)) else { return nil }
+        return UnsafeMutablePointer(root)
+    }
+
     var isPlaying: Bool { playing != nil }
+
+    /// How many renders are ahead of or at this one on the machine: the board's own count while a
+    /// render is out, nothing otherwise.
+    var queueCount: Int {
+        if case .queued(let ahead) = board.job.phase { return ahead + 1 }
+        return board.isBusy ? 1 : 0
+    }
+
+    /// Stops the render that is out, by the same road the stop chord takes.
+    func stopRender() {
+        let (handled, action) = runner.handle(.cancel)
+        guard handled else { return }
+        guard let action else {
+            render()
+            return
+        }
+        perform(action)
+    }
 
     var isBusy: Bool { board.isBusy }
 
@@ -545,7 +567,7 @@ final class ForgePane: @unchecked Sendable {
     /// setup window outlives the surface that opened it: closing the forge modal while the setup is
     /// still up must not be what decides whether the address they chose is ever pointed at.
     private func openSetup() {
-        ForgeSetupWindow.present(parent: parent) { [weak self] in
+        ForgeSetupWindow.present(parent: hostWindow) { [weak self] in
             Gtk.onMain { [weak self] in
                 ForgeRunner.shared.pointAtStoredRenderer()
                 self?.reason = nil
@@ -587,7 +609,7 @@ final class ForgePane: @unchecked Sendable {
     }
 
     private func pickFrameFile() {
-        Gtk.openFiles(parent: parent) { [weak self] paths in
+        Gtk.openFiles(parent: hostWindow) { [weak self] paths in
             guard let self, let path = paths.first else { return }
             Gtk.onMain { [weak self] in
                 self?.runner.start(from: .file(path))
@@ -935,7 +957,7 @@ final class ForgePane: @unchecked Sendable {
                     guard let self else { return }
                     self.working = nil
                     self.render()
-                    Gtk.saveFile(parent: self.parent, suggestedName: asset.filename, data: data) { [weak self] path in
+                    Gtk.saveFile(parent: self.hostWindow, suggestedName: asset.filename, data: data) { [weak self] path in
                         guard let path else { return }
                         Gtk.onMain { [weak self] in
                             self?.reason = nil

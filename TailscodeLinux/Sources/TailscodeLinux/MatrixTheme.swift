@@ -1450,6 +1450,46 @@ enum MatrixTheme {
         .draw-row-words { color: \(text); \(t(.hint)) }
         .draw-row-words-busy { color: \(textDim); \(t(.hint)) }
         .draw-row-facts { color: \(textDim); \(t(.badge)) font-variant-numeric: tabular-nums; }
+        .studio-scrim { background-color: #000000; }
+        .studio-sheet {
+            background-color: \(canvas);
+            border-radius: \(Int(StudioSheetMetrics.cornerRadius))px \(Int(StudioSheetMetrics.cornerRadius))px 0 0;
+            box-shadow: 0 0 0 \(Int(StudioSheetMotion.edgeHairlineWidth))px \(rule), 0 -2px \(Int(StudioSheetMotion.edgeShadowBlur))px alpha(#000000, \(StudioSheetMotion.edgeShadowAlpha));
+        }
+        .studio-sheet-clip {
+            border-radius: \(Int(StudioSheetMetrics.cornerRadius))px \(Int(StudioSheetMetrics.cornerRadius))px 0 0;
+        }
+        .studio-sheet-bar { padding: 0 12px; }
+        .studio-lanes > button {
+            background-image: none;
+            background-color: transparent;
+            color: \(textDim);
+            border: 1px solid \(rule);
+            border-radius: 0;
+            box-shadow: none;
+            padding: 3px 14px;
+            min-height: 0;
+            \(t(.chip))
+        }
+        .studio-lanes > button:first-child { border-radius: 6px 0 0 6px; }
+        .studio-lanes > button:last-child { border-radius: 0 6px 6px 0; border-left-width: 0; }
+        .studio-lanes > button.studio-lane-on { background-color: alpha(\(accent), 0.16); color: \(text); }
+        .studio-lanes > button:hover { color: \(text); }
+        .studio-lanes > button:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 1px; }
+        .studio-queue { color: \(textDim); \(t(.hint)) font-variant-numeric: tabular-nums; }
+        .studio-done {
+            background-image: none;
+            background-color: transparent;
+            color: \(text);
+            border: 1px solid \(rule);
+            border-radius: 6px;
+            box-shadow: none;
+            padding: 3px 12px;
+            min-height: 0;
+            \(t(.chip))
+        }
+        .studio-done:hover { border-color: alpha(\(accent), 0.50); }
+        .studio-done:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 1px; }
         .studio-toolbar { padding: 8px 12px 0 12px; }
         .studio-pill, .studio-pill > button {
             background-color: \(canvasRaised);
