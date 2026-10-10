@@ -27,11 +27,17 @@ public enum LinkEmbedPolicy: Sendable {
         in text: String, enabled: Bool = LinkEmbedsSetting.isEnabled, growing: Bool = false
     ) -> [String] {
         guard enabled else { return [] }
+        return Array(candidates(in: text, growing: growing).prefix(limit))
+    }
+
+    /// Every http(s) address of a text, each once, in the order written and with no cap: the
+    /// per-segment extraction that ``urls(in:enabled:growing:)`` caps and ``LinkRailPolicy`` gathers
+    /// across a whole prose run. The `growing` rule is the same as there.
+    public static func candidates(in text: String, growing: Bool = false) -> [String] {
         var seen = Set<String>()
         var urls: [String] = []
         for span in Autolink.spans(in: text) {
-            guard urls.count < limit,
-                !(growing && span.range.upperBound == text.endIndex),
+            guard !(growing && span.range.upperBound == text.endIndex),
                 let url = URL(string: span.url),
                 let scheme = url.scheme?.lowercased(),
                 scheme == "http" || scheme == "https",
@@ -77,6 +83,13 @@ public enum LinkCardFace: Sendable, Equatable {
             return .titled(title: title, host: host(of: url))
         }
         return .hostOnly(host: host(of: url), path: readablePath(of: url))
+    }
+
+    /// The page's host, whichever stage the face is at.
+    public var host: String {
+        switch self {
+        case .titled(_, let host), .placeholder(let host, _), .hostOnly(let host, _): return host
+        }
     }
 
     /// The first line: the page's title, or the host standing in for it.
