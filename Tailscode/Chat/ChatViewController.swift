@@ -150,6 +150,9 @@ final class ChatViewController: UIViewController {
     /// transcript and the end of a long one are both worked out from its height, so a height that
     /// moves has to say so or the last rows end up behind whatever floats over the composer.
     private var contentSizeWatch: NSKeyValueObservation?
+    #if DEBUG
+        private lazy var heightProbe = ChatHeightProbe(sessionID: viewModel.session.id)
+    #endif
     /// A finger resting on the transcript, which is not the same gesture as a drag and stops the
     /// stream following the bottom all the same.
     private var isFingerDown = false
@@ -1110,7 +1113,16 @@ final class ChatViewController: UIViewController {
         contentSizeWatch = collectionView.observe(\.contentSize, options: [.old, .new]) {
             [weak self] _, change in
             guard let old = change.oldValue?.height, old != change.newValue?.height else { return }
-            MainActor.assumeIsolated { self?.contentHeightMoved(from: old) }
+            MainActor.assumeIsolated {
+                self?.contentHeightMoved(from: old)
+                #if DEBUG
+                    if let self {
+                        self.heightProbe.contentMoved(of: self.collectionView) { [weak self] in
+                            self?.orderedIDs.count ?? 0
+                        }
+                    }
+                #endif
+            }
         }
 
         [banner, composer].forEach {
