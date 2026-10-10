@@ -2909,7 +2909,8 @@ final class TranscriptViewController: NSViewController {
     /// which restarts its entrance, drops any selection inside it, and asks the whole column to lay
     /// out again. When the only difference is more words in a row that can take them where it
     /// stands — the answer the painter is holding, or a thought counting itself up — the change is
-    /// written into the view and the bookkeeping moves with it.
+    /// written into the view and the bookkeeping moves with it. Preview cards docked under the
+    /// paragraph being written are the paragraph's own and do not make it any less the last row.
     ///
     /// A painter with no hands on the row is served here too, and settles it whole. Reduce Motion
     /// releases the wave on every arrival, so demanding the painter hold the row would send the one
@@ -2917,10 +2918,12 @@ final class TranscriptViewController: NSViewController {
     /// this exists to prevent, on the machine that asked for less movement.
     private func updatedLastRowInPlace(_ rows: [TranscriptRow]) -> Bool {
         guard !placeholderShown, fillComplete,
-            renderedRows.count == rows.count, let last = rows.indices.last, last > 0,
+            renderedRows.count == rows.count,
+            let last = rows.lastIndex(where: { !$0.isLinkEmbed }), last > 0,
             renderedRows[last].key == rows[last].key, renderedRows[last] != rows[last],
             last < rowViews.count,
-            renderedRows.dropLast().elementsEqual(rows.dropLast())
+            renderedRows.prefix(last).elementsEqual(rows.prefix(last)),
+            renderedRows.suffix(from: last + 1).elementsEqual(rows.suffix(from: last + 1))
         else { return false }
         switch (renderedRows[last].kind, rows[last].kind) {
         case (.agentProse, .agentProse), (.codeBlock, .codeBlock):

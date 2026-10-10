@@ -94,7 +94,7 @@ final class MediaImageCache: @unchecked Sendable {
         return widget
     }
 
-    private func store(_ bits: UInt, for address: String) {
+    func store(_ bits: UInt, for address: String) {
         textures[address] = bits
         order.removeAll { $0 == address }
         order.append(address)
@@ -123,7 +123,7 @@ final class MediaImageCache: @unchecked Sendable {
         return directory.appendingPathComponent(String(hash, radix: 16))
     }
 
-    private static func decode(_ data: Data) -> UInt {
+    static func decode(_ data: Data) -> UInt {
         data.withUnsafeBytes { buffer -> UInt in
             guard let base = buffer.baseAddress else { return 0 }
             var width: Int32 = 0

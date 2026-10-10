@@ -111,9 +111,11 @@ final class TranscriptRowBuilder {
     private var cache:
         [String: (message: ChatMessage, promptID: String?, sealed: Bool, rows: [TranscriptRow])] =
             [:]
+    private var builtWithEmbeds = LinkEmbedsSetting.isEnabled
 
     /// Forgets every memoised row — the rendering baked into them (fonts, markdown) is stale
-    /// after a type-scale change.
+    /// after a type-scale change. The link-card switch does the same by itself, since the cards
+    /// are rows.
     func invalidate() {
         cache = [:]
     }
@@ -123,6 +125,10 @@ final class TranscriptRowBuilder {
     /// under a different question is a different card, and reusing the earlier one would offer the
     /// wrong words to send again.
     func rows(for messages: [ChatMessage], turnOpen: Bool = false) -> [TranscriptRow] {
+        if builtWithEmbeds != LinkEmbedsSetting.isEnabled {
+            builtWithEmbeds = LinkEmbedsSetting.isEnabled
+            cache = [:]
+        }
         var all: [TranscriptRow] = []
         var next: [String: (message: ChatMessage, promptID: String?, sealed: Bool, rows: [TranscriptRow])] = [:]
         next.reserveCapacity(messages.count)
@@ -182,6 +188,10 @@ struct TranscriptRow: Hashable {
         /// prose row is a label set, not a markdown parse.
         case agentProse(text: String, rendered: NSAttributedString)
         case codeBlock(language: String?, body: String)
+        /// The preview card for an address the prose above it mentioned. The address is the whole
+        /// of its identity: the card fetches its own face, so a streamed address that is still
+        /// growing moves no other row.
+        case linkEmbed(url: String)
         case table(MarkdownTable)
         /// A table still being written: its card, its count, and none of its rows measured.
         case tableDraft(TableDraft)
@@ -305,6 +315,15 @@ struct TranscriptRow: Hashable {
                                 key: "\(key):s\(index)",
                                 kind: .agentProse(
                                     text: prose, rendered: MacMarkdown.render(prose))))
+                        let growing = TableDraft.isGrowing(
+                            segment: index, of: segments.count, sealed: sealed)
+                        for (n, url) in LinkEmbedPolicy.urls(in: prose, growing: growing)
+                            .enumerated()
+                        {
+                            rows.append(
+                                TranscriptRow(
+                                    key: "\(key):s\(index):embed\(n)", kind: .linkEmbed(url: url)))
+                        }
                     case .code(let language, let body):
                         rows.append(
                             TranscriptRow(
@@ -469,6 +488,8 @@ struct TranscriptRow: Hashable {
             return text
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
+        case .linkEmbed(let url):
+            return url
         case .table(let table):
             return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
         case .tableDraft(let draft):
@@ -530,6 +551,8 @@ struct TranscriptRow: Hashable {
             return RowKit.attributedLabel(rendered)
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body, key: key, context: context)
+        case .linkEmbed(let url):
+            return LinkCardView(url: url)
         case .table(let table):
             return Self.table(table, key: key)
         case .tableDraft(let draft):

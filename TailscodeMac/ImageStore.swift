@@ -20,6 +20,8 @@ final class ImageStore {
 
     private var entries: [String: DecodedImage] = [:]
     private var order: [String] = []
+    private var icons: [String: NSImage] = [:]
+    private var iconOrder: [String] = []
     /// The gallery's ear while it is open: a page whose bytes were still being fetched repaints
     /// the moment they land.
     var onStored: ((String) -> Void)?
@@ -39,6 +41,22 @@ final class ImageStore {
         order.append(key)
         while order.count > 48 {
             entries[order.removeFirst()] = nil
+        }
+    }
+
+    func icon(forKey key: String) -> NSImage? {
+        icons[key]
+    }
+
+    /// The little pictures link cards wear, kept apart from the transcript's own so a chat full of
+    /// cards cannot push a screenshot out. Bounded the same way: past the cap the least recently
+    /// stored is released, and its bytes are one cached fetch away.
+    func store(icon: NSImage, forKey key: String) {
+        icons[key] = icon
+        iconOrder.removeAll { $0 == key }
+        iconOrder.append(key)
+        while iconOrder.count > 96 {
+            icons[iconOrder.removeFirst()] = nil
         }
     }
 

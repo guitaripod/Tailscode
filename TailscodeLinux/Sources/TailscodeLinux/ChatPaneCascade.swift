@@ -9,6 +9,8 @@ extension ChatPane {
     /// the network delivered. Only the last row can be live — anything after it is proof the
     /// stream has moved on — and only the kinds that grow a character at a time qualify, so a tool
     /// call landing after a paragraph settles that paragraph rather than freezing it half-written.
+    /// The preview cards docked under a paragraph are not the stream moving on: they are the
+    /// paragraph's own, so the last row that is not a card is the one that counts.
     ///
     /// The row itself is held at its markdown-safe prefix, so the renderer never sees `**bold`
     /// without its closer. A code block is exempt: its punctuation is the language's rather than
@@ -18,10 +20,11 @@ extension ChatPane {
     /// take the row (reduced motion, markup the parser refuses) the cut goes with it: a prefix
     /// nothing is going to reveal is just an answer with its last words missing.
     func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
-        let live = running ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
+        let liveIndex = running ? rows.lastIndex(where: { !$0.isLinkEmbed }) : nil
+        let live = liveIndex.flatMap { rows[$0].streamedText == nil ? nil : rows[$0] }
         let released = cascade.key
         if let abandoned, abandoned != live?.key { self.abandoned = nil }
-        guard let live, let source = live.streamedText, live.key != abandoned else {
+        guard let live, let liveIndex, let source = live.streamedText, live.key != abandoned else {
             if drainStrandedCascade(in: rows) { return rows }
             cascade.release()
             if let released { handOver(released, in: rows) }
@@ -31,7 +34,7 @@ extension ChatPane {
             row: live.key, source, sealed: !running, markdown: live.streamsMarkdown)
         var paced = rows
         let row = safe == source ? live : live.truncated(to: safe)
-        paced[paced.count - 1] = row
+        paced[liveIndex] = row
         guard let markup = Self.cascadeMarkup(for: row) else {
             cascade.release()
             if let released { handOver(released, in: rows) }

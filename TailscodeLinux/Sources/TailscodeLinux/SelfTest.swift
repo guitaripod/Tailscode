@@ -111,6 +111,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkLinkCards()
+            report("link cards: \(checks) claims hold: three stages, a debounce, a safe teardown")
+        } catch {
+            report("link cards: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkReplaceChildren()
             report("reorder: \(checks) claims hold: a kept row survives being moved, a dropped one is freed")
         } catch {
@@ -1799,6 +1807,234 @@ public enum SelfTest {
             _ = row.makeWidget(context: TranscriptContext())
         }
         return 6
+    }
+
+    /// The preview card drawn in every stage of its life from stubbed facts, with no network: the
+    /// quiet placeholder while the title is unknown, the page's own title once it arrives, the host
+    /// alone when the fetch finds nothing, and the face the process already holds painted at once.
+    /// It also proves the two promises that keep a streamed address from costing anything: an
+    /// address that changes under the debounce fires no request, and a card torn down mid-fetch is
+    /// never written into.
+    private static func checkLinkCards() throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("link cards: \(label)") }
+            checks += 1
+        }
+        func text(_ label: UnsafeMutablePointer<GtkWidget>) -> String {
+            gtk_label_get_text(op(label)).map { String(cString: $0) } ?? ""
+        }
+        func quiet(_ label: UnsafeMutablePointer<GtkWidget>) -> Bool {
+            gtk_widget_has_css_class(label, "link-card-title-quiet") != 0
+        }
+        func pump(_ seconds: Double, until done: () -> Bool = { false }) -> Bool {
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end {
+                while g_main_context_iteration(nil, 0) != 0 {}
+                if done() { return true }
+                usleep(4000)
+            }
+            return done()
+        }
+        func destroy(_ widget: UnsafeMutablePointer<GtkWidget>) {
+            g_object_ref_sink(UnsafeMutableRawPointer(widget))
+            g_object_unref(UnsafeMutableRawPointer(widget))
+        }
+
+        final class Asked: @unchecked Sendable {
+            private let lock = NSLock()
+            private var urls: [String] = []
+            func note(_ url: String) {
+                lock.lock()
+                urls.append(url)
+                lock.unlock()
+            }
+            var all: [String] {
+                lock.lock()
+                defer { lock.unlock() }
+                return urls
+            }
+        }
+        func source(
+            asked: Asked, title: String?, latency: Duration = .milliseconds(10),
+            cached: LinkCardFace? = nil
+        ) -> LinkCardSource {
+            LinkCardSource(
+                cachedFace: { _ in cached },
+                metadata: { url in
+                    asked.note(url)
+                    try? await Task.sleep(for: latency)
+                    return title.map { LinkPreviewMetadata(title: $0, faviconURL: nil) }
+                },
+                favicon: { _ in nil },
+                debounce: .milliseconds(30))
+        }
+
+        let address = "https://example.com/docs/page"
+        let waiting = Asked()
+        let titled = LinkCardView.build(
+            url: address, context: nil, source: source(asked: waiting, title: "Example Domain"))
+        g_object_ref_sink(UnsafeMutableRawPointer(titled.card))
+        try expect(
+            text(titled.title) == "example.com" && text(titled.host) == "example.com/docs/page",
+            "before the page speaks the host wears the title's seat and the path the second line")
+        try expect(quiet(titled.title), "and the stand-in headline is the quieter ink")
+        try expect(
+            gtk_label_get_ellipsize(op(titled.title)) == PANGO_ELLIPSIZE_END
+                && gtk_label_get_ellipsize(op(titled.host)) == PANGO_ELLIPSIZE_MIDDLE,
+            "the title ellipsizes at its end and the host in its middle")
+        try expect(
+            gtk_label_get_single_line_mode(op(titled.title)) != 0
+                && gtk_label_get_single_line_mode(op(titled.host)) != 0
+                && gtk_label_get_wrap(op(titled.title)) == 0
+                && gtk_label_get_wrap(op(titled.host)) == 0,
+            "each is exactly one line")
+        try expect(
+            gtk_label_get_selectable(op(titled.title)) == 0
+                && gtk_label_get_selectable(op(titled.host)) == 0,
+            "neither can swallow the press that opens the address")
+        try expect(waiting.all.isEmpty, "nothing is asked of the page before the debounce is out")
+        try expect(
+            pump(2, until: { text(titled.title) == "Example Domain" }),
+            "the page's own title replaces the stand-in")
+        try expect(
+            text(titled.host) == "example.com" && !quiet(titled.title),
+            "with the host under it, in the title's own ink")
+        try expect(waiting.all == [address], "and the page was asked for exactly once")
+
+        let missing = Asked()
+        let hostOnly = LinkCardView.build(
+            url: "https://example.org/a/b", context: nil, source: source(asked: missing, title: nil))
+        g_object_ref_sink(UnsafeMutableRawPointer(hostOnly.card))
+        try expect(pump(2, until: { missing.all.count == 1 }), "a failing page is still asked")
+        _ = pump(0.15)
+        try expect(
+            text(hostOnly.title) == "example.org" && text(hostOnly.host) == "example.org/a/b"
+                && quiet(hostOnly.title),
+            "when the fetch finds nothing the card keeps the host as its face, never a spinner")
+
+        let known = Asked()
+        let held = LinkCardFace.titled(title: "Already Held", host: "held.example")
+        let instant = LinkCardView.build(
+            url: "https://held.example/x", context: nil,
+            source: source(asked: known, title: "Different", cached: held))
+        g_object_ref_sink(UnsafeMutableRawPointer(instant.card))
+        try expect(
+            text(instant.title) == "Already Held" && text(instant.host) == "held.example",
+            "a face the process already holds is painted at once, with no stand-in frame")
+        _ = pump(0.2)
+        try expect(
+            known.all.isEmpty && text(instant.title) == "Already Held",
+            "and no second request is made for it")
+
+        final class Toasts: @unchecked Sendable {
+            private let lock = NSLock()
+            private var lines: [String] = []
+            func note(_ line: String) {
+                lock.lock()
+                lines.append(line)
+                lock.unlock()
+            }
+            var all: [String] {
+                lock.lock()
+                defer { lock.unlock() }
+                return lines
+            }
+        }
+        let toasts = Toasts()
+        let rows = LinkCardView.menuRows(
+            url: address, ref: WidgetRef(titled.card), toast: { toasts.note($0) })
+        try expect(
+            rows.map(\.title) == [Localized.text("Open Link"), Localized.text("Copy link")],
+            "right-click offers to open the address and to copy it, and nothing else")
+        rows[1].action()
+        try expect(
+            toasts.all == [Localized.text("Link copied.")],
+            "copying the address says so")
+
+        let growing = Asked()
+        let prefixes = ["http://exa", "http://example.", "http://example.com/pa"]
+        for prefix in prefixes {
+            let card = LinkCardView.build(
+                url: prefix, context: nil, source: source(asked: growing, title: "Never"))
+            _ = pump(0.005)
+            destroy(card.card)
+        }
+        let settled = LinkCardView.build(
+            url: "http://example.com/path", context: nil,
+            source: source(asked: growing, title: "Done"))
+        g_object_ref_sink(UnsafeMutableRawPointer(settled.card))
+        try expect(
+            pump(2, until: { text(settled.title) == "Done" }),
+            "the address that stopped growing gets its card")
+        try expect(
+            growing.all == ["http://example.com/path"],
+            "a streamed address still growing fires no request: only \(growing.all) went out")
+
+        let doomed = Asked()
+        let slow = LinkCardView.build(
+            url: "https://slow.example/a", context: nil,
+            source: source(asked: doomed, title: "Late", latency: .milliseconds(120)))
+        g_object_ref_sink(UnsafeMutableRawPointer(slow.card))
+        try expect(pump(2, until: { doomed.all.count == 1 }), "the slow page's fetch is under way")
+        destroy(slow.card)
+        _ = pump(0.4)
+        try expect(true, "a card torn down mid-fetch is never written into and nothing crashes")
+
+        for card in [titled.card, hostOnly.card, instant.card, settled.card] { destroy(card) }
+
+        let message = ChatMessage(
+            id: "m", role: .assistant, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "p",
+                    kind: .text(
+                        "See https://a.example/1 and https://a.example/1 then https://b.example, "
+                            + "https://c.example and https://d.example for more.\n\n```\nlet x = 1\n```\n"
+                            + "and finally https://e.example/tail"))
+            ], createdAt: Date())
+        let sealedRows = TranscriptRow.rows(for: message, sealed: true)
+        let embeds = sealedRows.compactMap { row -> String? in
+            if case .linkEmbed(let url) = row.kind { return url }
+            return nil
+        }
+        try expect(
+            embeds == ["https://a.example/1", "https://b.example", "https://c.example", "https://e.example/tail"],
+            "each prose segment earns its own shelf: once each, at most three, in order: \(embeds)")
+        guard let proseIndex = sealedRows.firstIndex(where: { row in
+            if case .agentProse = row.kind { return true }
+            return false
+        }), sealedRows[proseIndex + 1].isLinkEmbed
+        else { throw SelfTestFailure("link cards: a card docks directly under its paragraph") }
+        try expect(true, "a card docks directly under the prose that mentioned it")
+        try expect(
+            Set(sealedRows.map(\.key)).count == sealedRows.count,
+            "every row, cards included, has its own key")
+        let streaming = TranscriptRow.rows(for: message, sealed: false).compactMap { row -> String? in
+            if case .linkEmbed(let url) = row.kind { return url }
+            return nil
+        }
+        try expect(
+            !streaming.contains("https://e.example/tail") && streaming.count == 3,
+            "an address running to the end of the paragraph still being written has no card yet")
+
+        let embedRow = sealedRows.first(where: \.isLinkEmbed)
+        try expect(
+            embedRow.map { $0.streamedText == nil && !$0.isPromptBlock && $0.searchText.hasPrefix("http") }
+                == true,
+            "a card streams nothing, is not part of the prompt, and searches by its address")
+
+        let builder = TranscriptRowBuilder()
+        let before = builder.rows(for: [message]).filter(\.isLinkEmbed).count
+        setenv("TAILSCODE_LINKS", "0", 1)
+        let plain = builder.rows(for: [message]).filter(\.isLinkEmbed).count
+        unsetenv("TAILSCODE_LINKS")
+        let after = builder.rows(for: [message]).filter(\.isLinkEmbed).count
+        try expect(
+            before > 0 && plain == 0 && after == before,
+            "flipping the switch rebuilds the same messages with and without cards: \(before) \(plain) \(after)")
+        return checks
     }
 
     /// The revert banner's words, its "more files" line past the room it is given, and the

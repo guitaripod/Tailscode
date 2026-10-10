@@ -241,7 +241,7 @@ enum ChatRowBuilder {
                 ChatRow(
                     id: rowID, messageID: messageID, role: role, content: content))
             if case .text(let prose) = content {
-                for (n, url) in Self.embedURLs(in: prose).enumerated() {
+                for (n, url) in LinkEmbedPolicy.urls(in: prose).enumerated() {
                     rows.append(
                         ChatRow(
                             id: "\(rowID):embed\(n)", messageID: messageID, role: role,
@@ -261,28 +261,6 @@ enum ChatRowBuilder {
     /// wants the table cell. Two identities make that arrival the delete and insert it always
     /// really was: the card was never the table, it was standing where the table would be.
     private static let growingTableSuffix = ":growing"
-
-    /// The addresses one prose segment earns a preview card for: http(s) only, deduplicated, and
-    /// capped so a paragraph of references stays a shelf rather than a wall. The address itself is
-    /// the row's content — the card fetches its face on its own clock, so a streamed URL that is
-    /// still growing never moves any other row's identity.
-    private static let embedLimit = 3
-
-    static func embedURLs(in text: String) -> [String] {
-        guard LinkEmbedsSetting.isEnabled else { return [] }
-        var seen = Set<String>()
-        var urls: [String] = []
-        for span in Autolink.spans(in: text) {
-            guard urls.count < embedLimit,
-                let url = URL(string: span.url),
-                let scheme = url.scheme?.lowercased(),
-                scheme == "http" || scheme == "https",
-                seen.insert(span.url).inserted
-            else { continue }
-            urls.append(span.url)
-        }
-        return urls
-    }
 
     /// Which tool call the folded board hangs off: the newest list the agent wrote, so the plan
     /// stays where the work is rather than sitting at the top of a long conversation — or, past

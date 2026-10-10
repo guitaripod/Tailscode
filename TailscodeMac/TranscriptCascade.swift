@@ -17,12 +17,11 @@ extension TranscriptViewController {
     /// already being written when the focus leaves is finished, not cut.
     func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
         cascade.host = view
-        let live =
-            running && revealsAnswers
-            ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
+        let liveIndex = running && revealsAnswers ? rows.lastIndex(where: { !$0.isLinkEmbed }) : nil
+        let live = liveIndex.flatMap { rows[$0].streamedText == nil ? nil : rows[$0] }
         let released = cascade.key
         if let abandoned, abandoned != live?.key { self.abandoned = nil }
-        guard let live, let source = live.streamedText, live.key != abandoned else {
+        guard let live, let liveIndex, let source = live.streamedText, live.key != abandoned else {
             if drainStrandedCascade(in: rows) { return rows }
             cascade.release()
             if let released { handOver(released, in: rows) }
@@ -32,7 +31,7 @@ extension TranscriptViewController {
             row: live.key, source, sealed: !running, markdown: live.streamsMarkdown)
         var paced = rows
         let row = safe == source ? live : live.held(to: safe)
-        paced[paced.count - 1] = row
+        paced[liveIndex] = row
         cascade.focus(
             row.key, length: Self.renderedLength(of: row), sealed: !running,
             ultracode: composer.auraActive)

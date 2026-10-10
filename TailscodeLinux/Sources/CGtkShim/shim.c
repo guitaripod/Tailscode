@@ -928,6 +928,25 @@ void tailscode_on_release(GtkWidget *widget, void (*handler)(void *), void *data
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
 }
 
+static void tailscode_click_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodeClick *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
+void tailscode_on_primary_release(GtkWidget *widget, void (*handler)(void *), void *data) {
+    TailscodeClick *box = g_new0(TailscodeClick, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkGesture *click = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_PRIMARY);
+    g_signal_connect_data(click, "released", G_CALLBACK(tailscode_click_released), box,
+                          tailscode_click_destroy, 0);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
+}
+
 typedef struct {
     void (*handler)(double x, double y, void *);
     void *data;

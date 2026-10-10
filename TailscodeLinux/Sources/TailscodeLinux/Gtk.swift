@@ -108,6 +108,20 @@ enum Gtk {
         tailscode_on_release(widget, unsafeBitCast(callback, to: (@convention(c) (UnsafeMutableRawPointer?) -> Void).self), box)
     }
 
+    /// A plain click of the primary button only. A right press on the same widget is somebody
+    /// else's — a context menu — and must not also count as the click that opens something.
+    static func onPrimaryRelease(
+        _ widget: UnsafeMutablePointer<GtkWidget>, _ handler: @escaping @Sendable () -> Void
+    ) {
+        _ = releaseInstalled
+        let box = Unmanaged.passRetained(Box(handler)).toOpaque()
+        let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
+            guard let raw else { return }
+            Unmanaged<Box>.fromOpaque(raw).takeUnretainedValue().work()
+        }
+        tailscode_on_primary_release(widget, unsafeBitCast(callback, to: (@convention(c) (UnsafeMutableRawPointer?) -> Void).self), box)
+    }
+
     /// Any button pressed anywhere inside `widget`, children included, with where it landed —
     /// before the widget under the pointer acts on it. The event itself is untouched, which is how
     /// a window learns what was pressed without taking the press away from it.
