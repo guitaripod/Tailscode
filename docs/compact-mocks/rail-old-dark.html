@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=1180">
+<title>Link cards today</title>
+<style>
+:root{color-scheme:dark light;--canvas:#1e1e1e;--ink:#f1f1f1;--ink2:rgba(241,241,241,.64);--ink3:rgba(241,241,241,.42);--line:rgba(255,255,255,.10);
+--card:#262626;--cardsh:none;--code:#262626;--fill:#2a2a2a;--accent:#0a84ff;--link:#5aa9ff;--ok:#30d158;--danger:#ff453a;--warn:#ff9f0a;
+--plate:rgba(44,44,46,.94);--hover:rgba(255,255,255,.09);--shadow:0 14px 36px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.4);--note:#ff6bb5;
+--kw:#ff7ab2;--ty:#5dd8ff;--nu:#d0a8ff;--inl:rgba(255,255,255,.10);--bubble:#0a84ff;--page:#111113;--pageink:#f1f1f1;}
+@media (prefers-color-scheme:light){:root:not([data-theme]){--canvas:#ffffff;--ink:#1d1d1f;--ink2:rgba(29,29,31,.66);--ink3:rgba(29,29,31,.44);--line:rgba(0,0,0,.10);
+--card:#f5f5f7;--cardsh:none;--code:#f4f4f6;--fill:#f0f0f3;--accent:#007aff;--link:#0a64d8;--ok:#1fa840;--danger:#e0352b;--warn:#c77700;
+--plate:rgba(255,255,255,.95);--hover:rgba(0,0,0,.06);--shadow:0 14px 36px rgba(0,0,0,.22),0 2px 8px rgba(0,0,0,.12);--note:#d6006f;
+--kw:#d1236a;--ty:#0a7f9c;--nu:#7b3fc4;--inl:rgba(0,0,0,.06);--bubble:#007aff;--page:#e9e9ee;--pageink:#1d1d1f;}}
+:root[data-theme=light]{--canvas:#ffffff;--ink:#1d1d1f;--ink2:rgba(29,29,31,.66);--ink3:rgba(29,29,31,.44);--line:rgba(0,0,0,.10);
+--card:#f5f5f7;--cardsh:none;--code:#f4f4f6;--fill:#f0f0f3;--accent:#007aff;--link:#0a64d8;--ok:#1fa840;--danger:#e0352b;--warn:#c77700;
+--plate:rgba(255,255,255,.95);--hover:rgba(0,0,0,.06);--shadow:0 14px 36px rgba(0,0,0,.22),0 2px 8px rgba(0,0,0,.12);--note:#d6006f;
+--kw:#d1236a;--ty:#0a7f9c;--nu:#7b3fc4;--inl:rgba(0,0,0,.06);--bubble:#007aff;--page:#e9e9ee;--pageink:#1d1d1f;}
+:root[data-theme=dark]{--canvas:#1e1e1e;--ink:#f1f1f1;--ink2:rgba(241,241,241,.64);--ink3:rgba(241,241,241,.42);--line:rgba(255,255,255,.10);
+--card:#262626;--cardsh:none;--code:#262626;--fill:#2a2a2a;--accent:#0a84ff;--link:#5aa9ff;--ok:#30d158;--danger:#ff453a;--warn:#ff9f0a;
+--plate:rgba(44,44,46,.94);--hover:rgba(255,255,255,.09);--shadow:0 14px 36px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.4);--note:#ff6bb5;
+--kw:#ff7ab2;--ty:#5dd8ff;--nu:#d0a8ff;--inl:rgba(255,255,255,.10);--bubble:#0a84ff;--page:#111113;--pageink:#f1f1f1;}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--pagebg,var(--canvas));}
+body{color:var(--ink);-webkit-font-smoothing:antialiased;font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;overflow:hidden}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+a.lk{color:var(--link);text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px}
+.fav{display:inline-block;flex:none;line-height:0;vertical-align:middle}
+.fav svg{width:100%;height:100%;display:block}
+code.i{font-family:ui-monospace,"SF Mono",Menlo,monospace;background:var(--inl);border-radius:4px;padding:0 3px;font-size:.88em}
+.stack{display:inline-flex;align-items:center;flex:none}
+.stack .fav{box-shadow:0 0 0 1.5px var(--canvas);border-radius:50%;margin-left:-4px;position:relative}.stack .fav:nth-child(1){z-index:3}.stack .fav:nth-child(2){z-index:2}.stack .fav:nth-child(3){z-index:1}
+.stack .fav:first-child{margin-left:0}
+.kw{color:var(--kw)}.ty{color:var(--ty)}.nu{color:var(--nu)}
+
+.note{position:absolute;font:10.5px/1.35 ui-monospace,"SF Mono",Menlo,monospace;color:var(--note);z-index:30}
+.note.pill{background:var(--canvas);border:1px solid var(--note);border-radius:5px;padding:2px 6px}
+.note::before{content:"";position:absolute;}
+.nline{position:absolute;left:0;right:0;border-top:1px dashed var(--note);z-index:29;pointer-events:none}
+.gaplbl{position:absolute;font:10px/12px ui-monospace,Menlo,monospace;color:var(--note);z-index:5}
+
+body{font-size:13px;line-height:19px}
+.col{display:flex;flex-direction:column;background:var(--canvas)}
+.col>.r{flex:none}
+.prompt{border-left:3px solid var(--accent);padding-left:12px;font-weight:600}
+.prose{font-size:13px;line-height:19px;max-width:852px}
+.run{height:24px;display:flex;align-items:center;gap:8px;font:12px/1 ui-monospace,"SF Mono",Menlo,monospace;color:var(--ink2);white-space:nowrap}
+.run .tri{color:var(--ink3);font-size:9px;width:9px}
+.run b{color:var(--ink);font-weight:600}
+.run .names{color:var(--ink2)}.run .sp{flex:1}.run .trail{color:var(--accent)}
+.run .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.run .dot.live{background:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.25)}
+.rail{height:24px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);white-space:nowrap;padding:0 6px;margin-left:-6px;border-radius:6px;width:max-content;max-width:100%}
+.rail.hov{background:var(--hover)}
+.rail .hosts{overflow:hidden;text-overflow:ellipsis}
+.rail .more{color:var(--ink3);font-variant-numeric:tabular-nums}
+.railwrap{position:relative}
+.plate{position:absolute;left:-6px;top:26px;width:440px;background:var(--plate);backdrop-filter:blur(30px) saturate(1.5);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:4px;z-index:20}
+.prow{height:36px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:7px;font-size:13px;color:var(--ink)}
+.prow .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .h{color:var(--ink3);font-size:12px;flex:none}
+.prow.hov{background:var(--hover)}
+.lcard{height:56px;width:440px;border-radius:12px;background:var(--fill);display:flex;align-items:center;gap:12px;padding:0 12px}
+.lcard .tt{min-width:0}
+.lcard .t1{font:12.5px/16px ui-monospace,"SF Mono",Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:370px}
+.lcard .t2{font:11.5px/14px ui-monospace,"SF Mono",Menlo,monospace;color:var(--ink3)}
+.cards{display:flex;flex-direction:column;gap:6px}
+.code{background:var(--code);border-radius:8px;font:12px/17px ui-monospace,"SF Mono",Menlo,monospace;white-space:pre;overflow:hidden}
+.code .hd{height:20px;display:flex;justify-content:space-between;align-items:center;color:var(--ink3);font-size:11px;line-height:20px}
+.seamcard{width:520px;border-radius:12px;background:var(--fill);padding:12px 14px;height:110px}
+.seamcard .a{font-weight:600;font-size:13px;line-height:18px}
+.seamcard .b{color:var(--ink2);font-size:12px;line-height:16px;margin-top:2px}
+.seamcard .bar{height:4px;border-radius:2px;background:var(--line);margin:10px 0 8px;position:relative}
+.seamcard .bar i{position:absolute;left:0;top:0;bottom:0;width:5%;background:var(--accent);border-radius:2px}
+.seamcard .c{color:var(--ink3);font-size:12px;line-height:16px}
+.seam{height:28px;display:flex;align-items:center;gap:10px;color:var(--ink2);font-size:12px;white-space:nowrap}
+.seam i{flex:1;height:1px;background:var(--line)}
+.seam b{font-weight:500}
+.seam .n{color:var(--ink3)}
+.pic{width:340px;display:block}
+.pic img{width:340px;height:236px;display:block;border-radius:8px;box-shadow:0 0 0 1px var(--line)}
+.cap{font:11.5px/18px ui-monospace,"SF Mono",Menlo,monospace;color:var(--ink2);height:18px}
+.strip{display:flex;gap:8px}
+.strip img{height:160px;width:230px;display:block;border-radius:6px;box-shadow:0 0 0 1px var(--line)}
+
+</style></head><body>
+<div id="page" style="width:1180px;position:relative">
+<div class="col" style="width:900px;padding:24px 24px 28px"><div class="r prompt prose" id="prompt" style="margin-top:0px">Why does the reconnect test fail one run in five on CI? Check upstream for the known race and fix it.</div><div class="r prose" id="p1" style="margin-top:12px">The race is a known one: the discussion is at <a class="lk">https://github.com/swiftlang/swift/issues/74189</a>, and the CI side — jobs running the reconnect suite in parallel on the same runner — is covered in <a class="lk">https://docs.github.com/en/actions/using-jobs/using-concurrency</a>. The backoff rule we want to pin is the one in <a class="lk">https://datatracker.ietf.org/doc/html/rfc6298</a>: double the interval on each failure, never shrink it on a retry.</div><div class="r prose" id="p2" style="margin-top:12px">The UDP usage guidelines make the same point about retry ceilings: <a class="lk">https://www.rfc-editor.org/rfc/rfc8085</a>. I am pinning the jitter factor to 1.0 in the test so the assertion measures the backoff and not the dice.</div><div class="r cards" id="rail" style="margin-top:12px"><div class="lcard"><span class="fav" style="width:30px;height:30px"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.6" fill="#f0f6fc" stroke="rgba(128,128,128,.45)" stroke-width=".8"/><path d="M4.4 4.6 5.7 5.7a3.9 3.9 0 0 1 4.6 0l1.3-1.1.3 2.2c.4.5.6 1.1.6 1.7 0 1.9-1.6 2.9-4.5 2.9s-4.5-1-4.5-2.9c0-.6.2-1.2.6-1.7z" fill="#24292f"/></svg></span><div class="tt"><div class="t1">Reconnect jitter can exceed the test’s 500 ms ceiling · Issue #74189 · swiftlang/swift</div><div class="t2">github.com</div></div></div><div class="lcard"><span class="fav" style="width:30px;height:30px"><svg viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#1f6feb"/><path d="M3 4.6c1.8-.6 3.5-.4 5 .6 1.5-1 3.2-1.2 5-.6v6.8c-1.8-.6-3.5-.4-5 .6-1.5-1-3.2-1.2-5-.6z" fill="#fff"/></svg></span><div class="tt"><div class="t1">Using concurrency - GitHub Docs</div><div class="t2">docs.github.com</div></div></div><div class="lcard"><span class="fav" style="width:30px;height:30px"><svg viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#0b7285"/><rect x="7" y="3.4" width="2" height="2" fill="#fff"/><rect x="7" y="7" width="2" height="5.6" fill="#fff"/></svg></span><div class="tt"><div class="t1">RFC 6298 - Computing TCP’s Retransmission Timer</div><div class="t2">datatracker.ietf.org</div></div></div></div><div class="r run" id="run1" style="margin-top:12px"><span class="tri">▸</span><span class="dot live"></span><b>1 tool</b><span class="names">Bash×1 · swift test --filter ReconnectTests</span><span class="sp"></span><span class="trail">14s</span></div><div class="r prose" id="p3" style="margin-top:12px">Both writes landed. Running the reconnect suite now; the jitter source is injected through <code class="i">JitterSource</code>, so nothing outside the test changes.</div><div class="r run" id="run2" style="margin-top:12px"><span class="tri">▸</span><span class="dot "></span><b>2 tools</b><span class="names">Edit Bash</span><span class="sp"></span><span class="trail">8s</span></div><div class="r prose" id="p4" style="margin-top:12px">Passed 24 of 24 on the first run. I will repeat it twenty times to be sure the flake is gone rather than hiding.</div></div><div class="note" data-at="#rail" data-dy="-6" style="left:932px;width:230px">&#8592; today: one 56 pt card per address,<br>3 + 2 gaps of 6 = 180 pt for three links;<br>the 4th address is dropped (cap 3 per segment)</div>
+</div>
+<script>
+
+const page=document.getElementById('page');
+function R(el){const P=page.getBoundingClientRect(),r=el.getBoundingClientRect();return {top:r.top-P.top,bottom:r.bottom-P.top,left:r.left-P.left,right:r.right-P.left,h:r.height,w:r.width}}
+function Q(s){return document.querySelector(s)}
+document.querySelectorAll('[data-at]').forEach(n=>{const t=R(Q(n.dataset.at));const e=n.dataset.edge==='bottom'?t.bottom:t.top;n.style.top=(e+(+n.dataset.dy||0))+'px';
+ if(n.dataset.y){n.innerHTML=n.innerHTML.replace('{y}',Math.round(R(Q(n.dataset.y)).top))}});
+document.querySelectorAll('[data-hit]').forEach(n=>{const t=R(Q(n.dataset.hit));const hh=+n.dataset.h;n.style.top=(t.top+t.h/2-hh/2)+'px';n.style.height=hh+'px'});
+
+document.body.dataset.h=Math.ceil(page.getBoundingClientRect().height);
+</script></body></html>
