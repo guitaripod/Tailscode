@@ -40,6 +40,10 @@ final class ForgeRunner {
     /// inside, so each one carries the number its start claimed.
     private var renderTicket = 0
     private var probeTask: Task<Void, Never>?
+    /// Whether a rewrite of the words is out right now. The Enhance control says so and the box
+    /// stays the person's to edit while it runs.
+    private(set) var enhancing = false
+    private let rewriter = ImageGenRewriter()
     /// Whether the board was put into a named state by hand rather than by a machine. A staged
     /// board is a photograph of a state, and a real probe landing on top of it would replace the
     /// state being photographed with whatever this device can reach.
@@ -254,6 +258,92 @@ final class ForgeRunner {
         announce()
     }
 
+    /// The small model that writes the caption, shared with the image studio: one helper on this
+    /// device, filed once, offered in both places.
+    var helper: ImageGenHelper? { ImageGenStore.helper() }
+
+    /// Asks the helper to write the words out as the caption of the clip. The answer carries the
+    /// paragraph and the shape it asked for; the caller decides what to do with both, because the
+    /// words belong to whoever typed them. The helper is told the clip's own length, whether it
+    /// opens on a picture, the shape if one was chosen, the sound and the avoid list.
+    func enhance(
+        _ brief: String,
+        completion: @escaping @MainActor @Sendable (
+            Result<(String, ImageGenAspect?), ImageGenEnhancer.Failure>
+        ) -> Void
+    ) {
+        guard !enhancing else { return }
+        enhancing = true
+        announce()
+        let context = ForgeRewriteContext(recipe: board.recipe, sizeChosen: board.sizeChosen)
+        let near = board.endpoint.map { ImageGenEndpoint(sharing: $0) }
+        rewriter.start(
+            brief: brief, ask: context.ask(brief), filed: helper, near: near,
+            onHelper: { found in
+                Task { @MainActor in ImageGenStore.remember(helper: found) }
+            },
+            onChange: { [weak self] draft in
+                guard let draft else {
+                    Task { @MainActor [weak self] in
+                        self?.finishEnhancing()
+                        completion(.failure(.unreachable))
+                    }
+                    return
+                }
+                switch draft.phase {
+                case .writing:
+                    return
+                case .landed:
+                    Task { @MainActor [weak self] in
+                        self?.finishEnhancing()
+                        completion(.success((draft.written, draft.aspect)))
+                    }
+                case .failed(let reason):
+                    Task { @MainActor [weak self] in
+                        self?.finishEnhancing()
+                        completion(.failure(.refused(reason)))
+                    }
+                }
+            })
+    }
+
+    private func finishEnhancing() {
+        enhancing = false
+        announce()
+    }
+
+    /// Takes the shape a writer asked for when taking its words, unless the size was chosen by
+    /// hand: followed, but never counted as a choice.
+    func followWriter(aspect: ImageGenAspect?) {
+        guard let aspect else { return }
+        board.follow(size: ForgeSize.following(aspect))
+        ForgeStore.remember(board.recipe)
+        announce()
+    }
+
+    /// Opens the next clip on a picture, or on nothing. The shape of the picture is read off the
+    /// file when it is one on this device, so a photograph is not cropped to a frame it never had
+    /// unless somebody chose a size by hand.
+    func start(from frame: ForgeFrame?, width: Int? = nil, height: Int? = nil) {
+        var width = width
+        var height = height
+        if width == nil, case .file(let path) = frame, let image = UIImage(contentsOfFile: path) {
+            width = Int((image.size.width * image.scale).rounded())
+            height = Int((image.size.height * image.scale).rounded())
+        }
+        board.start(from: frame, pictureWidth: width, pictureHeight: height)
+        ForgeStore.remember(board.recipe)
+        announce()
+    }
+
+    /// Continues a clip already made: the next render opens where that one ended, with the same
+    /// words to edit into what happens next.
+    func extend(_ entry: ForgeEntry) {
+        board.extend(entry)
+        ForgeStore.remember(board.recipe)
+        announce()
+    }
+
     func forget(_ entry: ForgeEntry) {
         ForgeStore.remove(entry.id)
         missingClips.remove(entry.id)
@@ -311,6 +401,7 @@ final class ForgeRunner {
                         $0.accepted(promptID: "p")
                         $0.saw(.progressed("p", census: ForgeCensus(finished: 17, total: 28, running: "pass2")))
                         $0.saw(.sampling("p", node: "pass2", step: 3, steps: 4))
+                        $0.saw(.sketched(Self.stagedSketch()))
                     })
             case "saving":
                 board.reached(.listening)
@@ -343,6 +434,37 @@ final class ForgeRunner {
                 board.reached(.listening)
             }
             announce()
+        }
+
+        /// A gradient standing in for the machine's sketch of the first frame, so the stage can be
+        /// photographed drawing one without a renderer on the other end.
+        private static func stagedSketch() -> ImageGenPreviewFrame {
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 192, height: 108))
+            let image = renderer.image { context in
+                let colors = [UIColor.systemOrange.cgColor, UIColor.systemIndigo.cgColor]
+                let gradient = CGGradient(
+                    colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray,
+                    locations: [0, 1])!
+                context.cgContext.drawLinearGradient(
+                    gradient, start: .zero, end: CGPoint(x: 192, y: 108), options: [])
+            }
+            return ImageGenPreviewFrame(encoding: .jpeg, bytes: image.jpegData(compressionQuality: 0.6) ?? Data())
+        }
+
+        /// A picture file on this device, for a staged start-from.
+        static func stagedPicture() -> ForgeFrame? {
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 400))
+            let image = renderer.image { context in
+                let colors = [UIColor.systemTeal.cgColor, UIColor.systemPink.cgColor]
+                let gradient = CGGradient(
+                    colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray,
+                    locations: [0, 1])!
+                context.cgContext.drawLinearGradient(
+                    gradient, start: .zero, end: CGPoint(x: 600, y: 400), options: [])
+            }
+            guard let data = image.pngData(), let path = ImageGenFiles.stage(data, named: "staged.png")
+            else { return nil }
+            return .file(path)
         }
 
         /// Files machines as though this device had used them, so the setup screen's list — which

@@ -1,526 +1,6 @@
 import TailscodeCore
 import UIKit
 
-/// Everything the stage draws, in one value, so the cell is told what the studio is rather than
-/// reaching back into it while it scrolls.
-struct ImageStageReading {
-    let slot: ImageGenSlot
-    let exhibit: ImageExhibit?
-    /// The picture at full size, when this device has it.
-    let image: UIImage?
-    /// A small copy to show while the full one is fetched — a kept picture's tile.
-    let placeholder: UIImage?
-    /// Height over width of what the stage should be shaped for.
-    let ratio: CGFloat
-    /// What a screen reader is told the picture is: its words, when they are known.
-    let caption: String?
-    let startedAt: Date?
-    let progress: ImageGenProgress?
-    /// The sampler's own sketch of the picture so far, while one is being painted.
-    var sketch: UIImage? = nil
-    /// Whether the shelf below has anything on it, which changes what an empty stage suggests.
-    let shelfHasPictures: Bool
-}
-
-/// The room: one picture at the size the screen can give it, and — when there is no picture yet —
-/// the state that explains why. An empty studio argues for itself rather than showing a grey
-/// rectangle, and a render in flight paints in place of the picture so the eye never has to go
-/// looking for where the answer will appear: the last picture stays under it, dimmed, while the
-/// machine's own words say what it is doing and the sampler's own count fills the bar.
-final class ImageStageCell: UICollectionViewListCell {
-    var onOpen: (() -> Void)?
-
-    private let stage = UIView()
-    private let picture = UIImageView()
-    private let scrim = UIView()
-    private let glyph = UIImageView()
-    private let badge = ActivityBadgeView(pointSize: 22)
-    private let title = UILabel()
-    private let body = UILabel()
-    private let bar = UIProgressView(progressViewStyle: .default)
-    private let spinner = UIActivityIndicatorView(style: .medium)
-    private let idle = UIStackView()
-    private var ratio: NSLayoutConstraint?
-    private var appliedRatio: CGFloat = 0
-    private var clock: Task<Void, Never>?
-    private var reading: ImageStageReading?
-
-    private static let floor: CGFloat = 260
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        stage.backgroundColor = Theme.Color.groupedSurface
-        stage.layer.cornerRadius = Theme.Radius.card
-        stage.layer.cornerCurve = .continuous
-        stage.clipsToBounds = true
-        stage.translatesAutoresizingMaskIntoConstraints = false
-        picture.contentMode = .scaleAspectFit
-        picture.translatesAutoresizingMaskIntoConstraints = false
-        picture.isAccessibilityElement = false
-        scrim.backgroundColor = Theme.Color.groupedSurface.withAlphaComponent(0.78)
-        scrim.translatesAutoresizingMaskIntoConstraints = false
-        scrim.isHidden = true
-        glyph.contentMode = .center
-        glyph.tintColor = Theme.Color.tertiaryLabel
-        badge.translatesAutoresizingMaskIntoConstraints = false
-        title.numberOfLines = 3
-        title.textAlignment = .center
-        body.numberOfLines = 3
-        body.textAlignment = .center
-        bar.trackTintColor = Theme.Color.separator
-        bar.progressTintColor = Theme.Color.accent
-        bar.layer.cornerRadius = 2
-        bar.clipsToBounds = true
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        bar.widthAnchor.constraint(equalToConstant: 168).isActive = true
-        bar.heightAnchor.constraint(equalToConstant: 4).isActive = true
-        spinner.hidesWhenStopped = true
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        idle.axis = .vertical
-        idle.alignment = .center
-        idle.spacing = Theme.Spacing.s
-        idle.translatesAutoresizingMaskIntoConstraints = false
-        [glyph, badge, title, body, bar].forEach(idle.addArrangedSubview)
-        idle.setCustomSpacing(Theme.Spacing.m, after: body)
-
-        contentView.addSubview(stage)
-        stage.addSubview(picture)
-        stage.addSubview(scrim)
-        stage.addSubview(idle)
-        stage.addSubview(spinner)
-        NSLayoutConstraint.activate([
-            stage.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.s),
-            stage.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.s),
-            stage.leadingAnchor.constraint(
-                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
-            stage.trailingAnchor.constraint(
-                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
-            stage.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.floor),
-            picture.topAnchor.constraint(equalTo: stage.topAnchor),
-            picture.bottomAnchor.constraint(equalTo: stage.bottomAnchor),
-            picture.leadingAnchor.constraint(equalTo: stage.leadingAnchor),
-            picture.trailingAnchor.constraint(equalTo: stage.trailingAnchor),
-            scrim.topAnchor.constraint(equalTo: stage.topAnchor),
-            scrim.bottomAnchor.constraint(equalTo: stage.bottomAnchor),
-            scrim.leadingAnchor.constraint(equalTo: stage.leadingAnchor),
-            scrim.trailingAnchor.constraint(equalTo: stage.trailingAnchor),
-            idle.centerXAnchor.constraint(equalTo: stage.centerXAnchor),
-            idle.centerYAnchor.constraint(equalTo: stage.centerYAnchor),
-            idle.leadingAnchor.constraint(
-                greaterThanOrEqualTo: stage.leadingAnchor, constant: Theme.Spacing.xl),
-            idle.trailingAnchor.constraint(
-                lessThanOrEqualTo: stage.trailingAnchor, constant: -Theme.Spacing.xl),
-            spinner.trailingAnchor.constraint(
-                equalTo: stage.trailingAnchor, constant: -Theme.Spacing.m),
-            spinner.bottomAnchor.constraint(equalTo: stage.bottomAnchor, constant: -Theme.Spacing.m),
-        ])
-        stage.addGestureRecognizer(
-            UITapGestureRecognizer(target: self, action: #selector(stageTapped)))
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        clock?.cancel()
-        clock = nil
-        onOpen = nil
-        reading = nil
-    }
-
-    func apply(_ reading: ImageStageReading, ceiling: CGFloat) {
-        let previous = self.reading
-        self.reading = reading
-        var background = UIBackgroundConfiguration.clear()
-        background.backgroundColor = .clear
-        backgroundConfiguration = background
-        applyShape(reading.ratio, ceiling: ceiling)
-        applyStage(reading, after: previous)
-    }
-
-    /// The stage takes the shape of the picture on it — or, with none, of the one being asked for
-    /// — inside a floor and a ceiling, so a portrait render is tall and neither shape takes the
-    /// whole screen.
-    private func applyShape(_ wanted: CGFloat, ceiling: CGFloat) {
-        let width = max(contentView.bounds.width - 2 * Theme.Spacing.m, 200)
-        let capped = min(wanted, max(ceiling, Self.floor) / width)
-        guard abs(capped - appliedRatio) > 0.001 else { return }
-        appliedRatio = capped
-        ratio?.isActive = false
-        let pin = stage.heightAnchor.constraint(equalTo: stage.widthAnchor, multiplier: capped)
-        pin.priority = UILayoutPriority(999)
-        pin.isActive = true
-        ratio = pin
-    }
-
-    private func applyStage(_ reading: ImageStageReading, after previous: ImageStageReading?) {
-        clock?.cancel()
-        clock = nil
-        let sketching = reading.slot.isBusy && reading.sketch != nil
-        let shown = sketching ? reading.sketch : (reading.image ?? reading.placeholder)
-        let arriving = !sketching && previous?.sketch != nil && reading.image != nil
-            && picture.image != nil && !UIAccessibility.isReduceMotionEnabled
-        if arriving {
-            UIView.transition(with: picture, duration: 0.7, options: [.transitionCrossDissolve]) {
-                self.picture.image = shown
-            }
-        } else {
-            picture.image = shown
-        }
-        picture.isHidden = shown == nil
-        picture.accessibilityLabel = sketching ? ImageGenPreviewWords.caption(reading.progress) : nil
-        scrim.alpha = sketching ? 0.35 : 1
-        spinner.stopAnimating()
-        if !reading.slot.isBusy, reading.slot.failure == nil, shown != nil {
-            scrim.isHidden = true
-            idle.isHidden = true
-            badge.activity = nil
-            stage.isUserInteractionEnabled = reading.image != nil
-            if reading.image == nil { spinner.startAnimating() }
-            accessibilityLabel = reading.caption ?? ImageGenLibraryWords.title
-            accessibilityTraits = [.image, .button]
-            isAccessibilityElement = true
-            return
-        }
-        scrim.isHidden = shown == nil
-        idle.isHidden = false
-        stage.isUserInteractionEnabled = false
-        accessibilityTraits = []
-        bar.isHidden = true
-        switch reading.slot.phase {
-        case .painting:
-            badge.activity = .working
-            badge.isHidden = false
-            glyph.isHidden = true
-            show(title: reading.slot.activePrompt ?? "", tone: Theme.Color.label)
-            applyProgress(reading.progress, startedAt: reading.startedAt)
-            startClock()
-        case .failed(_, let reason):
-            badge.activity = nil
-            badge.isHidden = true
-            glyph.isHidden = false
-            showGlyph("exclamationmark.triangle", tint: Theme.Color.danger)
-            show(title: reason, tone: Theme.Color.danger)
-            show(body: reading.slot.activePrompt ?? "")
-        case .asking, .composing:
-            badge.activity = nil
-            badge.isHidden = true
-            glyph.isHidden = false
-            showGlyph(ImageGenEntryPoint.symbol, tint: Theme.Color.tertiaryLabel)
-            show(title: ImageGenWords.emptyTitle, tone: Theme.Color.label)
-            show(body: reading.shelfHasPictures ? ImageGenWords.stageEmptyKept : ImageGenWords.emptyBody)
-        }
-        isAccessibilityElement = true
-        accessibilityLabel = [title.text, body.text].compactMap { $0 }.joined(separator: ", ")
-    }
-
-    /// The machine's own words and the sampler's own count, moved in place: a frame changes the
-    /// line and the bar, never the layout around them.
-    func applyProgress(_ progress: ImageGenProgress?, startedAt: Date?, sketch: UIImage? = nil) {
-        guard let reading, reading.slot.isBusy else { return }
-        if let sketch, sketch !== reading.sketch {
-            picture.image = sketch
-            picture.isHidden = false
-            picture.accessibilityLabel = ImageGenPreviewWords.caption(progress)
-            scrim.isHidden = false
-            scrim.alpha = 0.35
-        }
-        show(body: reading.slot.waitingLine(since: startedAt, progress: progress))
-        if let fraction = progress?.bar {
-            let wasHidden = bar.isHidden
-            bar.isHidden = false
-            bar.setProgress(Float(fraction), animated: !wasHidden)
-        } else {
-            bar.isHidden = true
-        }
-        self.reading = ImageStageReading(
-            slot: reading.slot, exhibit: reading.exhibit, image: reading.image,
-            placeholder: reading.placeholder, ratio: reading.ratio, caption: reading.caption,
-            startedAt: startedAt, progress: progress, sketch: sketch ?? reading.sketch,
-            shelfHasPictures: reading.shelfHasPictures)
-    }
-
-    /// One second is the whole resolution a wait like this needs, and the clock stops the moment
-    /// the render does — a cell that keeps a timer alive over a settled state spends frames on
-    /// nothing.
-    private func startClock() {
-        clock = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard let self, !Task.isCancelled, let reading = self.reading else { return }
-                self.show(
-                    body: reading.slot.waitingLine(
-                        since: reading.startedAt, progress: reading.progress))
-            }
-        }
-    }
-
-    private func showGlyph(_ symbol: String, tint: UIColor) {
-        glyph.image = UIImage(
-            systemName: symbol,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 30, weight: .regular))
-        glyph.tintColor = tint
-    }
-
-    private func show(title words: String, tone: UIColor) {
-        title.isHidden = words.isEmpty
-        title.attributedText = NSAttributedString(
-            string: words,
-            attributes: Theme.Ramp.attributes(.cardTitle, color: tone, alignment: .center))
-    }
-
-    private func show(body words: String) {
-        body.isHidden = words.isEmpty
-        body.attributedText = NSAttributedString(
-            string: words,
-            attributes: Theme.Ramp.attributes(
-                .panelFootnote, color: Theme.Color.secondaryLabel, alignment: .center))
-    }
-
-    @objc private func stageTapped() {
-        onOpen?()
-    }
-}
-
-/// The words that made the picture, and what it cost. Facts rather than a caption: the prompt is
-/// what a person reads before deciding whether to roll again, and the line under it is mono and
-/// tabular so a column of renders can be compared down the page. A kept picture says once that
-/// its words came from the file.
-final class ImageCaptionCell: UICollectionViewListCell {
-    private let caption = UILabel()
-    private let facts = UILabel()
-    private let note = UILabel()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        caption.numberOfLines = 6
-        facts.numberOfLines = 2
-        note.numberOfLines = 2
-        let column = UIStackView(arrangedSubviews: [caption, facts, note])
-        column.axis = .vertical
-        column.spacing = Theme.Spacing.xs
-        column.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(column)
-        NSLayoutConstraint.activate([
-            column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
-            column.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.s),
-            column.leadingAnchor.constraint(
-                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            column.trailingAnchor.constraint(
-                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
-        ])
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    func apply(caption words: String, facts line: String, note words2: String?, known: Bool) {
-        var background = UIBackgroundConfiguration.clear()
-        background.backgroundColor = .clear
-        backgroundConfiguration = background
-        caption.attributedText = NSAttributedString(
-            string: words,
-            attributes: Theme.Ramp.attributes(
-                .cardBody, color: known ? Theme.Color.label : Theme.Color.tertiaryLabel))
-        facts.isHidden = line.isEmpty
-        facts.attributedText = NSAttributedString(
-            string: line,
-            attributes: Theme.Ramp.attributes(.responseStat, color: Theme.Color.tertiaryLabel))
-        note.isHidden = words2 == nil
-        note.attributedText = NSAttributedString(
-            string: words2 ?? "",
-            attributes: Theme.Ramp.attributes(.panelFootnote, color: Theme.Color.tertiaryLabel))
-        isAccessibilityElement = true
-        accessibilityLabel = [words, line, words2].compactMap { $0 }.filter { !$0.isEmpty }
-            .joined(separator: ", ")
-    }
-}
-
-/// What a finished picture can be made to do, which is the reason this is a place rather than a
-/// button. One row, every verb the same width, an icon over its word — the shape a hand already
-/// knows from the share sheet — and the one that destroys something drawn in the failure colour.
-final class ImageActionsCell: UICollectionViewListCell {
-    var onAction: ((ImageGenAction) -> Void)?
-
-    private let row = UIStackView()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        row.axis = .horizontal
-        row.distribution = .fillEqually
-        row.alignment = .top
-        row.spacing = Theme.Spacing.xs
-        row.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(row)
-        NSLayoutConstraint.activate([
-            row.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
-            row.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.s),
-            row.leadingAnchor.constraint(
-                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
-            row.trailingAnchor.constraint(
-                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
-        ])
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        onAction = nil
-    }
-
-    func apply(_ actions: [ImageGenAction], referenceHeld: Bool, busy: Bool) {
-        var background = UIBackgroundConfiguration.clear()
-        background.backgroundColor = .clear
-        backgroundConfiguration = background
-        row.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for action in actions {
-            row.addArrangedSubview(button(for: action, referenceHeld: referenceHeld, busy: busy))
-        }
-    }
-
-    private func button(for action: ImageGenAction, referenceHeld: Bool, busy: Bool) -> UIButton {
-        var config = UIButton.Configuration.plain()
-        config.imagePlacement = .top
-        config.imagePadding = Theme.Spacing.xs
-        config.contentInsets = NSDirectionalEdgeInsets(
-            top: Theme.Spacing.s, leading: 0, bottom: Theme.Spacing.s, trailing: 0)
-        config.image = UIImage(
-            systemName: action == .reference && referenceHeld ? "checkmark.circle.fill" : action.symbol,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .medium))
-        var title = AttributedString(action.phoneTitle)
-        title.font = Theme.Ramp.font(.sectionLabel)
-        config.attributedTitle = title
-        config.titleAlignment = .center
-        config.baseForegroundColor = action.isDestructive ? Theme.Color.danger : Theme.Color.accent
-        let button = UIButton(configuration: config)
-        button.titleLabel?.numberOfLines = 1
-        button.titleLabel?.adjustsFontSizeToFitWidth = true
-        button.titleLabel?.minimumScaleFactor = 0.8
-        button.addAction(
-            UIAction { [weak self] _ in self?.onAction?(action) }, for: .touchUpInside)
-        button.accessibilityLabel = action.title
-        button.accessibilityHint = action.hint
-        button.isEnabled = !(action == .again && busy)
-        if action == .reference, referenceHeld {
-            button.accessibilityValue = String(localized: "Already the reference")
-        }
-        return button
-    }
-}
-
-/// The studio with nowhere to send a picture: the argument and the one button, the same as the
-/// forge leads with. It appears only when a renderer this device knew has been forgotten while the
-/// surface was up — the door decides whether the studio is offered at all.
-final class ImageSetupCell: UICollectionViewListCell {
-    var onSetup: (() -> Void)?
-
-    private let title = UILabel()
-    private let body = UILabel()
-    private let button = PrimaryButton(title: ForgeSetup.title)
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        title.numberOfLines = 2
-        body.numberOfLines = 0
-        let column = UIStackView(arrangedSubviews: [title, body, button])
-        column.axis = .vertical
-        column.spacing = Theme.Spacing.m
-        column.alignment = .leading
-        column.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(column)
-        NSLayoutConstraint.activate([
-            column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.l),
-            column.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.l),
-            column.leadingAnchor.constraint(
-                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            column.trailingAnchor.constraint(
-                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
-        ])
-        button.addAction(UIAction { [weak self] _ in self?.onSetup?() }, for: .touchUpInside)
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        onSetup = nil
-    }
-
-    func apply() {
-        var background = UIBackgroundConfiguration.listCell()
-        background.backgroundColor = Theme.Color.groupedSurface
-        background.cornerRadius = Theme.Radius.card
-        backgroundConfiguration = background
-        title.attributedText = NSAttributedString(
-            string: ImageGenEntryPoint.tooltip(configured: false),
-            attributes: Theme.Ramp.attributes(.cardTitle))
-        body.attributedText = NSAttributedString(
-            string: ImageGenWords.emptyBody,
-            attributes: Theme.Ramp.attributes(.cardBody, color: Theme.Color.secondaryLabel))
-    }
-}
-
-/// The shelf's heading: which machine, how many, how fresh, and the one control that asks again.
-final class ImageLibraryHeader: UICollectionReusableView {
-    var onRefresh: (() -> Void)?
-
-    private let title = UILabel()
-    private let line = UILabel()
-    private let refresh = UIButton(type: .system)
-    private let spinner = UIActivityIndicatorView(style: .medium)
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        title.numberOfLines = 1
-        line.numberOfLines = 1
-        let column = UIStackView(arrangedSubviews: [title, line])
-        column.axis = .vertical
-        column.spacing = 2
-        var config = Theme.Glass.buttonConfiguration()
-        config.cornerStyle = .capsule
-        config.buttonSize = .small
-        config.image = UIImage(
-            systemName: "arrow.clockwise",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
-        refresh.configuration = config
-        refresh.accessibilityLabel = ImageGenLibraryWords.refresh
-        refresh.addAction(UIAction { [weak self] _ in self?.onRefresh?() }, for: .touchUpInside)
-        refresh.setContentHuggingPriority(.required, for: .horizontal)
-        spinner.hidesWhenStopped = true
-        let row = UIStackView(arrangedSubviews: [column, spinner, refresh])
-        row.axis = .horizontal
-        row.alignment = .center
-        row.spacing = Theme.Spacing.s
-        row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
-        NSLayoutConstraint.activate([
-            row.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.l),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.s),
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
-        ])
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    func apply(machine: String, line words: String, loading: Bool) {
-        title.attributedText = NSAttributedString(
-            string: ImageGenLibraryWords.heading(machine: machine),
-            attributes: Theme.Ramp.attributes(.panelTitle))
-        line.attributedText = NSAttributedString(
-            string: words,
-            attributes: Theme.Ramp.attributes(.panelFootnote, color: Theme.Color.secondaryLabel))
-        if loading { spinner.startAnimating() } else { spinner.stopAnimating() }
-        refresh.isEnabled = !loading
-        isAccessibilityElement = false
-        title.accessibilityLabel = "\(ImageGenLibraryWords.heading(machine: machine)), \(words)"
-    }
-}
-
 /// One kept picture, drawn small. The tile asks the library for its own thumbnail and shows it
 /// when it lands, keyed so a cell reused mid-flight never wears the wrong picture; the one on the
 /// stage is framed in the accent.
@@ -529,6 +9,12 @@ final class ImageTileCell: UICollectionViewCell {
     private let frameView = UIView()
     private let placeholder = UIImageView()
     private var token = UUID()
+    /// How thick the accent ring is on the picture that is on the stage. The shelf strip wears a
+    /// finer one than the picker's grid, because its tiles are small and a ring that eats a
+    /// fifth of the picture stops being a mark and becomes a frame.
+    var ringWidth: CGFloat = 3 {
+        didSet { frameView.layer.borderWidth = ringWidth }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -603,86 +89,148 @@ final class ImageTileCell: UICollectionViewCell {
     }
 }
 
-/// What the shelf says when it has no tiles to show: that it is asking, that there is nothing
-/// yet, or why it could not ask — in the machine's name, never as a blank.
-final class ImageLibraryStateCell: UICollectionViewListCell {
-    private let glyph = UIImageView()
-    private let title = UILabel()
-    private let body = UILabel()
-    private let spinner = UIActivityIndicatorView(style: .medium)
+/// The ink of the small marks drawn on a tile — a sampler step, a clip's length. Tiles are a fixed
+/// size, so the mark answers Larger Text up to a ceiling and stops rather than outgrowing them.
+enum StudioBadge {
+    @MainActor
+    static var attributes: [NSAttributedString.Key: Any] {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        return [
+            .font: Theme.Font.capped(.caption2, maximum: 11), .foregroundColor: UIColor.white,
+            .paragraphStyle: paragraph,
+        ]
+    }
+}
+
+/// The render in flight, leading the shelf as a tile that wears the sketch: the machine's own
+/// picture so far, the sampler's step in the corner and the same fraction along the foot. Before
+/// a sketch exists it breathes on the vocabulary's own swell, and a render whose machine sends no
+/// sketches stays a breathing tile rather than a blank one. It is never a picture on the machine,
+/// so pressing it puts nothing on the stage.
+final class ImageJobTileCell: UICollectionViewCell {
+    private let picture = UIImageView()
+    private let badge = ActivityBadgeView(pointSize: 18)
+    private let step = UILabel()
+    private let track = UIView()
+    private let fill = UIView()
+    private var fraction: Double?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        glyph.contentMode = .center
-        title.numberOfLines = 2
-        title.textAlignment = .center
-        body.numberOfLines = 3
-        body.textAlignment = .center
-        spinner.hidesWhenStopped = true
-        let column = UIStackView(arrangedSubviews: [spinner, glyph, title, body])
-        column.axis = .vertical
-        column.alignment = .center
-        column.spacing = Theme.Spacing.s
-        column.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(column)
+        contentView.backgroundColor = Theme.Color.codeBackground
+        contentView.layer.cornerRadius = 8
+        contentView.layer.cornerCurve = .continuous
+        contentView.clipsToBounds = true
+        picture.contentMode = .scaleAspectFill
+        picture.isAccessibilityElement = false
+        badge.activity = .working
+        step.numberOfLines = 1
+        step.textAlignment = .center
+        step.layer.cornerRadius = 7
+        step.layer.masksToBounds = true
+        step.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        step.isAccessibilityElement = false
+        track.backgroundColor = Theme.Color.separator
+        fill.backgroundColor = Theme.Color.accent
+        [picture, badge, step, track, fill].forEach { contentView.addSubview($0) }
+        isAccessibilityElement = true
+        accessibilityTraits = [.updatesFrequently]
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let bounds = contentView.bounds
+        picture.frame = bounds
+        badge.frame = CGRect(x: 0, y: 0, width: 28, height: 28)
+        badge.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let size = step.sizeThatFits(CGSize(width: bounds.width, height: 16))
+        step.frame = CGRect(x: 4, y: 4, width: min(bounds.width - 8, size.width + 8), height: 14)
+        track.frame = CGRect(x: 0, y: bounds.height - 3, width: bounds.width, height: 3)
+        fill.frame = CGRect(
+            x: 0, y: bounds.height - 3, width: bounds.width * CGFloat(fraction ?? 0), height: 3)
+    }
+
+    func apply(sketch: UIImage?, progress: ImageGenProgress?, words: String) {
+        var stepWords: String?
+        if let step = progress?.step, let steps = progress?.steps, steps > 0 {
+            stepWords = "\(min(step, steps))/\(steps)"
+        }
+        apply(sketch: sketch, step: stepWords, fraction: progress?.bar, words: words)
+    }
+
+    func apply(sketch: UIImage?, step stepWords: String?, fraction share: Double?, words: String) {
+        picture.image = sketch
+        badge.isHidden = sketch != nil
+        step.isHidden = stepWords == nil
+        step.attributedText = NSAttributedString(
+            string: stepWords ?? "",
+            attributes: StudioBadge.attributes)
+        fraction = share
+        track.isHidden = fraction == nil
+        fill.isHidden = fraction == nil
+        accessibilityLabel = words
+        setNeedsLayout()
+    }
+}
+
+/// What the shelf says when it has no tiles: that it is asking, that there is nothing yet, or why
+/// it could not ask — in the machine's name, on one line, never as a blank.
+final class ImageStripNoteCell: UICollectionViewCell {
+    private let label = UILabel()
+    private let spinner = ActivityBadgeView(pointSize: 14)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        label.numberOfLines = 3
+        let row = UIStackView(arrangedSubviews: [spinner, label])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = Theme.Spacing.s
+        row.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(row)
         NSLayoutConstraint.activate([
-            column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xl),
-            column.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xl),
-            column.leadingAnchor.constraint(
-                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.xl),
-            column.trailingAnchor.constraint(
-                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.xl),
+            row.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            row.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor),
+            row.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
         ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func apply(_ state: ImageLibrary.State) {
-        var background = UIBackgroundConfiguration.clear()
-        background.backgroundColor = .clear
-        backgroundConfiguration = background
+    func apply(_ state: ImageLibrary.State, machine: String) {
+        let words: String
+        let ink: UIColor
         switch state {
         case .idle, .loading:
-            spinner.startAnimating()
-            glyph.isHidden = true
-            set(title: ImageGenLibraryWords.loading, tone: Theme.Color.secondaryLabel)
-            set(body: nil)
+            words = ImageGenLibraryWords.loading
+            ink = Theme.Color.secondaryLabel
+            spinner.working(true)
         case .loaded:
-            spinner.stopAnimating()
-            glyph.isHidden = false
-            glyph.image = UIImage(
-                systemName: "photo.stack",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 26, weight: .light))
-            glyph.tintColor = Theme.Color.tertiaryLabel
-            set(title: ImageGenLibraryWords.emptyTitle, tone: Theme.Color.label)
-            set(body: ImageGenLibraryWords.emptyBody)
+            words = ImageGenLibraryWords.emptyBody
+            ink = Theme.Color.secondaryLabel
+            spinner.working(false)
         case .failed(let reason):
-            spinner.stopAnimating()
-            glyph.isHidden = false
-            glyph.image = UIImage(
-                systemName: "wifi.exclamationmark",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 26, weight: .light))
-            glyph.tintColor = Theme.Color.warning
-            set(title: reason, tone: Theme.Color.label)
-            set(body: nil)
+            words = reason
+            ink = Theme.Color.warning
+            spinner.working(false)
         }
+        show(words: words, ink: ink, machine: ImageGenLibraryWords.heading(machine: machine))
+    }
+
+    /// The same line for a shelf that is not the machine's gallery — a forge with no clips yet.
+    func apply(words: String, machine: String) {
+        spinner.working(false)
+        show(words: words, ink: Theme.Color.secondaryLabel, machine: machine)
+    }
+
+    private func show(words: String, ink: UIColor, machine: String) {
+        label.attributedText = NSAttributedString(
+            string: words, attributes: Theme.Ramp.attributes(.panelFootnote, color: ink))
         isAccessibilityElement = true
-        accessibilityLabel = [title.text, body.text].compactMap { $0 }.joined(separator: ", ")
-    }
-
-    private func set(title words: String, tone: UIColor) {
-        title.attributedText = NSAttributedString(
-            string: words,
-            attributes: Theme.Ramp.attributes(.cardTitle, color: tone, alignment: .center))
-    }
-
-    private func set(body words: String?) {
-        body.isHidden = words == nil
-        body.attributedText = NSAttributedString(
-            string: words ?? "",
-            attributes: Theme.Ramp.attributes(
-                .panelFootnote, color: Theme.Color.secondaryLabel, alignment: .center))
+        accessibilityLabel = "\(machine), \(words)"
     }
 }
 
