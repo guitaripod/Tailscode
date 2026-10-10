@@ -393,6 +393,7 @@ struct _TailscodeSurfacePaintable {
     GObject parent_instance;
     cairo_surface_t *surface;
     int width, height;
+    int intrinsic_width, intrinsic_height;
 };
 
 static void tailscode_surface_paintable_snapshot(
@@ -409,11 +410,13 @@ static void tailscode_surface_paintable_snapshot(
 }
 
 static int tailscode_surface_paintable_intrinsic_width(GdkPaintable *paintable) {
-    return TAILSCODE_SURFACE_PAINTABLE(paintable)->width;
+    TailscodeSurfacePaintable *self = TAILSCODE_SURFACE_PAINTABLE(paintable);
+    return self->intrinsic_width > 0 ? self->intrinsic_width : self->width;
 }
 
 static int tailscode_surface_paintable_intrinsic_height(GdkPaintable *paintable) {
-    return TAILSCODE_SURFACE_PAINTABLE(paintable)->height;
+    TailscodeSurfacePaintable *self = TAILSCODE_SURFACE_PAINTABLE(paintable);
+    return self->intrinsic_height > 0 ? self->intrinsic_height : self->height;
 }
 
 static double tailscode_surface_paintable_intrinsic_aspect(GdkPaintable *paintable) {
@@ -470,6 +473,16 @@ GtkWidget *tailscode_picture_for_texture(GdkTexture *texture) {
     g_object_unref(paintable);
     gtk_picture_set_content_fit(GTK_PICTURE(picture), GTK_CONTENT_FIT_SCALE_DOWN);
     gtk_picture_set_can_shrink(GTK_PICTURE(picture), TRUE);
+    return picture;
+}
+
+GtkWidget *tailscode_picture_for_texture_sized(GdkTexture *texture, int width, int height) {
+    GtkWidget *picture = tailscode_picture_for_texture(texture);
+    GdkPaintable *paintable = gtk_picture_get_paintable(GTK_PICTURE(picture));
+    TailscodeSurfacePaintable *self = TAILSCODE_SURFACE_PAINTABLE(paintable);
+    self->intrinsic_width = width;
+    self->intrinsic_height = height;
+    gdk_paintable_invalidate_size(paintable);
     return picture;
 }
 
@@ -3083,6 +3096,17 @@ int tailscode_monitor_workarea_height(GtkWidget *near) {
     GdkRectangle area;
     gdk_monitor_get_geometry(monitor, &area);
     return area.height;
+}
+
+GtkWidget *tailscode_box_new_with_role(
+    GtkOrientation orientation, int spacing, GtkAccessibleRole role) {
+    return g_object_new(
+        GTK_TYPE_BOX, "orientation", orientation, "spacing", spacing, "accessible-role", role,
+        NULL);
+}
+
+int tailscode_accessible_role(GtkWidget *widget) {
+    return (int)gtk_accessible_get_accessible_role(GTK_ACCESSIBLE(widget));
 }
 
 bool tailscode_ctrl_held(GtkWidget *near) {

@@ -55,7 +55,9 @@ enum ToolRowView {
         gtk_box_append(
             ptr(header),
             Gtk.label(
-                Localized.text("%@ tools", "\(calls.count)"), css: "tool-name", selectable: false))
+                calls.count == 1
+                    ? Localized.text("1 tool") : Localized.text("%@ tools", "\(calls.count)"),
+                css: "tool-name", selectable: false))
 
         var tally: [(String, Int)] = []
         for call in calls {

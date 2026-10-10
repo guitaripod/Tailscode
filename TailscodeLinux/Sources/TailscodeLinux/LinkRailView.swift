@@ -33,6 +33,18 @@ final class WidgetRef: @unchecked Sendable {
     }
 }
 
+extension LinkRailReading {
+    /// A rail with exactly one address has nothing to expand: it is the link itself, opened by a
+    /// press, with no plate and no chevron.
+    var opensDirectlyHere: Bool { count == 1 }
+
+    /// What a screen reader is told of a rail that is one link: its title and that it is a link,
+    /// where a longer rail is a disclosure button.
+    var spokenAsLink: String {
+        Localized.text("%@, link", items.first?.face.headline ?? "")
+    }
+}
+
 /// What the rail line and its plate share: the addresses, the faces fetched so far, the fetches
 /// that have gone out and the widgets a landing fetch writes into. Touched only on the GLib main
 /// context. It lives as long as the rail widget does and no longer — the widget's destruction
@@ -206,13 +218,15 @@ final class LinkRailLine: @unchecked Sendable {
         } else {
             gtk_widget_set_visible(more, 0)
         }
-        gtk_label_set_text(op(chevron), expanded ? "⌄" : "›")
+        let direct = reading.opensDirectlyHere
+        gtk_label_set_text(op(chevron), direct ? "↗" : expanded ? "⌄" : "›")
         if expanded {
             gtk_widget_add_css_class(widget, "link-rail-open")
         } else {
             gtk_widget_remove_css_class(widget, "link-rail-open")
         }
-        tailscode_set_accessible_label(widget, reading.spoken(expanded: expanded))
+        tailscode_set_accessible_label(
+            widget, direct ? reading.spokenAsLink : reading.spoken(expanded: expanded))
     }
 
     func place(_ bits: UInt, for url: String) {
@@ -297,7 +311,10 @@ enum LinkRailView {
     ) -> Parts {
         let model = LinkRailRegistry.shared.make(
             key: key, urls: urls, source: source, toast: context?.toast)
-        let widget = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let direct = model.reading.opensDirectlyHere
+        let widget = tailscode_box_new_with_role(
+            GTK_ORIENTATION_HORIZONTAL, 6,
+            direct ? GTK_ACCESSIBLE_ROLE_LINK : GTK_ACCESSIBLE_ROLE_BUTTON)!
         Gtk.addClass(widget, "link-rail")
         gtk_widget_set_halign(widget, GTK_ALIGN_START)
         gtk_widget_set_size_request(widget, -1, Int32(ChatMetrics.metrics(for: Preferences.chatDensity, input: .pointer).railRowHeight))
@@ -356,8 +373,14 @@ enum LinkRailView {
 
         let id = model.id
         let act = context?.railAct
-        Gtk.onPrimaryRelease(widget) { act?(id, .click) }
         let widgetRef = WidgetRef(widget)
+        Gtk.onPrimaryRelease(widget) {
+            if direct {
+                widgetRef.with { follow(model, from: $0) }
+            } else {
+                act?(id, .click)
+            }
+        }
         Gtk.onRightClick(widget) { x, y in
             widgetRef.with { widget in
                 Gtk.contextMenu(on: widget, x: x, y: y, rows: menuRows(model: model, ref: widgetRef))
@@ -366,9 +389,13 @@ enum LinkRailView {
         Gtk.onKey(widget) { keyval, _ in
             switch keyval {
             case 0x20, Keymap.enter, Keymap.keypadEnter:
-                act?(id, .key)
+                if direct {
+                    widgetRef.with { follow(model, from: $0) }
+                } else {
+                    act?(id, .key)
+                }
                 return true
-            case Keymap.down:
+            case Keymap.down where !direct:
                 act?(id, .down)
                 return true
             default:
@@ -383,11 +410,26 @@ enum LinkRailView {
         return Parts(widget: widget, line: line, model: model)
     }
 
-    /// What the rail's own menu offers: every address copied, or every address opened.
+    /// A press on a rail that is one link: the address opens where a link in the prose opens, or
+    /// is copied when control is held.
+    static func follow(_ model: LinkRailModel, from widget: UnsafeMutablePointer<GtkWidget>) {
+        guard let url = model.urls.first else { return }
+        if Gtk.ctrlHeld(widget) {
+            model.copy(url)
+        } else {
+            tailscode_open_uri(widget, url)
+        }
+    }
+
+    /// What the rail's own menu offers: for one link, its address copied; for a longer rail every
+    /// address copied, or every address opened.
     static func menuRows(
         model: LinkRailModel, ref: WidgetRef
     ) -> [(title: String, detail: String?, action: @Sendable () -> Void)] {
-        [
+        if model.reading.opensDirectlyHere, let url = model.urls.first {
+            return [(title: Localized.text("Copy address"), detail: nil, action: { model.copy(url) })]
+        }
+        return [
             (title: LinkRailReading.copyAllTitle, detail: nil, action: { model.copyAll() }),
             (title: LinkRailReading.openAllTitle, detail: nil,
                 action: { ref.with { model.openAll(from: $0) } }),

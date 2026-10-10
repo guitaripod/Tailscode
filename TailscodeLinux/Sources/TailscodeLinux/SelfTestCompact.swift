@@ -513,7 +513,32 @@ extension SelfTest {
                 gtk_label_get_ellipsize(op(line.hosts)) == PANGO_ELLIPSIZE_END
                     && gtk_label_get_single_line_mode(op(line.hosts)) != 0,
                 "\(count): the hosts ellipsize at the end of one line")
-            try expect(labelText(line.chevron) == "›", "\(count): collapsed reads ›")
+            let role = tailscode_accessible_role(parts.widget)
+            if count == 1 {
+                try expect(
+                    labelText(line.chevron) == "↗" && parts.model.reading.opensDirectlyHere,
+                    "1: a rail of one address is the link — a quiet ↗, not a disclosure")
+                try expect(
+                    role == Int32(GTK_ACCESSIBLE_ROLE_LINK.rawValue),
+                    "1: and it announces itself as a link: \(role)")
+                try expect(
+                    LinkRailView.menuRows(model: parts.model, ref: WidgetRef(parts.widget)).map(\.title)
+                        == [Localized.text("Copy address")],
+                    "1: right-click offers Copy address and nothing else")
+                try expect(
+                    parts.model.reading.spokenAsLink.hasSuffix(", link"),
+                    "1: a screen reader is told its title and that it is a link")
+            } else {
+                try expect(labelText(line.chevron) == "›", "\(count): collapsed reads ›")
+                try expect(
+                    role == Int32(GTK_ACCESSIBLE_ROLE_BUTTON.rawValue)
+                        && !parts.model.reading.opensDirectlyHere,
+                    "\(count): a longer rail is a disclosure button: \(role)")
+                try expect(
+                    LinkRailView.menuRows(model: parts.model, ref: WidgetRef(parts.widget)).map(\.title)
+                        == [LinkRailReading.copyAllTitle, LinkRailReading.openAllTitle],
+                    "\(count): right-click offers copy all and open all")
+            }
             try expect(
                 pump(3, until: { asked.all.count == min(3, count) }),
                 "\(count): only the stack is asked about at creation: \(asked.all.count)")
@@ -616,7 +641,7 @@ extension SelfTest {
         }
         try expect(
             seamControls == 1 && seamWords.first?.hasPrefix("Context compacted · ") == true
-                && seamWords.first?.hasSuffix("›") == true,
+                && seamWords.first?.contains("›") == true,
             "it reads title · trade · time and a chevron, and opens the reader: \(seamWords)")
         try expect(
             !(seamWords.first ?? "").contains("%"),

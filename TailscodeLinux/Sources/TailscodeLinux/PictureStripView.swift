@@ -61,7 +61,7 @@ enum PictureStripView {
             let size = thumbnail(
                 width: width, height: height, maxHeight: metrics.imageMaxHeight,
                 maxWidth: ImagePreview.deskWidth)
-            let image = tailscode_picture_for_texture(texture)!
+            let image = tailscode_picture_for_texture_sized(texture, size.width, size.height)!
             gtk_picture_set_content_fit(op(image), GTK_CONTENT_FIT_CONTAIN)
             gtk_widget_set_size_request(image, size.width, size.height)
             Gtk.addClass(image, "image-part")

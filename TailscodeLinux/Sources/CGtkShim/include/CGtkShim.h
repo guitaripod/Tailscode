@@ -89,6 +89,11 @@ GdkTexture *tailscode_texture_scaled(
 /// which is why the cast lives here.
 GtkWidget *tailscode_picture_for_texture(GdkTexture *texture);
 
+/// The same picture, whose natural size is the one given rather than the texture's own — a
+/// favicon decoded at 64 pixels that is drawn at 14 asks its container for 14, not for 64, which
+/// matters wherever a container allocates its children their natural size.
+GtkWidget *tailscode_picture_for_texture_sized(GdkTexture *texture, int width, int height);
+
 /// Makes the label's `<a href>` spans open in the person's own browser. `activate-link` is
 /// gboolean-returning and carries the uri, which the generic Swift signal bridge cannot express;
 /// the launch also needs the toplevel as its parent so the portal knows who asked.
@@ -539,6 +544,14 @@ bool tailscode_shift_held(GtkWidget *near);
 /// Whether control is held, read from the keyboard at signal time like ``tailscode_shift_held``:
 /// a link row's "clicked" carries no event, and control-click copies where a click opens.
 bool tailscode_ctrl_held(GtkWidget *near);
+
+/// A box that announces itself as something other than a generic container — a link, a button —
+/// which a screen reader reads from the role and which can only be chosen when it is made.
+GtkWidget *tailscode_box_new_with_role(
+    GtkOrientation orientation, int spacing, GtkAccessibleRole role);
+
+/// The role a widget announces, as the `GtkAccessibleRole` raw value.
+int tailscode_accessible_role(GtkWidget *widget);
 
 /// What the main loop did since the last read, in monotonic microseconds: time outside `g_poll`
 /// (busy), time inside it (idle), and the longest stretch between leaving one poll and entering

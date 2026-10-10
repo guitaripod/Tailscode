@@ -311,6 +311,8 @@ final class MainWindow: @unchecked Sendable {
                     self.activePane.driverTableDemo()
                 case "codedemo":
                     self.activePane.driverCodeDemo()
+                case "furnituredemo":
+                    self.activePane.driverFurnitureDemo(argument)
                 case "cutoffdemo":
                     self.activePane.driverInterruptedDemo(
                         argument.isEmpty ? "busy" : argument)
@@ -3592,6 +3594,11 @@ final class MainWindow: @unchecked Sendable {
                 return false
             }
             let window: UnsafeMutablePointer<GtkWidget> = ptr(base)
+            if keyval == Keymap.escape,
+                self.splitHost.orderedPanes.contains(where: { $0.rails.escape() })
+            {
+                return true
+            }
             for pane in self.splitHost.orderedPanes where pane.composerHasFocus() {
                 self.splitHost.focus(pane, grabKeyboard: false)
                 if let handled = pane.handleComposerKey(keyval: keyval, state: state) {

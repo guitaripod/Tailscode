@@ -86,7 +86,9 @@ final class MediaImageCache: @unchecked Sendable {
     /// thumbnails land is a board whose rows move under the pointer.
     func picture(_ bits: UInt, width: Int32, height: Int32) -> UnsafeMutablePointer<GtkWidget>? {
         guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return nil }
-        guard let widget = tailscode_picture_for_texture(OpaquePointer(raw)) else { return nil }
+        guard
+            let widget = tailscode_picture_for_texture_sized(OpaquePointer(raw), width, height)
+        else { return nil }
         gtk_picture_set_content_fit(op(widget), GTK_CONTENT_FIT_COVER)
         gtk_widget_set_size_request(widget, width, height)
         gtk_widget_set_halign(widget, GTK_ALIGN_CENTER)

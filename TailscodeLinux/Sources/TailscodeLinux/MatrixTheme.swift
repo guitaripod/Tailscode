@@ -808,7 +808,7 @@ enum MatrixTheme {
         .link-rail:focus-visible { outline: 2px solid alpha(\(accent), 0.7); outline-offset: -2px; }
         .link-rail-icon {
             border-radius: 7px;
-            background-color: alpha(\(text), 0.12);
+            background-color: mix(\(canvasRaised), \(text), 0.2);
             box-shadow: 0 0 0 1px \(canvas);
         }
         .link-rail-icon-loaded { background-color: #f2f2f2; }
@@ -835,6 +835,7 @@ enum MatrixTheme {
         .link-plate-row:hover, .link-plate-row:focus { background-color: alpha(\(accent), 0.14); }
         .link-plate-title { color: \(text); \(t(.toolName)) }
         .link-plate-host { color: \(textDim); \(t(.treePath)) }
+        .seam-line .seam-text { letter-spacing: 0; }
         .seam-line-press { min-height: 0; padding: 0 4px; border-radius: 4px; }
         .seam-line-press:hover { background-color: alpha(\(special), 0.12); }
         .picture-strip { padding: 0; }

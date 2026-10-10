@@ -904,6 +904,7 @@ struct TranscriptRow: Hashable {
             SyntaxHighlighter.displayName(for: language, source: body), css: "code-header",
             selectable: false)
         gtk_widget_set_valign(tag, GTK_ALIGN_CENTER)
+        gtk_label_set_ellipsize(op(tag), PANGO_ELLIPSIZE_NONE)
         gtk_box_append(ptr(plate), tag)
         gtk_box_append(ptr(plate), copyButton(body, toast: context?.toast))
         gtk_overlay_add_overlay(op(wrap), plate)
@@ -1108,10 +1109,12 @@ struct TranscriptRow: Hashable {
     ) -> UnsafeMutablePointer<GtkWidget> {
         let story = CompactionStory.done(compaction)
         let readable = story.isReadable
-        let words = [story.title, story.detail].joined(separator: " · ") + (readable ? " ›" : "")
+        let words =
+            [story.title, story.detail].joined(separator: " · ") + (readable ? " ›" : "") + "\u{2002}"
         let label = Gtk.label(words, css: "seam-text", selectable: false)
         gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
         gtk_label_set_single_line_mode(op(label), 1)
+        gtk_label_set_max_width_chars(op(label), 120)
         guard let summary = story.summary, readable else {
             return dividerLine(around: label)
         }

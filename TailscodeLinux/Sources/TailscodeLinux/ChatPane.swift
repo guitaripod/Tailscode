@@ -5386,6 +5386,101 @@ final class ChatPane: @unchecked Sendable {
 
     /// A conversation of code blocks for the harness: a two-line command, a one-liner, a block
     /// long enough to fold, and a line wide enough to scroll sideways.
+    /// A conversation made mostly of furniture — two tool calls, two pictures the agent made, a
+    /// compaction seam, three more tool calls, a code block and three addresses — for the
+    /// compact-chat measure: the demo chats are mostly words, and a density that only ever shows
+    /// on words has not been tried. The argument is a comma-separated list of image files the two
+    /// pictures are read from.
+    func driverFurnitureDemo(_ argument: String) {
+        let now = Date()
+        let asked = ChatMessage(
+            id: "demo-furn-prompt", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "t",
+                    kind: .text(
+                        "Render the Studio mocks so I can compare the painting and done states, then pin the jitter in the reconnect test."
+                    ))
+            ], createdAt: now.addingTimeInterval(-300))
+        func tool(_ id: String, _ name: String, _ input: [String: JSONValue], _ title: String)
+            -> MessagePart
+        {
+            MessagePart(
+                id: id,
+                kind: .tool(
+                    ToolCall(
+                        id: "call-\(id)", name: name, status: .completed, input: .object(input),
+                        title: title)))
+        }
+        let paths = argument.split(separator: ",").map(String.init)
+        var parts: [MessagePart] = [
+            tool("b1", "Bash", ["command": .string("python3 scripts/mock-comfyui.py")], "Start the mock"),
+            tool("w1", "Write", ["file_path": .string("docs/studio-mocks/b-painting.png")], "Write b-painting.png"),
+        ]
+        for (index, path) in paths.prefix(2).enumerated() {
+            let name = URL(fileURLWithPath: path).lastPathComponent
+            let part = MessagePart(
+                id: "pic\(index)",
+                kind: .file(FileReference(path: path, mime: "image/png", filename: name)))
+            parts.append(part)
+            let key = "demo-furn-answer:pic\(index)"
+            guard context.textures[key] == nil, let data = try? Data(contentsOf: URL(fileURLWithPath: path))
+            else { continue }
+            var width: Int32 = 0
+            var height: Int32 = 0
+            let texture = data.withUnsafeBytes { buffer -> UInt in
+                guard let base = buffer.baseAddress,
+                    let texture = tailscode_texture_scaled(
+                        base, gsize(buffer.count), TranscriptContext.bubbleMaxDimension, &width,
+                        &height)
+                else { return 0 }
+                return UInt(bitPattern: texture)
+            }
+            if texture != 0 {
+                context.store(
+                    textureBits: texture, data: data, dimensions: (width, height), forKey: key)
+            }
+        }
+        parts.append(
+            MessagePart(
+                id: "seam",
+                kind: .compaction(
+                    Compaction(
+                        trigger: .manual, tokensBefore: 311_600, tokensAfter: 16_400, duration: 114,
+                        preservedMessageCount: 9, summary: "The Studio mocks are written; the jitter test is next."
+                    ))))
+        parts += [
+            tool("r1", "Read", ["file_path": .string("Sources/Pulse/ReconnectScheduler.swift")], "Read ReconnectScheduler.swift"),
+            tool("e1", "Edit", ["file_path": .string("Tests/PulseTests/ReconnectTests.swift"), "old_string": .string("a"), "new_string": .string("b")], "Edit ReconnectTests.swift"),
+            tool("b2", "Bash", ["command": .string("swift test --filter ReconnectTests")], "swift test --filter ReconnectTests"),
+            MessagePart(
+                id: "answer",
+                kind: .text(
+                    """
+                    Found it. `ReconnectScheduler` applies ±40% jitter to the 400 ms base delay, so the worst case is 560 ms — past the test's 500 ms ceiling. Pin it in tests:
+
+                    ```swift
+                    protocol JitterSource: Sendable {
+                        func factor(in range: ClosedRange<Double>) -> Double
+                    }
+
+                    struct FixedJitter: JitterSource {
+                        let value: Double
+                        func factor(in _: ClosedRange<Double>) -> Double { value }
+                    }
+                    ```
+
+                    The suite now pins the factor to 1.0. The upstream discussion is at https://github.com/swiftlang/swift, the CI side in https://docs.github.com/en/actions/using-jobs/using-concurrency and the backoff rule in https://datatracker.ietf.org/doc/html/rfc6298.
+                    """)),
+        ]
+        let reply = ChatMessage(
+            id: "demo-furn-answer", role: .assistant, agentType: .claudeCode, parts: parts,
+            createdAt: now)
+        let state = ConversationState(
+            messages: [asked, reply], status: .idle, hasLoadedTranscript: true)
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: false))
+    }
+
     func driverCodeDemo() {
         let now = Date()
         let asked = ChatMessage(

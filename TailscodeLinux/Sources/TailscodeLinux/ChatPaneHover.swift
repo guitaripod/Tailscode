@@ -11,9 +11,6 @@ extension ChatPane {
         hoverOverlay = overlay
         gtk_overlay_add_overlay(op(overlay), messageBar.widget)
         rails.install(on: overlay)
-        Gtk.onKey(root) { [weak self] keyval, _ in
-            keyval == Keymap.escape && self?.rails.escape() == true
-        }
         messageBar.copy = { [weak self] id in self?.copyMessage(id) }
         messageBar.undo = { [weak self] id in self?.confirmUndo(messageID: id) }
         Gtk.onPointer(

@@ -59,7 +59,10 @@ final class LinkRailController: @unchecked Sendable {
         var current = gtk_widget_pick(overlay, x, y, GTK_PICK_DEFAULT)
         while let widget = current, widget != overlay {
             if widget == plate { return openID.map { .plate($0) } }
-            if let id = LinkRailView.railID(of: widget) { return .rail(id) }
+            if let id = LinkRailView.railID(of: widget) {
+                let direct = LinkRailRegistry.shared.model(id)?.reading.opensDirectlyHere == true
+                return direct ? nil : .rail(id)
+            }
             current = gtk_widget_get_parent(widget)
         }
         return nil
