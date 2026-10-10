@@ -43,6 +43,24 @@ final class PromptEditor: NSView {
         return stored == 0 ? 12 : min(20, max(1, stored))
     }
 
+    /// How many lines tall the box is when empty, for a surface whose box is the main thing on it:
+    /// the Studio's words open on two. One for every other surface, which is what it always was.
+    var minimumLines = 1 {
+        didSet { scheduleMeasure() }
+    }
+
+    /// A floor in points under the box's height, for a surface that lines it up beside something of
+    /// a fixed size. Zero leaves the height to the lines.
+    var minimumHeight: CGFloat = 0 {
+        didSet { scheduleMeasure() }
+    }
+
+    /// Where the box stops growing and scrolls, for a surface that has its own ceiling. Nil leaves
+    /// it to the setting every other prompt box in the app answers to.
+    var maximumLines: Int? {
+        didSet { scheduleMeasure() }
+    }
+
     init(placeholder: String) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -193,6 +211,15 @@ final class PromptEditor: NSView {
         focus()
     }
 
+    /// Puts other words in the box through the text view rather than around it, so the sentence that
+    /// was there is one ⌘Z away: a rewrite taken is never a rewrite that cannot be taken back.
+    func replaceAll(with text: String) {
+        let whole = NSRange(location: 0, length: (textView.string as NSString).length)
+        textView.insertText(text, replacementRange: whole)
+        contentChanged()
+        focus()
+    }
+
     func selectedText() -> String? {
         let range = textView.selectedRange()
         guard range.length > 0 else { return nil }
@@ -293,8 +320,8 @@ final class PromptEditor: NSView {
         guard let font = textView.font else { return }
         let line = ceil(font.ascender - font.descender + font.leading)
         let inset = textView.textContainerInset.height * 2 + 2
-        let floor = line + inset
-        let ceiling = line * CGFloat(Self.composerLines) + inset
+        let floor = max(line * CGFloat(max(1, minimumLines)) + inset, minimumHeight)
+        let ceiling = max(floor, line * CGFloat(maximumLines ?? Self.composerLines) + inset)
         var wanted = floor
         if !textView.string.isEmpty {
             var used = floor

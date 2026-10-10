@@ -15,6 +15,9 @@
     /// - `level` prints the level and why; `flight[=n]` prints the newest records of the ring
     /// - `split=<n>` opens the first chats as one tiling; `restore` prints what the safe restore
     ///   holds; `resume=all|one` presses the banner's buttons
+    /// - `sopen[=state]` raises the Studio; `skey=<cmd-return|esc|cmd-e|cmd-shift-e|cmd-shift-r|cmd-1|
+    ///   cmd-2|cmd-s|left|right|space>` presses that key through the real event path into the
+    ///   Studio's window; `sstate` prints what the Studio is holding
     /// - `quit` quits the ordinary way; `kill` sends this process SIGKILL, the crash a ring must survive
     @MainActor
     enum DriveHooks {
@@ -137,6 +140,20 @@
                 say(
                     main?.splitPanes.drivePaneDrop(target: target, u: u, v: v, source: source)
                         ?? "PDROP no window")
+            case "sopen":
+                main?.openSurface(named: argument.isEmpty ? "studio" : "studio:\(argument)")
+            case "skey":
+                say(StudioDrive.press(argument))
+            case "sstate":
+                say(StudioDrive.state())
+            case "stoolbar":
+                say(StudioDrive.toolbar())
+            case "smachine":
+                if let panel = StudioWindowController.shared.panel, let content = panel.contentView {
+                    StudioWindowController.shared.activeLane?.presentMachine(from: content)
+                }
+            case "sdraw":
+                say(StudioDrive.draws(main))
             case "restore":
                 say(main?.driveRestoreReport() ?? "RESTORE no window")
             case "resume":
@@ -148,6 +165,89 @@
             default:
                 say("DRIVE unknown verb \(verb)")
             }
+        }
+    }
+
+    /// The Studio's keys, pressed the way a hand presses them: a real key event handed to the
+    /// application, so it passes the Studio's key monitor and the menu bar exactly as typing would.
+    @MainActor
+    enum StudioDrive {
+        private static let keys: [String: (code: UInt16, characters: String, flags: NSEvent.ModifierFlags)] = [
+            "cmd-return": (36, "\r", [.command]),
+            "esc": (53, "\u{1B}", []),
+            "cmd-e": (14, "e", [.command]),
+            "cmd-shift-e": (14, "E", [.command, .shift]),
+            "cmd-shift-r": (15, "R", [.command, .shift]),
+            "cmd-1": (18, "1", [.command]),
+            "cmd-2": (19, "2", [.command]),
+            "cmd-s": (1, "s", [.command]),
+            "left": (123, "\u{F702}", [.function]),
+            "right": (124, "\u{F703}", [.function]),
+            "space": (49, " ", []),
+        ]
+
+        static func press(_ name: String) -> String {
+            guard let panel = StudioWindowController.shared.panel, let key = keys[name] else {
+                return "SKEY \(name) no window or no such key"
+            }
+            guard
+                let event = NSEvent.keyEvent(
+                    with: .keyDown, location: .zero, modifierFlags: key.flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: panel.windowNumber, context: nil, characters: key.characters,
+                    charactersIgnoringModifiers: key.characters, isARepeat: false, keyCode: key.code)
+            else { return "SKEY \(name) could not be made" }
+            NSApp.sendEvent(event)
+            return "SKEY \(name) sent"
+        }
+
+        /// Where the toolbar's items stand in the window, which the content view's own picture cannot
+        /// show: the lane switch, the machine pill, the queue and Done, with the pill's words.
+        static func toolbar() -> String {
+            guard let panel = StudioWindowController.shared.panel, let toolbar = panel.toolbar else {
+                return "STOOLBAR no window"
+            }
+            let height = panel.frame.height
+            let rows = toolbar.items.map { item -> String in
+                guard let view = item.view, view.window != nil else { return "\(item.itemIdentifier.rawValue) (no view)" }
+                let frame = view.convert(view.bounds, to: nil)
+                return String(
+                    format: "%@ x=%.0f y=%.0f w=%.0f h=%.0f", item.itemIdentifier.rawValue, frame.minX,
+                    height - frame.maxY, frame.width, frame.height)
+            }
+            let machine = StudioWindowController.shared.activeLane?.machine
+            return "STOOLBAR window=\(Int(panel.frame.width))x\(Int(height)) " + rows.joined(separator: " | ")
+                + " machine=[\(machine?.spoken ?? "-")] tone=\(String(describing: machine?.tone))"
+        }
+
+        /// A layout that held a draw slot, written and read back and rebuilt: which panes paint, on
+        /// which machine, before and after the round trip a relaunch makes.
+        static func draws(_ main: MainWindowController?) -> String {
+            guard let main else { return "SDRAW no window" }
+            let snapshot = main.splitPanes.snapshot()
+            let before = main.splitPanes.panes.values.compactMap { $0.drawEndpoint?.address }
+            guard let encoded = snapshot.encoded, let decoded = SplitSnapshot.decode(encoded) else {
+                return "SDRAW snapshot did not round-trip"
+            }
+            _ = main.splitPanes.restore(decoded)
+            let after = main.splitPanes.panes.values.compactMap { $0.drawEndpoint?.address }
+            return "SDRAW draws=\(snapshot.draws.count) before=\(before) restored=\(after)"
+        }
+
+        static func state() -> String {
+            let controller = StudioWindowController.shared
+            let studio = controller.image.studio
+            let phase: String
+            switch studio.slot.phase {
+            case .asking: phase = "asking"
+            case .composing: phase = "composing"
+            case .painting: phase = "painting"
+            case .failed(_, let reason): phase = "failed(\(reason))"
+            }
+            let shelf = controller.image.shelf
+            return
+                "SSTATE lane=\(controller.current) phase=\(phase) painting=\(studio.isPainting) "
+                + "tiles=\(shelf.count) selected=\(controller.image.selectedTile ?? "-") "
+                + "pictures=\(studio.slot.pictures.count) words=\(studio.slot.promptDraft.prefix(24))"
         }
     }
 #endif

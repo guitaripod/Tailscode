@@ -34,14 +34,18 @@ final class PillsRow: NSView {
     var attachRows: (() -> [MenuRow])?
     var onStop: (() -> Void)?
 
-    /// The composer's three lanes, worn as the segmented control a Mac walks modes with. On a
-    /// desk each lane is a surface — chat is this pane, ask is the summoned question window,
-    /// video is the forge sheet — so a press is a door, and the selection springs back to chat
-    /// because this row never stops being a conversation's. It is the first thing the row lets go
-    /// of in a narrow pane, since both doors are also in the menu bar with keys of their own.
+    /// The composer's lanes, worn as the segmented control a Mac walks modes with. On a desk each
+    /// lane is a surface — chat is this pane, ask is the summoned question window, image is the
+    /// Studio, video is the forge sheet — so a press is a door, and the selection springs back to
+    /// chat because this row never stops being a conversation's. It is the first thing the row lets
+    /// go of in a narrow pane, since the doors are also in the menu bar with keys of their own. The
+    /// image lane is here exactly when a machine that can paint is known, and the row is redrawn
+    /// whenever either store says that answer changed.
     private let laneControl = NSSegmentedControl(
         labels: PillsRow.offeredLanes.map(\.word), trackingMode: .momentary, target: nil,
         action: nil)
+    private var shownLanes = PillsRow.offeredLanes
+    private var laneObservers: [NSObjectProtocol] = []
     private let vimBadge = NSTextField(labelWithString: "")
     private let vimBadgeWrap = NSView()
     private let destinationLabel = DestinationLabel()
@@ -111,8 +115,13 @@ final class PillsRow: NSView {
         laneControl.action = #selector(laneTapped)
         laneControl.setContentCompressionResistancePriority(.required, for: .horizontal)
         laneControl.translatesAutoresizingMaskIntoConstraints = false
-        for (index, lane) in PillsRow.offeredLanes.enumerated() {
-            laneControl.setToolTip(lane.spoken, forSegment: index)
+        refreshLanes()
+        for name in [ForgeStore.didChange, ImageGenStore.didChange] {
+            laneObservers.append(
+                NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
+                    [weak self] _ in
+                    MainActor.assumeIsolated { self?.refreshLanes() }
+                })
         }
 
         let row = NSStackView(views: [
@@ -143,6 +152,10 @@ final class PillsRow: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    isolated deinit {
+        for observer in laneObservers { NotificationCenter.default.removeObserver(observer) }
+    }
+
     /// Every font and every palette colour in this row is asked for again rather than remembered:
     /// a type-scale step changes what a role is worth, and a colour built under one theme answers
     /// that theme forever — a Stop button made before a theme change would keep the old red.
@@ -160,13 +173,31 @@ final class PillsRow: NSView {
         restyle()
     }
 
-    /// The lanes this client draws. A picture is a lane wherever a machine can paint and a
-    /// client has a surface to make one in; the Mac has no image studio yet, so the control stays
-    /// three wide and never offers a door that opens on nothing.
-    static var offeredLanes: [QuickAskLane] { QuickAskLane.offered(imaging: false) }
+    /// The lanes this client draws. A picture is a lane wherever a machine can paint and a client
+    /// has a surface to make one in, and the Mac has the Studio in both distributions: the machine
+    /// is reached over the network and nothing else is asked, so the answer is the door's alone.
+    static var offeredLanes: [QuickAskLane] {
+        QuickAskLane.offered(imaging: ImageGenDoor.current().isOpen)
+    }
+
+    /// Redraws the segments for the lanes on offer now, wearing the machine's own line on the image
+    /// segment when it has something to say about it, and leaves nothing selected — a lane is a door.
+    private func refreshLanes() {
+        let lanes = PillsRow.offeredLanes
+        shownLanes = lanes
+        let door = ImageGenDoor.current()
+        laneControl.segmentCount = lanes.count
+        for (index, lane) in lanes.enumerated() {
+            laneControl.setLabel(lane.word, forSegment: index)
+            laneControl.setToolTip(
+                lane == .image ? (door.line ?? lane.spoken) : lane.spoken, forSegment: index)
+        }
+        laneControl.selectedSegment = -1
+        laneControl.invalidateIntrinsicContentSize()
+    }
 
     @objc private func laneTapped() {
-        let lanes = PillsRow.offeredLanes
+        let lanes = shownLanes
         guard lanes.indices.contains(laneControl.selectedSegment) else { return }
         onLane?(lanes[laneControl.selectedSegment])
     }

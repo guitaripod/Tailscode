@@ -324,7 +324,9 @@ final class MainWindowController: NSWindowController {
             guard let pane = splitPanes.panes[paneID] else { continue }
             let placed = layout.zoomedPane == nil || layout.zoomedPane == paneID
             let kind: PaneKind
-            if pane.webTarget != nil {
+            if pane.isDrawing {
+                kind = .draw
+            } else if pane.webTarget != nil {
                 kind = .web
             } else if pane.currentEntry != nil || held[paneID] != nil {
                 kind = .chat
@@ -843,6 +845,15 @@ final class MainWindowController: NSWindowController {
         case "forge", "video":
             let sheet = presentForge()
             if parts.count > 1 { sheet?.demonstrate(parts[1]) }
+        case "draw":
+            transcript.showDraw(nil)
+            splitPanes.persist()
+        case "studio", "image":
+            if parts.count > 1 { StudioDemo.apply(parts[1], to: StudioWindowController.shared.image.studio) }
+            presentStudio()
+            #if DEBUG
+                driveStudio()
+            #endif
         case "renderer", "forgesetup":
             presentForge()?.openRenderer()
         case "delegate": presentDelegate()
@@ -860,9 +871,36 @@ final class MainWindowController: NSWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, analytics, newchat, "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], renderer, delegate\n").utf8))
+                        + "forge[:state], studio[:state], draw, renderer, delegate\n").utf8))
         }
     }
+
+    /// The Studio, raised: one panel for the whole app, beside the conversation rather than over it.
+    /// `brief` is words to start from — the composer's Image lane sends what was typed there — and
+    /// nothing is rendered until a hand says Generate. While there is no Video lane to switch to, the
+    /// Video segment hands off to the forge sheet, which is this Mac's video surface until one exists.
+    func presentStudio(lane: StudioLaneID = .image, brief: String? = nil) {
+        let studio = StudioWindowController.shared
+        studio.openVideoFallback = { [weak self] in self?.presentForge() }
+        studio.show(lane: lane, brief: brief)
+    }
+
+    #if DEBUG
+        /// What a headless run asks of the Studio once it is up — `TAILSCODE_IMAGE_PROMPT` to paint,
+        /// `TAILSCODE_IMAGE_REFERENCE` to start from a picture on disk — so a render against a stand-in
+        /// ComfyUI can be watched and photographed without a hand on the keyboard.
+        private func driveStudio() {
+            let environment = ProcessInfo.processInfo.environment
+            let studio = StudioWindowController.shared.image.studio
+            if let path = environment["TAILSCODE_IMAGE_REFERENCE"], !path.isEmpty {
+                studio.hold(ImageGenReference(path: path))
+            }
+            if let words = environment["TAILSCODE_IMAGE_PROMPT"], !words.isEmpty {
+                StudioWindowController.shared.image.dock.take(brief: words)
+                if environment["TAILSCODE_IMAGE_SUBMIT"] != "0" { studio.submit(prompt: words) }
+            }
+        }
+    #endif
 
     /// The forge, opened over the work rather than beside it. A render is a task somebody starts,
     /// watches and collects — not a place they work — so it is a sheet on top of this window and the
@@ -941,8 +979,6 @@ final class MainWindowController: NSWindowController {
         var chooser = PaneChooser(
             servers: chooserServers, entries: sidebar.allEntries, preferredServer: serverID)
         chooser.watchSummary = watchSummary
-        // The Mac has no pane that paints, so the row that offers one would answer with nothing.
-        chooser.offersDrawing = false
         #if TAILSCODE_MAS
             chooser.offersWatching = false
             chooser.offersBrowsing = false
@@ -1034,7 +1070,11 @@ final class MainWindowController: NSWindowController {
                 pane.showWeb(nil)
                 splitPanes.persist()
             #endif
-        case .draw, .chooseServer, .allChats, .back:
+        case .draw:
+            splitPanes.focus(pane, grabKeyboard: false)
+            pane.showDraw(nil)
+            splitPanes.persist()
+        case .chooseServer, .allChats, .back:
             break
         }
     }
