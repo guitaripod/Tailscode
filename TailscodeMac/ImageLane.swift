@@ -19,6 +19,7 @@ final class ImageLane: StudioLane {
     private var popover: NSPopover?
 
     var onNotice: ((String) -> Void)?
+    var onAnimate: ((StudioAnimateRequest) -> Void)?
 
     private struct LaneWatcher {
         weak var owner: AnyObject?
@@ -31,8 +32,8 @@ final class ImageLane: StudioLane {
     init(studio: MacImageStudio) {
         self.studio = studio
         imageStage = StudioStageView(studio: studio)
-        imageDock = StudioDockView(studio: studio)
-        imageStage.onVerb = { [weak self] action in self?.performOnStage(action) }
+        imageDock = StudioDockView(brief: studio)
+        imageStage.onVerb = { [weak self] verb in self?.performOnStage(verb) }
         imageStage.onStarter = { [weak self] example in self?.take(example) }
         imageStage.onRemedy = { [weak self] remedy in self?.remedy(remedy) }
         imageStage.onDrop = { [weak self] drop in self?.drop(drop) }
@@ -90,7 +91,11 @@ final class ImageLane: StudioLane {
         studio.isPainting ? StudioShelfMerge.jobID : studio.exhibit?.id
     }
 
+    var shelfTitle: String { Localized.text("Shelf") }
+
     var shelfNote: String? { studio.library.failure }
+
+    var dismissNote: String? { ImageGenSurface.dismissNote(painting: studio.isPainting) }
 
     var machine: StudioMachineFact {
         let sighting = studio.sighting
@@ -218,9 +223,12 @@ final class ImageLane: StudioLane {
     func tileVerbs(for item: StudioShelfItem) -> [StudioTileVerb] {
         guard let exhibit = exhibit(for: item.id) else { return [] }
         var verbs: [StudioTileVerb] = [.putOnStage]
-        verbs += ImageGenAction.offered(
-            kept: exhibit.isKept, hasWords: studio.hasWords(exhibit), sharing: true, tapOpens: false
-        ).map { .action($0) }
+        for action in ImageGenAction.offered(
+            kept: exhibit.isKept, hasWords: studio.hasWords(exhibit), sharing: true, tapOpens: false)
+        {
+            verbs.append(.action(action))
+            if action == .reference { verbs.append(.verb(.animate)) }
+        }
         return verbs
     }
 
@@ -240,13 +248,74 @@ final class ImageLane: StudioLane {
         guard let exhibit = exhibit(for: item.id) else { return }
         switch verb {
         case .putOnStage: studio.show(exhibit)
+        case .open: perform(.open, on: exhibit)
         case .action(let action): perform(action, on: exhibit)
+        case .verb(let verb): perform(verb, on: exhibit)
         }
     }
 
     private func performOnStage(_ action: ImageGenAction) {
         guard let exhibit = studio.exhibit else { return }
         perform(action, on: exhibit)
+    }
+
+    /// The Animate this verb pressed on whatever is on stage, for the headless driver.
+    func animateStaged() {
+        performOnStage(StudioStageVerb.animate)
+    }
+
+    private func performOnStage(_ verb: StudioStageVerb) {
+        guard let exhibit = studio.exhibit else { return }
+        perform(verb, on: exhibit)
+    }
+
+    private func perform(_ verb: StudioStageVerb, on exhibit: StudioExhibit) {
+        if verb.id == StudioStageVerb.animate.id {
+            animate(exhibit)
+        } else if let action = verb.imageAction {
+            perform(action, on: exhibit)
+        }
+    }
+
+    /// The picture on stage becomes the first frame of a clip: the Studio moves to the Video lane
+    /// and starts there from it. A picture the machine already keeps is named where it is and
+    /// nothing travels; any other is written to a file the render will hand over.
+    private func animate(_ exhibit: StudioExhibit) {
+        Task { [weak self] in
+            guard let self, let request = await self.firstFrame(of: exhibit) else { return }
+            self.onAnimate?(request)
+        }
+    }
+
+    private func firstFrame(of exhibit: StudioExhibit) async -> StudioAnimateRequest? {
+        let sameMachine =
+            ForgeRunner.shared.endpoint.map {
+                ImageGenEndpoint(sharing: $0).displayHost == studio.endpoint.displayHost
+            } ?? false
+        switch exhibit {
+        case .made(let picture):
+            let size = StudioDrop.pixelSize(ofFileAt: picture.path)
+            if sameMachine, let remote = picture.remoteName {
+                return StudioAnimateRequest(
+                    frame: .kept(ImageGenLibraryItem(filename: remote).annotatedName),
+                    width: size?.width, height: size?.height)
+            }
+            return StudioAnimateRequest(frame: .file(picture.path), width: size?.width, height: size?.height)
+        case .kept(let item):
+            if sameMachine {
+                let facts = studio.library.facts(of: item)
+                return StudioAnimateRequest(
+                    frame: .kept(item.annotatedName), width: facts?.width, height: facts?.height)
+            }
+            guard let data = await studio.library.original(of: item),
+                let path = ImageGenFiles.stage(data, named: item.filename)
+            else {
+                onNotice?(ForgeFailure.unconfigured.description)
+                return nil
+            }
+            let size = StudioDrop.pixelSize(ofFileAt: path)
+            return StudioAnimateRequest(frame: .file(path), width: size?.width, height: size?.height)
+        }
     }
 
     private func perform(_ action: ImageGenAction, on exhibit: StudioExhibit) {
@@ -286,38 +355,16 @@ final class ImageLane: StudioLane {
     private func save(_ exhibit: StudioExhibit) {
         Task { [weak self] in
             guard let self, let data = await self.studio.bytes(of: exhibit) else { return }
-            let name = self.studio.fileName(of: exhibit)
-            let panel = NSSavePanel()
-            panel.nameFieldStringValue = name
-            if let type = UTType(filenameExtension: (name as NSString).pathExtension) {
-                panel.allowedContentTypes = [type]
-            }
-            panel.canCreateDirectories = true
-            let write: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-                MainActor.assumeIsolated {
-                    guard response == .OK, let url = panel.url else { return }
-                    if (try? data.write(to: url, options: .atomic)) != nil {
-                        self?.onNotice?(ImageGenWords.savedNotice(path: url.path))
-                    } else {
-                        self?.onNotice?(Localized.text("Could not write %@", url.path))
-                    }
-                }
-            }
-            if let window = self.imageStage.window {
-                panel.beginSheetModal(for: window, completionHandler: write)
-            } else {
-                write(panel.runModal())
-            }
+            StudioFiles.save(
+                data: data, name: self.studio.fileName(of: exhibit), window: self.imageStage.window
+            ) { [weak self] line in self?.onNotice?(line) }
         }
     }
 
     private func share(_ exhibit: StudioExhibit) {
         Task { [weak self] in
             guard let self, let url = await self.shareableURL(exhibit) else { return }
-            let picker = NSSharingServicePicker(items: [url])
-            let stage = self.imageStage
-            let rect = NSRect(x: stage.bounds.midX - 1, y: stage.bounds.maxY - 80, width: 2, height: 2)
-            picker.show(relativeTo: rect, of: stage, preferredEdge: .minY)
+            StudioFiles.share(url, from: self.imageStage)
         }
     }
 
@@ -409,6 +456,8 @@ final class ImageLane: StudioLane {
             if !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { studio.submit(prompt: words) }
         case .machine:
             presentMachine(from: imageStage)
+        case .reuse:
+            break
         }
     }
 

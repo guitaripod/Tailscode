@@ -42,6 +42,9 @@ final class ForgeRunner {
     /// is a photograph of a state, and a real probe landing on top of it would replace the state
     /// somebody asked to look at with whatever this Mac can reach.
     private var isStaged = false
+    /// The file a staged board plays from. A board that is a photograph of a state has no machine
+    /// to ask where its clip is, so the state that holds one carries its own.
+    private var demoClip: URL?
     /// Whoever is drawing this right now — the sheet while it is open, and the toolbar control for
     /// as long as the app is up, which is what lets a render still be seen once the surface it was
     /// started from has gone.
@@ -172,6 +175,36 @@ final class ForgeRunner {
         changed()
     }
 
+    /// Opens the next clip on a picture, with its shape read off the file when it is one on this
+    /// Mac and none was given, or on nothing. The board then lets the size follow the picture
+    /// unless somebody chose one by hand.
+    func start(from frame: ForgeFrame?, width: Int? = nil, height: Int? = nil) {
+        var width = width
+        var height = height
+        if width == nil, case .file(let path)? = frame, let size = StudioDrop.pixelSize(ofFileAt: path) {
+            width = size.width
+            height = size.height
+        }
+        board.start(from: frame, pictureWidth: width, pictureHeight: height)
+        ForgeStore.remember(board.recipe)
+        changed()
+    }
+
+    /// Continues a clip already made: the next render opens where that one ended, with the same
+    /// words to edit into what happens next and a fresh seed.
+    func extend(_ entry: ForgeEntry) {
+        board.extend(entry)
+        ForgeStore.remember(board.recipe)
+        changed()
+    }
+
+    /// The shape a helper answered with, followed only where nobody chose one.
+    func follow(size: ForgeSize) {
+        board.follow(size: size)
+        ForgeStore.remember(board.recipe)
+        changed()
+    }
+
     func focus(section: String, offset: Int) {
         board.focus(section: section, offset: offset)
     }
@@ -280,6 +313,7 @@ final class ForgeRunner {
     /// cleaned up off the renderer answers 404, and a video player reports that in words about
     /// nothing a person can act on — so the ask happens here and the row gets to say it is gone.
     func locate(_ asset: ForgeAsset, entryID: String? = nil) async throws -> URL {
+        if isStaged, let demoClip { return demoClip }
         guard let renderer = renderer(for: asset) else { throw ForgeFailure.unconfigured }
         do {
             let url = try await renderer.locate(asset)
@@ -303,6 +337,28 @@ final class ForgeRunner {
     func rememberRecipe() {
         ForgeStore.remember(board.recipe)
     }
+
+    /// Whether the board is a photograph of a state somebody asked to look at, rather than the
+    /// machine as it is.
+    var isDemo: Bool { isStaged }
+
+    /// The finished outcome of the last render, put away: a stopped, failed or landed job goes back
+    /// to a draft with its words still in the boxes, so a clip chosen from the shelf is what the
+    /// stage shows rather than the ending of a render that is over.
+    func settle() {
+        guard !board.isBusy else { return }
+        board.revise(board.recipe)
+        changed()
+    }
+
+    /// Asks the machine once if nobody has: a surface about to be shown owes the reader a pill that
+    /// says whether the machine answers, and one that says "not checked yet" is a question.
+    func probeIfUnchecked() {
+        guard !isStaged, board.endpoint != nil,
+            board.sections.first(where: { $0.id == ForgeBoard.rendererID })?.phase == .idle
+        else { return }
+        probe()
+    }
 }
 
 extension ForgeRunner {
@@ -312,10 +368,18 @@ extension ForgeRunner {
     /// each of them is a different sentence. Every value is `ForgeDemo`'s, which builds them out of
     /// Core's own mutators rather than describing them in words this client made up.
     func demonstrate(_ name: String) {
+        stage(ForgeDemo.board(name))
+    }
+
+    /// A prepared board put on the runner as the state to look at. `clip` is the file a staged clip
+    /// plays from, since there is no machine to ask where one is, and `lost` are the receipts whose
+    /// files the renderer no longer has.
+    func stage(_ staged: ForgeBoard, clip: URL? = nil, lost: Set<String> = []) {
         quiet()
         isStaged = true
-        board = ForgeDemo.board(name)
-        missing = []
+        board = staged
+        demoClip = clip
+        missing = lost
         changed()
     }
 

@@ -24,11 +24,11 @@ final class StudioDockView: NSView, StudioDocking {
     var onOpenMachine: ((NSView) -> Void)?
     var onNotice: ((String) -> Void)?
 
-    private let studio: MacImageStudio
+    private let brief: any StudioBriefing
     private let glass = NSGlassEffectView()
     private let content = NSView()
     private let slotView: StudioStartSlot
-    private let words = PromptEditor(placeholder: StudioDockView.placeholder)
+    private let words: PromptEditor
     private let enhance = StudioEnhanceControl()
     private let go = StudioGoButton()
     private let chipRow: StudioChipRow
@@ -37,15 +37,14 @@ final class StudioDockView: NSView, StudioDocking {
     private var lastHeight: CGFloat = 0
     private var popover: NSPopover?
 
-    static var placeholder: String { Localized.text("Describe a picture, or drop one here to edit") }
-
     static let baseHeight: CGFloat = StudioTheme.dockBase
     var baseHeight: CGFloat { Self.baseHeight }
 
-    init(studio: MacImageStudio) {
-        self.studio = studio
-        slotView = StudioStartSlot(studio: studio)
-        chipRow = StudioChipRow(studio: studio)
+    init(brief: any StudioBriefing) {
+        self.brief = brief
+        words = PromptEditor(placeholder: brief.wordsPlaceholder)
+        slotView = StudioStartSlot(brief: brief)
+        chipRow = StudioChipRow(brief: brief)
         super.init(frame: .zero)
         glass.cornerRadius = 24
         glass.contentView = content
@@ -99,21 +98,22 @@ final class StudioDockView: NSView, StudioDocking {
         enhance.onEnhance = { [weak self] in self?.startEnhance() }
         enhance.onPicker = { [weak self] anchor in self?.openHelperMenu(from: anchor) }
         go.onPress = { [weak self] in self?.goPressed() }
-        chipRow.onAvoid = { [weak self] anchor in self?.presentAvoid(from: anchor) }
+        chipRow.onWords = { [weak self] anchor, field in self?.presentWords(field, from: anchor) }
         chipRow.onPickLibrary = { [weak self] anchor in self?.presentLibrary(from: anchor) }
         card.onUse = { [weak self] in self?.useRewrite() }
-        card.onKeep = { [weak self] in self?.studio.dismissRewrite() }
+        card.onKeep = { [weak self] in self?.brief.dismissRewrite() }
         card.onAgain = { [weak self] in self?.rewriteAgain() }
         card.onRevise = { [weak self] instruction in
             guard let self else { return }
-            self.studio.enhance(self.words.text, instruction: instruction)
+            self.brief.enhance(self.words.text, instruction: instruction)
         }
-        studio.noticeHandler = { [weak self] line in self?.onNotice?(line) }
+        brief.noticeHandler = { [weak self] line in self?.onNotice?(line) }
+        go.title = brief.goTitle
         registerForDraggedTypes(StudioDrop.registered)
 
-        if !studio.slot.promptDraft.isEmpty {
-            words.setText(studio.slot.promptDraft, caretAtEnd: true)
-            lastDraft = studio.slot.promptDraft
+        if !brief.draftWords.isEmpty {
+            words.setText(brief.draftWords, caretAtEnd: true)
+            lastDraft = brief.draftWords
         }
         syncControls()
         NotificationCenter.default.addObserver(
@@ -141,7 +141,7 @@ final class StudioDockView: NSView, StudioDocking {
     var text: String { words.text }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard !studio.isPainting, StudioDrop.accepts(sender.draggingPasteboard) else { return [] }
+        guard !brief.isBusy, StudioDrop.accepts(sender.draggingPasteboard) else { return [] }
         slotView.lightUp(true)
         return .copy
     }
@@ -151,7 +151,7 @@ final class StudioDockView: NSView, StudioDocking {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         slotView.lightUp(false)
         guard let drop = StudioDrop.read(sender.draggingPasteboard) else { return false }
-        StudioDrop.hold(drop, in: studio) { _ in }
+        brief.hold(drop: drop) { _ in }
         return true
     }
 
@@ -210,7 +210,7 @@ final class StudioDockView: NSView, StudioDocking {
     }
 
     private func syncWords() {
-        let draft = studio.slot.promptDraft
+        let draft = brief.draftWords
         guard draft != lastDraft else { return }
         lastDraft = draft
         guard words.text.trimmingCharacters(in: .whitespacesAndNewlines) != draft else { return }
@@ -219,7 +219,7 @@ final class StudioDockView: NSView, StudioDocking {
     }
 
     private func syncControls() {
-        let busy = studio.isPainting
+        let busy = brief.isBusy
         words.isEditable = !busy
         words.alphaValue = busy ? 0.55 : 1
         go.mode = busy ? .stop : .generate
@@ -234,18 +234,18 @@ final class StudioDockView: NSView, StudioDocking {
     }
 
     private var enhanceState: StudioEnhanceControl.Mode {
-        if studio.enhancing { return .writing }
-        if studio.isPainting { return .disabled }
-        guard let helper = studio.helper else {
-            return studio.surveying ? .looking : .find
+        if brief.enhancing { return .writing }
+        if brief.isBusy { return .disabled }
+        guard let helper = brief.helper else {
+            return brief.surveying ? .looking : .find
         }
         return helper.enabled ? .ready(helper) : .off(helper)
     }
 
     private func wordsChanged() {
-        studio.rememberDraft(words.text)
-        lastDraft = studio.slot.promptDraft
-        go.isEnabled = studio.isPainting || canGenerate
+        brief.rememberDraft(words.text)
+        lastDraft = brief.draftWords
+        go.isEnabled = brief.isBusy || canGenerate
         enhance.state = enhanceState
         let height = preferredHeight(forWidth: bounds.width)
         if abs(height - lastHeight) > 0.5 {
@@ -259,52 +259,52 @@ final class StudioDockView: NSView, StudioDocking {
         guard pasteboard.string(forType: .string) == nil,
             let drop = StudioDrop.read(pasteboard)
         else { return false }
-        StudioDrop.hold(drop, in: studio) { _ in }
+        brief.hold(drop: drop) { _ in }
         return true
     }
 
     func submit() {
-        if studio.isPainting { return }
+        if brief.isBusy { return }
         let text = words.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        studio.submit(prompt: text)
+        brief.submit(prompt: text)
     }
 
     func stopOrDismiss() {
-        if studio.enhancing || studio.draft != nil {
-            studio.dismissRewrite()
+        if brief.enhancing || brief.draft != nil {
+            brief.dismissRewrite()
             return
         }
-        studio.stop()
+        brief.stop()
     }
 
-    var hasRewriteCard: Bool { studio.draft != nil }
+    var hasRewriteCard: Bool { brief.draft != nil }
 
     func startEnhance() {
         let text = words.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !studio.isPainting else { return }
-        studio.enhance(text)
+        guard !text.isEmpty, !brief.isBusy else { return }
+        brief.enhance(text)
     }
 
     private func goPressed() {
-        if studio.isPainting { studio.stop() } else { submit() }
+        if brief.isBusy { brief.stop() } else { submit() }
     }
 
     private func useRewrite() {
-        guard let draft = studio.draft, draft.isUsable else { return }
+        guard let draft = brief.draft, draft.isUsable else { return }
         words.replaceAll(with: draft.written)
-        studio.followWriter(aspect: draft.aspect)
-        studio.dismissRewrite()
+        brief.followWriter(aspect: draft.aspect)
+        brief.dismissRewrite()
         words.focus()
     }
 
     private func rewriteAgain() {
-        let source = studio.draft?.original ?? words.text
-        studio.enhance(source)
+        let source = brief.draft?.original ?? words.text
+        brief.enhance(source)
     }
 
     private func updateRewriteCard() {
-        guard let draft = studio.draft else {
+        guard let draft = brief.draft else {
             guard !card.isHidden else { return }
             card.dismiss(animated: StudioTheme.motionAllowed)
             return
@@ -332,25 +332,25 @@ final class StudioDockView: NSView, StudioDocking {
         }
     }
 
-    private func presentAvoid(from anchor: NSView) {
+    private func presentWords(_ field: StudioWordsField, from anchor: NSView) {
         closePopover()
-        let field = StudioAvoidPopover(current: studio.slot.negative) { [weak self] words in
-            self?.studio.setNegative(words)
+        let popover = StudioWordsPopover(words: field) { [weak self] words in
+            field.apply(words)
             self?.closePopover()
         } cancel: { [weak self] in
             self?.closePopover()
         }
-        show(field, from: anchor)
+        show(popover, from: anchor)
     }
 
     private func presentLibrary(from anchor: NSView) {
         closePopover()
-        let picker = StudioLibraryPicker(studio: studio) { [weak self] item in
-            self?.studio.hold(kept: item)
+        let picker = StudioLibraryPicker(brief: brief) { [weak self] item in
+            self?.brief.hold(gallery: item)
             self?.closePopover()
         }
         show(picker, from: anchor)
-        studio.library.refresh()
+        brief.library.refresh()
     }
 
     private func show(_ controller: NSViewController, from anchor: NSView) {
@@ -367,16 +367,16 @@ final class StudioDockView: NSView, StudioDocking {
     }
 
     private func openHelperMenu(from anchor: NSView) {
-        if studio.helperServers.isEmpty, !studio.surveying { studio.surveyHelpers() }
+        if brief.helperServers.isEmpty, !brief.surveying { brief.surveyHelpers() }
         let menu = NSMenu()
-        let current = studio.helper
-        for server in studio.helperServers {
+        let current = brief.helper
+        for server in brief.helperServers {
             let heading = NSMenuItem(title: server.heading, action: nil, keyEquivalent: "")
             heading.isEnabled = false
             menu.addItem(heading)
             for model in server.models {
                 let item = ClosureMenuItem(title: model.label) { [weak self] in
-                    self?.studio.setHelper(ImageGenHelper(address: server.address, model: model))
+                    self?.brief.setHelper(ImageGenHelper(address: server.address, model: model))
                 }
                 item.subtitle = model.detail ?? ""
                 item.state = current?.address == server.address && current?.model == model.id ? .on : .off
@@ -384,19 +384,19 @@ final class StudioDockView: NSView, StudioDocking {
             }
             menu.addItem(.separator())
         }
-        if studio.surveying {
+        if brief.surveying {
             let looking = NSMenuItem(title: ImageGenRewriteWords.lookingTitle, action: nil, keyEquivalent: "")
             looking.isEnabled = false
             menu.addItem(looking)
         } else {
-            if studio.helperServers.isEmpty {
+            if brief.helperServers.isEmpty {
                 let none = NSMenuItem(title: ImageGenRewriteWords.noneFoundTitle, action: nil, keyEquivalent: "")
                 none.isEnabled = false
                 none.toolTip = ImageGenRewriteWords.noneFoundHint
                 menu.addItem(none)
             }
             let again = ClosureMenuItem(title: ImageGenRewriteWords.lookAgainTitle) { [weak self] in
-                self?.studio.surveyHelpers()
+                self?.brief.surveyHelpers()
             }
             again.toolTip = ImageGenRewriteWords.lookAgainHint
             menu.addItem(again)
@@ -405,7 +405,7 @@ final class StudioDockView: NSView, StudioDocking {
             let toggle = ClosureMenuItem(
                 title: current.enabled ? ImageGenRewriteWords.offTitle : ImageGenRewriteWords.onTitle
             ) { [weak self] in
-                self?.studio.toggleHelper()
+                self?.brief.toggleHelper()
             }
             toggle.toolTip = current.enabled ? ImageGenWords.helperOffHint : current.displayHost
             menu.addItem(toggle)

@@ -120,7 +120,7 @@ enum StudioDemo {
         return MacImageLibrary(endpoint: endpoint)
     }
 
-    private static func write(_ image: CGImage, named name: String) -> String? {
+    static func write(_ image: CGImage, named name: String) -> String? {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("tailscode-studio-demo", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -129,7 +129,7 @@ enum StudioDemo {
         return url.path
     }
 
-    private static func png(_ image: CGImage) -> Data? {
+    static func png(_ image: CGImage) -> Data? {
         let data = NSMutableData()
         guard
             let destination = CGImageDestinationCreateWithData(

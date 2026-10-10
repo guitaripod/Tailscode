@@ -1,25 +1,6 @@
 import AppKit
 import TailscodeCore
 
-/// The shell's one list of lanes. The Image lane is the Mac's own; the Video lane is a hook that
-/// stays nil until a lane exists to put there, and while it is nil the Video segment hands off to the
-/// forge sheet that has always been the Mac's video surface, and the shell stays on Image — a segment
-/// never opens on placeholder copy.
-///
-/// A Video lane plugs in by writing a type that conforms to `StudioLane` and replacing the `nil`
-/// below with it: the shell, the shelf, the toolbar and the keys name no lane.
-@MainActor
-enum StudioShell {
-    static var videoLane: (any StudioLane)? { nil }
-
-    static func lane(_ id: StudioLaneID, image: any StudioLane) -> (any StudioLane)? {
-        switch id {
-        case .image: return image
-        case .video: return videoLane
-        }
-    }
-}
-
 /// The Studio: one panel, not a sheet, so it can sit beside a conversation. A lane switch leads the
 /// toolbar, the machine pill sits in its centre, and the queue and Done are at its trailing edge;
 /// below them the lane's stage, a shelf and the brief dock. Closing the panel closes a window and
@@ -29,11 +10,9 @@ enum StudioShell {
 final class StudioWindowController: NSObject, NSToolbarDelegate, NSWindowDelegate {
     static let shared = StudioWindowController()
 
-    /// What to do when the Video segment is pressed and there is no Video lane to switch to.
-    var openVideoFallback: (() -> Void)?
-
     private(set) var panel: StudioPanel?
     private let imageLane = ImageLane(studio: .shared)
+    private lazy var videoLane = VideoLane(runner: .shared)
     private(set) var current: StudioLaneID = .image
     private let laneControl = NSSegmentedControl(
         labels: StudioLaneID.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
@@ -48,30 +27,43 @@ final class StudioWindowController: NSObject, NSToolbarDelegate, NSWindowDelegat
 
     private override init() {
         super.init()
+        imageLane.onAnimate = { [weak self] request in
+            guard let self else { return }
+            self.videoLane.start(from: request)
+            self.show(lane: .video)
+        }
     }
 
     var isKey: Bool { panel?.isKeyWindow == true }
 
-    var activeLane: (any StudioLane)? { StudioShell.lane(current, image: imageLane) }
+    var activeLane: (any StudioLane)? { lane(current) }
 
     var image: ImageLane { imageLane }
+
+    var video: VideoLane { videoLane }
+
+    /// The lane a segment of the switch stands for. The Video lane is built the first time somebody
+    /// asks for it, so a Studio that only ever paints never watches the renderer.
+    private func lane(_ id: StudioLaneID) -> any StudioLane {
+        switch id {
+        case .image: return imageLane
+        case .video: return videoLane
+        }
+    }
 
     /// Raises the Studio on a lane. With `brief` the words land in that lane's box as the thing to
     /// make — the composer's Image lane sends them here — and nothing is rendered until a hand says
     /// Generate.
     func show(lane id: StudioLaneID = .image, brief: String? = nil) {
-        guard StudioShell.lane(id, image: imageLane) != nil else {
-            openVideoFallback?()
-            return show(lane: .image, brief: brief)
-        }
         let panel = self.panel ?? makePanel()
         select(id)
         if panel.isMiniaturized { panel.deminiaturize(nil) }
         panel.makeKeyAndOrderFront(nil)
+        let shown = lane(id)
         if let brief, !brief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            imageLane.dock.take(brief: brief)
+            shown.dock.take(brief: brief)
         } else {
-            imageLane.dock.focusWords()
+            shown.dock.focusWords()
         }
         refreshChrome()
     }
@@ -115,7 +107,8 @@ final class StudioWindowController: NSObject, NSToolbarDelegate, NSWindowDelegat
         for (index, lane) in StudioLaneID.allCases.enumerated() {
             laneControl.setToolTip(
                 lane == .image
-                    ? ImageGenEntryPoint.tooltip(configured: true) : ForgeEntryPoint.tooltip(configured: true),
+                    ? ImageGenEntryPoint.tooltip(configured: true)
+                    : ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil),
                 forSegment: index)
         }
         done.bezelStyle = .rounded
@@ -131,18 +124,19 @@ final class StudioWindowController: NSObject, NSToolbarDelegate, NSWindowDelegat
     private func select(_ id: StudioLaneID) {
         current = id
         laneControl.selectedSegment = id.rawValue
-        guard let lane = activeLane, let workspace = panel?.workspace else { return }
-        if workspace.lane !== lane { workspace.setLane(lane) }
+        guard let workspace = panel?.workspace else { return }
+        let next = lane(id)
+        if workspace.lane !== next { workspace.setLane(next) }
     }
 
     private func refreshChrome() {
-        guard let lane = activeLane else { return }
+        let lane = lane(current)
         let fact = lane.machine
         pill.show(fact)
         let count = lane.queueCount
         queue.stringValue = "\(ImageGenMachineWords.queueLabel) \(count)"
         queue.setAccessibilityLabel(queue.stringValue)
-        done.toolTip = ImageGenSurface.dismissNote(painting: fact.isWorking)
+        done.toolTip = lane.dismissNote
     }
 
     @objc private func laneChosen() {

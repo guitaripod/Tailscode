@@ -1348,7 +1348,7 @@ final class TranscriptViewController: NSViewController {
             switch lane {
             case .chat: self.composer.takeFocus()
             case .ask: host.summonQuickAsk()
-            case .video: host.presentForge()
+            case .video: host.presentStudio(lane: .video, brief: self.composer.currentText)
             case .image: host.presentStudio(lane: .image, brief: self.composer.currentText)
             }
         }

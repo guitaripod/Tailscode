@@ -246,7 +246,9 @@ enum SelfTest {
 
         let studioFailures = StudioCheck.run()
         if studioFailures.isEmpty {
-            report("studio: the shelf, the stage's states, the verbs, the chips, the folds and the keys all hold")
+            report(
+                "studio: both lanes' shelves, stage states, verbs, chips, the clip's start frame and passes, "
+                    + "what redraws on a change, the folds, the keys and the lane switch all hold")
         } else {
             report("studio: \(studioFailures.joined(separator: " · "))")
             failures += 1
@@ -3150,13 +3152,6 @@ enum SelfTest {
         try expect(lost.badge == Localized.text("failed"), "a clip that never arrived says so")
         try expect(lost.detail == ForgeFailure.noOutput(ForgeDemo.host).description, "and keeps the reason")
 
-        let bar = ForgeBarView()
-        bar.fraction = 0.5
-        try expect(bar.intrinsicContentSize.height > 0, "the bar has a height to draw itself into")
-        try expect(
-            bar.intrinsicContentSize.width == NSView.noIntrinsicMetric,
-            "and takes the width of whatever row it is in")
-
         let mark = ForgeMarkButton(target: nil, action: #selector(NSApplication.terminate(_:)))
         mark.render()
         try expect(
@@ -3187,23 +3182,14 @@ enum SelfTest {
             ForgeRunner.shared.watcherCount == watching,
             "and lets go the moment it leaves, rather than being called for the life of the process")
 
-        let sheet = ForgeSheet.present(on: host)
-        try expect(ForgeSheet.current === sheet, "the forge that is up is the one a press finds")
+        let lane = VideoLane(runner: ForgeRunner.shared)
         try expect(
-            ForgeSheet.present(on: host) === sheet,
-            "so a second press fetches that one forward rather than building another over it")
-        sheet.close()
+            ForgeRunner.shared.watcherCount == watching + 1,
+            "the Video lane watches the runner, which is what keeps a render in view after the Studio closes")
+        _ = lane.stage
         try expect(
-            ForgeSheet.current == nil,
-            "a closed forge is gone at the press rather than a runloop turn later")
-        let reopened = ForgeSheet.present(on: host)
-        try expect(
-            reopened !== sheet,
-            "which is what lets the press after a close open the forge instead of raising a dead one")
-        reopened.close()
-        try expect(
-            ForgeRunner.shared.watcherCount == watching,
-            "and a surface that has gone is watching nothing")
+            lane.id == .video && lane.shelfTitle == Localized.text("Clips"),
+            "the lane is the second of the Studio's two, and its shelf is clips")
 
         try expect(
             ForgeSurface.preferredWidth >= ForgeSurface.minimumWidth

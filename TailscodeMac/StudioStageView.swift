@@ -24,7 +24,7 @@ final class StudioStageView: NSView, StudioStaging {
         }
     }
 
-    var onVerb: ((ImageGenAction) -> Void)?
+    var onVerb: ((StudioStageVerb) -> Void)?
     var onStarter: ((ImageGenBrief.Example) -> Void)?
     var onRemedy: ((StudioRemedy) -> Void)?
     var onDrop: ((StudioDrop) -> Void)?
@@ -104,7 +104,7 @@ final class StudioStageView: NSView, StudioStaging {
 
         invitation.onPick = { [weak self] example in self?.onStarter?(example) }
         failure.onRemedy = { [weak self] remedy in self?.onRemedy?(remedy) }
-        capsule.onVerb = { [weak self] action in self?.onVerb?(action) }
+        capsule.onVerb = { [weak self] verb in self?.onVerb?(verb) }
         dropNote.text = Localized.text("Edit this picture")
 
         registerForDraggedTypes(StudioDrop.registered)
@@ -484,13 +484,13 @@ final class StudioStageView: NSView, StudioStaging {
     private func updateCapsule() {
         let kept = studio.exhibit?.isKept ?? false
         let words = studio.exhibit.map { studio.hasWords($0) } ?? false
-        let verbs = StudioVerbs.offered(state: state, kept: kept, hasWords: words)
+        let verbs = StudioVerbs.faces(state: state, kept: kept, hasWords: words)
         let reserved = state.isWorking
         capsule.show(verbs, holdsRoom: reserved || verbs.isEmpty == false)
         capsule.alphaValue = verbs.isEmpty ? 0 : 1
         capsule.isHidden = verbs.isEmpty && !reserved
         capsule.setAccessibilityElement(!verbs.isEmpty)
-        capsule.primary = .reference
+        capsule.primaryID = ImageGenAction.reference.rawValue
     }
 
     private func syncClock() {
@@ -678,7 +678,7 @@ final class StudioStageView: NSView, StudioStaging {
 
     @objc func copy(_ sender: Any?) {
         guard state == .done else { return }
-        onVerb?(.copy)
+        onVerb?(StudioStageVerb(.copy))
     }
 
     override func drawFocusRingMask() {
@@ -1097,9 +1097,9 @@ final class StudioStarterCard: NSView {
 /// them — every button keeps its label for a screen reader and its words for a tooltip.
 @MainActor
 final class StudioVerbsCapsule: NSView {
-    var onVerb: ((ImageGenAction) -> Void)?
-    var primary: ImageGenAction = .reference
-    private var verbs: [ImageGenAction] = []
+    var onVerb: ((StudioStageVerb) -> Void)?
+    var primaryID = ""
+    private var verbs: [StudioStageVerb] = []
     private var buttons: [StudioVerbButton] = []
     private let glass = NSGlassEffectView()
     private let scrim = NSView()
@@ -1141,14 +1141,14 @@ final class StudioVerbsCapsule: NSView {
         }
     }
 
-    func show(_ next: [ImageGenAction], holdsRoom: Bool) {
+    func show(_ next: [StudioStageVerb], holdsRoom: Bool) {
         guard next != verbs || !holdsRoom else { return }
         guard !next.isEmpty else { return }
         verbs = next
         for button in buttons { button.removeFromSuperview() }
-        buttons = next.map { action in
-            let button = StudioVerbButton(action: action)
-            button.onPress = { [weak self] in self?.onVerb?(action) }
+        buttons = next.map { verb in
+            let button = StudioVerbButton(verb: verb)
+            button.onPress = { [weak self] in self?.onVerb?(verb) }
             row.addSubview(button)
             return button
         }
@@ -1172,7 +1172,7 @@ final class StudioVerbsCapsule: NSView {
         for button in buttons {
             let width = button.width(iconsOnly: iconsOnly)
             button.iconsOnly = iconsOnly
-            button.isPrimary = button.action == primary
+            button.isPrimary = button.verb.id == primaryID
             button.frame = NSRect(x: x, y: 3, width: width, height: bounds.height - 6)
             x += width + 2
         }
@@ -1182,7 +1182,7 @@ final class StudioVerbsCapsule: NSView {
 /// One verb in the capsule: its symbol and its word, ink on the glass, the primary one on the accent.
 @MainActor
 final class StudioVerbButton: NSView {
-    let action: ImageGenAction
+    let verb: StudioStageVerb
     var onPress: (() -> Void)?
     var iconsOnly = false {
         didSet { if iconsOnly != oldValue { needsDisplay = true } }
@@ -1194,15 +1194,15 @@ final class StudioVerbButton: NSView {
     private var tracking: NSTrackingArea?
     private var pressing = false
 
-    init(action: ImageGenAction) {
-        self.action = action
+    init(verb: StudioStageVerb) {
+        self.verb = verb
         super.init(frame: .zero)
         plate.radius = 14
         addSubview(plate)
-        toolTip = action.hint
+        toolTip = verb.hint
         setAccessibilityRole(.button)
-        setAccessibilityLabel(action.title)
-        setAccessibilityHelp(action.hint)
+        setAccessibilityLabel(verb.title)
+        setAccessibilityHelp(verb.hint)
     }
 
     @available(*, unavailable)
@@ -1212,7 +1212,7 @@ final class StudioVerbButton: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private var title: String { action == .reference ? action.phoneTitle : action.title.replacingOccurrences(of: "…", with: "") }
+    private var title: String { verb.title.replacingOccurrences(of: "…", with: "") }
 
     func width(iconsOnly: Bool) -> CGFloat {
         iconsOnly ? 32 : 14 + 16 + 6 + StudioTheme.width(of: title, role: .control) + 14
@@ -1228,8 +1228,8 @@ final class StudioVerbButton: NSView {
             MacTheme.Color.accent.setFill()
             NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
         }
-        let ink = isPrimary ? MacTheme.Color.onAccent : (action.isDestructive ? MacTheme.Color.danger : MacTheme.Color.onGlass)
-        if let symbol = StudioTheme.symbol(action.symbol, size: 12, weight: .medium)?.tinted(ink) {
+        let ink = isPrimary ? MacTheme.Color.onAccent : (verb.isDestructive ? MacTheme.Color.danger : MacTheme.Color.onGlass)
+        if let symbol = StudioTheme.symbol(verb.symbol, size: 12, weight: .medium)?.tinted(ink) {
             let side: CGFloat = 16
             let originX = iconsOnly ? (bounds.width - side) / 2 : 14
             symbol.draw(in: NSRect(x: originX, y: (bounds.height - side) / 2, width: side, height: side))
