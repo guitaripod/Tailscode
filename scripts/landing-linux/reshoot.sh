@@ -7,7 +7,7 @@
 #   assets     poster crops and the blurred sketch the forge demo is told about (needs $TSLP/art)
 #   chat       desk-dark-chat, desk-dark-rail, desk-light-chat
 #   split      desk-dark-split, desk-light-split
-#   studio     desk-dark-studio, desk-light-studio (lighthouse picked off the shelf)
+#   studio     desk-dark-studio, desk-light-studio: the whole window with the Studio sheet up (lighthouse picked off the shelf)
 #   paint      the studio mid-render, for the composite
 #   forge      the video forge running and with a clip landed, for the composite
 #   states     desk-dark-studio-states, composed from the four
@@ -47,6 +47,9 @@ shoot() {
     rm -f "$OUT/$name.raw.png"
 }
 
+# The Studio is a sheet inside the main window now, not a window of its own, so every Studio shot is the
+# whole Tailscode window with the sheet up (the click coordinates are the 2x device pixels of the sheet's
+# first shelf tile and its words box in a 1920x1080 window).
 wshot() {
     local id
     id=$(h run "$PYX" "$HERE/winid.py" "$1")
@@ -114,15 +117,15 @@ stage_split() {
 
 studio_done() {
     shoot "$1.pre" "3500:openid=demo-c1;5000:image" 12 'tailscode.image.aspect="landscape"' "tailscode.appearance=\"$2\""
-    h click 3397 277
+    h click 3560 366
     sleep 7
-    h click 1467 1750
+    h click 1800 1930
     sleep 0.5
     h type "$LIGHTHOUSE_PROMPT"
     sleep 2
     h move 2400 1900
     sleep 1
-    wshot Image "$1"
+    wshot Tailscode "$1"
 }
 
 stage_studio() {
@@ -137,7 +140,7 @@ stage_paint() {
     mv "$T/mockout/studio/01-lighthouse.png" "$T/mockout/lighthouse.src"
     mock_start lighthouse.src
     shoot paint "3500:openid=demo-c1;5000:image;6500:imagetype=$LIGHTHOUSE_PROMPT;7500:imagego" 20 'tailscode.image.aspect="landscape"'
-    wshot Image paint
+    wshot Tailscode paint
     mv "$T/mockout/lighthouse.src" "$T/mockout/studio/01-lighthouse.png"
     shelf_order
     mock_start
@@ -146,9 +149,9 @@ stage_paint() {
 stage_forge() {
     forge_env
     shoot forge-running "3500:openid=demo-c1;5000:forge=running" 12 'tailscode.image.aspect="landscape"'
-    wshot Video forge-running
+    wshot Tailscode forge-running
     shoot forge-done "3500:openid=demo-c1;5000:forge=history;9000:fstate=done" 14 'tailscode.image.aspect="landscape"'
-    wshot Video forge-done
+    wshot Tailscode forge-done
 }
 
 stage_states() {

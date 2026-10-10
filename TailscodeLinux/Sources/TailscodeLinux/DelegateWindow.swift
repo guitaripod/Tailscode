@@ -40,8 +40,8 @@ enum DelegateToneCSS {
     }
 }
 
-/// The dispatcher board, opened over the work rather than beside it — the same reasoning
-/// `ForgeWindow` gives for its own modal: a board is a thing you check on, not a place you type,
+/// The dispatcher board, opened over the work rather than beside it — the same reasoning the
+/// Studio gives for being a sheet: a board is a thing you check on, not a place you type,
 /// so it costs the conversation behind it nothing and comes back whole the moment it closes.
 ///
 /// It leads with the work rather than the connection: the machine is a picker in the header and its

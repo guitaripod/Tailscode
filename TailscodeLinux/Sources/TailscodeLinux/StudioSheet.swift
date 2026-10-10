@@ -176,7 +176,10 @@ final class StudioSheet: @unchecked Sendable {
         gtk_widget_set_valign(switcher, GTK_ALIGN_CENTER)
         for kind in StudioLaneKind.allCases {
             let button = Gtk.button(Self.title(of: kind), css: ["studio-lane"]) { [weak self] in
-                Gtk.onMain { [weak self] in self?.show(kind) }
+                Gtk.onMain { [weak self] in
+                    AppLog.write(.ui, "studio sheet lane switch pressed lane=\(kind.rawValue)")
+                    self?.show(kind)
+                }
             }
             laneButtons[kind] = button
             gtk_box_append(ptr(switcher), button)
@@ -219,8 +222,6 @@ final class StudioSheet: @unchecked Sendable {
     /// keeps its height and a render starting or landing never moves the pill.
     private static let reserved = "\u{00A0}"
 
-    // MARK: opening and closing
-
     /// Brings the Studio up on a lane. Opened while it is already up it only changes lane, with no
     /// motion, and the words box takes the keyboard.
     @discardableResult
@@ -234,10 +235,22 @@ final class StudioSheet: @unchecked Sendable {
         apply(.dismiss)
     }
 
+    /// What the log says about an event: the lane asked for, never a dump of the enum.
+    private static func words(for event: StudioSheetEvent) -> String {
+        switch event {
+        case .show(let lane): return "show \(lane.rawValue)"
+        case .dismiss: return "dismiss"
+        case .finished: return "finished"
+        }
+    }
+
     private func apply(_ event: StudioSheetEvent) {
         let before = state
         let result = state.reduced(by: event)
         state = result.state
+        if event != .finished {
+            AppLog.write(.ui, "studio sheet \(Self.words(for: event)): \(before) -> \(state)")
+        }
         switch result.effect {
         case .none:
             if before != state, state == .closed { finishedClosing() }
@@ -297,8 +310,6 @@ final class StudioSheet: @unchecked Sendable {
         g_object_ref(UnsafeMutableRawPointer(focused))
         return focused
     }
-
-    // MARK: the lanes
 
     private func select(_ target: StudioLaneKind) {
         lane = target
@@ -377,8 +388,6 @@ final class StudioSheet: @unchecked Sendable {
         }
     }
 
-    // MARK: the bar
-
     /// A file written or a picture copied is worth one line, said under the pill rather than as a
     /// dialog somebody has to dismiss. It clears itself, because a notice that outstays its news
     /// becomes chrome.
@@ -424,8 +433,6 @@ final class StudioSheet: @unchecked Sendable {
         tailscode_set_accessible_description(done, out ? StudioSheetWords.escapeHint : nil)
     }
 
-    // MARK: the frame
-
     /// Puts the sheet where Core says it goes for the window it is in. The sheet is allocated at its
     /// final size here, before any motion, and a resize or a maximise lands here again.
     func relayout() {
@@ -464,8 +471,6 @@ final class StudioSheet: @unchecked Sendable {
         guard state != .closed else { return }
         place()
     }
-
-    // MARK: the motion
 
     /// Draws the sheet at a presence between 0 (away) and 1 (at rest) with no clock running, for
     /// the headless driver that photographs the middle of the motion.
@@ -561,8 +566,6 @@ final class StudioSheet: @unchecked Sendable {
         Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
     }
 
-    // MARK: the keys
-
     /// Whether the sheet owns the keyboard: from the first frame of its rise to the moment it
     /// starts to leave.
     var capturesKeys: Bool { state.capturesKeys }
@@ -578,10 +581,12 @@ final class StudioSheet: @unchecked Sendable {
             return handleTab(keyval: keyval, state: mask, inPopover: inPopover)
         }
         if StudioSheetKeys.closes(chord) {
+            AppLog.write(.ui, "studio sheet close chord")
             dismiss()
             return true
         }
         if let target = Self.lane(for: chord) {
+            AppLog.write(.ui, "studio sheet lane chord lane=\(target.rawValue)")
             show(target)
             return true
         }
@@ -668,8 +673,6 @@ final class StudioSheet: @unchecked Sendable {
         return gtk_widget_get_ancestor(focused, gtk_popover_get_type()) != nil
     }
 
-    // MARK: the driver
-
     var summary: String {
         let kind = lane == .image ? (drawPane?.summary ?? "-") : (forgePane?.summary ?? "-")
         return
@@ -679,8 +682,6 @@ final class StudioSheet: @unchecked Sendable {
     var imagePane: DrawPane? { drawPane }
 
     var forge: ForgePane? { forgePane }
-
-    var imageSummary: String { drawPane?.summary ?? "-" }
 
     var studioSummary: String {
         switch lane {
@@ -741,15 +742,7 @@ final class StudioSheet: @unchecked Sendable {
         [drawPane?.hostWindow, forgePane?.hostWindow]
     }
 
-    /// Where the sheet's own widgets sit in the window, for a harness that has to click them.
-    func bounds(of widget: UnsafeMutablePointer<GtkWidget>) -> String {
-        guard let box = Gtk.bounds(of: widget, in: window) else { return "-" }
-        return String(format: "%.0f,%.0f %.0fx%.0f", box.x, box.y, box.width, box.height)
-    }
-
     var sheetWidget: UnsafeMutablePointer<GtkWidget> { sheet }
-
-    var doneWidget: UnsafeMutablePointer<GtkWidget> { done }
 
     var scrimWidget: UnsafeMutablePointer<GtkWidget> { scrim }
 
