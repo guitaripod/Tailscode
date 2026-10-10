@@ -34,6 +34,7 @@ final class SessionListViewModel {
 
     deinit {
         for task in streamTasks { task.cancel() }
+        flushTask?.cancel()
     }
 
     /// A proto-2 bridge pushes every list change the moment it happens: a row updates, moves, or
@@ -72,26 +73,86 @@ final class SessionListViewModel {
         entries.insert(entry, at: 0)
     }
 
+    private struct PendingChange {
+        let change: SessionListChange
+        let profile: ConnectionProfile
+    }
+
+    /// Every project directory any listing has named, held in memory. A listing asks for them so a
+    /// server can look in each; reading them back off disk on every poll put a decode of the
+    /// whole cached list on the main thread twice a minute for nothing the entries did not
+    /// already say.
+    private var knownDirectories: Set<String> = []
+
+    private func rememberDirectories(_ directories: some Sequence<String>) {
+        knownDirectories.formUnion(directories)
+    }
+
+    private var pendingChanges: [PendingChange] = []
+    private var flushTask: Task<Void, Never>?
+
+    /// How long a burst of list changes is gathered before it is applied as one. A bridge that
+    /// pushes a row every time a status moves, or that has just handed over what a long absence
+    /// missed, would otherwise cost a merge, a sort, a cache write and a board rebuild per row;
+    /// gathered, the whole burst costs what one change costs and the board moves once.
+    private static let gatherWindow: Duration = .milliseconds(80)
+
     private func apply(_ change: SessionListChange, profile: ConnectionProfile) {
-        switch change {
-        case .upsert(let session):
-            observedAt[profile.id] = Date()
-            let entry = SessionEntry(
-                profileID: profile.id, profileName: profile.name,
-                host: profile.baseURL.host ?? profile.name,
-                backendType: profile.backend, session: session)
-            entries.removeAll { $0.profileID == profile.id && $0.session.id == session.id }
-            entries.append(entry)
-            entries.sort { $0.session.updatedAt > $1.session.updatedAt }
-            SessionListCache.scheduleSave(entries)
-            onChange?()
-        case .remove(let id):
-            observedAt[profile.id] = Date()
-            entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
-            onChange?()
-        case .invalidated:
+        if case .invalidated = change {
+            flushPending()
             Task { [weak self] in await self?.load() }
+            return
         }
+        pendingChanges.append(PendingChange(change: change, profile: profile))
+        guard flushTask == nil else { return }
+        flushTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.gatherWindow)
+            guard !Task.isCancelled else { return }
+            self?.flushPending()
+        }
+    }
+
+    /// Applies everything gathered, in the order it arrived, then merges and sorts once. A later
+    /// change to the same conversation replaces an earlier one, so the burst is folded rather
+    /// than replayed.
+    private func flushPending() {
+        flushTask?.cancel()
+        flushTask = nil
+        let batch = pendingChanges
+        pendingChanges = []
+        guard !batch.isEmpty else { return }
+        var upserts: [String: SessionEntry] = [:]
+        var removals: Set<String> = []
+        func key(_ profileID: String, _ sessionID: String) -> String {
+            "\(profileID)\u{1}\(sessionID)"
+        }
+        for pending in batch {
+            let profile = pending.profile
+            observedAt[profile.id] = Date()
+            switch pending.change {
+            case .upsert(let session):
+                let id = key(profile.id, session.id)
+                removals.remove(id)
+                upserts[id] = SessionEntry(
+                    profileID: profile.id, profileName: profile.name,
+                    host: profile.baseURL.host ?? profile.name,
+                    backendType: profile.backend, session: session)
+            case .remove(let sessionID):
+                let id = key(profile.id, sessionID)
+                upserts[id] = nil
+                removals.insert(id)
+            case .invalidated:
+                break
+            }
+        }
+        let touched = Set(upserts.keys).union(removals)
+        var merged = entries.filter { !touched.contains(key($0.profileID, $0.session.id)) }
+        merged.append(contentsOf: upserts.values)
+        merged.sort { $0.session.updatedAt > $1.session.updatedAt }
+        entries = merged
+        rememberDirectories(upserts.values.compactMap(\.session.directory))
+        if !upserts.isEmpty { SessionListCache.scheduleSave(entries) }
+        onChange?()
     }
 
     /// Rebuilds the backends from the saved profiles, dropping entries whose
@@ -225,9 +286,8 @@ final class SessionListViewModel {
     /// untouched, which is what lets a doubted server be re-checked on its own.
     private func refresh(_ targets: [Source], deadline: Duration) async {
         var fresh: [String: [SessionEntry]] = [:]
-        var known = Set(entries.compactMap(\.session.directory))
-        known.formUnion(SessionListCache.load().compactMap(\.session.directory))
-        let directories = known
+        rememberDirectories(entries.compactMap(\.session.directory))
+        let directories = knownDirectories
         await withTaskGroup(of: (Source, Result<[AgentSession], Error>).self) { group in
             for source in targets {
                 group.addTask {
