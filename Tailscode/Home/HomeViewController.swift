@@ -219,6 +219,11 @@ final class HomeViewController: UIViewController {
                                 host: ImageStudio.shared.endpoint.displayHost, reachable: true,
                                 missingModels: ImageGenEngine.fast.files.map(\.path)))
                     }
+                    if let seed = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_SEED"]
+                        .flatMap(UInt64.init)
+                    {
+                        ImageStudio.shared.stage(seed: seed)
+                    }
                     self.presentImage()
                     guard let words else { return }
                     for line in words.split(separator: "|") {

@@ -34,11 +34,14 @@
             writer.startSession(atSourceTime: .zero)
 
             let frames = Int(rate) * seconds
+            let art = ForgeStagedArt.image(named: "cat-roof")?.cgImage
             for frame in 0..<frames {
                 while !input.isReadyForMoreMediaData {
                     try? await Task.sleep(for: .milliseconds(10))
                 }
-                guard let buffer = paint(frame: frame, of: frames, pool: adaptor.pixelBufferPool)
+                guard
+                    let buffer = paint(
+                        frame: frame, of: frames, pool: adaptor.pixelBufferPool, art: art)
                 else { continue }
                 adaptor.append(
                     buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: rate))
@@ -50,9 +53,9 @@
 
         /// One frame: a slow sweep of warm light across a dark field, which is enough to read as a
         /// moving picture in a still screenshot and in a loop.
-        private static func paint(frame: Int, of frames: Int, pool: CVPixelBufferPool?)
-            -> CVPixelBuffer?
-        {
+        private static func paint(
+            frame: Int, of frames: Int, pool: CVPixelBufferPool?, art: CGImage?
+        ) -> CVPixelBuffer? {
             guard let pool else { return nil }
             var buffer: CVPixelBuffer?
             guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess,
@@ -69,6 +72,10 @@
                     bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue)
             else { return nil }
             let phase = CGFloat(frame) / CGFloat(max(frames - 1, 1))
+            if let art {
+                pushIn(art, phase: phase, in: context)
+                return buffer
+            }
             context.setFillColor(UIColor(red: 0.07, green: 0.08, blue: 0.11, alpha: 1).cgColor)
             context.fill(CGRect(origin: .zero, size: size))
             let colors =
@@ -89,6 +96,23 @@
                 gradient, startCenter: centre, startRadius: 0, endCenter: centre,
                 endRadius: size.height * 0.9, options: [])
             return buffer
+        }
+
+        /// A slow push-in on a real picture, cropped to the clip's own shape, so a staged clip
+        /// opens on the picture it was made from and moves the way a few seconds of one would.
+        private static func pushIn(_ art: CGImage, phase: CGFloat, in context: CGContext) {
+            let zoom = 1 + 0.09 * phase
+            let width = CGFloat(art.width)
+            let height = CGFloat(art.height)
+            let target = size.width / size.height
+            let cropHeight = min(height, width / target) / zoom
+            let cropWidth = cropHeight * target
+            let crop = CGRect(
+                x: (width - cropWidth) / 2 + width * 0.02 * phase,
+                y: (height - cropHeight) / 2, width: cropWidth, height: cropHeight)
+            guard let piece = art.cropping(to: crop) else { return }
+            context.interpolationQuality = .high
+            context.draw(piece, in: CGRect(origin: .zero, size: size))
         }
     }
 #endif
