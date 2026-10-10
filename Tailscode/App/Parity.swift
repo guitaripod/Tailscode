@@ -18,6 +18,7 @@ enum ParityManifest {
         case .unreadTracking: return .implemented("markUnread")
         case .savedChats: return .implemented("SavedChatsViewController")
         case .savedChatSync: return .implemented("SavedChatSync")
+        case .cloudSync: return .implemented("CloudSync")
         case .archivedChats: return .implemented("ArchivedChatsViewController")
         case .deleteSession: return .implemented("confirmDelete")
         case .bulkSelection: return .implemented("performBulk")

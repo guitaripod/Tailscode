@@ -42,6 +42,14 @@ public enum SessionPinStore {
         return pinned
     }
 
+    /// Replaces the pins with the order another device settled on. Nothing is posted when the
+    /// answer is the one already held, so a pass that agreed with the cloud costs a screen nothing.
+    public static func adopt(order: [String]) {
+        guard order != all() else { return }
+        defaults.set(order, forKey: storageKey)
+        NotificationCenter.default.post(name: didChange, object: nil)
+    }
+
     public static func key(_ profileID: String, _ sessionID: String) -> String {
         "\(profileID)/\(sessionID)"
     }

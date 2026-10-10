@@ -160,6 +160,15 @@ public enum SavedChatStore {
         write(Array(list.prefix(capacity)))
     }
 
+    /// Takes a bookmark another device made. It is held like one made here: the server that can
+    /// keep a bookmark is told through the same pending intent, so a chat saved on the iPad is on
+    /// the bridge's shortlist and every client reading that listing agrees.
+    public static func adopt(_ chat: SavedChat) {
+        guard !contains(profileID: chat.profileID, sessionID: chat.sessionID) else { return }
+        note(PendingSaveIntent(profileID: chat.profileID, sessionID: chat.sessionID, saved: true))
+        write(Array(([chat] + all()).prefix(capacity)))
+    }
+
     public static func remove(profileID: String, sessionID: String) {
         note(PendingSaveIntent(profileID: profileID, sessionID: sessionID, saved: false))
         let list = all()

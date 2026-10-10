@@ -69,6 +69,8 @@ final class AppCoordinator: NSObject {
             sizeWindowForVerificationIfAsked()
         #endif
         UpdateMonitor.checkIfDue()
+        CloudSync.shared.start(
+            device: StoreBackedDevice(servers: { ConnectionController.shared.cloudServers }))
         if let parked = PendingRoute.take() { deliver(parked) }
         #if DEBUG
             if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
@@ -267,6 +269,7 @@ final class AppCoordinator: NSObject {
     /// for the change themselves and this only steps in when onboarding has to
     /// appear or disappear.
     @objc private func connectionsDidChange() {
+        CloudSync.shared.schedule()
         guard ConnectionController.shared.hasConnection != showingMain else { return }
         guard window.rootViewController?.presentedViewController == nil else {
             needsRootSync = true

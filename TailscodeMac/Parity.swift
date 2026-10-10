@@ -37,6 +37,7 @@ enum ParityManifest {
         case .unreadTracking: return .implemented("markUnread")
         case .savedChats: return .implemented("SavedChatStore")
         case .savedChatSync: return .implemented("SavedChatSync")
+        case .cloudSync: return .gap("the engine is Core's and compiles here, but the Mac builds carry no iCloud entitlement yet and nothing starts it; the next Mac train adds the key to the store entitlements and a start beside the sidebar's own")
         case .archivedChats: return .implemented("ArchivedChatStore")
         case .deleteSession: return .implemented("deleteSession")
         case .bulkSelection: return .implemented("SidebarBulkBar")
