@@ -443,12 +443,12 @@ enum StudioReferenceMenu {
         }
         file.image = StudioTheme.symbol(ImageGenReferenceSource.files.symbol, size: 12)
         menu.addItem(file)
-        let paste = ClosureMenuItem(title: ImageGenReferenceSource.clipboard.title) {
+        let pasteItem = ClosureMenuItem(title: ImageGenReferenceSource.clipboard.title) {
             paste(studio: studio)
         }
-        paste.image = StudioTheme.symbol(ImageGenReferenceSource.clipboard.symbol, size: 12)
-        if StudioDrop.read(.general) == nil { paste.action = nil }
-        menu.addItem(paste)
+        pasteItem.image = StudioTheme.symbol(ImageGenReferenceSource.clipboard.symbol, size: 12)
+        if StudioDrop.read(.general) == nil { pasteItem.action = nil }
+        menu.addItem(pasteItem)
         let gallery = ClosureMenuItem(title: ImageGenReferenceSource.library.title + "…") { library() }
         gallery.image = StudioTheme.symbol(ImageGenReferenceSource.library.symbol, size: 12)
         menu.addItem(gallery)
