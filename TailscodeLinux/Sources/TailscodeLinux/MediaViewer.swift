@@ -155,6 +155,7 @@ final class MediaViewer: @unchecked Sendable {
         gtk_widget_set_vexpand(scroller, 1)
         gtk_widget_set_focusable(scroller, 1)
         Gtk.addClass(scroller, "viewer-canvas")
+        Gtk.margins(holder, Self.canvasMargin)
         gtk_scrolled_window_set_child(op(scroller), holder)
 
         layer.install(toolbar: makeToolbar(), body: scroller)
@@ -295,7 +296,11 @@ final class MediaViewer: @unchecked Sendable {
 
     /// The scale that fits the page being looked at into the room the canvas has.
     private var fitScale: Double {
-        let room = (width: Double(gtk_widget_get_width(scroller)), height: Double(gtk_widget_get_height(scroller)))
+        let margin = Double(2 * Self.canvasMargin)
+        let room = (
+            width: Double(gtk_widget_get_width(scroller)) - margin,
+            height: Double(gtk_widget_get_height(scroller)) - margin
+        )
         guard let size = pixelSize(of: currentItem), size.0 > 0, size.1 > 0, room.width > 0, room.height > 0
         else { return 1 }
         return min(room.width / Double(size.0), room.height / Double(size.1))
@@ -382,12 +387,17 @@ final class MediaViewer: @unchecked Sendable {
 
     private static let doubleClick: Double = 0.4
 
+    /// The room a picture keeps from the toolbar and the other edges, so it is looked at rather
+    /// than cropped by them.
+    private static let canvasMargin: Int32 = 10
+
     private func refreshSubline(size: (Int32, Int32)?) {
         var parts: [String] = []
         if let counter = pager.counter { parts.append(counter) }
-        if let size { parts.append("\(size.0)×\(size.1)") }
+        let facts = currentItem.facts ?? ""
+        if let size, !facts.contains("\(size.0)×\(size.1)") { parts.append("\(size.0)×\(size.1)") }
         if let label = zoomLabel { parts.append(label) }
-        if let facts = currentItem.facts, !facts.isEmpty { parts.append(facts) }
+        if !facts.isEmpty { parts.append(facts) }
         let line = noticeText ?? parts.joined(separator: " · ")
         gtk_label_set_text(op(subLabel), line.isEmpty ? "\u{00A0}" : line)
     }
@@ -549,9 +559,11 @@ final class MediaViewer: @unchecked Sendable {
 extension MediaViewer {
     /// The Studio's own viewer: one finished picture with the words that made it, its facts and the
     /// seed, which is the reroll. The viewer keeps its own reference to the stage's texture, so a
-    /// new render landing under it cannot free the pixels it is showing.
+    /// new render landing under it cannot free the pixels it is showing. A picture the machine kept
+    /// has no render time of its own, so it brings the line its library facts make instead.
     static func present(
-        picture: ImageGenPicture, textureBits: UInt, notice: @escaping @Sendable (String) -> Void
+        picture: ImageGenPicture, textureBits: UInt, facts: String? = nil,
+        notice: @escaping @Sendable (String) -> Void
     ) {
         let texture = OpaquePointer(bitPattern: Int(bitPattern: textureBits))
         if let texture { g_object_ref(UnsafeMutableRawPointer(texture)) }
@@ -559,7 +571,8 @@ extension MediaViewer {
         let prompt = picture.prompt
         let seed = picture.seed
         let item = Item(
-            key: path, name: picture.name, facts: ImageGenFacts.line(for: picture), tooltip: prompt,
+            key: path, name: picture.name, facts: facts ?? ImageGenFacts.line(for: picture),
+            tooltip: prompt,
             texture: { textureBits }, dimensions: { nil },
             original: { try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) },
             fetch: {},

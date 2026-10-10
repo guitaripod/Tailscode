@@ -520,7 +520,9 @@ extension DrawPane {
                 engine: facts?.recipe?.engine ?? .quality,
                 mode: facts?.recipe?.mode ?? .generate, aspect: facts?.aspect ?? .square,
                 seconds: 0, seed: facts?.recipe?.seed ?? 0, madeAt: facts?.modifiedAt ?? Date())
-            MediaViewer.present(picture: synthetic, textureBits: bits, notice: notice)
+            MediaViewer.present(
+                picture: synthetic, textureBits: bits, facts: ImageGenFacts.line(for: facts),
+                notice: notice)
             return
         }
         guard let picture = slot.onStage else { return }
