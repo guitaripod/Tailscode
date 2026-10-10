@@ -16,8 +16,8 @@ REG = "/usr/share/fonts/noto/NotoSans-Regular.ttf"
 CAPTIONS = [
     ("01", "Painting", "The machine narrates the render: its own sketch on the stage, the step it is on, and a line along the edge."),
     ("02", "Done", "Words, size, steps and seed read back from the picture's own file, with what a finished picture can do."),
-    ("03", "Animate this", "The same machine renders the clip: the sketch of the pass it is on, and one segment of the line for each pass."),
-    ("04", "Recent clips", "Every clip the machine kept is a poster with its length on the shelf; pressing one puts it on the stage."),
+    ("03", "Animate this", "The video lane while a clip is on its way: the sketch of the pass it is on, and one segment of the line for each pass (demo forge)."),
+    ("04", "Recent clips", "Every clip the machine kept is a poster with its length on the shelf; pressing one puts it on the stage (demo clips cut from the pictures)."),
 ]
 
 def font(path, size):

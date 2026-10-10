@@ -1,6 +1,6 @@
 import json,os,sys,base64
 def blob(o): return {"__data": base64.b64encode(json.dumps(o,separators=(",",":")).encode()).decode()}
-f=os.environ["XDG_RUNTIME_DIR"]+"/tailscode-dev/87/home/config/tailscode/ui.json"
+f=os.environ["XDG_RUNTIME_DIR"]+"/tailscode-dev/"+os.environ.get("DISP","87")+"/home/config/tailscode/ui.json"
 port=os.environ.get("MOCK_PORT","8203")
 d={
     "tailscode.compactTools": True,
