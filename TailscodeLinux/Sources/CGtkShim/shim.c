@@ -997,6 +997,41 @@ void tailscode_on_press_hold(
 }
 
 typedef struct {
+    void (*move)(double x, double y, void *data);
+    void (*leave)(void *data);
+    void *data;
+} TailscodePointerWatch;
+
+static void tailscode_pointer_moved(
+    GtkEventControllerMotion *controller, gdouble x, gdouble y, gpointer raw) {
+    (void)controller;
+    TailscodePointerWatch *watch = raw;
+    watch->move(x, y, watch->data);
+}
+
+static void tailscode_pointer_left(GtkEventControllerMotion *controller, gpointer raw) {
+    (void)controller;
+    TailscodePointerWatch *watch = raw;
+    watch->leave(watch->data);
+}
+
+void tailscode_on_pointer(
+    GtkWidget *widget, void (*move)(double x, double y, void *data), void (*leave)(void *data),
+    void *data) {
+    TailscodePointerWatch *watch = g_new0(TailscodePointerWatch, 1);
+    watch->move = move;
+    watch->leave = leave;
+    watch->data = data;
+    GtkEventController *motion = gtk_event_controller_motion_new();
+    gtk_event_controller_set_propagation_phase(motion, GTK_PHASE_CAPTURE);
+    g_signal_connect_data(motion, "motion", G_CALLBACK(tailscode_pointer_moved), watch, NULL, 0);
+    g_signal_connect_data(motion, "enter", G_CALLBACK(tailscode_pointer_moved), watch, NULL, 0);
+    g_signal_connect_data(motion, "leave", G_CALLBACK(tailscode_pointer_left), watch,
+                          (GClosureNotify)(void (*)(void))g_free, 0);
+    gtk_widget_add_controller(widget, motion);
+}
+
+typedef struct {
     void (*handler)(void *);
     void *data;
     guint32 last_press;

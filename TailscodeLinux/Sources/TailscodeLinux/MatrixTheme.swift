@@ -1039,6 +1039,43 @@ enum MatrixTheme {
             border: none;
         }
         .jump-pill:hover { background-color: \(accentDim); }
+        .hover-bar {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 8px;
+            padding: 1px 2px 1px 8px;
+            opacity: 0;
+            transition: opacity 120ms ease-out;
+        }
+        .hover-bar-on { opacity: 1; }
+        .hover-stamp { \(t(.rowStamp)) color: \(textDim); margin-right: 4px; }
+        .hover-verb {
+            \(t(.codeAction))
+            min-height: 0;
+            min-width: 0;
+            padding: 1px 7px;
+            color: \(text);
+            border-radius: 6px;
+        }
+        .hover-verb:hover { color: \(accent); background-color: alpha(\(accent), 0.12); }
+        .row-verbs {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 7px;
+            padding: 0 1px;
+            opacity: 0;
+            transition: opacity 100ms ease-out;
+        }
+        .row-verbs-on { opacity: 1; }
+        .row-verb {
+            min-width: 20px;
+            min-height: 20px;
+            padding: 0;
+            color: \(textDim);
+            border-radius: 5px;
+        }
+        .row-verb:hover { color: \(text); background-color: alpha(\(accent), 0.14); }
+        .row-verb-on { color: \(accent); }
         .find-bar {
             background-color: \(canvasRaised);
             border-bottom: 1px solid \(rule);
