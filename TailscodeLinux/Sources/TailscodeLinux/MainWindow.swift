@@ -533,6 +533,27 @@ final class MainWindow: @unchecked Sendable {
                     _ = self.perform(.exchangeSplit)
                 case "seq":
                     _ = self.perform(.equalizeSplits)
+                case "chord":
+                    self.driveChords(argument)
+                case "order":
+                    self.reportOrder("ORDER")
+                case "panemenu":
+                    let described = self.paneMenuSections().map { section in
+                        let rows = section.rows.map {
+                            "\($0.title)\($0.detail.map { " [\($0)]" } ?? "")\($0.on ? " *" : "")"
+                        }
+                        return "\(section.heading ?? "-"): \(rows.joined(separator: " | "))"
+                    }.joined(separator: " || ")
+                    FileHandle.standardOutput.write(Data("PANEMENU \(described)\n".utf8))
+                case "divkey":
+                    self.driveDividerKey(argument)
+                case "divinfo":
+                    let count = self.splitHost.layout.splitIDs.count
+                    let lines = (0..<count).map { self.splitHost.dividerSummary($0) }
+                    FileHandle.standardOutput.write(
+                        Data("DIVIDERS \(count) \(lines.joined(separator: " | "))\n".utf8))
+                case "pdrag", "pdrop":
+                    self.drivePaneDrag(argument, drop: verb == "pdrop")
                 case "full":
                     if let window = self.window { gtk_window_fullscreen(ptr(window)) }
                 case "handles":
@@ -564,7 +585,8 @@ final class MainWindow: @unchecked Sendable {
                             composer.x + composer.width / 2 + shadowX,
                             composer.y + composer.height / 2 + shadowY)
                     }.joined(separator: " ")
-                    FileHandle.standardOutput.write(Data("GEOM \(described)\n".utf8))
+                    FileHandle.standardOutput.write(
+                        Data("GEOM \(described) canvas=\(self.splitHost.canvasSummary)\n".utf8))
                 case "chooser":
                     FileHandle.standardOutput.write(
                         Data("CHOOSER \(self.activePane.chooserSummary ?? "-")\n".utf8))
@@ -1115,8 +1137,41 @@ final class MainWindow: @unchecked Sendable {
 
     private func makeActionsButton() -> UnsafeMutablePointer<GtkWidget> {
         Gtk.menuButton("⋯", css: ["flat"]) { [weak self] in
-            self?.activePane.actionRows() ?? []
+            guard let self else { return [] }
+            let chat = self.activePane.actionRows().map {
+                Gtk.MenuRow(title: $0.0, detail: $0.1, action: $0.2)
+            }
+            return [Gtk.MenuSection(heading: nil, rows: chat)] + self.paneMenuSections()
         }
+    }
+
+    /// The pane verbs in the menu, for a person who never learns the chords: Core's groups in
+    /// Core's order, each row wearing the keys it is on right now, rebinding included. Only a
+    /// window with something to arrange offers them.
+    private func paneMenuSections() -> [Gtk.MenuSection] {
+        guard splitHost.paneCount > 1 else { return [] }
+        let named = SplitMenu.arrangements.map { arrangement in
+            Gtk.MenuRow(
+                title: "\(arrangement.glyph) \(arrangement.title)", detail: nil,
+                on: SplitEven.shape(of: splitHost.layout) == arrangement,
+                action: { [weak self] in
+                    Gtk.onMain { [weak self] in self?.splitHost.arrange(arrangement) }
+                })
+        }
+        var sections = [Gtk.MenuSection(heading: Localized.text("Panes"), rows: named)]
+        for group in SplitMenu.groups {
+            let rows = group.shortcutIDs.compactMap { id -> Gtk.MenuRow? in
+                guard let definition = SplitMenu.definition(id) else { return nil }
+                let keys = shortcuts.effective[id]?.joined(separator: " / ")
+                return Gtk.MenuRow(
+                    title: definition.title, detail: keys,
+                    action: { [weak self] in
+                        Gtk.onMain { [weak self] in _ = self?.perform(definition.action) }
+                    })
+            }
+            sections.append(Gtk.MenuSection(heading: group.title, rows: rows))
+        }
+        return sections
     }
 
     /// A two-second floating confirmation — the answer to "did my click do anything".
@@ -3499,6 +3554,9 @@ final class MainWindow: @unchecked Sendable {
             guard let chord = KeyChord.canonical(keyval: keyval, state: state) else {
                 return false
             }
+            if self.pendingChords.isEmpty, Gtk.dividerOwnsKey(keyval, state: state, in: window) {
+                return false
+            }
             let context: KeyContext =
                 self.terminal.ownsFocus(in: window)
                 ? .terminal : Gtk.focusTakesText(window) ? .insert : .normal
@@ -3666,7 +3724,10 @@ final class MainWindow: @unchecked Sendable {
         case .exchangeSplit:
             splitHost.exchangeActive()
         case .cycleSplit, .promoteSplit, .rotateSplits, .moveSplitToEdge, .resizeSplit,
-            .arrangeSplits, .pinSplit, .parkSplit:
+            .arrangeSplits:
+            focused = .transcript
+            splitHost.perform(action)
+        case .pinSplit, .parkSplit:
             return false
         case .toggleProjectScope:
             toggleProjectScope()
@@ -3674,6 +3735,88 @@ final class MainWindow: @unchecked Sendable {
             presentQuickAsk()
         }
         return true
+    }
+
+    /// The headless driver's chord: a registered sequence resolved through the same shortcut set a
+    /// key press goes through, so a scripted `ctrl+w a` and a typed one are the same code path.
+    private func driveChords(_ spec: String) {
+        guard let (_, chords) = KeySpec.parse(spec) else {
+            FileHandle.standardOutput.write(Data("CHORD unreadable \(spec)\n".utf8))
+            return
+        }
+        for chord in chords {
+            switch shortcuts.resolve(
+                chord, context: .normal, pending: pendingChords, awaitingApproval: false)
+            {
+            case .run(let action):
+                pendingChords = []
+                _ = perform(action)
+            case .pending(let held):
+                pendingChords = held
+            case .unbound:
+                pendingChords = []
+            }
+        }
+        reportOrder("CHORD \(spec)")
+    }
+
+    /// The tree as the driver reads it: how many panes, what shape, which holds the focus and in
+    /// what reading order, by the first characters of each pane's id.
+    private func reportOrder(_ label: String) {
+        let layout = splitHost.layout
+        let order = layout.paneIDs.map { String($0.raw.prefix(4)) }.joined(separator: ",")
+        let focus = layout.paneIDs.firstIndex(of: layout.focusedPane) ?? -1
+        FileHandle.standardOutput.write(
+            Data(
+                "\(label) panes=\(layout.paneCount) shape=\(SplitEven.shape(of: layout)) focus=\(focus) zoom=\(layout.zoomedPane != nil) order=\(order)\n"
+                    .utf8))
+    }
+
+    /// A divider key without a keyboard: divider `index` takes focus and the key the second
+    /// field names (`left`, `right`, `shift+left`, `home`, `end`) moves it.
+    private func driveDividerKey(_ argument: String) {
+        let fields = argument.split(separator: ",").map(String.init)
+        let index = Int(fields.first ?? "") ?? 0
+        let word = fields.count > 1 ? fields[1] : "right"
+        let key: DividerKey
+        switch word {
+        case "left", "up": key = .back(large: false)
+        case "shift+left", "shift+up": key = .back(large: true)
+        case "right", "down": key = .forward(large: false)
+        case "shift+right", "shift+down": key = .forward(large: true)
+        case "home": key = .lowest
+        default: key = .highest
+        }
+        let moved = splitHost.driveDivider(index, key: key)
+        FileHandle.standardOutput.write(Data("DIVKEY \(index) \(word) moved=\(moved)\n".utf8))
+    }
+
+    /// A pane strip dragged onto another pane: `target,u,v,source` are the target pane's index,
+    /// where in it the pointer is as a fraction, and the dragged pane's index.
+    private func drivePaneDrag(_ argument: String, drop: Bool) {
+        let fields = argument.split(separator: ",").map(String.init)
+        let target = Int(fields.first ?? "") ?? 0
+        let u = Double(fields.count > 1 ? fields[1] : "0.5") ?? 0.5
+        let v = Double(fields.count > 2 ? fields[2] : "0.5") ?? 0.5
+        let source = Int(fields.count > 3 ? fields[3] : "0") ?? 0
+        let panes = splitHost.orderedPanes
+        guard panes.indices.contains(target), panes.indices.contains(source) else {
+            FileHandle.standardOutput.write(Data("PDROP no-target\n".utf8))
+            return
+        }
+        let pane = panes[target]
+        let x = u * Double(gtk_widget_get_width(pane.root))
+        let y = v * Double(gtk_widget_get_height(pane.root))
+        if drop {
+            let took = splitHost.receivePaneDrop(
+                PaneMovePayload(pane: panes[source].id).encoded, on: pane.id, x: x, y: y)
+            FileHandle.standardOutput.write(
+                Data("PDROP took=\(took) panes=\(splitHost.paneCount)\n".utf8))
+        } else {
+            splitHost.hover(pane, moving: panes[source].id, x: x, y: y)
+            FileHandle.standardOutput.write(
+                Data("PDRAG \(splitHost.dropSummary) caption=\(splitHost.dropCaptionText)\n".utf8))
+        }
     }
 
     /// One key walks in and out of a project: scoped, `p` restores the whole list; unscoped, it

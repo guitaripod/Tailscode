@@ -27,6 +27,11 @@ final class SplitHost: @unchecked Sendable {
         gtk_widget_set_vexpand(treeBox, 1)
         gtk_overlay_set_child(op(container), treeBox)
         buildDropHighlight()
+        Gtk.onPressHold(
+            treeBox, down: {},
+            up: { [weak self] in
+                Gtk.onMain { [weak self] in self?.settlePointerDrag() }
+            })
         let pane = makePane(layout.focusedPane)
         panes[pane.id] = pane
         rebuild()
@@ -62,6 +67,15 @@ final class SplitHost: @unchecked Sendable {
             leave: { [weak self] in self?.clearDropHighlight() },
             drop: { [weak self] payload, x, y in
                 self?.receiveDrop(payload, on: id, x: x, y: y) ?? false
+            })
+        Gtk.acceptPaneDrops(
+            on: pane.root,
+            motion: { [weak self] payload, x, y in
+                self?.paneDragMoved(over: id, payload: payload, x: x, y: y)
+            },
+            leave: { [weak self] in self?.clearDropHighlight() },
+            drop: { [weak self] payload, x, y in
+                self?.receivePaneDrop(payload, on: id, x: x, y: y) ?? false
             })
         return pane
     }
@@ -157,8 +171,84 @@ final class SplitHost: @unchecked Sendable {
     /// Every pane its fair share, from the keyboard verb or a double click on any divider.
     func equalize() {
         layout.equalize()
-        applyRatios()
+        settleRatios()
         persist()
+    }
+
+    /// The tree laid out in the canvas the panes actually have, which is what the resize verbs
+    /// read their clamps from. Each pane is held to the least room its kind needs, so a key and a
+    /// pointer drag stop at the same line.
+    private func currentPlacement() -> PanePlacement {
+        let size = SplitSize(
+            width: Double(gtk_widget_get_width(treeBox)),
+            height: Double(gtk_widget_get_height(treeBox)))
+        return layout.placement(in: size, stripHeight: 0) { [self] id in
+            guard let pane = panes[id] else { return .zero }
+            return PaneSizing.layoutMinimum(kind: paneKind(pane)).combined(with: Self.paneFloor)
+        }
+    }
+
+    /// This host has no glance face, so a pane is never smaller than a whole conversation:
+    /// every pane root asks for 280 points of width, and the clamp has to stop where the widgets
+    /// stop, not at the smaller minimum a glance would allow.
+    private static let paneFloor = PaneSizing.chatFull
+
+    private func paneKind(_ pane: ChatPane) -> PaneKind {
+        if pane.drawEndpoint != nil { return .draw }
+        if pane.webTarget != nil { return .web }
+        if pane.videoTarget != nil { return .video }
+        if pane.entry != nil || host?.heldSession(for: pane.id) != nil { return .chat }
+        return .empty
+    }
+
+    /// The registered pane chords that act on the tree itself — arrange, promote, rotate, move to
+    /// an edge, resize, cycle — through Core's one dispatcher, so this desktop and the Mac cannot
+    /// mean different things by the same key. A chord with nothing to do (one pane has nothing to
+    /// rotate) is still the tree's, and is spent rather than handed on.
+    @discardableResult
+    func perform(_ action: KeyAction) -> Bool {
+        captureRatios()
+        guard let effect = layout.perform(action, placement: currentPlacement()) else {
+            return true
+        }
+        applyEffect(effect)
+        return true
+    }
+
+    /// Rebuilds the tree as the arrangement a menu row named.
+    func arrange(_ arrangement: SplitArrangement) {
+        captureRatios()
+        guard let effect = layout.choose(arrangement) else { return }
+        applyEffect(effect)
+    }
+
+    /// Redoes only as much of the window as the verb undid and writes the tree down. A verb that
+    /// only moves panes about leaves the keyboard where it is, so the chord can be pressed again;
+    /// one that moves the focus takes the keyboard into the pane it lands on, as a directional
+    /// move does.
+    private func applyEffect(_ effect: SplitVerbEffect) {
+        switch effect {
+        case .restructured:
+            rebuild()
+        case .resized:
+            settleRatios()
+        case .refocused:
+            applyZoomVisibility()
+            applyFocusStyling()
+            activePane.focusTranscript()
+        }
+        host?.focusedPaneChanged()
+        persist()
+    }
+
+    /// A key on a focused divider: the same clamped move the pointer makes, from where the divider
+    /// actually stands.
+    private func moveDivider(_ split: SplitID, by key: DividerKey) -> Bool {
+        captureRatios()
+        guard layout.move(split, by: key, in: currentPlacement()) else { return true }
+        settleRatios()
+        persist()
+        return true
     }
 
     /// Splits `pane` and hands back the fresh pane on the side a drop was aimed at — the highlight
@@ -224,6 +314,48 @@ final class SplitHost: @unchecked Sendable {
         return host?.pane(pane, received: payload, zone: zone) ?? false
     }
 
+    /// The same drag a strip makes, without a pointer — what the headless driver aims with.
+    func hover(_ pane: ChatPane, moving dragged: PaneID, x: Double, y: Double) {
+        paneDragMoved(over: pane.id, payload: PaneMovePayload(pane: dragged).encoded, x: x, y: y)
+    }
+
+    /// A pane dragged over another, followed live: the region it would take is drawn where it
+    /// would be, captioned with the move that letting go would make. Over itself, a pane would
+    /// do nothing, so nothing is drawn.
+    private func paneDragMoved(over id: PaneID, payload: String?, x: Double, y: Double) {
+        guard let pane = panes[id], let payload,
+            let moving = PaneMovePayload.decode(payload), moving.pane != id,
+            layout.contains(moving.pane)
+        else { return clearDropHighlight() }
+        let zone = PaneDropTarget.zone(
+            x: x, y: y, width: Double(gtk_widget_get_width(pane.root)),
+            height: Double(gtk_widget_get_height(pane.root)))
+        showDropHighlight(zone, on: pane, caption: zone.moveVerb)
+    }
+
+    /// A pane let go over another. The zone is read again at the drop, a pane dropped on itself
+    /// or carrying a pane the tree no longer holds changes nothing, and the pane that moved is the
+    /// one that takes the focus.
+    @discardableResult
+    func receivePaneDrop(_ text: String, on id: PaneID, x: Double, y: Double) -> Bool {
+        clearDropHighlight()
+        guard let target = panes[id], let moving = PaneMovePayload.decode(text),
+            layout.contains(moving.pane)
+        else { return false }
+        let zone = PaneDropTarget.zone(
+            x: x, y: y, width: Double(gtk_widget_get_width(target.root)),
+            height: Double(gtk_widget_get_height(target.root)))
+        captureRatios()
+        guard let intent = PaneDropTarget.move(moving.pane, onto: id, zone: zone),
+            layout.apply(intent)
+        else { return false }
+        layout.focus(moving.pane)
+        rebuild()
+        host?.focusedPaneChanged()
+        persist()
+        return true
+    }
+
     /// What the headless driver reads: which pane a drag is over and what letting go would do.
     var dropSummary: String {
         guard let dropZone, let index = layout.paneIDs.firstIndex(of: dropZone.pane) else {
@@ -269,8 +401,7 @@ final class SplitHost: @unchecked Sendable {
         applyZoomVisibility()
         applyFocusStyling()
         applyIdentityStrips()
-        Gtk.onMain { [weak self] in self?.applyRatios() }
-        Gtk.after(120) { [weak self] in self?.applyRatios() }
+        settleRatios()
     }
 
     private func build(_ node: SplitNode) -> UnsafeMutablePointer<GtkWidget> {
@@ -295,8 +426,27 @@ final class SplitHost: @unchecked Sendable {
             Gtk.onPanedHandleDoubleClick(paned) { [weak self] in
                 self?.equalize()
             }
+            Gtk.onDividerKey(paned) { [weak self] key in
+                self?.moveDivider(id, by: key) ?? false
+            }
             splitWidgets[id] = UInt(bitPattern: paned)
             return paned
+        }
+    }
+
+    /// A paned rescales its position in proportion when its own allocation changes, so a ratio
+    /// written now is scaled again by the layout that follows it, and a nested paned only learns
+    /// its allocation a pass after the one above it. Writing the ratios again until a pass finds
+    /// every divider already where the tree says it belongs is what leaves it there.
+    func settleRatios() {
+        applyRatios()
+        settle(attempt: 1)
+    }
+
+    private func settle(attempt: Int) {
+        Gtk.after(60) { [weak self] in
+            guard let self, !self.applyRatios(), attempt < 12 else { return }
+            self.settle(attempt: attempt + 1)
         }
     }
 
@@ -306,14 +456,24 @@ final class SplitHost: @unchecked Sendable {
     /// the outer divider is about to stop having. The tree that has not been allocated yet
     /// reports no extent, which is why this runs on the next idle and once more shortly after a
     /// rebuild.
-    func applyRatios() {
+    /// Whether every divider was already where the tree puts it, so nothing was left to correct.
+    @discardableResult
+    func applyRatios() -> Bool {
         let width = Double(gtk_widget_get_width(treeBox))
         let height = Double(gtk_widget_get_height(treeBox))
-        guard width > 50, height > 50 else { return }
-        applyRatios(layout.root, width: width, height: height)
+        guard width > 50, height > 50 else { return false }
+        var settled = true
+        applyRatios(
+            layout.root, width: width, height: height, placement: currentPlacement(),
+            settled: &settled)
+        describeDividers()
+        return settled
     }
 
-    private func applyRatios(_ node: SplitNode, width: Double, height: Double) {
+    private func applyRatios(
+        _ node: SplitNode, width: Double, height: Double, placement: PanePlacement,
+        settled: inout Bool
+    ) {
         guard case .split(let id, let axis, let ratio, let first, let second) = node,
             let bits = splitWidgets[id],
             let raw = UnsafeMutableRawPointer(bitPattern: bits)
@@ -322,15 +482,20 @@ final class SplitHost: @unchecked Sendable {
         let horizontal = axis == .horizontal
         let extent = horizontal ? width : height
         let handle = handleThickness(of: paned, horizontal: horizontal)
-        let position = ((extent - handle) * ratio).rounded()
+        let position = (placement.divider(id)?.position ?? ((extent - handle) * ratio)).rounded()
+        if gtk_paned_get_position(op(paned)) != Int32(position) { settled = false }
         gtk_paned_set_position(op(paned), Int32(position))
         let remainder = extent - handle - position
         if horizontal {
-            applyRatios(first, width: position, height: height)
-            applyRatios(second, width: remainder, height: height)
+            applyRatios(
+                first, width: position, height: height, placement: placement, settled: &settled)
+            applyRatios(
+                second, width: remainder, height: height, placement: placement, settled: &settled)
         } else {
-            applyRatios(first, width: width, height: position)
-            applyRatios(second, width: width, height: remainder)
+            applyRatios(
+                first, width: width, height: position, placement: placement, settled: &settled)
+            applyRatios(
+                second, width: width, height: remainder, placement: placement, settled: &settled)
         }
     }
 
@@ -353,17 +518,116 @@ final class SplitHost: @unchecked Sendable {
     /// Ratios from positions, on the same slow tick the window's own dividers use —
     /// `notify::position` carries arguments the shim's trampoline cannot marshal, and a ratio
     /// captured a few seconds after the drag is indistinguishable from one captured during it.
+    /// Every position goes through `SplitLayout.drag`, so a pointer that squeezed a pane below its
+    /// minimum is pulled back to the same line a key would have stopped at.
     func captureRatios() {
-        for (id, bits) in splitWidgets {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
+        var squeezed = false
+        for id in layout.splitIDs {
+            guard let bits = splitWidgets[id], let raw = UnsafeMutableRawPointer(bitPattern: bits)
+            else { continue }
             let paned: UnsafeMutablePointer<GtkWidget> = ptr(raw)
             let horizontal =
                 gtk_orientable_get_orientation(op(paned)) == GTK_ORIENTATION_HORIZONTAL
             let extent = horizontal ? gtk_widget_get_width(paned) : gtk_widget_get_height(paned)
             guard extent > 150 else { continue }
-            let position = gtk_paned_get_position(op(paned))
-            layout.setRatio(Double(position) / Double(extent), of: id)
+            let share = Double(gtk_paned_get_position(op(paned)))
+                / (Double(extent) - PaneSizing.gutter)
+            let placement = currentPlacement()
+            guard let divider = placement.divider(id) else {
+                layout.setRatio(share, of: id)
+                continue
+            }
+            let coordinate = share * (divider.parent.extent(along: divider.axis) - PaneSizing.gutter)
+            layout.drag(id, to: coordinate, in: placement)
+            if coordinate < divider.lowest - 1 || coordinate > divider.highest + 1 {
+                squeezed = true
+            }
         }
+        if squeezed { settleRatios() }
+    }
+
+    /// A pointer let go somewhere in the tree: whatever it did to a divider is read back now,
+    /// through the same clamp a key goes through, rather than at the next slow tick.
+    private func settlePointerDrag() {
+        captureRatios()
+        persist()
+    }
+
+    /// Each divider introduces itself to assistive technology: which two panes it divides, and its
+    /// position as a value between its extremes with the same wording on both desktops.
+    func describeDividers() {
+        let placement = currentPlacement()
+        for (id, bits) in splitWidgets {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits),
+                let divider = placement.divider(id), let sides = layout.sides(of: id)
+            else { continue }
+            let paned: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            Gtk.describeDivider(
+                paned, label: dividerLabel(sides), minimum: divider.lowest,
+                maximum: divider.highest, now: divider.position,
+                text: DividerReading.value(divider))
+        }
+    }
+
+    private func dividerLabel(_ sides: (first: [PaneID], second: [PaneID])) -> String {
+        func names(_ ids: [PaneID]) -> [String] {
+            ids.map { id in
+                let name = panes[id]?.identityName ?? ""
+                return name.isEmpty ? Localized.text("Pane") : name
+            }
+        }
+        return DividerReading.label(first: names(sides.first), second: names(sides.second))
+    }
+
+    /// What the driver reads for divider `index` in reading order: the toolkit's own record of its
+    /// role, label and value against what they should be.
+    func dividerSummary(_ index: Int) -> String {
+        let placement = currentPlacement()
+        let ids = layout.splitIDs
+        guard ids.indices.contains(index), let bits = splitWidgets[ids[index]],
+            let raw = UnsafeMutableRawPointer(bitPattern: bits),
+            let divider = placement.divider(ids[index]), let sides = layout.sides(of: ids[index])
+        else { return "-" }
+        let paned: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+        let reading = Gtk.dividerReading(
+            paned, label: dividerLabel(sides), minimum: divider.lowest, maximum: divider.highest,
+            now: divider.position)
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        gtk_widget_measure(paned, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural, nil, nil)
+        return String(
+            format: "%d pos=%.0f gtk=%d w=%d min=%d nat=%d range=%.0f...%.0f %@ \"%@\"", index,
+            divider.position, gtk_paned_get_position(op(paned)), gtk_widget_get_width(paned),
+            minimum, natural, divider.lowest, divider.highest, reading, dividerLabel(sides))
+    }
+
+    /// A key on divider `index` without a keyboard: it takes focus and moves as a key would move it.
+    func driveDivider(_ index: Int, key: DividerKey) -> Bool {
+        let ids = layout.splitIDs
+        guard ids.indices.contains(index) else { return false }
+        _ = focusDivider(index)
+        return moveDivider(ids[index], by: key)
+    }
+
+    /// The size of the area the tree fills, for the driver.
+    var canvasSummary: String {
+        "\(gtk_widget_get_width(treeBox))x\(gtk_widget_get_height(treeBox))"
+    }
+
+    /// The words on the highlight a drag is showing, for the driver.
+    var dropCaptionText: String {
+        guard dropZone != nil, let text = gtk_label_get_text(op(dropCaption)) else { return "-" }
+        return String(cString: text)
+    }
+
+    /// Moves keyboard focus onto divider `index`, as pressing on it does.
+    func focusDivider(_ index: Int) -> Bool {
+        let ids = layout.splitIDs
+        guard ids.indices.contains(index), let bits = splitWidgets[ids[index]],
+            let raw = UnsafeMutableRawPointer(bitPattern: bits)
+        else { return false }
+        let paned: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+        return Gtk.focusDivider(paned)
     }
 
     /// Where each divider sits in `reference`'s coordinates, so the driver can aim a real pointer

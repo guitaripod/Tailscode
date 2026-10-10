@@ -1,6 +1,7 @@
 import CAdw
 import CGtkShim
 import Foundation
+import TailscodeCore
 
 /// The thin layer between Swift and GTK: signal connection, marshalling back onto the GLib main
 /// context, and the casts every call needs. Everything above this file talks in Swift terms.
@@ -154,6 +155,79 @@ enum Gtk {
             Unmanaged<Box>.fromOpaque(raw).takeUnretainedValue().work()
         }
         tailscode_on_paned_handle_double_click(paned, callback, box)
+    }
+
+    /// What a key pressed on a focused divider asks for, in Core's words.
+    static func dividerKey(_ key: Int32, large: Bool) -> DividerKey? {
+        switch key {
+        case 0: return .back(large: large)
+        case 1: return .forward(large: large)
+        case 2: return .lowest
+        case 3: return .highest
+        default: return nil
+        }
+    }
+
+    final class DividerKeyBox: @unchecked Sendable {
+        let handler: @Sendable (DividerKey) -> Bool
+
+        init(_ handler: @escaping @Sendable (DividerKey) -> Bool) {
+            self.handler = handler
+        }
+    }
+
+    /// A focused divider answers the arrow keys, Home and End, and says whether it used the key.
+    static func onDividerKey(
+        _ paned: UnsafeMutablePointer<GtkWidget>,
+        _ handler: @escaping @Sendable (DividerKey) -> Bool
+    ) {
+        _ = releaseInstalled
+        let box = Unmanaged.passRetained(DividerKeyBox(handler)).toOpaque()
+        let callback: @convention(c) (Int32, Int32, UnsafeMutableRawPointer?) -> gboolean = {
+            key, large, raw in
+            guard let raw, let divider = Gtk.dividerKey(key, large: large != 0) else { return 0 }
+            let box = Unmanaged<DividerKeyBox>.fromOpaque(raw).takeUnretainedValue()
+            return box.handler(divider) ? 1 : 0
+        }
+        tailscode_paned_handle_keys(paned, callback, box)
+    }
+
+    /// Whether `keyval` is a key a focused divider answers — an arrow, Home or End with no
+    /// control, alt or super — while focus sits on one, so the window's own keys, which would hand
+    /// it to whatever pane is active, step aside.
+    static func dividerOwnsKey(
+        _ keyval: UInt32, state: UInt32, in window: UnsafeMutablePointer<GtkWidget>
+    ) -> Bool {
+        let keys: Set<UInt32> = [
+            Keymap.up, Keymap.down, 0xFF51, 0xFF53, 0xFF50, 0xFF57,
+        ]
+        guard keys.contains(keyval), state & (KeyChord.controlMask | KeyChord.altMask) == 0
+        else { return false }
+        return tailscode_focus_on_divider(window) != 0
+    }
+
+    /// The divider introduces itself: the two panes it divides, and where it stands.
+    static func describeDivider(
+        _ paned: UnsafeMutablePointer<GtkWidget>, label: String, minimum: Double, maximum: Double,
+        now: Double, text: String
+    ) {
+        tailscode_paned_describe(paned, label, minimum, maximum, now, text)
+    }
+
+    static func focusDivider(_ paned: UnsafeMutablePointer<GtkWidget>) -> Bool {
+        tailscode_paned_focus_handle(paned) != 0
+    }
+
+    /// What the toolkit's accessibility layer holds for a divider, against what was meant.
+    static func dividerReading(
+        _ paned: UnsafeMutablePointer<GtkWidget>, label: String, minimum: Double, maximum: Double,
+        now: Double
+    ) -> String {
+        guard let raw = tailscode_paned_reading(paned, label, minimum, maximum, now) else {
+            return "-"
+        }
+        defer { g_free(raw) }
+        return String(cString: raw)
     }
 
     /// A right click (or long-press equivalent the desktop maps to it) on any widget, with where
@@ -410,6 +484,43 @@ enum Gtk {
         leave: @escaping @Sendable () -> Void,
         drop: @escaping @Sendable (String, Double, Double) -> Bool
     ) {
+        attachDrops(
+            tailscode_accept_chat_drops, to: widget, motion: motion, leave: leave, drop: drop)
+    }
+
+    /// Makes `widget` (a pane's identity strip) a pane the pointer can pick up and carry to
+    /// another pane, under a type of its own that no chat target and no text field accepts.
+    static func makePaneDragSource(
+        _ widget: UnsafeMutablePointer<GtkWidget>, payload: String
+    ) {
+        tailscode_make_pane_drag_source(widget, payload)
+    }
+
+    /// A dragged pane over `widget`, reported exactly as a dragged chat is.
+    static func acceptPaneDrops(
+        on widget: UnsafeMutablePointer<GtkWidget>,
+        motion: @escaping @Sendable (String?, Double, Double) -> Void,
+        leave: @escaping @Sendable () -> Void,
+        drop: @escaping @Sendable (String, Double, Double) -> Bool
+    ) {
+        attachDrops(
+            tailscode_accept_pane_drops, to: widget, motion: motion, leave: leave, drop: drop)
+    }
+
+    private typealias DropAttacher = @convention(c) (
+        UnsafeMutablePointer<GtkWidget>?,
+        (@convention(c) (UnsafePointer<CChar>?, Double, Double, UnsafeMutableRawPointer?) -> Void)?,
+        (@convention(c) (UnsafeMutableRawPointer?) -> Void)?,
+        (@convention(c) (UnsafePointer<CChar>?, Double, Double, UnsafeMutableRawPointer?) -> gboolean)?,
+        UnsafeMutableRawPointer?
+    ) -> Void
+
+    private static func attachDrops(
+        _ attach: DropAttacher, to widget: UnsafeMutablePointer<GtkWidget>,
+        motion: @escaping @Sendable (String?, Double, Double) -> Void,
+        leave: @escaping @Sendable () -> Void,
+        drop: @escaping @Sendable (String, Double, Double) -> Bool
+    ) {
         let box = Unmanaged.passRetained(ChatDropBox(motion: motion, leave: leave, drop: drop))
             .toOpaque()
         let onMotion:
@@ -430,7 +541,7 @@ enum Gtk {
                 let box = Unmanaged<ChatDropBox>.fromOpaque(raw).takeUnretainedValue()
                 return box.drop(String(cString: payload), x, y) ? 1 : 0
             }
-        tailscode_accept_chat_drops(widget, onMotion, onLeave, onDrop, box)
+        attach(widget, onMotion, onLeave, onDrop, box)
     }
 
     final class ChatDropBox: @unchecked Sendable {
