@@ -288,4 +288,18 @@ struct StudioSheetTests {
         #expect(!StudioSheetWords.closeLabel.isEmpty)
         #expect(!StudioSheetWords.escapeHint.isEmpty)
     }
+
+    @Test func aSheetOverASheetSitsFurtherInOnTheTopAndBothSides() {
+        let rest = StudioSheetGeometry.frame(windowWidth: 1440, windowHeight: 900, titlebar: 52)
+        let over = StudioSheetGeometry.frame(windowWidth: 1440, windowHeight: 900, titlebar: 52, depth: 1)
+        #expect(over.y == rest.y + StudioSheetMetrics.stackInset)
+        #expect(over.x == rest.x + StudioSheetMetrics.stackInset)
+        #expect(over.width == rest.width - 2 * StudioSheetMetrics.stackInset)
+        #expect(over.height == rest.height - StudioSheetMetrics.stackInset)
+        #expect(over.bottomInset == 0)
+        let deeper = StudioSheetGeometry.frame(windowWidth: 1440, windowHeight: 900, titlebar: 52, depth: 9)
+        #expect(deeper == over, "depth never passes the stack's maximum")
+        let negative = StudioSheetGeometry.frame(windowWidth: 1440, windowHeight: 900, titlebar: 52, depth: -3)
+        #expect(negative == rest)
+    }
 }

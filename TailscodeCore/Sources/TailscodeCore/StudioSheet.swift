@@ -27,6 +27,11 @@ public enum StudioSheetMetrics {
     public static let cornerRadius: Double = 14
     /// Height of the toolbar the sheet carries inside itself, there being no title bar to borrow.
     public static let toolbarHeight: Double = 44
+    /// How much further in, on the top and each side, a sheet opened over another sits for every
+    /// level it is stacked, so the one beneath still shows its edge above it.
+    public static let stackInset: Double = 12
+    /// How many sheets may stand on one another — the Studio, and a viewer opened from it.
+    public static let maximumDepth = 2
 }
 
 /// Where the sheet sits inside the window, in points, measured from the window's top-left so a
@@ -52,15 +57,18 @@ public enum StudioSheetGeometry {
     /// The top inset keeps the title bar (traffic lights, chat title) in view, plus a seam of
     /// `StudioSheetMetrics.titlebarGap` in a window at least 720 tall; the sides are 24, or 0 under
     /// 700 of width; above 1800 the sheet caps at 1752 and centres; the bottom is flush. A window
-    /// shorter than the top inset gets a sheet of no height rather than a negative one.
-    public static func frame(windowWidth: Double, windowHeight: Double, titlebar: Double)
-        -> StudioSheetFrame
-    {
+    /// shorter than the top inset gets a sheet of no height rather than a negative one. A sheet at
+    /// `depth` 1 — the media viewer opened over the Studio — sits `stackInset` further in on the top
+    /// and both sides, so the sheet beneath still shows an edge; depth never passes `maximumDepth - 1`.
+    public static func frame(
+        windowWidth: Double, windowHeight: Double, titlebar: Double, depth: Int = 0
+    ) -> StudioSheetFrame {
         let width = finite(windowWidth)
         let height = finite(windowHeight)
         let bar = finite(titlebar)
         let gap = height >= StudioSheetMetrics.gapMinimumHeight ? StudioSheetMetrics.titlebarGap : 0
-        let top = max(StudioSheetMetrics.minimumTopInset, bar + gap)
+        let level = Double(max(0, min(depth, StudioSheetMetrics.maximumDepth - 1)))
+        let top = max(StudioSheetMetrics.minimumTopInset, bar + gap) + level * StudioSheetMetrics.stackInset
         let sheetWidth: Double
         let side: Double
         if width < StudioSheetMetrics.narrowWidth {
@@ -73,9 +81,12 @@ public enum StudioSheetGeometry {
             side = StudioSheetMetrics.sideInset
             sheetWidth = width - 2 * side
         }
+        let inset = level * StudioSheetMetrics.stackInset
+        let leftInset = side + inset
+        let width2 = max(0, sheetWidth - 2 * inset)
         return StudioSheetFrame(
-            x: side, y: top, width: sheetWidth, height: max(0, height - top),
-            topInset: top, leftInset: side, rightInset: side, bottomInset: 0,
+            x: leftInset, y: top, width: width2, height: max(0, height - top),
+            topInset: top, leftInset: leftInset, rightInset: leftInset, bottomInset: 0,
             cornerRadius: StudioSheetMetrics.cornerRadius)
     }
 
