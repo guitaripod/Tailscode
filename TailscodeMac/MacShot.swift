@@ -243,20 +243,17 @@ enum MacShot {
         guard let toolbar = window.toolbar, toolbar.identifier == "studio.toolbar",
             let frame = window.contentView?.superview
         else { return }
+        StudioWindowController.shared.windowDidBecomeKey(
+            Notification(name: NSWindow.didBecomeKeyNotification, object: window))
         let views = toolbar.items.compactMap(\.view)
         toolbar.isVisible = false
         let bar: CGFloat = 52
         let edge: CGFloat = 16
         var leading = 96.0
         var trailing = frame.bounds.width - edge
-        for view in views.reversed() {
-            let leads = view is NSSegmentedControl
-            if let button = view as? NSButton {
-                button.attributedTitle = NSAttributedString(
-                    string: button.title,
-                    attributes: [.font: button.font ?? NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor])
-            }
-            let view: NSView = (view as? NSSegmentedControl).map(SegmentsStandIn.init) ?? view
+        for original in views.reversed() {
+            let leads = original is NSSegmentedControl
+            let view = standIn(for: original)
             view.removeFromSuperview()
             view.invalidateIntrinsicContentSize()
             let natural = view.intrinsicContentSize
@@ -285,6 +282,12 @@ enum MacShot {
                 view.setFrameOrigin(NSPoint(x: view.frame.minX - 6, y: view.frame.minY))
             }
         }
+    }
+
+    private static func standIn(for view: NSView) -> NSView {
+        if let control = view as? NSSegmentedControl { return SegmentsStandIn(control) }
+        if let button = view as? NSButton { return CapsuleStandIn(button) }
+        return view
     }
 
     /// A label measured for one font and drawn in another is cut with an ellipsis a few points
@@ -367,5 +370,36 @@ private final class SegmentsStandIn: NSView {
                 at: NSPoint(x: cell.midX - size.width / 2, y: cell.midY - size.height / 2),
                 withAttributes: attributes)
         }
+    }
+}
+
+/// A toolbar button without its material: a capsule and the title, since a bordered button's fill is
+/// glass and a bitmap leaves it empty.
+@MainActor
+private final class CapsuleStandIn: NSView {
+    private let title: String
+    private let attributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.labelColor,
+    ]
+
+    init(_ button: NSButton) {
+        title = button.title
+        super.init(frame: .zero)
+        let text = (title as NSString).size(withAttributes: attributes)
+        setFrameSize(NSSize(width: ceil(text.width) + 28, height: 28))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize { frame.size }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.1).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        let text = (title as NSString).size(withAttributes: attributes)
+        (title as NSString).draw(
+            at: NSPoint(x: bounds.midX - text.width / 2, y: bounds.midY - text.height / 2),
+            withAttributes: attributes)
     }
 }

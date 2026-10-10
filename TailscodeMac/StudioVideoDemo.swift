@@ -46,7 +46,8 @@ enum StudioVideoDemo {
             let recipe = board.recipe
             let landed = ForgeEntry(
                 id: ForgeDemo.promptID, recipe: recipe, asset: ForgeDemo.asset, finishedAt: Date())
-            board.filled(history: [landed] + ForgeDemo.history(recipe))
+            let kept = [landed] + ForgeDemo.history(recipe)
+            board.filled(history: environment("TAILSCODE_VIDEO_CLEAN") == nil ? kept : kept.filter { $0.asset != nil })
             clip = clipFile()
         case "missing":
             board = ForgeDemo.board("history")
@@ -79,20 +80,48 @@ enum StudioVideoDemo {
     }
 
     /// A small copy of each kept clip's first frame, for a machine that exists only here. The clip
-    /// that just landed has none: its poster is read from the clip itself, which is what plays.
+    /// that just landed has none: its poster is read from the clip itself, which is what plays —
+    /// unless a folder of posters is named, which then supplies every one, the landed clip's too.
     private static func seedPosters(for board: ForgeBoard) {
         for (index, entry) in board.history.enumerated() {
-            guard let asset = entry.asset, asset != ForgeDemo.asset else { continue }
+            guard let asset = entry.asset else { continue }
+            let key = MacClipPosters.key(for: asset, host: ForgeDemo.host)
+            if let named = pictureFor(entry: entry) {
+                MacClipPosters.seed(named, key: key)
+                continue
+            }
+            guard asset != ForgeDemo.asset else { continue }
             let image = StudioDemo.bokeh(seed: index + 1, width: 256, height: 141)
             MacClipPosters.seed(
                 NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)),
-                key: MacClipPosters.key(for: asset, host: ForgeDemo.host))
+                key: key)
         }
+    }
+
+    /// A debug build's override, `TAILSCODE_VIDEO_CLIP` for the clip that plays and
+    /// `TAILSCODE_VIDEO_POSTERS` for a folder of `<entry id>.png` posters, so a picture of the demo
+    /// world can wear real pictures instead of drawn light.
+    private static func environment(_ name: String) -> String? {
+        #if DEBUG
+            return ProcessInfo.processInfo.environment[name].flatMap { $0.isEmpty ? nil : $0 }
+        #else
+            return nil
+        #endif
+    }
+
+    private static func pictureFor(entry: ForgeEntry) -> NSImage? {
+        guard let folder = environment("TAILSCODE_VIDEO_POSTERS") else { return nil }
+        return NSImage(contentsOfFile: (folder as NSString).appendingPathComponent("\(entry.id).png"))
     }
 
     /// One second of drifting light, written once to a file the stage can play: the demo's only clip,
     /// whichever shelf tile is chosen.
     private static func clipFile() -> URL? {
+        if let named = environment("TAILSCODE_VIDEO_CLIP"),
+            FileManager.default.fileExists(atPath: named)
+        {
+            return URL(fileURLWithPath: named)
+        }
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("tailscode-studio-demo", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
