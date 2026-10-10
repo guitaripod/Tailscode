@@ -395,6 +395,7 @@ final class ImageLane: StudioLane {
     }
 
     private func open(_ exhibit: StudioExhibit) {
+        let studio = self.studio
         var items: [ImageViewer.Item] = studio.slot.pictures.map {
             ImageViewer.Item(
                 key: Self.viewerKey($0.remoteName ?? $0.path), name: studio.fileName(of: .made($0)),
@@ -406,7 +407,6 @@ final class ImageLane: StudioLane {
                     key: Self.viewerKey(item.id), name: studio.fileName(of: exhibit),
                     reference: FileReference(path: item.id)), at: 0)
         }
-        let studio = self.studio
         ImageViewer.present(
             items: items, startKey: Self.viewerKey(exhibit.id), host: imageStage.window,
             fetch: { [weak studio] reference, key in
