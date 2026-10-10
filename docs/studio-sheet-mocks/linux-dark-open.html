@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Studio sheet — Linux dark, open</title>
+<style>
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,system-ui,sans-serif}
+.win{position:relative;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.14),0 30px 80px rgba(0,0,0,.5),0 6px 18px rgba(0,0,0,.35);background:var(--canvas)}
+.win.light{box-shadow:0 0 0 1px rgba(0,0,0,.18),0 30px 80px rgba(20,30,40,.30),0 6px 18px rgba(20,30,40,.18)}
+.chat{position:absolute;inset:0;overflow:hidden}
+.scrim{position:absolute;inset:0}
+.sheet{position:absolute;overflow:hidden;background:var(--canvas)}
+.ghost{position:absolute;border:1.5px dashed #ffd24a;pointer-events:none;z-index:5}
+.win svg.ov{position:absolute;left:0;top:0;pointer-events:none;z-index:40;overflow:visible}
+.lights{position:absolute;left:18.5px;top:19px;display:flex;gap:9px;z-index:30}.lights i{display:block;width:14px;height:14px;border-radius:50%;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.28)}
+
+.studio{position:absolute;overflow:hidden;background:var(--canvas);color:var(--ink);font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;font-size:12.5px;-webkit-font-smoothing:antialiased}
+.studio *{box-sizing:border-box}
+.studio .tb{position:absolute;left:0;top:0;width:100%;background:var(--bar)}
+.studio .seg{position:absolute;left:16px;top:8px;height:28px;width:148px;border-radius:14px;background:var(--chip);display:flex;padding:2px}
+.studio .seg span{flex:1;display:flex;align-items:center;justify-content:center;font-weight:500;color:var(--ink2);border-radius:12px}
+.studio .seg span.on{background:var(--segOn);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.studio .pill{position:absolute;left:50%;top:7px;transform:translateX(-50%);height:30px;padding:0 14px;border-radius:15px;background:var(--chip);display:flex;align-items:center;gap:7px;white-space:nowrap;font-variant-numeric:tabular-nums;box-shadow:inset 0 0 0 1px var(--line)}
+.studio .pill b{font-weight:600}.studio .pill .m{color:var(--ink2);font-size:12px}.studio .pill .sep{color:var(--ink3)}.studio .pill em{font-style:normal;color:var(--ink3);display:flex}
+.studio .dot{width:8px;height:8px;border-radius:50%;background:var(--dot);flex:none}
+.studio .tbr{position:absolute;right:14px;top:7px;height:30px;display:flex;align-items:center;gap:12px}
+.studio .q{color:var(--ink2);font-size:12px;font-variant-numeric:tabular-nums}
+.studio .done{height:28px;padding:0 15px;border-radius:14px;background:var(--chipb);display:flex;align-items:center;font-weight:600}
+.studio .body{position:absolute;left:0;width:100%;overflow:hidden}
+.studio .stage{position:absolute;background:var(--stage);border-radius:16px;box-shadow:inset 0 0 0 1px var(--line)}
+.studio .cap{position:absolute;top:10px;height:18px;text-align:center;font-size:12px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.studio .pic{position:absolute;border-radius:12px;object-fit:cover;display:block}
+.studio .verbs{position:absolute;transform:translateX(-50%);height:36px;border-radius:18px;display:flex;align-items:center;padding:0 6px;gap:1px;background:var(--cap);box-shadow:inset 0 0 0 1px var(--capLine),var(--shadow);font-weight:500;white-space:nowrap}
+.studio .verbs .v{height:28px;padding:0 11px;display:flex;align-items:center;gap:6px;border-radius:14px}
+.studio .verbs .v.hi{background:var(--accent);color:var(--onAccent);font-weight:600}.studio .verbs .v.bad{color:var(--danger)}
+.studio .rail{position:absolute}.studio .rl{position:absolute;left:14px;top:8px;font-size:10.5px;letter-spacing:.08em;font-weight:600;color:var(--ink3)}
+.studio .tile{position:absolute;width:88px;height:88px;border-radius:14px;object-fit:cover;display:block}
+.studio .tile.sel{box-shadow:0 0 0 2px var(--canvas),0 0 0 4px var(--accent)}
+.studio .strip{position:absolute;overflow:hidden;border-radius:14px;background:var(--chip)}
+.studio .tile.s{width:72px;height:72px;border-radius:11px}
+.studio .dock{position:absolute;border-radius:20px;background:var(--dock);box-shadow:inset 0 0 0 1px var(--dockLine),var(--shadow)}
+.studio .dock>*{position:absolute}
+.studio .start{width:56px;height:56px;border-radius:12px;border:1.5px dashed var(--ink3);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink3);gap:1px}
+.studio .start small{font-size:9.5px;white-space:nowrap}
+.studio .field{border-radius:12px;box-shadow:inset 0 0 0 1px var(--fieldLine);background:var(--field);padding:9px 12px;font-size:14px;line-height:1.3;overflow:hidden}
+.studio .field span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.studio .enh{position:absolute;right:8px;bottom:6px;height:24px;padding:0 9px;border-radius:12px;background:var(--chipb);display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500}
+.studio .gen{height:44px;border-radius:22px;background:var(--accent);color:var(--onAccent);display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:13px}
+.studio .gen small{font-size:10.5px;opacity:.8;font-weight:500}
+.studio .setbtn{height:32px;border-radius:16px;background:var(--chipb);display:flex;align-items:center;justify-content:center;gap:7px;font-weight:500}
+.studio .chips{height:28px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.studio .chip{height:28px;padding:0 11px;border-radius:14px;background:var(--chip);display:flex;align-items:center;gap:5px;font-weight:500}
+.studio .chip i{font-style:normal;color:var(--ink3);font-weight:400}.studio .chip b{font-weight:500}.studio .chip em{font-style:normal;color:var(--ink3);display:flex}
+.studio .est{margin-left:auto;color:var(--ink3);font-size:11.5px}
+.studio.linux{font-family:"JetBrains Mono","IBM Plex Mono","SF Mono",Menlo,monospace;font-size:11.5px}
+.studio.linux .seg{border-radius:4px;width:128px;background:transparent;box-shadow:inset 0 0 0 1px var(--line);padding:0;top:9px;height:26px}
+.studio.linux .seg span{border-radius:3px}.studio.linux .seg span.on{background:var(--segOn);box-shadow:none}
+.studio.linux .pill{border-radius:999px;top:8px;height:28px;background:var(--field);gap:6px;font-size:11.5px}
+.studio.linux .done{border-radius:4px;background:transparent;box-shadow:inset 0 0 0 1px var(--capLine);height:26px;font-weight:500}
+.studio.linux .stage{border-radius:10px;box-shadow:none}
+.studio.linux .pic{border-radius:6px}
+.studio.linux .verbs{border-radius:999px;height:34px;font-weight:400;box-shadow:inset 0 0 0 1px var(--capLine)}
+.studio.linux .verbs .v{border-radius:999px;height:26px;padding:0 9px}
+.studio.linux .rl{font-size:11.5px;letter-spacing:0;font-weight:400;color:var(--ink2);text-transform:none}
+.studio.linux .tile{border-radius:6px}.studio.linux .tile.sel{box-shadow:0 0 0 2px var(--accent)}
+.studio.linux .dock{border-radius:10px;box-shadow:inset 0 0 0 1px var(--dockLine)}
+.studio.linux .start{border-radius:6px}.studio.linux .field{border-radius:6px;font-size:13px}
+.studio.linux .enh{border-radius:999px;font-size:11px;background:var(--chip)}
+.studio.linux .gen{border-radius:999px;height:42px;font-weight:500;font-size:12.5px}
+.studio.linux .chip{border-radius:999px;font-size:11.5px;background:var(--chip);box-shadow:inset 0 0 0 1px var(--line)}
+.studio.linux .chip b{font-weight:700}
+
+
+html,body{background:#17171b}
+#frame{position:relative;width:2032px;height:1192px;background:#17171b}
+#frame>.win{position:absolute;left:56px;top:56px}
+
+</style></head><body><div id="frame"><div class="win linux dark" style="width:1920px;height:1080px;border-radius:10px;--canvas:#0e1b2a;--stage:#0b1622;--bar:#0e1b2a;--ink:#d5dce6;--ink2:rgba(213,220,230,.72);--ink3:rgba(213,220,230,.46);--line:#24374d;--chip:#16263a;--chipb:#1d3048;--segOn:#1d3048;--dock:#14233a;--dockLine:#24374d;--field:#0a1521;--fieldLine:#2f6a58;--accent:#4fd6a0;--onAccent:#052418;--danger:#ff8a94;--cap:#142236;--capLine:#2b4058;--dot:#4fd6a0;--shadow:none">
+      <div class="chat"><img src="assets/desk-dark-chat.jpg" style="position:absolute;left:0;top:0;width:1920px;height:1080px"></div>
+      <div class="scrim" style="background:rgba(0,0,0,0.38)"></div>
+      
+      <div class="sheet" style="left:84px;top:61px;width:1752px;height:1019px;border-radius:8px 8px 0 0;"><div class="studio linux dark" style="width:1752px;height:1019px">
+    <div class="tb" style="height:44px"><div class="seg"><span class="on">image</span><span>video</span></div><div class="pill"><i class="dot"></i>arch<span class="sep">·</span>Quality ready<span class="sep">·</span>ComfyUI 0.36.0 <em>▾</em></div><div class="tbr"><span class="q">queue 0</span><span class="done">Done</span></div></div>
+    <div class="body" style="top:44px;height:975px">
+      <div class="stage" style="left:12px;top:4px;width:1624px;height:819px">
+        <div class="cap" style="width:1576px;left:24px">a lighthouse on a cliff at dusk, waves breaking below, last light on the lamp room · Qwen · 1728×1152 · 25 steps · #2477689473 · Today</div>
+      </div>
+      <img class="pic" src="assets/lighthouse.jpg" style="left:254.75px;top:40px;width:1138.5px;height:759px">
+      <div class="verbs" style="left:824px;top:775px"><span class="v"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Save…</span><span class="v"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9h11v11H9zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>Copy</span><span class="v"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>Open</span><span class="v hi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0 1 14.8-3.4L23 10M1 14l4.7 4.4A9 9 0 0 0 20.5 15"/></svg>Again</span><span class="v"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Use as reference</span><span class="v"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4l13 8-13 8z"/></svg>Animate this</span></div>
+      <div class="rail" style="left:1640px;top:0;width:112px;height:975px">
+         <div class="rl">On arch</div>
+         <img class="tile sel" src="assets/shelf-1.jpg" style="left:12px;top:32px"><img class="tile" src="assets/shelf-2.jpg" style="left:12px;top:128px"><img class="tile" src="assets/shelf-3.jpg" style="left:12px;top:224px"><img class="tile" src="assets/shelf-4.jpg" style="left:12px;top:320px"><img class="tile" src="assets/shelf-5.jpg" style="left:12px;top:416px"><img class="tile" src="assets/shelf-6.jpg" style="left:12px;top:512px"><img class="tile" src="assets/shelf-7.jpg" style="left:12px;top:608px"><img class="tile" src="assets/shelf-8.jpg" style="left:12px;top:704px"><img class="tile" src="assets/shelf-1.jpg" style="left:12px;top:800px"><img class="tile" src="assets/shelf-2.jpg" style="left:12px;top:896px"><img class="tile" src="assets/shelf-3.jpg" style="left:12px;top:992px">
+       </div>
+      <div class="dock" style="left:12px;top:835px;width:1624px;height:124px"><div class="start" style="left:14px;top:14px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><small>Start from</small></div>
+       <div class="field" style="left:84px;top:14px;width:1364px;height:56px"><span>a lighthouse on a cliff at dusk, waves breaking below, last light on the lamp room</span>
+         <div class="enh">✦ Enhance ▾</div></div>
+       <div class="gen" style="left:1460px;top:20px;width:150px">Generate <small>⌘↩</small></div>
+       <div class="chips" style="left:14px;top:82px;width:1596px"><span class="chip"><i>Engine</i><b>Quality</b><em>▾</em></span><span class="chip"><i>Aspect</i><b>3:2</b><em>▾</em></span><span class="chip"><i>Size</i><b>2 MP</b><em>▾</em></span><span class="chip"><i>Detail</i><b>Standard</b><em>▾</em></span><span class="chip"><b>Cutout</b></span><span class="chip"><i>Avoid</i><b>…</b><em>▾</em></span><span class="chip"><i>Seed</i><b>rolls</b></span><span class="chip"><b>Add a reference</b><em>▾</em></span><span class="chip"><b>How to describe a picture</b><em>▾</em></span><span class="est"></span></div></div>
+    </div>
+  </div></div>
+      
+      
+    </div></div></body></html>
