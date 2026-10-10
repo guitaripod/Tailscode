@@ -62,11 +62,16 @@ mock_stop() {
 mock_start() {
     mock_stop
     sleep 0.5
-    (cd "$T/scripts" && MOCK_OUTPUT=$T/mockout MOCK_RESULTS=${1:-studio/01-lighthouse.png} MOCK_PORT=$MOCK_PORT \
-        MOCK_RENDER_SECONDS=14 MOCK_PAUSE_AT_STEP=15 setsid python3 mock-comfyui.py >"$T/mock.log" 2>&1 &
-        echo $! >"$T/mock.pid")
+    (
+        cd "$T/scripts"
+        MOCK_OUTPUT=$T/mockout MOCK_RESULTS=${1:-studio/01-lighthouse.png} MOCK_PORT=$MOCK_PORT \
+            MOCK_RENDER_SECONDS=14 MOCK_PAUSE_AT_STEP=15 setsid python3 mock-comfyui.py >"$T/mock.log" 2>&1 &
+        echo $! >"$T/mock.pid"
+    )
     sleep 1
     head -4 "$T/mock.log"
+    grep -q "Address already in use" "$T/mock.log" && { echo "port $MOCK_PORT is held by a mock this script did not start" >&2; return 1; }
+    return 0
 }
 
 shelf_order() {
