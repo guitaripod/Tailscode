@@ -37,6 +37,12 @@ final class TranscriptViewController: NSViewController {
     var onDragUpdated: ((NSDraggingInfo) -> NSDragOperation)?
     var onDragExited: (() -> Void)?
     var onDragPerform: ((NSDraggingInfo) -> Bool)?
+    /// What dragging this pane's identity strip carries, set by the tiling host that knows which
+    /// pane this is.
+    var paneMovePayload: (() -> PaneMovePayload?)?
+    /// What the strip says without its activity glyph: the name a divider gives this pane when it
+    /// introduces itself to a screen reader.
+    var paneName: String { identityLabel.stringValue }
 
     private let scrollView = NSScrollView()
     private let canvas = TranscriptViewController.page()
@@ -338,7 +344,8 @@ final class TranscriptViewController: NSViewController {
         identityLabel.textColor = MacTheme.Color.onGlassSecondary
         identityLabel.lineBreakMode = .byTruncatingMiddle
         identityLabel.setContentCompressionResistancePriority(.init(300), for: .horizontal)
-        let strip = NSStackView(views: [identityLabel])
+        let strip = PaneStripView(views: [identityLabel])
+        strip.payload = { [weak self] in self?.paneMovePayload?() }
         strip.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.xs, left: MacTheme.Spacing.s, bottom: MacTheme.Spacing.xs,
             right: MacTheme.Spacing.s)
@@ -4254,11 +4261,17 @@ private final class DropForwardingView: NSView {
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        owner?.onDragEntered?(sender) == true ? .copy : []
+        owner?.onDragEntered?(sender) == true ? operation(for: sender) : []
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        owner?.onDragUpdated?(sender) ?? []
+        guard let accepted = owner?.onDragUpdated?(sender), !accepted.isEmpty else { return [] }
+        return operation(for: sender)
+    }
+
+    /// A pane in flight moves; a chat in flight is opened where it lands, which AppKit spells copy.
+    private func operation(for sender: any NSDraggingInfo) -> NSDragOperation {
+        sender.draggingPasteboard.types?.contains(.tailscodePane) == true ? .move : .copy
     }
 
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {

@@ -471,6 +471,19 @@ final class MainWindowController: NSWindowController {
         Self.boundChord(for: action, in: shortcuts)
     }
 
+    /// The keys a shortcut is on right now, overrides included, spelled as the cheatsheet spells
+    /// them — what a menu item shows for a verb whose binding is a sequence.
+    func shortcutKeys(for id: String) -> String? {
+        let keys = shortcuts.effective[id] ?? []
+        return keys.isEmpty ? nil : keys.joined(separator: " / ")
+    }
+
+    /// Rebuilds the panes as the arrangement a menu item named.
+    func arrangeSplits(_ arrangement: SplitArrangement) {
+        focused = .transcript
+        splitPanes.arrange(arrangement)
+    }
+
     static func boundChord(for action: KeyAction, in shortcuts: ShortcutSet) -> KeyChord? {
         let map = shortcuts.actions[.insert] ?? shortcuts.actions[.normal] ?? [:]
         let tokens = map.filter { $0.value == action && !$0.key.contains(",") }.keys.sorted()
@@ -659,7 +672,10 @@ final class MainWindowController: NSWindowController {
         case .exchangeSplit:
             splitPanes.exchangeActive()
         case .cycleSplit, .promoteSplit, .rotateSplits, .moveSplitToEdge, .resizeSplit,
-            .arrangeSplits, .pinSplit, .parkSplit:
+            .arrangeSplits:
+            focused = .transcript
+            splitPanes.perform(action)
+        case .pinSplit, .parkSplit:
             return false
         case .toggleProjectScope:
             sidebar.toggleProjectScope(fallback: currentEntry)
@@ -1669,6 +1685,11 @@ final class MainWindowController: NSWindowController {
         if window?.firstResponder is KeyboardPressable, [49, 36, 76].contains(event.keyCode) {
             return event
         }
+        if pendingChords.isEmpty, window?.firstResponder is DividerSplitView,
+            DividerSplitView.dividerKey(for: event) != nil
+        {
+            return event
+        }
         if let verdict = composerKey(event) { return verdict ? nil : event }
         guard let chord = MacKeys.chord(for: event) else { return event }
         if terminalHasFocus, chord.control, !chord.shift, !chord.alt,
@@ -2556,6 +2577,26 @@ private final class CheatsheetPanel: NSPanel {
         /// `resume=all` or `resume=one`: the banner's two buttons.
         func driveResume(_ how: String) {
             if how == "all" { resumeAllParked() } else { resumeParkedOneByOne() }
+        }
+
+        /// `chord=ctrl+w a`: a registered sequence resolved through the same shortcut set a key
+        /// press goes through, so a scripted chord and a typed one are the same code path.
+        func driveChord(_ spec: String) -> String {
+            guard let (_, chords) = KeySpec.parse(spec) else { return "CHORD unreadable \(spec)" }
+            for chord in chords {
+                switch shortcuts.resolve(
+                    chord, context: .normal, pending: pendingChords, awaitingApproval: false)
+                {
+                case .run(let action):
+                    pendingChords = []
+                    _ = perform(action)
+                case .pending(let held):
+                    pendingChords = held
+                case .unbound:
+                    pendingChords = []
+                }
+            }
+            return splitPanes.driveOrder("CHORD \(spec)")
         }
     }
 #endif
