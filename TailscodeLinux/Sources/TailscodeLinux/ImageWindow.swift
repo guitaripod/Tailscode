@@ -44,11 +44,11 @@ final class ImageWindow: @unchecked Sendable {
 
     private let window: UnsafeMutablePointer<GtkWidget>
     private let pane: DrawPane
-    /// The header's own title widget: the subtitle is where a notice lands and where the
-    /// closing-keeps-rendering promise is made while a render is out. A bar under the studio
-    /// for one label and a Done button that only repeated the window's own close was a row of
-    /// chrome the picture paid for.
-    private let title: UnsafeMutablePointer<GtkWidget>
+    /// The header's own title widget: the machine pill, and under it the line where a notice
+    /// lands and where the closing-keeps-rendering promise is made while a render is out. A bar
+    /// under the studio for one label and a Done button that only repeated the window's own close
+    /// was a row of chrome the picture paid for.
+    private let note = Gtk.label("", css: "studio-note", selectable: false)
     private var studioObserver: NSObjectProtocol?
 
     private init(parent: UnsafeMutablePointer<GtkWidget>?) {
@@ -65,12 +65,18 @@ final class ImageWindow: @unchecked Sendable {
         }
 
         let header = adw_header_bar_new()!
-        title = adw_window_title_new(ImageGenSurface.title, Self.subtitle)!
-        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), title)
-        gtk_window_set_titlebar(ptr(window), header)
-
         pane = DrawPane(studio: .shared, fills: true)
         pane.wireChips()
+        let titleBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        gtk_widget_set_valign(titleBox, GTK_ALIGN_CENTER)
+        gtk_label_set_xalign(op(note), 0.5)
+        gtk_label_set_ellipsize(op(note), PANGO_ELLIPSIZE_END)
+        gtk_label_set_max_width_chars(op(note), 72)
+        gtk_widget_set_halign(note, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(titleBox), pane.machine.widget)
+        gtk_box_append(ptr(titleBox), note)
+        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), titleBox)
+        gtk_window_set_titlebar(ptr(window), header)
         gtk_window_set_child(ptr(window), pane.root)
 
         pane.onNotice = { [weak self] text in
@@ -94,19 +100,11 @@ final class ImageWindow: @unchecked Sendable {
         pane.focusPrompt()
     }
 
-    /// The machine under the title, so the surface names where the work happens before anybody
-    /// asks — and says the door's own sentence when there is something to say about it.
-    private static var subtitle: String {
-        guard ImageStudio.pinnedEndpoint == nil else { return ImageGenSurface.subtitle }
-        let door = ImageGenDoor.current()
-        return door.line ?? ImageGenSurface.subtitle
-    }
-
     /// A file written or a picture copied is worth one line, said in the header rather than as a
     /// dialog somebody has to dismiss. It clears itself, because a notice that outstays its news
     /// becomes chrome.
     private func say(_ text: String) {
-        adw_window_title_set_subtitle(op(UnsafeMutableRawPointer(title)), text)
+        gtk_label_set_text(op(note), text)
         Gtk.after(4000) { [weak self] in
             Gtk.onMain { [weak self] in self?.drawSubtitle() }
         }
@@ -114,10 +112,14 @@ final class ImageWindow: @unchecked Sendable {
 
     /// The machine under the title — or, while a render is out, the promise that closing this
     /// window leaves it running, made where the close button is rather than in a bar of its own.
+    /// What the note says when it has nothing to say: a no-break space, so the line keeps its
+    /// height and the window's header does not grow and shrink under the picture as a render
+    /// starts and lands.
+    private static let reserved = "\u{00A0}"
+
     private func drawSubtitle() {
-        let note = ImageGenSurface.dismissNote(painting: ImageStudio.shared.isPainting)
-        adw_window_title_set_subtitle(
-            op(UnsafeMutableRawPointer(title)), note ?? Self.subtitle)
+        let line = ImageGenSurface.dismissNote(painting: ImageStudio.shared.isPainting)
+        gtk_label_set_text(op(note), line ?? Self.reserved)
     }
 
     /// The studio's keys first, then the window's one key. A prompt being typed keeps everything
@@ -125,11 +127,12 @@ final class ImageWindow: @unchecked Sendable {
     private func key(keyval: UInt32, state: UInt32) -> Bool {
         guard let chord = KeyChord.canonical(keyval: keyval, state: state) else { return false }
         if Gtk.focusTakesText(window) {
-            if let command = ImageGenCommand.command(for: chord), command == .submit {
+            if let command = ImageGenCommand.command(for: chord), command == .submit, !chord.shift {
                 pane.handle(command)
                 return true
             }
         } else if let command = ImageGenCommand.command(for: chord) {
+            if command == .submit, Gtk.focusIsButton(in: window) { return false }
             pane.handle(command)
             return true
         }
@@ -162,9 +165,14 @@ final class ImageWindow: @unchecked Sendable {
 
     var summary: String { pane.summary }
 
+    /// For the headless driver: the room, the stage, the verbs, the shelf and the pill.
+    var studioSummary: String { pane.studioSummary }
+
     func driverType(_ text: String) { pane.driverType(text) }
 
     func driverSubmit() { pane.driverSubmit() }
+
+    func driverAttach(_ path: String) { pane.attachFiles([path]) }
 
     func driverEnhance() { pane.driverEnhance() }
 

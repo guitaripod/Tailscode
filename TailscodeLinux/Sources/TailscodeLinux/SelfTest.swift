@@ -358,6 +358,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        let studioFailures = StudioLayoutCheck.run() + studioWidgetChecks()
+        if studioFailures.isEmpty {
+            report("studio: the room, the shelf's merge and walk, the chips, the pill and the passes all hold")
+        } else {
+            report("studio: \(studioFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         let forgeFailures = ForgeBoardCheck.run()
         if forgeFailures.isEmpty {
             report("video forge: the graph, the frames, the job's walk and the board all hold")
@@ -4552,4 +4560,58 @@ public enum SelfTest {
 struct SelfTestFailure: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
+}
+
+
+extension SelfTest {
+    /// The Studio's widgets, on the harness display: a shelf keeps the tiles that did not change and
+    /// only turns when the room says so, a tray of chips breaks its lines on their own widths and
+    /// folds into one control, and a stage keeps its progress line hidden until there is a count.
+    static func studioWidgetChecks() -> [String] {
+        var failures: [String] = []
+        func expect(_ condition: Bool, _ label: String) {
+            if !condition { failures.append(label) }
+        }
+
+        let shelf = StudioShelfView()
+        let first = (0..<5).map { StudioTile(id: "t\($0)", words: "w\($0)") }
+        shelf.update(tiles: first, selection: "t1")
+        expect(shelf.tileIDs == ["t0", "t1", "t2", "t3", "t4"], "the shelf holds its tiles in the order it was given")
+        shelf.update(tiles: [StudioTile(id: "job", inFlight: true)] + first.dropLast(), selection: "t1")
+        expect(shelf.tileIDs == ["job", "t0", "t1", "t2", "t3"], "a job leads, and a tile that left is gone")
+        expect(shelf.summary.hasPrefix("rail tiles=5"), "the shelf starts as a rail")
+        shelf.place(rail: false)
+        expect(shelf.summary.hasPrefix("strip tiles=5"), "and turns into a strip without losing a tile")
+
+        let shell = StudioStageShell()
+        shell.setProgress(nil)
+        expect(shell.progressSummary == "hidden", "no count, no progress line")
+        shell.setProgress([1, 0.25])
+        expect(shell.progressSummary == "line=1.00/0.25", "two passes are two segments")
+        shell.setVerbs([StudioVerb(id: "save", glyph: "d", title: "Save", hint: "", perform: {})], visible: false)
+        expect(shell.verbSummary.hasPrefix("reserved"), "the verbs hold their room while nothing is to be done")
+        shell.setVerbs([StudioVerb(id: "save", glyph: "d", title: "Save", hint: "", perform: {})], visible: true)
+        expect(shell.verbSummary.hasPrefix("shown"), "and show once there is a picture")
+
+        let foot = Gtk.label("", css: "studio-foot", selectable: false)
+        let tray = StudioChipTray(trailing: foot)
+        let chips = (0..<6).map { _ in StudioChip.button {} }
+        for (index, chip) in chips.enumerated() {
+            chip.apply(StudioChipReading(id: .engine, label: "Label \(index)", value: "Value"))
+        }
+        tray.fill(chips)
+        tray.layout(available: 10_000)
+        let wide = gtk_widget_get_first_child(tray.lines).map { _ in 1 } ?? 0
+        tray.layout(available: 200)
+        var rows = 0
+        var child = gtk_widget_get_first_child(tray.lines)
+        while let current = child {
+            rows += 1
+            child = gtk_widget_get_next_sibling(current)
+        }
+        expect(wide == 1 && rows > 1, "a narrow dock wraps its chips onto more lines instead of clipping")
+        tray.fold(true)
+        expect(tray.isFolded, "a short pane folds them into Settings")
+        return failures
+    }
 }

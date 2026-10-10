@@ -440,9 +440,35 @@ final class ImageStudio: @unchecked Sendable, HelperHost {
         }
     }
 
+    /// What the machine this studio paints on last answered — the last true thing, never a guess,
+    /// and nothing at all when the answer on file was about some other machine.
+    var sighting: ImageGenSighting? {
+        guard let seen = ImageGenStore.lastSeen(), seen.host == slot.endpoint.displayHost else {
+            return nil
+        }
+        return seen
+    }
+
+    /// Looks at the machine again: the person asked, because it was asleep when last seen or
+    /// because the files were put in place since.
+    func recheckMachine() {
+        checked = false
+        checkMachine()
+        library.refresh()
+        announce()
+    }
+
     func submit(prompt raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if slot.engineAvailable(given: sighting) == false {
+            slot.fail(
+                prompt: text,
+                reason: ImageGenWords.cannotRender(
+                    engine: slot.engine, machine: slot.endpoint.shortName))
+            announce()
+            return
+        }
         keptStage = nil
         dropPreview()
         slot.begin(prompt: text)

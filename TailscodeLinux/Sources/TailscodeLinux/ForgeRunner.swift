@@ -19,6 +19,9 @@ final class ForgeRunner: @unchecked Sendable, HelperHost {
     /// The render that is out, kept with the machine it went to.
     private var render: Render?
     private var renderTicket = 0
+    /// The machine's last sketch of the clip being rendered, kept until the clip lands so it can
+    /// be filed as the clip's poster — the job's own sketch is gone by the time it is done.
+    private var heldSketch: ImageGenPreviewFrame?
     /// Which probe's answer the board still wants. A verdict crosses back to the main loop after
     /// the machine has answered, and by then the board may point somewhere else — so every probe
     /// is numbered and only the newest one is allowed to say what it found.
@@ -227,6 +230,7 @@ final class ForgeRunner: @unchecked Sendable, HelperHost {
     func start(_ recipe: ForgeRecipe) {
         guard render?.isOut != true, let endpoint = board.endpoint else { return }
         remember()
+        heldSketch = nil
         renderTicket += 1
         let ticket = renderTicket
         let client = ForgeClient(endpoint: endpoint)
@@ -249,6 +253,11 @@ final class ForgeRunner: @unchecked Sendable, HelperHost {
     /// terminal state the stop already wrote.
     private func saw(_ job: ForgeJob, from ticket: Int) {
         guard let render, render.ticket == ticket, render.isOut else { return }
+        if let frame = job.sketch { heldSketch = frame }
+        if let asset = job.asset, let frame = heldSketch {
+            ForgePosters.write(frame, for: asset)
+            heldSketch = nil
+        }
         board.saw(job)
         if job.isFinished, ForgeStore.record(job) != nil {
             if let clock = board.learn(from: job) { ForgeStore.remember(clock: clock) }
@@ -390,8 +399,21 @@ extension ForgeRunner {
             job.saw(
                 .progressed(demoPromptID, census: ForgeCensus(finished: 7, total: 28, running: "pass1")))
             job.saw(.sampling(demoPromptID, node: "pass1", step: 3, steps: 8))
+            if let frame = demoSketches.first { job.saw(.sketched(frame)) }
         }
         return job
+    }
+
+    /// Pictures to stand in for the machine's sketches and the clips' posters in a demo, named by
+    /// `TAILSCODE_DEMO_SKETCH` as a comma-separated list of files — a harness with no renderer to
+    /// stream a sketch has to be told what one looks like. Nothing is read without the variable.
+    private static var demoSketches: [ImageGenPreviewFrame] {
+        guard let list = ProcessInfo.processInfo.environment["TAILSCODE_DEMO_SKETCH"] else { return [] }
+        return list.split(separator: ",").compactMap { path in
+            guard let data = FileManager.default.contents(atPath: String(path)) else { return nil }
+            let png = path.lowercased().hasSuffix(".png")
+            return ImageGenPreviewFrame(encoding: png ? .png : .jpeg, bytes: data)
+        }
     }
 
     private static func demoHistory(_ recipe: ForgeRecipe) -> [ForgeEntry] {
@@ -400,6 +422,12 @@ extension ForgeRunner {
                 id: "\(demoPromptID)\(index)", recipe: recipe.with(seed: index),
                 asset: ForgeAsset(filename: "forge_0000\(index).mp4", subfolder: "video"),
                 finishedAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(index)))
+        }
+        let sketches = demoSketches
+        if !sketches.isEmpty {
+            for (index, entry) in made.enumerated() {
+                if let asset = entry.asset { ForgePosters.write(sketches[index % sketches.count], for: asset) }
+            }
         }
         let lost = ForgeEntry(
             id: "\(demoPromptID)gone", recipe: recipe.with(seed: 9), asset: nil,
