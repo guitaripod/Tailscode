@@ -1402,6 +1402,210 @@ enum MatrixTheme {
         .draw-row-words { color: \(text); \(t(.hint)) }
         .draw-row-words-busy { color: \(textDim); \(t(.hint)) }
         .draw-row-facts { color: \(textDim); \(t(.badge)) font-variant-numeric: tabular-nums; }
+        .studio-toolbar { padding: 8px 12px 0 12px; }
+        .studio-pill, .studio-pill > button {
+            background-color: \(canvasRaised);
+            background-image: none;
+            color: \(text);
+            border: 1px solid \(rule);
+            border-radius: 999px;
+            padding: 4px 14px;
+            box-shadow: none;
+            min-height: 0;
+        }
+        menubutton.studio-pill { padding: 0; border: none; background: none; }
+        .studio-pill > button:hover { border-color: alpha(\(accent), 0.50); }
+        .studio-pill > button:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 1px; }
+        .studio-pill-line { color: \(text); \(t(.chip)) }
+        .studio-dot { \(t(.hint)) }
+        .studio-note { color: \(textDim); \(t(.hint)) margin-top: 1px; }
+        .studio-stage {
+            background-color: alpha(\(text), 0.035);
+            border-radius: 16px;
+            margin: 8px 12px 0 12px;
+        }
+        .studio-state { color: \(textDim); \(t(.statusLine)) font-variant-numeric: tabular-nums; }
+        .studio-art { border-radius: 10px; }
+        .studio-drop { border: 1px dashed alpha(\(text), 0.22); border-radius: 12px; }
+        .studio-main, .studio-main:hover { background: none; background-image: none; border-radius: 10px; padding: 0; box-shadow: none; }
+        .studio-backdrop picture { opacity: 1; }
+        .studio-badge {
+            color: \(text);
+            background-color: alpha(\(canvas), 0.72);
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-variant-numeric: tabular-nums;
+            \(t(.badge))
+        }
+        .studio-progress trough {
+            min-height: 2px;
+            background-color: alpha(\(text), 0.08);
+            border: none;
+            border-radius: 0;
+        }
+        .studio-progress progress {
+            min-height: 2px;
+            background-color: \(accent);
+            border: none;
+            border-radius: 0;
+        }
+        .studio-verbs {
+            background-color: \(canvasRaised);
+            background-image: linear-gradient(to bottom, alpha(\(text), 0.09), alpha(\(text), 0.05));
+            border: 1px solid alpha(\(text), 0.16);
+            border-radius: 999px;
+            padding: 4px 6px;
+            box-shadow: 0 6px 18px alpha(#000000, 0.30);
+            transition: opacity 160ms ease-out;
+        }
+        .studio-verb {
+            color: \(text);
+            background: none;
+            background-image: none;
+            border: none;
+            box-shadow: none;
+            border-radius: 999px;
+            padding: 5px 12px;
+            min-height: 0;
+            \(t(.chip))
+        }
+        .studio-verb:hover { background-color: alpha(\(text), 0.12); }
+        .studio-verb:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 1px; }
+        .studio-verb.danger { color: \(danger); }
+        .studio-verb.danger:hover { background-color: alpha(\(danger), 0.16); }
+        .studio-verb-lead { color: \(palette.onAccent); background-color: \(accent); }
+        .studio-verb-lead:hover { background-color: \(accentDim); }
+        .studio-verbs-rule { min-width: 1px; background-color: alpha(\(text), 0.18); margin: 5px 6px; }
+        .studio-card {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 16px;
+            padding: 18px 20px;
+            box-shadow: 0 10px 28px alpha(#000000, 0.32);
+        }
+        .studio-card-mark {
+            color: \(danger);
+            background-color: alpha(\(danger), 0.16);
+            border-radius: 999px;
+            min-width: 28px;
+            min-height: 28px;
+            font-weight: 700;
+        }
+        .studio-card-sentence { color: \(text); \(t(.panelDetail)) }
+        .studio-rewrite { background-color: \(canvasRaised); box-shadow: 0 10px 28px alpha(#000000, 0.32); }
+        .studio-dock {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 16px;
+            padding: 12px;
+            box-shadow: 0 6px 20px alpha(#000000, 0.18);
+        }
+        .studio-wordsbox { min-height: 56px; }
+        .studio-placeholder { color: \(textDim); \(t(.composer)) opacity: 0.75; }
+        .studio-locked { opacity: 0.65; }
+        .studio-go { border-radius: 999px; padding: 8px 18px; }
+        .studio-enhance, menubutton.studio-enhance > button {
+            color: \(text);
+            background-color: alpha(\(text), 0.07);
+            border: 1px solid alpha(\(text), 0.10);
+            border-radius: 999px;
+            padding: 2px 10px;
+            \(t(.chip))
+        }
+        .studio-enhance:hover { background-color: alpha(\(accent), 0.16); border-color: alpha(\(accent), 0.45); }
+        flowboxchild { padding: 0; }
+        .studio-chips { background: none; }
+        .draw-chip-name { color: \(textDim); }
+        .draw-chip-value { color: \(text); font-weight: 600; font-variant-numeric: tabular-nums; }
+        .draw-chip-mark { color: \(textDim); \(t(.badge)) }
+        .studio-chip-warn, .studio-chip-warn > button { border-color: alpha(\(danger), 0.70); }
+        .studio-chip-warn .draw-chip-value { color: \(danger); }
+        .studio-foot { color: \(textDim); \(t(.hint)) opacity: 0.85; font-variant-numeric: tabular-nums; }
+        .studio-slot > button {
+            padding: 0;
+            border: none;
+            background: none;
+            background-image: none;
+            box-shadow: none;
+            min-width: 56px;
+            min-height: 56px;
+        }
+        .studio-slot-art {
+            border: 1px solid alpha(\(accent), 0.45);
+            border-radius: 10px;
+            background-color: alpha(\(text), 0.05);
+        }
+        .studio-slot-art.studio-slot-empty {
+            border: 1px dashed alpha(\(text), 0.32);
+            background-color: alpha(\(text), 0.03);
+        }
+        .studio-slot:hover .studio-slot-art { border-color: \(accent); }
+        .studio-slot-plus { color: \(textDim); font-size: 160%; padding-top: 3px; }
+        .studio-slot-caption {
+            color: \(textDim);
+            padding: 0 0 3px 0;
+            font-size: 68%;
+        }
+        .studio-slot-caption-held {
+            color: \(text);
+            background-color: alpha(\(canvas), 0.72);
+            border-radius: 0 0 9px 9px;
+        }
+        .studio-slot-remove {
+            min-width: 16px;
+            min-height: 16px;
+            padding: 0;
+            border-radius: 999px;
+            color: \(text);
+            background-color: alpha(\(canvas), 0.85);
+            background-image: none;
+            border: 1px solid \(rule);
+            margin: -5px -5px 0 0;
+            font-size: 80%;
+            box-shadow: none;
+        }
+        .studio-slot-count {
+            color: \(palette.onAccent);
+            background-color: \(accent);
+            border-radius: 999px;
+            padding: 0 6px;
+            margin: 3px;
+            \(t(.badge))
+        }
+        .studio-rail { border-left: 1px solid \(rule); background: none; }
+        .studio-strip { border-top: 1px solid \(rule); background: none; margin: 8px 12px 0 12px; }
+        .draw-shelf-count, .draw-shelf-note { color: \(textDim); \(t(.hint)) }
+        .draw-shelf-refresh { padding: 0 6px; min-height: 0; min-width: 0; color: \(textDim); }
+        .studio-tile {
+            padding: 0;
+            border: none;
+            background: none;
+            background-image: none;
+            box-shadow: none;
+            border-radius: 10px;
+            min-width: 0;
+            min-height: 0;
+            outline: 2px solid transparent;
+            outline-offset: 0;
+        }
+        .studio-tile:hover { outline-color: alpha(\(accent), 0.45); }
+        .studio-tile:focus-visible { outline: 2px solid alpha(\(accent), 0.70); outline-offset: 2px; }
+        .studio-tile-on, .studio-tile-on:hover { outline: 2px solid \(accent); outline-offset: 0; }
+        .studio-tile-art { border-radius: 10px; }
+        .studio-tile-picture { border-radius: 10px; }
+        .studio-tile-picture picture { border-radius: 10px; }
+        .studio-tile-glyph { color: \(textDim); \(t(.panelTitle)) }
+        .studio-tile-badge {
+            color: \(text);
+            background-color: alpha(\(canvas), 0.78);
+            border-radius: 999px;
+            padding: 1px 7px;
+            font-variant-numeric: tabular-nums;
+            \(t(.badge))
+        }
+        .studio-tile-sliver trough { min-height: 3px; background-color: alpha(\(text), 0.12); border: none; border-radius: 0; }
+        .studio-tile-sliver progress { min-height: 3px; background-color: \(accent); border: none; border-radius: 0; }
+        .studio-machine-missing .draw-facts { color: \(danger); }
         .video-notice {
             color: \(textDim);
             background-color: alpha(\(accent), 0.10);
