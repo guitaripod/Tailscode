@@ -24,6 +24,7 @@ struct VideoStageModel {
     var verbs: [StudioStageVerb] = []
     var spoken = ""
     var needsRenderer = false
+    var heldIsBackdrop = false
     var invitationTitle = ""
     var invitationBody = ""
     var landed: String?
@@ -274,7 +275,8 @@ final class VideoStageView: NSView, StudioStaging {
         case .empty: dim = StudioTheme.dimmed
         case .failed, .stopped: dim = 0.32
         case .waiting, .working, .painting: dim = 0.4
-        case .finishing, .drafting, .done: dim = 1
+        case .drafting: dim = model.heldIsBackdrop ? StudioTheme.dimmed : 1
+        case .finishing, .done: dim = 1
         }
         held.contents = model.held
         held.opacity = model.held == nil ? 0 : dim
@@ -290,8 +292,9 @@ final class VideoStageView: NSView, StudioStaging {
         if case .finishing = state, sketchLayer.contents != nil { sketchLayer.opacity = 0.6 } else if !landing { sketchLayer.opacity = 1 }
 
         dash.isHidden = !(state == .empty || (state == .drafting && model.held == nil))
-        invitation.isHidden = state != .empty
-        if state == .empty {
+        let inviting = state == .empty || (state == .drafting && model.heldIsBackdrop)
+        invitation.isHidden = !inviting
+        if inviting {
             invitation.show(
                 title: model.invitationTitle, body: model.invitationBody, needsRenderer: model.needsRenderer)
         }

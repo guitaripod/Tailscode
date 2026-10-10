@@ -1,20 +1,6 @@
 import AppKit
 import TailscodeCore
 
-/// The shell's one list of lanes: the segment of the lane switch is the lane's own id, and the shell,
-/// the shelf, the toolbar and the keys name no lane beyond it.
-@MainActor
-enum StudioShell {
-    static func lane(
-        _ id: StudioLaneID, image: any StudioLane, video: any StudioLane
-    ) -> any StudioLane {
-        switch id {
-        case .image: return image
-        case .video: return video
-        }
-    }
-}
-
 /// The Studio: one panel, not a sheet, so it can sit beside a conversation. A lane switch leads the
 /// toolbar, the machine pill sits in its centre, and the queue and Done are at its trailing edge;
 /// below them the lane's stage, a shelf and the brief dock. Closing the panel closes a window and
@@ -56,8 +42,13 @@ final class StudioWindowController: NSObject, NSToolbarDelegate, NSWindowDelegat
 
     var video: VideoLane { videoLane }
 
+    /// The lane a segment of the switch stands for. The Video lane is built the first time somebody
+    /// asks for it, so a Studio that only ever paints never watches the renderer.
     private func lane(_ id: StudioLaneID) -> any StudioLane {
-        StudioShell.lane(id, image: imageLane, video: videoLane)
+        switch id {
+        case .image: return imageLane
+        case .video: return videoLane
+        }
     }
 
     /// Raises the Studio on a lane. With `brief` the words land in that lane's box as the thing to

@@ -263,6 +263,7 @@ final class VideoLane: StudioLane {
         let spent = job.spent()
         switch state {
         case .empty:
+            model.heldIsBackdrop = true
             model.invitationTitle =
                 board.endpoint == nil
                 ? ForgeEntryPoint.tooltip(configured: false) : brief.wordsPlaceholder
@@ -272,6 +273,11 @@ final class VideoLane: StudioLane {
         case .drafting:
             model.caption = board.recipe.frame?.detail ?? ""
             model.spoken = [model.caption, board.recipe.prompt].filter { !$0.isEmpty }.joined(separator: ", ")
+            if board.recipe.frame == nil {
+                model.heldIsBackdrop = true
+                model.invitationTitle = brief.wordsPlaceholder
+                model.invitationBody = ForgeBoard.notice
+            }
         case .waiting(let line):
             model.sentence = line
             model.caption = spent ?? ""
@@ -356,7 +362,8 @@ final class VideoLane: StudioLane {
     private func heldImage(for state: StudioVideoState, entry: ForgeEntry?) -> CGImage? {
         switch state {
         case .drafting:
-            return startPreview() ?? posterImage(of: entry)
+            if board.recipe.frame == nil { return newestPoster() }
+            return startPreview()
         case .done:
             return posterImage(of: entry)
         case .failed:
