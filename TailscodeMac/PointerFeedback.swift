@@ -84,7 +84,13 @@ final class PressSurface: NSView {
     private var hovered = false
     private var pressed = false
 
-    init(content: NSView, outset: NSEdgeInsets = PointerPlate.inlineOutset, radius: CGFloat = 6) {
+    /// - Parameter minHeight: the least the surface is tall, with its content centred in it: the
+    ///   table's height for a one-line row, so a line of small type is still a target of the size
+    ///   the table says and every such line is the same height.
+    init(
+        content: NSView, outset: NSEdgeInsets = PointerPlate.inlineOutset, radius: CGFloat = 6,
+        minHeight: CGFloat = 0
+    ) {
         self.outset = outset
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -95,9 +101,20 @@ final class PressSurface: NSView {
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: leadingAnchor),
             content.trailingAnchor.constraint(equalTo: trailingAnchor),
-            content.topAnchor.constraint(equalTo: topAnchor),
-            content.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        if minHeight > 0 {
+            NSLayoutConstraint.activate([
+                content.centerYAnchor.constraint(equalTo: centerYAnchor),
+                content.topAnchor.constraint(greaterThanOrEqualTo: topAnchor),
+                content.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+                heightAnchor.constraint(greaterThanOrEqualToConstant: minHeight),
+            ])
+        } else {
+            NSLayoutConstraint.activate([
+                content.topAnchor.constraint(equalTo: topAnchor),
+                content.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ])
+        }
         addTrackingArea(
             NSTrackingArea(
                 rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],

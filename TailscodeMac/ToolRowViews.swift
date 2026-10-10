@@ -7,7 +7,32 @@ import TailscodeCore
 /// away reads as success.
 @MainActor
 enum ToolRowView {
-    static func make(_ call: ToolCall, key: String, context: TranscriptContext) -> NSView {
+    /// How tall a one-line activity row is at the least: the table's height for the reader's
+    /// density, so a run of one, a run of many and a thought are all the same line.
+    static var lineHeight: CGFloat { CGFloat(ChatLayout.metrics.activityRowHeight) }
+
+    /// A header on a line of its own, centred in a row as tall as the table says. The row is what
+    /// a run of one is when there is nothing behind it to open.
+    static func flatLine(_ header: NSView, height: CGFloat) -> NSView {
+        guard height > 0 else { return header }
+        let line = NSView()
+        line.translatesAutoresizingMaskIntoConstraints = false
+        header.translatesAutoresizingMaskIntoConstraints = false
+        line.addSubview(header)
+        NSLayoutConstraint.activate([
+            header.leadingAnchor.constraint(equalTo: line.leadingAnchor),
+            header.trailingAnchor.constraint(lessThanOrEqualTo: line.trailingAnchor),
+            header.centerYAnchor.constraint(equalTo: line.centerYAnchor),
+            header.topAnchor.constraint(greaterThanOrEqualTo: line.topAnchor),
+            header.bottomAnchor.constraint(lessThanOrEqualTo: line.bottomAnchor),
+            line.heightAnchor.constraint(greaterThanOrEqualToConstant: height),
+        ])
+        return line
+    }
+
+    static func make(
+        _ call: ToolCall, key: String, context: TranscriptContext, lineHeight: CGFloat = ToolRowView.lineHeight
+    ) -> NSView {
         let summary = call.summary
         let header = headerLine(call, summary, context: context)
         guard hasBody(call, summary) else {
@@ -15,7 +40,7 @@ enum ToolRowView {
             blank.alphaValue = 0
             blank.setAccessibilityElement(false)
             header.insertArrangedSubview(blank, at: 0)
-            return header
+            return flatLine(header, height: lineHeight)
         }
         let expanded =
             (call.status == .error && !context.expanded.isClosed(key)) || context.isExpanded(key)
@@ -24,7 +49,7 @@ enum ToolRowView {
         let toggle = context.onToggle
         let reveal = context.revealRow
         return DisclosureRow(
-            header: header, expanded: expanded,
+            header: header, expanded: expanded, lineHeight: lineHeight,
             onToggle: { open, row in
                 mark.stringValue = ToolRowView.disclosureGlyph(open)
                 toggle?(key, open)
@@ -69,7 +94,15 @@ enum ToolRowView {
         }
         let names = tally.prefix(6).map { $0.1 > 1 ? "\($0.0)×\($0.1)" : $0.0 }
             .joined(separator: " ")
-        header.addArrangedSubview(detailLabel(names))
+        let thoughts = steps.count - calls.count
+        header.addArrangedSubview(
+            detailLabel(
+                thoughts == 0
+                    ? names
+                    : "\(names) · "
+                        + (thoughts == 1
+                            ? Localized.text("1 thought")
+                            : Localized.text("%@ thoughts", "\(thoughts)"))))
 
         let (added, removed) = ToolDiff.tally(calls)
         if added > 0 {
@@ -88,6 +121,7 @@ enum ToolRowView {
         return DisclosureRow(
             header: header,
             expanded: context.isExpanded(key) || steps.contains { context.expanded.isOpen($0.key) },
+            lineHeight: ToolRowView.lineHeight,
             onToggle: { open, row in
                 mark.stringValue = ToolRowView.disclosureGlyph(open)
                 toggle?(key, open)
@@ -100,9 +134,11 @@ enum ToolRowView {
             for step in steps {
                 switch step {
                 case .reasoning(let stepKey, let text):
-                    body.addArrangedSubview(reasoning(text, key: stepKey, context: context))
+                    body.addArrangedSubview(
+                        reasoning(text, key: stepKey, context: context, lineHeight: 0))
                 case .tool(let stepKey, let call):
-                    body.addArrangedSubview(make(call, key: stepKey, context: context))
+                    body.addArrangedSubview(
+                        make(call, key: stepKey, context: context, lineHeight: 0))
                 }
             }
             return RowKit.inset(body, leading: 16)
@@ -111,7 +147,10 @@ enum ToolRowView {
 
     /// Reasoning folded to its size, because the thought is the agent's scratch work: worth a
     /// glance, never worth the screen the answer needs.
-    static func reasoning(_ text: String, key: String, context: TranscriptContext) -> NSView {
+    static func reasoning(
+        _ text: String, key: String, context: TranscriptContext,
+        lineHeight: CGFloat = ToolRowView.lineHeight
+    ) -> NSView {
         context.liveReasoning[key] = text
         let header = RowKit.label(
             Self.thoughtHeader(text), font: MacTheme.Ramp.font(.thoughtLabel),
@@ -119,7 +158,7 @@ enum ToolRowView {
         let toggle = context.onToggle
         let reveal = context.revealRow
         return DisclosureRow(
-            header: header, expanded: context.isExpanded(key),
+            header: header, expanded: context.isExpanded(key), lineHeight: lineHeight,
             onToggle: { open, row in
                 toggle?(key, open)
                 if open { reveal?(row) }

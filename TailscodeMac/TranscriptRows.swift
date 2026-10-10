@@ -77,6 +77,11 @@ final class TranscriptContext {
     /// Names a model the way this device already names it elsewhere, for a note that mentions
     /// one. Nil leaves Core's own fallback, the model's bare id, standing.
     var modelName: (ModelSelection) -> String? = { _ in nil }
+    /// Where a rail learns its addresses' titles and icons: the shared fetcher, or a stub when a
+    /// harness has no network.
+    var linkSource: LinkCardSource = .live
+    /// A rail was pressed, or a key was pressed on it: the pane owns the plate it opens.
+    var activateRail: ((LinkRailLine, _ viaKeyboard: Bool) -> Void)?
 
     /// A run reads as open when any step inside it is, so folding a step into a run carries the
     /// reader's decision in with it rather than collapsing it.
@@ -108,14 +113,18 @@ extension TranscriptRow {
 /// actually changed are re-folded.
 @MainActor
 final class TranscriptRowBuilder {
-    private var cache:
-        [String: (message: ChatMessage, promptID: String?, sealed: Bool, rows: [TranscriptRow])] =
-            [:]
+    private typealias Entry = (
+        message: ChatMessage, promptID: String?, sealed: Bool, rows: [TranscriptRow],
+        trailingRail: String?
+    )
+
+    private var cache: [String: Entry] = [:]
     private var builtWithEmbeds = LinkEmbedsSetting.isEnabled
+    private var builtWithDensity = ChatDensitySetting.current
 
     /// Forgets every memoised row — the rendering baked into them (fonts, markdown) is stale
-    /// after a type-scale change. The link-card switch does the same by itself, since the cards
-    /// are rows.
+    /// after a type-scale change. The link switch and the density do the same by themselves: the
+    /// rails are rows, and a density is a size every picture and line was built to.
     func invalidate() {
         cache = [:]
     }
@@ -125,27 +134,41 @@ final class TranscriptRowBuilder {
     /// under a different question is a different card, and reusing the earlier one would offer the
     /// wrong words to send again.
     func rows(for messages: [ChatMessage], turnOpen: Bool = false) -> [TranscriptRow] {
-        if builtWithEmbeds != LinkEmbedsSetting.isEnabled {
+        if builtWithEmbeds != LinkEmbedsSetting.isEnabled
+            || builtWithDensity != ChatDensitySetting.current
+        {
             builtWithEmbeds = LinkEmbedsSetting.isEnabled
+            builtWithDensity = ChatDensitySetting.current
             cache = [:]
         }
         var all: [TranscriptRow] = []
-        var next: [String: (message: ChatMessage, promptID: String?, sealed: Bool, rows: [TranscriptRow])] = [:]
+        var next: [String: Entry] = [:]
         next.reserveCapacity(messages.count)
         let writing = messages.last?.id
         var prompt: ChatMessage?
         for message in messages {
-            let rows: [TranscriptRow]
+            let folded: [TranscriptRow]
+            let trailing: String?
             let sealed = MessageSegment.isSealed(
                 streaming: message.isStreaming, isNewest: message.id == writing, turnOpen: turnOpen)
             if let hit = cache[message.id], hit.message == message, hit.promptID == prompt?.id,
                 hit.sealed == sealed
             {
-                rows = hit.rows
+                folded = hit.rows
+                trailing = hit.trailingRail
             } else {
-                rows = TranscriptRow.rows(for: message, prompt: prompt, sealed: sealed)
+                let fold = TranscriptRow.fold(for: message, prompt: prompt, sealed: sealed)
+                folded = fold.rows
+                trailing = fold.trailingRail
             }
-            next[message.id] = (message, prompt?.id, sealed, rows)
+            next[message.id] = (message, prompt?.id, sealed, folded, trailing)
+            var rows = folded
+            if let trailing {
+                let settled = LinkRailPolicy.isSettled(
+                    lastRowIsLive: !sealed, followedByFurniture: message.id != writing,
+                    turnIsOpen: turnOpen)
+                if !settled { rows.removeAll { $0.key == trailing } }
+            }
             if message.role == .user { prompt = message }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
@@ -188,10 +211,10 @@ struct TranscriptRow: Hashable {
         /// prose row is a label set, not a markdown parse.
         case agentProse(text: String, rendered: NSAttributedString)
         case codeBlock(language: String?, body: String)
-        /// The preview card for an address the prose above it mentioned. The address is the whole
-        /// of its identity: the card fetches its own face, so a streamed address that is still
-        /// growing moves no other row.
-        case linkEmbed(url: String)
+        /// The one-line rail under a run of prose, holding every address the run mentioned. It
+        /// arrives when the run has closed, so it is never under text that is still being written
+        /// into, and it fetches its own faces: nothing it learns moves another row.
+        case linkRail(urls: [String])
         case table(MarkdownTable)
         /// A table still being written: its card, its count, and none of its rows measured.
         case tableDraft(TableDraft)
@@ -278,6 +301,8 @@ struct TranscriptRow: Hashable {
         return (true, remainder)
     }
 
+    /// A message's rows with the rail of its closing run left out unless nothing could be written
+    /// into that run any more, which is what `sealed` says when no conversation is around to ask.
     @MainActor
     /// - Parameter sealed: whether this message's text is finished, decided by the caller because
     ///   only the caller can see the conversation (`MessageSegment.isSealed`). Nil falls back to
@@ -286,9 +311,36 @@ struct TranscriptRow: Hashable {
         for message: ChatMessage, prompt: ChatMessage? = nil, sealed: Bool? = nil
     ) -> [TranscriptRow] {
         let sealed = sealed ?? !message.isStreaming
+        let fold = fold(for: message, prompt: prompt, sealed: sealed)
+        guard !sealed, let trailing = fold.trailingRail else { return fold.rows }
+        return fold.rows.filter { $0.key != trailing }
+    }
+
+    /// A message's rows, and the key of the rail of its last run when that run is the message's
+    /// own end. That rail is the one thing that depends on more than the message — whether the
+    /// turn is still open — so the memo keeps it in the fold and the builder decides at each
+    /// arrival whether it shows, without folding the message again.
+    @MainActor
+    static func fold(
+        for message: ChatMessage, prompt: ChatMessage?, sealed: Bool
+    ) -> (rows: [TranscriptRow], trailingRail: String?) {
         var rows: [TranscriptRow] = []
+        var run = ProseRun()
+        var trailingRail: String?
+        func closeRun(trailing: Bool) {
+            guard let rail = run.rail() else {
+                run = ProseRun()
+                return
+            }
+            rows.insert(rail.row, at: rail.index)
+            if trailing { trailingRail = rail.row.key }
+            run = ProseRun()
+        }
         for part in message.parts {
             let key = "\(message.id):\(part.id)"
+            var continuesRun = false
+            if case .text = part.kind { continuesRun = true }
+            if !continuesRun { closeRun(trailing: false) }
             switch part.kind {
             case .text(let text):
                 let stripped = AgentMarkup.strip(text)
@@ -315,15 +367,7 @@ struct TranscriptRow: Hashable {
                                 key: "\(key):s\(index)",
                                 kind: .agentProse(
                                     text: prose, rendered: MacMarkdown.render(prose))))
-                        let growing = TableDraft.isGrowing(
-                            segment: index, of: segments.count, sealed: sealed)
-                        for (n, url) in LinkEmbedPolicy.urls(in: prose, growing: growing)
-                            .enumerated()
-                        {
-                            rows.append(
-                                TranscriptRow(
-                                    key: "\(key):s\(index):embed\(n)", kind: .linkEmbed(url: url)))
-                        }
+                        run.add(prose, key: "\(key):s\(index)", endingAt: rows.count)
                     case .code(let language, let body):
                         rows.append(
                             TranscriptRow(
@@ -365,6 +409,7 @@ struct TranscriptRow: Hashable {
                 continue
             }
         }
+        closeRun(trailing: true)
         if let answerless = AnswerlessTurnReading.read(message, prompt: prompt) {
             rows.append(
                 TranscriptRow(key: "\(message.id):answerless", kind: .answerless(answerless)))
@@ -374,7 +419,30 @@ struct TranscriptRow: Hashable {
         {
             rows.append(TranscriptRow(key: "\(message.id):stats", kind: .responseStats(stats)))
         }
-        return rows
+        return (rows, trailingRail)
+    }
+
+    /// The prose between two pieces of furniture, gathered as a message is folded: where its last
+    /// row ended and what its paragraphs said, which is all its rail is made from.
+    private struct ProseRun {
+        private var texts: [String] = []
+        private var lastKey = ""
+        private var end = 0
+
+        mutating func add(_ text: String, key: String, endingAt index: Int) {
+            texts.append(text)
+            lastKey = key
+            end = index
+        }
+
+        /// The rail this run earns and where its row goes, or nil for a run that mentioned no
+        /// address or when previews are off.
+        func rail() -> (row: TranscriptRow, index: Int)? {
+            guard !texts.isEmpty else { return nil }
+            let urls = LinkRailPolicy.addresses(inRun: texts, settled: true)
+            guard !urls.isEmpty else { return nil }
+            return (TranscriptRow(key: "\(lastKey):rail", kind: .linkRail(urls: urls)), end)
+        }
     }
 
     /// Rows for a whole transcript, with a hairline between turns so the reading rhythm survives
@@ -488,8 +556,8 @@ struct TranscriptRow: Hashable {
             return text
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
-        case .linkEmbed(let url):
-            return url
+        case .linkRail(let urls):
+            return urls.joined(separator: " ")
         case .table(let table):
             return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
         case .tableDraft(let draft):
@@ -551,8 +619,8 @@ struct TranscriptRow: Hashable {
             return RowKit.attributedLabel(rendered)
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body, key: key, context: context)
-        case .linkEmbed(let url):
-            return LinkCardView(url: url)
+        case .linkRail(let urls):
+            return Self.linkRail(urls, key: key, context: context)
         case .table(let table):
             return Self.table(table, key: key)
         case .tableDraft(let draft):
@@ -698,9 +766,11 @@ struct TranscriptRow: Hashable {
         return chunks
     }
 
-    /// A fenced block: the language and a copy in the header, a gutter of line numbers, the code
-    /// scrolling sideways and never down, and under a long one a button naming the lines behind
-    /// it. Opening grows the block in the page, so the transcript's own scroll carries it.
+    /// A fenced block: a gutter of line numbers, the code scrolling sideways and never down, and
+    /// under a long one a button naming the lines behind it. The block has no header row of its
+    /// own: its language and its copy appear at its top corner when the pointer is on it
+    /// (`MessageHoverBar`), so the block is as tall as its code. Opening grows the block in the
+    /// page, so the transcript's own scroll carries it.
     @MainActor
     private static func codeBlock(
         language: String?, body: String, key: String, context: TranscriptContext?
@@ -713,18 +783,6 @@ struct TranscriptRow: Hashable {
         column.translatesAutoresizingMaskIntoConstraints = false
         RowKit.ground(
             behind: column, fill: MacTheme.Color.canvasRaised, radius: MacTheme.Radius.control)
-
-        let header = NSStackView()
-        header.orientation = .horizontal
-        header.spacing = MacTheme.Spacing.s
-        let tag = RowKit.label(
-            SyntaxHighlighter.displayName(for: language, source: body),
-            font: MacTheme.Ramp.font(.codeLabel),
-            color: MacTheme.Color.tertiaryLabel)
-        header.addArrangedSubview(tag)
-        header.addArrangedSubview(RowKit.spacer())
-        header.addArrangedSubview(RowKit.copyButton(body, toast: context?.toast))
-        column.addArrangedSubview(header)
 
         let foldKey = "\(key)#code"
         var opened = context?.isExpanded(foldKey) ?? false
@@ -744,7 +802,7 @@ struct TranscriptRow: Hashable {
             let fresh = RowKit.codeLines(body, language: language, expanded: opened)
             column.removeArrangedSubview(lines)
             lines.removeFromSuperview()
-            column.insertArrangedSubview(fresh, at: 1)
+            column.insertArrangedSubview(fresh, at: 0)
             lines = fresh
             button.value?.title = TranscriptBlocks.fold(body, expanded: opened).toggleLabel ?? ""
         }
@@ -754,66 +812,26 @@ struct TranscriptRow: Hashable {
         return column
     }
 
-    /// A compaction is a seam, not a message: the rule says the transcript restarted here, and
-    /// the card says what was traded for what — the trade in tokens, the sliver of context the
-    /// summary still occupies drawn as a bar, and what carried over. The CLI's machine-facing
-    /// summary — tens of thousands of words — opens in a reader window rather than cramped into
-    /// the flow.
+    /// A compaction is a seam, not a message: one divider line saying what was traded for what —
+    /// `Context compacted · 311.6k → 16.4k tokens · 1m 54s ›` — with the CLI's machine-facing
+    /// summary, tens of thousands of words, behind it in a reader. The bar and the sentence that
+    /// used to stand under the title are in that reader, because they say something only to a
+    /// person who asks.
     @MainActor
     private static func seam(
         _ compaction: Compaction, key: String, context: TranscriptContext
     ) -> NSView {
         let story = CompactionStory.done(compaction)
-        let column = FillingStack()
-        column.spacing = MacTheme.Spacing.s
-        column.translatesAutoresizingMaskIntoConstraints = false
-        column.addArrangedSubview(RowKit.hairline())
-
-        let card = RowKit.compactionCard(story, tint: MacTheme.Color.accent)
-        card.setAccessibilityElement(true)
-        card.setAccessibilityRole(.group)
-        card.setAccessibilityLabel("\(story.title). \(story.detail)")
-
-        if let kept = story.keptFraction {
-            let track = RowKit.Ground(frame: .zero)
-            track.fill = MacTheme.Color.separator
-            track.radius = 2
-            let fill = RowKit.Ground(frame: .zero)
-            fill.fill = MacTheme.Color.accent
-            fill.radius = 2
-            track.addSubview(fill)
-            NSLayoutConstraint.activate([
-                track.heightAnchor.constraint(equalToConstant: 4),
-                fill.topAnchor.constraint(equalTo: track.topAnchor),
-                fill.bottomAnchor.constraint(equalTo: track.bottomAnchor),
-                fill.leadingAnchor.constraint(equalTo: track.leadingAnchor),
-                fill.widthAnchor.constraint(
-                    equalTo: track.widthAnchor, multiplier: CGFloat(kept)),
-            ])
-            card.addArrangedSubview(track)
-            track.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -2 * MacTheme.Spacing.m)
-                .isActive = true
-        }
-
-        if let footnote = story.footnote {
-            card.addArrangedSubview(
-                RowKit.wrapping(
-                    footnote, font: MacTheme.Ramp.font(.seamFootnote),
-                    color: MacTheme.Color.tertiaryLabel))
-        }
-
+        let words = "\(story.title) · \(story.detail)"
+        var press: (() -> Void)?
         if let summary = story.summary, story.isReadable {
             let present = context.presentText
             let header = CompactionStory.summaryHeader(compaction)
-            card.addArrangedSubview(
-                RowKit.linkButton(Localized.text("Read the summary")) {
-                    present?(Localized.text("Compaction summary"), header, summary, false)
-                })
+            press = { present?(Localized.text("Compaction summary"), header, summary, false) }
         }
-
-        column.addArrangedSubview(card)
-        column.addArrangedSubview(RowKit.hairline())
-        return column
+        return SeamLineView(
+            symbol: story.symbol, text: words, tint: MacTheme.Color.accent,
+            spoken: "\(story.title). \(story.detail)", onPress: press)
     }
 
     /// A prompt that has been written and not sent, drawn as the prompt it will become — same
@@ -1042,30 +1060,51 @@ struct TranscriptRow: Hashable {
             spoken: RevertReading.undoingTitle)
     }
 
-    /// The one small shape a quiet, still line across the transcript is built from: a note, and
-    /// the placeholder an undo wears while it is in flight.
+    /// The one shape a quiet, still line across the transcript is built from: a note, and the
+    /// placeholder an undo wears while it is in flight. It is the seam's own divider, because a
+    /// fact about the conversation is not something anybody said.
     @MainActor
     private static func quietLine(symbol: String, text: String, tone: ActivityTone, spoken: String)
         -> NSView
     {
-        let icon = NSImageView()
-        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(
-                NSImage.SymbolConfiguration(
-                    pointSize: 11 * MacTheme.UIScale.factor, weight: .medium))
-        icon.contentTintColor = tone.color
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-        icon.setAccessibilityElement(false)
-        let label = RowKit.wrapping(text, font: MacTheme.Ramp.font(.note), color: tone.color)
-        let row = NSStackView(views: [icon, label])
-        row.orientation = .horizontal
-        row.alignment = .firstBaseline
-        row.spacing = MacTheme.Spacing.xs
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.setAccessibilityElement(true)
-        row.setAccessibilityRole(.staticText)
-        row.setAccessibilityLabel(spoken)
-        return row
+        SeamLineView(symbol: symbol, text: text, tint: tone.color, spoken: spoken, onPress: nil)
+    }
+
+    /// The rail under a run of prose: its model asks about the first addresses now, and the pane
+    /// owns the plate a press or a resting pointer opens.
+    @MainActor
+    private static func linkRail(_ urls: [String], key: String, context: TranscriptContext)
+        -> NSView
+    {
+        let model = LinkRailModel(urls: urls, source: context.linkSource)
+        let line = LinkRailLine(
+            key: key, model: model, height: CGFloat(ChatLayout.metrics.railRowHeight))
+        let toast = context.toast
+        line.onActivate = { [weak line, weak context] viaKeyboard in
+            guard let line else { return }
+            context?.activateRail?(line, viaKeyboard)
+        }
+        line.menuActions = (
+            copyAll: {
+                RowKit.copyToClipboard(model.reading.copyAllText)
+                toast?(Localized.text("Copied"))
+            },
+            openAll: {
+                for address in model.urls { if let url = URL(string: address) { NSWorkspace.shared.open(url) } }
+            }
+        )
+        if model.opensDirectly, let address = URL(string: model.urls[0]) {
+            let text = model.urls[0]
+            line.directActions = (
+                open: { NSWorkspace.shared.open(address) },
+                copy: {
+                    RowKit.copyToClipboard(text)
+                    toast?(Localized.text("Copied"))
+                }
+            )
+        }
+        model.begin(opened: false)
+        return line
     }
 
     /// The card docked while the turn waits on its provider: the reason it gave, the attempt line
@@ -1737,12 +1776,15 @@ final class DisclosureRow: NSView, KeyboardPressable {
     /// The header's pressable surface, for a harness that proves it answers the pointer.
     var headerSurface: PressSurface { press }
 
+    /// - Parameter lineHeight: how tall the header's line is at the least, from the density's
+    ///   table; zero leaves it as tall as its words.
     init(
-        header: NSView, expanded: Bool, onToggle: @escaping (Bool, DisclosureRow) -> Void,
+        header: NSView, expanded: Bool, lineHeight: CGFloat = 0,
+        onToggle: @escaping (Bool, DisclosureRow) -> Void,
         makeBody: @escaping () -> NSView
     ) {
         self.header = header
-        self.press = PressSurface(content: header)
+        self.press = PressSurface(content: header, minHeight: lineHeight)
         self.makeBody = makeBody
         self.onToggle = onToggle
         super.init(frame: .zero)

@@ -164,6 +164,13 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 options: ThemeAppearance.allCases.map(\.title),
                 selected: ThemeAppearance.allCases.firstIndex(of: ThemeSelection.appearance) ?? 0,
                 action: #selector(appearanceChanged)))
+        column.addArrangedSubview(
+            popUpRow(
+                title: ChatDensitySetting.title,
+                subtitle: ChatDensitySetting.explanation,
+                options: ChatDensity.allCases.map(\.title),
+                selected: ChatDensity.allCases.firstIndex(of: ChatDensitySetting.current) ?? 0,
+                action: #selector(chatDensityChanged)))
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Prompt box")))
@@ -630,6 +637,10 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     @objc private func appearanceChanged(_ sender: NSPopUpButton) {
         ThemeSelection.setAppearance(ThemeAppearance.allCases[sender.indexOfSelectedItem])
         MacTheme.Chrome.apply()
+    }
+
+    @objc private func chatDensityChanged(_ sender: NSPopUpButton) {
+        ChatDensitySetting.set(ChatDensity.allCases[sender.indexOfSelectedItem])
     }
 
     private func popUpRow(

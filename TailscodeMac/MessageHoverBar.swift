@@ -20,7 +20,20 @@ final class MessageHoverBar: NSResponder {
         var block: NSRect
     }
 
+    /// A code block the pointer is on: where it stands in the canvas and what it says, so its
+    /// language and its Copy can be offered at its corner without the block carrying a header row.
+    struct CodeTarget: Equatable {
+        var key: String
+        var language: String
+        var body: String
+        var block: NSRect
+    }
+
     var locate: ((NSPoint) -> Target?)?
+    var locateCode: ((NSPoint) -> CodeTarget?)?
+    /// Whether something floating over the transcript owns the pointer for now, which puts the
+    /// capsules away rather than let them show through it.
+    var blocked: (() -> Bool)?
     var message: ((String) -> ChatMessage?)?
     var offersUndo: ((String) -> Bool)?
     var undo: ((String) -> Void)?
@@ -35,6 +48,11 @@ final class MessageHoverBar: NSResponder {
     private var glass: NSView?
     private var shown: Target?
     private var hideWork: DispatchWorkItem?
+    private let codeTag = BarCapsule()
+    private let codeStack = NSStackView()
+    private let codeLabel = NSTextField(labelWithString: "")
+    private var codeShown: CodeTarget?
+    private var codeHideWork: DispatchWorkItem?
 
     func install(in host: NSView, over scrollView: NSScrollView, canvas: NSView) {
         self.host = host
@@ -65,6 +83,7 @@ final class MessageHoverBar: NSResponder {
             if inside { self?.cancelHide() } else { self?.refresh() }
         }
         host.addSubview(capsule, positioned: .above, relativeTo: scrollView)
+        installCodeTag(in: host, over: scrollView)
         scrollView.addTrackingArea(
             NSTrackingArea(
                 rect: .zero,
@@ -81,7 +100,12 @@ final class MessageHoverBar: NSResponder {
     func refresh() {
         guard let host, let window = host.window, let canvas, let scrollView else { return }
         guard NSEvent.pressedMouseButtons == 0 else { return }
+        if blocked?() == true {
+            dismiss()
+            return
+        }
         let location = window.mouseLocationOutsideOfEventStream
+        refreshCode(at: location)
         if !capsule.isHidden, capsule.frame.contains(host.convert(location, from: nil)) {
             cancelHide()
             return
@@ -103,6 +127,7 @@ final class MessageHoverBar: NSResponder {
         shown = nil
         capsule.alphaValue = 0
         capsule.isHidden = true
+        dismissCode()
     }
 
     /// The capsule stays the same capsule while the pointer stays on the same message: a message
@@ -223,6 +248,132 @@ final class MessageHoverBar: NSResponder {
 
     /// Whether the capsule is up, and for which message — for a harness.
     var showing: Target? { capsule.isHidden ? nil : shown }
+
+    private func installCodeTag(in host: NSView, over scrollView: NSScrollView) {
+        codeLabel.font = MacTheme.Ramp.font(.codeLabel)
+        codeLabel.textColor = MacTheme.Color.onGlassSecondary
+        codeStack.orientation = .horizontal
+        codeStack.alignment = .centerY
+        codeStack.spacing = 2
+        codeStack.edgeInsets = NSEdgeInsets(top: 1, left: MacTheme.Spacing.s, bottom: 1, right: 2)
+        codeStack.translatesAutoresizingMaskIntoConstraints = false
+        let glass = MacTheme.glass(around: codeStack, cornerRadius: MacTheme.Radius.control)
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        codeTag.translatesAutoresizingMaskIntoConstraints = true
+        codeTag.addSubview(glass)
+        NSLayoutConstraint.activate([
+            glass.leadingAnchor.constraint(equalTo: codeTag.leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: codeTag.trailingAnchor),
+            glass.topAnchor.constraint(equalTo: codeTag.topAnchor),
+            glass.bottomAnchor.constraint(equalTo: codeTag.bottomAnchor),
+        ])
+        codeTag.scrollView = scrollView
+        codeTag.alphaValue = 0
+        codeTag.isHidden = true
+        codeTag.onPointer = { [weak self] inside in
+            if inside { self?.cancelCodeHide() } else { self?.refresh() }
+        }
+        host.addSubview(codeTag, positioned: .above, relativeTo: scrollView)
+    }
+
+    /// The block under the pointer gets its language and its Copy at its top corner; the pointer
+    /// leaving the block lets them go after the same beat the message capsule takes.
+    private func refreshCode(at location: NSPoint) {
+        guard let host, let canvas, let scrollView else { return }
+        if !codeTag.isHidden, codeTag.frame.contains(host.convert(location, from: nil)) {
+            cancelCodeHide()
+            return
+        }
+        let inClip = scrollView.contentView.convert(location, from: nil)
+        guard scrollView.contentView.bounds.contains(inClip),
+            let target = locateCode?(canvas.convert(location, from: nil))
+        else {
+            scheduleCodeHide()
+            return
+        }
+        cancelCodeHide()
+        if target != codeShown { showCode(target) }
+    }
+
+    private func showCode(_ target: CodeTarget) {
+        guard let host, let canvas else { return }
+        let firstShow = codeShown == nil
+        let sameBlock = codeShown?.key == target.key && codeShown?.body == target.body
+        codeShown = target
+        if !sameBlock {
+            codeLabel.stringValue = target.language
+            let body = target.body
+            codeStack.setViews(
+                [
+                    codeLabel,
+                    Self.button(symbol: "doc.on.doc", tip: Localized.text("Copy code")) { [weak self] in
+                        RowKit.copyToClipboard(body)
+                        self?.toast?(Localized.text("Code copied"))
+                    },
+                ], in: .leading)
+        }
+        codeTag.layoutSubtreeIfNeeded()
+        let size = codeTag.fittingSize
+        let block = host.convert(target.block, from: canvas)
+        let inset: CGFloat = 4
+        let origin = NSPoint(
+            x: block.maxX - size.width - inset,
+            y: host.isFlipped ? block.minY + inset : block.maxY - size.height - inset)
+        codeTag.frame = NSRect(origin: origin, size: size)
+        codeTag.isHidden = false
+        guard firstShow else {
+            codeTag.alphaValue = 1
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            codeTag.animator().alphaValue = 1
+        }
+    }
+
+    private func dismissCode() {
+        cancelCodeHide()
+        codeShown = nil
+        codeTag.alphaValue = 0
+        codeTag.isHidden = true
+    }
+
+    private func scheduleCodeHide() {
+        guard !codeTag.isHidden, codeHideWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.codeHideWork = nil
+            self.codeShown = nil
+            NSAnimationContext.runAnimationGroup(
+                { context in
+                    context.duration = 0.15
+                    self.codeTag.animator().alphaValue = 0
+                },
+                completionHandler: { [weak self] in
+                    MainActor.assumeIsolated {
+                        guard let self, self.codeShown == nil else { return }
+                        self.codeTag.isHidden = true
+                    }
+                })
+        }
+        codeHideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    private func cancelCodeHide() {
+        codeHideWork?.cancel()
+        codeHideWork = nil
+    }
+
+    #if DEBUG
+        /// Puts the tag on a block as a resting pointer would, for `--open stage:`.
+        func stage(code target: CodeTarget) {
+            showCode(target)
+        }
+    #endif
+
+    /// Whether the code tag is up, and for which block — for a harness.
+    var showingCode: CodeTarget? { codeTag.isHidden ? nil : codeShown }
 }
 
 /// The capsule's own frame: it says when the pointer is on it, so the message it belongs to keeps

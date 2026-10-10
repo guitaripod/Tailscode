@@ -1,4 +1,5 @@
 import AppKit
+import TailscodeCore
 
 /// The transcript's rows, placed by hand rather than by a stack view.
 ///
@@ -16,8 +17,15 @@ import AppKit
 /// `removeFromSuperview` leaves the column with its host, exactly as it left the stack.
 @MainActor
 final class TranscriptColumn: NSView {
+    /// The air between two rows whose spacing is not known, which is every row of a column nobody
+    /// classified.
     var spacing: CGFloat = 0 {
         didSet { if spacing != oldValue { needsLayout = true } }
+    }
+    /// The table the gaps are read from. A column given none spaces every pair of rows by
+    /// ``spacing`` alone.
+    var metrics: ChatMetrics? {
+        didSet { if metrics != oldValue { needsLayout = true } }
     }
     private(set) var arrangedSubviews: [NSView] = []
     private var hosts: [ObjectIdentifier: RowHost] = [:]
@@ -37,14 +45,15 @@ final class TranscriptColumn: NSView {
         NSSize(width: NSView.noIntrinsicMetric, height: contentHeight)
     }
 
-    func addArrangedSubview(_ row: NSView) {
-        insertArrangedSubview(row, at: arrangedSubviews.count)
+    func addArrangedSubview(_ row: NSView, spacing: ChatRowSpacing? = nil) {
+        insertArrangedSubview(row, at: arrangedSubviews.count, spacing: spacing)
     }
 
-    func insertArrangedSubview(_ row: NSView, at index: Int) {
+    func insertArrangedSubview(_ row: NSView, at index: Int, spacing: ChatRowSpacing? = nil) {
         if row.superview != nil { row.removeFromSuperview() }
-        let host = RowHost(row: row, width: bounds.width)
+        let host = RowHost(row: row, width: max(bounds.width, row.flowWidth ?? 0))
         host.column = self
+        host.spacing = spacing
         hosts[ObjectIdentifier(row)] = host
         arrangedSubviews.insert(row, at: min(max(0, index), arrangedSubviews.count))
         addSubview(host)
@@ -86,21 +95,55 @@ final class TranscriptColumn: NSView {
         let width = bounds.width
         let scale = window?.backingScaleFactor ?? 2
         var y: CGFloat = 0
-        var placedAny = false
+        var previous: RowHost?
+        var line = PictureLine()
         for row in arrangedSubviews {
             guard let host = hosts[ObjectIdentifier(row)] else { continue }
             host.isHidden = row.isHidden
             guard !row.isHidden else { continue }
-            if placedAny { y += spacing }
             let height = (row.frame.height * scale).rounded(.up) / scale
-            let frame = NSRect(x: 0, y: y, width: width, height: height)
+            let isPicture = host.spacing == .row(.picture) && metrics != nil
+            if isPicture, previous?.spacing == .row(.picture), let metrics {
+                let natural = rowWidth(of: row)
+                if line.accepts(natural, in: width) {
+                    let frame = NSRect(x: line.cursor, y: line.top, width: natural, height: height)
+                    if host.frame != frame { host.frame = frame }
+                    line.take(width: natural, height: height, gap: CGFloat(metrics.imageStripGap))
+                    y = line.top + line.height
+                    previous = host
+                    continue
+                }
+            }
+            if let previous { y += gap(from: previous, to: host) }
+            let frame: NSRect
+            if isPicture, let metrics {
+                let natural = rowWidth(of: row)
+                frame = NSRect(x: 0, y: y, width: natural, height: height)
+                line = PictureLine(
+                    top: y, cursor: natural + CGFloat(metrics.imageStripGap), height: height)
+            } else {
+                frame = NSRect(x: 0, y: y, width: width, height: height)
+            }
             if host.frame != frame { host.frame = frame }
             y += height
-            placedAny = true
+            previous = host
         }
         guard contentHeight != y else { return }
         contentHeight = y
         invalidateIntrinsicContentSize()
+    }
+
+    /// The gap between two placed rows: the table's when both were classified and the column has
+    /// one, the column's single `spacing` otherwise.
+    private func gap(from above: RowHost, to below: RowHost) -> CGFloat {
+        guard let metrics, let upper = above.spacing, let lower = below.spacing else { return spacing }
+        return ChatLayout.gap(from: upper, to: lower, metrics: metrics)
+    }
+
+    /// The width a picture's row asks for: what it has resolved to, or what it would, before it
+    /// has been laid out for the first time.
+    private func rowWidth(of row: NSView) -> CGFloat {
+        min(row.flowWidth ?? row.frame.width, bounds.width)
     }
 }
 
@@ -115,6 +158,7 @@ final class TranscriptColumn: NSView {
 private final class RowHost: NSView {
     let row: NSView
     weak var column: TranscriptColumn?
+    var spacing: ChatRowSpacing?
     /// A stack view takes a hidden row out of the layout and puts it back when it shows again, so
     /// the column has to hear about both.
     private var visibility: NSKeyValueObservation?

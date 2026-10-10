@@ -860,6 +860,15 @@ final class MainWindowController: NSWindowController {
         case "renderer", "forgesetup":
             presentStudio(lane: .video)
             StudioWindowController.shared.video.openSetup()
+        #if DEBUG
+            case "stage":
+                let spec = parts.count > 1 ? parts[1].split(separator: ",").map(String.init) : []
+                guard let path = spec.first else { break }
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.transcript.stage(messagesAt: path, directives: Array(spec.dropFirst()))
+                }
+        #endif
         case "delegate": presentDelegate()
         case "delegate-beta":
             presentDelegate()
@@ -1736,6 +1745,9 @@ final class MainWindowController: NSWindowController {
 
     private func handle(_ event: NSEvent) -> NSEvent? {
         if window?.firstResponder is KeyboardPressable, [49, 36, 76].contains(event.keyCode) {
+            return event
+        }
+        if window?.firstResponder is LinkRailPlateView, [36, 49, 76, 125, 126, 53].contains(event.keyCode) {
             return event
         }
         if pendingChords.isEmpty, window?.firstResponder is DividerSplitView,

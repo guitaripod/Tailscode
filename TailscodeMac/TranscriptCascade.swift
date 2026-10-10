@@ -17,7 +17,7 @@ extension TranscriptViewController {
     /// already being written when the focus leaves is finished, not cut.
     func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
         cascade.host = view
-        let liveIndex = running && revealsAnswers ? rows.lastIndex(where: { !$0.isLinkEmbed }) : nil
+        let liveIndex = running && revealsAnswers ? rows.lastIndex(where: { !$0.isLinkRail }) : nil
         let live = liveIndex.flatMap { rows[$0].streamedText == nil ? nil : rows[$0] }
         let released = cascade.key
         if let abandoned, abandoned != live?.key { self.abandoned = nil }

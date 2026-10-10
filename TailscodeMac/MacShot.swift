@@ -82,14 +82,22 @@ enum MacShot {
         return arguments[index + 1]
     }
 
+    /// Whether `--shot-size` is a surface's size, drawn once it is up. A staged transcript is the
+    /// main window itself, which has to be its final size before anything is staged into it, or
+    /// what floats over it is placed for a window that is gone by the time it is drawn.
+    private static var sizesASurface: Bool {
+        guard let surface else { return false }
+        return !surface.hasPrefix("stage:")
+    }
+
     static func schedule() {
         guard path != nil || treePath != nil else { return }
         Task { @MainActor in
-            if let size, surface == nil, let window = NSApp.windows.first(where: { $0.contentView != nil }) {
+            if let size, !sizesASurface, let window = NSApp.windows.first(where: { $0.contentView != nil }) {
                 window.setContentSize(size)
             }
             try? await Task.sleep(for: delay)
-            if let size, surface != nil, let window = surfaceWindow() {
+            if let size, sizesASurface, let window = surfaceWindow() {
                 window.setContentSize(size)
                 window.layoutIfNeeded()
                 try? await Task.sleep(for: .milliseconds(500))

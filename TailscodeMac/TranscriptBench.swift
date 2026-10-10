@@ -101,12 +101,15 @@ enum TranscriptBench {
 
         let column = TranscriptColumn()
         column.spacing = MacTheme.Spacing.m
+        column.metrics = ChatLayout.metrics
         let root = stage(column)
         var hops: [Double] = []
         var start = max(0, rows.count - rowChunk)
         hops.append(
             time {
-                for row in rows[start...] { column.addArrangedSubview(row.makeView(context: context)) }
+                for row in rows[start...] {
+                    column.addArrangedSubview(row.makeView(context: context), spacing: row.spacing)
+                }
                 root.layoutSubtreeIfNeeded()
             })
         while start > 0 {
@@ -115,7 +118,8 @@ enum TranscriptBench {
             hops.append(
                 time {
                     for (offset, row) in rows[from..<upper].enumerated() {
-                        column.insertArrangedSubview(row.makeView(context: context), at: offset)
+                        column.insertArrangedSubview(
+                            row.makeView(context: context), at: offset, spacing: row.spacing)
                     }
                     root.layoutSubtreeIfNeeded()
                 })
@@ -145,7 +149,7 @@ enum TranscriptBench {
                     kind: .agentProse(
                         text: "A new answer arriving under everything else.",
                         rendered: MacMarkdown.render("A new answer arriving under everything else."))
-                ).makeView(context: context))
+                ).makeView(context: context), spacing: .row(.prose))
             root.layoutSubtreeIfNeeded()
         }
         var growth: [Double] = []
@@ -186,20 +190,26 @@ enum TranscriptBench {
         let stack = FillingStack(topDown: true)
         stack.spacing = MacTheme.Spacing.m
         let stackRoot = stage(stack)
-        let stacked = rows.map { $0.makeView(context: context) }
-        for view in stacked { stack.addArrangedSubview(view) }
+        let stacked = rows.map { row -> NSView? in
+            if case .file = row.kind { return nil }
+            return row.makeView(context: context)
+        }
+        for view in stacked.compactMap({ $0 }) { stack.addArrangedSubview(view) }
         stackRoot.layoutSubtreeIfNeeded()
 
         let column = TranscriptColumn()
         column.spacing = MacTheme.Spacing.m
+        column.metrics = ChatLayout.metrics
         let columnRoot = stage(column)
         let placed = rows.map { $0.makeView(context: context) }
-        for view in placed { column.addArrangedSubview(view) }
+        for (index, view) in placed.enumerated() {
+            column.addArrangedSubview(view, spacing: rows[index].spacing)
+        }
         columnRoot.layoutSubtreeIfNeeded()
 
         var disagreements: [String] = []
         for (index, row) in rows.enumerated() {
-            let expected = stacked[index].frame.height
+            guard let expected = stacked[index]?.frame.height else { continue }
             let actual = placed[index].frame.height
             guard abs(expected - actual) > 1 else { continue }
             disagreements.append(
@@ -207,7 +217,8 @@ enum TranscriptBench {
         }
         let stackHeight = stack.fittingSize.height
         print(
-            "   heights: stack \(Int(stackHeight))pt · column \(Int(column.intrinsicContentSize.height))pt"
+            "   heights: column \(Int(column.intrinsicContentSize.height))pt "
+                + "(the old one-gap stack, minus the pictures it cannot flow: \(Int(stackHeight))pt)"
                 + (disagreements.isEmpty
                     ? " · every row agrees" : " · \(disagreements.count) rows disagree"))
         for line in disagreements.prefix(8) { print("     \(line)") }

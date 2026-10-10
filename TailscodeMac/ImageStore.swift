@@ -141,11 +141,15 @@ enum ImageDisk {
 /// transcript's judgement, made against where the row actually sits.
 @MainActor
 enum ImageRowView {
+    /// A picture as a thumbnail: never taller than the table's bound, as wide as its proportions
+    /// make it, with its filename as the tooltip and the accessibility label rather than a caption
+    /// row under it. Its row is exactly the picture and hugs its width, which is what lets the
+    /// column set consecutive pictures side by side in one strip.
     static func make(
         _ reference: FileReference, mine: Bool, key: String, context: TranscriptContext
     ) -> NSView {
-        let thumbWidth = CGFloat(ImagePreview.deskBound(ImagePreview.deskWidth, mine: mine))
-        let thumbHeight = CGFloat(ImagePreview.deskBound(ImagePreview.deskHeight, mine: mine))
+        let maxHeight = CGFloat(
+            ImagePreview.deskBound(ChatLayout.metrics.imageMaxHeight, mine: mine))
         let name =
             reference.filename
             ?? reference.path.map { URL(fileURLWithPath: $0, isDirectory: false).lastPathComponent }
@@ -155,27 +159,21 @@ enum ImageRowView {
             return RowKit.label(
                 "📎 \(name)", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
         }
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .leading
-        column.spacing = 4
-        column.translatesAutoresizingMaskIntoConstraints = false
 
         if let entry = ImageStore.shared.entry(forKey: key) {
-            let scale = min(
-                thumbWidth / CGFloat(max(1, entry.pixelWidth)),
-                thumbHeight / CGFloat(max(1, entry.pixelHeight)), 1)
+            let size = PictureThumb.size(
+                pixels: CGSize(width: entry.pixelWidth, height: entry.pixelHeight),
+                maxHeight: maxHeight, maxWidth: PictureThumb.widest)
             let imageView = PictureView(image: entry.image)
             imageView.imageScaling = .scaleProportionallyUpOrDown
             imageView.wantsLayer = true
             imageView.layer?.cornerRadius = 6
             imageView.layer?.masksToBounds = true
             imageView.translatesAutoresizingMaskIntoConstraints = false
+            imageView.setContentHuggingPriority(.required, for: .horizontal)
             NSLayoutConstraint.activate([
-                imageView.widthAnchor.constraint(
-                    equalToConstant: CGFloat(entry.pixelWidth) * scale),
-                imageView.heightAnchor.constraint(
-                    equalToConstant: CGFloat(entry.pixelHeight) * scale),
+                imageView.widthAnchor.constraint(equalToConstant: size.width),
+                imageView.heightAnchor.constraint(equalToConstant: size.height),
             ])
             let open = context.openImage
             imageView.addGestureRecognizer(
@@ -186,30 +184,30 @@ enum ImageRowView {
                 radius: 9)
             imageView.setAccessibilityRole(.button)
             imageView.setAccessibilityLabel(Localized.text("Open %@", name))
-            imageView.toolTip = Localized.text("Open %@", name)
-            column.addArrangedSubview(imageView)
-            column.addArrangedSubview(
-                RowKit.label(
-                    "\(name) · \(entry.pixelWidth)×\(entry.pixelHeight)",
-                    font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
-        } else {
-            let frame = GroundView(cornerRadius: 6, fill: MacTheme.Color.canvasRaised)
-            let label = RowKit.label(
-                Localized.text("🖼 %@ — loading…", name), font: MacTheme.Ramp.font(.panelFootnote),
-                color: MacTheme.Color.tertiaryLabel)
-            frame.addSubview(label)
-            NSLayoutConstraint.activate([
-                frame.widthAnchor.constraint(equalToConstant: thumbWidth),
-                frame.heightAnchor.constraint(equalToConstant: thumbHeight),
-                label.centerXAnchor.constraint(equalTo: frame.centerXAnchor),
-                label.centerYAnchor.constraint(equalTo: frame.centerYAnchor),
-                label.leadingAnchor.constraint(greaterThanOrEqualTo: frame.leadingAnchor, constant: 6),
-                label.trailingAnchor.constraint(lessThanOrEqualTo: frame.trailingAnchor, constant: -6),
-            ])
-            column.addArrangedSubview(frame)
-            context.requestImage?(reference, key)
+            imageView.toolTip = name
+            imageView.flowWidth = size.width
+            return imageView
         }
-        return column
+        let size = PictureThumb.placeholder(maxHeight: maxHeight)
+        let frame = GroundView(cornerRadius: 6, fill: MacTheme.Color.canvasRaised)
+        frame.translatesAutoresizingMaskIntoConstraints = false
+        frame.setContentHuggingPriority(.required, for: .horizontal)
+        let label = RowKit.label(
+            Localized.text("🖼 %@ — loading…", name), font: MacTheme.Ramp.font(.panelFootnote),
+            color: MacTheme.Color.tertiaryLabel)
+        frame.addSubview(label)
+        NSLayoutConstraint.activate([
+            frame.widthAnchor.constraint(equalToConstant: size.width),
+            frame.heightAnchor.constraint(equalToConstant: size.height),
+            label.centerXAnchor.constraint(equalTo: frame.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: frame.centerYAnchor),
+            label.leadingAnchor.constraint(greaterThanOrEqualTo: frame.leadingAnchor, constant: 6),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: frame.trailingAnchor, constant: -6),
+        ])
+        frame.toolTip = name
+        frame.flowWidth = size.width
+        context.requestImage?(reference, key)
+        return frame
     }
 
     /// A thumbnail that opens the way a button does: clicked, pressed with Space or Return once Full
