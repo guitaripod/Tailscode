@@ -1,4 +1,3 @@
-import TailscodeCore
 import UIKit
 
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -61,7 +60,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         coordinator?.handleControlRouteIfNeeded()
         PushRegistrar.reregisterIfNeeded()
         UpdateMonitor.checkIfDue()
-        CloudSync.shared.foreground()
         HapticEngine.shared.prepare()
         ReviewPromptCoordinator.shared.appDidBecomeActive()
     }

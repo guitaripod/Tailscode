@@ -69,9 +69,6 @@ final class SavedChatsViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(activityDidChange), name: SessionActivity.didChange,
             object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(activityDidChange), name: SessionSeenStore.didSync,
-            object: nil)
         viewModel.onChange = { [weak self] in
             self?.hasLoadedOnce = true
             self?.applySnapshot()

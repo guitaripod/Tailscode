@@ -117,17 +117,6 @@ final class ConnectionController {
         return all
     }
 
-    /// The saved servers as the iCloud sync names them. The demo world's servers are a script, and
-    /// nothing about them belongs in a person's iCloud.
-    var cloudServers: [CloudServer] {
-        guard !isDemoMode else { return [] }
-        return ((try? store?.profiles()) ?? []).map {
-            CloudServer(
-                profileID: $0.id, name: $0.name, backend: $0.backend,
-                endpoint: CloudKeys.endpoint(of: $0.baseURL))
-        }
-    }
-
     /// Puts the app into the scripted no-server demo world. Exits automatically
     /// the moment a real server is saved.
     func enterDemoMode() {

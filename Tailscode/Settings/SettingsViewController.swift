@@ -10,7 +10,7 @@ final class SettingsViewController: UIViewController {
     /// Sections double as deep-link targets, so anything that spots a broken
     /// setting can send the user straight at it: `tailscode://settings/notifications`.
     enum Section: String, CaseIterable {
-        case connections, software, tailnet, notifications, usage, icloud, chat, appearance, pro,
+        case connections, software, tailnet, notifications, usage, chat, appearance, pro,
             diagnostics, about
 
         var title: String {
@@ -20,7 +20,6 @@ final class SettingsViewController: UIViewController {
             case .tailnet: return String(localized: "Tailnet")
             case .notifications: return String(localized: "Notifications")
             case .usage: return String(localized: "Usage")
-            case .icloud: return "iCloud"
             case .chat: return String(localized: "Chat")
             case .appearance: return String(localized: "Appearance")
             case .pro: return "Tailscode Pro"
@@ -36,7 +35,6 @@ final class SettingsViewController: UIViewController {
         case autoResume
         case notifyTurnComplete, notifyApprovals, notifyUsage, serverPush, liveActivities
         case presenceOrb
-        case iCloudSync
 
         var title: String {
             switch self {
@@ -53,7 +51,6 @@ final class SettingsViewController: UIViewController {
             case .serverPush: return String(localized: "Push from servers")
             case .liveActivities: return String(localized: "Live Activities")
             case .presenceOrb: return String(localized: "Presence orb")
-            case .iCloudSync: return CloudSyncReading.title
             }
         }
 
@@ -88,7 +85,6 @@ final class SettingsViewController: UIViewController {
                     localized:
                         "Alpha — a GPU-rendered creature over Home that breathes what every conversation is doing; may cost battery"
                 )
-            case .iCloudSync: return CloudSyncReading.explanation
             }
         }
 
@@ -107,7 +103,6 @@ final class SettingsViewController: UIViewController {
             case .serverPush: return "antenna.radiowaves.left.and.right"
             case .liveActivities: return "rectangle.inset.filled.badge.record"
             case .presenceOrb: return "circle.hexagongrid.circle"
-            case .iCloudSync: return "icloud"
             }
         }
 
@@ -126,7 +121,6 @@ final class SettingsViewController: UIViewController {
             case .serverPush: return Theme.Color.accent
             case .liveActivities: return Theme.Color.special
             case .presenceOrb: return Theme.Color.special
-            case .iCloudSync: return Theme.Color.info
             }
         }
 
@@ -145,7 +139,6 @@ final class SettingsViewController: UIViewController {
             case .serverPush: return AppPreferences.pushAlertsEnabled
             case .liveActivities: return AppPreferences.liveActivitiesEnabled
             case .presenceOrb: return PresenceOrbSetting.isEnabled
-            case .iCloudSync: return CloudSync.preferenceEnabled
             }
         }
 
@@ -169,7 +162,6 @@ final class SettingsViewController: UIViewController {
                 AppPreferences.liveActivitiesEnabled = value
                 if !value { AppActivityController.shared.withdrawAll() }
             case .presenceOrb: PresenceOrbSetting.setEnabled(value)
-            case .iCloudSync: CloudSync.shared.setEnabled(value)
             }
         }
     }
@@ -188,7 +180,6 @@ final class SettingsViewController: UIViewController {
         case backgroundRefresh
         case toggle(Toggle)
         case pushState(String)
-        case iCloudStatus
         case testNotification
         case usage
         case ollamaKey
@@ -352,8 +343,6 @@ final class SettingsViewController: UIViewController {
             self, selector: #selector(themeChanged), name: ThemeSelection.didChange, object: nil)
         center.addObserver(
             self, selector: #selector(updatesChanged), name: UpdateMonitor.didChange, object: nil)
-        center.addObserver(
-            self, selector: #selector(updatesChanged), name: CloudSync.didChange, object: nil)
     }
 
     /// The software row and the per-server marks are the same fact seen at two widths, so one
@@ -503,7 +492,6 @@ final class SettingsViewController: UIViewController {
             )
         case .about:
             return "\(Self.copyright)\n" + String(localized: "Coding agents over Tailscale.")
-        case .icloud: return CloudSyncReading.footer
         case .chat, .appearance, .pro, .diagnostics:
             return nil
         }
@@ -651,16 +639,6 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: "app.badge")
             content.imageProperties.tintColor =
                 state == .registered ? Theme.Color.success : Theme.Color.warning
-        case .iCloudStatus:
-            let line = CloudSyncReading.line(
-                for: CloudSync.shared.status, lastSyncedAt: CloudSync.shared.lastSyncedAt)
-            content.text = line.headline
-            content.secondaryText = line.detail
-            content.secondaryTextProperties.color =
-                line.isWarning ? Theme.Color.warning : Theme.Color.secondaryLabel
-            content.image = UIImage(systemName: line.isWarning ? "exclamationmark.icloud" : "icloud")
-            content.imageProperties.tintColor =
-                line.isWarning ? Theme.Color.warning : Theme.Color.info
         case .testNotification:
             content.text = String(localized: "Send a test notification")
             content.textProperties.color = Theme.Color.accent
@@ -911,7 +889,7 @@ final class SettingsViewController: UIViewController {
     /// pushes off makes every per-bridge row read "Turned off" immediately rather
     /// than after the next visit.
     private func toggleDidChange(_ toggle: Toggle) {
-        guard toggle == .serverPush || toggle == .iCloudSync else { return }
+        guard toggle == .serverPush else { return }
         applySnapshot()
     }
 
@@ -979,9 +957,6 @@ final class SettingsViewController: UIViewController {
         notificationItems.append(.testNotification)
 
         let usageItems: [Item] = [.usage, .ollamaKey, .deepseekKey]
-        let cloudItems: [Item] =
-            CloudSync.shared.isEnabled
-            ? [.toggle(.iCloudSync), .iCloudStatus] : [.toggle(.iCloudSync)]
 
         return [
             (.connections, connectionItems),
@@ -989,7 +964,6 @@ final class SettingsViewController: UIViewController {
             (.tailnet, [.tailnetStatus, .tailnetToken, .tailnetScan]),
             (.notifications, notificationItems),
             (.usage, usageItems),
-            (.icloud, cloudItems),
             (
                 .chat,
                 [
@@ -1117,10 +1091,6 @@ final class SettingsViewController: UIViewController {
             let name = ConnectionController.shared.profiles.first { $0.id == id }?.name ?? ""
             return String(localized: "push notifications bridge", comment: "search keywords")
                 + " \(name)"
-        case .iCloudStatus:
-            return String(
-                localized: "icloud sync status devices saved read unread pinned archived",
-                comment: "search keywords")
         case .testNotification:
             return String(localized: "test notification send check", comment: "search keywords")
         case .usage:
@@ -1369,9 +1339,6 @@ extension SettingsViewController: UICollectionViewDelegate {
         case .pushState:
             Theme.Haptics.tap()
             PushRegistrar.reregisterIfNeeded()
-        case .iCloudStatus:
-            Theme.Haptics.tap()
-            CloudSync.shared.syncNow()
         case .testNotification:
             Theme.Haptics.tap()
             NotificationManager.sendTest()

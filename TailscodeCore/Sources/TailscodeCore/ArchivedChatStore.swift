@@ -37,16 +37,6 @@ public enum ArchivedChatStore {
         return archived
     }
 
-    /// Applies what another device settled: these in, these out, and silence when that changes
-    /// nothing here.
-    public static func adopt(add: Set<String>, remove: Set<String>) {
-        let current = all()
-        let next = current.union(add).subtracting(remove)
-        guard next != current else { return }
-        defaults.set(next.sorted(), forKey: storageKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
-    }
-
     public static func key(_ profileID: String, _ sessionID: String) -> String {
         "\(profileID)/\(sessionID)"
     }

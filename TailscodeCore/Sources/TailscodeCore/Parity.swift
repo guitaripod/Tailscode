@@ -45,7 +45,6 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case unreadTracking
     case savedChats
     case savedChatSync
-    case cloudSync
     case archivedChats
     case deleteSession
     case bulkSelection
@@ -307,10 +306,6 @@ public enum CapabilityRegistry {
             id: .savedChatSync, area: "chat list", title: "Bookmarks follow the conversation",
             spec:
                 "A bookmark is a fact about a conversation rather than about the device that made it — a chat saved from the couch is what a person goes looking for at the desk an hour later — so the server that holds the transcript holds the mark (claude-bridge: saved on the session summary, PATCH /sessions/:id {saved}), and every client reading that listing shows the same shortlist. The device's own copy stays whole, because the point of a saved chat is to still find it when its server is asleep. A press answers instantly and may be made with no server in reach, so it never waits on the wire: it leaves a PendingSaveIntent behind, that intent outranks the listing until it is delivered, and SavedChatSync.drain delivers it on the next listing — a server with no notion of a bookmark (opencode) retires the intent unsent and keeps the mark where it has always been, on the device, and a bridge too old for the field answers a permanent refusal, which reads the same way. SavedChatStore.reconcile then adopts the server's truth for everything nobody is holding an intent about, so a bookmark dropped on another machine goes here too."),
-        CapabilityDefinition(
-            id: .cloudSync, area: "chat list", title: "Read marks, bookmarks, pins and archive follow the person",
-            spec:
-                "What a person has decided about their conversations is theirs rather than one device's: which chats they have read (and the ones they set aside as unread), the ones they saved, the ones they pinned and the ones they filed away. Every device signed in to the same iCloud account keeps the same answer through the key-value store (CloudSync, CloudKeyValueStore): a ledger of marks, each saying what was decided and when (CloudLedger), merged by the later decision, with a removal winning a tie and remembered for weeks so a phone that was in a drawer does not offer it back. Conversations are keyed by the server's endpoint and the session id (CloudKeys), never by a profile id, which each device mints for itself; a device that spells a server differently learns the alias from the name and the kind of agent (CloudKeyMapper). CloudReconciler is pure arithmetic over what the device holds, what it held when it last agreed and what the cloud says — a thing the device never held says nothing about whether a person wants it, so a server added next week is not a year of deletions and a server removed here does not empty the others. A pass touches no server and no network, runs a few seconds after launch and on the changes themselves, and writes nothing when nothing moved. The title and folder of a saved chat travel with its mark; conversations, servers and passwords never do. A bookmark that arrives is held like one made here, so the bridge that keeps bookmarks is told through the ordinary pending intent. The switch, its status and a sync-now press live in Settings under iCloud (CloudSyncReading); signed out of iCloud or without the entitlement it says so and the device keeps working as it was."),
         CapabilityDefinition(
             id: .archivedChats, area: "chat list", title: "Device-local archive",
             spec:

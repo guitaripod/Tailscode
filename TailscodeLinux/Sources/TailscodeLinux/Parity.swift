@@ -22,7 +22,6 @@ enum ParityManifest {
         case .unreadTracking: return .implemented("toggleUnreadSelected")
         case .savedChats: return .implemented("SavedChatStore")
         case .savedChatSync: return .implemented("SavedChatSync")
-        case .cloudSync: return .notApplicable("iCloud is Apple's account system and has no door on Linux; read marks, bookmarks, pins and archive stay on this desk")
         case .archivedChats: return .implemented("ArchivedChatStore")
         case .deleteSession: return .implemented("deleteSession")
         case .renameSession: return .implemented("renameSession")
