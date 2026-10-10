@@ -102,12 +102,17 @@ final class TranscriptContext: @unchecked Sendable {
     /// reader's decision in with it rather than collapsing it.
     func isExpanded(_ key: String) -> Bool { expanded.reads(key) }
 
-    /// The longest side a transcript picture is kept at. A 4K screenshot downsampled to this
-    /// side is ~10 MB of texture instead of ~33 MB, and the 1:1 pixel view never touches the
-    /// cache — the gallery decodes the original for the page it is showing, one at a time.
-    static let bubbleMaxDimension: Int32 = 1600
+    /// The longest side a transcript picture is kept at. A row never draws one larger than a
+    /// strip thumbnail or a 340 × 300 poster, so twice that is all a transcript can use: a 4K
+    /// screenshot downsampled to this side is ~1.3 MB of texture instead of ~33 MB, a transcript of
+    /// two hundred agent screenshots fits the cap whole, and the 1:1 pixel view never touches the
+    /// cache — the gallery decodes the original for the page it is showing, one at a time. At
+    /// 1600 a long session needed more than the cap, every rebuild asked for every picture the
+    /// cache had dropped, and the pictures on screen were evicted by the ones above them: the
+    /// strip flickered between its pictures and a "loading…" line on every streamed arrival.
+    static let bubbleMaxDimension: Int32 = 720
 
-    private static let textureByteCap = 256 * 1024 * 1024
+    var textureByteCap = 256 * 1024 * 1024
     private var previewBytes: [String: Int] = [:]
     private var cachedBytes = 0
 
@@ -130,7 +135,7 @@ final class TranscriptContext: @unchecked Sendable {
         onImageStored?(key)
         textureOrder.removeAll { $0 == key }
         textureOrder.append(key)
-        while cachedBytes > Self.textureByteCap, let evicted = textureOrder.first {
+        while cachedBytes > textureByteCap, let evicted = textureOrder.first {
             textureOrder.removeFirst()
             if let bits = textures[evicted], bits != 0,
                 let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
@@ -143,6 +148,19 @@ final class TranscriptContext: @unchecked Sendable {
             cachedBytes -= previewBytes[evicted] ?? 0
             previewBytes[evicted] = nil
         }
+    }
+
+    /// The decoded preview for a picture, and a mark that a row is using it now. The order the
+    /// cache sheds in is the order pictures were last drawn, not the order they were decoded, so a
+    /// rebuild — which draws the pictures in view last — can never have the pictures in view
+    /// evicted by the ones above them. Zero when it is not decoded.
+    func texture(forKey key: String) -> UInt {
+        guard let bits = textures[key], bits != 0 else { return 0 }
+        if textureOrder.last != key {
+            textureOrder.removeAll { $0 == key }
+            textureOrder.append(key)
+        }
+        return bits
     }
 
     /// What a preview of `dimensions` costs in VRAM at `bubbleMaxDimension`.
@@ -1056,7 +1074,8 @@ struct TranscriptRow: Hashable {
         let thumbWidth = Int32(ImagePreview.deskBound(ImagePreview.deskWidth, mine: mine))
         let thumbHeight = Int32(ImagePreview.deskBound(ImagePreview.deskHeight, mine: mine))
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
-        if let bits = context.textures[key], bits != 0 {
+        let bits = context.texture(forKey: key)
+        if bits != 0 {
             let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
             let picture = tailscode_picture_for_texture(texture)!
             let width = tailscode_texture_width(texture)

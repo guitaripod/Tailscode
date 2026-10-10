@@ -63,7 +63,45 @@ extension SelfTest {
         try checkDensityStyle(expect)
         guard gtk_init_check() != 0 else { return checks }
         try checkRailWidgets(expect)
+        try checkTextureCache(expect)
         return checks
+    }
+
+    private static let tinyPicture = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFElEQVR4nGM8oaHBgA0wYRUdtBIA4DgBKJ8lCQoAAAAASUVORK5CYII="
+
+    /// The decoded-picture cache sheds the picture drawn longest ago, not the one decoded first,
+    /// and keeps previews small enough that a long session's screenshots fit it whole.
+    private static func checkTextureCache(_ expect: (Bool, String) throws -> Void) throws {
+        let png = Data(base64Encoded: tinyPicture) ?? Data()
+        func decode() -> UInt {
+            png.withUnsafeBytes { buffer in
+                var width: Int32 = 0
+                var height: Int32 = 0
+                guard let base = buffer.baseAddress,
+                    let texture = tailscode_texture_scaled(
+                        base, gsize(buffer.count), TranscriptContext.bubbleMaxDimension, &width, &height)
+                else { return 0 }
+                return UInt(bitPattern: texture)
+            }
+        }
+        let context = TranscriptContext()
+        context.textureByteCap = 3 * 8 * 8 * 4 + 16
+        for key in ["p0", "p1", "p2"] {
+            context.store(textureBits: decode(), data: png, dimensions: (8, 8), forKey: key)
+        }
+        try expect(png.count > 0, "the stand-in picture decodes")
+        try expect(context.texture(forKey: "p0") != 0, "a picture just stored reads back")
+        context.store(textureBits: decode(), data: png, dimensions: (8, 8), forKey: "p3")
+        try expect(
+            context.texture(forKey: "p0") != 0, "the picture drawn most recently outlives one decoded earlier")
+        try expect(
+            context.texture(forKey: "p1") == 0, "the picture drawn longest ago is the one let go")
+        try expect(
+            context.texture(forKey: "p2") != 0 && context.texture(forKey: "p3") != 0,
+            "the rest stay")
+        try expect(
+            TranscriptContext.bubbleMaxDimension <= 720,
+            "a transcript preview is no larger than a strip thumbnail or poster can use")
     }
 
     private static func row(_ key: String, _ kind: TranscriptRow.Kind) -> TranscriptRow {

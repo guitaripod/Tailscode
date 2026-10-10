@@ -54,7 +54,8 @@ enum PictureStripView {
         gtk_widget_set_tooltip_text(opener, name)
         tailscode_set_accessible_label(opener, name)
         let frame: UnsafeMutablePointer<GtkWidget>
-        if let bits = context.textures[picture.key], bits != 0 {
+        let bits = context.texture(forKey: picture.key)
+        if bits != 0 {
             let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
             let width = Double(tailscode_texture_width(texture))
             let height = Double(tailscode_texture_height(texture))
