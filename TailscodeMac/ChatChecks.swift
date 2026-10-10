@@ -176,11 +176,16 @@ enum ChatChecks {
             gap(prose, .turnBreak, compact) + gap(.turnBreak, .row(.prompt), compact) == 16,
             "the turn break splits the turn gap around its rule")
         try expect(gap(tool, prose, comfortable) == 12, "comfortable keeps the pointer's own 12")
+        try expect(
+            gap(.row(.prompt), .row(.prose), compact) == 8,
+            "a prompt is the heading of its answer, so the answer sits at the paragraph gap")
         for upper in ChatRowClass.allCases {
             for lower in ChatRowClass.allCases {
-                try expect(
-                    gap(.row(upper), .row(lower), compact) == gap(.row(lower), .row(upper), compact),
-                    "the air between \(upper) and \(lower) is the same either way round")
+                if upper != .prompt && lower != .prompt {
+                    try expect(
+                        gap(.row(upper), .row(lower), compact) == gap(.row(lower), .row(upper), compact),
+                        "the air between \(upper) and \(lower) is the same either way round")
+                }
                 try expect(
                     gap(.row(upper), .row(lower), compact) <= gap(.row(upper), .row(lower), comfortable),
                     "compact is never airier than comfortable for \(upper) over \(lower)")

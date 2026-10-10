@@ -93,8 +93,8 @@ extension SelfTest {
         try expect(table[0] == 0, "the first row has no air above it")
         try expect(
             table[1] == compact.gap(from: .prompt, to: .prose)
-                && table[1] == compact.turnGap,
-            "a prompt and its answer are set a turn apart: \(table[1])")
+                && table[1] == compact.paragraphGap,
+            "a prompt is the heading of its answer, set a paragraph apart: \(table[1])")
         try expect(table[2] == compact.paragraphGap, "paragraph to paragraph: \(table[2])")
         try expect(
             table[3] == compact.proseToFurnitureGap, "prose to a flat line: \(table[3])")
@@ -426,9 +426,10 @@ extension SelfTest {
         try expect(
             compact.contains("padding: 8px 18px") && comfortable.contains("padding: 18px 26px"),
             "the transcript's padding follows the density")
+        let flat = Int(ChatMetrics.metrics(for: .compact, input: .pointer).activityRowHeight)
         try expect(
-            compact.contains(".disclosure { padding: 0; min-height: 24px; }"),
-            "a flat activity line is 24 px")
+            compact.contains(".disclosure { padding: 0; min-height: \(flat)px; }"),
+            "a flat activity line is the metrics' \(flat) px")
         try expect(
             compact.contains(".link-rail") && !compact.contains(".link-card"),
             "the rail is styled and the card is gone")

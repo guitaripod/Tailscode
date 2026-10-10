@@ -96,10 +96,11 @@ enum ChatSpacing {
             expect(gap(.furniture, .furniture) == 2, "two flat lines nearly touch")
             expect(gap(.prose, .rail) == 4 && gap(.rail, .furniture) == 2, "a rail is a flat line")
             expect(gap(.prose, .code) == 6 && gap(.code, .prose) == 6, "code is 6 either way")
-            expect(gap(.prose, .prompt) == 16 && gap(.prompt, .prose) == 16, "a turn break is 16")
+            expect(gap(.prose, .prompt) == 16, "a prompt starts a turn, 16 above it")
+            expect(gap(.prompt, .prose) == 8, "a prompt is the heading of its answer, 8 below it")
             expect(gap(.picture, .picture) == 8, "a strip's gutter is 8")
             expect(gap(.prompt, .picture, sameSend: true) == 6, "a prompt's own picture is close")
-            expect(gap(.prompt, .picture) == 16, "a picture after a prompt of another send is a turn")
+            expect(gap(.prompt, .picture) == 8, "a picture after a prompt of another send is its answer")
             expect(
                 LinkRailPolicy.isSettled(lastRowIsLive: false, followedByFurniture: true, turnIsOpen: true),
                 "a run followed by furniture settles")
