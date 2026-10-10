@@ -86,8 +86,9 @@ public struct ChatMetrics: Sendable, Equatable {
     public var pictureStripGap: Double
     public var turnGap: Double
 
-    /// The pressable row of a flat activity line. The visible line is 24 pt, inside the 32 pt a
-    /// finger needs.
+    /// The pressable row of a flat activity line. A finger needs 32 pt, with the 24-pt visible line
+    /// inside it; a pointer needs no more than its line, 18 pt, which is also what the desktops'
+    /// tool lines already were — so a pointer client never gets taller by being made compact.
     public var activityRowHeight: Double
     public var seamRowHeight: Double
     public var railRowHeight: Double
@@ -102,21 +103,23 @@ public struct ChatMetrics: Sendable, Equatable {
     public var promptBubblePadding: Double
 
     public static func metrics(for density: ChatDensity, input: ChatInput) -> ChatMetrics {
-        let flat: Double = input == .touch ? 32 : 24
+        let activity: Double = input == .touch ? 32 : 18
+        let seam: Double = input == .touch ? 32 : 20
+        let rail: Double = input == .touch ? 32 : 22
         let open: Double = input == .touch ? 44 : 36
         let air: Double = input == .touch ? 16 : 12
         switch density {
         case .compact:
             return ChatMetrics(
                 paragraphGap: 8, proseToFurnitureGap: 4, proseToCodeGap: 6, furnitureGap: 2,
-                pictureStripGap: 6, turnGap: 16, activityRowHeight: flat, seamRowHeight: flat,
-                railRowHeight: flat, railOpenRowHeight: open, railPlateWidth: 440, railPlateRows: 8,
+                pictureStripGap: 6, turnGap: 16, activityRowHeight: activity, seamRowHeight: seam,
+                railRowHeight: rail, railOpenRowHeight: open, railPlateWidth: 440, railPlateRows: 8,
                 imageMaxHeight: 180, imageStripGap: 8, codeCollapseLines: 14, promptBubblePadding: 6)
         case .comfortable:
             return ChatMetrics(
                 paragraphGap: air, proseToFurnitureGap: air, proseToCodeGap: air, furnitureGap: air,
-                pictureStripGap: air, turnGap: 24, activityRowHeight: flat, seamRowHeight: flat,
-                railRowHeight: flat, railOpenRowHeight: open, railPlateWidth: 440, railPlateRows: 8,
+                pictureStripGap: air, turnGap: 24, activityRowHeight: activity, seamRowHeight: seam,
+                railRowHeight: rail, railOpenRowHeight: open, railPlateWidth: 440, railPlateRows: 8,
                 imageMaxHeight: 300, imageStripGap: 8, codeCollapseLines: 14, promptBubblePadding: 8)
         }
     }

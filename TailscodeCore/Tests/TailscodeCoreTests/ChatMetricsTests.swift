@@ -59,12 +59,14 @@ import Testing
 
     @Test func pressableRowsKeepTheirFloors() {
         for (density, input, metrics) in everyTable() {
-            let floor: Double = input == .touch ? 32 : 24
+            let activityFloor: Double = input == .touch ? 32 : 18
+            let seamFloor: Double = input == .touch ? 32 : 20
+            let railFloor: Double = input == .touch ? 32 : 22
             let openFloor: Double = input == .touch ? 44 : 36
             let label = "\(density) \(input)"
-            #expect(metrics.activityRowHeight >= floor, "activity row \(label)")
-            #expect(metrics.seamRowHeight >= floor, "seam row \(label)")
-            #expect(metrics.railRowHeight >= floor, "rail row \(label)")
+            #expect(metrics.activityRowHeight >= activityFloor, "activity row \(label)")
+            #expect(metrics.seamRowHeight >= seamFloor, "seam row \(label)")
+            #expect(metrics.railRowHeight >= railFloor, "rail row \(label)")
             #expect(metrics.railOpenRowHeight >= openFloor, "opened rail row \(label)")
         }
     }
