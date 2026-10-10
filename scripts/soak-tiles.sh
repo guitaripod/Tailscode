@@ -4,6 +4,7 @@
 #   scripts/soak-tiles.sh --panes 5 --rate 80 --rows 600 --seconds 180
 #   scripts/soak-tiles.sh --panes 5 --seconds 60 --hammer         structural verbs + resizes
 #   scripts/soak-tiles.sh --panes 5 --seconds 120 --zoom-at 60    zoom one pane halfway
+#   scripts/soak-tiles.sh ... --paragraph 8000                    every reply segment is one unbroken 8000-character paragraph
 #   scripts/soak-tiles.sh ... --shed 1                            hold the governor at a level (0 calm … 4 critical)
 #   scripts/soak-tiles.sh ... --assert                            exit 1 past docs/tiling.md 10.7
 #   scripts/soak-tiles.sh ... --build                             release build first
@@ -22,7 +23,7 @@ set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 PANES=5 RATE=80 ROWS=600 SECONDS_=180 WARMUP=60 HAMMER=no ZOOM_AT="" ASSERT=no BUILD=no
-ARRANGE=grid LABEL="" OUT="" SHED=""
+ARRANGE=grid LABEL="" OUT="" SHED="" PARAGRAPH=""
 while [ $# -gt 0 ]; do
     case "$1" in
     --panes) PANES=$2; shift ;;
@@ -38,6 +39,7 @@ while [ $# -gt 0 ]; do
     --build) BUILD=yes ;;
     --label) LABEL=$2; shift ;;
     --shed) SHED=$2; shift ;;
+    --paragraph) PARAGRAPH=$2; shift ;;
     --out) OUT=$2; shift ;;
     *) sed -n '2,20p' "$0" >&2; exit 2 ;;
     esac
@@ -64,6 +66,7 @@ if [ -z "${SOAK_IN_SCOPE:-}" ]; then
         -- env SOAK_IN_SCOPE=1 "$0" \
         --panes "$PANES" --rate "$RATE" --rows "$ROWS" --seconds "$SECONDS_" --warmup "$WARMUP" \
         --arrange "$ARRANGE" --label "$LABEL" --out "$OUT" ${SHED:+--shed "$SHED"} \
+        ${PARAGRAPH:+--paragraph "$PARAGRAPH"} \
         ${SUFFIX:+$([ "$HAMMER" = yes ] && echo --hammer || true)} ${ZOOM_AT:+--zoom-at "$ZOOM_AT"} \
         "--$([ "$ASSERT" = yes ] && echo assert || echo no-assert)"
 fi
@@ -80,7 +83,7 @@ DRIVE="4000:soakopen=$ARRANGE;$SEND_MS:soaksend;$((SEND_MS + 200)):soakstats"
 [ "$HAMMER" = yes ] && DRIVE="$DRIVE;$((SEND_MS + 3000)):soakhammer=$((SECONDS_ - 10))"
 [ -n "$SHED" ] && DRIVE="2000:shed=$SHED;$DRIVE"
 [ -n "$ZOOM_AT" ] && DRIVE="$DRIVE;$((SEND_MS + ZOOM_AT * 1000)):szoom;$((SEND_MS + ZOOM_AT * 1000 + 100)):soakstats"
-export TAILSCODE_SOAK="$PANES:$RATE:$ROWS:$((SECONDS_ + 60))"
+export TAILSCODE_SOAK="$PANES:$RATE:$ROWS:$((SECONDS_ + 60))${PARAGRAPH:+:$PARAGRAPH}"
 
 echo "soak $LABEL: TAILSCODE_SOAK=$TAILSCODE_SOAK drive=$DRIVE out=$OUT" >&2
 "$HARNESS" start --release --no-build --clean --drive "$DRIVE" -- --demo

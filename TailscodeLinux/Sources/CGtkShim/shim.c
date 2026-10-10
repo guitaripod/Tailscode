@@ -47,6 +47,15 @@ static atomic_long tailscode_soak_frames = 0;
     if (atomic_load_explicit(&tailscode_soak_on, memory_order_relaxed)) \
         atomic_fetch_add_explicit(&(counter), 1, memory_order_relaxed)
 
+/// Counts one reveal markup parse, or one answer served from the one-entry cache, for the soak.
+void tailscode_soak_note_parse(int hit) {
+    if (hit) {
+        TAILSCODE_SOAK_COUNT(tailscode_soak_parse_hits);
+    } else {
+        TAILSCODE_SOAK_COUNT(tailscode_soak_parses);
+    }
+}
+
 static gboolean tailscode_idle_trampoline(gpointer raw) {
     TailscodeIdle *box = raw;
     if (box->counted) atomic_fetch_sub_explicit(&tailscode_soak_pending, 1, memory_order_relaxed);
@@ -1674,143 +1683,6 @@ void tailscode_aura_set(
         aura->stop_count = count;
     }
     gtk_widget_queue_draw(area);
-}
-
-/// Prose wraps at the pane's width, and a label that stops wrapping runs off the edge of the
-/// window. Setting a label's text is not supposed to disturb that, but the reveal sets it a
-/// hundred times a second and one silent reset is a paragraph nobody can read — so the properties
-/// the transcript depends on are restated rather than assumed.
-static void tailscode_label_keep_wrapping(GtkLabel *label) {
-    gtk_label_set_wrap(label, TRUE);
-    gtk_label_set_wrap_mode(label, PANGO_WRAP_WORD_CHAR);
-    gtk_label_set_ellipsize(label, PANGO_ELLIPSIZE_NONE);
-    gtk_label_set_xalign(label, 0);
-    gtk_label_set_max_width_chars(label, -1);
-}
-
-/// One live row at a time, so one parse is all the cache ever has to hold. Re-rendering markdown
-/// and re-parsing markup on every frame was the cost that made a smooth reveal stutter; this makes
-/// a frame a substring and an attribute list.
-static char *tailscode_reveal_markup = NULL;
-static char *tailscode_reveal_text = NULL;
-static PangoAttrList *tailscode_reveal_attrs = NULL;
-
-static gboolean tailscode_reveal_parse(const char *markup) {
-    if (tailscode_reveal_markup && strcmp(tailscode_reveal_markup, markup) == 0) {
-        TAILSCODE_SOAK_COUNT(tailscode_soak_parse_hits);
-        return TRUE;
-    }
-    TAILSCODE_SOAK_COUNT(tailscode_soak_parses);
-    PangoAttrList *attrs = NULL;
-    char *text = NULL;
-    if (!pango_parse_markup(markup, -1, 0, &attrs, &text, NULL, NULL)) return FALSE;
-    g_free(tailscode_reveal_markup);
-    g_free(tailscode_reveal_text);
-    if (tailscode_reveal_attrs) pango_attr_list_unref(tailscode_reveal_attrs);
-    tailscode_reveal_markup = g_strdup(markup);
-    tailscode_reveal_text = text;
-    tailscode_reveal_attrs = attrs;
-    return TRUE;
-}
-
-const char *tailscode_markup_text(const char *markup) {
-    if (!markup || !tailscode_reveal_parse(markup)) return NULL;
-    return tailscode_reveal_text;
-}
-
-int tailscode_label_reveal(
-    GtkWidget *label, const char *markup, int visible, int wave,
-    const unsigned int *rgb, const unsigned short *alpha) {
-    if (!label || !GTK_IS_LABEL(label) || !markup) return -1;
-    /* Every path parses before it writes. A settle is the one moment a row is guaranteed to be
-       shown whole, and handing GtkLabel markup it cannot parse leaves the raw angle brackets on
-       screen instead — so a settle that could not be rendered says so and lets the caller rebuild
-       the row the ordinary way, rather than reporting a repair it did not make. */
-    if (!tailscode_reveal_parse(markup)) return -1;
-    int length = (int)g_utf8_strlen(tailscode_reveal_text, -1);
-    if (visible < 0) {
-        gtk_label_set_attributes(GTK_LABEL(label), NULL);
-        gtk_label_set_markup(GTK_LABEL(label), markup);
-        tailscode_label_keep_wrapping(GTK_LABEL(label));
-        /* A settle is a promise that the row is now whole, and the caller stops watching it the
-           moment the promise is made. So the promise is measured rather than assumed: the label is
-           asked what it is holding, and a label that did not take the words says so while somebody
-           is still listening. */
-        const char *landed = gtk_label_get_text(GTK_LABEL(label));
-        if (!landed || strcmp(landed, tailscode_reveal_text) != 0) return -1;
-        return length;
-    }
-
-    /* The whole arrived paragraph is laid out; only its colours change per frame. Setting a
-       label's text inside the frame clock's update phase measures it against the previous frame's
-       allocation, so a reveal that re-set the text every frame wrapped at a stale width and ran
-       off the pane. Text once, attributes many. */
-    const char *shown = gtk_label_get_text(GTK_LABEL(label));
-    if (!shown || strcmp(shown, tailscode_reveal_text) != 0) {
-        gtk_label_set_text(GTK_LABEL(label), tailscode_reveal_text);
-        tailscode_label_keep_wrapping(GTK_LABEL(label));
-    }
-
-    int total = length;
-    int seen = CLAMP(visible, 0, total);
-    const char *edge = g_utf8_offset_to_pointer(tailscode_reveal_text, seen);
-
-    PangoAttrList *list = pango_attr_list_copy(tailscode_reveal_attrs);
-    if (seen < total) {
-        PangoAttribute *hidden = pango_attr_foreground_alpha_new(1);
-        hidden->start_index = (guint)(edge - tailscode_reveal_text);
-        hidden->end_index = G_MAXUINT;
-        pango_attr_list_insert(list, hidden);
-    }
-    if (wave > 0 && rgb && alpha) {
-        const char *cursor = edge;
-        for (int index = 0; index < wave; index++) {
-            const char *previous = g_utf8_find_prev_char(tailscode_reveal_text, cursor);
-            if (!previous) break;
-            guint start = (guint)(previous - tailscode_reveal_text);
-            guint end = (guint)(cursor - tailscode_reveal_text);
-            unsigned int colour = rgb[index];
-            PangoAttribute *foreground = pango_attr_foreground_new(
-                (guint16)(((colour >> 16) & 0xff) * 257),
-                (guint16)(((colour >> 8) & 0xff) * 257),
-                (guint16)((colour & 0xff) * 257));
-            foreground->start_index = start;
-            foreground->end_index = end;
-            pango_attr_list_insert(list, foreground);
-            unsigned short opacity = alpha[index] < 1 ? 1 : alpha[index];
-            if (opacity < 65535) {
-                PangoAttribute *fade = pango_attr_foreground_alpha_new((guint16)opacity);
-                fade->start_index = start;
-                fade->end_index = end;
-                pango_attr_list_insert(list, fade);
-            }
-            cursor = previous;
-        }
-    }
-    gtk_label_set_attributes(GTK_LABEL(label), list);
-    pango_attr_list_unref(list);
-    return total;
-}
-
-double tailscode_label_revealed_height(GtkWidget *label, int visible) {
-    if (!label || !GTK_IS_LABEL(label)) return -1;
-    PangoLayout *layout = gtk_label_get_layout(GTK_LABEL(label));
-    if (!layout) return -1;
-    int offset_x = 0, offset_y = 0;
-    gtk_label_get_layout_offsets(GTK_LABEL(label), &offset_x, &offset_y);
-    if (visible <= 0) return offset_y;
-    const char *text = pango_layout_get_text(layout);
-    if (!text) return -1;
-    long total = g_utf8_strlen(text, -1);
-    if (visible >= total) {
-        int width = 0, height = 0;
-        pango_layout_get_pixel_size(layout, &width, &height);
-        return offset_y + height;
-    }
-    const char *edge = g_utf8_offset_to_pointer(text, visible - 1);
-    PangoRectangle pos;
-    pango_layout_index_to_pos(layout, (int)(edge - text), &pos);
-    return offset_y + (double)(pos.y + pos.height) / PANGO_SCALE;
 }
 
 #include <math.h>

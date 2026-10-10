@@ -4,7 +4,7 @@ import Foundation
 import Synchronization
 import TailscodeCore
 
-/// The tiling soak's instruments. `TAILSCODE_SOAK="N:R:K[:T]"` with `--demo` installs the soak
+/// The tiling soak's instruments. `TAILSCODE_SOAK="N:R:K[:T[:P]]"` with `--demo` installs the soak
 /// world and turns them on; nothing here runs otherwise. Every five seconds, from a thread of its
 /// own so a wedged main loop still reports, one line goes to stdout:
 ///

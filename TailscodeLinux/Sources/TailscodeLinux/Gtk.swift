@@ -343,11 +343,13 @@ enum Gtk {
     }
 
     /// A label whose text is Pango markup rather than plain text — the transcript's prose, with the
-    /// markdown resolved into emphasis instead of shown as punctuation.
+    /// markdown resolved into emphasis instead of shown as punctuation. It is a reveal label: any
+    /// prose row can become the one the agent is writing into, and until one does it draws exactly
+    /// as a `GtkLabel` does.
     static func markupLabel(_ markup: String, css: String? = nil, wrap: Bool = true)
         -> UnsafeMutablePointer<GtkWidget>
     {
-        let widget = gtk_label_new(nil)!
+        let widget = tailscode_reveal_label_new()!
         let label: OpaquePointer = op(widget)
         gtk_label_set_markup(label, markup)
         gtk_label_set_xalign(label, 0)
