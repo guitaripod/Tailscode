@@ -14,12 +14,36 @@ import UniformTypeIdentifiers
 final class ImageReferenceIntake: NSObject {
     private weak var presenter: UIViewController?
     private let studio: ImageStudio
+    private let limit: Int
+    private let deliver: @MainActor (Data, String) -> Void
+    private let hasGallery: @MainActor () -> Bool
     private let onLibrary: () -> Void
     private var camera: UIImagePickerController?
 
+    /// The studio's own intake: pictures become references, up to what the encoder holds, and the
+    /// gallery is the machine's own.
     init(presenter: UIViewController, studio: ImageStudio, onLibrary: @escaping () -> Void) {
         self.presenter = presenter
         self.studio = studio
+        self.limit = ImageGenSlot.referenceLimit
+        self.deliver = { data, name in studio.hold(data: data, named: name) }
+        self.hasGallery = { !studio.library.isEmpty }
+        self.onLibrary = onLibrary
+    }
+
+    /// An intake for a decision that takes exactly one picture — the first frame of a clip — and
+    /// hands it to `deliver` rather than to the studio's references. Whether the gallery is offered
+    /// is the caller's, because only the caller knows whether that gallery is on the machine that
+    /// will use the picture.
+    init(
+        presenter: UIViewController, deliver: @escaping @MainActor (Data, String) -> Void,
+        hasGallery: @escaping @MainActor () -> Bool, onLibrary: @escaping () -> Void
+    ) {
+        self.presenter = presenter
+        self.studio = ImageStudio.shared
+        self.limit = 1
+        self.deliver = deliver
+        self.hasGallery = hasGallery
         self.onLibrary = onLibrary
     }
 
@@ -29,7 +53,7 @@ final class ImageReferenceIntake: NSObject {
             case .photos, .files: return true
             case .camera: return UIImagePickerController.isSourceTypeAvailable(.camera)
             case .clipboard: return UIPasteboard.general.hasImages
-            case .library: return !studio.library.isEmpty
+            case .library: return hasGallery()
             }
         }
     }
@@ -89,7 +113,7 @@ final class ImageReferenceIntake: NSObject {
     private func presentPhotos() {
         var config = PHPickerConfiguration()
         config.filter = .images
-        config.selectionLimit = ImageGenSlot.referenceLimit
+        config.selectionLimit = limit
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = self
         presenter?.present(picker, animated: true)
@@ -107,13 +131,13 @@ final class ImageReferenceIntake: NSObject {
     private func presentFiles() {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
         picker.delegate = self
-        picker.allowsMultipleSelection = true
+        picker.allowsMultipleSelection = limit > 1
         presenter?.present(picker, animated: true)
     }
 
     private func paste() {
         guard let image = UIPasteboard.general.image, let data = image.pngData() else { return }
-        studio.hold(data: data, named: "pasted.png")
+        deliver(data, "pasted.png")
     }
 }
 
@@ -130,7 +154,7 @@ extension ImageReferenceIntake: PHPickerViewControllerDelegate {
                 guard let data else { return }
                 let kind = ImageBytes.kind(of: data)
                 Task { @MainActor in
-                    self?.studio.hold(data: data, named: "\(name ?? "reference").\(kind.ext)")
+                    self?.deliver(data, "\(name ?? "reference").\(kind.ext)")
                 }
             }
         }
@@ -147,7 +171,7 @@ extension ImageReferenceIntake: UIImagePickerControllerDelegate, UINavigationCon
         guard let image = info[.originalImage] as? UIImage,
             let data = image.jpegData(compressionQuality: 0.92)
         else { return }
-        studio.hold(data: data, named: "photo.jpg")
+        deliver(data, "photo.jpg")
     }
 
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
@@ -160,7 +184,7 @@ extension ImageReferenceIntake: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         for url in urls {
             guard let data = FileManager.default.contents(atPath: url.path) else { continue }
-            studio.hold(data: data, named: url.lastPathComponent)
+            deliver(data, url.lastPathComponent)
         }
     }
 }

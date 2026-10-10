@@ -448,7 +448,7 @@ final class ImageStudio {
                 Task { @MainActor [weak self] in self?.progressed(report, from: fresh) }
             },
             preview: { [weak self] frame in
-                let image = UIImage(data: frame.bytes)
+                let image = StudioSketch.decode(frame)
                 Task { @MainActor [weak self] in self?.sketched(image, from: fresh) }
             }
         ) { [weak self] outcome in

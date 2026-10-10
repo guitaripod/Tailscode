@@ -1733,7 +1733,7 @@ final class HomeViewController: UIViewController {
             return
         }
         let forge = UINavigationController(rootViewController: VideoForgeViewController())
-        forge.navigationBar.prefersLargeTitles = true
+        forge.modalPresentationStyle = .fullScreen
         host.present(forge, animated: true)
     }
 
@@ -1771,7 +1771,7 @@ final class HomeViewController: UIViewController {
             return
         }
         let studio = UINavigationController(rootViewController: ImageStudioViewController())
-        studio.navigationBar.prefersLargeTitles = true
+        studio.modalPresentationStyle = .fullScreen
         host.present(studio, animated: true)
     }
 
