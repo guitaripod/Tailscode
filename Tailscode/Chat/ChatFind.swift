@@ -48,8 +48,10 @@ enum ChatFind {
             return "\(turn.title) \(turn.detail)"
         case .responseStats(let stats):
             return stats.spoken
-        case .webEmbed(let embed):
-            return embed.url
+        case .linkRail(let run):
+            return run.addresses.joined(separator: " ")
+        case .pictures(let files):
+            return files.map { $0.filename ?? $0.path ?? "" }.joined(separator: " ")
         case .note(let line):
             return line.text
         }

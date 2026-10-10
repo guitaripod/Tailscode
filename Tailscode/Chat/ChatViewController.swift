@@ -26,6 +26,13 @@ final class ChatViewController: UIViewController {
     /// redraw of the docked rows does not walk it again.
     private var seamCount = 0
     private var renderedIDOrder: [String] = []
+    /// The air each row was last given above it, so a row whose neighbour changed — a rail
+    /// arriving between it and the paragraph before it — is drawn again with its new gap even
+    /// though nothing about the row itself moved.
+    private var appliedGaps: [String: CGFloat] = [:]
+    /// Which link rails the reader has opened, remembered by the rail's identity so a rebuild
+    /// per streamed word does not fold one under their finger.
+    private var railExpansion = TranscriptExpansion()
     private var pendingAttachments: [PromptAttachment] = []
     /// What each design board in this transcript turned out to be, so its card can say so. Kept
     /// per directory rather than per row: a board revised later in the conversation writes its
@@ -273,6 +280,9 @@ final class ChatViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(linkEmbedsDidChange),
             name: LinkEmbedsSetting.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(chatDensityDidChange),
+            name: ChatDensitySetting.didChange, object: nil)
         for name: Notification.Name in [
             UIApplication.willResignActiveNotification,
             UIApplication.didEnterBackgroundNotification,
@@ -312,6 +322,18 @@ final class ChatViewController: UIViewController {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
                     self?.saveFirstAttachment()
+                }
+            }
+            if let which = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_RAIL"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(Double(which) ?? 4))
+                    guard let self,
+                        let id = self.orderedIDs.first(where: {
+                            if case .linkRail? = self.rowsByID[$0]?.content { return true }
+                            return false
+                        })
+                    else { return }
+                    self.toggleRail(id)
                 }
             }
             if let which = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_COMPACT"] {
@@ -1099,7 +1121,9 @@ final class ChatViewController: UIViewController {
         collectionView.register(
             DesignBoardCell.self, forCellWithReuseIdentifier: DesignBoardCell.reuseID)
         collectionView.register(
-            LinkEmbedCell.self, forCellWithReuseIdentifier: LinkEmbedCell.reuseID)
+            LinkRailCell.self, forCellWithReuseIdentifier: LinkRailCell.reuseID)
+        collectionView.register(
+            PictureStripCell.self, forCellWithReuseIdentifier: PictureStripCell.reuseID)
         collectionView.register(
             TranscriptNoteCell.self, forCellWithReuseIdentifier: TranscriptNoteCell.reuseID)
         collectionView.register(
@@ -1710,275 +1734,279 @@ final class ChatViewController: UIViewController {
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             [weak self] collectionView, indexPath, id in
             guard let self else { return Self.blankCell(collectionView, indexPath) }
-            if id.hasPrefix("queued:"),
-                let message = self.viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
-            {
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
-                let held = self.viewModel.queueHold != nil
-                    && self.viewModel.queued.first?.id == message.id
-                cell.configure(
-                    text: SendQueueReading.rowLine(message, held: held),
-                    role: .user, reasoning: false)
-                cell.contentView.alpha = self.editingQueued == message.id ? 0.28 : 0.5
-                cell.accessibilityHint = held
-                    ? SendQueueReading.heldHint(reason: self.viewModel.queueHold)
-                    : SendQueueReading.hint
-                return cell
+            let cell = self.makeCell(collectionView, indexPath, id)
+            (cell as? RowGapCell)?.gapAbove = self.gapAbove(at: indexPath)
+            return cell
+        }
+    }
+
+    /// The cell for one row. The air above it is not decided here: the provider hands every cell
+    /// the gap `ChatSpacing` computes for its place, so no case below names a number.
+    private func makeCell(
+        _ collectionView: UICollectionView, _ indexPath: IndexPath, _ id: String
+    ) -> UICollectionViewCell {
+        if id.hasPrefix("queued:"),
+            let message = self.viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
+        {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
+            let held = self.viewModel.queueHold != nil
+                && self.viewModel.queued.first?.id == message.id
+            cell.configure(
+                text: SendQueueReading.rowLine(message, held: held),
+                role: .user, reasoning: false)
+            cell.contentView.alpha = self.editingQueued == message.id ? 0.28 : 0.5
+            cell.accessibilityHint = held
+                ? SendQueueReading.heldHint(reason: self.viewModel.queueHold)
+                : SendQueueReading.hint
+            return cell
+        }
+        if id == "thinking" {
+            return collectionView.dequeueReusableCell(
+                withReuseIdentifier: ThinkingCell.reuseID, for: indexPath)
+        }
+        if let live = self.liveCompaction, live.id == id {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: CompactionCell.reuseID, for: indexPath) as! CompactionCell
+            cell.configure(live, onTap: nil)
+            return cell
+        }
+        if id.hasPrefix("pending:"), id.contains(":img"),
+            let echo = self.viewModel.pendingSends.first(where: {
+                id.hasPrefix("pending:\($0.id.uuidString):img")
+            }),
+            let index = Int(id.components(separatedBy: ":img").last ?? ""),
+            echo.pictures.indices.contains(index)
+        {
+            let attachment = echo.pictures[index]
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: ImageBubbleCell.reuseID, for: indexPath) as! ImageBubbleCell
+            cell.delegate = self
+            cell.configure(
+                file: FileReference(
+                    path: nil, mime: attachment.mime,
+                    url: "pending:\(echo.id.uuidString):\(index)",
+                    filename: attachment.filename),
+                role: .user, backend: self.viewModel.backend, localData: attachment.data)
+            return cell
+        }
+        if id.hasPrefix("pending:"),
+            let send = self.viewModel.pendingSends.first(where: {
+                "pending:\($0.id.uuidString)" == id
+            })
+        {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: PendingSendCell.reuseID, for: indexPath)
+                as! PendingSendCell
+            cell.configure(
+                send, plan: self.viewModel.resumePlan(for: send.id), delegate: self)
+            cell.onResize = { [weak self] in self?.remeasure(id) }
+            return cell
+        }
+        if id == Self.interruptedRowID, let turn = self.interrupted {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: InterruptedTurnCell.reuseID, for: indexPath)
+                as! InterruptedTurnCell
+            cell.configure(
+                turn,
+                onResume: { [weak self] in self?.viewModel.resumeInterruptedTurn() },
+                onDismiss: { [weak self] in self?.viewModel.dismissInterruptedTurn() })
+            return cell
+        }
+        if id == Self.retryRowID, let retry = self.retryStanding {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: ProviderRetryCell.reuseID, for: indexPath)
+                as! ProviderRetryCell
+            cell.configure(retry) { [weak self] url in self?.openWebLink(url) }
+            return cell
+        }
+        if id == Self.revertRowID, let banner = self.revertBanner {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: RevertBannerCell.reuseID, for: indexPath)
+                as! RevertBannerCell
+            cell.configure(banner, restoring: self.viewModel.isRestoringRevert) {
+                [weak self] in self?.viewModel.restoreRevert()
             }
-            if id == "thinking" {
-                return collectionView.dequeueReusableCell(
-                    withReuseIdentifier: ThinkingCell.reuseID, for: indexPath)
-            }
-            if let live = self.liveCompaction, live.id == id {
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: CompactionCell.reuseID, for: indexPath) as! CompactionCell
-                cell.configure(live, onTap: nil)
-                return cell
-            }
-            if id.hasPrefix("pending:"), id.contains(":img"),
-                let echo = self.viewModel.pendingSends.first(where: {
-                    id.hasPrefix("pending:\($0.id.uuidString):img")
-                }),
-                let index = Int(id.components(separatedBy: ":img").last ?? ""),
-                echo.pictures.indices.contains(index)
-            {
-                let attachment = echo.pictures[index]
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: ImageBubbleCell.reuseID, for: indexPath) as! ImageBubbleCell
-                cell.delegate = self
-                cell.configure(
-                    file: FileReference(
-                        path: nil, mime: attachment.mime,
-                        url: "pending:\(echo.id.uuidString):\(index)",
-                        filename: attachment.filename),
-                    role: .user, backend: self.viewModel.backend, localData: attachment.data)
-                return cell
-            }
-            if id.hasPrefix("pending:"),
-                let send = self.viewModel.pendingSends.first(where: {
-                    "pending:\($0.id.uuidString)" == id
+            return cell
+        }
+        if id.hasPrefix("question:"), let request = self.pendingQuestion {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: QuestionCell.reuseID, for: indexPath) as! QuestionCell
+            cell.configure(
+                request: request,
+                selection: self.questionSelection,
+                submitted: self.answeredQuestionIDs.contains(request.id),
+                onSelectionChanged: { [weak self] selection in
+                    guard let self else { return }
+                    self.questionSelection = selection
+                    self.recordAnswerDrafts(selection, for: request)
+                },
+                onSubmit: { [weak self] answers in
+                    guard let self, self.answeredQuestionIDs.insert(request.id).inserted
+                    else { return }
+                    self.clearAnswerDrafts(for: request)
+                    self.viewModel.answerQuestion(request, answers: answers)
+                },
+                onEditingBegan: { [weak self] in
+                    self?.revealPendingCard()
+                },
+                onSkip: { [weak self] in
+                    guard let self, self.answeredQuestionIDs.insert(request.id).inserted
+                    else { return }
+                    self.clearAnswerDrafts(for: request)
+                    self.viewModel.rejectQuestion(request)
                 })
-            {
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: PendingSendCell.reuseID, for: indexPath)
-                    as! PendingSendCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(
-                    send, plan: self.viewModel.resumePlan(for: send.id), delegate: self)
-                cell.onResize = { [weak self] in self?.remeasure(id) }
-                return cell
+            return cell
+        }
+        if id.hasPrefix("permission:"), let request = self.pendingPermission {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: PermissionCell.reuseID, for: indexPath) as! PermissionCell
+            cell.configure(
+                title: request.toolName.map { String(localized: "Allow \($0)?") }
+                    ?? String(localized: "Permission requested"),
+                detail: request.title
+                    ?? String(localized: "The agent needs your approval to continue.")
+            ) { [weak self] decision in
+                self?.viewModel.respond(to: request, decision: decision)
             }
-            if id == Self.interruptedRowID, let turn = self.interrupted {
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: InterruptedTurnCell.reuseID, for: indexPath)
-                    as! InterruptedTurnCell
-                cell.configure(
-                    turn,
-                    onResume: { [weak self] in self?.viewModel.resumeInterruptedTurn() },
-                    onDismiss: { [weak self] in self?.viewModel.dismissInterruptedTurn() })
-                return cell
+            return cell
+        }
+        guard let row = self.rowsByID[id] else { return Self.blankCell(collectionView, indexPath) }
+        switch row.content {
+        case .timestamp(let text):
+            return self.bubble(collectionView, indexPath, text, .system, reasoning: false, timestamp: true)
+        case .text(let text):
+            return self.bubble(
+                collectionView, indexPath, text, row.role, reasoning: false,
+                cascade: self.cascade.tail(for: id))
+        case .code(let block):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: CodeBlockCell.reuseID, for: indexPath) as! CodeBlockCell
+            cell.configure(
+                block, expanded: self.expandedReasoning.contains(id),
+                cascade: self.cascade.tail(for: id)
+            ) {
+                [weak self] in self?.toggleReasoning(id)
             }
-            if id == Self.retryRowID, let retry = self.retryStanding {
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: ProviderRetryCell.reuseID, for: indexPath)
-                    as! ProviderRetryCell
-                cell.configure(retry) { [weak self] url in self?.openWebLink(url) }
-                return cell
+            return cell
+        case .table(let table):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: TableCell.reuseID, for: indexPath) as! TableCell
+            cell.configure(table, width: collectionView.bounds.width, key: row.id)
+            return cell
+        case .tableDraft(let draft):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: TableDraftCell.reuseID, for: indexPath) as! TableDraftCell
+            cell.configure(draft)
+            return cell
+        case .activity(let steps):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: ActivityGroupCell.reuseID, for: indexPath)
+                as! ActivityGroupCell
+            let streaming = self.viewModel.isBusy && id == self.streamingActivityID
+            let toolTap: ((ToolCall) -> Void)? =
+                self.viewModel.supportsSubagents
+                ? { [weak self] call in self?.revealSubagent(spawnedBy: call) } : nil
+            cell.configure(
+                steps: steps, expanded: self.expandedReasoning.contains(id),
+                streaming: streaming, compact: AppPreferences.compactActivity,
+                onToggle: { [weak self] in self?.toggleReasoning(id) },
+                onToolTap: toolTap,
+                onToolOpen: { [weak self] call in self?.inspect(tool: call) ?? false },
+                onLinkTap: { [weak self] url in self?.openWebLink(url) })
+            return cell
+        case .workflow(let run):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: WorkflowCardCell.reuseID, for: indexPath)
+                as! WorkflowCardCell
+            cell.configure(
+                run, at: self.workflowNow,
+                onAgentTap: { [weak self] agentID in self?.openWorkflowAgent(agentID) })
+            return cell
+        case .subagent(let card):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: SubagentCardCell.reuseID, for: indexPath)
+                as! SubagentCardCell
+            cell.configure(
+                card,
+                onToggle: { [weak self] in self?.toggleSubagent(card.agentID) },
+                onLinkTap: { [weak self] url in self?.openWebLink(url) })
+            return cell
+        case .subagentGroup(let group):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: SubagentGroupCell.reuseID, for: indexPath)
+                as! SubagentGroupCell
+            cell.configure(group) { [weak self] in self?.toggleAgentGroup(group.id) }
+            return cell
+        case .compaction(let compaction):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: CompactionCell.reuseID, for: indexPath) as! CompactionCell
+            cell.configure(compaction) { [weak self] in
+                self?.presentCompactionSummary(compaction)
             }
-            if id == Self.revertRowID, let banner = self.revertBanner {
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: RevertBannerCell.reuseID, for: indexPath)
-                    as! RevertBannerCell
-                cell.configure(banner, restoring: self.viewModel.isRestoringRevert) {
-                    [weak self] in self?.viewModel.restoreRevert()
-                }
-                return cell
-            }
-            if id.hasPrefix("question:"), let request = self.pendingQuestion {
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: QuestionCell.reuseID, for: indexPath) as! QuestionCell
-                cell.configure(
-                    request: request,
-                    selection: self.questionSelection,
-                    submitted: self.answeredQuestionIDs.contains(request.id),
-                    onSelectionChanged: { [weak self] selection in
-                        guard let self else { return }
-                        self.questionSelection = selection
-                        self.recordAnswerDrafts(selection, for: request)
-                    },
-                    onSubmit: { [weak self] answers in
-                        guard let self, self.answeredQuestionIDs.insert(request.id).inserted
-                        else { return }
-                        self.clearAnswerDrafts(for: request)
-                        self.viewModel.answerQuestion(request, answers: answers)
-                    },
-                    onEditingBegan: { [weak self] in
-                        self?.revealPendingCard()
-                    },
-                    onSkip: { [weak self] in
-                        guard let self, self.answeredQuestionIDs.insert(request.id).inserted
-                        else { return }
-                        self.clearAnswerDrafts(for: request)
-                        self.viewModel.rejectQuestion(request)
-                    })
-                cell.turnInset = self.turnGap(at: indexPath)
-                return cell
-            }
-            if id.hasPrefix("permission:"), let request = self.pendingPermission {
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: PermissionCell.reuseID, for: indexPath) as! PermissionCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(
-                    title: request.toolName.map { String(localized: "Allow \($0)?") }
-                        ?? String(localized: "Permission requested"),
-                    detail: request.title
-                        ?? String(localized: "The agent needs your approval to continue.")
-                ) { [weak self] decision in
-                    self?.viewModel.respond(to: request, decision: decision)
-                }
-                return cell
-            }
-            guard let row = self.rowsByID[id] else { return Self.blankCell(collectionView, indexPath) }
-            switch row.content {
-            case .timestamp(let text):
-                return self.bubble(collectionView, indexPath, text, .system, reasoning: false, timestamp: true)
-            case .text(let text):
-                return self.bubble(
-                    collectionView, indexPath, text, row.role, reasoning: false,
-                    cascade: self.cascade.tail(for: id))
-            case .code(let block):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: CodeBlockCell.reuseID, for: indexPath) as! CodeBlockCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(
-                    block, expanded: self.expandedReasoning.contains(id),
-                    cascade: self.cascade.tail(for: id)
-                ) {
-                    [weak self] in self?.toggleReasoning(id)
-                }
-                return cell
-            case .table(let table):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: TableCell.reuseID, for: indexPath) as! TableCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(table, width: collectionView.bounds.width, key: row.id)
-                return cell
-            case .tableDraft(let draft):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: TableDraftCell.reuseID, for: indexPath) as! TableDraftCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(draft)
-                return cell
-            case .activity(let steps):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: ActivityGroupCell.reuseID, for: indexPath)
-                    as! ActivityGroupCell
-                let streaming = self.viewModel.isBusy && id == self.streamingActivityID
-                let toolTap: ((ToolCall) -> Void)? =
-                    self.viewModel.supportsSubagents
-                    ? { [weak self] call in self?.revealSubagent(spawnedBy: call) } : nil
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(
-                    steps: steps, expanded: self.expandedReasoning.contains(id),
-                    streaming: streaming, compact: AppPreferences.compactActivity,
-                    onToggle: { [weak self] in self?.toggleReasoning(id) },
-                    onToolTap: toolTap,
-                    onToolOpen: { [weak self] call in self?.inspect(tool: call) ?? false },
-                    onLinkTap: { [weak self] url in self?.openWebLink(url) })
-                return cell
-            case .workflow(let run):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: WorkflowCardCell.reuseID, for: indexPath)
-                    as! WorkflowCardCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(
-                    run, at: self.workflowNow,
-                    onAgentTap: { [weak self] agentID in self?.openWorkflowAgent(agentID) })
-                return cell
-            case .subagent(let card):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: SubagentCardCell.reuseID, for: indexPath)
-                    as! SubagentCardCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(
-                    card,
-                    onToggle: { [weak self] in self?.toggleSubagent(card.agentID) },
-                    onLinkTap: { [weak self] url in self?.openWebLink(url) })
-                return cell
-            case .subagentGroup(let group):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: SubagentGroupCell.reuseID, for: indexPath)
-                    as! SubagentGroupCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(group) { [weak self] in self?.toggleAgentGroup(group.id) }
-                return cell
-            case .compaction(let compaction):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: CompactionCell.reuseID, for: indexPath) as! CompactionCell
-                cell.configure(compaction) { [weak self] in
-                    self?.presentCompactionSummary(compaction)
-                }
-                return cell
-            case .taskBoard(let board):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: TaskBoardCell.reuseID, for: indexPath) as! TaskBoardCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(board)
-                return cell
-            case .designBoard(let sighting):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: DesignBoardCell.reuseID, for: indexPath)
-                    as! DesignBoardCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(
-                    DesignCardReading.make(
-                        sighting: sighting, board: self.designBoard(for: sighting, row: row.id))
-                ) { [weak self] in self?.openDesign(sighting.source) }
-                return cell
-            case .file(let file):
-                let label = "📎 \(file.filename ?? file.mime ?? String(localized: "attachment"))"
-                return self.bubble(collectionView, indexPath, label, row.role, reasoning: false)
-            case .image(let file):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: ImageBubbleCell.reuseID, for: indexPath) as! ImageBubbleCell
-                cell.delegate = self
-                cell.onLoaded = { [weak self] in self?.remeasureRow(row.id) }
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(file: file, role: row.role, backend: self.viewModel.backend)
-                return cell
-            case .error(let text):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
-                cell.configureError(text)
-                return cell
-            case .answerless(let turn):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: AnswerlessTurnCell.reuseID, for: indexPath)
-                    as! AnswerlessTurnCell
-                cell.configure(turn) { [weak self] in self?.askAgain(turn) }
-                return cell
-            case .responseStats(let stats):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: ResponseStatsCell.reuseID, for: indexPath)
-                    as! ResponseStatsCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(stats)
-                return cell
-            case .webEmbed(let embed):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: LinkEmbedCell.reuseID, for: indexPath)
-                    as! LinkEmbedCell
-                cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(embed) { [weak self] url in self?.openWebLink(url) }
-                return cell
-            case .note(let line):
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: TranscriptNoteCell.reuseID, for: indexPath)
-                    as! TranscriptNoteCell
-                cell.configure(line)
-                return cell
-            }
+            return cell
+        case .taskBoard(let board):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: TaskBoardCell.reuseID, for: indexPath) as! TaskBoardCell
+            cell.configure(board)
+            return cell
+        case .designBoard(let sighting):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: DesignBoardCell.reuseID, for: indexPath)
+                as! DesignBoardCell
+            cell.configure(
+                DesignCardReading.make(
+                    sighting: sighting, board: self.designBoard(for: sighting, row: row.id))
+            ) { [weak self] in self?.openDesign(sighting.source) }
+            return cell
+        case .file(let file):
+            let label = "📎 \(file.filename ?? file.mime ?? String(localized: "attachment"))"
+            return self.bubble(collectionView, indexPath, label, row.role, reasoning: false)
+        case .image(let file):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: ImageBubbleCell.reuseID, for: indexPath) as! ImageBubbleCell
+            cell.delegate = self
+            cell.onLoaded = { [weak self] in self?.remeasureRow(row.id) }
+            cell.configure(file: file, role: row.role, backend: self.viewModel.backend)
+            return cell
+        case .error(let text):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
+            cell.configureError(text)
+            return cell
+        case .answerless(let turn):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: AnswerlessTurnCell.reuseID, for: indexPath)
+                as! AnswerlessTurnCell
+            cell.configure(turn) { [weak self] in self?.askAgain(turn) }
+            return cell
+        case .responseStats(let stats):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: ResponseStatsCell.reuseID, for: indexPath)
+                as! ResponseStatsCell
+            cell.configure(stats)
+            return cell
+        case .linkRail(let run):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: LinkRailCell.reuseID, for: indexPath) as! LinkRailCell
+            cell.configure(
+                run, opened: railExpansion.isOpen(row.id),
+                onToggle: { [weak self] in self?.toggleRail(row.id) },
+                onOpen: { [weak self] url in self?.openWebLink(url) })
+            return cell
+        case .pictures(let files):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: PictureStripCell.reuseID, for: indexPath) as! PictureStripCell
+            cell.delegate = self
+            cell.onLoaded = { [weak self] in self?.reloadRow(row.id) }
+            cell.configure(files: files, backend: viewModel.backend)
+            return cell
+        case .note(let line):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: TranscriptNoteCell.reuseID, for: indexPath)
+                as! TranscriptNoteCell
+            cell.configure(line)
+            return cell
         }
     }
 
@@ -2001,7 +2029,6 @@ final class ChatViewController: UIViewController {
     ) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(
             withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
-        cell.turnInset = self.turnGap(at: indexPath)
         cell.configure(
             text: text, role: role, reasoning: reasoning, timestamp: timestamp, cascade: cascade)
         cell.linkDelegate = self
@@ -2470,13 +2497,16 @@ final class ChatViewController: UIViewController {
             messages: state.messages, agents: viewModel.trackedSubagents)
         workflowRuns = runs
         updateWorkflowTicker()
-        let rows = ChatRowBuilder.makeRows(
+        var rows = ChatRowBuilder.makeRows(
             from: state.messages, agents: subagentPlacement(for: state.messages),
             runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }),
             turnOpen: state.status == .running, memo: segmentMemo,
             modelName: { [contextID = viewModel.contextID] selection in
                 ModelCatalog.cached(for: contextID).first { $0.selection == selection }?.name
             })
+        #if DEBUG
+            if let staged = ChatPictureStaging.row() { rows.append(staged) }
+        #endif
         let previous = rowsByID
         let uniqueRows = Self.dedupeRows(rows)
         rowsByID = Dictionary(uniqueKeysWithValues: uniqueRows.map { ($0.id, $0) })
@@ -2666,6 +2696,14 @@ final class ChatViewController: UIViewController {
         }
         let animated = animateNextRender && hasRevealed
         animateNextRender = false
+        let gapTable = gaps(for: uniqueIDs)
+        var marked = Set(changed)
+        for id in uniqueIDs {
+            guard let before = appliedGaps[id], before != gapTable[id], marked.insert(id).inserted
+            else { continue }
+            changed.append(id)
+        }
+        appliedGaps = gapTable
         let reconfigurable = changed.filter { idSet.contains($0) }
         if !reconfigurable.isEmpty { snapshot.reconfigureItems(reconfigurable) }
         let risingSend = !canvasIntent.isEmpty && !Self.freshSendRows(among: entranceBubbles).isEmpty
@@ -3505,6 +3543,82 @@ final class ChatViewController: UIViewController {
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 
+    /// A row whose height came from arithmetic rather than constraints — a picture strip, once a
+    /// picture's real shape is known — has to be made again for the list to ask it its height.
+    private func reloadRow(_ id: String) {
+        var snapshot = dataSource.snapshot()
+        guard snapshot.itemIdentifiers.contains(id) else { return }
+        snapshot.reloadItems([id])
+        dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
+    /// Opens or folds a link rail in place. The reader's eyes are on the rail they tapped, so the
+    /// transcript stops chasing the bottom, the change takes 160 ms (none under Reduce Motion),
+    /// and the rail is held where it was on the screen: everything above it stays exactly where it
+    /// is, and only when the opened rows would run past the end of the window does the page move,
+    /// by the least that shows them.
+    private func toggleRail(_ id: String) {
+        userScrolledUp = true
+        let before = railAnchor(for: id)
+        let opening = railExpansion.toggle(id)
+        var snapshot = dataSource.snapshot()
+        snapshot.reconfigureItems([id])
+        let change = { [weak self] in
+            guard let self else { return }
+            self.dataSource.apply(snapshot, animatingDifferences: false)
+            self.collectionView.layoutIfNeeded()
+            self.holdRail(id, at: before)
+        }
+        if UIAccessibility.isReduceMotionEnabled {
+            change()
+        } else {
+            UIView.animate(
+                withDuration: 0.16, delay: 0, options: [.curveEaseOut, .allowUserInteraction],
+                animations: change)
+        }
+        if opening { revealToggledRow(id) }
+    }
+
+    /// Where a row stands on the screen and which row heads the visible page, read before a
+    /// change so it can be put back after.
+    private struct RailAnchor {
+        let screenY: CGFloat
+        let firstVisibleID: String?
+        let firstVisibleY: CGFloat
+    }
+
+    private func railAnchor(for id: String) -> RailAnchor? {
+        guard let index = dataSource.snapshot().indexOfItem(id),
+            let attributes = collectionView.layoutAttributesForItem(
+                at: IndexPath(item: index, section: 0))
+        else { return nil }
+        let offset = collectionView.contentOffset.y
+        let first = collectionView.indexPathsForVisibleItems.min()
+            .flatMap { path -> (String, CGFloat)? in
+                guard let itemID = dataSource.itemIdentifier(for: path),
+                    let frame = collectionView.layoutAttributesForItem(at: path)?.frame
+                else { return nil }
+                return (itemID, frame.minY - offset)
+            }
+        return RailAnchor(
+            screenY: attributes.frame.minY - offset, firstVisibleID: first?.0,
+            firstVisibleY: first?.1 ?? 0)
+    }
+
+    private func holdRail(_ id: String, at before: RailAnchor?) {
+        guard let before, let after = railAnchor(for: id) else { return }
+        let drift = after.screenY - before.screenY
+        if abs(drift) > 0.5 {
+            collectionView.contentOffset.y += drift
+        }
+        #if DEBUG
+            let held = railAnchor(for: id)
+            AppLogger.chat.info(
+                "rail anchor id=\(id) before=\(Int(before.screenY.rounded())) after=\(Int((held?.screenY ?? 0).rounded())) firstVisible=\(before.firstVisibleID ?? "-") firstBefore=\(Int(before.firstVisibleY.rounded())) firstAfter=\(Int((held?.firstVisibleY ?? 0).rounded())) session=\(viewModel.session.id)"
+            )
+        #endif
+    }
+
     /// Opening or closing a row is a reading gesture: the person's eyes are on the header they
     /// tapped, so the transcript stops chasing the bottom — a stream that kept scrolling would
     /// push the very card they opened out from under them — and the view moves only as far as
@@ -3554,17 +3668,55 @@ final class ChatViewController: UIViewController {
         }
     }
 
-    /// The extra breathing room above a row that opens a new turn. Rows that
-    /// share their message and role stay tight, so a turn reads as one cluster
-    /// and the transcript moves in a rhythm instead of a uniform grid.
-    private func turnGap(at indexPath: IndexPath) -> CGFloat {
-        let order = renderedIDOrder
-        guard indexPath.item > 0, indexPath.item < order.count else { return 0 }
-        let previousID = order[indexPath.item - 1]
-        guard let previous = rowsByID[previousID] else { return Theme.Spacing.m }
-        guard let current = rowsByID[order[indexPath.item]] else { return Theme.Spacing.m }
-        return (current.messageID != previous.messageID || current.role != previous.role)
-            ? Theme.Spacing.m : 0
+    /// The air above the row at a place in the list, which is the whole of the transcript's
+    /// vertical rhythm: each row is classified, the metrics answer for the pair, and nothing else
+    /// picks a number.
+    private func gapAbove(at indexPath: IndexPath) -> CGFloat {
+        gap(before: indexPath.item, in: renderedIDOrder)
+    }
+
+    private func gap(before index: Int, in order: [String]) -> CGFloat {
+        guard order.indices.contains(index) else { return 0 }
+        let id = order[index]
+        let previous = index > 0 ? order[index - 1] : nil
+        return ChatSpacing.gap(
+            from: previous.map(rowClass(ofID:)), to: rowClass(ofID: id),
+            sameSend: previous.map { sharesSend($0, id) } ?? false,
+            metrics: Theme.Chat.metrics)
+    }
+
+    private func gaps(for order: [String]) -> [String: CGFloat] {
+        var table: [String: CGFloat] = [:]
+        table.reserveCapacity(order.count)
+        for index in order.indices { table[order[index]] = gap(before: index, in: order) }
+        return table
+    }
+
+    /// What a row is for the purpose of the space around it. A row the builder made says so
+    /// itself; the rows this screen docks at the end — what is being sent, what is waiting, a
+    /// question or a permission, a card about the turn — are named by their identity, and the
+    /// cards that keep a plate take the block gap.
+    private func rowClass(ofID id: String) -> ChatRowClass {
+        if let row = rowsByID[id] { return ChatSpacing.rowClass(of: row) }
+        if id.hasPrefix("pending:") { return id.contains(":img") ? .picture : .prompt }
+        if id.hasPrefix("queued:") { return .prompt }
+        if id == Self.liveCompactionID { return .seam }
+        if id == "thinking" { return .furniture }
+        return .code
+    }
+
+    /// Whether two rows are one person's send: a prompt and the pictures clipped to it, which sit
+    /// close together instead of a turn apart.
+    private func sharesSend(_ first: String, _ second: String) -> Bool {
+        if first.hasPrefix("pending:"), second.hasPrefix("pending:") {
+            return Self.sendKey(first) == Self.sendKey(second)
+        }
+        guard let a = rowsByID[first], let b = rowsByID[second] else { return false }
+        return a.role == .user && b.role == .user && a.messageID == b.messageID
+    }
+
+    private static func sendKey(_ id: String) -> String {
+        id.split(separator: ":", maxSplits: 2).prefix(2).joined(separator: ":")
     }
 
     private func loadModels() async {
@@ -3587,6 +3739,16 @@ final class ChatViewController: UIViewController {
     /// next turn.
     @objc private func linkEmbedsDidChange() {
         render(viewModel.state)
+    }
+
+    /// Density is every gap and every plate in the transcript, so a chat left open behind the
+    /// settings screen answers the choice at once: the rows are built again and every cell is
+    /// drawn from scratch rather than patched.
+    @objc private func chatDensityDidChange() {
+        render(viewModel.state)
+        var snapshot = dataSource.snapshot()
+        snapshot.reloadItems(snapshot.itemIdentifiers)
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     @objc private func catalogDidChange(_ note: Notification) {
@@ -4791,8 +4953,12 @@ final class ChatViewController: UIViewController {
                 body = "_\(reading.title) — \(reading.detail)_"
             case .responseStats, .timestamp, .error:
                 continue
-            case .webEmbed:
+            case .linkRail:
                 continue
+            case .pictures(let files):
+                body = files.map {
+                    "[file: \($0.path ?? $0.filename ?? String(localized: "attachment"))]"
+                }.joined(separator: " ")
             case .note(let line):
                 out.append("_\(line.text)_")
                 continue
@@ -6032,8 +6198,10 @@ extension ChatViewController: UICollectionViewDelegate {
             return "\(reading.title) — \(reading.detail)"
         case .responseStats(let stats):
             return stats.line
-        case .webEmbed(let embed):
-            return embed.url
+        case .linkRail(let run):
+            return run.addresses.joined(separator: "\n")
+        case .pictures(let files):
+            return files.compactMap { $0.filename ?? $0.mime }.joined(separator: "\n")
         case .timestamp, .error, .note:
             return nil
         }
@@ -6126,6 +6294,26 @@ extension ChatViewController: UIGestureRecognizerDelegate {
     }
 }
 
+extension ChatViewController: PictureStripCellDelegate {
+    func pictureStripCell(_ cell: PictureStripCell, didTap index: Int, from view: UIView) {
+        let items = galleryImages()
+        guard !items.isEmpty,
+            let rowID = collectionView.indexPath(for: cell).flatMap({ dataSource.itemIdentifier(for: $0) })
+        else { return }
+        let start = items.firstIndex { $0.id == Self.pictureID(row: rowID, index: index) } ?? 0
+        present(
+            ImageViewerViewController(
+                items: items, startIndex: start, backend: viewModel.backend, from: view),
+            animated: false)
+    }
+
+    func pictureStripCell(_ cell: PictureStripCell, menuFor payload: ImagePayload, from view: UIView)
+        -> UIMenu
+    {
+        imageMenu(for: payload, from: view)
+    }
+}
+
 extension ChatViewController: ImageBubbleCellDelegate {
     func imageBubbleCell(_ cell: ImageBubbleCell, didTap image: UIImage, from view: UIView) {
         let items = galleryImages()
@@ -6139,33 +6327,47 @@ extension ChatViewController: ImageBubbleCellDelegate {
     }
 
     func imageBubbleCell(_ cell: ImageBubbleCell, menuFor payload: ImagePayload) -> UIMenu {
-        UIMenu(children: [
-            UIAction(
-                title: String(localized: "Save to Photos"),
-                image: UIImage(systemName: "square.and.arrow.down")
-            ) { [weak self] _ in self?.saveToPhotos(payload) },
-            UIAction(title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")) {
-                _ in
-                ImageExport.copy(payload)
-                Theme.Haptics.success()
-            },
-            UIAction(
-                title: String(localized: "Save to Files"),
-                image: UIImage(systemName: "folder")
-            ) { [weak self] _ in self?.exportToFiles(payload, from: cell) },
-            UIAction(
-                title: String(localized: "Share"),
-                image: UIImage(systemName: "square.and.arrow.up")
-            ) { [weak self] _ in self?.shareImage(payload, from: cell) },
-        ])
+        imageMenu(for: payload, from: cell)
+    }
+
+    /// What a long-press on a picture offers, named for the file it is a picture of.
+    fileprivate func imageMenu(for payload: ImagePayload, from source: UIView) -> UIMenu {
+        UIMenu(
+            title: payload.filename,
+            children: [
+                UIAction(
+                    title: String(localized: "Save to Photos"),
+                    image: UIImage(systemName: "square.and.arrow.down")
+                ) { [weak self] _ in self?.saveToPhotos(payload) },
+                UIAction(
+                    title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")
+                ) { _ in
+                    ImageExport.copy(payload)
+                    Theme.Haptics.success()
+                },
+                UIAction(
+                    title: String(localized: "Save to Files"),
+                    image: UIImage(systemName: "folder")
+                ) { [weak self] _ in self?.exportToFiles(payload, from: source) },
+                UIAction(
+                    title: String(localized: "Share"),
+                    image: UIImage(systemName: "square.and.arrow.up")
+                ) { [weak self] _ in self?.shareImage(payload, from: source) },
+            ])
     }
 
     /// Every picture in the conversation, in the order it was said, so the
-    /// viewer can swipe across the whole chat from whichever one was tapped.
-    private func galleryImages() -> [GalleryImage] {
-        dataSource.snapshot().itemIdentifiers.compactMap { id in
+    /// viewer can swipe across the whole chat from whichever one was tapped. A strip contributes
+    /// each of its pictures, named by the strip's row and the picture's place in it.
+    fileprivate func galleryImages() -> [GalleryImage] {
+        dataSource.snapshot().itemIdentifiers.flatMap { id -> [GalleryImage] in
             if case .image(let file)? = rowsByID[id]?.content {
-                return GalleryImage(id: id, file: file, localData: nil)
+                return [GalleryImage(id: id, file: file, localData: nil)]
+            }
+            if case .pictures(let files)? = rowsByID[id]?.content {
+                return files.enumerated().map { index, file in
+                    GalleryImage(id: Self.pictureID(row: id, index: index), file: file, localData: nil)
+                }
             }
             guard id.hasPrefix("pending:"), id.contains(":img"),
                 let echo = viewModel.pendingSends.first(where: {
@@ -6173,17 +6375,21 @@ extension ChatViewController: ImageBubbleCellDelegate {
                 }),
                 let index = Int(id.components(separatedBy: ":img").last ?? ""),
                 echo.pictures.indices.contains(index)
-            else { return nil }
+            else { return [] }
             let attachment = echo.pictures[index]
-            return GalleryImage(
-                id: id,
-                file: FileReference(
-                    path: nil, mime: attachment.mime,
-                    url: "pending:\(echo.id.uuidString):\(index)",
-                    filename: attachment.filename),
-                localData: attachment.data)
+            return [
+                GalleryImage(
+                    id: id,
+                    file: FileReference(
+                        path: nil, mime: attachment.mime,
+                        url: "pending:\(echo.id.uuidString):\(index)",
+                        filename: attachment.filename),
+                    localData: attachment.data)
+            ]
         }
     }
+
+    fileprivate static func pictureID(row: String, index: Int) -> String { "\(row)#\(index)" }
 
     private func saveToPhotos(_ payload: ImagePayload) {
         Task { [weak self] in

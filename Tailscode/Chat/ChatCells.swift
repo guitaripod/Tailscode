@@ -38,14 +38,18 @@ struct ChatRow: Hashable {
         case note(TranscriptNoteLine)
         /// What the answer above it took, drawn only where the reader asked for it.
         case responseStats(ResponseStats)
-        /// A tiny preview card for an address the transcript mentioned, docked under the prose
-        /// that wrote it.
-        case webEmbed(WebEmbed)
+        /// The addresses a run of prose mentioned, as one line docked where the run closes.
+        case linkRail(LinkRailRun)
+        /// Consecutive pictures the agent made, sharing one wrapping row.
+        case pictures([FileReference])
     }
 }
 
-struct WebEmbed: Hashable {
-    let url: String
+/// What a link rail is made of: the addresses of one settled prose run, in the order written. The
+/// rail's open state and what the network has said about each page are the cell's and the store's,
+/// so a fetch landing or a tap never makes the row a different value.
+struct LinkRailRun: Hashable {
+    let addresses: [String]
 }
 
 enum ActivityStep: Hashable {
@@ -87,6 +91,8 @@ final class TextBubbleCell: UICollectionViewCell {
     private var timestampLeading: NSLayoutConstraint?
     private var timestampTrailing: NSLayoutConstraint?
     private var bubbleTop: NSLayoutConstraint!
+    private var textTop: NSLayoutConstraint!
+    private var textBottom: NSLayoutConstraint!
     private lazy var aurora = AuroraTextPainter(textView: textView, host: bubble)
 
     override init(frame: CGRect) {
@@ -117,28 +123,34 @@ final class TextBubbleCell: UICollectionViewCell {
             equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.m)
         maxWidth = bubble.widthAnchor.constraint(
             lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.82)
-        bubbleTop = bubble.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+        bubbleTop = bubble.topAnchor.constraint(equalTo: contentView.topAnchor)
+        textTop = textView.topAnchor.constraint(equalTo: bubble.topAnchor)
+        textBottom = textView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor)
 
         NSLayoutConstraint.activate([
             bubbleTop,
-            bubble.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            bubble.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             maxWidth,
             bubble.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor),
             bubble.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor),
             textInsetLeading,
             textInsetTrailing,
-            textView.topAnchor.constraint(equalTo: bubble.topAnchor, constant: Theme.Spacing.s),
-            textView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor, constant: -Theme.Spacing.s),
+            textTop,
+            textBottom,
         ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// Extra gap above the bubble when this row opens a new turn; set by the
-    /// transcript so a turn breathes without re-templating the cell.
-    var turnInset: CGFloat = 0 {
-        didSet { bubbleTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { bubbleTop.constant = gapAbove }
+    }
+
+    /// The air inside the bubble above and below its words. Only a prompt has a plate, so only a
+    /// prompt and an error card pad their words; prose and stamps sit on the canvas.
+    private func padText(_ points: CGFloat) {
+        textTop.constant = points
+        textBottom.constant = -points
     }
 
     override func prepareForReuse() {
@@ -167,6 +179,7 @@ final class TextBubbleCell: UICollectionViewCell {
     }
 
     func configureError(_ text: String) {
+        padText(Theme.Spacing.s)
         applyHorizontalInsets(outer: Theme.Spacing.l, inner: Theme.Spacing.m)
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
@@ -195,6 +208,7 @@ final class TextBubbleCell: UICollectionViewCell {
     ) {
         let isUser = role == .user
 
+        padText(isUser && !timestamp ? CGFloat(Theme.Chat.metrics.promptBubblePadding) : 0)
         aurora.release()
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
@@ -566,10 +580,10 @@ final class PermissionCell: UICollectionViewCell {
         contentView.addSubview(detailLabel)
         contentView.addSubview(buttons)
 
-        barTop = bar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+        barTop = bar.topAnchor.constraint(equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
             barTop,
-            bar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            bar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             bar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             bar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
 
@@ -594,9 +608,8 @@ final class PermissionCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// Extra gap above the card when this row opens a new turn.
-    var turnInset: CGFloat = 0 {
-        didSet { barTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { barTop.constant = gapAbove }
     }
 
     private func configureButton(_ button: UIButton, title: String, tint: UIColor, filled: Bool) {
@@ -714,7 +727,7 @@ final class DiffWashLabel: UILabel {
 /// blocks — a native client owning the exact clipboard string.
 final class CodeBlockCell: UICollectionViewCell {
     static let reuseID = "CodeBlockCell"
-    private static let collapsedLineLimit = 14
+    private static var collapsedLineLimit: Int { Theme.Chat.metrics.codeCollapseLines }
 
     private let container = UIView()
     private let langLabel = UILabel()
@@ -726,6 +739,9 @@ final class CodeBlockCell: UICollectionViewCell {
     private var source = ""
     private var onToggle: (() -> Void)?
     private var containerTop: NSLayoutConstraint!
+    private var toggleTop: NSLayoutConstraint!
+    private var toggleBottom: NSLayoutConstraint!
+    private var plainBottom: NSLayoutConstraint!
     /// The glyphs the label is currently showing, kept so a frame of the wave can be tinted over
     /// them rather than built again from the highlighter's output.
     private var paintedStorage: NSMutableAttributedString?
@@ -789,10 +805,10 @@ final class CodeBlockCell: UICollectionViewCell {
         let content = codeScroll.contentLayoutGuide
         let frame = codeScroll.frameLayoutGuide
         containerTop = container.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+            equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
             containerTop,
-            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.s),
             container.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.s),
 
@@ -816,18 +832,22 @@ final class CodeBlockCell: UICollectionViewCell {
             codeLabel.leadingAnchor.constraint(equalTo: lineNumberLabel.trailingAnchor, constant: Theme.Spacing.s),
             codeLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -Theme.Spacing.s),
 
-            toggleButton.topAnchor.constraint(equalTo: codeScroll.bottomAnchor, constant: Theme.Spacing.xs),
             toggleButton.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
             toggleButton.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -Theme.Spacing.m),
-            toggleButton.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Theme.Spacing.s),
         ])
+        toggleTop = toggleButton.topAnchor.constraint(
+            equalTo: codeScroll.bottomAnchor, constant: Theme.Spacing.xs)
+        toggleBottom = toggleButton.bottomAnchor.constraint(
+            equalTo: container.bottomAnchor, constant: -Theme.Spacing.s)
+        plainBottom = codeScroll.bottomAnchor.constraint(
+            equalTo: container.bottomAnchor, constant: -Theme.Spacing.s)
+        plainBottom.isActive = true
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// Extra gap above the block when this row opens a new turn.
-    var turnInset: CGFloat = 0 {
-        didSet { containerTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { containerTop.constant = gapAbove }
     }
 
     func configure(
@@ -861,6 +881,23 @@ final class CodeBlockCell: UICollectionViewCell {
             : String(localized: "Collapse")
         toggleButton.setTitle(title, for: .normal)
         toggleButton.isHidden = !layout.isLong
+        reserveToggle(layout.isLong)
+    }
+
+    /// Whether the toggle line takes room under the code. A hidden button keeps its constraints, so
+    /// a block with nothing to fold used to stand a button's height taller than its last line; the
+    /// body is now sized to its content and the toggle's constraints exist only while it is shown.
+    private func reserveToggle(_ shown: Bool) {
+        guard toggleTop.isActive != shown else { return }
+        if shown {
+            plainBottom.isActive = false
+            toggleTop.isActive = true
+            toggleBottom.isActive = true
+        } else {
+            toggleTop.isActive = false
+            toggleBottom.isActive = false
+            plainBottom.isActive = true
+        }
     }
 
     /// Puts the block back at its first column, but only when it is a different block.
@@ -1105,34 +1142,128 @@ final class CodeBlockCell: UICollectionViewCell {
     }
 }
 
-/// Folds a run of consecutive agent actions (thinking + tool calls) into one compact,
-/// collapsible cell so the transcript stays clean; expand to see each step.
-/// Collapsed, the run reads as a slim glass strip — status glyph, what the tools were,
-/// the turning ring while the work is live — and only grows into the roomy card when opened.
+/// What a run of agent steps says about itself on its one line: a lead in the ink of a name, a
+/// detail in the quieter mono, and how the run stands. A run of one tool reads as that tool and
+/// what it touched; a longer run, or one with thinking in it, reads as a count and the names.
+struct ActivityLine: Equatable {
+    enum Standing: Equatable {
+        case done, working, failed
+    }
+
+    let lead: String
+    let detail: String?
+    let standing: Standing
+
+    static func read(_ steps: [ActivityStep], streaming: Bool) -> ActivityLine {
+        let calls = steps.compactMap { step -> ToolCall? in
+            if case .tool(let call) = step { return call }
+            return nil
+        }
+        let thoughts = steps.count - calls.count
+        let failed = !streaming && calls.contains { $0.status == .error }
+        let standing: Standing = streaming ? .working : (failed ? .failed : .done)
+        if streaming, let last = steps.last {
+            switch last {
+            case .reasoning:
+                return ActivityLine(lead: String(localized: "Thinking…"), detail: nil, standing: standing)
+            case .tool(let call):
+                if call.summary.kind == .question {
+                    return ActivityLine(lead: stepName(call), detail: nil, standing: standing)
+                }
+                return ActivityLine(lead: call.name, detail: argument(of: call), standing: standing)
+            }
+        }
+        if thoughts == 0, calls.count == 1, let call = calls.first {
+            if call.summary.kind == .question {
+                return ActivityLine(lead: stepName(call), detail: nil, standing: standing)
+            }
+            return ActivityLine(lead: call.name, detail: argument(of: call), standing: standing)
+        }
+        var lead: [String] = []
+        if thoughts > 0 {
+            lead.append(
+                thoughts == 1
+                    ? String(localized: "1 thought") : String(localized: "\(thoughts) thoughts"))
+        }
+        if calls.count > 1 {
+            lead.append(String(localized: "\(calls.count) tools"))
+        }
+        let names = tally(calls)
+        return ActivityLine(
+            lead: lead.isEmpty ? String(localized: "\(steps.count) steps") : lead.joined(separator: " · "),
+            detail: names.isEmpty ? nil : names, standing: standing)
+    }
+
+    /// A question the agent asked is named by the question, which is the point of the row.
+    private static func stepName(_ call: ToolCall) -> String {
+        guard call.summary.kind == .question, let question = call.summary.title else {
+            return call.name
+        }
+        return String(localized: "Asked · \(question)")
+    }
+
+    /// What a call touched, on one line: its title, or the first line of its command.
+    private static func argument(of call: ToolCall) -> String? {
+        let summary = call.summary
+        var text = summary.title ?? call.title ?? ""
+        if text == call.name { text = "" }
+        if text.hasPrefix(call.name + " ") { text = String(text.dropFirst(call.name.count + 1)) }
+        if text.isEmpty, let command = summary.command {
+            text = command.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? command
+        }
+        text = text.replacingOccurrences(of: "\n", with: " ")
+        return text.isEmpty ? nil : String(text.prefix(160))
+    }
+
+    private static func tally(_ calls: [ToolCall]) -> String {
+        var counted: [(name: String, count: Int)] = []
+        for call in calls {
+            let name = stepName(call)
+            if let index = counted.firstIndex(where: { $0.name == name }) {
+                counted[index].count += 1
+            } else {
+                counted.append((name, 1))
+            }
+        }
+        let shown = counted.prefix(4).map { $0.count > 1 ? "\($0.name)×\($0.count)" : $0.name }
+        let rest = counted.count - shown.count
+        return shown.joined(separator: " ") + (rest > 0 ? " +\(rest)" : "")
+    }
+}
+
+/// A run of consecutive agent actions (thinking + tool calls) as one flat line, with no plate and
+/// no shadow: a mark for how the run stands, the name of what it did, and what it touched. It
+/// grows into the roomy card, with the same steps it always held, only when opened.
+///
+/// The line is a 32-point row so a finger can hit it, with the 24-point visible line inside. A
+/// running run breathes on the shared swell, a failed one is danger-toned while folded, and the
+/// text grows with Dynamic Type instead of clipping.
 final class ActivityGroupCell: UICollectionViewCell {
     static let reuseID = "ActivityGroupCell"
 
     private let container = UIView()
     private let glass = Theme.Glass.view()
-    private let tile = UIView()
-    private let iconView = UIImageView()
-    private let summaryLabel = UILabel()
+    private let line = UIView()
     private let chevron = UIImageView()
+    private let dot = UIView()
+    private let failMark = UIImageView()
     private let liveMark = ActivityBadgeView(pointSize: 11)
+    private let summaryLabel = UILabel()
     private let stack = UIStackView()
     private let toggle = UIButton(type: .system)
     private let renderer = ToolStepRenderer()
     private var onToggle: (() -> Void)?
 
     private var topConstraint: NSLayoutConstraint!
-    private var tileTopInset: NSLayoutConstraint!
-    private var tileSize: NSLayoutConstraint!
-    private var iconSize: NSLayoutConstraint!
-    private var stackSpacing: NSLayoutConstraint!
-    private var stackBottomInset: NSLayoutConstraint!
+    private var foldedBottom: NSLayoutConstraint!
+    private var openBottom: NSLayoutConstraint!
+    private var stackTop: NSLayoutConstraint!
+
+    private static let markSize: CGFloat = 14
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        container.layer.cornerRadius = Theme.Radius.card
         container.layer.cornerCurve = .continuous
         container.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1140,35 +1271,34 @@ final class ActivityGroupCell: UICollectionViewCell {
         glass.layer.cornerRadius = Theme.Radius.card
         glass.layer.cornerCurve = .continuous
         glass.clipsToBounds = true
+        glass.alpha = 0
         glass.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(glass)
-        NSLayoutConstraint.activate([
-            glass.topAnchor.constraint(equalTo: container.topAnchor),
-            glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-        ])
 
-        tile.layer.cornerCurve = .continuous
-        tile.translatesAutoresizingMaskIntoConstraints = false
-
-        iconView.tintColor = Theme.Color.accent
-        iconView.contentMode = .scaleAspectFit
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-
-        summaryLabel.adjustsFontForContentSizeCategory = true
-        summaryLabel.isAccessibilityElement = false
-        summaryLabel.translatesAutoresizingMaskIntoConstraints = false
+        line.translatesAutoresizingMaskIntoConstraints = false
 
         chevron.image = UIImage(
-            systemName: "chevron.down",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+            systemName: "chevron.right",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))
         chevron.tintColor = Theme.Color.tertiaryLabel
-        chevron.contentMode = .scaleAspectFit
+        chevron.contentMode = .center
         chevron.setContentHuggingPriority(.required, for: .horizontal)
         chevron.translatesAutoresizingMaskIntoConstraints = false
 
+        dot.layer.cornerRadius = 4
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        failMark.image = UIImage(
+            systemName: "exclamationmark.triangle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        failMark.tintColor = Theme.Color.danger
+        failMark.contentMode = .center
+        failMark.translatesAutoresizingMaskIntoConstraints = false
         liveMark.translatesAutoresizingMaskIntoConstraints = false
+
+        summaryLabel.adjustsFontForContentSizeCategory = true
+        summaryLabel.isAccessibilityElement = false
+        summaryLabel.lineBreakMode = .byTruncatingTail
+        summaryLabel.translatesAutoresizingMaskIntoConstraints = false
 
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.s
@@ -1177,53 +1307,66 @@ final class ActivityGroupCell: UICollectionViewCell {
 
         toggle.translatesAutoresizingMaskIntoConstraints = false
         toggle.addTarget(self, action: #selector(toggleTapped(_:event:)), for: .touchUpInside)
-        toggle.answersPointer(cornerRadius: Theme.Radius.card)
+        toggle.answersPointer(cornerRadius: Theme.Radius.control)
 
         contentView.addSubview(container)
-        [tile, summaryLabel, liveMark, chevron, stack, toggle].forEach(container.addSubview)
-        tile.addSubview(iconView)
+        container.addSubview(line)
+        [chevron, dot, failMark, liveMark, summaryLabel].forEach(line.addSubview)
+        container.addSubview(stack)
+        container.addSubview(toggle)
 
-        tileTopInset = tile.topAnchor.constraint(equalTo: container.topAnchor, constant: 7)
-        tileSize = tile.widthAnchor.constraint(equalToConstant: 16)
-        iconSize = iconView.widthAnchor.constraint(equalToConstant: 15)
-        stackSpacing = stack.topAnchor.constraint(equalTo: tile.bottomAnchor, constant: 6)
-        stackBottomInset = stack.bottomAnchor.constraint(
-            equalTo: container.bottomAnchor, constant: -7)
-        topConstraint = container.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+        topConstraint = container.topAnchor.constraint(equalTo: contentView.topAnchor)
+        foldedBottom = line.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        openBottom = stack.bottomAnchor.constraint(
+            equalTo: container.bottomAnchor, constant: -Theme.Spacing.m)
+        stackTop = stack.topAnchor.constraint(equalTo: line.bottomAnchor)
+        let rowHeight = CGFloat(Theme.Chat.metrics.activityRowHeight)
+        let mark = Self.markSize
 
         NSLayoutConstraint.activate([
             topConstraint,
-            container.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             container.leadingAnchor.constraint(
-                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
+                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.s),
             container.trailingAnchor.constraint(
-                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
+                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.s),
 
-            tileTopInset,
-            tile.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
-            tileSize,
-            tile.heightAnchor.constraint(equalTo: tile.widthAnchor),
-            iconView.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
-            iconView.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-            iconSize,
-            iconView.heightAnchor.constraint(equalTo: iconView.widthAnchor),
+            glass.topAnchor.constraint(equalTo: container.topAnchor),
+            glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
 
-            summaryLabel.leadingAnchor.constraint(equalTo: tile.trailingAnchor, constant: Theme.Spacing.s),
-            summaryLabel.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-            liveMark.leadingAnchor.constraint(
-                greaterThanOrEqualTo: summaryLabel.trailingAnchor, constant: Theme.Spacing.s),
-            liveMark.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-            chevron.leadingAnchor.constraint(equalTo: liveMark.trailingAnchor, constant: Theme.Spacing.s),
-            chevron.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
-            chevron.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-            chevron.widthAnchor.constraint(equalToConstant: 12),
+            line.topAnchor.constraint(equalTo: container.topAnchor),
+            line.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            line.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            line.heightAnchor.constraint(greaterThanOrEqualToConstant: rowHeight),
+            foldedBottom,
 
-            stackSpacing,
+            chevron.leadingAnchor.constraint(equalTo: line.leadingAnchor, constant: Theme.Spacing.s),
+            chevron.widthAnchor.constraint(equalToConstant: 10),
+            chevron.centerYAnchor.constraint(equalTo: line.centerYAnchor),
+
+            dot.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: Theme.Spacing.xs),
+            dot.widthAnchor.constraint(equalToConstant: 8),
+            dot.heightAnchor.constraint(equalToConstant: 8),
+            dot.centerYAnchor.constraint(equalTo: line.centerYAnchor),
+            failMark.centerXAnchor.constraint(equalTo: dot.centerXAnchor),
+            failMark.centerYAnchor.constraint(equalTo: dot.centerYAnchor),
+            liveMark.centerXAnchor.constraint(equalTo: dot.centerXAnchor),
+            liveMark.centerYAnchor.constraint(equalTo: dot.centerYAnchor),
+            liveMark.widthAnchor.constraint(equalToConstant: mark),
+
+            summaryLabel.leadingAnchor.constraint(
+                equalTo: chevron.trailingAnchor, constant: Theme.Spacing.xs + mark + Theme.Spacing.xs),
+            summaryLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: line.trailingAnchor, constant: -Theme.Spacing.s),
+            summaryLabel.centerYAnchor.constraint(equalTo: line.centerYAnchor),
+            summaryLabel.topAnchor.constraint(greaterThanOrEqualTo: line.topAnchor, constant: 4),
+            summaryLabel.bottomAnchor.constraint(lessThanOrEqualTo: line.bottomAnchor, constant: -4),
+
+            stackTop,
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
-            stackBottomInset,
 
             toggle.topAnchor.constraint(equalTo: container.topAnchor),
             toggle.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -1234,10 +1377,8 @@ final class ActivityGroupCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// How much the whole card sits below the row before it; a turn boundary
-    /// breathes, rows inside the same turn stay tight.
-    var turnInset: CGFloat = 0 {
-        didSet { topConstraint.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { topConstraint.constant = gapAbove }
     }
 
     func configure(
@@ -1249,52 +1390,62 @@ final class ActivityGroupCell: UICollectionViewCell {
         renderer.onToolTap = onToolTap
         renderer.onToolOpen = onToolOpen
         renderer.onLinkTap = onLinkTap
-        let failed = !streaming && steps.contains {
-            if case .tool(let call) = $0, call.status == .error { return true }
-            return false
-        }
-        iconView.image = UIImage(
-            systemName: streaming
-                ? "gearshape.2.fill" : (failed ? "exclamationmark.triangle.fill" : "sparkles"),
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
-        let iconTint = failed ? Theme.Color.warning : Theme.Color.accent
-        iconView.tintColor = iconTint
-        summaryLabel.text = Self.summary(steps, streaming: streaming)
+        let reading = ActivityLine.read(steps, streaming: streaming)
+        show(reading, compact: compact)
         toggle.accessibilityLabel = summaryLabel.text
         toggle.accessibilityValue =
             expanded ? String(localized: "Expanded") : String(localized: "Collapsed")
         toggle.accessibilityHint = expanded
             ? String(localized: "Double tap to hide agent steps")
             : String(localized: "Double tap to show agent steps")
-        chevron.transform = expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
-        liveMark.show(
-            streaming ? .openWork : nil, spoken: String(localized: "Still working"))
-
-        let isCompact = compact && !expanded
-        tileTopInset.constant = isCompact ? 7 : 10
-        tileSize.constant = isCompact ? 16 : 26
-        iconSize.constant = isCompact ? 15 : 18
-        stackSpacing.constant = isCompact ? 6 : Theme.Spacing.s
-        stackBottomInset.constant = isCompact ? -7 : -Theme.Spacing.m
-        tile.layer.cornerRadius = isCompact ? 5 : 7
-        tile.backgroundColor = isCompact
-            ? .clear
-            : (failed ? Theme.Color.warning : Theme.Color.accent).withAlphaComponent(0.12)
-        container.layer.cornerRadius = isCompact ? 12 : Theme.Radius.card
-        glass.layer.cornerRadius = container.layer.cornerRadius
-        toggle.answersPointer(cornerRadius: container.layer.cornerRadius)
-        summaryLabel.font = Theme.Ramp.font(isCompact ? .toolName : .cardTitle)
-        summaryLabel.textColor = failed ? Theme.Color.warning : Theme.Color.secondaryLabel
+        chevron.transform = expanded ? CGAffineTransform(rotationAngle: .pi / 2) : .identity
+        glass.alpha = expanded ? 1 : 0
 
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         stack.isHidden = !expanded
         renderer.reset()
+        foldedBottom.isActive = !expanded
+        openBottom.isActive = expanded
+        stackTop.constant = expanded ? Theme.Spacing.xs : 0
         if expanded {
             for step in steps { stack.addArrangedSubview(renderer.view(for: step)) }
         }
     }
 
-    /// The whole card is one button — a gesture recognizer here would lose
+    /// The line itself. Compact keeps the name in the toolName voice and the argument in the quiet
+    /// mono; turning the compact switch off keeps the same flat line but sets the lead in the
+    /// card-title voice, which is as much of "individual rows" as a flat line has.
+    private func show(_ reading: ActivityLine, compact: Bool) {
+        let leadColor = reading.standing == .failed ? Theme.Color.danger : Theme.Color.label
+        let text = NSMutableAttributedString(
+            string: reading.lead,
+            attributes: Theme.Ramp.attributes(compact ? .toolName : .cardTitle, color: leadColor))
+        if let detail = reading.detail {
+            text.append(
+                NSAttributedString(
+                    string: "  " + detail,
+                    attributes: Theme.Ramp.attributes(
+                        .toolDetail, color: Theme.Color.secondaryLabel)))
+        }
+        summaryLabel.attributedText = text
+        summaryLabel.numberOfLines =
+            traitCollection.preferredContentSizeCategory.isAccessibilityCategory ? 0 : 1
+        dot.isHidden = reading.standing != .done
+        dot.backgroundColor = Theme.Color.success
+        failMark.isHidden = reading.standing != .failed
+        liveMark.show(
+            reading.standing == .working ? .openWork : nil, spoken: String(localized: "Still working"))
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        guard previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory
+        else { return }
+        summaryLabel.numberOfLines =
+            traitCollection.preferredContentSizeCategory.isAccessibilityCategory ? 0 : 1
+    }
+
+    /// The whole line is one button — a gesture recognizer here would lose
     /// the recognition race against the chat's keyboard-dismiss tap, so the
     /// step rows stay non-interactive and taps dispatch by touch location:
     /// a subagent-spawn or link row runs its action, anywhere else toggles.
@@ -1307,47 +1458,6 @@ final class ActivityGroupCell: UICollectionViewCell {
         }
         Theme.Haptics.selection()
         onToggle?()
-    }
-
-    /// A collapsed row names the tools it hides, which says nothing when the
-    /// step is the agent asking something — there the question is the point.
-    private static func stepName(_ call: ToolCall) -> String {
-        guard call.summary.kind == .question, let question = call.summary.title else {
-            return call.name
-        }
-        return String(localized: "Asked · \(question)")
-    }
-
-    private static func summary(_ steps: [ActivityStep], streaming: Bool) -> String {
-        if streaming, let last = steps.last {
-            switch last {
-            case .tool(let call):
-                if call.summary.kind == .question { return Self.stepName(call) }
-                if let title = call.summary.title {
-                    return "\(call.name) · \(title)"
-                }
-                return "\(call.name)…"
-            case .reasoning: return String(localized: "Thinking…")
-            }
-        }
-        var names: [String] = []
-        var thinkingCount = 0
-        for step in steps {
-            switch step {
-            case .tool(let call):
-                let name = Self.stepName(call)
-                if !names.contains(name) { names.append(name) }
-            case .reasoning: thinkingCount += 1
-            }
-        }
-        var parts: [String] = []
-        if thinkingCount > 0 { parts.append(String(localized: "\(thinkingCount) thoughts")) }
-        if !names.isEmpty {
-            let shown = names.prefix(3).joined(separator: " · ")
-            parts.append(names.count > 3 ? "\(shown) +\(names.count - 3)" : shown)
-        }
-        return parts.isEmpty
-            ? String(localized: "\(steps.count) steps") : parts.joined(separator: "  ·  ")
     }
 }
 
@@ -1369,7 +1479,7 @@ extension UIFont {
 }
 
 /// The "agent is working" placeholder shown before any assistant content
-/// arrives for the current turn: three softly pulsing dots in a bubble.
+/// arrives for the current turn: three softly pulsing dots on the canvas, with no plate.
 ///
 /// The dots say what every other live mark in a transcript says, so they say it in the same words:
 /// the swell is `ActivityMotion.working`, read from the display clock at the vocabulary's tempo,
@@ -1378,15 +1488,13 @@ final class ThinkingCell: UICollectionViewCell {
     static let reuseID = "ThinkingCell"
 
     private let bubble = UIView()
+    private lazy var bubbleTop = bubble.topAnchor.constraint(equalTo: contentView.topAnchor)
     private let dots = (0..<3).map { _ in UIView() }
     private var link: CADisplayLink?
     private var motion: ActivityMotion = .still
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        bubble.backgroundColor = Theme.Color.assistantBubble
-        bubble.layer.cornerRadius = Theme.Radius.bubble
-        bubble.layer.cornerCurve = .continuous
         bubble.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(bubble)
 
@@ -1407,16 +1515,16 @@ final class ThinkingCell: UICollectionViewCell {
         }
 
         NSLayoutConstraint.activate([
-            bubble.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
-            bubble.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            bubbleTop,
+            bubble.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             bubble.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            bubble.heightAnchor.constraint(equalToConstant: 38),
+            bubble.heightAnchor.constraint(
+                greaterThanOrEqualToConstant: CGFloat(Theme.Chat.metrics.activityRowHeight)),
 
             stack.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
-            stack.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: Theme.Spacing.l),
-            stack.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.l),
+            stack.leadingAnchor.constraint(equalTo: bubble.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: bubble.trailingAnchor),
         ])
 
         NotificationCenter.default.addObserver(
@@ -1425,6 +1533,10 @@ final class ThinkingCell: UICollectionViewCell {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    var gapAbove: CGFloat = 0 {
+        didSet { bubbleTop.constant = gapAbove }
+    }
 
     override func prepareForReuse() {
         super.prepareForReuse()
@@ -1540,10 +1652,10 @@ final class QuestionCell: UICollectionViewCell {
         stack.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(stack)
 
-        glassTop = glass.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+        glassTop = glass.topAnchor.constraint(equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
             glassTop,
-            glass.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            glass.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             glass.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             glass.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
 
@@ -1556,9 +1668,8 @@ final class QuestionCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// Extra gap above the card when this row opens a new turn.
-    var turnInset: CGFloat = 0 {
-        didSet { glassTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { glassTop.constant = gapAbove }
     }
 
     func configure(

@@ -44,11 +44,8 @@ final class PendingSendCell: UICollectionViewCell {
     private var stripHidden: NSLayoutConstraint!
     private var shownPhase: PendingSend.Phase?
 
-    /// Extra gap above the bubble when this row opens a new turn, set by the transcript exactly
-    /// as it is on every other bubble — a prompt that has not arrived anywhere yet still opens a
-    /// turn.
-    var turnInset: CGFloat = 0 {
-        didSet { bubbleTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { bubbleTop.constant = gapAbove }
     }
 
     override init(frame: CGRect) {
@@ -81,7 +78,7 @@ final class PendingSendCell: UICollectionViewCell {
         contentView.addSubview(acts)
 
         bubbleTop = bubble.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+            equalTo: contentView.topAnchor)
         stripShown = statusStrip.heightAnchor.constraint(
             greaterThanOrEqualToConstant: Self.stripHeight)
         stripHidden = statusStrip.heightAnchor.constraint(equalToConstant: 0)
@@ -110,7 +107,7 @@ final class PendingSendCell: UICollectionViewCell {
             acts.leadingAnchor.constraint(
                 greaterThanOrEqualTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             acts.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+                equalTo: contentView.bottomAnchor),
         ])
     }
 

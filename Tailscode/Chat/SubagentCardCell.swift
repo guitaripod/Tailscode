@@ -89,110 +89,84 @@ struct SubagentGroup: Hashable {
     }
 }
 
+/// A fan-out of agents as one flat line, the way a run of tool calls rests: a mark for whether any
+/// are still working, the count in the name's voice and what to do about it in the quiet one. It
+/// is a 32-point row with the visible line inside, and the text grows with Dynamic Type.
 final class SubagentGroupCell: UICollectionViewCell {
     static let reuseID = "SubagentGroupCell"
 
     private let container = UIView()
-    private let rail = UIView()
     private let iconView = UIImageView()
-    private let titleLabel = UILabel()
-    private let detailLabel = UILabel()
+    private let summaryLabel = UILabel()
     private let mark = ActivityBadgeView(pointSize: 11)
     private let chevron = UIImageView()
     private let toggle = UIButton(type: .system)
     private var onToggle: (() -> Void)?
     private var containerTop: NSLayoutConstraint!
 
-    /// Extra gap above the card when this row opens a new turn.
-    var turnInset: CGFloat = 0 {
-        didSet { containerTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { containerTop.constant = gapAbove }
     }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        container.layer.cornerRadius = Theme.Radius.card
-        container.layer.cornerCurve = .continuous
-        container.clipsToBounds = true
         container.translatesAutoresizingMaskIntoConstraints = false
-
-        let glass = Theme.Glass.view()
-        glass.isUserInteractionEnabled = false
-        glass.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(glass)
-
-        rail.backgroundColor = Theme.Color.accent
-        rail.translatesAutoresizingMaskIntoConstraints = false
 
         iconView.image = UIImage(
             systemName: "square.stack.3d.up",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
         iconView.tintColor = Theme.Color.accent
-        iconView.contentMode = .scaleAspectFit
+        iconView.contentMode = .center
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = Theme.Ramp.font(.cardTitle)
-        titleLabel.textColor = Theme.Color.label
-        titleLabel.adjustsFontForContentSizeCategory = true
-        detailLabel.font = Theme.Ramp.font(.rowDetail)
-        detailLabel.textColor = Theme.Color.secondaryLabel
-        detailLabel.adjustsFontForContentSizeCategory = true
+        summaryLabel.adjustsFontForContentSizeCategory = true
+        summaryLabel.numberOfLines = 0
+        summaryLabel.isAccessibilityElement = false
+        summaryLabel.translatesAutoresizingMaskIntoConstraints = false
 
         chevron.image = UIImage(
-            systemName: "chevron.down",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+            systemName: "chevron.right",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))
         chevron.tintColor = Theme.Color.tertiaryLabel
-        chevron.contentMode = .scaleAspectFit
+        chevron.contentMode = .center
         chevron.translatesAutoresizingMaskIntoConstraints = false
-
-        let column = UIStackView(arrangedSubviews: [titleLabel, detailLabel])
-        column.axis = .vertical
-        column.spacing = 2
-        column.isUserInteractionEnabled = false
-        column.translatesAutoresizingMaskIntoConstraints = false
 
         toggle.translatesAutoresizingMaskIntoConstraints = false
         toggle.addTarget(self, action: #selector(toggleTapped), for: .touchUpInside)
-        toggle.answersPointer(cornerRadius: Theme.Radius.card)
+        toggle.answersPointer(cornerRadius: Theme.Radius.control)
 
         contentView.addSubview(container)
-        [rail, iconView, column, mark, chevron, toggle].forEach(container.addSubview)
+        [chevron, iconView, summaryLabel, mark, toggle].forEach(container.addSubview)
         mark.translatesAutoresizingMaskIntoConstraints = false
 
-        containerTop = container.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+        containerTop = container.topAnchor.constraint(equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
-            glass.topAnchor.constraint(equalTo: container.topAnchor),
-            glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-
             containerTop,
-            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             container.leadingAnchor.constraint(
-                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l + Theme.Spacing.m),
+                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.s),
             container.trailingAnchor.constraint(
-                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
+                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.s),
+            container.heightAnchor.constraint(
+                greaterThanOrEqualToConstant: CGFloat(Theme.Chat.metrics.activityRowHeight)),
 
-            rail.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            rail.topAnchor.constraint(equalTo: container.topAnchor),
-            rail.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            rail.widthAnchor.constraint(equalToConstant: 3),
-
-            iconView.leadingAnchor.constraint(equalTo: rail.trailingAnchor, constant: Theme.Spacing.m),
-            iconView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 16),
-            iconView.heightAnchor.constraint(equalToConstant: 16),
-
-            column.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Theme.Spacing.s),
-            column.topAnchor.constraint(equalTo: container.topAnchor, constant: Theme.Spacing.m),
-            column.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Theme.Spacing.m),
-
-            mark.leadingAnchor.constraint(greaterThanOrEqualTo: column.trailingAnchor, constant: Theme.Spacing.s),
-            mark.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            chevron.leadingAnchor.constraint(equalTo: mark.trailingAnchor, constant: Theme.Spacing.s),
-            chevron.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
+            chevron.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.s),
+            chevron.widthAnchor.constraint(equalToConstant: 10),
             chevron.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            chevron.widthAnchor.constraint(equalToConstant: 12),
+
+            iconView.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: Theme.Spacing.xs),
+            iconView.widthAnchor.constraint(equalToConstant: 14),
+            iconView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+
+            summaryLabel.leadingAnchor.constraint(
+                equalTo: iconView.trailingAnchor, constant: Theme.Spacing.xs),
+            summaryLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+            summaryLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4),
+
+            mark.leadingAnchor.constraint(
+                greaterThanOrEqualTo: summaryLabel.trailingAnchor, constant: Theme.Spacing.s),
+            mark.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.s),
+            mark.centerYAnchor.constraint(equalTo: container.centerYAnchor),
 
             toggle.topAnchor.constraint(equalTo: container.topAnchor),
             toggle.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -205,12 +179,18 @@ final class SubagentGroupCell: UICollectionViewCell {
 
     func configure(_ group: SubagentGroup, onToggle: @escaping () -> Void) {
         self.onToggle = onToggle
-        titleLabel.text = group.title
-        detailLabel.text = group.expanded ? String(localized: "tap to collapse") : group.detail
-        rail.backgroundColor = group.live > 0 ? Theme.Color.success : Theme.Color.accent
+        let detail = group.expanded ? String(localized: "tap to collapse") : group.detail
+        let text = NSMutableAttributedString(
+            string: group.title,
+            attributes: Theme.Ramp.attributes(.toolName, color: Theme.Color.label))
+        text.append(
+            NSAttributedString(
+                string: "  " + detail,
+                attributes: Theme.Ramp.attributes(.toolDetail, color: Theme.Color.secondaryLabel)))
+        summaryLabel.attributedText = text
         iconView.tintColor = group.live > 0 ? Theme.Color.success : Theme.Color.accent
         mark.show(group.live > 0 ? .openWork : nil, spoken: nil)
-        chevron.transform = group.expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
+        chevron.transform = group.expanded ? CGAffineTransform(rotationAngle: .pi / 2) : .identity
         toggle.accessibilityLabel = "\(group.title), \(group.detail)"
         toggle.accessibilityValue =
             group.expanded ? String(localized: "Expanded") : String(localized: "Collapsed")
@@ -241,9 +221,8 @@ final class SubagentCardCell: UICollectionViewCell {
     private var onToggle: (() -> Void)?
     private var containerTop: NSLayoutConstraint!
 
-    /// Extra gap above the card when this row opens a new turn.
-    var turnInset: CGFloat = 0 {
-        didSet { containerTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { containerTop.constant = gapAbove }
     }
 
     override init(frame: CGRect) {
@@ -326,7 +305,7 @@ final class SubagentCardCell: UICollectionViewCell {
         [rail, iconView, column, chevron, toggle].forEach(container.addSubview)
 
         containerTop = container.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+            equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
             glass.topAnchor.constraint(equalTo: container.topAnchor),
             glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
@@ -334,7 +313,7 @@ final class SubagentCardCell: UICollectionViewCell {
             glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
 
             containerTop,
-            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             container.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l + Theme.Spacing.m),
             container.trailingAnchor.constraint(

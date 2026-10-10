@@ -13,8 +13,8 @@ final class TaskBoardCell: UICollectionViewCell {
     private let stack = UIStackView()
     private var cardTop: NSLayoutConstraint!
 
-    var turnInset: CGFloat = 0 {
-        didSet { cardTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { cardTop.constant = gapAbove }
     }
 
     override init(frame: CGRect) {
@@ -38,11 +38,11 @@ final class TaskBoardCell: UICollectionViewCell {
         card.addSubview(header)
         card.addSubview(stack)
         cardTop = card.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+            equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
             cardTop,
             card.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+                equalTo: contentView.bottomAnchor),
             card.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.s),
             card.trailingAnchor.constraint(

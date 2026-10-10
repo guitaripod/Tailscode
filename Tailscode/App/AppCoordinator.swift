@@ -81,6 +81,12 @@ final class AppCoordinator: NSObject {
             if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
                 deliver(URL(string: "tailscode://session/\(sessionID)")!)
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_CHAT"] == "1" {
+                let failures = ChatSpacing.selfCheck()
+                AppLogger.chat.info(
+                    failures.isEmpty
+                        ? "CHAT_SELFTEST_OK" : "CHAT_SELFTEST_FAIL " + failures.joined(separator: "; "))
+            }
             let duoScreen = ProcessInfo.processInfo.environment["TAILSCODE_DUO_SCREEN"]
             if CommandLine.arguments.contains("--usage") || duoScreen == "usage" {
                 openUsageForDebug()

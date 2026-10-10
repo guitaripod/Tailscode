@@ -22,10 +22,21 @@ public enum LinkRailPolicy: Sendable {
         inRun segments: [String], enabled: Bool = LinkEmbedsSetting.isEnabled, settled: Bool
     ) -> [String] {
         guard enabled, settled else { return [] }
+        return addresses(gathering: segments.map { LinkEmbedPolicy.candidates(in: $0) }, enabled: enabled, settled: settled)
+    }
+
+    /// The same gathering for a client that already holds each segment's candidates — one list per
+    /// segment, as ``LinkEmbedPolicy/candidates(in:growing:)`` answers — so a transcript rebuilt on
+    /// every streamed word reads the addresses of a settled paragraph once rather than once per
+    /// word.
+    public static func addresses(
+        gathering candidates: [[String]], enabled: Bool = LinkEmbedsSetting.isEnabled, settled: Bool
+    ) -> [String] {
+        guard enabled, settled else { return [] }
         var seen = Set<String>()
         var urls: [String] = []
-        for segment in segments {
-            for url in LinkEmbedPolicy.candidates(in: segment) where seen.insert(url).inserted {
+        for list in candidates {
+            for url in list where seen.insert(url).inserted {
                 urls.append(url)
                 if urls.count == limit { return urls }
             }

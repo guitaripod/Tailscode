@@ -52,9 +52,8 @@ final class WorkflowCardCell: UICollectionViewCell {
         let time: UILabel
     }
 
-    /// Extra gap above the card when this row opens a new turn.
-    var turnInset: CGFloat = 0 {
-        didSet { containerTop.constant = 4 + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { containerTop.constant = gapAbove }
     }
 
     override init(frame: CGRect) {
@@ -141,14 +140,14 @@ final class WorkflowCardCell: UICollectionViewCell {
 
         let fillWidth = fill.widthAnchor.constraint(equalTo: track.widthAnchor, multiplier: 0)
         self.fillWidth = fillWidth
-        containerTop = container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4)
+        containerTop = container.topAnchor.constraint(equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
             container.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
             container.trailingAnchor.constraint(
                 equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
             containerTop,
-            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             glass.topAnchor.constraint(equalTo: container.topAnchor),

@@ -188,6 +188,7 @@ final class SettingsViewController: UIViewController {
         case haptics
         case streamRenderer
         case appearance
+        case chatDensity
         case pro
         case viewLogs
         case testAll
@@ -700,6 +701,13 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: "paintpalette")
             content.imageProperties.tintColor = Theme.Color.special
             cell.accessories = [.disclosureIndicator()]
+        case .chatDensity:
+            content.text = ChatDensitySetting.title
+            content.secondaryText = ChatDensitySetting.current.explanation
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "rectangle.compress.vertical")
+            content.imageProperties.tintColor = Theme.Color.info
+            cell.accessories = [.popUpMenu(densityMenu())]
         case .pro:
             content.text = "Tailscode Pro"
             if ProStore.shared.isPro {
@@ -923,6 +931,22 @@ final class SettingsViewController: UIViewController {
         return .customView(configuration: .init(customView: row, placement: .trailing()))
     }
 
+    /// The two densities as a pop-up on the row itself, the current one ticked: the choice is two
+    /// words, so it is made where it is read rather than on a screen of its own.
+    private func densityMenu() -> UIMenu {
+        UIMenu(
+            children: ChatDensity.allCases.map { density in
+                UIAction(
+                    title: density.title,
+                    state: density == ChatDensitySetting.current ? .on : .off
+                ) { [weak self] _ in
+                    Theme.Haptics.selection()
+                    ChatDensitySetting.set(density)
+                    self?.reconfigure([.chatDensity])
+                }
+            })
+    }
+
     /// The row states the choice rather than offering it: which identity, and which of its two
     /// faces. Both are one screen away, where they can be seen instead of read.
     private static var themeSummary: String {
@@ -974,7 +998,7 @@ final class SettingsViewController: UIViewController {
                     .keyboardShortcuts,
                 ]
             ),
-            (.appearance, [.appearance, .toggle(.presenceOrb)]),
+            (.appearance, [.appearance, .chatDensity, .toggle(.presenceOrb)]),
             (.pro, [.pro]),
             (.diagnostics, [.viewLogs, .testAll, .copyDiagnostics, .emailDiagnostics]),
             (.about, [.version, .rate, .share, .source, .privacy, .support, .licenses]),
@@ -1121,6 +1145,11 @@ final class SettingsViewController: UIViewController {
                 localized:
                     "theme appearance dark light mode colour color palette rose pine tokyo night everforest gruvbox nord solarized phosphor",
                 comment: "search keywords")
+        case .chatDensity:
+            return "\(ChatDensitySetting.title) "
+                + String(
+                    localized: "density compact comfortable spacing rows tight airy",
+                    comment: "search keywords")
         case .pro:
             return String(
                 localized: "pro purchase upgrade supporter restore tip", comment: "search keywords")
@@ -1401,7 +1430,7 @@ extension SettingsViewController: UICollectionViewDelegate {
             Theme.Haptics.tap()
             let picker = ThemePickerViewController()
             navigationController?.pushViewController(picker, animated: true)
-        case .toggle, .version, .tailnetScan:
+        case .toggle, .version, .tailnetScan, .chatDensity:
             break
         }
     }

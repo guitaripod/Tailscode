@@ -13,6 +13,11 @@ final class ProviderRetryCell: UICollectionViewCell {
     static let reuseID = "ProviderRetryCell"
 
     private let card = UIView()
+    private lazy var cardTop = card.topAnchor.constraint(equalTo: contentView.topAnchor)
+
+    var gapAbove: CGFloat = 0 {
+        didSet { cardTop.constant = gapAbove }
+    }
     private let badge = ActivityBadgeView(pointSize: 15)
     private let titleLabel = UILabel()
     private let reasonLabel = UILabel()
@@ -96,9 +101,9 @@ final class ProviderRetryCell: UICollectionViewCell {
         card.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            cardTop,
             card.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+                equalTo: contentView.bottomAnchor),
             card.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             card.trailingAnchor.constraint(

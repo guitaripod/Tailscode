@@ -28,19 +28,19 @@ final class ResponseStatsCell: UICollectionViewCell {
         strip.alignment = .center
         strip.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(strip)
-        turnTop = strip.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 2)
+        turnTop = strip.topAnchor.constraint(equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
             turnTop,
             strip.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
             strip.trailingAnchor.constraint(
                 lessThanOrEqualTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
-            strip.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            strip.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
     }
 
-    var turnInset: CGFloat = 0 {
-        didSet { turnTop.constant = 2 + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { turnTop.constant = gapAbove }
     }
 
     func configure(_ stats: ResponseStats) {

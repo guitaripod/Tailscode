@@ -208,7 +208,95 @@ enum ChatRowBuilder {
             contentsOf: Self.agentRows(
                 pendingUnattached, groupID: "session", messageID: "agents", role: .assistant,
                 expandedGroups: agents.expandedGroups))
-        return fuseActivity(rows)
+        let fused = fuseActivity(rows)
+        return dockPictures(dockRails(fused, turnOpen: turnOpen, memo: memo))
+    }
+
+    /// Whether a row is part of the flow of an answer, which is what a link rail's run is made
+    /// of: prose and the blocks set in it. A tool, a picture, a seam or another speaker ends the
+    /// run, and the rail arrives where it ends.
+    private static func isRunRow(_ row: ChatRow) -> Bool {
+        guard row.role == .assistant else { return false }
+        switch row.content {
+        case .text, .code, .table, .tableDraft: return true
+        default: return false
+        }
+    }
+
+    /// Docks one rail after each settled run of prose that mentioned an address. A run is
+    /// settled once something follows it or the turn has ended (`LinkRailPolicy.isSettled`), so a
+    /// streaming answer never carries a rail that its own growth would keep pushing down. The rail's
+    /// identity is its run's last row, which does not change while the answer goes on growing
+    /// elsewhere, and the addresses are read through the memo so a rebuild per token does not scan
+    /// the whole conversation for them.
+    private static func dockRails(
+        _ rows: [ChatRow], turnOpen: Bool, memo: SegmentRowMemo?
+    ) -> [ChatRow] {
+        guard LinkEmbedsSetting.isEnabled else { return rows }
+        var docked: [ChatRow] = []
+        docked.reserveCapacity(rows.count)
+        var run: [ChatRow] = []
+        let finalID = rows.last?.id
+
+        func close(followed: Bool) {
+            defer { run = [] }
+            guard let last = run.last else { return }
+            let live = turnOpen && last.id == finalID
+            let settled = LinkRailPolicy.isSettled(
+                lastRowIsLive: live, followedByFurniture: followed, turnIsOpen: turnOpen)
+            guard settled else { return }
+            let found = run.compactMap { row -> [String]? in
+                guard case .text(let text) = row.content else { return nil }
+                return memo?.addresses(forRow: row.id, text: text, growing: false)
+                    ?? LinkEmbedPolicy.candidates(in: text)
+            }
+            let urls = LinkRailPolicy.addresses(gathering: found, enabled: true, settled: true)
+            guard !urls.isEmpty else { return }
+            docked.append(
+                ChatRow(
+                    id: "\(last.id):rail", messageID: last.messageID, role: last.role,
+                    content: .linkRail(LinkRailRun(addresses: urls))))
+        }
+
+        for row in rows {
+            if isRunRow(row) {
+                run.append(row)
+            } else {
+                close(followed: true)
+            }
+            docked.append(row)
+        }
+        close(followed: false)
+        return docked
+    }
+
+    /// Gathers consecutive pictures the agent made into one row, named after the first, so a
+    /// second picture arriving changes a row rather than adding one. What a person sent keeps its
+    /// own small bubble.
+    private static func dockPictures(_ rows: [ChatRow]) -> [ChatRow] {
+        var docked: [ChatRow] = []
+        docked.reserveCapacity(rows.count)
+        var strip: [(row: ChatRow, file: FileReference)] = []
+
+        func flush() {
+            defer { strip = [] }
+            guard let first = strip.first else { return }
+            docked.append(
+                ChatRow(
+                    id: first.row.id, messageID: first.row.messageID, role: first.row.role,
+                    content: .pictures(strip.map(\.file))))
+        }
+
+        for row in rows {
+            if case .image(let file) = row.content, row.role != .user {
+                strip.append((row, file))
+                continue
+            }
+            flush()
+            docked.append(row)
+        }
+        flush()
+        return docked
     }
 
     /// One row per block of an answer, named by the block's *place* in it — always, even while the
@@ -240,14 +328,6 @@ enum ChatRowBuilder {
             rows.append(
                 ChatRow(
                     id: rowID, messageID: messageID, role: role, content: content))
-            if case .text(let prose) = content {
-                for (n, url) in LinkEmbedPolicy.urls(in: prose).enumerated() {
-                    rows.append(
-                        ChatRow(
-                            id: "\(rowID):embed\(n)", messageID: messageID, role: role,
-                            content: .webEmbed(WebEmbed(url: url))))
-                }
-            }
         }
         return rows
     }
