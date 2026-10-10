@@ -135,7 +135,7 @@ enum ParityManifest {
         case .videoSlot: return .notApplicable("no tiling on a phone; a slot is a pane among panes, and the same reason splitPanes is not applicable applies to what a pane could hold")
         case .imageLane: return .implemented("ImageStudioViewController")
         case .imageLibrary: return .implemented("ImageLibrary")
-        case .imagePromptHelper: return .implemented("helperMenu")
+        case .imagePromptHelper: return .implemented("StudioHelperMenu")
         case .imageLivePreview: return .implemented("sketch")
         case .watchDirectory: return .notApplicable("the board is what an empty video slot shows instead of a text box, and a phone has no slot to show it in; a full-screen browser of what is on would be a different app, not this capability")
         case .watchAccounts: return .notApplicable("nothing on a phone reads a follow list — there is no board and no slot to put one in, so an account here would sign in to feed a surface that does not exist")
@@ -200,17 +200,11 @@ enum ParityManifest {
         case .forgeEntry: return .implemented("presentVideo")
         case .forgeSetup: return .implemented("ForgeSetupViewController")
         case .autoResume: return .implemented("armResume")
-        case .forgeHistory: return .implemented("ForgeClipCell")
+        case .forgeHistory: return .implemented("ForgeClipTileCell")
         case .videoLane: return .implemented("composerLanePan")
-        case .videoPromptHelper:
-            return .gap(
-                "ForgeBrief, ForgeRewriteContext and the shared rewriter are Core's, but the phone's forge has no Enhance control or helper menu yet; the image studio's card is the shape to port")
-        case .videoLivePreview:
-            return .gap(
-                "ForgeJob.sketch carries every frame the socket sends, but ForgeStageCell still draws the phase glyph while a render runs rather than the sketch")
-        case .videoFirstFrame:
-            return .gap(
-                "ForgeRecipe.frame and the image-to-video graph are Core's, but the phone's forge has no Start from row, no Continue it on a clip, and no Animate this on a picture")
+        case .videoPromptHelper: return .implemented("StudioEnhanceControl")
+        case .videoLivePreview: return .implemented("adoptSketch")
+        case .videoFirstFrame: return .implemented("startFromMenu")
         case .videoSound: return .implemented("hear")
         case .videoEstimate: return .implemented("expecting")
         }
