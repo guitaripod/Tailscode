@@ -24,6 +24,7 @@ final class MainMenu: NSObject {
         main.addItem(makeModelMenu())
         main.addItem(makeViewMenu())
         main.addItem(makeGoMenu())
+        main.addItem(makeStudioMenu())
         main.addItem(makeWindowMenu())
         main.addItem(makeHelpMenu())
         NSApp.mainMenu = main
@@ -283,6 +284,7 @@ final class MainMenu: NSObject {
         menu.addItem(
             item(Localized.text("Archived Chats"), #selector(toggleArchiveView), "e", [.command, .shift]))
         menu.addItem(videoForgeItem())
+        menu.addItem(studioItem())
         menu.addItem(delegateItem())
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Split Right"), #selector(splitRight), "d", [.command, .shift]))
@@ -343,6 +345,47 @@ final class MainMenu: NSObject {
         return holder(menu)
     }
 
+    /// The Studio's verbs in the menu bar, where a person looks for what the keyboard can do. They
+    /// answer for the Studio that has focus — the panel's, or a pane that paints — and dim anywhere
+    /// else, so the three chords that are also a conversation's (⌘↩ sends, ⌘E archives, ⌘⇧E lists the
+    /// archive) read as the Studio's only while it is in front. The keys with no ⌘ in them — Esc,
+    /// the arrows and Space — cannot be key equivalents without taking them from every text field, so
+    /// each item wears its key in its title the way the pane verbs do.
+    private func makeStudioMenu() -> NSMenuItem {
+        let menu = NSMenu(title: Localized.text("Studio"))
+        menu.autoenablesItems = true
+        for key in StudioKey.allCases where key != .copy {
+            let entry = studioEntry(for: key)
+            menu.addItem(entry)
+            if key == .again || key == .open || key == .videoLane {
+                menu.addItem(.separator())
+            }
+        }
+        return holder(menu)
+    }
+
+    private func studioEntry(for key: StudioKey) -> NSMenuItem {
+        let chord = key.chord
+        let title = StudioMenuWords.title(key)
+        guard chord.command else {
+            let entry = item(
+                title + "   " + StudioMenuWords.keyHint(key), #selector(studioVerb(_:)), "", [])
+            entry.tag = StudioKey.allCases.firstIndex(of: key) ?? 0
+            return entry
+        }
+        let entry = item(
+            title, #selector(studioVerb(_:)), chord.key,
+            chord.shift ? [.command, .shift] : [.command])
+        entry.tag = StudioKey.allCases.firstIndex(of: key) ?? 0
+        return entry
+    }
+
+    private func studioItem() -> NSMenuItem {
+        let entry = item(Localized.text("Studio"), #selector(openStudio), "i", [.command, .option])
+        entry.toolTip = ImageGenEntryPoint.tooltip(configured: true)
+        return entry
+    }
+
     private func makeWindowMenu() -> NSMenuItem {
         let menu = NSMenu(title: Localized.text("Window"))
         menu.addItem(
@@ -351,6 +394,8 @@ final class MainMenu: NSObject {
         menu.addItem(
             withTitle: Localized.text("Zoom"), action: #selector(NSWindow.performZoom(_:)),
             keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(item(Localized.text("Studio"), #selector(openStudio), ""))
         menu.addItem(.separator())
         menu.addItem(
             withTitle: Localized.text("Bring All to Front"),
@@ -493,6 +538,15 @@ final class MainMenu: NSObject {
     #endif
     @objc private func toggleArchiveView() { run(.toggleArchiveView) }
     @objc private func videoForge() { hub.presentForge() }
+    @objc private func openStudio() { hub.presentStudio() }
+
+    @objc private func studioVerb(_ sender: NSMenuItem) {
+        let keys = StudioKey.allCases
+        guard keys.indices.contains(sender.tag),
+            let workspace = StudioWorkspaceView.current(in: NSApp.keyWindow)
+        else { return }
+        workspace.perform(keys[sender.tag])
+    }
 
     @objc private func openDelegate() { hub.presentDelegate() }
     @objc private func zoomIn() { run(.zoomIn) }
@@ -540,6 +594,13 @@ extension MainMenu: NSMenuItemValidation {
         ]
         if let action = menuItem.action, treeVerbs.contains(action) {
             return hub.splitPanes.paneCount > 1
+        }
+        if menuItem.action == #selector(studioVerb(_:)) {
+            let keys = StudioKey.allCases
+            guard keys.indices.contains(menuItem.tag),
+                let workspace = StudioWorkspaceView.current(in: NSApp.keyWindow)
+            else { return false }
+            return workspace.offers(keys[menuItem.tag])
         }
         if menuItem.action == #selector(paneVerb(_:)) || menuItem.action == #selector(paneArrangement(_:))
         {

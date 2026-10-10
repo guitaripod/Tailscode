@@ -108,6 +108,8 @@ final class TranscriptViewController: NSViewController {
     #endif
     /// What this pane is reading instead of talking, when it is a browser slot rather than a chat.
     private var page: WebSlotView?
+    /// What this pane is painting instead of talking, when it is a draw slot rather than a chat.
+    private var draw: DrawSlotView?
     /// Told to the hub when a slot starts, stops, or learns its stream's title, so the layout is
     /// written back exactly as an opened conversation writes it back.
     var onVideoChanged: (() -> Void)?
@@ -771,7 +773,10 @@ final class TranscriptViewController: NSViewController {
     /// window and starts notifying behind a player that still covers the pane edge to edge — live
     /// and invisible, with no way back short of closing the pane — so the slot goes first.
     private func clearSlot() {
-        guard isWatching || page != nil else { return }
+        guard isWatching || page != nil || draw != nil else { return }
+        draw?.shutdown()
+        draw?.removeFromSuperview()
+        draw = nil
         #if !TAILSCODE_MAS
             video?.shutdown()
             video?.removeFromSuperview()
@@ -843,6 +848,41 @@ final class TranscriptViewController: NSViewController {
         refreshIdentity()
     }
 
+    /// Turns this pane into a draw slot, or points the one it already is at another machine. The
+    /// slot is the Studio's Image lane at pane size — the same stage, dock and shelf over a studio
+    /// of its own — so a pane is never a second implementation of making a picture, and it is the
+    /// same in both distributions: the machine is reached over the network and nothing else is asked.
+    func showDraw(_ endpoint: ImageGenEndpoint?) {
+        chooser = nil
+        chooserView.isHidden = true
+        if draw == nil {
+            let slot = DrawSlotView(endpoint: endpoint)
+            slot.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(slot, positioned: .below, relativeTo: identityGlass)
+            NSLayoutConstraint.activate([
+                slot.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                slot.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                slot.topAnchor.constraint(equalTo: view.topAnchor),
+                slot.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+            draw = slot
+            slot.onChange = { [weak self] in
+                self?.refreshIdentity()
+                self?.onVideoChanged?()
+            }
+            setChatFurnitureVisible(false)
+        } else if let endpoint {
+            draw?.point(at: endpoint)
+        }
+        if endpoint == nil { draw?.focusPrompt() }
+        refreshIdentity()
+        onVideoChanged?()
+    }
+
+    var isDrawing: Bool { draw != nil }
+    var drawEndpoint: ImageGenEndpoint? { draw?.endpoint }
+    var drawSummary: String? { draw?.summary }
+
     var isBrowsing: Bool { page != nil }
     var webTarget: WebTarget? {
         page.flatMap { slot in slot.currentAddress.map(WebTarget.page) ?? slot.target }
@@ -904,13 +944,17 @@ final class TranscriptViewController: NSViewController {
         guard furnitureHidden.isEmpty else { return }
         hoverBar.dismiss()
         furnitureHidden = view.subviews.filter { subview in
-            subview !== identityGlass && subview !== page && !subview.isHidden
+            subview !== identityGlass && subview !== page && subview !== draw && !subview.isHidden
                 && !isVideoSlot(subview)
         }
         furnitureHidden.forEach { $0.isHidden = true }
     }
 
     private func refreshIdentity() {
+        if let draw {
+            identityLabel.stringValue = draw.title
+            return
+        }
         if let page {
             identityLabel.stringValue = "\(page.slot.title) · \(page.slot.subtitle)"
             return
@@ -941,6 +985,7 @@ final class TranscriptViewController: NSViewController {
         composer.stashDraft()
         composer.stopWatching()
         interruptionPress = nil
+        draw?.shutdown()
         page?.shutdown()
         #if !TAILSCODE_MAS
             video?.shutdown()
@@ -1304,7 +1349,7 @@ final class TranscriptViewController: NSViewController {
             case .chat: self.composer.takeFocus()
             case .ask: host.summonQuickAsk()
             case .video: host.presentForge()
-            case .image: break
+            case .image: host.presentStudio(lane: .image, brief: self.composer.currentText)
             }
         }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
@@ -4039,7 +4084,7 @@ final class TranscriptViewController: NSViewController {
     /// of a transcript that has one, and never while a fresh canvas is deliberately holding the
     /// prompt at the top.
     private func syncJumpPill() {
-        let show = !followsBottom && canvasHold == nil && !rowViews.isEmpty
+        let show = !followsBottom && canvasHold == nil && !rowViews.isEmpty && draw == nil
         jumpGlass?.isHidden = !show
     }
 

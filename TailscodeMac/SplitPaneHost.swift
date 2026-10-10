@@ -368,6 +368,10 @@ final class SplitPaneHost: NSViewController {
             let pane = makePane()
             panes[id] = pane
             installDropTarget(on: pane)
+            if let address = snapshot.draw(for: id) {
+                pane.showDraw(ImageGenEndpoint(address: address))
+                continue
+            }
             #if !TAILSCODE_MAS
                 if let target = snapshot.page(for: id) {
                     pane.showWeb(target)
@@ -505,8 +509,13 @@ final class SplitPaneHost: NSViewController {
         var sessions: [String: SplitPaneSession] = [:]
         var videos: [String: String] = [:]
         var pages: [String: String] = [:]
+        var draws: [String: String] = [:]
         let held = heldSessions?() ?? [:]
         for (id, pane) in panes {
+            if let endpoint = pane.drawEndpoint {
+                draws[id.raw] = endpoint.address
+                continue
+            }
             if let target = pane.webTarget {
                 pages[id.raw] = target.address
                 continue
@@ -524,7 +533,8 @@ final class SplitPaneHost: NSViewController {
             sessions[id.raw] = SplitPaneSession(
                 profileID: entry.profileID, sessionID: entry.session.id)
         }
-        return SplitSnapshot(layout: layout, sessions: sessions, videos: videos, pages: pages)
+        return SplitSnapshot(
+            layout: layout, sessions: sessions, videos: videos, pages: pages, draws: draws)
     }
 
     /// The same key and shape the Linux desktop persists, so both restore the same arrangement.
@@ -537,7 +547,8 @@ final class SplitPaneHost: NSViewController {
     private func schedulePersist() {
         persistRequests += 1
         let current = snapshot()
-        if paneCount > 1 || !current.videos.isEmpty || !current.pages.isEmpty,
+        if paneCount > 1 || !current.videos.isEmpty || !current.pages.isEmpty
+            || !current.draws.isEmpty,
             let encoded = current.encoded
         {
             writer.schedule(encoded)

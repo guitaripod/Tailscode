@@ -216,20 +216,18 @@ enum ParityManifest {
                 because:
                     "WebTarget takes any address, a bare host, or words to look up, which is the whole of what the age rating means by unrestricted web access — and the person who asked for this build says he has never opened a page in a pane on either desktop. A feature nobody uses is not worth re-rating a shared record over, so the store copy simply does not have one.")
         case .imageGenSlot:
-            return .gap(
-                "Core's slot model, ComfyUI client and chooser row are shared, but the Mac has no pane that paints and no row that offers one; a layout snapshot that held a draw slot restores an empty pane")
+            return .partial(
+                "DrawSlotView",
+                missing:
+                    "A pane becomes a draw slot from the chooser's Make an image row and is the Studio's Image lane at pane size — the same stage, dock and shelf strip over a studio of its own — and the layout snapshot restores that the pane was one and which machine it painted on. What the snapshot does not carry is the words last typed there, because the draw record it shares with the other desks is the machine's address alone.")
         case .imageLane:
-            return .gap(
-                "Core carries the lane, the door and every word, and the pills row already walks lanes — but the Mac has no pane that paints (imageGenSlot is a gap here too), so PillsRow.offeredLanes answers three and the lane is never drawn")
-        case .imageLibrary:
-            return .gap(
-                "Core reads the machine's listing, the file heads and the caches for every client, but the Mac has no image studio to hang a shelf in (imageLane is a gap here), so nothing on this desk opens the gallery")
-        case .imagePromptHelper:
-            return .gap(
-                "Core's survey, picker words, streaming rewriter and card are shared, but the Mac has no image studio to put a Words box or a helper menu in (imageLane is a gap here), so nothing on this desk asks a model to write the paragraph")
-        case .imageLivePreview:
-            return .gap(
-                "ImageGenRunner hands every sketch frame to whoever runs it, but the Mac has no pane that paints (imageGenSlot is a gap here), so there is no stage for the sketch to land on")
+            return .partial(
+                "StudioWindowController",
+                missing:
+                    "The lane is on the composer's switch exactly when a machine that can paint is known, arrives and leaves with the door without a restart, wears the machine's own line, and opens the Studio on the Image lane with the words typed in the box as the brief — the Studio is a panel beside the conversation, and closing it never stops a render. What the Mac does not draw is the lane as a standing mode of the box: its pills row is a row of doors, so there are no image chips under the composer and no Render send word, because the chips live on the Studio's dock where the picture is.")
+        case .imageLibrary: return .implemented("MacImageLibrary")
+        case .imagePromptHelper: return .implemented("StudioEnhanceControl")
+        case .imageLivePreview: return .implemented("sketchLayer")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("onChatDropped")
         case .clickToActivate: return .implemented("pressLanded")

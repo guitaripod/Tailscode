@@ -244,6 +244,14 @@ enum SelfTest {
             failures += 1
         }
 
+        let studioFailures = StudioCheck.run()
+        if studioFailures.isEmpty {
+            report("studio: the shelf, the stage's states, the verbs, the chips, the folds and the keys all hold")
+        } else {
+            report("studio: \(studioFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         let forgeFailures = ForgeBoardCheck.run()
         if forgeFailures.isEmpty {
             report("video forge: the graph, the frames, the job's walk and the board all hold")
