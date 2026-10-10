@@ -182,23 +182,23 @@ final class SplitHost: @unchecked Sendable {
         let size = SplitSize(
             width: Double(gtk_widget_get_width(treeBox)),
             height: Double(gtk_widget_get_height(treeBox)))
+        let floor = paneFloor(in: size)
         return layout.placement(in: size, stripHeight: 0) { [self] id in
-            guard let pane = panes[id] else { return .zero }
-            return PaneSizing.layoutMinimum(kind: paneKind(pane)).combined(with: Self.paneFloor)
+            panes[id] == nil ? .zero : floor
         }
     }
 
-    /// This host has no glance face, so a pane is never smaller than a whole conversation:
-    /// every pane root asks for 280 points of width, and the clamp has to stop where the widgets
-    /// stop, not at the smaller minimum a glance would allow.
-    private static let paneFloor = PaneSizing.chatFull
-
-    private func paneKind(_ pane: ChatPane) -> PaneKind {
-        if pane.drawEndpoint != nil { return .draw }
-        if pane.webTarget != nil { return .web }
-        if pane.videoTarget != nil { return .video }
-        if pane.entry != nil || host?.heldSession(for: pane.id) != nil { return .chat }
-        return .empty
+    /// This host has no glance face, so a pane is never smaller than a whole conversation: every
+    /// pane root asks for 280 points of width, and the clamp has to stop where the widgets stop,
+    /// not at the smaller minimum a glance would allow. Where the window cannot hold every pane at
+    /// that, the floor gives way evenly, so no pane is ever left out of the solve — this host
+    /// never hides one.
+    private func paneFloor(in size: SplitSize) -> PaneMinimum {
+        let count = Double(max(1, layout.paneCount))
+        let seams = (count - 1) * PaneSizing.gutter
+        return PaneMinimum(
+            width: max(0, min(PaneSizing.chatFull.width, (size.width - seams) / count)),
+            height: max(0, min(PaneSizing.chatFull.height, (size.height - seams) / count)))
     }
 
     /// The registered pane chords that act on the tree itself — arrange, promote, rotate, move to
