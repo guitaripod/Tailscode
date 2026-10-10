@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1180">
+<title>Studio B — failed: file missing</title>
+<style>
+:root{
+--win:#1c1c1f;--canvas:#0f0f11;--panel:#18181b;--ink:#f3f3f5;--ink2:rgba(243,243,245,.68);--ink3:rgba(243,243,245,.44);
+--line:rgba(255,255,255,.09);--chip:rgba(255,255,255,.08);--chipb:rgba(255,255,255,.13);--field:rgba(255,255,255,.055);
+--accent:#0a84ff;--onaccent:#fff;--ok:#30d158;--danger:#ff453a;--warn:#ff9f0a;
+--glass:rgba(28,28,33,.68);--glassb:rgba(255,255,255,.15);--glasshi:rgba(255,255,255,.28);
+--shadow:0 18px 44px rgba(0,0,0,.50),0 2px 8px rgba(0,0,0,.35);--tb:rgba(36,36,40,.85);--scrim:rgba(8,8,10,.58);
+}
+:root.light{
+--win:#e8e8ec;--canvas:#fbfbfd;--panel:#f3f3f6;--ink:#1d1d1f;--ink2:rgba(29,29,31,.70);--ink3:rgba(29,29,31,.46);
+--line:rgba(0,0,0,.09);--chip:rgba(0,0,0,.05);--chipb:rgba(0,0,0,.10);--field:rgba(0,0,0,.04);
+--accent:#007aff;--onaccent:#fff;--ok:#28b84a;--danger:#e0352b;--warn:#d9820a;
+--glass:rgba(255,255,255,.58);--glassb:rgba(255,255,255,.75);--glasshi:rgba(255,255,255,.95);
+--shadow:0 18px 44px rgba(0,0,0,.20),0 2px 8px rgba(0,0,0,.12);--tb:rgba(244,244,247,.85);--scrim:rgba(255,255,255,.55);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1180px;height:820px;overflow:hidden;background:transparent;
+font-family:-apple-system,"SF Pro",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;font-size:13px}
+.win{position:absolute;left:0;top:0;width:1180px;height:820px;background:var(--win);border-radius:14px;overflow:hidden;
+box-shadow:inset 0 0 0 1px var(--line)}
+.abs{position:absolute}
+.tb{position:absolute;left:0;top:0;right:0;height:52px;display:flex;align-items:center;z-index:5}
+.lights{position:absolute;left:20px;top:20px;display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:50%;display:block;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25)}
+.lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.seg{position:absolute;left:96px;top:12px;height:28px;width:156px;border-radius:14px;background:var(--chip);
+display:flex;padding:2px;box-shadow:inset 0 0 0 1px var(--line)}
+.seg span{flex:1;display:flex;align-items:center;justify-content:center;font-weight:500;font-size:12.5px;color:var(--ink2);border-radius:12px}
+.seg span.on{background:var(--glass);color:var(--ink);box-shadow:inset 0 1px 0 var(--glasshi),0 1px 4px rgba(0,0,0,.25);
+backdrop-filter:blur(24px) saturate(1.6)}
+.mpill{position:absolute;left:50%;top:10px;transform:translateX(-50%);height:32px;padding:0 14px;border-radius:16px;background:var(--chip);
+box-shadow:inset 0 0 0 1px var(--line);display:flex;align-items:center;gap:7px;font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mpill .sep{color:var(--ink3)}.mpill b{color:var(--ink3);font-weight:400;font-size:10px;margin-left:2px}
+.mpill .mute{color:var(--ink2)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block;flex:none}
+.dot.live{box-shadow:0 0 0 3px rgba(48,209,88,.25);animation:swell 2.4s ease-in-out infinite}
+.dot.bad{background:var(--danger)}
+@keyframes swell{50%{box-shadow:0 0 0 6px rgba(48,209,88,.08)}}
+.tbr{position:absolute;right:16px;top:10px;height:32px;display:flex;align-items:center;gap:14px}
+.tbr .q{color:var(--ink2);font-size:12.5px;font-variant-numeric:tabular-nums}
+.btn{height:28px;padding:0 14px;border-radius:14px;background:var(--chipb);display:flex;align-items:center;font-weight:500;font-size:12.5px}
+.stage{position:absolute;background:var(--canvas);border-radius:16px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+.cap{position:absolute;left:0;right:0;top:11px;height:20px;text-align:center;font-size:12.5px;color:var(--ink2);white-space:nowrap;
+font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center;gap:8px}
+.cap em{font-style:normal;color:var(--ink3)}
+.pic{position:absolute;border-radius:12px;overflow:hidden;background:#222}
+.pic img{width:100%;height:100%;object-fit:cover;display:block}
+.pic.sk img{filter:blur(12px) saturate(.72) contrast(.9) brightness(.96);transform:scale(1.1)}
+.pic.sk.p2 img{filter:blur(8px) saturate(.8) contrast(.95);transform:scale(1.05)}
+.pic.sk::after{content:"";position:absolute;inset:0;mix-blend-mode:overlay;opacity:.45;
+background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' seed='4'/><feColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+.pic.dim img{filter:brightness(.42) saturate(.7) blur(2px)}
+:root.light .pic.dim img{filter:brightness(1.15) saturate(.5) blur(2px);opacity:.45}
+.drop{position:absolute;border-radius:12px;border:2px dashed rgba(255,255,255,.24)}
+:root.light .drop{border-color:rgba(0,0,0,.2)}
+.badge{position:absolute;height:22px;padding:0 9px;border-radius:11px;background:rgba(10,10,12,.62);color:#fff;font-size:11.5px;
+display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums;font-weight:500}
+.pbar{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--chip)}
+.pbar i{display:block;height:100%;background:var(--accent)}
+.pbar.seg2{display:flex;gap:4px;background:transparent}
+.pbar.seg2 b{flex:1;background:var(--chip);display:block;position:relative}
+.pbar.seg2 b i{position:absolute;left:0;top:0;bottom:0}
+.glass{background:var(--glass);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);
+box-shadow:inset 0 1px 0 var(--glasshi),inset 0 0 0 1px var(--glassb),var(--shadow)}
+.verbs{position:absolute;height:36px;border-radius:18px;display:flex;align-items:center;padding:0 6px;gap:2px;font-size:12.5px;font-weight:500}
+.verbs span{padding:0 11px;height:28px;display:flex;align-items:center;gap:6px;border-radius:14px}
+.verbs span.hi{background:var(--accent);color:var(--onaccent)}
+.verbs span u{text-decoration:none;opacity:.7;font-size:12px}
+.verbs.hold{visibility:hidden}
+.dock{position:absolute;left:16px;right:16px;bottom:16px;height:124px;border-radius:22px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.dock .r1{display:flex;align-items:center;gap:12px;height:56px}
+.slot{width:56px;height:56px;border-radius:12px;flex:none;position:relative;overflow:hidden}
+.slot.empty{border:1.5px dashed var(--ink3);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink2);font-size:10.5px;gap:1px;line-height:1.1}
+.slot.empty b{font-size:18px;font-weight:300}
+.slot img{width:100%;height:100%;object-fit:cover;display:block}
+.slot .x{position:absolute;right:3px;top:3px;width:15px;height:15px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center}
+.slot .lbl{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);color:#fff;font-size:9.5px;text-align:center;padding:1px 0}
+.words{flex:1;height:56px;border-radius:12px;background:var(--field);box-shadow:inset 0 0 0 1px var(--line);padding:9px 12px;font-size:15px;line-height:19px;
+position:relative;overflow:hidden}
+.words .ph{color:var(--ink3)}
+.words .enh{position:absolute;right:8px;bottom:7px;height:22px;padding:0 9px;border-radius:11px;background:var(--chipb);font-size:11.5px;font-weight:500;
+display:flex;align-items:center;gap:5px}
+.words .enh s{text-decoration:none;color:var(--ink3);font-weight:400}
+.go{height:38px;padding:0 18px;border-radius:19px;background:var(--accent);color:var(--onaccent);font-weight:600;font-size:14px;display:flex;align-items:center;gap:9px;flex:none}
+.go kbd{font-family:inherit;font-size:11.5px;opacity:.7;font-weight:500}
+.go.off{background:var(--chip);color:var(--ink3)}
+.go.stop{background:var(--chipb);color:var(--ink)}
+.go.stop i{width:10px;height:10px;border-radius:2px;background:var(--danger);display:block}
+.r2{display:flex;align-items:center;gap:6px;height:28px}
+.chip{height:28px;padding:0 11px;border-radius:14px;background:var(--chip);box-shadow:inset 0 0 0 1px var(--line);display:flex;align-items:center;gap:5px;
+font-size:12.5px;font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums;flex:none}
+.chip i{font-style:normal;color:var(--ink3);font-size:10px;font-weight:400}
+.chip .k{color:var(--ink2);font-weight:400}
+.chip.ghost{background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink2);font-weight:400}
+.chip.warn{box-shadow:inset 0 0 0 1px var(--danger)}
+.chip.warn::before{content:"!";width:14px;height:14px;border-radius:50%;background:var(--danger);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.est{margin-left:auto;color:var(--ink3);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.locked{opacity:.5}
+.rail{position:absolute;display:flex;flex-direction:column;gap:8px;align-items:center}
+.rail h6,.strip h6{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);align-self:flex-start;white-space:nowrap}
+.tile{width:88px;height:88px;border-radius:11px;overflow:hidden;position:relative;flex:none;background:#222}
+.tile img{width:100%;height:100%;object-fit:cover;display:block}
+.tile.sel{outline:2px solid var(--accent);outline-offset:2px}
+.tile.job img{filter:blur(7px) saturate(.75);transform:scale(1.12)}
+.tile.job{outline:2px solid var(--accent);outline-offset:2px;animation:swellr 2.4s ease-in-out infinite}
+@keyframes swellr{50%{outline-color:rgba(10,132,255,.35)}}
+.tile .tp{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.25)}
+.tile .tp i{display:block;height:100%;background:var(--accent)}
+.tile .dur{position:absolute;right:5px;bottom:5px;height:16px;padding:0 6px;border-radius:8px;background:rgba(10,10,12,.66);color:#fff;font-size:10.5px;font-weight:500;display:flex;align-items:center;font-variant-numeric:tabular-nums}
+.tile .st{position:absolute;left:5px;top:5px;height:16px;padding:0 6px;border-radius:8px;background:rgba(10,10,12,.62);color:#fff;font-size:10.5px;font-weight:500;display:flex;align-items:center;font-variant-numeric:tabular-nums}
+.tile .play{position:absolute;left:5px;bottom:5px;width:16px;height:16px;border-radius:50%;background:rgba(10,10,12,.66);color:#fff;font-size:7px;display:flex;align-items:center;justify-content:center;padding-left:1px}
+.strip{position:absolute;display:flex;flex-direction:column;gap:6px}
+.strip .row{display:flex;gap:8px;padding-left:2px}
+.cards{position:absolute;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{height:76px;border-radius:14px;background:var(--panel);box-shadow:inset 0 0 0 1px var(--line),0 6px 18px rgba(0,0,0,.28);padding:14px 16px;display:flex;gap:14px;align-items:center}
+.card .g{width:40px;height:40px;border-radius:10px;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:var(--ink2);flex:none}
+.card b{display:block;font-size:14px;font-weight:600;margin-bottom:2px}
+.card span{color:var(--ink2);font-size:12px}
+.hint{position:absolute;text-align:center}
+.hint h2{font-size:21px;font-weight:600;letter-spacing:-.01em}
+.hint p{color:var(--ink2);font-size:13px;margin-top:4px}
+.fail{position:absolute;border-radius:18px;background:var(--panel);box-shadow:inset 0 0 0 1px var(--line),0 12px 36px rgba(0,0,0,.4);padding:22px 26px;text-align:left;width:520px}
+.fail .h{display:flex;gap:14px;align-items:flex-start}
+.fail .ic{width:34px;height:34px;border-radius:50%;background:rgba(255,69,58,.16);color:var(--danger);font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.fail p{font-size:15px;line-height:21px;font-weight:500}
+.fail p span{display:block;font-size:12.5px;line-height:18px;color:var(--ink2);font-weight:400;margin-top:6px}
+.fail .acts{display:flex;gap:8px;margin-top:18px;margin-left:48px}
+.fail .acts .b{height:32px;padding:0 16px;border-radius:16px;background:var(--chipb);font-weight:500;font-size:13px;display:flex;align-items:center}
+.fail .acts .b.p{background:var(--accent);color:var(--onaccent)}
+.play{position:absolute}
+.playbtn{position:absolute;width:68px;height:68px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;padding-left:5px;color:var(--ink)}
+.insp{position:absolute;background:var(--panel);border-radius:16px;box-shadow:inset 0 0 0 1px var(--line);padding:18px}
+.insp h5{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px}
+.insp .words{height:152px;font-size:16px;line-height:22px;padding:12px 14px}
+.insp .grp{margin-top:16px}
+.insp .chips{display:flex;flex-wrap:wrap;gap:6px}
+.insp .sf{display:flex;gap:12px;align-items:center}
+.insp .sf p{color:var(--ink2);font-size:12.5px;line-height:17px}
+.insp .gobar{position:absolute;left:18px;right:18px;bottom:18px}
+.insp .gobar .go{width:100%;justify-content:center;height:42px;border-radius:21px}
+.insp .gobar .est{display:block;text-align:center;margin:0 0 10px}
+.vsel{display:none}
+</style>
+</head>
+<body>
+<div class="win">
+<div class="tb">
+<div class="lights"><i></i><i></i><i></i></div>
+<div class="seg"><span class="on">Image</span><span>Video</span></div>
+<div class="mpill"><i class="dot bad"></i><span>arch</span><span class="sep">·</span><span>Speed only — Qwen file missing</span><b>▾</b></div>
+<div class="tbr"><span class="q">queue 0</span><span class="btn">Done</span></div>
+</div><div class="stage" style="left:12px;top:52px;width:1034px;height:756px"><div class="cap"><em>Held from arch’s shelf, dimmed</em></div><div class="pic dim" style="left:67px;top:42px;width:900px;height:600px"><img src="assets/p1.jpg" alt=""></div><div class="fail" style="left:257px;top:176px"><div class="h"><div class="ic">!</div><p>Quality can’t paint on arch: qwen_image_2512_bf16.safetensors is missing from its models folder, so only Speed is ready.<span>Nothing was sent. Your words are still in the box.</span></p></div><div class="acts"><div class="b p">Paint with Speed</div><div class="b">Machine…</div><div class="b">Check again</div></div></div></div><div class="dock glass" style="left:28px;right:150px;bottom:28px">
+<div class="r1"><div class="" style="display:flex"><div class="slot empty"><b>+</b>Start from</div></div>
+<div class="words"><span>a lighthouse on a cliff at dusk, waves breaking below, last light on the lamp room</span><div class="enh">✦ Enhance <s>▾</s></div></div><div class="go">Generate <kbd>⌘↩</kbd></div></div>
+<div class="r2"><div style="display:flex;gap:6px" class=""><span class="chip warn">Quality <i>▾</i></span><span class="chip">3:2 <i>▾</i></span><span class="chip">2 MP <i>▾</i></span><span class="chip">Cutout</span><span class="chip ghost">Avoid…</span><span class="chip">Seed 481723 <i>⟳</i></span><span class="chip ghost">+ reference</span></div><span class="est">Speed: about 25 s on arch</span></div>
+</div><div class="rail" style="left:1056px;top:52px;width:112px;height:756px;overflow:hidden"><h6 style="padding-left:12px">Shelf</h6><div class="tile"><img src="assets/p1.jpg" alt=""></div><div class="tile"><img src="assets/p2.jpg" alt=""></div><div class="tile"><img src="assets/p3.jpg" alt=""></div><div class="tile"><img src="assets/p4.jpg" alt=""></div><div class="tile"><img src="assets/p5.jpg" alt=""></div><div class="tile"><img src="assets/p6.jpg" alt=""></div><div class="tile"><img src="assets/dark.jpg" alt=""></div></div>
+</div>
+</body>
+</html>
