@@ -3173,7 +3173,8 @@ final class TranscriptViewController: NSViewController {
                     else { continue }
                     ImageStore.shared.store(
                         DecodedImage(
-                            image: image, data: Data(), pixelWidth: rep.pixelsWide,
+                            image: image, data: FileManager.default.contents(atPath: file) ?? Data(),
+                            pixelWidth: rep.pixelsWide,
                             pixelHeight: rep.pixelsHigh),
                         forKey: "\(message.id):\(part.id)")
                 }
@@ -3189,9 +3190,36 @@ final class TranscriptViewController: NSViewController {
                     case "scroll": self?.stageScroll(parts.count > 1 ? parts[1] : "bottom")
                     case "rail": self?.stageRail(opensUpward: parts.count > 1 && parts[1] == "up")
                     case "code": self?.stageCode()
+                    case "viewer": self?.stageViewer(parts.count > 1 ? Int(parts[1]) ?? 0 : 0)
                     default: break
                     }
                 }
+            }
+        }
+
+        /// A real click, handed to the application, on the n-th picture the transcript shows, so the
+        /// viewer is opened the way a hand opens it. The press lands where the tile is, not on a verb.
+        func stageViewer(_ index: Int) {
+            view.layoutSubtreeIfNeeded()
+            var tiles: [ImageRowView.PictureView] = []
+            func collect(_ node: NSView) {
+                if let tile = node as? ImageRowView.PictureView { tiles.append(tile) }
+                node.subviews.forEach(collect)
+            }
+            collect(canvas)
+            guard tiles.indices.contains(index), let window = view.window else {
+                FileHandle.standardError.write(Data("stage: no picture tile \(index)\n".utf8))
+                return
+            }
+            let tile = tiles[index]
+            let point = tile.convert(NSPoint(x: tile.bounds.midX, y: tile.bounds.midY), to: nil)
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                guard
+                    let event = NSEvent.mouseEvent(
+                        with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+                else { return }
+                NSApp.sendEvent(event)
             }
         }
 

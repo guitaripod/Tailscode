@@ -852,11 +852,19 @@ final class MainWindowController: NSWindowController {
             transcript.showDraw(nil)
             splitPanes.persist()
         case "studio", "image":
-            if parts.count > 1 { StudioDemo.apply(parts[1], to: StudioWindowController.shared.image.studio) }
+            let stages = parts.count > 1 ? parts[1].split(separator: "+").map(String.init) : []
+            if let state = stages.first { StudioDemo.apply(state, to: StudioWindowController.shared.image.studio) }
             presentStudio()
             #if DEBUG
                 driveStudio()
+                if stages.dropFirst().contains("viewer") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(900)) {
+                        StudioWindowController.shared.image.perform(.open)
+                    }
+                }
             #endif
+        case "viewer":
+            MediaViewerDemo.open(parts.count > 1 ? parts[1] : "", in: window)
         case "renderer", "forgesetup":
             presentStudio(lane: .video)
             StudioWindowController.shared.video.openSetup()
@@ -884,7 +892,7 @@ final class MainWindowController: NSWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, analytics, newchat, "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], studio[:state], draw, renderer, delegate\n").utf8))
+                        + "forge[:state], studio[:state[+viewer]], viewer[:state], draw, renderer, delegate\n").utf8))
         }
     }
 
@@ -1645,7 +1653,7 @@ final class MainWindowController: NSWindowController {
     private func installKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.window,
-                StudioWindowController.shared.state.conversationChordsEnabled
+                SheetStack.shared.conversationChordsEnabled
             else { return event }
             return self.handle(event)
         }
@@ -1667,7 +1675,7 @@ final class MainWindowController: NSWindowController {
     }
 
     private func pressLanded(_ event: NSEvent) {
-        guard event.window === window, StudioWindowController.shared.state.conversationChordsEnabled
+        guard event.window === window, SheetStack.shared.conversationChordsEnabled
         else { return }
         let point = event.locationInWindow
         if let banner = restoreBanner, banner.bounds.contains(banner.convert(point, from: nil)) {
