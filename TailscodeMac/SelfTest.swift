@@ -266,6 +266,16 @@ enum SelfTest {
             failures += 1
         }
 
+        let viewerFailures = MediaViewerCheck.run()
+        if viewerFailures.isEmpty {
+            report(
+                "viewer: the pager, the zoom and the keys, the stack of sheets — depth, top-only dismissal, the stacked "
+                    + "frame, focus — and a gallery's retargeting, a clip's controls and a sheet in motion that lays nothing out all hold")
+        } else {
+            report("viewer: \(viewerFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         let forgeFailures = ForgeBoardCheck.run()
         if forgeFailures.isEmpty {
             report("video forge: the graph, the frames, the job's walk and the board all hold")

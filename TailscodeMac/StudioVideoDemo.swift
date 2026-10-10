@@ -116,7 +116,7 @@ enum StudioVideoDemo {
 
     /// One second of drifting light, written once to a file the stage can play: the demo's only clip,
     /// whichever shelf tile is chosen.
-    private static func clipFile() -> URL? {
+    static func clipFile() -> URL? {
         if let named = environment("TAILSCODE_VIDEO_CLIP"),
             FileManager.default.fileExists(atPath: named)
         {

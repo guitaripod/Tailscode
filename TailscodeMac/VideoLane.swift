@@ -613,6 +613,14 @@ final class VideoLane: StudioLane {
         }
     }
 
+    #if DEBUG
+        /// What the stage's Open full size does, for a headless run that has no hand to press the verb.
+        func openFullSize() {
+            guard let entry = exhibit else { return }
+            open(entry)
+        }
+    #endif
+
     private func performOnStage(_ verb: StudioStageVerb) {
         performOnStage(verb.id)
     }
@@ -701,19 +709,21 @@ final class VideoLane: StudioLane {
         return (try? data.write(to: url, options: .atomic)) == nil ? nil : url
     }
 
-    private func save(_ entry: ForgeEntry) {
+    private func save(_ entry: ForgeEntry, report: (@MainActor (String) -> Void)? = nil) {
         Task { [weak self] in
             guard let self, let data = await self.bytes(of: entry) else { return }
             StudioFiles.save(
                 data: data, name: StudioClipName.fileName(for: entry), window: self.videoStage.window
-            ) { [weak self] line in self?.onNotice?(line) }
+            ) { [weak self] line in
+                if let report { report(line) } else { self?.onNotice?(line) }
+            }
         }
     }
 
-    private func share(_ entry: ForgeEntry) {
+    private func share(_ entry: ForgeEntry, from anchor: NSView? = nil) {
         Task { [weak self] in
             guard let self, let url = await self.localCopy(of: entry) else { return }
-            StudioFiles.share(url, from: self.videoStage)
+            StudioFiles.share(url, from: anchor ?? self.videoStage)
         }
     }
 
@@ -727,7 +737,7 @@ final class VideoLane: StudioLane {
         }
     }
 
-    /// Open full size: the clip in a window of its own, sized to its shape, with the system's own
+    /// Open full size: the clip in the viewer's sheet, stacked on the Studio, with the system's own
     /// controls — the Studio's stage keeps its room, and a second look at a clip is not a reason to
     /// give up the first.
     private func open(_ entry: ForgeEntry) {
@@ -737,8 +747,10 @@ final class VideoLane: StudioLane {
             guard let self else { return }
             do {
                 let url = try await self.runner.locate(asset, entryID: entry.id)
-                VideoTheatre.present(
-                    url: url, title: entry.title, size: entry.recipe.size, near: self.videoStage.window)
+                MediaViewer.shared.play(
+                    clip: url, title: entry.title, host: self.videoStage.window,
+                    save: { [weak self] report in self?.save(entry, report: report) },
+                    share: { [weak self] anchor in self?.share(entry, from: anchor) })
             } catch {
                 self.onNotice?(ForgeClient.reason(error, host: self.host))
             }
@@ -920,56 +932,4 @@ final class StudioVideoMachineSheet: NSViewController {
 /// A plain view that lays out from its top edge, for a popover that is read down the page.
 final class StudioFlippedView: NSView {
     override var isFlipped: Bool { true }
-}
-
-/// A clip at full size in a window of its own, with the system's own controls: sized to the clip's
-/// shape and no larger than most of the screen, one per clip, and let go of when it closes.
-@MainActor
-final class VideoTheatre: NSObject, NSWindowDelegate {
-    private static var open: [VideoTheatre] = []
-
-    private let window: NSWindow
-    private let player: AVPlayer
-
-    static func present(url: URL, title: String, size: ForgeSize, near host: NSWindow?) {
-        if let held = open.first(where: { ($0.player.currentItem?.asset as? AVURLAsset)?.url == url }) {
-            held.window.makeKeyAndOrderFront(nil)
-            return
-        }
-        let made = VideoTheatre(url: url, title: title, size: size, near: host)
-        open.append(made)
-        made.window.makeKeyAndOrderFront(nil)
-        made.player.play()
-    }
-
-    private init(url: URL, title: String, size: ForgeSize, near host: NSWindow?) {
-        player = AVPlayer(url: url)
-        let visible = (host?.screen ?? NSScreen.main)?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
-        let ratio = CGFloat(size.width) / CGFloat(max(size.height, 1))
-        var width = min(CGFloat(size.width), visible.width * 0.85)
-        var height = width / ratio
-        if height > visible.height * 0.85 {
-            height = visible.height * 0.85
-            width = height * ratio
-        }
-        window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: max(480, width), height: max(270, height)),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        super.init()
-        window.title = title
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.contentAspectRatio = NSSize(width: size.width, height: size.height)
-        let view = AVPlayerView()
-        view.controlsStyle = .floating
-        view.videoGravity = .resizeAspect
-        view.player = player
-        window.contentView = view
-        window.center()
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        player.pause()
-        Self.open.removeAll { $0 === self }
-    }
 }

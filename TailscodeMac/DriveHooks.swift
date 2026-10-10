@@ -19,6 +19,11 @@
     ///   cmd-2|cmd-s|cmd-w|cmd-n|left|right|space>` presses that key through the real event path into
     ///   the Studio's window; `sheet` prints the sheet's state, frame against Core's and layout
     ///   passes; `sheetat=<0…1>[,closing]` holds the sheet at that point of its motion for a picture;
+    ///   `viewer[=pictures|loading|clip]` raises the media viewer on a demo set, `vtile=<n>` clicks the n-th
+    ///   picture the transcript shows, `vopen` is the Video lane's Open full size, `vstate` prints the
+    ///   viewer's state, depth, frame against Core's, scrim and page, `viewerat=<0…1>[,closing]` holds it
+    ///   at that point of its motion, `viewerclose` presses its Done and `viewerscrim` sends a real press
+    ///   beside its sheet; `skey` also takes `home|end|plus|minus|zero|one|cmd-c` for the viewer's keys
     ///   `sheetclose` presses Done; `sheetscrim` sends a real press at a point of the scrim;
     ///   `sheetmenu` prints which menu items are enabled; `sstate` prints what the Studio is holding; `sanimate` presses Animate this
     ///   on the picture on the Image lane's stage; `smachineshot=<path>` writes the Video lane's
@@ -181,6 +186,22 @@
                 StudioDrive.hold(
                     at: Double(fields.first ?? "") ?? 0.5, closing: fields.dropFirst().first == "closing")
                 say(StudioDrive.sheet())
+            case "viewer":
+                MediaViewerDemo.open(argument, in: main?.window)
+            case "viewerat":
+                let fields = argument.split(separator: ",").map(String.init)
+                MediaViewer.shared.hold(at: Double(fields.first ?? "") ?? 0.5, closing: fields.dropFirst().first == "closing")
+                say(StudioDrive.viewer())
+            case "vstate":
+                say(StudioDrive.viewer())
+            case "viewerclose":
+                (MediaViewer.shared.surface?.toolbar.trailing.last as? NSButton)?.performClick(nil)
+            case "viewerscrim":
+                say(StudioDrive.pressViewerScrim())
+            case "vopen":
+                StudioWindowController.shared.video.openFullSize()
+            case "vtile":
+                main?.transcript.stageViewer(Int(argument) ?? 0)
             case "sheetclose":
                 StudioWindowController.shared.sheet?.toolbar.done.performClick(nil)
             case "sheetscrim":
@@ -231,6 +252,13 @@
             "left": (123, "\u{F702}", [.function]),
             "right": (124, "\u{F703}", [.function]),
             "space": (49, " ", []),
+            "home": (115, "\u{F729}", [.function]),
+            "end": (119, "\u{F72B}", [.function]),
+            "plus": (24, "+", [.shift]),
+            "minus": (27, "-", []),
+            "zero": (29, "0", []),
+            "one": (18, "1", []),
+            "cmd-c": (8, "c", [.command]),
         ]
 
         static func press(_ name: String) -> String {
@@ -310,6 +338,54 @@
                 NSApp.sendEvent(event)
             }
             return "SSCRIM pressed at \(Int(point.x)),\(Int(point.y)) state=\(StudioWindowController.shared.state)"
+        }
+
+        /// The viewer as it stands: Core's state, its depth, the frame it has against the frame Core gives
+        /// this window at that depth, the part of the window its scrim darkens, the page and the zoom, and how
+        /// many layout passes its content has run — two reads with a motion between them show the motion lays
+        /// nothing out.
+        static func viewer() -> String {
+            let viewer = MediaViewer.shared
+            let sheet = viewer.sheet
+            guard let host = sheet.host else { return "SVIEWER state=\(viewer.state) not installed" }
+            let expected = sheet.expectedFrame
+            let actual = sheet.sheetFrame
+            let dim = sheet.dimFrame
+            var page = "-"
+            if let gallery = viewer.surface as? PictureGalleryView {
+                page =
+                    "gallery \(gallery.pager.index + 1)/\(gallery.items.count) zoom=\(gallery.zoom.mode) "
+                    + String(format: "magnification=%.3f", gallery.magnification) + " passes=\(gallery.layoutPasses)"
+            } else if let clip = viewer.surface as? ClipPlayerView {
+                page =
+                    "clip playing=\(clip.isPlaying) controls=\(clip.hasControls) ready=\(clip.isReadyForDisplay) "
+                    + "video=\(Int(clip.videoBounds.width))×\(Int(clip.videoBounds.height)) passes=\(clip.layoutPasses)"
+            }
+            return String(
+                format:
+                    "SVIEWER state=%@ depth=%d window=%.0fx%.0f frame=(%.1f,%.1f %.1f×%.1f) core=(%.1f,%.1f %.1f×%.1f) "
+                    + "dim=(%.1f,%.1f %.1f×%.1f) presence=%.3f moving=%@ keys=%@ stack=%d conversationChords=%@ studio=%@ page=%@",
+                String(describing: viewer.state), sheet.depth, host.frame.width, host.frame.height, actual.minX, actual.minY,
+                actual.width, actual.height, expected.x, expected.y, expected.width, expected.height, dim.minX, dim.minY,
+                dim.width, dim.height, sheet.currentPresence, String(sheet.isMoving), String(viewer.presenter.ownsKeys),
+                SheetStack.shared.presenters.count, String(SheetStack.shared.conversationChordsEnabled),
+                String(describing: StudioWindowController.shared.state), page)
+        }
+
+        /// A real left-button press at a point of the viewer's scrim, outside its sheet.
+        static func pressViewerScrim() -> String {
+            let viewer = MediaViewer.shared
+            guard let host = viewer.sheet.host, let point = viewer.sheet.scrimPointInWindow
+            else { return "SVSCRIM no viewer" }
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                guard
+                    let event = NSEvent.mouseEvent(
+                        with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: host.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+                else { return "SVSCRIM could not be made" }
+                NSApp.sendEvent(event)
+            }
+            return "SVSCRIM pressed at \(Int(point.x)),\(Int(point.y)) viewer=\(viewer.state) studio=\(StudioWindowController.shared.state)"
         }
 
         /// Which menu items are enabled and which are not after validation, so the allow-list can be
