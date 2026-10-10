@@ -170,7 +170,8 @@ final class LinkRailModel: @unchecked Sendable {
 
 /// The rail's own widgets, which a landing fetch writes into. Every one exists from the first
 /// frame — the favicon seats, the host line, the count, the chevron — so the line is the same
-/// height and the same shape at every stage of its life and a fetch landing moves nothing.
+/// height and the same shape at every stage of its life and a fetch landing moves nothing. A fetch
+/// can land after the chat that held the rail was left, so every write asks the widget first.
 final class LinkRailLine: @unchecked Sendable {
     let widget: UnsafeMutablePointer<GtkWidget>
     let icons: [UnsafeMutablePointer<GtkWidget>]
@@ -179,6 +180,7 @@ final class LinkRailLine: @unchecked Sendable {
     let more: UnsafeMutablePointer<GtkWidget>
     let chevron: UnsafeMutablePointer<GtkWidget>
     private let stackedURLs: [String]
+    private let anchor: WidgetRef
 
     init(
         widget: UnsafeMutablePointer<GtkWidget>, icons: [UnsafeMutablePointer<GtkWidget>],
@@ -187,6 +189,7 @@ final class LinkRailLine: @unchecked Sendable {
         chevron: UnsafeMutablePointer<GtkWidget>
     ) {
         self.widget = widget
+        self.anchor = WidgetRef(widget)
         self.icons = icons
         self.stackedURLs = stackedURLs
         self.hosts = hosts
@@ -199,6 +202,7 @@ final class LinkRailLine: @unchecked Sendable {
     /// the host after it, the count of the rest, the chevron's direction, and what a screen reader
     /// is told.
     func apply(_ reading: LinkRailReading, expanded: Bool) {
+        guard anchor.isAlive else { return }
         if let title = reading.singleTitle, let item = reading.items.first {
             gtk_label_set_text(op(hosts), title)
             let showsHost = !item.face.headlineIsQuiet
@@ -226,6 +230,7 @@ final class LinkRailLine: @unchecked Sendable {
     }
 
     func place(_ bits: UInt, for url: String) {
+        guard anchor.isAlive else { return }
         guard let index = stackedURLs.firstIndex(of: url), index < icons.count else { return }
         LinkRailView.fill(icons[index], with: bits, size: LinkRailView.stackIconSize)
     }
