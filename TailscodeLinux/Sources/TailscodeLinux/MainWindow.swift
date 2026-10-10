@@ -313,6 +313,8 @@ final class MainWindow: @unchecked Sendable {
                     self.activePane.driverCodeDemo()
                 case "furnituredemo":
                     self.activePane.driverFurnitureDemo(argument)
+                case "landingchat":
+                    self.activePane.driverFurnitureDemo(argument, landing: true)
                 case "cutoffdemo":
                     self.activePane.driverInterruptedDemo(
                         argument.isEmpty ? "busy" : argument)
