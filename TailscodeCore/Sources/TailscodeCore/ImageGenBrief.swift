@@ -285,6 +285,10 @@ public enum ImageGenBrief {
         switch context.engine {
         case .quality:
             lines.append("The picture is painted by Qwen Image 2.1, which reads a long description best.")
+        case .turbo:
+            lines.append(
+                "The picture is painted by Qwen Image 2.1 Turbo in eight steps, which still reads "
+                    + "a long description best.")
         case .fast:
             lines.append(
                 "The picture is painted by FLUX.2 Klein in four steps: keep the description to "

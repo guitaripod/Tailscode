@@ -147,6 +147,7 @@ public struct ComfyRecipe: Sendable, Equatable, Hashable, Codable {
     /// would have chosen, so a picture Klein painted from somebody's own graph still reads Klein.
     public static func engine(forModel file: String) -> ImageGenEngine? {
         let lower = file.lowercased()
+        if lower.contains("turbo") && lower.contains("qwen") { return .turbo }
         if lower.contains("qwen_image") || lower.contains("qwen-image") { return .quality }
         if lower.contains("klein") { return .fast }
         return nil
@@ -224,6 +225,9 @@ public struct ComfyRecipe: Sendable, Equatable, Hashable, Codable {
         if let steps = whole(sampler.inputs["steps"]) { return steps }
         guard let sigmas = link(sampler.inputs["sigmas"]), let node = nodes[sigmas] else {
             return nil
+        }
+        if node.type == "ManualSigmas", let list = node.inputs["sigmas"] as? String {
+            return max(0, list.split(separator: ",").count - 1)
         }
         return whole(node.inputs["steps"])
     }

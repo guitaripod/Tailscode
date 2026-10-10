@@ -147,6 +147,28 @@ struct ImageGenRecipeTests {
         #expect(slot.mode == .generate && slot.applies(.aspect))
     }
 
+    @Test func theTurboEngineRunsItsOwnScheduleAtFixedGuidance() throws {
+        let recipe = ImageGenRecipe(
+            prompt: "a lighthouse", negative: "people", engine: .turbo, aspect: .square, seed: 9)
+        #expect(recipe.steps == 8 && recipe.guidance == 1.0)
+        #expect(!recipe.negativeApplies && !recipe.detailApplies && recipe.cutoutApplies)
+        #expect(ImageGenEngine.turbo.files.map(\.path).contains(ImageGenModelFile.turboDiffusion.path))
+        #expect(ImageGenEngine.turbo.files.contains(ImageGenModelFile.qwenText))
+        let graph = ImageGenClient.graph(recipe)
+        let loader = try #require((graph["12"] as? [String: Any])?["inputs"] as? [String: Any])
+        #expect(loader["unet_name"] as? String == "qwen_image_2.1_turbo_bf16.safetensors")
+        let sampler = try #require(graph["65"] as? [String: Any])
+        #expect(sampler["class_type"] as? String == "SamplerCustom")
+        let inputs = try #require(sampler["inputs"] as? [String: Any])
+        #expect(inputs["cfg"] as? Double == 1.0)
+        #expect(inputs["noise_seed"] as? Int == 9)
+        let sigmas = try #require((graph["71"] as? [String: Any])?["inputs"] as? [String: Any])
+        let listed = try #require(sigmas["sigmas"] as? String).split(separator: ",")
+        #expect(listed.count == ImageGenClient.turboSigmas.count && listed.count == recipe.steps + 1)
+        let encode = try #require((graph["68"] as? [String: Any])?["inputs"] as? [String: Any])
+        #expect(encode["negative_prompt"] as? String == "")
+    }
+
     @Test func theFastEngineOffersNoDetailChip() {
         var slot = ImageGenSlot(endpoint: ImageGenEndpoint(host: "box"))
         #expect(slot.applies(.detail))

@@ -45,8 +45,8 @@ public enum ImageGenSize: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// How long the sampler is given. The fast engine is distilled to four steps and ignores this
-/// entirely, which is why the chip is not offered beside it.
+/// How long the sampler is given. The fast engine is distilled to four steps and the turbo engine
+/// to eight, and both ignore this entirely, which is why the chip is not offered beside them.
 public enum ImageGenDetail: String, Codable, Sendable, CaseIterable {
     case draft
     case standard
@@ -166,9 +166,10 @@ public struct ImageGenRecipe: Sendable, Equatable {
     public static let cutoutCoda =
         " The image has alpha channel and the background is transparent."
 
-    /// Only the quality engine paints on transparency and only it reads a long negative, so the
-    /// two switches quietly do nothing beside the fast one rather than lying about it.
-    public var cutoutApplies: Bool { engine == .quality }
+    /// Only the fast engine lacks a VAE that keeps an alpha channel, and only the quality engine
+    /// reads a long negative, so the two switches quietly do nothing beside the fast one rather
+    /// than lying about it.
+    public var cutoutApplies: Bool { engine != .fast }
     public var detailApplies: Bool { engine == .quality }
     public var negativeApplies: Bool { engine == .quality }
 
@@ -193,6 +194,7 @@ public struct ImageGenRecipe: Sendable, Equatable {
     public var steps: Int {
         switch engine {
         case .quality: return detail.steps
+        case .turbo: return 8
         case .fast: return 4
         }
     }

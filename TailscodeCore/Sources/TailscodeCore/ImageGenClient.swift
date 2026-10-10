@@ -145,7 +145,7 @@ public struct ImageGenClient: Sendable {
     /// The graph for one ask, built once so the runner can queue it and read its nodes back.
     public static func graph(_ recipe: ImageGenRecipe) -> [String: Any] {
         switch recipe.engine {
-        case .quality:
+        case .quality, .turbo:
             return qwenGraph(recipe)
         case .fast:
             if recipe.mode == .edit, let first = recipe.references.first {
@@ -443,14 +443,16 @@ public struct ImageGenClient: Sendable {
         return data
     }
 
-    /// Qwen-Image-2.1 as the store runs it: the int8 transformer, the Qwen3-VL text encoder and
-    /// the 2.1 VAE. One node encodes both prompts and, in an edit, hands back the latent cut to
-    /// the first reference\'s own shape; with no reference the same graph paints from words alone.
+    /// Qwen-Image-2.1 as the store runs it: the transformer (int8 for quality, bf16 Turbo for turbo),
+    /// the Qwen3-VL text encoder and the 2.1 VAE. One node encodes both prompts and, in an edit,
+    /// hands back the latent cut to the first reference\'s own shape; with no reference the same
+    /// graph paints from words alone.
     static func qwenGraph(_ recipe: ImageGenRecipe) -> [String: Any] {
         let size = recipe.pixels
         var graph: [String: Any] = [
             "12": ["class_type": "UNETLoader", "inputs": [
-                "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+                "unet_name": recipe.engine == .turbo
+                    ? ImageGenModelFile.turboDiffusion.name : ImageGenModelFile.qwenDiffusion.name,
                 "weight_dtype": "default",
             ]],
             "61": ["class_type": "CLIPLoader", "inputs": [
@@ -493,13 +495,42 @@ public struct ImageGenClient: Sendable {
             ]]
         }
         graph["68"] = ["class_type": "TextEncodeQwenImage21", "inputs": encode]
-        graph["65"] = ["class_type": "KSampler", "inputs": [
-            "model": model, "positive": ["68", 0], "negative": ["68", 1],
-            "latent_image": latent, "seed": Int(clamping: recipe.seed),
-            "steps": recipe.steps, "cfg": recipe.guidance, "sampler_name": "euler",
-            "scheduler": "simple", "denoise": 1.0,
-        ]]
+        if recipe.engine == .turbo {
+            graph.merge(turboSampling(recipe, model: model, latent: latent)) { $1 }
+        } else {
+            graph["65"] = ["class_type": "KSampler", "inputs": [
+                "model": model, "positive": ["68", 0], "negative": ["68", 1],
+                "latent_image": latent, "seed": Int(clamping: recipe.seed),
+                "steps": recipe.steps, "cfg": recipe.guidance, "sampler_name": "euler",
+                "scheduler": "simple", "denoise": 1.0,
+            ]]
+        }
         return graph
+    }
+
+    /// The sigmas Turbo was trained to walk, saved with the checkpoint and used as they are: the
+    /// pipeline does not take the step count alone, and a simple schedule at eight steps paints
+    /// something else. The last value is the zero the sampler lands on.
+    static let turboSigmas: [Double] = [
+        1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0.0,
+    ]
+
+    /// Turbo's sampler: euler on its own sigma list at a guidance of one, which is the only
+    /// guidance the checkpoint is run at, so the sampler's negative input is never read.
+    static func turboSampling(
+        _ recipe: ImageGenRecipe, model: [Any], latent: [Any]
+    ) -> [String: Any] {
+        [
+            "70": ["class_type": "KSamplerSelect", "inputs": ["sampler_name": "euler"]],
+            "71": ["class_type": "ManualSigmas", "inputs": [
+                "sigmas": turboSigmas.map { "\($0)" }.joined(separator: ", "),
+            ]],
+            "65": ["class_type": "SamplerCustom", "inputs": [
+                "model": model, "add_noise": true, "noise_seed": Int(clamping: recipe.seed),
+                "cfg": 1.0, "positive": ["68", 0], "negative": ["68", 1],
+                "sampler": ["70", 0], "sigmas": ["71", 0], "latent_image": latent,
+            ]],
+        ]
     }
 
     /// Where the reference loaders start. Each one after the first takes the next id, so a graph
