@@ -2022,11 +2022,36 @@ final class TranscriptViewController: NSViewController {
     /// The transcript renders a tail window, not the whole history: a view per row is fine for
     /// four hundred rows and a multi-second lockup for four thousand. The rest waits behind one
     /// button that widens the window — the full rows are kept, so nothing is refetched.
+    private var lastReadMark = Date.distantPast
+    private var wasRunningWhenMarked = false
+
+    /// How often the chat in front of the reader is marked read as it grows.
+    private static let readMarkInterval: TimeInterval = 2.5
+
+    /// A chat being watched is a chat being read, and the servers keep that mark for every other
+    /// device: one left unmarked until the reader walks away shows as unread on the phone while its
+    /// answer is streaming onto this screen. So whatever arrives in the focused pane of the window
+    /// the reader is working in is marked as it arrives — at most every couple of seconds, and
+    /// once more when the turn ends.
+    private func keepRead(_ state: ConversationState) {
+        let running = state.status == .running
+        defer { wasRunningWhenMarked = running }
+        guard isFocusedPane, NSApp.isActive, view.window?.isKeyWindow == true,
+            let sessionID = entry?.session.id
+        else { return }
+        let now = Date()
+        let ended = wasRunningWhenMarked && !running
+        guard ended || now.timeIntervalSince(lastReadMark) >= Self.readMarkInterval else { return }
+        lastReadMark = now
+        SessionSeenStore.markSeen(sessionID)
+    }
+
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
         let interval = Pace.signposter.beginInterval("apply")
         defer { Pace.signposter.endInterval("apply", interval) }
         noteHapticEdges(state: state, rows: rows)
         lastState = state
+        keepRead(state)
         if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
             updateStatus()
         }

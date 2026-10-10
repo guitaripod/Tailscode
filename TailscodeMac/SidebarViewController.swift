@@ -261,8 +261,8 @@ final class SidebarViewController: NSViewController {
         syncListStreams()
         let (fresh, down) = await ServerDirectory.shared.entries(knownDirectories: recentDirectories)
         if !fresh.isEmpty { SessionListCache.scheduleSave(fresh) }
-        await SavedChatSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
-        SavedChatStore.reconcile(with: fresh)
+        await SessionMarkSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
+        SessionMarks.reconcile(with: fresh)
         applyEntries(fresh, unreachable: down)
     }
 
@@ -629,6 +629,7 @@ final class SidebarViewController: NSViewController {
             next.sort { $0.session.updatedAt > $1.session.updatedAt }
             entries = next
             if !next.isEmpty { SessionListCache.scheduleSave(next) }
+            SessionMarks.reconcile(with: [entry])
             render()
         case .remove(let id):
             entries.removeAll { $0.profileID == profile.id && $0.session.id == id }

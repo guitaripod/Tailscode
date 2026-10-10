@@ -1505,10 +1505,35 @@ final class ChatPane: @unchecked Sendable {
     /// The transcript renders a tail window, not the whole history; the rest waits behind one
     /// button that widens the window. The locally echoed prompt stands only until the transcript
     /// carries the same words back.
+    private var lastReadMark = Date.distantPast
+    private var wasRunningWhenMarked = false
+
+    /// How often the chat in front of the reader is marked read as it grows.
+    private static let readMarkInterval: TimeInterval = 2.5
+
+    /// A chat being watched is a chat being read, and the servers keep that mark for every other
+    /// device: one left unmarked until the reader walks away shows as unread on the phone while its
+    /// answer is streaming onto this screen. So whatever arrives in the active pane of the window
+    /// the reader is working in is marked as it arrives — at most every couple of seconds, and
+    /// once more when the turn ends.
+    private func keepRead(_ state: ConversationState) {
+        let running = state.status == .running
+        defer { wasRunningWhenMarked = running }
+        guard let host, host.windowIsActive, host.activePane === self,
+            let sessionID = entry?.session.id
+        else { return }
+        let now = Date()
+        let ended = wasRunningWhenMarked && !running
+        guard ended || now.timeIntervalSince(lastReadMark) >= Self.readMarkInterval else { return }
+        lastReadMark = now
+        SessionSeenStore.markSeen(sessionID)
+    }
+
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
         Trace.mark(
             "apply state loaded=\(state.hasLoadedTranscript) rows=\(rows.count) status=\(state.status)")
         lastState = state
+        keepRead(state)
         if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
             updateStatus()
         }

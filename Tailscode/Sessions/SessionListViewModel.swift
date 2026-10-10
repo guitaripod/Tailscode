@@ -151,7 +151,10 @@ final class SessionListViewModel {
         merged.sort { $0.session.updatedAt > $1.session.updatedAt }
         entries = merged
         rememberDirectories(upserts.values.compactMap(\.session.directory))
-        if !upserts.isEmpty { SessionListCache.scheduleSave(entries) }
+        if !upserts.isEmpty {
+            SessionListCache.scheduleSave(entries)
+            SessionMarks.reconcile(with: Array(upserts.values))
+        }
         onChange?()
     }
 
@@ -268,16 +271,18 @@ final class SessionListViewModel {
         await syncBookmarks()
     }
 
-    /// Tells each server what this device decided about its bookmarks, so a chat saved here is on
-    /// the shortlist at the desk and one dropped there is gone from here. Runs after the listing
+    /// Tells each server what this device decided about its conversations — saved, pinned, filed
+    /// away, read — so a chat saved here is on the shortlist at the desk and one dropped there is
+    /// gone from here. What the servers then say comes back on their own stream within a second, so
+    /// nothing is re-read here: reading the listing that was fetched before the press was delivered
+    /// would hand the old answer back as the server's last word. Runs after the listing
     /// rather than on the press: the press has to answer instantly and may be made with no server
     /// in reach at all, so it leaves an intent behind and this is what delivers it.
     private func syncBookmarks() async {
         let sources = sources
-        guard await SavedChatSync.drain(backendFor: { profileID in
+        await SessionMarkSync.drain(backendFor: { profileID in
             sources.first { $0.profile.id == profileID }?.backend
-        }) else { return }
-        SavedChatStore.reconcile(with: entries)
+        })
     }
 
     /// Lists `targets` concurrently and merges their answers into what is
@@ -387,7 +392,7 @@ final class SessionListViewModel {
             .sorted { $0.session.updatedAt > $1.session.updatedAt }
         unreachable = verdicts
         SessionListCache.scheduleSave(entries)
-        SavedChatStore.reconcile(with: entries)
+        SessionMarks.reconcile(with: fresh.values.flatMap { $0 })
         ActivityInbox.reconcile(
             entries.map {
                 ActivityObservation(
@@ -532,12 +537,14 @@ final class SessionListViewModel {
     private func forgetLocally(_ entry: SessionEntry) {
         AppActivityController.shared.withdraw(entry.session.id)
         SavedChatStore.remove(profileID: entry.profileID, sessionID: entry.session.id)
+        SavedChatStore.forget(profileID: entry.profileID, sessionID: entry.session.id)
         if ArchivedChatStore.contains(profileID: entry.profileID, sessionID: entry.session.id) {
             ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
         }
         if SessionPinStore.contains(profileID: entry.profileID, sessionID: entry.session.id) {
             SessionPinStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
         }
+        MarkIntentStore.discard(sessionID: entry.session.id)
     }
 
     private struct SourceTimeout: LocalizedError {

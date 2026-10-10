@@ -35,7 +35,8 @@ public enum SavedChatSync {
             switch await push(intent) {
             case .delivered:
                 delivered = true
-                SavedChatStore.forget(profileID: intent.profileID, sessionID: intent.sessionID)
+                SavedChatStore.forget(
+                    profileID: intent.profileID, sessionID: intent.sessionID, delivered: true)
             case .unsupported:
                 SavedChatStore.forget(profileID: intent.profileID, sessionID: intent.sessionID)
             case .unreachable:

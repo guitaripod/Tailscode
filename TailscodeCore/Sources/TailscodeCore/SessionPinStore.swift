@@ -6,6 +6,7 @@ import Foundation
 public enum SessionPinStore {
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
     static let storageKey = "tailscode.pinned.sessions"
+    static let stampsKey = "tailscode.pinned.at"
 
     /// Posted after every toggle. A client with more than one surface reading the pins — a list
     /// and a board at once — listens here instead of each surface re-rendering the others by hand.
@@ -38,8 +39,28 @@ public enum SessionPinStore {
             pinned = true
         }
         defaults.set(current, forKey: storageKey)
+        var stamps = self.stamps()
+        stamps[id] = pinned ? Date().timeIntervalSince1970 : nil
+        defaults.set(stamps, forKey: stampsKey)
+        MarkIntentStore.note(
+            sessionID: sessionID, profileID: profileID, mark: .pinned, on: pinned)
         NotificationCenter.default.post(name: didChange, object: nil)
         return pinned
+    }
+
+    /// When each pin was made, by the clock that made it: this device's until the server that
+    /// holds the conversation answers with its own. What orders the pins.
+    public static func stamps() -> [String: Double] {
+        defaults.dictionary(forKey: stampsKey) as? [String: Double] ?? [:]
+    }
+
+    /// Takes the order the servers settled on. Nothing is posted when it is the order already
+    /// held, so a listing that agreed costs the screens nothing.
+    public static func adopt(order: [String], stamps: [String: Double]) {
+        let changed = order != all()
+        defaults.set(order, forKey: storageKey)
+        defaults.set(stamps, forKey: stampsKey)
+        if changed { NotificationCenter.default.post(name: didChange, object: nil) }
     }
 
     public static func key(_ profileID: String, _ sessionID: String) -> String {

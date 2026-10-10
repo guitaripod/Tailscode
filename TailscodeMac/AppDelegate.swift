@@ -19,6 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.keepShortcutsWhereTheContainerCanReachThem()
         #endif
         SessionSeenStore.bootstrapIfNeeded()
+        SessionMarkSync.shared.configure { profileID in
+            await MainActor.run { ServerDirectory.shared.backend(forProfileID: profileID) }
+        }
         DraftStore.warm()
         ThemeSelection.fallbackID = ThemeSelection.systemID
         NSApp.appearance = MacTheme.Chrome.appearance

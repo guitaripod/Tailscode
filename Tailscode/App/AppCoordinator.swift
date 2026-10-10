@@ -69,6 +69,13 @@ final class AppCoordinator: NSObject {
             sizeWindowForVerificationIfAsked()
         #endif
         UpdateMonitor.checkIfDue()
+        SessionMarkSync.shared.configure { profileID in
+            await MainActor.run {
+                let controller = ConnectionController.shared
+                return controller.profiles.first { $0.id == profileID }
+                    .flatMap { controller.makeBackend(for: $0) }
+            }
+        }
         if let parked = PendingRoute.take() { deliver(parked) }
         #if DEBUG
             if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {

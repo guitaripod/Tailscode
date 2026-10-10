@@ -10,6 +10,10 @@ public enum SessionSeenStore {
     static let baselineKey = "tailscode.seen.baseline"
     private static let capacity = 300
 
+    /// Posted when another device's read marks arrive through a server, so a screen that draws
+    /// unread state can draw it again without being asked to redraw for every chat opened here.
+    public static let didSync = Notification.Name("tailscode.seen.didSync")
+
     public static func bootstrapIfNeeded() {
         guard defaults.object(forKey: baselineKey) == nil else { return }
         defaults.set(Date().timeIntervalSince1970, forKey: baselineKey)
@@ -33,6 +37,9 @@ public enum SessionSeenStore {
             seen = seen.filter { $0.value >= cutoff }
         }
         defaults.set(seen, forKey: seenKey)
+        MarkIntentStore.note(
+            sessionID: sessionID, profileID: SessionOwners.profile(of: sessionID), mark: .read,
+            on: true)
     }
 
     /// Rewinds the "last looked" mark to just before the session's latest change, so the row
@@ -41,6 +48,28 @@ public enum SessionSeenStore {
         var seen = defaults.dictionary(forKey: seenKey) as? [String: Double] ?? [:]
         seen[sessionID] = updatedAt.timeIntervalSince1970 - 2
         defaults.set(seen, forKey: seenKey)
+        MarkIntentStore.note(
+            sessionID: sessionID, profileID: SessionOwners.profile(of: sessionID), mark: .read,
+            on: false)
+    }
+
+    /// Every mark this device holds, by the clock it was made on.
+    public static func values() -> [String: Double] {
+        defaults.dictionary(forKey: seenKey) as? [String: Double] ?? [:]
+    }
+
+    /// Takes the read marks a server holds. They are in the server's own clock, which is the one a
+    /// chat's last change is read on, and nothing here records them as a decision of this device's.
+    public static func adopt(_ marks: [String: Double]) {
+        guard !marks.isEmpty else { return }
+        var seen = values()
+        for (id, value) in marks { seen[id] = value }
+        if seen.count > capacity {
+            let cutoff = seen.values.sorted(by: >)[capacity - 1]
+            seen = seen.filter { $0.value >= cutoff }
+        }
+        defaults.set(seen, forKey: seenKey)
+        NotificationCenter.default.post(name: didSync, object: nil)
     }
 
     /// One snapshot of the store per list render: returns a closure judging

@@ -33,8 +33,20 @@ public enum ArchivedChatStore {
             archived = true
         }
         defaults.set(current.sorted(), forKey: storageKey)
+        MarkIntentStore.note(
+            sessionID: sessionID, profileID: profileID, mark: .archived, on: archived)
         NotificationCenter.default.post(name: didChange, object: nil)
         return archived
+    }
+
+    /// Applies what the servers settled: these in, these out. Silent when that changes nothing
+    /// here, and never an intent of this device's own — the server already knows.
+    public static func adopt(add: Set<String>, remove: Set<String>) {
+        let current = all()
+        let next = current.union(add).subtracting(remove)
+        guard next != current else { return }
+        defaults.set(next.sorted(), forKey: storageKey)
+        NotificationCenter.default.post(name: didChange, object: nil)
     }
 
     public static func key(_ profileID: String, _ sessionID: String) -> String {

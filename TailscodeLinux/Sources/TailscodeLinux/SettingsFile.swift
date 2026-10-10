@@ -29,7 +29,7 @@ enum SettingsFile {
         "tailscode.saved.chats", "tailscode.saved.pending", "tailscode.seen.", "tailscode.selectedModel.",
         "tailscode.effort.", "tailscode.recentModels", "tailscode.favoriteModels", "tailscode.modelPresets",
         "tailscode.modelCatalog.",
-        "tailscode.archived.", "tailscode.activity.missed", "tailscode.watch.",
+        "tailscode.archived.", "tailscode.pinned.", "tailscode.marks.", "tailscode.activity.missed", "tailscode.watch.",
         "tailscode.quickask.", "tailscode.updates.", "tailscode.commandCatalog.",
         "tailscode.slash.recents", "tailscode.forge.", "tailscode.image.", "tailscode.usageWindow",
         "tailscode.shareCardStyle", "tailscode.quotaBoard",

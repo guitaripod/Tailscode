@@ -1443,6 +1443,7 @@ final class MainWindow: @unchecked Sendable {
             next.sort { $0.session.updatedAt > $1.session.updatedAt }
             entries = next
             if !next.isEmpty { Soak.timeListSave { SessionListCache.save(next) } }
+            SessionMarks.reconcile(with: [entry])
             renderSidebar()
             splitHost.eachPane { pane in
                 if pane.sessionID == session.id { pane.refreshPills() }
@@ -1464,8 +1465,8 @@ final class MainWindow: @unchecked Sendable {
             knownDirectories: Array(known), previous: self.entries)
         let heard = await ServerDirectory.shared.lastHeard
         if !entries.isEmpty { SessionListCache.save(entries) }
-        await SavedChatSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
-        SavedChatStore.reconcile(with: entries)
+        await SessionMarkSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
+        Gtk.onMain { SessionMarks.reconcile(with: entries) }
         UpdateWatch.keep(profiles)
         Gtk.onMain { [weak self] in
             self?.knownProfiles = profiles

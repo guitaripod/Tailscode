@@ -430,6 +430,7 @@ final class ChatViewController: UIViewController {
         }
         if UIApplication.shared.applicationState == .active {
             AppActivityController.shared.seen(viewModel.session.id)
+            SessionSeenStore.markSeen(viewModel.session.id)
         }
         if !announcedIdentity {
             announcedIdentity = true
@@ -2393,6 +2394,30 @@ final class ChatViewController: UIViewController {
         lastRenderedState = state
         compose(state, rebuild: rebuildTranscript(state))
         noteOpened(state)
+        keepRead(state)
+    }
+
+    private var lastReadMarkAt: CFTimeInterval = 0
+    private var wasRunningWhenMarked = false
+
+    /// How often a conversation held open in front of the reader is marked read as it grows.
+    private static let readMarkInterval: CFTimeInterval = 2.5
+
+    /// A chat being watched is a chat being read, and the servers keep that mark for every other
+    /// device: one left unmarked until the reader walks away shows as unread on the desk while its
+    /// answer is streaming onto this screen. So whatever arrives while this screen is the one in
+    /// front is marked as it arrives — at most every couple of seconds, plus once when the turn ends
+    /// — and nothing is marked while the app is not in the reader's hands.
+    private func keepRead(_ state: ConversationState) {
+        let running = state.status == .running
+        defer { wasRunningWhenMarked = running }
+        guard viewIfLoaded?.window != nil, UIApplication.shared.applicationState == .active
+        else { return }
+        let now = CACurrentMediaTime()
+        let ended = wasRunningWhenMarked && !running
+        guard ended || now - lastReadMarkAt >= Self.readMarkInterval else { return }
+        lastReadMarkAt = now
+        SessionSeenStore.markSeen(viewModel.session.id)
     }
 
     private let openedAt = ContinuousClock.now

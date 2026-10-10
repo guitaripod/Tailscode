@@ -99,6 +99,15 @@ public enum SavedChatStore {
     nonisolated(unsafe) private static var cache: [SavedChat]?
     nonisolated(unsafe) private static var pendingCache: [PendingSaveIntent]?
 
+    /// Intents are made on the thread that pressed and retired on the one that delivered, so the
+    /// list they live in is taken one hand at a time.
+    private static let pendingLock = NSRecursiveLock()
+
+    /// Decisions delivered in the last few seconds, which still outrank a listing: one asked for
+    /// before the server heard the press can land after it and describe the world as it was.
+    nonisolated(unsafe) private static var settling: [String: Date] = [:]
+    private static let settlingWindow: TimeInterval = 6
+
     /// The process cache is what makes the list cheap to read on every render, so a suite that
     /// emptied `UserDefaults` behind it would be testing a list this process no longer believes in.
     static func forgetForTesting() {
@@ -190,7 +199,11 @@ public enum SavedChatStore {
         var list = all()
         var changed = false
         var membershipChanged = false
-        let held = Set(pending().map(\.key))
+        pendingLock.lock()
+        let cutoff = Date().addingTimeInterval(-settlingWindow)
+        settling = settling.filter { $0.value > cutoff }
+        let held = Set(pending().map(\.key)).union(settling.keys)
+        pendingLock.unlock()
         for entry in entries {
             guard let saved = entry.session.saved else { continue }
             let key = "\(entry.profileID)\u{1}\(entry.session.id)"
@@ -245,6 +258,8 @@ public enum SavedChatStore {
 
     /// What this device has decided and its server has not been told.
     public static func pending() -> [PendingSaveIntent] {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
         if let pendingCache { return pendingCache }
         guard let data = defaults.data(forKey: pendingKey),
             let stored = try? JSONDecoder().decode([PendingSaveIntent].self, from: data)
@@ -259,13 +274,19 @@ public enum SavedChatStore {
     /// Records what this device just decided, replacing any earlier undelivered decision about the
     /// same conversation — the last press is the one the server has to hear about.
     private static func note(_ intent: PendingSaveIntent) {
+        pendingLock.lock()
         writePending(pending().filter { $0.key != intent.key } + [intent])
+        pendingLock.unlock()
+        SessionMarkSync.shared.schedule()
     }
 
     /// Retires an intent: either the server has been told, or it turned out to have no notion of a
     /// bookmark and never will be.
-    public static func forget(profileID: String, sessionID: String) {
+    public static func forget(profileID: String, sessionID: String, delivered: Bool = false) {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
         let key = "\(profileID)\u{1}\(sessionID)"
+        if delivered { settling[key] = Date() }
         let kept = pending().filter { $0.key != key }
         guard kept.count != pending().count else { return }
         writePending(kept)

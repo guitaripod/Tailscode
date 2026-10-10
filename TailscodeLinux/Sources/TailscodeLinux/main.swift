@@ -26,6 +26,10 @@ SettingsFile.forget(prefix: "tailscode.draft.")
 /// every account read as signed out, which is a feature quietly missing rather than a failure.
 MediaAccounts.install(FileSecretStore())
 
+/// How a press on a chat — read, pinned, filed away, saved — reaches the server that holds it:
+/// handed over once, so the press can be answered from this desk and delivered a second later.
+SessionMarkSync.shared.configure { await ServerDirectory.shared.backend(forProfileID: $0) }
+
 if SelfTest.isRequested {
     Task { await SelfTest.run() }
     dispatchMain()

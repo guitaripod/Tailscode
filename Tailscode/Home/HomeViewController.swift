@@ -521,6 +521,10 @@ final class HomeViewController: UIViewController {
             name: SavedChatStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(activityDidChange),
+            name: SessionSeenStore.didSync, object: nil)
+
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(activityDidChange),
             name: ActivityInbox.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(archiveDidChange),

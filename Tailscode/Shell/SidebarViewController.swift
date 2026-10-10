@@ -113,8 +113,8 @@ final class SidebarViewController: UIViewController {
     private func observe() {
         let center = NotificationCenter.default
         for name: Notification.Name in [
-            SavedChatStore.didChange, ForgeRunner.didChange, ImageStudio.didChange,
-            ImageGenStore.didChange, ForgeStore.didChange,
+            SavedChatStore.didChange, SessionPinStore.didChange, ForgeRunner.didChange,
+            ImageStudio.didChange, ImageGenStore.didChange, ForgeStore.didChange,
         ] {
             center.addObserver(self, selector: #selector(storesDidChange), name: name, object: nil)
         }
