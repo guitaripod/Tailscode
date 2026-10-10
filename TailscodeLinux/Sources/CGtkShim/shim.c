@@ -122,6 +122,7 @@ void tailscode_soak_enable(void) {
 static gint64 tailscode_soak_cycle_began = 0;
 static gint64 tailscode_soak_layout_ended = 0;
 static atomic_long tailscode_soak_cycle_us = 0;
+static atomic_long tailscode_soak_cycle_max_us = 0;
 static atomic_long tailscode_soak_layout_us = 0;
 static atomic_long tailscode_soak_paint_us = 0;
 
@@ -155,9 +156,11 @@ static void tailscode_soak_after_paint(GdkFrameClock *clock, gpointer unused) {
     (void)clock;
     (void)unused;
     if (tailscode_soak_cycle_began == 0) return;
-    atomic_fetch_add_explicit(
-        &tailscode_soak_cycle_us, g_get_monotonic_time() - tailscode_soak_cycle_began,
-        memory_order_relaxed);
+    gint64 cycle = g_get_monotonic_time() - tailscode_soak_cycle_began;
+    atomic_fetch_add_explicit(&tailscode_soak_cycle_us, cycle, memory_order_relaxed);
+    long worst = atomic_load_explicit(&tailscode_soak_cycle_max_us, memory_order_relaxed);
+    while (cycle > worst
+        && !atomic_compare_exchange_weak(&tailscode_soak_cycle_max_us, &worst, cycle)) {}
     tailscode_soak_cycle_began = 0;
 }
 
@@ -188,6 +191,7 @@ void tailscode_soak_read(TailscodeSoakSample *out) {
     out->tick_runs = atomic_load(&tailscode_soak_tick_runs);
     out->frames = atomic_load(&tailscode_soak_frames);
     out->frame_us = atomic_load(&tailscode_soak_cycle_us);
+    out->frame_max_us = atomic_exchange(&tailscode_soak_cycle_max_us, 0);
     out->layout_us = atomic_load(&tailscode_soak_layout_us);
     out->paint_us = atomic_load(&tailscode_soak_paint_us);
     g_mutex_lock(&tailscode_soak_lock);

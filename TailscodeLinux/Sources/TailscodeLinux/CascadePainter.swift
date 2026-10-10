@@ -73,8 +73,11 @@ enum CascadeBudget {
         let pulsesChanged = next.pulses != budget.pulses
         budget = next
         level = newLevel
+        Trace.mark("budget restate begin")
         onChange?()
+        Trace.mark("budget restate slots done")
         if pulsesChanged { tailscode_notify_animations() }
+        Trace.mark("budget restate end")
     }
 
     /// Whether the written-not-pasted reveal runs at all.

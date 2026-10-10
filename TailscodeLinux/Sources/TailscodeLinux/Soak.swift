@@ -10,12 +10,13 @@ import TailscodeCore
 ///
 /// `SOAK t= dt= rss= anon= thr= fds= heap= rows= pending= maxPending= lag50= lag95= lagMax= lagN= ticks= tickRuns=
 /// frames= parses= parseHits= listSaves= listSaveMs= applies= applyMs= paints= paintMs= drains= guarded= ready=
-/// drainMs= drainP95= drainMax= frameMs= layoutMs= phasePaintMs= cpu= mainCpu=`
+/// drainMs= drainP95= drainMax= frameMs= frameMax= layoutMs= phasePaintMs= cpu= mainCpu=`
 ///
 /// `heap` is the KiB malloc reports in use (`mallinfo2`), which tells retention from fragmentation;
 /// `rows` is transcript row widgets made and not yet finalized.
 /// `frameMs` is the time spent inside frame cycles — ticks, layout and paint — over the window,
-/// `layoutMs` the part up to the end of the layout phase and `phasePaintMs` the paint phase.
+/// `frameMax` the longest single cycle, `layoutMs` the part up to the end of the layout phase and
+/// `phasePaintMs` the paint phase.
 ///
 /// `drains` is how many passes the tiling drain ran, `guarded` how many of those the 100 ms
 /// starvation guard ran, `ready` the most slots ready at once (the deepest the mailboxes got),
@@ -162,6 +163,7 @@ enum Soak {
                 "tickRuns=\(sample.tick_runs - state.tickRuns)",
                 "frames=\(sample.frames - state.frames)",
                 "frameMs=\(String(format: "%.1f", Double(sample.frame_us - state.frameMicroseconds) / 1000))",
+                "frameMax=\(String(format: "%.1f", Double(sample.frame_max_us) / 1000))",
                 "layoutMs=\(String(format: "%.1f", Double(sample.layout_us - state.layoutMicroseconds) / 1000))",
                 "phasePaintMs=\(String(format: "%.1f", Double(sample.paint_us - state.paintMicroseconds) / 1000))",
                 "parses=\(sample.parses - state.parses)",

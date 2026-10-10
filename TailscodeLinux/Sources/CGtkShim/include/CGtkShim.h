@@ -30,6 +30,8 @@ typedef struct {
     long frames;
     /// Microseconds spent inside frame cycles (before-paint to after-paint), running total.
     long frame_us;
+    /// The longest single frame cycle since the last read.
+    long frame_max_us;
     /// Of those, the ticks and the layout phase, and the paint phase.
     long layout_us;
     long paint_us;
