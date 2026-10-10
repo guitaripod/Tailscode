@@ -69,6 +69,25 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.73" date="2026-10-11">
+      <description>
+        <p>The Studio and the picture viewer rise as sheets inside the Tailscode window, and a long chat of pictures no longer flickers or spikes the CPU.</p>
+        <p>Changes:</p>
+        <ul>
+          <li>The Studio rises as a sheet inside the Tailscode window instead of opening a second one: the conversation dims behind it, it fills the window with a margin, Esc stops a render before it closes, and closing it never stops a render.</li>
+          <li>The picture viewer is the same sheet — over the conversation, or one level further in over the Studio so the Studio&#x27;s edge still shows above it. It pages through every picture of the chat, zooms to 1:1 pixels, and copies and saves the original bytes rather than the downsampled preview. The gallery and Studio viewer windows are gone.</li>
+          <li>A third image engine, Qwen Image 2.1 Turbo, paints in eight steps on a machine that has its model; the avoid list and the detail chip stand down for it.</li>
+          <li>A question reads as the heading over its answer: what follows it sits at the paragraph gap instead of the gap between turns.</li>
+        </ul>
+        <p>Fixes:</p>
+        <ul>
+          <li>A picture strip no longer flickers between its pictures and a "loading…" line while a chat streams, and the CPU no longer spikes behind it: transcript pictures are kept at a size a long session fits in the cache whole, and the cache lets go of the picture drawn longest ago rather than the one decoded first.</li>
+          <li>The window&#x27;s vertical split no longer lets the tiling shrink below its minimum, which GTK answered with a measure warning twice a second until the app fell over.</li>
+          <li>A link rail&#x27;s icon or title that arrives after its chat was left no longer touches a seat GTK already freed.</li>
+          <li>A sheet&#x27;s motion starts at its first frame, so a busy main loop can no longer make it arrive already finished.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.72" date="2026-10-10">
       <description>
         <p>The image studio and video forge are rebuilt around the picture, the chat is compact by default, and what you have read follows you between machines.</p>
