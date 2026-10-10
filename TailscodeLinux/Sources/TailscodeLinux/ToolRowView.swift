@@ -15,6 +15,8 @@ enum ToolRowView {
         let header = headerLine(call, summary, context: context)
         guard hasBody(call, summary) else {
             Gtk.margins(header, leading: 6)
+            gtk_widget_set_size_request(
+                header, -1, Int32(TranscriptGaps.metrics.activityRowHeight))
             return header
         }
         let expanded =
@@ -53,7 +55,9 @@ enum ToolRowView {
         gtk_box_append(
             ptr(header),
             Gtk.label(
-                Localized.text("%@ tools", "\(calls.count)"), css: "tool-name", selectable: false))
+                calls.count == 1
+                    ? Localized.text("1 tool") : Localized.text("%@ tools", "\(calls.count)"),
+                css: "tool-name", selectable: false))
 
         var tally: [(String, Int)] = []
         for call in calls {
@@ -63,9 +67,18 @@ enum ToolRowView {
                 tally.append((call.name, 1))
             }
         }
-        let names = tally.prefix(6).map { $0.1 > 1 ? "\($0.0)×\($0.1)" : $0.0 }
+        var names = tally.prefix(6).map { $0.1 > 1 ? "\($0.0)×\($0.1)" : $0.0 }
             .joined(separator: " ")
+        let thoughts = steps.count - calls.count
+        if thoughts > 0 {
+            let word =
+                thoughts == 1
+                ? Localized.text("1 thought") : Localized.text("%@ thoughts", "\(thoughts)")
+            names += " · " + word
+        }
         let label = Gtk.label(names, css: "tool-detail", selectable: false)
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
+        gtk_label_set_single_line_mode(op(label), 1)
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(header), label)
 
@@ -131,6 +144,8 @@ enum ToolRowView {
         let label = Gtk.label(
             String(detail.replacingOccurrences(of: "\n", with: " ").prefix(140)),
             css: "tool-detail", selectable: false)
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
+        gtk_label_set_single_line_mode(op(label), 1)
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(row), label)
 

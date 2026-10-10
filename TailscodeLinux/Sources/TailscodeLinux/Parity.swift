@@ -178,8 +178,8 @@ enum ParityManifest {
         case .quickAskClipboard: return .implemented("renderCopied")
         case .summonAnywhere: return .implemented("Summon")
         case .designBoards: return .implemented("DesignBoardWindow")
-        case .linkEmbeds: return .implemented("LinkCardView")
-        case .chatDensity: return .gap("compact density lands with this client's compact-chat work: the setting, the flat furniture lines and the per-relationship gaps")
+        case .linkEmbeds: return .implemented("LinkRailView")
+        case .chatDensity: return .implemented("TranscriptGaps")
         case .supporterInvitation: return .notApplicable("no store and no purchase on Linux — there is nothing to invite anyone to buy")
         case .proUnlock:
             return .notApplicable(

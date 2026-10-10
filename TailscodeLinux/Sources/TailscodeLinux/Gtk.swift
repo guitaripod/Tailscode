@@ -28,6 +28,12 @@ enum Gtk {
         tailscode_shift_held(widget)
     }
 
+    /// Whether control is held, read the same way as ``shiftHeld``: a link row's "clicked" carries
+    /// no event, and control-click copies where a plain click opens.
+    static func ctrlHeld(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+        tailscode_ctrl_held(widget)
+    }
+
     /// Runs `work` on the GLib main context. GTK is not thread-safe and the agent engine runs on
     /// cooperative threads, so every UI touch that starts in a `Task` comes back through here.
     static func onMain(_ work: @escaping @Sendable () -> Void) {
@@ -966,7 +972,8 @@ enum Gtk {
     /// anchor must be a widget that outlives the menu, not a row a re-render may remove.
     static func contextMenu(
         on widget: UnsafeMutablePointer<GtkWidget>, x: Double, y: Double,
-        rows: [(title: String, detail: String?, action: @Sendable () -> Void)]
+        rows: [(title: String, detail: String?, action: @Sendable () -> Void)],
+        onClosed: (@Sendable () -> Void)? = nil
     ) {
         guard !rows.isEmpty else { return }
         let popover = gtk_popover_new()!
@@ -998,6 +1005,7 @@ enum Gtk {
         gtk_popover_set_child(ptr(popover), column)
         connect(UnsafeMutableRawPointer(popover), "closed") {
             onMain {
+                onClosed?()
                 guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits),
                     gtk_widget_get_parent(ptr(raw)) != nil
                 else { return }

@@ -32,8 +32,7 @@ final class ChatPane: @unchecked Sendable {
     /// The row the repair clock is trying to hand back, which is not always the row the wave last
     /// held: a turn can end and the next one start writing before a failed settle has landed.
     private var repairKey: String?
-    let transcriptBox = Gtk.box(
-        GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 3 : 10)
+    let transcriptBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     private let authBanner = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     private let laneRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
@@ -128,6 +127,7 @@ final class ChatPane: @unchecked Sendable {
     private var highlightedRow: UInt = 0
     private var canvasBox: UnsafeMutablePointer<GtkWidget>?
     let messageBar = MessageHoverBar()
+    let rails = LinkRailController()
     var hoverOverlay: UnsafeMutablePointer<GtkWidget>?
     var hoverPointer: (x: Double, y: Double)?
     var hoverHeldOff = false
@@ -320,7 +320,8 @@ final class ChatPane: @unchecked Sendable {
 
         let scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-        let canvas = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 4 : 10)
+        let canvas = Gtk.box(
+            GTK_ORIENTATION_VERTICAL, spacing: Int32(TranscriptGaps.metrics.proseToFurnitureGap))
         Gtk.addClass(canvas, "transcript")
         canvasBox = canvas
         gtk_widget_set_visible(earlierButton, 0)
@@ -798,6 +799,12 @@ final class ChatPane: @unchecked Sendable {
                 if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
             }
         }
+        context.railAct = { [weak self] id, act in
+            Gtk.onMain { [weak self] in self?.rails.act(id, act) }
+        }
+        context.railGone = { [weak self] id in
+            Gtk.onMain { [weak self] in self?.rails.gone(id) }
+        }
         context.requestImage = { [weak self] reference, key in
             Gtk.onMain { [weak self] in self?.fetchImage(reference, key: key) }
         }
@@ -1065,18 +1072,28 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
+    /// Every picture of the conversation in reading order: the ones a strip holds and the ones a
+    /// person attached, each under the key its pixels are cached by.
+    private func galleryItems() -> [ImageGallery.Item] {
+        func item(_ key: String, _ reference: FileReference) -> ImageGallery.Item? {
+            guard (reference.mime ?? "").hasPrefix("image/") else { return nil }
+            return ImageGallery.Item(
+                key: key, name: PictureStripView.filename(of: reference), reference: reference)
+        }
+        return lastFullRows.flatMap { row -> [ImageGallery.Item] in
+            switch row.kind {
+            case .file(let reference, _): return item(row.key, reference).map { [$0] } ?? []
+            case .pictureStrip(let pictures):
+                return pictures.compactMap { item($0.key, $0.reference) }
+            default: return []
+            }
+        }
+    }
+
     /// The drive-run equivalent of clicking a picture: the gallery over every image in the
     /// conversation, on the first one. The harness reads the `GALLERY` lines it prints.
     func driverOpenGallery() {
-        let items: [ImageGallery.Item] = lastFullRows.compactMap { row in
-            guard case .file(let reference, _) = row.kind,
-                (reference.mime ?? "").hasPrefix("image/")
-            else { return nil }
-            let name =
-                reference.filename
-                ?? reference.path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "image"
-            return ImageGallery.Item(key: row.key, name: name, reference: reference)
-        }
+        let items = galleryItems()
         guard let first = items.first else {
             FileHandle.standardOutput.write(Data("GALLERY none (\(lastFullRows.count) rows)\n".utf8))
             return
@@ -1085,15 +1102,8 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// Opens the gallery over every picture in the conversation, landed on the one clicked.
-    private func presentImage(key: String, name: String) {        let items: [ImageGallery.Item] = lastFullRows.compactMap { row in
-            guard case .file(let reference, _) = row.kind,
-                (reference.mime ?? "").hasPrefix("image/")
-            else { return nil }
-            let name =
-                reference.filename
-                ?? reference.path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "image"
-            return ImageGallery.Item(key: row.key, name: name, reference: reference)
-        }
+    private func presentImage(key: String, name: String) {
+        let items = galleryItems()
         guard !items.isEmpty else { return }
         ImageGallery.present(
             items: items, startKey: key, parent: host?.windowWidget, context: context,
@@ -2393,6 +2403,7 @@ final class ChatPane: @unchecked Sendable {
             start = from
         }
 
+        applyGaps()
         let complete = tailDone && start == 0
         fillComplete = complete
         if !complete {
@@ -2620,6 +2631,7 @@ final class ChatPane: @unchecked Sendable {
     /// those tears rows down, because the box was already emptied.
     private func forgetRowWidgets() {
         messageBar.dismiss()
+        rails.dismiss()
         hoverVerbs = nil
         hoverOwners.removeAll(keepingCapacity: true)
         renderedRows = []
@@ -2635,13 +2647,12 @@ final class ChatPane: @unchecked Sendable {
     /// second, which restarts its entrance, drops any selection inside it, and asks the whole
     /// column to lay out again. When the only difference is more words in a row that can take them
     /// where it stands — the answer the painter is holding, or a thought counting itself up — the
-    /// change is written into the widget and the bookkeeping moves with it. Preview cards docked
-    /// under the paragraph being written are the paragraph's own and do not make it any less the
-    /// last row.
+    /// change is written into the widget and the bookkeeping moves with it. A link rail docked
+    /// under the paragraph is the paragraph's own and does not make it any less the last row.
     private func updatedLastRowInPlace(_ rows: [TranscriptRow]) -> Bool {
         guard !placeholderShown, fillComplete,
             renderedRows.count == rows.count,
-            let last = rows.lastIndex(where: { !$0.isLinkEmbed }), last > 0,
+            let last = rows.lastIndex(where: { !$0.isLinkRail }), last > 0,
             renderedRows[last].key == rows[last].key, renderedRows[last] != rows[last],
             last < rowWidgets.count,
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[last]),
@@ -2892,6 +2903,7 @@ final class ChatPane: @unchecked Sendable {
         for index in renderedRows.indices where predicate(renderedRows[index]) {
             rebuildRow(at: index)
         }
+        applyGaps()
     }
 
     /// What the turn is waiting on, docked where the CLI's prompt would sit: approvals first,
@@ -4193,6 +4205,24 @@ final class ChatPane: @unchecked Sendable {
         adjust { $0 + amount }
     }
 
+    /// The transcript's whole content height — the scrolled window's adjustment upper bound — with
+    /// the pane's width and what is drawn, the figure the compact-chat measure is taken from.
+    var contentHeightSummary: String {
+        guard let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return "none" }
+        var natural: Int32 = 0
+        if let canvas = canvasBox {
+            gtk_widget_measure(
+                canvas, GTK_ORIENTATION_VERTICAL, gtk_widget_get_width(canvas), &natural, nil, nil,
+                nil)
+        }
+        return String(
+            format: "content=%d upper=%.0f page=%.0f width=%d rows=%d widgets=%d", natural,
+            gtk_adjustment_get_upper(adjustment), gtk_adjustment_get_page_size(adjustment),
+            gtk_widget_get_width(scroller), renderedRows.count, rowWidgets.count)
+    }
+
     func scroll(byPages fraction: Double) {
         guard let scroller = transcriptScroller,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
@@ -4925,7 +4955,7 @@ final class ChatPane: @unchecked Sendable {
             textureBits: decoded.bits, data: data,
             dimensions: (decoded.width, decoded.height), forKey: key)
         guard self.sessionID == sessionID else { return }
-        replaceRows { $0.key == key }
+        replaceRows { $0.key == key || $0.holdsPicture(key) }
     }
 
     /// A workflow's runs, rebuilt from the transcript and the live fan-out. Only the cards whose
@@ -5123,7 +5153,9 @@ final class ChatPane: @unchecked Sendable {
     /// restyled.
     func applyLayoutPreferences() {
         editor.applyPreferences()
-        gtk_box_set_spacing(ptr(transcriptBox), Preferences.denseRows ? 3 : 10)
+        if let canvasBox {
+            gtk_box_set_spacing(ptr(canvasBox), Int32(TranscriptGaps.metrics.proseToFurnitureGap))
+        }
         windowLimit = max(windowLimit, Preferences.transcriptWindow)
         updateVimBadge()
         tearDownAllRows()
@@ -5354,6 +5386,101 @@ final class ChatPane: @unchecked Sendable {
 
     /// A conversation of code blocks for the harness: a two-line command, a one-liner, a block
     /// long enough to fold, and a line wide enough to scroll sideways.
+    /// A conversation made mostly of furniture — two tool calls, two pictures the agent made, a
+    /// compaction seam, three more tool calls, a code block and three addresses — for the
+    /// compact-chat measure: the demo chats are mostly words, and a density that only ever shows
+    /// on words has not been tried. The argument is a comma-separated list of image files the two
+    /// pictures are read from.
+    func driverFurnitureDemo(_ argument: String) {
+        let now = Date()
+        let asked = ChatMessage(
+            id: "demo-furn-prompt", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "t",
+                    kind: .text(
+                        "Render the Studio mocks so I can compare the painting and done states, then pin the jitter in the reconnect test."
+                    ))
+            ], createdAt: now.addingTimeInterval(-300))
+        func tool(_ id: String, _ name: String, _ input: [String: JSONValue], _ title: String)
+            -> MessagePart
+        {
+            MessagePart(
+                id: id,
+                kind: .tool(
+                    ToolCall(
+                        id: "call-\(id)", name: name, status: .completed, input: .object(input),
+                        title: title)))
+        }
+        let paths = argument.split(separator: ",").map(String.init)
+        var parts: [MessagePart] = [
+            tool("b1", "Bash", ["command": .string("python3 scripts/mock-comfyui.py")], "Start the mock"),
+            tool("w1", "Write", ["file_path": .string("docs/studio-mocks/b-painting.png")], "Write b-painting.png"),
+        ]
+        for (index, path) in paths.prefix(2).enumerated() {
+            let name = URL(fileURLWithPath: path).lastPathComponent
+            let part = MessagePart(
+                id: "pic\(index)",
+                kind: .file(FileReference(path: path, mime: "image/png", filename: name)))
+            parts.append(part)
+            let key = "demo-furn-answer:pic\(index)"
+            guard context.textures[key] == nil, let data = try? Data(contentsOf: URL(fileURLWithPath: path))
+            else { continue }
+            var width: Int32 = 0
+            var height: Int32 = 0
+            let texture = data.withUnsafeBytes { buffer -> UInt in
+                guard let base = buffer.baseAddress,
+                    let texture = tailscode_texture_scaled(
+                        base, gsize(buffer.count), TranscriptContext.bubbleMaxDimension, &width,
+                        &height)
+                else { return 0 }
+                return UInt(bitPattern: texture)
+            }
+            if texture != 0 {
+                context.store(
+                    textureBits: texture, data: data, dimensions: (width, height), forKey: key)
+            }
+        }
+        parts.append(
+            MessagePart(
+                id: "seam",
+                kind: .compaction(
+                    Compaction(
+                        trigger: .manual, tokensBefore: 311_600, tokensAfter: 16_400, duration: 114,
+                        preservedMessageCount: 9, summary: "The Studio mocks are written; the jitter test is next."
+                    ))))
+        parts += [
+            tool("r1", "Read", ["file_path": .string("Sources/Pulse/ReconnectScheduler.swift")], "Read ReconnectScheduler.swift"),
+            tool("e1", "Edit", ["file_path": .string("Tests/PulseTests/ReconnectTests.swift"), "old_string": .string("a"), "new_string": .string("b")], "Edit ReconnectTests.swift"),
+            tool("b2", "Bash", ["command": .string("swift test --filter ReconnectTests")], "swift test --filter ReconnectTests"),
+            MessagePart(
+                id: "answer",
+                kind: .text(
+                    """
+                    Found it. `ReconnectScheduler` applies ±40% jitter to the 400 ms base delay, so the worst case is 560 ms — past the test's 500 ms ceiling. Pin it in tests:
+
+                    ```swift
+                    protocol JitterSource: Sendable {
+                        func factor(in range: ClosedRange<Double>) -> Double
+                    }
+
+                    struct FixedJitter: JitterSource {
+                        let value: Double
+                        func factor(in _: ClosedRange<Double>) -> Double { value }
+                    }
+                    ```
+
+                    The suite now pins the factor to 1.0. The upstream discussion is at https://github.com/swiftlang/swift, the CI side in https://docs.github.com/en/actions/using-jobs/using-concurrency and the backoff rule in https://datatracker.ietf.org/doc/html/rfc6298.
+                    """)),
+        ]
+        let reply = ChatMessage(
+            id: "demo-furn-answer", role: .assistant, agentType: .claudeCode, parts: parts,
+            createdAt: now)
+        let state = ConversationState(
+            messages: [asked, reply], status: .idle, hasLoadedTranscript: true)
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: false))
+    }
+
     func driverCodeDemo() {
         let now = Date()
         let asked = ChatMessage(

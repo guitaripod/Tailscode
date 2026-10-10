@@ -311,6 +311,8 @@ final class MainWindow: @unchecked Sendable {
                     self.activePane.driverTableDemo()
                 case "codedemo":
                     self.activePane.driverCodeDemo()
+                case "furnituredemo":
+                    self.activePane.driverFurnitureDemo(argument)
                 case "cutoffdemo":
                     self.activePane.driverInterruptedDemo(
                         argument.isEmpty ? "busy" : argument)
@@ -430,6 +432,9 @@ final class MainWindow: @unchecked Sendable {
                     self.activePane.scroll(by: Double(argument) ?? 200)
                 case "jump":
                     self.activePane.jumpToBottom()
+                case "contentheight":
+                    FileHandle.standardOutput.write(
+                        Data("CONTENTHEIGHT \(self.activePane.contentHeightSummary)\n".utf8))
                 case "servers":
                     self.presentServers()
                 case "updates":
@@ -1070,6 +1075,16 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_cursor_from_name(usageBox, "pointer")
         gtk_widget_set_tooltip_text(usageBox, Localized.text("The full quota picture"))
         Gtk.onRelease(usageBox) { [weak self] in self?.presentUsage() }
+        NotificationCenter.default.addObserver(
+            forName: ChatDensitySetting.didChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            SettingsFile.capture()
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                MatrixTheme.install()
+                self.applyLayoutPreferences()
+            }
+        }
         NotificationCenter.default.addObserver(
             forName: QuotaBoardStore.didChange, object: nil, queue: nil
         ) { [weak self] _ in
@@ -3579,6 +3594,11 @@ final class MainWindow: @unchecked Sendable {
                 return false
             }
             let window: UnsafeMutablePointer<GtkWidget> = ptr(base)
+            if keyval == Keymap.escape,
+                self.splitHost.orderedPanes.contains(where: { $0.rails.escape() })
+            {
+                return true
+            }
             for pane in self.splitHost.orderedPanes where pane.composerHasFocus() {
                 self.splitHost.focus(pane, grabKeyboard: false)
                 if let handled = pane.handleComposerKey(keyval: keyval, state: state) {

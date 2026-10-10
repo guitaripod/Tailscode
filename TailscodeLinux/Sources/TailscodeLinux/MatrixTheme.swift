@@ -48,7 +48,17 @@ enum MatrixTheme {
 
     static var css: String { css(for: palette) }
 
-    static func css(for palette: Palette) -> String {
+    /// The stylesheet for a palette at a chat density. The density is a table of numbers in Core
+    /// (`ChatMetrics`); what is interpolated here is the transcript's own padding, the height of a
+    /// flat line, and the code block's padding — the gaps between rows are margins the pane writes
+    /// from the same table, since they depend on which rows are neighbours.
+    static func css(for palette: Palette, density: ChatDensity = Preferences.chatDensity) -> String {
+        let metrics = ChatMetrics.metrics(for: density, input: .pointer)
+        let transcriptPadding = density == .compact ? "8px 18px" : "18px 26px"
+        let codePadding = density == .compact ? "6px 12px" : "8px 12px"
+        let flat = Int(metrics.activityRowHeight)
+        let railHeight = Int(metrics.railRowHeight)
+        let plateRow = Int(metrics.railOpenRowHeight)
         let chrome = Preferences.scale(.chrome)
         func c(_ value: Double) -> String { String(format: "%.3frem", value * chrome) }
         func t(_ role: TypeRole) -> String { TypeCSS.declarations(role) }
@@ -136,7 +146,7 @@ enum MatrixTheme {
         }
         .transcript {
             background-color: \(canvas);
-            padding: \(Preferences.denseRows ? "8px 18px" : "18px 26px");
+            padding: \(transcriptPadding);
         }
         .turn-rule {
             background-color: \(rule);
@@ -311,10 +321,21 @@ enum MatrixTheme {
         .code-block {
             background-color: \(palette.codeBg);
             border-left: 2px solid \(rule);
-            padding: 8px 12px;
+            padding: \(codePadding);
             color: \(text);
             \(t(.code))
         }
+        .code-plate {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 6px;
+            margin: 4px 6px 0 0;
+            padding: 0 2px 0 8px;
+            opacity: 0;
+            transition: opacity 120ms ease-out;
+        }
+        .code-wrap:hover .code-plate, .code-wrap:focus-within .code-plate { opacity: 1; }
+        .code-plate .code-copy { min-height: 0; padding: 0 6px; }
         .code-gutter { \(t(.code)) color: \(textDim); opacity: 0.7; padding-right: 12px; }
         .code-scroll, .code-scroll > viewport { background: none; }
         .code-scroll scrollbar { margin-top: 4px; }
@@ -726,7 +747,7 @@ enum MatrixTheme {
         .code-body { \(t(.code)) color: \(text); }
         .tool-output { \(t(.toolOutput)) color: \(textDim); }
         .reasoning-body { color: \(textDim); \(t(.thought)) }
-        .disclosure { padding: 0; min-height: 0; }
+        .disclosure { padding: 0; min-height: \(flat)px; }
         .disclosure:hover { background-color: \(canvasRaised); }
         .disclosure-chevron { color: \(textDim); \(t(.note)) }
         .reasoning-label { color: \(textDim); \(t(.thoughtLabel)) }
@@ -778,21 +799,48 @@ enum MatrixTheme {
         .card-compaction { border-left: 2px solid \(special); }
         .card-compaction-failed { border-left: 2px solid \(danger); }
         .card-answerless { border-left: 2px solid \(warn); }
-        .link-card {
+        .link-rail {
+            min-height: \(railHeight)px;
+            padding: 0 8px 0 2px;
+            border-radius: 6px;
+        }
+        .link-rail:hover, .link-rail-open { background-color: alpha(\(text), 0.07); }
+        .link-rail:focus-visible { outline: 2px solid alpha(\(accent), 0.7); outline-offset: -2px; }
+        .link-rail-icon {
+            border-radius: 7px;
+            background-color: mix(\(canvasRaised), \(text), 0.2);
+            box-shadow: 0 0 0 1px \(canvas);
+        }
+        .link-rail-icon-loaded { background-color: #f2f2f2; }
+        .link-rail-glyph { color: \(textDim); font-size: 0.55rem; font-weight: 600; }
+        .link-rail-host { color: \(accent); \(t(.note)) }
+        .link-rail-more, .link-rail-chevron { color: \(textDim); \(t(.note)) }
+        .link-plate {
+            background-color: \(canvasRaised);
             border: 1px solid \(rule);
-            border-radius: 3px;
-            padding: 6px 12px 6px 8px;
+            border-radius: 8px;
+            box-shadow: 0 6px 18px alpha(black, 0.35);
+            opacity: 0;
+            transition: opacity 120ms ease-out;
         }
-        .link-card:hover {
-            background-color: alpha(\(accent), 0.08);
-            border-color: alpha(\(accent), 0.55);
+        .link-plate-on { opacity: 1; }
+        .link-plate scrolledwindow { background: none; }
+        .link-plate-row {
+            min-height: \(plateRow)px;
+            padding: 0 12px;
+            border-radius: 6px;
+            margin: 0 4px;
+            color: \(text);
         }
-        .link-card-icon { border-radius: 3px; background-color: alpha(\(text), 0.08); }
-        .link-card-icon-loaded { background-color: #f2f2f2; }
-        .link-card-glyph { color: \(textDim); \(t(.toolName)) }
-        .link-card-title { color: \(text); \(t(.toolName)) }
-        .link-card-title-quiet { color: \(textDim); }
-        .link-card-host { color: \(textDim); \(t(.treePath)) }
+        .link-plate-row:hover, .link-plate-row:focus { background-color: alpha(\(accent), 0.14); }
+        .link-plate-title { color: \(text); \(t(.toolName)) }
+        .link-plate-host { color: \(textDim); \(t(.treePath)) }
+        .seam-line .seam-text { letter-spacing: 0; }
+        .seam-line-press { min-height: 0; padding: 0 4px; border-radius: 4px; }
+        .seam-line-press:hover { background-color: alpha(\(special), 0.12); }
+        .picture-strip { padding: 0; }
+        .picture-strip flowboxchild { padding: 0; }
+        .picture-thumb { padding: 0; min-height: 0; min-width: 0; border-radius: 0; }
         .response-stats { opacity: 0.62; }
         .queued-row { opacity: 0.55; padding: 2px 0; border-radius: 4px; }
         .queued-row:hover { opacity: 0.85; background-color: alpha(\(accent), 0.07); }
