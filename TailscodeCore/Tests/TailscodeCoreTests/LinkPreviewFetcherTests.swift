@@ -74,7 +74,9 @@ final class StubPages: URLProtocol, @unchecked Sendable {
 
 @Suite struct LinkPreviewFetcherTests {
     private func fetcher(failureMemory: TimeInterval = 600) -> LinkPreviewFetcher {
-        LinkPreviewFetcher(configuration: StubPages.configuration(), failureMemory: failureMemory)
+        LinkPreviewFetcher(
+            configuration: StubPages.configuration(), failureMemory: failureMemory,
+            reach: { _ in true })
     }
 
     private func html(_ title: String, icon: String = "/icon.png") -> Data {

@@ -22,6 +22,7 @@ public actor LinkPreviewFetcher {
     private let downloader: BoundedDownloader
     private let failureMemory: TimeInterval
     private let now: @Sendable () -> Date
+    private let reach: @Sendable (URL) -> Bool
 
     private enum Verdict {
         case page(LinkPreviewMetadata?)
@@ -42,13 +43,18 @@ public actor LinkPreviewFetcher {
     /// - Parameter failureMemory: how long a fetch that could not be made is remembered as a
     ///   failure before it is tried again. A page that loaded but declares nothing is remembered
     ///   for the life of the process, since asking again would only get the same answer.
+    /// - Parameter reach: which addresses may be asked at all — the public web (``LinkReach``),
+    ///   which also decides whether a redirect is followed. Tests that serve pages from memory
+    ///   under made-up names hand one that allows them.
     public init(
         configuration: URLSessionConfiguration = LinkPreviewFetcher.defaultConfiguration(),
         failureMemory: TimeInterval = 600,
+        reach: @escaping @Sendable (URL) -> Bool = LinkReach.allows,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        self.downloader = BoundedDownloader(configuration: configuration)
+        self.downloader = BoundedDownloader(configuration: configuration, reach: reach)
         self.failureMemory = failureMemory
+        self.reach = reach
         self.now = now
     }
 
@@ -79,7 +85,7 @@ public actor LinkPreviewFetcher {
     /// The page's title and icon address — nil when the page cannot be read at all, or declares
     /// neither, and in both cases nobody is asked to fetch it again soon.
     public func metadata(for urlString: String) async -> LinkPreviewMetadata? {
-        guard let url = Self.webURL(urlString) else { return nil }
+        guard let url = Self.webURL(urlString), reach(url) else { return nil }
         if let cached = metadataCache[urlString] {
             switch cached {
             case .page(let metadata): return metadata
@@ -123,7 +129,7 @@ public actor LinkPreviewFetcher {
         }
         guard let metadata = await metadata(for: urlString),
             let iconURL = metadata.faviconURL ?? Self.defaultFavicon(for: urlString),
-            Self.isWeb(iconURL)
+            Self.isWeb(iconURL), reach(iconURL)
         else { return nil }
         if let task = inflightIcons[urlString] { return await task.value }
         requests += 1
@@ -264,8 +270,10 @@ final class BoundedDownloader: NSObject, URLSessionDataDelegate, @unchecked Send
     private let lock = NSLock()
     private var jobs: [Int: Job] = [:]
     private var session: URLSession!
+    private let reach: @Sendable (URL) -> Bool
 
-    init(configuration: URLSessionConfiguration) {
+    init(configuration: URLSessionConfiguration, reach: @escaping @Sendable (URL) -> Bool) {
+        self.reach = reach
         super.init()
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 1
@@ -354,6 +362,16 @@ final class BoundedDownloader: NSObject, URLSessionDataDelegate, @unchecked Send
             Fetched(
                 data: job.data, finalURL: response.url,
                 contentType: response.value(forHTTPHeaderField: "Content-Type")))
+    }
+
+    /// A public page may send the request on to somewhere private; the redirect is followed only
+    /// while it stays on the public web.
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(request.url.map(reach) == true ? request : nil)
     }
 
     func urlSession(
