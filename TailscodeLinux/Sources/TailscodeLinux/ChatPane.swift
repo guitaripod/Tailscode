@@ -1091,15 +1091,19 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// The drive-run equivalent of clicking a picture: the gallery over every image in the
-    /// conversation, on the first one. The harness reads the `GALLERY` lines it prints.
-    func driverOpenGallery() {
+    /// conversation, on the first one or on the one a key names. The harness reads the `GALLERY`
+    /// lines it prints.
+    func driverOpenGallery(key: String? = nil) {
         let items = galleryItems()
-        guard let first = items.first else {
+        guard let first = items.first(where: { key == nil || $0.key == key }) ?? items.first else {
             FileHandle.standardOutput.write(Data("GALLERY none (\(lastFullRows.count) rows)\n".utf8))
             return
         }
         presentImage(key: first.key, name: first.name)
     }
+
+    /// The keys of the conversation's pictures in reading order, so a harness can name one.
+    var galleryKeys: [String] { galleryItems().map(\.key) }
 
     /// Opens the gallery over every picture in the conversation, landed on the one clicked.
     private func presentImage(key: String, name: String) {

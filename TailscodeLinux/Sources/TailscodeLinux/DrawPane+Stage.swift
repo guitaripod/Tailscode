@@ -129,8 +129,6 @@ extension DrawPane {
         let busy = slot.isBusy
         let key = stageTextureKey
         let stageBits = key.flatMap { textures[$0] } ?? 0
-        if busy || stageBits == 0 { zoomed = false }
-        applyZoom()
 
         var sentence: String?
         var detail: String?
@@ -175,21 +173,12 @@ extension DrawPane {
             if case .failed = slot.phase { sentence = ImageGenWords.stoppedNotice }
         }
 
-        if zoomed {
-            sentence = ImageGenWords.zoomHint
-            tone = nil
-            verbs = []
-        }
         shell.setState(sentence, detail: detail, tone: tone, breathing: breathing)
         shell.setProgress(busy ? studio.progress?.bar.map { [$0] } : nil)
-        shell.setVerbs(verbs, visible: verbsShown && !zoomed)
+        shell.setVerbs(verbs, visible: verbsShown)
         shell.setCard(card)
         shell.describe(spoken)
         refreshSketchBadge()
-    }
-
-    private func applyZoom() {
-        chrome.setZoomed(zoomed)
     }
 
     var paintingSentence: String {
@@ -515,16 +504,14 @@ extension DrawPane {
             sentence: reason, note: missing ? StudioWords.nothingSent : nil, remedies: remedies)
     }
 
-    /// Full size. In a pane that is a window of its own beside it; in a window it is this surface
-    /// giving the picture everything it has, because a window opened over a window is how the
-    /// pointer was lost. A kept picture has no `ImageGenPicture` of its own record, so one is
-    /// built from its facts just for the viewer — nothing here is kept beyond the call.
+    /// Full size, in the viewer sheet: over the conversation when this is a pane in the tiling, and
+    /// stacked one level in over the Studio when this is the Studio's own stage. A kept picture has
+    /// no `ImageGenPicture` of its own record, so one is built from its facts just for the viewer —
+    /// nothing here is kept beyond the call.
     func openStage() {
         guard let key = stageTextureKey, let bits = textures[key], bits != 0 else { return }
-        if fills {
-            zoomed.toggle()
-            render()
-            return
+        let notice: @Sendable (String) -> Void = { [weak self] text in
+            Gtk.onMain { [weak self] in self?.onNotice?(text) }
         }
         if let kept = studio.keptStage, let path = kept.path {
             let facts = kept.facts
@@ -533,11 +520,11 @@ extension DrawPane {
                 engine: facts?.recipe?.engine ?? .quality,
                 mode: facts?.recipe?.mode ?? .generate, aspect: facts?.aspect ?? .square,
                 seconds: 0, seed: facts?.recipe?.seed ?? 0, madeAt: facts?.modifiedAt ?? Date())
-            DrawViewer.present(picture: synthetic, textureBits: bits, parent: hostWindow)
+            MediaViewer.present(picture: synthetic, textureBits: bits, notice: notice)
             return
         }
         guard let picture = slot.onStage else { return }
-        DrawViewer.present(picture: picture, textureBits: bits, parent: hostWindow)
+        MediaViewer.present(picture: picture, textureBits: bits, notice: notice)
     }
 }
 

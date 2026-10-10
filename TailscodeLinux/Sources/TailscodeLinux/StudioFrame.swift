@@ -34,7 +34,6 @@ final class StudioFrame: @unchecked Sendable {
     private let dockHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private(set) var arrangement = StudioArrangement(shelf: .rail, chips: .row)
     private var arranged = false
-    private var zoomed = false
     /// Told whenever the room has been put somewhere, with the room it had.
     var onArranged: (@Sendable (Double, Double) -> Void)?
 
@@ -145,17 +144,8 @@ final class StudioFrame: @unchecked Sendable {
     }
 
     private func showShelves() {
-        gtk_widget_set_visible(railSlot, zoomed || arrangement.shelf != .rail ? 0 : 1)
-        gtk_widget_set_visible(stripSlot, zoomed || arrangement.shelf != .strip ? 0 : 1)
-    }
-
-    /// A window giving its picture the whole room hides the dock and the shelf and keeps the
-    /// stage; a pane never does, because it opens a viewer beside itself instead.
-    func setZoomed(_ on: Bool) {
-        guard on != zoomed else { return }
-        zoomed = on
-        gtk_widget_set_visible(dockHolder, on ? 0 : 1)
-        showShelves()
+        gtk_widget_set_visible(railSlot, arrangement.shelf != .rail ? 0 : 1)
+        gtk_widget_set_visible(stripSlot, arrangement.shelf != .strip ? 0 : 1)
     }
 
     /// The narrowest each part of the studio can be, for a harness proving that nothing in it holds
