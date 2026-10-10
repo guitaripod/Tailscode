@@ -778,6 +778,21 @@ enum MatrixTheme {
         .card-compaction { border-left: 2px solid \(special); }
         .card-compaction-failed { border-left: 2px solid \(danger); }
         .card-answerless { border-left: 2px solid \(warn); }
+        .link-card {
+            border: 1px solid \(rule);
+            border-radius: 3px;
+            padding: 6px 12px 6px 8px;
+        }
+        .link-card:hover {
+            background-color: alpha(\(accent), 0.08);
+            border-color: alpha(\(accent), 0.55);
+        }
+        .link-card-icon { border-radius: 3px; background-color: alpha(\(text), 0.08); }
+        .link-card-icon-loaded { background-color: #f2f2f2; }
+        .link-card-glyph { color: \(textDim); \(t(.toolName)) }
+        .link-card-title { color: \(text); \(t(.toolName)) }
+        .link-card-title-quiet { color: \(textDim); }
+        .link-card-host { color: \(textDim); \(t(.treePath)) }
         .response-stats { opacity: 0.62; }
         .queued-row { opacity: 0.55; padding: 2px 0; border-radius: 4px; }
         .queued-row:hover { opacity: 0.85; background-color: alpha(\(accent), 0.07); }

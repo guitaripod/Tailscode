@@ -300,6 +300,14 @@ extension TranscriptRow {
     /// The text the agent is still writing into, when this row is the kind that grows a character
     /// at a time. Everything else — a tool call, a picture, a seam — arrives whole and has nothing
     /// for the cascade to pace.
+    /// Whether this row is a preview card rather than something the agent wrote. A card is docked
+    /// after the prose that mentioned its address, so while that prose is still being written the
+    /// card is the last row though the prose is the one being streamed into.
+    var isLinkEmbed: Bool {
+        if case .linkEmbed = kind { return true }
+        return false
+    }
+
     var streamedText: String? {
         switch kind {
         case .agentProse(let text, _): return text

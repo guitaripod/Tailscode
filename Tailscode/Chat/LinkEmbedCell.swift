@@ -4,12 +4,11 @@ import UIKit
 /// A tiny preview card for an address the transcript mentioned: an icon slot, one line of title,
 /// one line of host. The card states itself honestly at every stage — the host wearing the face
 /// until the page's own title and icon arrive, and the host alone if the fetch fails — so the
-/// address is never presented as a page nobody has read. The fetch is the store's; the cell owns
-/// only the debounce that keeps a URL still being streamed from firing a request at all.
+/// address is never presented as a page nobody has read. The words are Core's `LinkCardFace`, the
+/// fetch is the store's, and the debounce that keeps a URL still being streamed from firing a
+/// request at all is Core's `LinkEmbedPolicy`; the cell only draws.
 final class LinkEmbedCell: UICollectionViewCell {
     static let reuseID = "LinkEmbedCell"
-
-    private static let debounce: Duration = .milliseconds(700)
 
     private let card = UIView()
     private let iconView = UIImageView()
@@ -114,12 +113,15 @@ final class LinkEmbedCell: UICollectionViewCell {
         iconView.image = UIImage(
             systemName: "globe",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium))
-        applyFace(nil, url: url)
+        applyFace(.placeholder(for: url))
         let target = embed.url
         let expected = generation
         fetchTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.debounce)
-            guard let self, self.generation == expected, self.urlString == target else { return }
+            let wanted = await LinkEmbedPolicy.settle { @MainActor [weak self] in
+                guard let self else { return false }
+                return self.generation == expected && self.urlString == target
+            }
+            guard wanted, let self else { return }
             await self.loadPreview(for: url, expected: expected)
         }
     }
@@ -138,26 +140,19 @@ final class LinkEmbedCell: UICollectionViewCell {
     /// The face before the page has spoken — the host in the title's seat — and the face after,
     /// which is the same host whenever the fetch failed or the page never said what it is. Both
     /// lines are always populated so the card never changes height under the reader.
-    private func applyFace(_ metadata: LinkPreviewMetadata?, url: URL) {
-        let host = url.host ?? url.absoluteString
-        if let title = metadata?.title, !title.isEmpty {
-            titleLabel.text = title
-            titleLabel.textColor = Theme.Color.label
-            hostLabel.text = host
-        } else {
-            titleLabel.text = host
-            titleLabel.textColor = Theme.Color.secondaryLabel
-            hostLabel.text = Self.readablePath(of: url)
-        }
+    private func applyFace(_ face: LinkCardFace) {
+        titleLabel.text = face.headline
+        titleLabel.textColor = face.headlineIsQuiet ? Theme.Color.secondaryLabel : Theme.Color.label
+        hostLabel.text = face.caption
         accessibilityLabel = String(localized: "Link preview")
-        accessibilityValue = "\(titleLabel.text ?? "") · \(hostLabel.text ?? "")"
+        accessibilityValue = face.spoken
         accessibilityHint = String(localized: "Opens the link")
     }
 
     private func loadPreview(for url: URL, expected: Int) async {
         let metadata = await LinkPreviewStore.shared.metadata(for: url.absoluteString)
         guard generation == expected, urlString == url.absoluteString else { return }
-        applyFace(metadata, url: url)
+        applyFace(.settled(for: url, metadata: metadata))
         if let icon = await LinkPreviewStore.shared.favicon(for: url.absoluteString),
             generation == expected, urlString == url.absoluteString
         {
@@ -170,15 +165,6 @@ final class LinkEmbedCell: UICollectionViewCell {
         guard let url = URL(string: urlString) else { return }
         Theme.Haptics.tap()
         onOpen?(url)
-    }
-
-    private static func readablePath(of url: URL) -> String {
-        var text = url.absoluteString
-        if let range = text.range(of: "://") {
-            text = String(text[range.upperBound...])
-        }
-        text = text.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return text.isEmpty ? url.host ?? "" : text
     }
 }
 

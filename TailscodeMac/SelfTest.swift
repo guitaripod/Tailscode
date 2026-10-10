@@ -422,6 +422,14 @@ enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try await checkLinkCards()
+            report("link cards: \(checks) claims hold — three stages, a debounce, a quiet teardown")
+        } catch {
+            report("link cards: \(error)")
+            failures += 1
+        }
+
         #if !TAILSCODE_MAS
             let shellOutput = TerminalPane.shell("echo tailscode-shell-ok", in: nil)
             if shellOutput.contains("tailscode-shell-ok") {
@@ -3587,6 +3595,192 @@ enum SelfTest {
             seen[probeSession] = nil
             defaults.set(seen, forKey: "tailscode.seen.sessions")
         }
+    }
+
+    /// The preview card drawn in every stage of its life from stubbed facts, with no network: the
+    /// quiet placeholder while the title is unknown, the page's own title once it arrives, the host
+    /// alone when the fetch finds nothing, and the face the process already holds painted at once.
+    /// It also proves the promises that keep a streamed address from costing anything: an address
+    /// that goes away under the debounce fires no request, and a card taken out mid-fetch survives the
+    /// answer arriving.
+    private static func checkLinkCards() async throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("link cards: \(label)") }
+            checks += 1
+        }
+        final class Asked: @unchecked Sendable {
+            private let lock = NSLock()
+            private var urls: [String] = []
+            func note(_ url: String) {
+                lock.lock()
+                urls.append(url)
+                lock.unlock()
+            }
+            var all: [String] {
+                lock.lock()
+                defer { lock.unlock() }
+                return urls
+            }
+        }
+        func source(
+            asked: Asked, title: String?, latency: Duration = .milliseconds(10),
+            cached: LinkCardFace? = nil
+        ) -> LinkCardSource {
+            LinkCardSource(
+                cachedFace: { _ in cached },
+                metadata: { url in
+                    asked.note(url)
+                    try? await Task.sleep(for: latency)
+                    return title.map { LinkPreviewMetadata(title: $0, faviconURL: nil) }
+                },
+                favicon: { _ in nil },
+                debounce: .milliseconds(30))
+        }
+        func settle(_ milliseconds: Int) async {
+            try? await Task.sleep(for: .milliseconds(milliseconds))
+        }
+
+        let shelf = NSView()
+        func dock(_ card: LinkCardView) -> LinkCardView {
+            shelf.addSubview(card)
+            return card
+        }
+
+        let waiting = Asked()
+        let titled = dock(
+            LinkCardView(
+                url: "https://example.com/docs/page",
+                source: source(asked: waiting, title: "Example Domain")))
+        try expect(
+            titled.headline == "example.com" && titled.caption == "example.com/docs/page",
+            "before the page speaks the host wears the title's seat and the path the second line")
+        try expect(
+            titled.titleLabel.lineBreakMode == .byTruncatingTail
+                && titled.hostLabel.lineBreakMode == .byTruncatingMiddle
+                && titled.titleLabel.maximumNumberOfLines == 1
+                && titled.hostLabel.maximumNumberOfLines == 1,
+            "each line is exactly one, the title ellipsized at its end and the host in its middle")
+        try expect(titled.plateLevel == .rest, "the hover plate is down until the pointer comes")
+        try expect(waiting.all.isEmpty, "nothing is asked of the page before the debounce is out")
+        await settle(250)
+        try expect(
+            titled.headline == "Example Domain" && titled.caption == "example.com",
+            "the page's own title replaces the stand-in with the host under it")
+        try expect(waiting.all == ["https://example.com/docs/page"], "and the page was asked once")
+
+        let missing = Asked()
+        let hostOnly = dock(
+            LinkCardView(
+                url: "https://example.org/a/b", source: source(asked: missing, title: nil)))
+        await settle(250)
+        try expect(missing.all.count == 1, "a page that says nothing is still asked")
+        try expect(
+            hostOnly.headline == "example.org" && hostOnly.caption == "example.org/a/b",
+            "when the fetch finds nothing the card keeps the host as its face, never a spinner")
+
+        let known = Asked()
+        let instant = dock(
+            LinkCardView(
+                url: "https://held.example/x",
+                source: source(
+                    asked: known, title: "Different",
+                    cached: .titled(title: "Already Held", host: "held.example"))))
+        try expect(
+            instant.headline == "Already Held" && instant.caption == "held.example",
+            "a face the process already holds is painted at once, with no stand-in frame")
+        await settle(150)
+        try expect(known.all.isEmpty, "and no second request is made for it")
+
+        let growing = Asked()
+        for prefix in ["http://exa", "http://example.", "http://example.com/pa"] {
+            let card = dock(
+                LinkCardView(url: prefix, source: source(asked: growing, title: "Never")))
+            await settle(5)
+            card.removeFromSuperview()
+        }
+        let settled = dock(
+            LinkCardView(
+                url: "http://example.com/path", source: source(asked: growing, title: "Done")))
+        await settle(250)
+        try expect(
+            growing.all == ["http://example.com/path"] && settled.headline == "Done",
+            "a streamed address still growing fires no request: only \(growing.all) went out")
+
+        let doomed = Asked()
+        let slow = dock(
+            LinkCardView(
+                url: "https://slow.example/a",
+                source: source(asked: doomed, title: "Late", latency: .milliseconds(100))))
+        await settle(80)
+        try expect(doomed.all.count == 1, "the slow page's fetch is under way")
+        slow.removeFromSuperview()
+        await settle(300)
+        try expect(true, "a card taken out mid-fetch is written into harmlessly when the page answers")
+
+        let message = ChatMessage(
+            id: "m", role: .assistant, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "p",
+                    kind: .text(
+                        "See https://a.example/1 and https://a.example/1 then https://b.example, "
+                            + "https://c.example and https://d.example for more.\n\n```\nlet x = 1\n```\n"
+                            + "and finally https://e.example/tail"))
+            ], createdAt: Date())
+        let sealedRows = TranscriptRow.rows(for: message, sealed: true)
+        let embeds = sealedRows.compactMap { row -> String? in
+            if case .linkEmbed(let url) = row.kind { return url }
+            return nil
+        }
+        try expect(
+            embeds == [
+                "https://a.example/1", "https://b.example", "https://c.example",
+                "https://e.example/tail",
+            ],
+            "each prose segment earns its own shelf: once each, at most three, in order: \(embeds)")
+        guard let proseIndex = sealedRows.firstIndex(where: { row in
+            if case .agentProse = row.kind { return true }
+            return false
+        }), sealedRows[proseIndex + 1].isLinkEmbed
+        else { throw SelfTestFailure("link cards: a card docks directly under its paragraph") }
+        try expect(true, "a card docks directly under the prose that mentioned it")
+        try expect(
+            Set(sealedRows.map(\.key)).count == sealedRows.count,
+            "every row, cards included, has its own key")
+        let streaming = TranscriptRow.rows(for: message, sealed: false).compactMap {
+            row -> String? in
+            if case .linkEmbed(let url) = row.kind { return url }
+            return nil
+        }
+        try expect(
+            !streaming.contains("https://e.example/tail") && streaming.count == 3,
+            "an address running to the end of the paragraph still being written has no card yet")
+        try expect(
+            sealedRows.first(where: \.isLinkEmbed).map {
+                $0.streamedText == nil && !$0.isPromptBlock && $0.searchText.hasPrefix("http")
+            } == true,
+            "a card streams nothing, is not part of the prompt, and searches by its address")
+
+        let builder = TranscriptRowBuilder()
+        let kept = UserDefaults.standard.object(forKey: LinkEmbedsSetting.defaultsKey)
+        defer {
+            if let kept {
+                UserDefaults.standard.set(kept, forKey: LinkEmbedsSetting.defaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: LinkEmbedsSetting.defaultsKey)
+            }
+        }
+        UserDefaults.standard.set(true, forKey: LinkEmbedsSetting.defaultsKey)
+        let before = builder.rows(for: [message]).filter(\.isLinkEmbed).count
+        UserDefaults.standard.set(false, forKey: LinkEmbedsSetting.defaultsKey)
+        let plain = builder.rows(for: [message]).filter(\.isLinkEmbed).count
+        UserDefaults.standard.set(true, forKey: LinkEmbedsSetting.defaultsKey)
+        let after = builder.rows(for: [message]).filter(\.isLinkEmbed).count
+        try expect(
+            before > 0 && plain == 0 && after == before,
+            "flipping the switch rebuilds the same messages with and without cards: \(before) \(plain) \(after)")
+        return checks
     }
 
     /// A picture must come back byte-identical, keyed to its server file — and two different

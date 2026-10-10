@@ -200,6 +200,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 value: ResponseStatsSetting.isEnabled, action: #selector(responseStatsChanged)))
         column.addArrangedSubview(
             switchRow(
+                title: LinkEmbedsSetting.title,
+                subtitle: LinkEmbedsSetting.explanation,
+                value: LinkEmbedsSetting.isEnabled, action: #selector(linkEmbedsChanged)))
+        column.addArrangedSubview(
+            switchRow(
                 title: AutoResumeSetting.title,
                 subtitle: AutoResumeSetting.explanation,
                 value: AutoResumeSetting.isEnabled, action: #selector(autoResumeChanged)))
@@ -377,6 +382,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     @objc private func responseStatsChanged(_ sender: NSButton) {
         ResponseStatsSetting.setEnabled(sender.state == .on)
+        onTranscriptChanged()
+    }
+
+    @objc private func linkEmbedsChanged(_ sender: NSButton) {
+        LinkEmbedsSetting.setEnabled(sender.state == .on)
         onTranscriptChanged()
     }
 

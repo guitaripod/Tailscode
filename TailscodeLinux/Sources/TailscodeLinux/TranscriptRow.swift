@@ -146,11 +146,11 @@ final class TranscriptContext: @unchecked Sendable {
 /// re-deriving the other two hundred and ninety-nine — markdown and all — on every state was the
 /// seconds-long silence between "Loading…" and the transcript. Only messages whose value actually
 /// changed are re-folded; a palette change invalidates everything, because the markup carries the
-/// palette's colors baked in.
+/// palette's colors baked in, and so does the link-card switch, because the cards are rows.
 final class TranscriptRowBuilder: @unchecked Sendable {
     private let lock = NSLock()
     private var cache: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
-    private var paletteName = ""
+    private var look = ""
 
     /// - Parameter turnOpen: whether the conversation is mid-turn. The newest message of an open
     ///   turn is still being written even on a backend that stamps nothing on the record itself
@@ -163,10 +163,10 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     ) -> [TranscriptRow] {
         lock.lock()
         defer { lock.unlock() }
-        let palette = MatrixTheme.palette.name
-        if palette != paletteName {
+        let current = MatrixTheme.palette.name + (Preferences.linkEmbeds ? "" : ":plain-links")
+        if current != look {
             cache.removeAll(keepingCapacity: true)
-            paletteName = palette
+            look = current
         }
         var all: [TranscriptRow] = []
         var next: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
@@ -250,6 +250,10 @@ struct TranscriptRow: Hashable {
         /// colors are baked into it, which is what makes a theme change a row change the diff sees.
         case agentProse(text: String, markup: String)
         case codeBlock(language: String?, body: String)
+        /// The preview card for an address the prose above it mentioned. The address is the whole
+        /// of its identity: the card fetches its own face, so a streamed address that is still
+        /// growing moves no other row.
+        case linkEmbed(url: String)
         case table(MarkdownTable)
         /// A table still being written: its card, its count, and none of its rows measured.
         case tableDraft(TableDraft)
@@ -364,6 +368,15 @@ struct TranscriptRow: Hashable {
                                     markup: PangoMarkdown.render(
                                         prose, dim: palette.textDim, code: palette.info,
                                         accent: palette.accent, cache: cacheMarkup))))
+                        let growing = TableDraft.isGrowing(
+                            segment: index, of: segments.count, sealed: sealed)
+                        let addresses = LinkEmbedPolicy.urls(
+                            in: prose, enabled: Preferences.linkEmbeds, growing: growing)
+                        for (n, url) in addresses.enumerated() {
+                            rows.append(
+                                TranscriptRow(
+                                    key: "\(key):s\(index):embed\(n)", kind: .linkEmbed(url: url)))
+                        }
                     case .code(let language, let body):
                         rows.append(
                             TranscriptRow(
@@ -531,6 +544,14 @@ struct TranscriptRow: Hashable {
         }
     }
 
+    /// Whether this row is a preview card rather than something the agent wrote. A card is docked
+    /// after the prose that mentioned its address, so while that prose is still being written the
+    /// card is the last row though the prose is the one being streamed into.
+    var isLinkEmbed: Bool {
+        if case .linkEmbed = kind { return true }
+        return false
+    }
+
     /// Whether the text this row streams is prose, whose half-open inline markdown the gate has to
     /// hold back, or code, which has none of it to protect and everything to lose by being judged
     /// as if it did: `**kwargs`, `*ptr`, `self._value` and an odd count of backticks in a comment
@@ -582,6 +603,8 @@ struct TranscriptRow: Hashable {
             return text
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
+        case .linkEmbed(let url):
+            return url
         case .table(let table):
             return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
         case .tableDraft(let draft):
@@ -641,6 +664,8 @@ struct TranscriptRow: Hashable {
             return Gtk.markupLabel(markup, css: "agent-text")
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body, key: key, context: context)
+        case .linkEmbed(let url):
+            return LinkCardView.make(url: url, context: context)
         case .table(let table):
             return Self.table(table, key: key)
         case .tableDraft(let draft):

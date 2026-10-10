@@ -175,6 +175,19 @@ enum Preferences {
         write(value ? true : nil, forKey: ResponseStatsSetting.defaultsKey)
     }
 
+    /// Whether an address the agent mentions wears a preview card under its paragraph. The choice
+    /// is Core's (`LinkEmbedsSetting`, one key on every client, on until turned off); this end makes
+    /// the write durable on a desktop whose defaults are keyed to the executable path.
+    static var linkEmbeds: Bool {
+        if let raw = ProcessInfo.processInfo.environment["TAILSCODE_LINKS"] { return raw == "1" }
+        return LinkEmbedsSetting.isEnabled
+    }
+
+    static func setLinkEmbeds(_ value: Bool) {
+        LinkEmbedsSetting.setEnabled(value)
+        write(value ? nil : false, forKey: LinkEmbedsSetting.defaultsKey)
+    }
+
     /// Tighter vertical rhythm everywhere in the canvas.
     static var denseRows: Bool {
         flag("tailscode.denseRows", environment: "TAILSCODE_DENSE")
@@ -406,6 +419,16 @@ enum SettingsDialog {
                 value: Preferences.responseStats
             ) { value in
                 Preferences.setResponseStats(value)
+                onLayoutChanged()
+            })
+        adw_preferences_group_add(
+            ptr(transcript),
+            switchRow(
+                title: LinkEmbedsSetting.title,
+                subtitle: LinkEmbedsSetting.explanation,
+                value: Preferences.linkEmbeds
+            ) { value in
+                Preferences.setLinkEmbeds(value)
                 onLayoutChanged()
             })
         adw_preferences_group_add(

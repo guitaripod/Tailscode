@@ -213,6 +213,12 @@ void tailscode_connect_notify(
 void tailscode_after(guint ms, void (*handler)(void *), void *data);
 void tailscode_on_release(GtkWidget *widget, void (*handler)(void *), void *data);
 
+/// A click of the primary button only: `handler(data)` when it is released over `widget`. A right
+/// or middle press belongs to whatever else is listening on the widget — a context menu — and must
+/// not also act as the click. `data` is let go of through the box release when the widget is
+/// finalized, like every signal connection made through ``tailscode_connect``.
+void tailscode_on_primary_release(GtkWidget *widget, void (*handler)(void *), void *data);
+
 /// Any pointer button going down anywhere inside `widget`, with where it landed in `widget`'s own
 /// coordinates. The gesture watches in the capture phase, which runs from the toplevel down before
 /// any child sees the event, and never claims the sequence, so the text view still selects, the
