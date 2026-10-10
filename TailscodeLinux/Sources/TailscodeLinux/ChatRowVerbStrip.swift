@@ -117,10 +117,21 @@ final class ChatRowVerbStrip: @unchecked Sendable {
     /// a pinned chat reads as pinned without the glyph changing size.
     static func icon(_ verb: ChatRowVerb, on: Bool) -> String {
         switch verb {
-        case .pin: return "view-pin-symbolic"
+        case .pin: return available(["view-pin-symbolic", "pin-symbolic", "emblem-pinned-symbolic"])
         case .save: return on ? "starred-symbolic" : "non-starred-symbolic"
         case .archive: return "folder-download-symbolic"
         case .more: return "view-more-horizontal-symbolic"
         }
+    }
+
+    /// The first name the person's icon theme actually has. A theme is the person's choice and no
+    /// two agree on a name — Adwaita calls a pin `view-pin-symbolic` and Breeze `pin-symbolic` — and
+    /// GTK answers a name its theme lacks with a red prohibition sign, which on a verb that must be
+    /// recognised at a glance reads as a broken button. The last name is the fallback when none is
+    /// found, so a theme with no pin at all still gets GTK's own answer rather than a crash.
+    static func available(_ names: [String]) -> String {
+        guard let display = gdk_display_get_default() else { return names[0] }
+        let theme = gtk_icon_theme_get_for_display(display)
+        return names.first { gtk_icon_theme_has_icon(theme, $0) != 0 } ?? names[0]
     }
 }
