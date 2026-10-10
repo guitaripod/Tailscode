@@ -3,22 +3,6 @@ import CGtkShim
 import Foundation
 import TailscodeCore
 
-/// Where a Tab goes while the sheet is up. The sheet traps focus: a Tab inside a popover the sheet
-/// opened belongs to that popover, a Tab that moves inside the sheet is the ordinary one, and a Tab
-/// that would leave the sheet wraps to its other end rather than reaching a conversation nobody
-/// can see the focus of.
-enum StudioSheetTab: Equatable {
-    case leaveToPopover
-    case moveWithin
-    case wrap
-
-    /// The route for a Tab given where focus is and whether moving it inside the sheet succeeded.
-    static func route(inPopover: Bool, moved: Bool) -> StudioSheetTab {
-        if inPopover { return .leaveToPopover }
-        return moved ? .moveWithin : .wrap
-    }
-}
-
 /// The Studio, risen inside the window: one sheet hosting both lanes behind a lane switch, in the
 /// main window's overlay over a scrim.
 ///
@@ -49,20 +33,17 @@ final class StudioSheet: @unchecked Sendable {
     /// Lets go of the claim to be the window's sheet, for a harness that built its own.
     func retire() {
         if Self.installed === self { Self.installed = nil }
-        stopClock()
+        stack.retire()
         if let observer = imageObserver { NotificationCenter.default.removeObserver(observer) }
         imageObserver = nil
         tearDown()
     }
 
-    private let overlay: UnsafeMutablePointer<GtkWidget>
-    private let content: UnsafeMutablePointer<GtkWidget>
+    /// The sheets of the window this one stands in, which a media viewer opened from the Studio
+    /// stands on top of.
+    let stack: SheetStack
+    private let layer: SheetLayer
     private let window: UnsafeMutablePointer<GtkWidget>
-    private let titlebar: @Sendable () -> Double
-    private let scrim = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
-    private let probe = gtk_drawing_area_new()!
-    private let host = gtk_fixed_new()!
-    private let sheet: UnsafeMutablePointer<GtkWidget>
     private let lanes = gtk_stack_new()!
     private let pills = gtk_stack_new()!
     private let note = Gtk.label("", css: "studio-note", selectable: false)
@@ -70,16 +51,14 @@ final class StudioSheet: @unchecked Sendable {
     private let done: UnsafeMutablePointer<GtkWidget>
     private var laneButtons: [StudioLaneKind: UnsafeMutablePointer<GtkWidget>] = [:]
 
-    private(set) var state: StudioSheetState = .closed
+    var state: StudioSheetState { layer.state }
     private(set) var lane: StudioLaneKind = .image
-    private(set) var frame = StudioSheetGeometry.frame(windowWidth: 0, windowHeight: 0, titlebar: 0)
-    private(set) var progress: Double = 0
+    var frame: StudioSheetFrame { layer.frame }
+    var progress: Double { layer.progress }
 
+    private var wantedLane: StudioLaneKind = .image
     private var drawPane: DrawPane?
     private var forgePane: ForgePane?
-    private var opener: UnsafeMutablePointer<GtkWidget>?
-    private var tick: guint = 0
-    private var motionReduced = false
     private var noticeEnds: Date?
     private var imageObserver: NSObjectProtocol?
 
@@ -99,62 +78,41 @@ final class StudioSheet: @unchecked Sendable {
         overlay: UnsafeMutablePointer<GtkWidget>, content: UnsafeMutablePointer<GtkWidget>,
         window: UnsafeMutablePointer<GtkWidget>, titlebar: @escaping @Sendable () -> Double
     ) {
-        self.overlay = overlay
-        self.content = content
         self.window = window
-        self.titlebar = titlebar
-        sheet = tailscode_box_new_with_role(
-            GTK_ORIENTATION_VERTICAL, 0, GTK_ACCESSIBLE_ROLE_DIALOG)!
+        stack = SheetStack(overlay: overlay, content: content, window: window, titlebar: titlebar)
+        layer = stack.layers[0]
         done = Gtk.button(Localized.text("Done"), css: ["studio-done"], onClick: {})
         build()
         Self.installed = self
     }
 
     private func build() {
-        Gtk.addClass(scrim, "studio-scrim")
-        gtk_widget_set_hexpand(scrim, 1)
-        gtk_widget_set_vexpand(scrim, 1)
-        gtk_widget_set_visible(scrim, 0)
-        gtk_widget_set_opacity(scrim, 0)
-        Gtk.onPrimaryRelease(scrim) { [weak self] in
-            Gtk.onMain { [weak self] in self?.dismiss() }
+        layer.name = "studio"
+        layer.setDialogName(StudioSheetWords.dialogName)
+        layer.detail = { [weak self] in self?.wantedLane.rawValue ?? "" }
+        layer.onRise = { [weak self] in self?.onRise?() }
+        layer.prepare = { [weak self] in
+            guard let self else { return }
+            if self.wantedLane == .image { ImageStudio.shared.adoptDoor() }
+            self.select(self.wantedLane)
         }
-        Gtk.setHidden(scrim, true)
-        gtk_overlay_add_overlay(op(overlay), scrim)
-
-        gtk_widget_set_halign(host, GTK_ALIGN_START)
-        gtk_widget_set_valign(host, GTK_ALIGN_START)
-        gtk_widget_set_visible(host, 0)
-        gtk_overlay_add_overlay(op(overlay), host)
-
-        Gtk.addClass(sheet, "studio-sheet")
-        tailscode_set_accessible_label(sheet, StudioSheetWords.dialogName)
-        gtk_fixed_put(ptr(host), sheet, 0, 0)
-        let clip = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        Gtk.addClass(clip, "studio-sheet-clip")
-        gtk_widget_set_overflow(clip, GTK_OVERFLOW_HIDDEN)
-        gtk_widget_set_hexpand(clip, 1)
-        gtk_widget_set_vexpand(clip, 1)
-        gtk_box_append(ptr(sheet), clip)
-        gtk_box_append(ptr(clip), makeToolbar())
+        layer.retarget = { [weak self] in
+            guard let self else { return }
+            self.select(self.wantedLane)
+            self.focusWords()
+        }
+        layer.focusInitial = { [weak self] in self?.focusWords() }
+        layer.onClosed = { [weak self] in self?.tearDown() }
+        layer.keys = { [weak self] keyval, state in
+            self?.handleKey(keyval: keyval, state: state) ?? false
+        }
 
         gtk_stack_set_transition_type(op(lanes), GTK_STACK_TRANSITION_TYPE_NONE)
         gtk_stack_set_hhomogeneous(op(lanes), 0)
         gtk_stack_set_vhomogeneous(op(lanes), 0)
         gtk_widget_set_hexpand(lanes, 1)
         gtk_widget_set_vexpand(lanes, 1)
-        gtk_box_append(ptr(clip), lanes)
-
-        gtk_widget_set_hexpand(probe, 1)
-        gtk_widget_set_vexpand(probe, 1)
-        gtk_widget_set_can_target(probe, 0)
-        gtk_widget_set_can_focus(probe, 0)
-        Gtk.setHidden(probe, true)
-        gtk_overlay_add_overlay(op(overlay), probe)
-        gtk_overlay_set_measure_overlay(op(overlay), probe, 0)
-        Gtk.onResize(probe) { [weak self] in
-            Gtk.onMain { [weak self] in self?.relayout() }
-        }
+        layer.install(toolbar: makeToolbar(), body: lanes)
 
         imageObserver = NotificationCenter.default.addObserver(
             forName: ImageStudio.didChange, object: nil, queue: nil
@@ -223,92 +181,20 @@ final class StudioSheet: @unchecked Sendable {
     private static let reserved = "\u{00A0}"
 
     /// Brings the Studio up on a lane. Opened while it is already up it only changes lane, with no
-    /// motion, and the words box takes the keyboard.
+    /// motion, and the words box takes the keyboard. A viewer standing on it steps off first.
     @discardableResult
     func show(_ lane: StudioLaneKind) -> StudioSheet {
-        apply(.show(lane: lane))
+        wantedLane = lane
+        stack.closeViewer()
+        layer.present()
         return self
     }
 
-    /// Takes the sheet away by the same motion it came by, from wherever it is.
+    /// Takes the sheet away by the same motion it came by, from wherever it is. A viewer standing on
+    /// it goes at once, so nothing is left hanging over a Studio that has left.
     func dismiss() {
-        apply(.dismiss)
-    }
-
-    /// What the log says about an event: the lane asked for, never a dump of the enum.
-    private static func words(for event: StudioSheetEvent) -> String {
-        switch event {
-        case .show(let lane): return "show \(lane.rawValue)"
-        case .dismiss: return "dismiss"
-        case .finished: return "finished"
-        }
-    }
-
-    private func apply(_ event: StudioSheetEvent) {
-        let before = state
-        let result = state.reduced(by: event)
-        state = result.state
-        if event != .finished {
-            AppLog.write(.ui, "studio sheet \(Self.words(for: event)): \(before) -> \(state)")
-        }
-        switch result.effect {
-        case .none:
-            if before != state, state == .closed { finishedClosing() }
-        case .animateIn(let target):
-            rise(on: target)
-        case .changeLane(let target):
-            select(target)
-            focusWords()
-        case .animateOut:
-            returnKeyboard()
-            run(to: 0, opening: false)
-        }
-    }
-
-    /// A rise out of a closed sheet or out of one that is leaving: the second keeps its panes and
-    /// starts from wherever the motion had got to.
-    private func rise(on target: StudioLaneKind) {
-        if let stale = opener { g_object_unref(UnsafeMutableRawPointer(stale)) }
-        opener = Self.remember(window)
-        onRise?()
-        gtk_widget_set_visible(scrim, 1)
-        gtk_widget_set_visible(host, 1)
-        gtk_widget_set_can_target(content, 0)
-        Gtk.setHidden(content, true)
-        if target == .image { ImageStudio.shared.adoptDoor() }
-        select(target)
-        relayout()
-        run(to: 1, opening: true)
-        Gtk.onMain { [weak self] in self?.focusWords() }
-    }
-
-    private func finishedClosing() {
-        stopClock()
-        gtk_widget_set_visible(scrim, 0)
-        gtk_widget_set_visible(host, 0)
-        gtk_widget_set_can_target(content, 1)
-        Gtk.setHidden(content, false)
-        progress = 0
-        tearDown()
-    }
-
-    /// The conversation's keyboard comes back as the sheet starts to leave, not when it has gone,
-    /// so a stray key during the motion reaches a conversation that is in front again.
-    private func returnKeyboard() {
-        guard let opener else { return }
-        self.opener = nil
-        defer { g_object_unref(UnsafeMutableRawPointer(opener)) }
-        guard gtk_widget_get_root(opener) != nil, gtk_widget_get_mapped(opener) != 0 else { return }
-        gtk_window_set_focus(ptr(window), nil)
-        gtk_widget_grab_focus(opener)
-    }
-
-    private static func remember(_ window: UnsafeMutablePointer<GtkWidget>)
-        -> UnsafeMutablePointer<GtkWidget>?
-    {
-        guard let focused = tailscode_focused_widget(window) else { return nil }
-        g_object_ref(UnsafeMutableRawPointer(focused))
-        return focused
+        stack.closeViewer()
+        layer.dismiss()
     }
 
     private func select(_ target: StudioLaneKind) {
@@ -433,137 +319,29 @@ final class StudioSheet: @unchecked Sendable {
         tailscode_set_accessible_description(done, out ? StudioSheetWords.escapeHint : nil)
     }
 
-    /// Puts the sheet where Core says it goes for the window it is in. The sheet is allocated at its
-    /// final size here, before any motion, and a resize or a maximise lands here again.
+    /// Puts the sheet where Core says it goes for the window it is in.
     func relayout() {
-        let width = Double(gtk_widget_get_width(overlay))
-        let height = Double(gtk_widget_get_height(overlay))
-        guard width > 0, height > 0 else { return }
-        let next = StudioSheetGeometry.frame(
-            windowWidth: width, windowHeight: height, titlebar: titlebar())
-        guard next != frame || gtk_widget_get_width(sheet) == 0 else { return }
-        frame = next
-        gtk_widget_set_margin_start(host, Int32(next.x.rounded()))
-        gtk_widget_set_margin_top(host, Int32(next.y.rounded()))
-        gtk_widget_set_size_request(host, Int32(next.width.rounded()), Int32(next.height.rounded()))
-        gtk_widget_set_size_request(sheet, Int32(next.width.rounded()), Int32(next.height.rounded()))
-        place()
-    }
-
-    private func place() {
-        let rise = StudioSheetMotion.translation(
-            progress: progress, sheetHeight: frame.height, reduced: motionReduced)
-        tailscode_fixed_place(host, sheet, 0, rise.rounded())
-        gtk_widget_set_opacity(
-            sheet, StudioSheetMotion.sheetOpacity(progress: progress, reduced: motionReduced))
-        gtk_widget_set_opacity(
-            scrim, StudioSheetMotion.scrimOpacity(progress: progress, appearance: appearance))
+        layer.relayout()
     }
 
     /// The face of the app the scrim is drawn over, as the desktop resolves it.
-    var appearance: StudioSheetAppearance {
-        guard let manager = adw_style_manager_get_default() else { return .dark }
-        return adw_style_manager_get_dark(manager) != 0 ? .dark : .light
-    }
+    var appearance: StudioSheetAppearance { layer.appearance }
 
     /// The appearance changed while the sheet was up: the scrim re-resolves to the other face's alpha.
     func rethemed() {
-        guard state != .closed else { return }
-        place()
+        layer.rethemed()
     }
 
     /// Draws the sheet at a presence between 0 (away) and 1 (at rest) with no clock running, for
     /// the headless driver that photographs the middle of the motion.
     func hold(at presence: Double) {
         if state == .closed { show(lane) }
-        stopClock()
-        motionReduced = !RepeatingMotion.allowed
-        progress = min(1, max(0, presence))
-        place()
+        layer.hold(at: presence)
     }
 
     /// Lets a held sheet carry on to rest.
     func release() {
-        guard state == .opening, tick == 0 else { return }
-        run(to: 1, opening: true)
-    }
-
-    private func run(to target: Double, opening: Bool) {
-        stopClock()
-        motionReduced = !RepeatingMotion.allowed
-        let from = progress
-        let distance = abs(target - from)
-        guard distance > 0 else {
-            settle(target)
-            return
-        }
-        let span = StudioSheetMotion.duration(opening: opening, reduced: motionReduced) * distance
-        let link = Link(self, from: from, target: target, opening: opening, span: span, started: Self.now())
-        _ = Gtk.releaseInstalled
-        tick = tailscode_add_owned_tick(
-            host,
-            { raw in
-                guard let raw else { return 0 }
-                let link = Unmanaged<Link>.fromOpaque(raw).takeUnretainedValue()
-                guard let sheet = link.sheet else { return 0 }
-                return sheet.step(link) ? 1 : 0
-            }, Unmanaged.passRetained(link).toOpaque())
-    }
-
-    /// What one running motion needs between frames: where it started from and is going, how long
-    /// it takes and when it began. The clock holds it, and it holds the sheet only weakly, so a
-    /// sheet let go of while its clock runs is a clock that ends on its next frame.
-    private final class Link {
-        weak var sheet: StudioSheet?
-        let from: Double
-        let target: Double
-        let opening: Bool
-        let span: Double
-        let started: Double
-
-        init(
-            _ sheet: StudioSheet, from: Double, target: Double, opening: Bool, span: Double,
-            started: Double
-        ) {
-            self.sheet = sheet
-            self.from = from
-            self.target = target
-            self.opening = opening
-            self.span = span
-            self.started = started
-        }
-    }
-
-    /// One frame of the motion on the display's own clock: the share done follows Core's ease, the
-    /// sheet's translation and the scrim's alpha follow the same share, and the frame that reaches
-    /// the end settles the state. Returns whether the clock keeps running.
-    private func step(_ link: Link) -> Bool {
-        let elapsed = Self.now() - link.started
-        guard elapsed < link.span else {
-            tick = 0
-            settle(link.target)
-            return false
-        }
-        let share = StudioSheetMotion.eased(elapsed / link.span, opening: link.opening)
-        progress = link.from + (link.target - link.from) * share
-        place()
-        return true
-    }
-
-    private func settle(_ target: Double) {
-        progress = target
-        place()
-        apply(.finished)
-    }
-
-    private func stopClock() {
-        guard tick != 0 else { return }
-        tailscode_remove_tick(host, tick)
-        tick = 0
-    }
-
-    private static func now() -> Double {
-        Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
+        layer.release()
     }
 
     /// Whether the sheet owns the keyboard: from the first frame of its rise to the moment it
@@ -575,28 +353,20 @@ final class StudioSheet: @unchecked Sendable {
     /// switch, the focus trap and the lane's own keys. Nothing is ever handed to the conversation
     /// chord table: an unclaimed key goes on to whatever inside the sheet has focus, and no further.
     func handleKey(keyval: UInt32, state mask: UInt32) -> Bool {
-        let inPopover = focusIsInPopover
-        if keyval == Keymap.escape, inPopover { return false }
-        guard let chord = KeyChord.canonical(keyval: keyval, state: mask) else {
-            return handleTab(keyval: keyval, state: mask, inPopover: inPopover)
-        }
-        if StudioSheetKeys.closes(chord) {
-            AppLog.write(.ui, "studio sheet close chord")
-            dismiss()
-            return true
-        }
-        if let target = Self.lane(for: chord) {
-            AppLog.write(.ui, "studio sheet lane chord lane=\(target.rawValue)")
-            show(target)
-            return true
-        }
-        if keyval == Keymap.tab || keyval == Self.isoLeftTab {
-            return handleTab(keyval: keyval, state: mask, inPopover: inPopover)
-        }
-        switch lane {
-        case .image: return drawKey(chord, keyval: keyval)
-        case .video: return forgeKey(chord, keyval: keyval)
-        }
+        layer.route(
+            keyval: keyval, state: mask,
+            before: { chord in
+                guard let target = Self.lane(for: chord) else { return false }
+                AppLog.write(.ui, "studio sheet lane chord lane=\(target.rawValue)")
+                show(target)
+                return true
+            },
+            after: { chord, keyval in
+                switch lane {
+                case .image: return drawKey(chord, keyval: keyval)
+                case .video: return forgeKey(chord, keyval: keyval)
+                }
+            })
     }
 
     /// Ctrl+1 and Ctrl+2: the two lanes, in the order the switch draws them.
@@ -607,23 +377,6 @@ final class StudioSheet: @unchecked Sendable {
         case UInt32(UnicodeScalar("2").value): return .video
         default: return nil
         }
-    }
-
-    private static let isoLeftTab: UInt32 = 0xFE20
-
-    /// Tab cycles inside the sheet: it moves focus the way the toolkit would, and a Tab that would
-    /// leave wraps to the other end instead.
-    private func handleTab(keyval: UInt32, state mask: UInt32, inPopover: Bool) -> Bool {
-        guard keyval == Keymap.tab || keyval == Self.isoLeftTab else { return false }
-        let backward = keyval == Self.isoLeftTab || mask & KeyChord.shiftMask != 0
-        let direction = backward ? GTK_DIR_TAB_BACKWARD : GTK_DIR_TAB_FORWARD
-        if inPopover { return false }
-        let moved = gtk_widget_child_focus(sheet, direction) != 0
-        if StudioSheetTab.route(inPopover: inPopover, moved: moved) == .wrap {
-            gtk_window_set_focus(ptr(window), nil)
-            _ = gtk_widget_child_focus(sheet, direction)
-        }
-        return true
     }
 
     private func drawKey(_ chord: KeyChord, keyval: UInt32) -> Bool {
@@ -639,10 +392,6 @@ final class StudioSheet: @unchecked Sendable {
             return true
         }
         guard keyval == Keymap.escape else { return false }
-        if pane.isZoomed {
-            pane.unzoom()
-            return true
-        }
         return escape()
     }
 
@@ -668,15 +417,10 @@ final class StudioSheet: @unchecked Sendable {
         return true
     }
 
-    private var focusIsInPopover: Bool {
-        guard let focused = tailscode_focused_widget(window) else { return false }
-        return gtk_widget_get_ancestor(focused, gtk_popover_get_type()) != nil
-    }
-
     var summary: String {
         let kind = lane == .image ? (drawPane?.summary ?? "-") : (forgePane?.summary ?? "-")
         return
-            "state=\(state) lane=\(lane.rawValue) frame=\(Int(frame.x)),\(Int(frame.y)) \(Int(frame.width))x\(Int(frame.height)) progress=\(String(format: "%.2f", progress)) scrim=\(String(format: "%.2f", gtk_widget_get_opacity(scrim))) chords=\(state.conversationChordsEnabled) out=\(renderIsOut) \(kind)"
+            "state=\(state) lane=\(lane.rawValue) frame=\(Int(frame.x)),\(Int(frame.y)) \(Int(frame.width))x\(Int(frame.height)) progress=\(String(format: "%.2f", progress)) scrim=\(String(format: "%.2f", layer.scrimOpacity)) chords=\(state.conversationChordsEnabled) out=\(renderIsOut) \(kind)"
     }
 
     var imagePane: DrawPane? { drawPane }
@@ -742,9 +486,9 @@ final class StudioSheet: @unchecked Sendable {
         [drawPane?.hostWindow, forgePane?.hostWindow]
     }
 
-    var sheetWidget: UnsafeMutablePointer<GtkWidget> { sheet }
+    var sheetWidget: UnsafeMutablePointer<GtkWidget> { layer.sheetWidget }
 
-    var scrimWidget: UnsafeMutablePointer<GtkWidget> { scrim }
+    var scrimWidget: UnsafeMutablePointer<GtkWidget> { layer.scrimWidget }
 
-    var hostWidget: UnsafeMutablePointer<GtkWidget> { host }
+    var hostWidget: UnsafeMutablePointer<GtkWidget> { layer.hostWidget }
 }

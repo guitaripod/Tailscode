@@ -81,7 +81,6 @@ final class DrawPane: @unchecked Sendable {
     var progressObserver: NSObjectProtocol?
     var storeObserver: NSObjectProtocol?
     var ticking = false
-    var zoomed = false
     var entries: [StudioShelfEntry] = []
     var selectedTile: String?
     var referenceTextures: [String: UInt] = [:]
@@ -223,15 +222,6 @@ final class DrawPane: @unchecked Sendable {
     func driverEnhance() { enhancePressed() }
 
     func driverUseRewrite() { useRewrite() }
-
-    /// Whether Escape has something of this surface's own to close before it closes the surface.
-    var isZoomed: Bool { zoomed }
-
-    func unzoom() {
-        guard zoomed else { return }
-        zoomed = false
-        render()
-    }
 
     var hostWindow: UnsafeMutablePointer<GtkWidget>? {
         guard let root = gtk_widget_get_root(ptr(root)) else { return nil }

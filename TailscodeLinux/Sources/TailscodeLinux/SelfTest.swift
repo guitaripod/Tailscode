@@ -264,6 +264,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkMediaViewer()
+            report("media viewer: \(checks) claims hold — one stack, the top sheet closes, the keyboard goes back")
+        } catch {
+            report("media viewer: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkVideoSlot()
             report("video slot: \(checks) answers, player \(SelfTest.playerState)")
         } catch {

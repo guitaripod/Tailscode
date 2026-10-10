@@ -412,6 +412,8 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(Data("SECTIONS \(described)\n".utf8))
                 case "gallery":
                     self.activePane.driverOpenGallery()
+                case "viewer":
+                    self.driveViewer(argument)
                 case "newchat":
                     Task { [weak self] in
                         let profiles = await ServerDirectory.shared.profiles()
@@ -1483,7 +1485,7 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func pressLanded(x: Double, y: Double, in window: UnsafeMutablePointer<GtkWidget>) {
-        guard StudioSheet.current == nil else { return }
+        guard !(SheetStack.shared?.isUp ?? false) else { return }
         if let pane = splitHost.pane(at: x, y: y, in: window) {
             paneClicked(pane)
             return
@@ -3627,8 +3629,8 @@ final class MainWindow: @unchecked Sendable {
                 return false
             }
             let window: UnsafeMutablePointer<GtkWidget> = ptr(base)
-            if let sheet = StudioSheet.current, sheet.capturesKeys {
-                return sheet.handleKey(keyval: keyval, state: state)
+            if let taken = SheetStack.shared?.handleKey(keyval: keyval, state: state) {
+                return taken
             }
             if keyval == Keymap.escape,
                 self.splitHost.orderedPanes.contains(where: { $0.rails.escape() })
@@ -3849,6 +3851,86 @@ final class MainWindow: @unchecked Sendable {
             }
         }
         reportOrder("CHORD \(spec)")
+    }
+
+    /// The viewer sheet as the driver drives it. `open` or `open:<key or number>` raises it over the
+    /// active conversation's pictures, `stage` over the Studio's picture; `next`, `prev`, `first`,
+    /// `last`, `zoom`, `fit`, `in`, `out`, `actual`, `copy`, `save` and `close` are the viewer's own
+    /// commands; `hold0.45` and `release` photograph the middle of its motion; `key:<chord>` sends a
+    /// key through the same routing a typed one takes; `keys` names the pictures; and every verb
+    /// answers with where the stack stands, so a script can read the order the sheets close in.
+    private func driveViewer(_ argument: String) {
+        let stack = SheetStack.shared
+        let viewer = MediaViewer.current
+        switch argument {
+        case "open":
+            activePane.driverOpenGallery()
+        case _ where argument.hasPrefix("open:"):
+            let name = String(argument.dropFirst(5))
+            let keys = activePane.galleryKeys
+            let chosen = Int(name).flatMap { keys.indices.contains($0) ? keys[$0] : nil } ?? name
+            activePane.driverOpenGallery(key: chosen)
+        case "stage":
+            StudioSheet.current?.imagePane?.openStage()
+        case "keys":
+            FileHandle.standardOutput.write(
+                Data("VIEWERKEYS \(activePane.galleryKeys.joined(separator: " "))\n".utf8))
+        case "next": viewer?.perform(.next)
+        case "prev": viewer?.perform(.previous)
+        case "first": viewer?.perform(.first)
+        case "last": viewer?.perform(.last)
+        case "zoom": viewer?.perform(.toggleZoom)
+        case "fit": viewer?.perform(.fit)
+        case "in": viewer?.perform(.zoomIn)
+        case "out": viewer?.perform(.zoomOut)
+        case "actual": viewer?.perform(.actualSize)
+        case "copy": viewer?.perform(.copy)
+        case "save": viewer?.perform(.save)
+        case "close": viewer?.perform(.close)
+        case "release": viewer?.sheetLayer.release()
+        case _ where argument.hasPrefix("hold"):
+            if let presence = Double(argument.dropFirst(4)) { viewer?.sheetLayer.hold(at: presence) }
+        case _ where argument.hasPrefix("key:"):
+            driveKey(String(argument.dropFirst(4)), through: stack)
+        default:
+            break
+        }
+        let toplevels = Int(g_list_model_get_n_items(gtk_window_get_toplevels()))
+        FileHandle.standardOutput.write(
+            Data(
+                "VIEWER depth=\(stack?.depth ?? 0) chords=\(stack?.conversationChordsEnabled ?? true) toplevels=\(toplevels) studio=\(StudioSheet.shared?.state ?? .closed) viewer=\(viewer?.summary ?? "-")\n"
+                    .utf8))
+    }
+
+    /// A key sent through the stack the way the window's own controller sends one, so the order the
+    /// sheets answer in is the order a person would find.
+    private func driveKey(_ spec: String, through stack: SheetStack?) {
+        let keyval: UInt32
+        var state: UInt32 = 0
+        switch spec {
+        case "esc": keyval = Keymap.escape
+        case "left": keyval = 0xFF51
+        case "right": keyval = 0xFF53
+        case "home": keyval = 0xFF50
+        case "end": keyval = 0xFF57
+        case "space": keyval = 0x20
+        case "ctrl+w":
+            keyval = 0x77
+            state = KeyChord.controlMask
+        case "ctrl+c":
+            keyval = 0x63
+            state = KeyChord.controlMask
+        case "ctrl+s":
+            keyval = 0x73
+            state = KeyChord.controlMask
+        case "ctrl+1":
+            keyval = 0x31
+            state = KeyChord.controlMask
+        default: keyval = spec.unicodeScalars.first.map { UInt32($0.value) } ?? 0
+        }
+        let taken = stack?.handleKey(keyval: keyval, state: state)
+        FileHandle.standardOutput.write(
+            Data("VKEY \(spec) taken=\(taken.map { "\($0)" } ?? "conversation")\n".utf8))
     }
 
     /// The tree as the driver reads it: how many panes, what shape, which holds the focus and in

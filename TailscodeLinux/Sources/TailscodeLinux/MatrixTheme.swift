@@ -1490,6 +1490,28 @@ enum MatrixTheme {
         }
         .studio-done:hover { border-color: alpha(\(accent), 0.50); }
         .studio-done:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 1px; }
+        .viewer-sheet {
+            background-color: #0e0e10;
+            box-shadow: 0 0 0 \(Int(StudioSheetMotion.edgeHairlineWidth))px alpha(#ffffff, 0.16), 0 -2px \(Int(StudioSheetMotion.edgeShadowBlur))px alpha(#000000, \(StudioSheetMotion.edgeShadowAlpha));
+        }
+        .viewer-canvas, .viewer-canvas > viewport { background-color: transparent; }
+        .viewer-canvas:focus-visible { outline: none; }
+        .viewer-title { color: #ececee; \(t(.chip)) }
+        .viewer-sub { color: alpha(#ececee, 0.62); \(t(.hint)) font-variant-numeric: tabular-nums; }
+        .viewer-loading { color: alpha(#ececee, 0.62); \(t(.hint)) }
+        .viewer-bar button {
+            background-image: none;
+            background-color: transparent;
+            color: #ececee;
+            border: 1px solid alpha(#ffffff, 0.22);
+            border-radius: 6px;
+            box-shadow: none;
+            padding: 3px 12px;
+            min-height: 0;
+            \(t(.chip))
+        }
+        .viewer-bar button:hover { border-color: alpha(\(accent), 0.60); }
+        .viewer-bar button:focus-visible { outline: 2px solid alpha(\(accent), 0.65); outline-offset: 1px; }
         .studio-toolbar { padding: 8px 12px 0 12px; }
         .studio-pill, .studio-pill > button {
             background-color: \(canvasRaised);

@@ -1,8 +1,8 @@
 import CGtkShim
 import Foundation
 
-/// How a feature surface — the image studio, the forge, a design board, the gallery, the delegate
-/// desk — is sized when it opens: the whole display less a margin on every side.
+/// How a feature surface that is still a window — a design board, the delegate desk — is sized when
+/// it opens: the whole display less a margin on every side.
 ///
 /// Each of these is a room a person walks into to do one thing and then leaves, not a dialog to
 /// glance at, and a room drawn at a preferred size on a large monitor sat in the middle of the
