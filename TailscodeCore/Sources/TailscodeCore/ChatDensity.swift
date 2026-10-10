@@ -75,8 +75,9 @@ public enum ChatInput: Sendable {
 }
 
 /// The table of numbers a transcript is laid out with, in points. Compact is the design's;
-/// comfortable is today's rhythm, rounded: one gap between every pair of rows and a larger one
-/// between turns. A client maps a value onto its own tokens and never hard-codes a gap.
+/// comfortable is today's rhythm, rounded: one gap between every pair of rows — 16 on touch, 12
+/// on a pointer, which is what the phone and the desktops draw today — and a larger one between
+/// turns. A client maps a value onto its own tokens and never hard-codes a gap.
 public struct ChatMetrics: Sendable, Equatable {
     public var paragraphGap: Double
     public var proseToFurnitureGap: Double
@@ -103,6 +104,7 @@ public struct ChatMetrics: Sendable, Equatable {
     public static func metrics(for density: ChatDensity, input: ChatInput) -> ChatMetrics {
         let flat: Double = input == .touch ? 32 : 24
         let open: Double = input == .touch ? 44 : 36
+        let air: Double = input == .touch ? 16 : 12
         switch density {
         case .compact:
             return ChatMetrics(
@@ -112,8 +114,8 @@ public struct ChatMetrics: Sendable, Equatable {
                 imageMaxHeight: 180, imageStripGap: 8, codeCollapseLines: 14, promptBubblePadding: 6)
         case .comfortable:
             return ChatMetrics(
-                paragraphGap: 12, proseToFurnitureGap: 12, proseToCodeGap: 12, furnitureGap: 12,
-                pictureStripGap: 12, turnGap: 24, activityRowHeight: flat, seamRowHeight: flat,
+                paragraphGap: air, proseToFurnitureGap: air, proseToCodeGap: air, furnitureGap: air,
+                pictureStripGap: air, turnGap: 24, activityRowHeight: flat, seamRowHeight: flat,
                 railRowHeight: flat, railOpenRowHeight: open, railPlateWidth: 440, railPlateRows: 8,
                 imageMaxHeight: 300, imageStripGap: 8, codeCollapseLines: 14, promptBubblePadding: 8)
         }
