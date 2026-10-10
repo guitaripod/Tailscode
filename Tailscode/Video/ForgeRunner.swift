@@ -441,7 +441,8 @@ final class ForgeRunner {
         /// photographed drawing one without a renderer on the other end.
         private static func stagedSketch() -> ImageGenPreviewFrame {
             if let art = ForgeStagedArt.image(named: "cat-roof") {
-                let sketch = ForgeStagedArt.scaled(art, toWidth: 256)
+                let sketch = ForgeStagedArt.scaled(
+                    ForgeStagedArt.cropped(art, toAspect: 1280.0 / 704.0), toWidth: 256)
                 return ImageGenPreviewFrame(
                     encoding: .jpeg, bytes: sketch.jpegData(compressionQuality: 0.6) ?? Data())
             }

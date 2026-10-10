@@ -205,6 +205,11 @@ final class HomeViewController: UIViewController {
                     {
                         ImageStudio.shared.choose(engine: engine)
                     }
+                    if let aspect = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_ASPECT"]
+                        .flatMap(ImageGenAspect.init(rawValue:))
+                    {
+                        ImageStudio.shared.choose(aspect: aspect)
+                    }
                     self.updateImageMark()
                     let words = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_PROMPT"]
                     if ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_LANE"] != nil {

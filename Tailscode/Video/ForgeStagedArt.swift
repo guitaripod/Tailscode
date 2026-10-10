@@ -30,6 +30,19 @@
             ("a bowl of ramen with rising steam, moody kitchen light", "ramen"),
         ]
 
+        /// The middle of a picture cut to a shape, as the render's own frame is shaped.
+        static func cropped(_ image: UIImage, toAspect aspect: CGFloat) -> UIImage {
+            guard let cg = image.cgImage else { return image }
+            let width = CGFloat(cg.width)
+            let height = CGFloat(cg.height)
+            let cropWidth = min(width, height * aspect)
+            let cropHeight = cropWidth / aspect
+            let rect = CGRect(
+                x: (width - cropWidth) / 2, y: (height - cropHeight) / 2, width: cropWidth,
+                height: cropHeight)
+            return cg.cropping(to: rect).map { UIImage(cgImage: $0) } ?? image
+        }
+
         /// The picture scaled down to a width, the way the machine's own sketch frames arrive.
         static func scaled(_ image: UIImage, toWidth width: CGFloat) -> UIImage {
             let size = CGSize(width: width, height: width * image.size.height / image.size.width)

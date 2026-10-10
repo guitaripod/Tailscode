@@ -60,9 +60,10 @@ FORMAT_JPEG = 1
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 MODELS = {
-    "UNETLoader": ("unet_name", ["flux-2-klein-4b.safetensors", "qwen_image_2.1_int8_convrot.safetensors"]),
+    "UNETLoader": ("unet_name", ["flux-2-klein-4b.safetensors", "qwen_image_2.1_int8_convrot.safetensors",
+                                 "qwen_image_2.1_turbo_bf16.safetensors"]),
     "CLIPLoader": ("clip_name", ["qwen_3_4b.safetensors", "qwen3vl_8b_int8_convrot.safetensors"]),
-    "VAELoader": ("vae_name", ["qwen_image_2.1_vae_bf16.safetensors"]),
+    "VAELoader": ("vae_name", ["qwen_image_2.1_vae_bf16.safetensors", "flux2-vae.safetensors"]),
 }
 
 jobs = [0]

@@ -20,14 +20,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE=com.guitaripod.tailscode
 DEVICE_NAME="${TAILSCODE_SHOT_DEVICE_NAME:-TailscodeShots}"
-DERIVED="${TAILSCODE_SHOT_DERIVED:-build}"
+DERIVED="${TAILSCODE_SHOT_DERIVED:-$ROOT/build}"
 STUDIO_ART="${TAILSCODE_STUDIO_ART:-}"
 STUDIO_MOCK_HOST="${TAILSCODE_STUDIO_MOCK_HOST:-arch}"
 STUDIO_MOCK_PORT="${TAILSCODE_STUDIO_MOCK_PORT:-8201}"
 STUDIO_PROMPT="a lighthouse on a cliff at dusk, waves breaking below, last light on the lamp room"
 STUDIO_SEED=2477689473
 STUDIO_STEPS=25
-STUDIO_SECONDS=9.8
+STUDIO_SECONDS=4.9
 DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max
 LOCALE="${TAILSCODE_SHOT_LOCALE:-en-US}"
 OUT="$ROOT/marketing/appstore/iphone"
@@ -114,8 +114,8 @@ SHOTS=(
   "pv-demo-expand|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_EXPAND=1|14"
   "pv-demo-search|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_SEARCH=deep|16"
   "pv-search|--demo|TAILSCODE_OPEN_SESSION=demo-o1 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_SEARCH=qwen|16"
-  "studio-paint|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_OPEN_IMAGE=$STUDIO_MOCK_HOST:$STUDIO_MOCK_PORT TAILSCODE_IMAGE_ENGINE=quality TAILSCODE_IMAGE_SEED=$STUDIO_SEED|24"
-  "studio-done|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_OPEN_IMAGE=$STUDIO_MOCK_HOST:$STUDIO_MOCK_PORT TAILSCODE_IMAGE_ENGINE=quality TAILSCODE_IMAGE_SEED=$STUDIO_SEED|30"
+  "studio-paint|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_OPEN_IMAGE=$STUDIO_MOCK_HOST:$STUDIO_MOCK_PORT TAILSCODE_IMAGE_ENGINE=quality TAILSCODE_IMAGE_ASPECT=landscape TAILSCODE_IMAGE_SEED=$STUDIO_SEED|15"
+  "studio-done|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_OPEN_IMAGE=$STUDIO_MOCK_HOST:$STUDIO_MOCK_PORT TAILSCODE_IMAGE_ENGINE=quality TAILSCODE_IMAGE_ASPECT=landscape TAILSCODE_IMAGE_SEED=$STUDIO_SEED|30"
   "video-run|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_VIDEO_STATE=running TAILSCODE_VIDEO_FRAME=1 TAILSCODE_FORGE_ART=$STUDIO_ART|12"
   "video-done|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_VIDEO_STATE=done TAILSCODE_VIDEO_FRAME=1 TAILSCODE_FORGE_ART=$STUDIO_ART|14"
   "welcome||TAILSCODE_FAKE_TAILNET=up|5"
@@ -171,7 +171,7 @@ build() {
     -destination "generic/platform=iOS Simulator" -derivedDataPath "$DERIVED" build \
     >/tmp/tailscode-shots-build.log 2>&1 ||
     { grep -E "error:|BUILD FAILED" /tmp/tailscode-shots-build.log | tail -25; exit 1; }
-  find "$ROOT/$DERIVED/Build/Products" -name Tailscode.app -maxdepth 3 | head -1
+  find "$DERIVED/Build/Products" -name Tailscode.app -maxdepth 3 | head -1
 }
 
 install_fresh() {
@@ -194,7 +194,7 @@ studio_mock() {
   rsync -a "$ROOT/scripts/mock-comfyui.py" "$STUDIO_MOCK_HOST:$dir/" >/dev/null 2>&1
   rsync -a --exclude lighthouse.png --exclude contact.png "$STUDIO_ART"/*.png "$STUDIO_MOCK_HOST:$dir/out/studio/" >/dev/null 2>&1
   rsync -a "$STUDIO_ART/lighthouse.png" "$STUDIO_MOCK_HOST:$dir/results/" >/dev/null 2>&1
-  studio_ssh "cd $dir && MOCK_OUTPUT=\$PWD/out MOCK_RESULTS_FROM=\$PWD/results MOCK_RESULTS=lighthouse.png MOCK_PORT=$STUDIO_MOCK_PORT MOCK_RENDER_SECONDS=$STUDIO_SECONDS MOCK_PAUSE_AT_STEP=$pause nohup python3 mock-comfyui.py </dev/null >mock.log 2>&1 & echo \$! >mock.pid" >/dev/null 2>&1
+  studio_ssh "cd $dir && { MOCK_OUTPUT=\$PWD/out MOCK_RESULTS_FROM=\$PWD/results MOCK_RESULTS=lighthouse.png MOCK_PORT=$STUDIO_MOCK_PORT MOCK_RENDER_SECONDS=$STUDIO_SECONDS MOCK_PAUSE_AT_STEP=$pause nohup python3 mock-comfyui.py </dev/null >mock.log 2>&1 & echo \$! >mock.pid; }" >/dev/null 2>&1
   sleep 2
 }
 
