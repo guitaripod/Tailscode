@@ -219,9 +219,11 @@ final class StudioDock: @unchecked Sendable {
     /// landing may not move a thing on the page.
     static let footChars: Int32 = 30
 
-    /// Generate, or Stop while a render is out: the same control, saying which it is.
+    /// Generate, or Stop while a render is out: the same control, saying which it is. Stop wears
+    /// the key that does it, because Esc stops a render before it closes the sheet and a rule that
+    /// is only correct is not yet a rule anybody can find.
     func setGo(title: String, stopping: Bool, enabled: Bool = true) {
-        gtk_button_set_label(ptr(go), title)
+        gtk_button_set_label(ptr(go), stopping ? "\(title)  \(Self.stopKey)" : title)
         if stopping {
             Gtk.addClass(go, "stopping")
         } else {
@@ -231,6 +233,9 @@ final class StudioDock: @unchecked Sendable {
     }
 
     private var surveyShown: Date?
+
+    /// The Escape key's own symbol, the one the Mac's Stop wears.
+    static let stopKey = "\u{238B}"
 
     /// The one control that writes words rather than choosing a value, so it says which model will
     /// write them and never runs on its own: press once to have the brief written out, press again

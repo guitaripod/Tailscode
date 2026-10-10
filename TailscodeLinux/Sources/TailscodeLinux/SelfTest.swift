@@ -256,6 +256,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkStudioSheet()
+            report("studio sheet: \(checks) claims hold — one frame, one window, one keyboard")
+        } catch {
+            report("studio sheet: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkVideoSlot()
             report("video slot: \(checks) answers, player \(SelfTest.playerState)")
         } catch {

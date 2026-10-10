@@ -10,11 +10,17 @@ import TailscodeCore
 /// width and a strip above the dock below it, and the chips fold into one Settings control when
 /// the room is short or narrow.
 ///
+/// In the sheet the room is measured against the sheet rather than against what is left under its
+/// toolbar: `surround` is the height of what sits above the frame, so the folds read the same room
+/// the design names (960 points of sheet width, 760 points of sheet height).
+///
 /// Everything moves by reference. A rail becoming a strip is the same shelf turned and put
 /// somewhere else, so the tile somebody is looking at is the same tile after the pane is resized.
 final class StudioFrame: @unchecked Sendable {
     let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     let metrics: StudioMetrics
+    /// Points of the host that sit above this frame and belong to the room it is measured in.
+    var surround: Double = 0
     let machine = StudioMachineButton()
     let toolbar = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
     let shell: StudioStageShell
@@ -35,10 +41,10 @@ final class StudioFrame: @unchecked Sendable {
     /// What the dock spends on its own sides: its holder's margins, its padding and its border.
     static let dockInset: Double = 16 * 2 + 12 * 2 + 2
 
-    /// - Parameter window: whether the Studio is a window of its own, whose header carries the
-    ///   machine pill, rather than a pane with a bar for it.
+    /// - Parameter window: whether the Studio is the sheet, whose toolbar carries the machine pill,
+    ///   rather than a pane with a bar for it.
     init(helper: UnsafeMutablePointer<GtkWidget>, window: Bool) {
-        metrics = window ? .window : .pane
+        metrics = window ? .sheet : .pane
         shell = StudioStageShell(metrics: metrics)
         shelf = StudioShelfView(metrics: metrics)
         dock = StudioDock(helper: helper)
@@ -109,7 +115,8 @@ final class StudioFrame: @unchecked Sendable {
     /// moves nothing: a chip's menu open across a resize stays open.
     func arrange(width: Double, height: Double) {
         guard width > 0, height > 0 else { return }
-        let next = StudioArrangement.resolve(width: width, height: height, metrics: metrics)
+        let next = StudioArrangement.resolve(
+            width: width, height: height + surround, metrics: metrics)
         let rail = next.shelf == .rail
         let beside = width - (rail ? metrics.railWidth : 0)
         shell.setCompact(width < 640)

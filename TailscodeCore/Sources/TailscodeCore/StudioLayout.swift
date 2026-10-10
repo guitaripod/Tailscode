@@ -51,6 +51,15 @@ public struct StudioMetrics: Sendable, Equatable {
         railWidth: 112, tileSide: 88, gutter: 8, stageMargin: 24, verbsBand: 52,
         dockMinimumHeight: 96)
 
+    /// The Studio inside the sheet, whose folds are measured against the sheet rather than the
+    /// window: the shelf is a strip under 960 points of sheet width and the chips move into
+    /// Settings under 760 points of sheet height, because the sheet's own toolbar has already spent
+    /// 44 points of the room before the stage is given any.
+    public static let sheet = StudioMetrics(
+        railMinimumWidth: 960, settingsFoldHeight: 760, settingsFoldWidth: 560, toolbarHeight: 0,
+        railWidth: 112, tileSide: 88, gutter: 8, stageMargin: 24, verbsBand: 52,
+        dockMinimumHeight: 96)
+
     /// A strip is one row of tiles and the gutters above and below it.
     public var stripHeight: Double { tileSide + gutter * 2 }
 }

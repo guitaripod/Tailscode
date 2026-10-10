@@ -15,6 +15,14 @@ import Testing
         #expect(StudioArrangement.resolve(width: 1200, height: 519.5).chips == .settings)
     }
 
+    @Test func theSheetMeasuresItsFoldsAgainstItselfNineSixtyAndSevenSixty() {
+        #expect(StudioArrangement.resolve(width: 960, height: 800, metrics: .sheet).shelf == .rail)
+        #expect(StudioArrangement.resolve(width: 959.5, height: 800, metrics: .sheet).shelf == .strip)
+        #expect(StudioArrangement.resolve(width: 1200, height: 760, metrics: .sheet).chips == .row)
+        #expect(StudioArrangement.resolve(width: 1200, height: 759.5, metrics: .sheet).chips == .settings)
+        #expect(StudioArrangement.resolve(width: 1200, height: 760, metrics: .sheet).chips == .row)
+    }
+
     @Test func aNarrowPaneFoldsTheChipsToo() {
         #expect(StudioArrangement.resolve(width: 559, height: 700).chips == .settings)
         #expect(StudioArrangement.resolve(width: 560, height: 700).chips == .row)

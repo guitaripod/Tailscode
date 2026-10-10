@@ -151,7 +151,7 @@ enum ParityManifest {
         case .imageLibrary: return .implemented("DrawLibrary")
         case .imagePromptHelper: return .implemented("helperSections")
         case .imageLivePreview: return .implemented("adoptSketch")
-        case .studioSheet: return .gap("the sheet lands with the Linux sheet task")
+        case .studioSheet: return .implemented("StudioSheet")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("acceptChatDrops")
         case .clickToActivate: return .implemented("onPressCapture")
@@ -186,7 +186,7 @@ enum ParityManifest {
             return .notApplicable(
                 "there is no App Store on this desk to buy from, and the app is GPL-3.0 — this client is built from the source and is simply whole")
         case .videoForge: return .implemented("ForgePane")
-        case .forgeEntry: return .implemented("ForgeWindow")
+        case .forgeEntry: return .implemented("presentForge")
         case .forgeSetup: return .implemented("ForgeSetupWindow")
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("presentClipMenu")
