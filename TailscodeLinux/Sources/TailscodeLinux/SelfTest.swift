@@ -247,6 +247,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkPaneVerbs()
+            report("pane verbs: \(checks) chords, divider keys and strip drags reach the tree")
+        } catch {
+            report("pane verbs: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkVideoSlot()
             report("video slot: \(checks) answers, player \(SelfTest.playerState)")
         } catch {
@@ -835,6 +843,100 @@ public enum SelfTest {
         try expect(
             (stacked[second]?.y ?? 0) > (stacked[arrival]?.y ?? 0),
             "the keyboard's own split still opens second")
+        return checks
+    }
+
+    /// The pane verbs from the key to the tree: every registered chord resolves to the action Core
+    /// dispatches, the action does what the shortcut's words promise, a divider key means the same
+    /// step as a pointer, and a strip dragged across panes can never be read as a chat.
+    private static func checkPaneVerbs() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("pane verbs: \(label)") }
+            checks += 1
+        }
+
+        let set = ShortcutSet.build(overrides: [:])
+        func resolve(_ spec: String) -> KeyAction? {
+            guard let (_, chords) = KeySpec.parse(spec) else { return nil }
+            var pending: [KeyChord] = []
+            for chord in chords {
+                switch set.resolve(
+                    chord, context: .normal, pending: pending, awaitingApproval: false)
+                {
+                case .run(let action): return action
+                case .pending(let held): pending = held
+                case .unbound: return nil
+                }
+            }
+            return nil
+        }
+        try expect(resolve("ctrl+w a") == .arrangeSplits, "ctrl+w a arranges")
+        try expect(resolve("ctrl+w return") == .promoteSplit, "ctrl+w return promotes")
+        try expect(resolve("ctrl+w r") == .rotateSplits(true), "ctrl+w r rotates")
+        try expect(resolve("ctrl+w shift+r") == .rotateSplits(false), "ctrl+w shift+r rotates back")
+        try expect(resolve("ctrl+w shift+h") == .moveSplitToEdge(.left), "shift+h moves far left")
+        try expect(resolve("ctrl+w shift+l") == .moveSplitToEdge(.right), "shift+l moves far right")
+        try expect(resolve("ctrl+w >") == .resizeSplit(.right), "> widens")
+        try expect(resolve("ctrl+w <") == .resizeSplit(.left), "< narrows")
+        try expect(resolve("ctrl+w +") == .resizeSplit(.down), "+ makes taller")
+        try expect(resolve("ctrl+w -") == .resizeSplit(.up), "- makes shorter")
+        try expect(resolve("ctrl+w w") == .cycleSplit(true), "ctrl+w w cycles")
+
+        for group in SplitMenu.groups {
+            for id in group.shortcutIDs {
+                try expect(!(set.effective[id] ?? []).isEmpty, "the menu row \(id) wears a chord")
+            }
+        }
+
+        var layout = SplitEven.arrange(ids: (0..<4).map { _ in PaneID() }, as: .sideBySide)!
+        let ids = layout.paneIDs
+        let placement = layout.placement(in: SplitSize(width: 1200, height: 800))
+        var shapes: [SplitArrangement] = []
+        for _ in 0..<4 {
+            try expect(
+                layout.perform(.arrangeSplits, placement: placement) == .restructured,
+                "arrange restructures")
+            shapes.append(SplitEven.shape(of: layout))
+        }
+        try expect(
+            shapes == [.stacked, .grid, .mainStack, .sideBySide], "arrange walks the cycle")
+        try expect(Set(layout.paneIDs) == Set(ids), "arranging keeps every pane")
+        try expect(layout.isValid, "the tree stays valid")
+
+        try expect(Gtk.dividerKey(0, large: false) == .back(large: false), "left steps back")
+        try expect(Gtk.dividerKey(1, large: true) == .forward(large: true), "shift+right steps far")
+        try expect(Gtk.dividerKey(2, large: false) == .lowest, "Home goes to the start")
+        try expect(Gtk.dividerKey(3, large: false) == .highest, "End goes to the end")
+        try expect(Gtk.dividerKey(9, large: false) == nil, "any other key is not a divider's")
+
+        let strip = PaneMovePayload(pane: ids[1])
+        try expect(PaneMovePayload.decode(strip.encoded) == strip, "a strip payload round-trips")
+        try expect(PaneDragPayload.decode(strip.encoded) == nil, "a pane is never read as a chat")
+        try expect(
+            PaneMovePayload.decode(PaneDragPayload(profileID: "srv", sessionID: "ses").encoded)
+                == nil,
+            "a chat is never read as a pane")
+        try expect(
+            PaneMovePayload.identifier != PaneDragPayload.identifier,
+            "the two travel under different types")
+        try expect(
+            PaneDropTarget.move(ids[1], onto: ids[1], zone: .fill) == nil,
+            "a pane dropped on itself does nothing")
+        try expect(
+            PaneDropTarget.move(ids[1], onto: ids[0], zone: .fill) == .swap(ids[1], ids[0]),
+            "the middle swaps")
+        try expect(
+            PaneDropTarget.move(ids[1], onto: ids[0], zone: .split(.top))
+                == .move(ids[1], onto: ids[0], edge: .top),
+            "an edge moves")
+        try expect(
+            PaneDropZone.fill.moveVerb != PaneDropZone.fill.verb,
+            "the highlight names the move, not the open")
+        var dropped = layout
+        let moved = dropped.apply(.move(ids[1], onto: ids[0], edge: .top))
+        try expect(moved && dropped.isValid, "a strip dropped on an edge leaves a valid tree")
+        try expect(dropped.focusedPane == ids[1], "the pane that moved takes the focus")
         return checks
     }
 

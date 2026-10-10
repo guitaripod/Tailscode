@@ -768,21 +768,38 @@ GType tailscode_chat_ref_get_type(void) {
     return (GType)once;
 }
 
-/// A row the pointer can pick up. The content provider is made with a reference of its own, and
-/// the drag source takes one more rather than taking that one over — so it has to be let go of
-/// here, or every chat row the sidebar builds leaves a provider and its payload behind, and the
-/// sidebar builds all of them again on every list change.
-void tailscode_make_chat_drag_source(GtkWidget *widget, const char *payload) {
+GType tailscode_pane_ref_get_type(void) {
+    static gsize once = 0;
+    if (g_once_init_enter(&once)) {
+        GType registered = g_boxed_type_register_static(
+            "TailscodePaneRef", tailscode_chat_ref_copy, tailscode_chat_ref_free);
+        g_once_init_leave(&once, registered);
+    }
+    return (GType)once;
+}
+
+/// A widget the pointer can pick up, carrying `payload` under `type`. The content provider is made
+/// with a reference of its own, and the drag source takes one more rather than taking that one
+/// over — so it has to be let go of here, or every chat row the sidebar builds leaves a provider
+/// and its payload behind, and the sidebar builds all of them again on every list change.
+static void tailscode_make_drag_source(GtkWidget *widget, GType type, const char *payload) {
     GtkDragSource *source = gtk_drag_source_new();
     gtk_drag_source_set_actions(source, GDK_ACTION_COPY);
-    GdkContentProvider *content =
-        gdk_content_provider_new_typed(tailscode_chat_ref_get_type(), payload);
+    GdkContentProvider *content = gdk_content_provider_new_typed(type, payload);
     gtk_drag_source_set_content(source, content);
     g_object_unref(content);
     GdkPaintable *ghost = gtk_widget_paintable_new(widget);
     gtk_drag_source_set_icon(source, ghost, 0, 0);
     g_object_unref(ghost);
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(source));
+}
+
+void tailscode_make_chat_drag_source(GtkWidget *widget, const char *payload) {
+    tailscode_make_drag_source(widget, tailscode_chat_ref_get_type(), payload);
+}
+
+void tailscode_make_pane_drag_source(GtkWidget *widget, const char *payload) {
+    tailscode_make_drag_source(widget, tailscode_pane_ref_get_type(), payload);
 }
 
 typedef struct {
@@ -793,7 +810,10 @@ typedef struct {
 } TailscodeChatDrop;
 
 static const char *tailscode_chat_ref_value(const GValue *value) {
-    if (!value || !G_VALUE_HOLDS(value, tailscode_chat_ref_get_type())) return NULL;
+    if (!value) return NULL;
+    if (!G_VALUE_HOLDS(value, tailscode_chat_ref_get_type())
+        && !G_VALUE_HOLDS(value, tailscode_pane_ref_get_type()))
+        return NULL;
     return g_value_get_boxed(value);
 }
 
@@ -820,8 +840,8 @@ static gboolean tailscode_chat_dropped(
     return box->drop(payload, x, y, box->data);
 }
 
-void tailscode_accept_chat_drops(
-    GtkWidget *widget,
+static void tailscode_accept_drops(
+    GtkWidget *widget, GType type,
     void (*motion)(const char *payload, double x, double y, void *data),
     void (*leave)(void *data),
     gboolean (*drop)(const char *payload, double x, double y, void *data),
@@ -831,13 +851,31 @@ void tailscode_accept_chat_drops(
     box->leave = leave;
     box->drop = drop;
     box->data = data;
-    GtkDropTarget *target = gtk_drop_target_new(tailscode_chat_ref_get_type(), GDK_ACTION_COPY);
+    GtkDropTarget *target = gtk_drop_target_new(type, GDK_ACTION_COPY);
     gtk_drop_target_set_preload(target, TRUE);
     g_signal_connect_data(target, "motion", G_CALLBACK(tailscode_chat_motion), box, NULL, 0);
     g_signal_connect_data(target, "enter", G_CALLBACK(tailscode_chat_motion), box, NULL, 0);
     g_signal_connect_data(target, "leave", G_CALLBACK(tailscode_chat_leave), box, NULL, 0);
     g_signal_connect_data(target, "drop", G_CALLBACK(tailscode_chat_dropped), box, NULL, 0);
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(target));
+}
+
+void tailscode_accept_chat_drops(
+    GtkWidget *widget,
+    void (*motion)(const char *payload, double x, double y, void *data),
+    void (*leave)(void *data),
+    gboolean (*drop)(const char *payload, double x, double y, void *data),
+    void *data) {
+    tailscode_accept_drops(widget, tailscode_chat_ref_get_type(), motion, leave, drop, data);
+}
+
+void tailscode_accept_pane_drops(
+    GtkWidget *widget,
+    void (*motion)(const char *payload, double x, double y, void *data),
+    void (*leave)(void *data),
+    gboolean (*drop)(const char *payload, double x, double y, void *data),
+    void *data) {
+    tailscode_accept_drops(widget, tailscode_pane_ref_get_type(), motion, leave, drop, data);
 }
 
 typedef struct {
@@ -1095,6 +1133,19 @@ gboolean tailscode_paned_handle_center(GtkWidget *widget, double *x, double *y) 
     return TRUE;
 }
 
+/// The handle a `GtkPaned` draws between its children: the one child that is neither the start
+/// nor the end. GTK keeps it private, but it is an ordinary child in the widget tree, and it is
+/// the thing a keyboard focuses and a screen reader announces as the splitter.
+static GtkWidget *tailscode_paned_handle(GtkPaned *paned) {
+    GtkWidget *start = gtk_paned_get_start_child(paned);
+    GtkWidget *end = gtk_paned_get_end_child(paned);
+    for (GtkWidget *child = gtk_widget_get_first_child(GTK_WIDGET(paned)); child;
+         child = gtk_widget_get_next_sibling(child)) {
+        if (child != start && child != end) return child;
+    }
+    return NULL;
+}
+
 static gboolean tailscode_point_in_paned_handle(GtkPaned *paned, double x, double y) {
     gboolean horizontal = FALSE;
     double low = 0, high = 0, across = 0;
@@ -1112,6 +1163,8 @@ static void tailscode_paned_double_click_pressed(
     GtkWidget *widget = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
     if (!widget || !GTK_IS_PANED(widget)) return;
     if (!tailscode_point_in_paned_handle(GTK_PANED(widget), x, y)) return;
+    GtkWidget *handle = tailscode_paned_handle(GTK_PANED(widget));
+    if (handle) gtk_widget_grab_focus(handle);
     gboolean horizontal =
         gtk_orientable_get_orientation(GTK_ORIENTABLE(widget)) == GTK_ORIENTATION_HORIZONTAL;
     double point = horizontal ? x : y;
@@ -3125,3 +3178,114 @@ gboolean tailscode_systemd_set_unit_properties(
 #include <sys/prctl.h>
 
 void tailscode_name_thread(const char *name) { prctl(PR_SET_NAME, name, 0, 0, 0); }
+
+typedef struct {
+    gboolean (*handler)(int key, int large, void *);
+    void *data;
+} TailscodePanedKey;
+
+static gboolean tailscode_paned_key_pressed(
+    GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state,
+    gpointer raw) {
+    (void)keycode;
+    GtkWidget *paned = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(controller));
+    GtkWidget *handle = tailscode_paned_handle(GTK_PANED(paned));
+    GtkRoot *root = gtk_widget_get_root(paned);
+    GtkWidget *focus = root ? gtk_root_get_focus(root) : NULL;
+    if (!focus || (focus != handle && focus != paned)) return FALSE;
+    int key;
+    switch (keyval) {
+    case GDK_KEY_Left:
+    case GDK_KEY_Up: key = 0; break;
+    case GDK_KEY_Right:
+    case GDK_KEY_Down: key = 1; break;
+    case GDK_KEY_Home: key = 2; break;
+    case GDK_KEY_End: key = 3; break;
+    default: return FALSE;
+    }
+    if (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK)) return FALSE;
+    TailscodePanedKey *box = raw;
+    return box->handler(key, (state & GDK_SHIFT_MASK) ? 1 : 0, box->data);
+}
+
+static void tailscode_paned_key_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodePanedKey *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
+void tailscode_paned_handle_keys(
+    GtkWidget *paned, gboolean (*handler)(int key, int large, void *), void *data) {
+    TailscodePanedKey *box = g_new0(TailscodePanedKey, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkEventController *controller = gtk_event_controller_key_new();
+    gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_CAPTURE);
+    g_signal_connect_data(
+        controller, "key-pressed", G_CALLBACK(tailscode_paned_key_pressed), box,
+        tailscode_paned_key_destroy, 0);
+    gtk_widget_add_controller(paned, controller);
+    GtkWidget *handle = tailscode_paned_handle(GTK_PANED(paned));
+    if (handle) gtk_widget_set_focusable(handle, TRUE);
+}
+
+void tailscode_paned_describe(
+    GtkWidget *paned, const char *label, double minimum, double maximum, double now,
+    const char *text) {
+    GtkWidget *handle = tailscode_paned_handle(GTK_PANED(paned));
+    gtk_accessible_update_property(GTK_ACCESSIBLE(paned), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1);
+    if (!handle) return;
+    gtk_accessible_update_property(
+        GTK_ACCESSIBLE(handle), GTK_ACCESSIBLE_PROPERTY_LABEL, label,
+        GTK_ACCESSIBLE_PROPERTY_VALUE_MIN, minimum, GTK_ACCESSIBLE_PROPERTY_VALUE_MAX, maximum,
+        GTK_ACCESSIBLE_PROPERTY_VALUE_NOW, now, GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT, text, -1);
+}
+
+gboolean tailscode_paned_focus_handle(GtkWidget *paned) {
+    GtkWidget *handle = tailscode_paned_handle(GTK_PANED(paned));
+    return handle ? gtk_widget_grab_focus(handle) : FALSE;
+}
+
+static const char *tailscode_property_verdict(
+    GtkAccessible *accessible, GtkAccessibleProperty property, double expected) {
+    if (!gtk_test_accessible_has_property(accessible, property)) return "missing";
+    char *problem = gtk_test_accessible_check_property(accessible, property, expected);
+    if (!problem) return "ok";
+    g_free(problem);
+    return "differs";
+}
+
+char *tailscode_paned_reading(
+    GtkWidget *paned, const char *label, double minimum, double maximum, double now) {
+    GtkWidget *handle = tailscode_paned_handle(GTK_PANED(paned));
+    if (!handle) return g_strdup("no-handle");
+    GtkAccessible *accessible = GTK_ACCESSIBLE(handle);
+    GtkRoot *root = gtk_widget_get_root(paned);
+    GtkWidget *focus = root ? gtk_root_get_focus(root) : NULL;
+    GEnumClass *roles = g_type_class_ref(GTK_TYPE_ACCESSIBLE_ROLE);
+    GEnumValue *name = g_enum_get_value(roles, gtk_accessible_get_accessible_role(accessible));
+    const char *labelled = "missing";
+    if (gtk_test_accessible_has_property(accessible, GTK_ACCESSIBLE_PROPERTY_LABEL)) {
+        char *problem =
+            gtk_test_accessible_check_property(accessible, GTK_ACCESSIBLE_PROPERTY_LABEL, label);
+        labelled = problem ? "differs" : "ok";
+        g_free(problem);
+    }
+    char *out = g_strdup_printf(
+        "role=%s focused=%d label=%s min=%s max=%s now=%s", name ? name->value_nick : "?",
+        focus == handle || focus == paned, labelled,
+        tailscode_property_verdict(accessible, GTK_ACCESSIBLE_PROPERTY_VALUE_MIN, minimum),
+        tailscode_property_verdict(accessible, GTK_ACCESSIBLE_PROPERTY_VALUE_MAX, maximum),
+        tailscode_property_verdict(accessible, GTK_ACCESSIBLE_PROPERTY_VALUE_NOW, now));
+    g_type_class_unref(roles);
+    return out;
+}
+
+gboolean tailscode_focus_on_divider(GtkWidget *root) {
+    GtkWidget *focus = tailscode_focused_widget(root);
+    if (!focus) return FALSE;
+    GtkWidget *parent = gtk_widget_get_parent(focus);
+    return parent && GTK_IS_PANED(parent) && tailscode_paned_handle(GTK_PANED(parent)) == focus;
+}

@@ -128,10 +128,13 @@ enum ParityManifest {
         case .terminalPane: return .implemented("TerminalPane")
         case .listBesideConversation: return .implemented("makeSidebarPane")
         case .paneDensity: return .gap("panes are all full; glance and parked faces, the live chip and the governor that assigns density are built in the canvas milestone")
-        case .paneArrangements: return .gap("the arrangement, promote and rotate verbs exist in Core but no host wires them yet; built in the canvas milestone")
+        case .paneArrangements: return .implemented("paneMenuSections")
         case .paneOverflow: return .gap("the nested split host has no overflow strip and never hides a pane for want of room; built in the canvas milestone")
-        case .paneResizeByKey: return .gap("dividers move by pointer only and are not accessible splitters; keyboard resize is built in the canvas milestone")
-        case .paneRearrange: return .gap("a pane's strip is not a drag source yet; built with the canvas, in the rearrange milestone")
+        case .paneResizeByKey:
+            return .partial(
+                "onDividerKey",
+                missing: "the divider's splitter role: GTK 4.22's GtkPaned handle exposes the generic role and a host cannot assign another, so a screen reader reads each divider's label and its position between the extremes but is not told it is a splitter")
+        case .paneRearrange: return .implemented("receivePaneDrop")
         case .safeRestore: return .implemented("parkRestoredChats")
         case .flightRecorder: return .implemented("FlightWriter")
         case .resourceGuard:

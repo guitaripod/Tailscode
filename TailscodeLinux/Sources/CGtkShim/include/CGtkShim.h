@@ -197,6 +197,21 @@ void tailscode_accept_chat_drops(
     gboolean (*drop)(const char *payload, double x, double y, void *data),
     void *data);
 
+/// The private type a dragged pane travels as, distinct from a chat's so a pane target never reads
+/// a chat as a pane and a chat target never reads a pane as a chat.
+GType tailscode_pane_ref_get_type(void);
+
+/// Makes `widget` (a pane's identity strip) draggable, carrying `payload` under the pane type.
+void tailscode_make_pane_drag_source(GtkWidget *widget, const char *payload);
+
+/// Accepts a dragged pane over `widget`, exactly as `tailscode_accept_chat_drops` accepts a chat.
+void tailscode_accept_pane_drops(
+    GtkWidget *widget,
+    void (*motion)(const char *payload, double x, double y, void *data),
+    void (*leave)(void *data),
+    gboolean (*drop)(const char *payload, double x, double y, void *data),
+    void *data);
+
 /// Accepts files dropped on `widget` and calls back with their paths. The drop payload is a
 /// `GdkFileList` inside a `GValue`, neither of which Swift can unbox, so the whole exchange is C.
 void tailscode_accept_file_drops(
@@ -252,6 +267,32 @@ void tailscode_on_pointer(
 /// ordinary drag and every click inside a child untouched.
 void tailscode_on_paned_handle_double_click(
     GtkWidget *paned, void (*handler)(void *), void *data);
+
+/// A paned's handle answers the keyboard once it holds focus (a press on it, or F8): `key` is 0
+/// for Left or Up, 1 for Right or Down, 2 for Home and 3 for End, `large` is set with shift. The
+/// handler answers whether it used the key; a key pressed while focus is anywhere else inside the
+/// paned is left alone, so the panes' own text fields keep their arrows.
+void tailscode_paned_handle_keys(
+    GtkWidget *paned, gboolean (*handler)(int key, int large, void *), void *data);
+
+/// Names the handle for assistive technology: the label on the paned and its handle, and the
+/// handle's position as a value between its extremes with the words a reader says.
+void tailscode_paned_describe(
+    GtkWidget *paned, const char *label, double minimum, double maximum, double now,
+    const char *text);
+
+/// Whether keyboard focus is on a paned's handle, so the window's own key handling can leave the
+/// arrow keys and Home and End to the divider that holds focus.
+gboolean tailscode_focus_on_divider(GtkWidget *root);
+
+/// Moves keyboard focus onto the handle itself, as a press on it does.
+gboolean tailscode_paned_focus_handle(GtkWidget *paned);
+
+/// What the toolkit's accessibility layer now holds for the handle, compared with what the caller
+/// meant it to hold: the role and, for the label and each value, ok, differs or missing. Caller
+/// frees the string.
+char *tailscode_paned_reading(
+    GtkWidget *paned, const char *label, double minimum, double maximum, double now);
 
 /// The middle of that same handle in the paned's own coordinates — what the driver aims a real
 /// pointer at, so the test and the gesture agree on where the divider is.

@@ -15,6 +15,9 @@ final class ChatPane: @unchecked Sendable {
 
     let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let identityLabel = Gtk.label("", css: "pane-identity", selectable: false)
+    /// What the strip says without the activity glyph: the name a divider gives this pane when it
+    /// introduces itself to a screen reader.
+    private(set) var identityName = ""
     private var identityActivity: ActivityKind?
     /// The row the wave last had its hands on. A reveal is a prefix painted straight into a label,
     /// so the row it was painting is the one row that can be left holding half a sentence.
@@ -306,6 +309,7 @@ final class ChatPane: @unchecked Sendable {
 
         gtk_widget_set_visible(identityLabel, 0)
         gtk_label_set_ellipsize(op(identityLabel), PANGO_ELLIPSIZE_MIDDLE)
+        Gtk.makePaneDragSource(identityLabel, payload: PaneMovePayload(pane: id).encoded)
         gtk_box_append(ptr(root), identityLabel)
 
         Gtk.addClass(authBanner, "banner-auth")
@@ -1046,6 +1050,7 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func setIdentity(_ text: String, activity: ActivityKind?) {
+        identityName = text
         guard let activity else {
             ActivityPulse.apply(nil, to: identityLabel)
             gtk_label_set_text(op(identityLabel), text)
