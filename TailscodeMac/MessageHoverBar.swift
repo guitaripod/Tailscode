@@ -166,35 +166,11 @@ final class MessageHoverBar: NSResponder {
         return views
     }
 
-    /// A message's own words as it wrote them — the markdown an answer was written in, which is
-    /// what a paste into anywhere else wants — with the harness's own markup taken out. Only what
-    /// it said: a part's `text` also answers for a thought, and a thought is not the answer.
-    static func words(of message: ChatMessage) -> String {
-        message.parts.compactMap { part -> String? in
-            guard case .text(let value) = part.kind else { return nil }
-            return value
-        }
-            .map { AgentMarkup.strip($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n\n")
-    }
+    static func words(of message: ChatMessage) -> String { MessageHover.words(of: message) }
 
-    /// When a message was written, as a clock reads it: the time alone today, and the system's own
-    /// words for the day before that.
     static func stamp(_ date: Date, now: Date = Date()) -> String {
-        if Calendar.current.isDate(date, inSameDayAs: now) {
-            return date.formatted(date: .omitted, time: .shortened)
-        }
-        return relative.string(from: date)
+        MessageHover.stamp(date, now: now)
     }
-
-    private static let relative: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        formatter.doesRelativeDateFormatting = true
-        return formatter
-    }()
 
     private static func button(symbol: String, tip: String, action: @escaping () -> Void)
         -> NSButton

@@ -255,6 +255,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkPointerFeedback()
+            report("pointer feedback: \(checks) claims hold — the message under the pointer, its verbs, a chat row's verbs")
+        } catch {
+            report("pointer feedback: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkFlight()
             report("flight recorder: \(checks) claims hold — the ring round-trips and keeps counts only")
         } catch {
@@ -1109,6 +1117,133 @@ public enum SelfTest {
 
     private final class PickBox: @unchecked Sendable {
         var value: (String, EffortAsk)?
+    }
+
+    /// What a resting pointer is offered, proved without a screen: which message a vertical position
+    /// is on, what its plate says and offers (the time, Copy as words without thoughts, Undo only
+    /// on a prompt a server can wind back to), which way a chat row's verbs would go, and that the
+    /// two floating widgets take a place and give it back.
+    private static func checkPointerFeedback() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("pointer feedback: \(label)") }
+            checks += 1
+        }
+        let rows: [(owner: String?, span: ClosedRange<Double>)] = [
+            ("u1", 0...40), (nil, 50...60), ("a1", 70...100), ("a1", 110...150), (nil, 160...170),
+            ("u2", 180...220),
+        ]
+        func hit(_ y: Double) -> PointerRows.Hit? {
+            PointerRows.message(
+                atY: y, count: rows.count, span: { rows[$0].span }, owner: { rows[$0].owner })
+        }
+        try expect(hit(20) == PointerRows.Hit(owner: "u1", rows: 0...0), "a prompt is found")
+        try expect(hit(55) == nil, "the room between a prompt and the work under it is nobody's")
+        try expect(
+            hit(85)?.rows == 2...3 && hit(105)?.rows == 2...3,
+            "an answer's rows are one message, and the room inside it is still on it")
+        try expect(hit(165) == nil, "a tool row is not a message")
+        try expect(hit(500) == nil && hit(-3) == nil, "off either end finds nothing")
+        try expect(
+            PointerRows.row(atY: 120, count: rows.count, span: { rows[$0].span }) == 3,
+            "a position finds its row")
+
+        let now = Date()
+        let prompt = ChatMessage(
+            id: "u", role: .user, agentType: .claudeCode,
+            parts: [MessagePart(id: "t", kind: .text("do it"))], createdAt: now)
+        let answer = ChatMessage(
+            id: "a", role: .assistant, agentType: .claudeCode,
+            parts: [
+                MessagePart(id: "t", kind: .text("First **part**.")),
+                MessagePart(id: "r", kind: .reasoning("a thought")),
+                MessagePart(id: "u", kind: .text("Second.")),
+            ], createdAt: now)
+        let winding = BackendCapabilities(
+            supportsFileBrowsing: false, supportsDiffs: false, supportsPermissions: false,
+            supportsMultipleSessions: true, supportsModelSelection: false,
+            supportsAttachments: false, supportsRevert: true)
+        let fixed = BackendCapabilities(
+            supportsFileBrowsing: false, supportsDiffs: false, supportsPermissions: false,
+            supportsMultipleSessions: true, supportsModelSelection: false,
+            supportsAttachments: false)
+        try expect(
+            MessageHover.words(of: answer) == "First **part**.\n\nSecond.",
+            "Copy is the words as written, thoughts left out")
+        try expect(
+            MessageHover.verbs(for: prompt, isPrompt: true, capabilities: winding, now: now).undo,
+            "a prompt on a server that can wind back offers Undo")
+        try expect(
+            !MessageHover.verbs(
+                for: prompt, isPrompt: true, capabilities: fixed, now: now).undo,
+            "a server that cannot wind back offers none")
+        try expect(
+            !MessageHover.verbs(for: answer, isPrompt: false, capabilities: winding, now: now).undo,
+            "an answer is never wound back to")
+        try expect(
+            MessageHover.stamp(now, now: now) == now.formatted(date: .omitted, time: .shortened),
+            "today is the time alone")
+        try expect(
+            MessageHover.stamp(now.addingTimeInterval(-3 * 86_400), now: now).count
+                > MessageHover.stamp(now, now: now).count,
+            "an older message says which day")
+
+        let off = ChatRowVerbState(pinned: false, saved: false, archived: false)
+        let on = ChatRowVerbState(pinned: true, saved: true, archived: true)
+        try expect(
+            ChatRowVerb.allCases.map { off.title($0) } == ["Pin", "Save", "Archive", "More"],
+            "an unmarked chat's verbs say what they would do")
+        try expect(
+            ChatRowVerb.allCases.map { on.title($0) } == ["Unpin", "Unsave", "Unarchive", "More"],
+            "a marked chat's verbs read as the way out")
+        try expect(
+            ChatRowVerb.allCases.map { on.isOn($0) } == [true, true, true, false],
+            "the verbs in force are lit and the menu never is")
+        try expect(
+            ChatRowVerbStrip.icon(.save, on: true) != ChatRowVerbStrip.icon(.save, on: false),
+            "a saved chat's star is filled")
+
+        guard gtk_init_check() != 0 else { return checks }
+        let overlay = gtk_overlay_new()!
+        g_object_ref_sink(UnsafeMutableRawPointer(overlay))
+        defer { g_object_unref(UnsafeMutableRawPointer(overlay)) }
+        let bar = MessageHoverBar()
+        gtk_overlay_add_overlay(op(overlay), bar.widget)
+        let verbs = MessageHover.verbs(
+            for: prompt, isPrompt: true, capabilities: winding, now: now)
+        bar.present(messageID: "u", verbs: verbs, right: 600, top: 10, ceiling: 2)
+        try expect(bar.shownID == "u" && gtk_widget_get_visible(bar.widget) != 0, "the plate comes up")
+        try expect(
+            gtk_widget_get_margin_top(bar.widget) == 2
+                && gtk_widget_get_margin_start(bar.widget) > 2
+                && gtk_widget_get_margin_start(bar.widget) < 600,
+            "it hangs from the message's corner and never above its ceiling")
+        try expect(gtk_widget_get_can_focus(bar.widget) == 0, "it adds no focus stop")
+        bar.present(messageID: "u", verbs: verbs, right: 600, top: 300, ceiling: 2)
+        let first = gtk_widget_get_margin_top(bar.widget)
+        bar.present(messageID: "u", verbs: verbs, right: 700, top: 500, ceiling: 2)
+        try expect(
+            gtk_widget_get_margin_top(bar.widget) - first == 200
+                && gtk_widget_get_margin_start(bar.widget) > 400,
+            "moving it again lands where asked — its own margins are never read back as its size")
+        bar.dismiss()
+        try expect(bar.shownID == nil && gtk_widget_get_can_target(bar.widget) == 0, "and goes")
+
+        let strip = ChatRowVerbStrip()
+        gtk_overlay_add_overlay(op(overlay), strip.widget)
+        strip.present(key: "k", state: on, right: 300, bottom: 60)
+        try expect(strip.shownKey == "k" && strip.state == on, "the verbs come up on a row")
+        try expect(
+            gtk_widget_has_css_class(strip.button(for: .pin)!, "row-verb-on") != 0
+                && gtk_widget_has_css_class(strip.button(for: .more)!, "row-verb-on") == 0,
+            "a pinned chat's pin is lit")
+        strip.present(key: "k", state: off, right: 300, bottom: 60)
+        try expect(
+            gtk_widget_has_css_class(strip.button(for: .pin)!, "row-verb-on") == 0,
+            "and goes out when the state does")
+        strip.dismiss()
+        try expect(strip.shownKey == nil, "the strip lets go")
+        return checks
     }
 
     /// The recorder's Linux half: the writer's records built from this process's real counts and a

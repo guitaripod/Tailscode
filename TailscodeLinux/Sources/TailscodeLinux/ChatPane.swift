@@ -124,6 +124,15 @@ final class ChatPane: @unchecked Sendable {
     private var findCursor = 0
     private var highlightedRow: UInt = 0
     private var canvasBox: UnsafeMutablePointer<GtkWidget>?
+    let messageBar = MessageHoverBar()
+    var hoverOverlay: UnsafeMutablePointer<GtkWidget>?
+    var hoverPointer: (x: Double, y: Double)?
+    var hoverHeldOff = false
+    var hoverDirty = true
+    var hoverRefreshQueued = false
+    var hoverQuietToken: UInt = 0
+    var hoverVerbs: (id: String, verbs: MessageHover.Verbs)?
+    var hoverOwners: [String: String] = [:]
     /// The room under the transcript that lets a just-sent prompt rest at the top of the window,
     /// and the row it was made for. Zero once the answer has filled it or the turn has ended.
     private var canvasPadding = 0.0
@@ -328,7 +337,10 @@ final class ChatPane: @unchecked Sendable {
         gtk_widget_set_vexpand(scroller, 1)
         Gtk.onPressHold(
             scroller,
-            down: { [weak self] in self?.pointerHeld = true },
+            down: { [weak self] in
+                self?.pointerHeld = true
+                self?.messageHoverPressed()
+            },
             up: { [weak self] in
                 Gtk.onMain { [weak self] in
                     Gtk.onMain { [weak self] in self?.releasePointer() }
@@ -349,6 +361,7 @@ final class ChatPane: @unchecked Sendable {
             self?.jumpToBottom()
         }
         gtk_overlay_add_overlay(op(overlay), jumpButton)
+        installMessageHover(on: overlay)
         gtk_box_append(ptr(root), overlay)
 
         if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
@@ -363,7 +376,12 @@ final class ChatPane: @unchecked Sendable {
                 }
             }
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
-                guard let self, !self.isAutoScrolling else { return }
+                guard let self else { return }
+                if self.isAutoScrolling {
+                    self.scheduleHoverRefresh()
+                    return
+                }
+                self.messageHoverScrolled()
                 guard self.canvasPromptKey == nil else {
                     if self.scrolledShortOfTheEnd() { self.canvasPinned = false }
                     self.followsBottom = false
@@ -1509,6 +1527,7 @@ final class ChatPane: @unchecked Sendable {
         Trace.mark(
             "apply state loaded=\(state.hasLoadedTranscript) rows=\(rows.count) status=\(state.status)")
         lastState = state
+        defer { scheduleHoverRefresh() }
         if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
             updateStatus()
         }
@@ -2390,7 +2409,7 @@ final class ChatPane: @unchecked Sendable {
     /// before their finger comes up. The rows are held for the length of the press and applied on
     /// the release: a click always lands on the row it was aimed at, and the transcript catches up
     /// a tenth of a second later.
-    private var pointerHeld = false
+    private(set) var pointerHeld = false
     private var heldRows: [TranscriptRow]?
     /// Rows a cache arrival asked to redraw while the pointer was down, redrawn on the release.
     private var heldReplacements: Set<String> = []
@@ -2568,6 +2587,9 @@ final class ChatPane: @unchecked Sendable {
     /// switch reaches `showPlaceholder` or the placeholder branch of `applyRows`, and neither of
     /// those tears rows down, because the box was already emptied.
     private func forgetRowWidgets() {
+        messageBar.dismiss()
+        hoverVerbs = nil
+        hoverOwners.removeAll(keepingCapacity: true)
         renderedRows = []
         rowWidgets = []
         highlightedRow = 0
@@ -4548,7 +4570,7 @@ final class ChatPane: @unchecked Sendable {
 
     /// The confirmation states what the press does before anything happens, because winding a
     /// conversation back is not something a mis-click should be able to do quietly.
-    private func confirmUndo(messageID: String) {
+    func confirmUndo(messageID: String) {
         guard !revertUndoInFlight else { return }
         Dialogs.confirm(
             title: RevertReading.confirmTitle,

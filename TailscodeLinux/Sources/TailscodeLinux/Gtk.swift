@@ -143,6 +143,39 @@ enum Gtk {
         tailscode_on_press_hold(widget, downCallback, upCallback, box)
     }
 
+    /// Where the pointer is inside `widget` — every move, and its leaving — watched once for
+    /// everything beneath it and never claimed, so a list of rows costs one controller rather
+    /// than one per row.
+    static func onPointer(
+        _ widget: UnsafeMutablePointer<GtkWidget>,
+        move: @escaping @Sendable (Double, Double) -> Void,
+        leave: @escaping @Sendable () -> Void
+    ) {
+        let box = Unmanaged.passRetained(PointerBox(move: move, leave: leave)).toOpaque()
+        let moveCallback: @convention(c) (Double, Double, UnsafeMutableRawPointer?) -> Void = {
+            x, y, raw in
+            guard let raw else { return }
+            Unmanaged<PointerBox>.fromOpaque(raw).takeUnretainedValue().move(x, y)
+        }
+        let leaveCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
+            guard let raw else { return }
+            Unmanaged<PointerBox>.fromOpaque(raw).takeUnretainedValue().leave()
+        }
+        tailscode_on_pointer(widget, moveCallback, leaveCallback, box)
+    }
+
+    final class PointerBox: @unchecked Sendable {
+        let move: @Sendable (Double, Double) -> Void
+        let leave: @Sendable () -> Void
+        init(
+            move: @escaping @Sendable (Double, Double) -> Void,
+            leave: @escaping @Sendable () -> Void
+        ) {
+            self.move = move
+            self.leave = leave
+        }
+    }
+
     /// A double click on a paned's handle — the divider itself, never its children. Single
     /// clicks and drags pass through untouched, so the handle keeps its ordinary meaning.
     static func onPanedHandleDoubleClick(
@@ -447,6 +480,20 @@ enum Gtk {
             self.leave = leave
             self.drop = drop
         }
+    }
+
+    /// The size a widget asks for, without the margins GTK counts into it — which is what a child
+    /// positioned by its own margins needs to know, since its current margins would otherwise be
+    /// read back as part of how big it is.
+    static func naturalSize(of widget: UnsafeMutablePointer<GtkWidget>)
+        -> (width: Double, height: Double)
+    {
+        var minimum = GtkRequisition()
+        var natural = GtkRequisition()
+        gtk_widget_get_preferred_size(widget, &minimum, &natural)
+        let across = gtk_widget_get_margin_start(widget) + gtk_widget_get_margin_end(widget)
+        let down = gtk_widget_get_margin_top(widget) + gtk_widget_get_margin_bottom(widget)
+        return (Double(natural.width - across), Double(natural.height - down))
     }
 
     /// Where `widget` sits inside `ancestor`, or nil when the two are not connected.

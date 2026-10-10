@@ -231,6 +231,15 @@ void tailscode_on_press_capture(
 void tailscode_on_press_hold(
     GtkWidget *widget, void (*down)(void *), void (*up)(void *), void *data);
 
+/// Where the pointer is inside `widget`, reported on every move and on arrival, and when it leaves
+/// altogether. One controller in the capture phase serves everything beneath it — rows, buttons,
+/// labels — so a list is watched once rather than once per row, and the event is never claimed:
+/// whatever is under the pointer still gets its hover and its press. `leave` is told only when the
+/// pointer has left `widget` itself, not when it crossed from one child into another.
+void tailscode_on_pointer(
+    GtkWidget *widget, void (*move)(double x, double y, void *data), void (*leave)(void *data),
+    void *data);
+
 /// A double click on `paned`'s own handle — the gap between its two children, not anywhere in
 /// them. The gesture watches in the capture phase so it sees the press before the paned's resize
 /// drag does, and claims the sequence only for the second press on the handle, which leaves an

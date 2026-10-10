@@ -82,6 +82,12 @@ final class MainWindow: @unchecked Sendable {
     private var marks = ChatSelection()
     private var showingArchive = false
     private var sidebarScroller: UnsafeMutablePointer<GtkWidget>?
+    private let rowVerbs = ChatRowVerbStrip()
+    private var sidebarOverlay: UnsafeMutablePointer<GtkWidget>?
+    private var sidebarPointer: (x: Double, y: Double)?
+    private var sidebarVerbRefreshQueued = false
+    private var sidebarScrollToken: UInt = 0
+    private var sidebarScrolling = false
     private var sidebarColumn: UnsafeMutablePointer<GtkWidget>?
     private var sidebarScrollTarget: Double?
     private var sidebarScrollRestore: Double?
@@ -977,8 +983,12 @@ final class MainWindow: @unchecked Sendable {
         Gtk.margins(sidebarList, top: 2, bottom: 8, leading: 6, trailing: 6)
         gtk_scrolled_window_set_child(op(scroller), makeSidebarViewport())
         gtk_widget_set_vexpand(scroller, 1)
-        gtk_box_append(ptr(column), scroller)
+        let listOverlay = gtk_overlay_new()!
+        gtk_overlay_set_child(op(listOverlay), scroller)
+        gtk_widget_set_vexpand(listOverlay, 1)
+        gtk_box_append(ptr(column), listOverlay)
         sidebarScroller = scroller
+        installRowVerbs(on: listOverlay)
         Gtk.onPressHold(
             scroller,
             down: { [weak self] in self?.holdSidebar() },
@@ -993,6 +1003,9 @@ final class MainWindow: @unchecked Sendable {
                     self?.reapplySidebarScroll()
                     self?.applySidebarReveal()
                 }
+            }
+            Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
+                self?.rowVerbsScrolled()
             }
         }
 
@@ -1677,6 +1690,7 @@ final class MainWindow: @unchecked Sendable {
             sidebarRenderHeld = true
             return
         }
+        defer { scheduleRowVerbsRefresh() }
         Trace.mark("renderSidebar begin \(entries.count) entries")
         defer { Trace.mark("renderSidebar end") }
         let selectedID = activePane.sessionID
@@ -3301,6 +3315,11 @@ final class MainWindow: @unchecked Sendable {
         renderSidebar()
     }
 
+    private func togglePinned(_ entry: SessionEntry) {
+        SessionPinStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+        renderSidebar()
+    }
+
     /// The right-click menu on a chat row, anchored to the sidebar's own box — a widget that
     /// outlives any re-render.
     private func presentRowMenu(_ row: SessionRowModel, rowBits: UInt, x: Double, y: Double) {
@@ -3405,13 +3424,7 @@ final class MainWindow: @unchecked Sendable {
              pinned
                  ? Localized.text("Back into the recency order")
                  : Localized.text("Always at the top of the chat list"),
-             { [weak self] in
-                 Gtk.onMain { [weak self] in
-                     SessionPinStore.toggle(
-                         profileID: entry.profileID, sessionID: entry.session.id)
-                     self?.renderSidebar()
-                 }
-             }))
+             { [weak self] in Gtk.onMain { [weak self] in self?.togglePinned(entry) } }))
         rows.append(
             (row.unread ? Localized.text("Mark as read") : Localized.text("Mark as unread"), nil,
              { [weak self] in
@@ -4167,5 +4180,144 @@ extension MainWindow {
                     "SOAKHAMMER done beats=\(beats) panes=\(self.splitHost.paneCount) window=\(gtk_widget_get_width(window))x\(gtk_widget_get_height(window))\n"
                         .utf8))
         }
+    }
+}
+
+extension MainWindow {
+    /// Watches the chat list for a pointer resting on a row, through one motion controller on the
+    /// overlay the list scrolls in — never one per row — and floats the row's verbs there.
+    fileprivate func installRowVerbs(on overlay: UnsafeMutablePointer<GtkWidget>) {
+        sidebarOverlay = overlay
+        gtk_overlay_add_overlay(op(overlay), rowVerbs.widget)
+        rowVerbs.press = { [weak self] verb, button in self?.performRowVerb(verb, from: button) }
+        Gtk.onPointer(
+            overlay,
+            move: { [weak self] x, y in
+                guard let self else { return }
+                self.sidebarPointer = (x, y)
+                self.evaluateRowVerbs()
+            },
+            leave: { [weak self] in
+                self?.sidebarPointer = nil
+                self?.rowVerbs.dismiss()
+            })
+    }
+
+    /// The list is moving under the pointer: the verbs come down for as long as it does, and go to
+    /// whatever row is then under the pointer once it has been still for a moment.
+    fileprivate func rowVerbsScrolled() {
+        guard sidebarPointer != nil else { return }
+        rowVerbs.dismiss()
+        sidebarScrolling = true
+        sidebarScrollToken &+= 1
+        let token = sidebarScrollToken
+        Gtk.after(120) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, self.sidebarScrollToken == token else { return }
+                self.sidebarScrolling = false
+                self.evaluateRowVerbs()
+            }
+        }
+    }
+
+    /// The list was redrawn, perhaps with a different chat under a pointer standing still. Looked
+    /// at once the allocations have settled, and no more than once for a burst of redraws.
+    fileprivate func scheduleRowVerbsRefresh() {
+        guard sidebarPointer != nil, !sidebarVerbRefreshQueued else { return }
+        sidebarVerbRefreshQueued = true
+        Gtk.after(60) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.sidebarVerbRefreshQueued = false
+                self.evaluateRowVerbs()
+            }
+        }
+    }
+
+    /// Which way each of a chat's verbs would go, read from the stores at the moment the pointer
+    /// arrives, because they can change under a row that is not being redrawn.
+    private func rowVerbState(for entry: SessionEntry) -> ChatRowVerbState {
+        ChatRowVerbState(
+            pinned: SessionPinStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id),
+            saved: SavedChatStore.contains(entry),
+            archived: ArchivedChatStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id))
+    }
+
+    fileprivate func evaluateRowVerbs() {
+        guard let point = sidebarPointer, let overlay = sidebarOverlay, !sidebarScrolling else {
+            return
+        }
+        let bounds: (Int) -> (y: Double, height: Double, right: Double)? = { [sidebarRows] index in
+            guard let box = Gtk.bounds(of: sidebarRows[index].widget, in: overlay) else {
+                return nil
+            }
+            return (box.y, box.height, box.x + box.width)
+        }
+        let index =
+            sidebarRows.count <= visible.count
+            ? PointerRows.row(
+                atY: point.y, count: sidebarRows.count,
+                span: { index in bounds(index).map { $0.y...($0.y + $0.height) } })
+            : nil
+        guard let index, case .chat(let row) = visible[index],
+            sidebarRows[index].key == visible[index].key, let box = bounds(index)
+        else {
+            rowVerbs.dismiss()
+            return
+        }
+        let key = visible[index].key
+        if key == rowVerbs.shownKey, rowVerbs.contains(x: point.x, y: point.y, in: overlay) {
+            return
+        }
+        rowVerbs.present(
+            key: key, state: rowVerbState(for: row.entry), right: box.right - 2,
+            bottom: box.y + box.height - 3)
+    }
+
+    /// A verb pressed on a row: the same stores the context menu writes, and for the ellipsis the
+    /// context menu itself, opened under the button that asked for it.
+    fileprivate func performRowVerb(
+        _ verb: ChatRowVerb, from button: UnsafeMutablePointer<GtkWidget>
+    ) {
+        guard let key = rowVerbs.shownKey,
+            let index = visible.firstIndex(where: { $0.key == key }),
+            case .chat(let row) = visible[index]
+        else { return }
+        let entry = row.entry
+        switch verb {
+        case .pin: togglePinned(entry)
+        case .save: toggleSaved(entry)
+        case .archive: _ = toggleArchived(entry)
+        case .more:
+            presentRowVerbMenu(row, key: key, from: button)
+            return
+        }
+        refreshRowVerbState(for: entry, key: key)
+        scheduleRowVerbsRefresh()
+    }
+
+    /// The strip answers a press at once, from the stores, rather than waiting for the list to be
+    /// redrawn under it: a pinned chat's pin lights the moment it is pressed.
+    private func refreshRowVerbState(for entry: SessionEntry, key: String) {
+        guard let overlay = sidebarOverlay, let box = Gtk.bounds(of: rowVerbs.widget, in: overlay)
+        else { return }
+        rowVerbs.present(
+            key: key, state: rowVerbState(for: entry), right: box.x + box.width,
+            bottom: box.y + box.height)
+    }
+
+    private func presentRowVerbMenu(
+        _ row: SessionRowModel, key: String, from button: UnsafeMutablePointer<GtkWidget>
+    ) {
+        guard let overlay = sidebarOverlay,
+            let holder = sidebarRows.first(where: { $0.key == key })?.widget,
+            let rowBox = Gtk.bounds(of: holder, in: overlay),
+            let buttonBox = Gtk.bounds(of: button, in: overlay)
+        else { return }
+        presentRowMenu(
+            row, rowBits: UInt(bitPattern: holder), x: buttonBox.x - rowBox.x,
+            y: buttonBox.y + buttonBox.height - rowBox.y)
     }
 }
