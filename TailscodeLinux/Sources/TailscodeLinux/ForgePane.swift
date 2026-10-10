@@ -1364,11 +1364,14 @@ final class ForgePane: @unchecked Sendable {
 extension ForgePane {
     /// Every state the surface has, put on screen without a renderer to make one happen. The board
     /// is stood up by the runner, which owns it; this only puts the prompt box back in step with
-    /// the recipe that came with the state.
+    /// the recipe that came with the state. `done` is staged at rest, with the clip's poster and
+    /// verbs on the stage and the player left unopened, because a headless harness has no
+    /// output for the player to draw on.
     func demonstrate(_ name: String) {
         showBoard()
         autoPlayed = nil
         runner.demonstrate(name)
+        if name == "done" { autoPlayed = board.job.asset }
         syncPrompt()
         syncAvoid()
         syncSound()

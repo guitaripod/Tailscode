@@ -5390,8 +5390,9 @@ final class ChatPane: @unchecked Sendable {
     /// compaction seam, three more tool calls, a code block and three addresses — for the
     /// compact-chat measure: the demo chats are mostly words, and a density that only ever shows
     /// on words has not been tried. The argument is a comma-separated list of image files the two
-    /// pictures are read from.
-    func driverFurnitureDemo(_ argument: String) {
+    /// pictures are read from. `landing` swaps the story for the one the landing page tells: two
+    /// pictures painted on the person's own machine, then the reconnect fix.
+    func driverFurnitureDemo(_ argument: String, landing: Bool = false) {
         let now = Date()
         let asked = ChatMessage(
             id: "demo-furn-prompt", role: .user, agentType: .claudeCode,
@@ -5399,7 +5400,9 @@ final class ChatPane: @unchecked Sendable {
                 MessagePart(
                     id: "t",
                     kind: .text(
-                        "Render the Studio mocks so I can compare the painting and done states, then pin the jitter in the reconnect test."
+                        landing
+                            ? "Paint two pictures for the release page on arch, then pin the jitter in the flaky reconnect test."
+                            : "Render the Studio mocks so I can compare the painting and done states, then pin the jitter in the reconnect test."
                     ))
             ], createdAt: now.addingTimeInterval(-300))
         func tool(_ id: String, _ name: String, _ input: [String: JSONValue], _ title: String)
@@ -5413,10 +5416,16 @@ final class ChatPane: @unchecked Sendable {
                         title: title)))
         }
         let paths = argument.split(separator: ",").map(String.init)
-        var parts: [MessagePart] = [
-            tool("b1", "Bash", ["command": .string("python3 scripts/mock-comfyui.py")], "Start the mock"),
-            tool("w1", "Write", ["file_path": .string("docs/studio-mocks/b-painting.png")], "Write b-painting.png"),
-        ]
+        var parts: [MessagePart] =
+            landing
+            ? [
+                tool("b1", "Bash", ["command": .string("comfy-queue lighthouse.json aurora-cabin.json")], "Queue both renders on arch"),
+                tool("b0", "Bash", ["command": .string("comfy-wait --collect")], "Wait for the renders and collect them"),
+            ]
+            : [
+                tool("b1", "Bash", ["command": .string("python3 scripts/mock-comfyui.py")], "Start the mock"),
+                tool("w1", "Write", ["file_path": .string("docs/studio-mocks/b-painting.png")], "Write b-painting.png"),
+            ]
         for (index, path) in paths.prefix(2).enumerated() {
             let name = URL(fileURLWithPath: path).lastPathComponent
             let part = MessagePart(
@@ -5477,8 +5486,39 @@ final class ChatPane: @unchecked Sendable {
             id: "demo-furn-answer", role: .assistant, agentType: .claudeCode, parts: parts,
             createdAt: now)
         let state = ConversationState(
-            messages: [asked, reply], status: .idle, hasLoadedTranscript: true)
+            messages: [asked, reply] + (landing ? landingFollowUp(after: now) : []),
+            status: .idle, connection: landing ? .live : .connecting, hasLoadedTranscript: true)
         apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: false))
+    }
+
+    /// The second turn of the landing story: a question, a run of tools and a short answer, so the
+    /// compact transcript is seen over more than one turn.
+    private func landingFollowUp(after now: Date) -> [ChatMessage] {
+        func tool(_ id: String, _ name: String, _ input: [String: JSONValue], _ title: String)
+            -> MessagePart
+        {
+            MessagePart(
+                id: id,
+                kind: .tool(
+                    ToolCall(
+                        id: "call-\(id)", name: name, status: .completed, input: .object(input),
+                        title: title)))
+        }
+        let asked = ChatMessage(
+            id: "demo-furn-prompt-2", role: .user, agentType: .claudeCode,
+            parts: [MessagePart(id: "t", kind: .text("Run the whole suite once more, then tell me if the pictures need anything."))],
+            createdAt: now.addingTimeInterval(60))
+        let reply = ChatMessage(
+            id: "demo-furn-answer-2", role: .assistant, agentType: .claudeCode,
+            parts: [
+                tool("b3", "Bash", ["command": .string("swift test")], "swift test"),
+                tool("b4", "Bash", ["command": .string("swift test --filter ReconnectTests")], "swift test --filter ReconnectTests"),
+                MessagePart(
+                    id: "answer",
+                    kind: .text(
+                        "The suite is green and the reconnect test passed again with the jitter pinned. The two pictures stay on arch, so they are there to reuse for the release page.")),
+            ], createdAt: now.addingTimeInterval(90))
+        return [asked, reply]
     }
 
     func driverCodeDemo() {

@@ -334,7 +334,7 @@ extension ForgeRunner {
     /// described in words this client made up.
     func demonstrate(_ name: String) {
         quiet()
-        let renderer = ForgeEndpoint(host: Self.demoHost)
+        let renderer = ForgeEndpoint(host: Self.demoHost, port: Self.demoPort)
         let recipe = ForgeRecipe(
             prompt: name == "unset" ? "" : Self.demoPrompt, negative: Self.demoAvoidance,
             seconds: 5, fps: 24, seed: 7)
@@ -374,6 +374,13 @@ extension ForgeRunner {
     }
 
     private static let demoHost = "arch"
+
+    /// The port the demo's renderer answers on: the default, unless `TAILSCODE_DEMO_FORGE_PORT`
+    /// names a stand-in server, so a harness that stages clips never asks a real machine about them.
+    private static var demoPort: Int {
+        ProcessInfo.processInfo.environment["TAILSCODE_DEMO_FORGE_PORT"].flatMap(Int.init)
+            ?? ForgeEndpoint.defaultPort
+    }
     private static let demoPrompt = "a cat asleep on a warm roof"
     private static let demoAvoidance = "blurry"
 
@@ -416,6 +423,14 @@ extension ForgeRunner {
         }
     }
 
+    /// The clips' posters in a demo: with more than one file named, the first is the sketch of the
+    /// render in flight and the rest are the posters, so a half-painted frame is never also a
+    /// finished clip's cover.
+    private static var demoPosters: [ImageGenPreviewFrame] {
+        let all = demoSketches
+        return all.count > 1 ? Array(all.dropFirst()) : all
+    }
+
     private static func demoHistory(_ recipe: ForgeRecipe) -> [ForgeEntry] {
         let made = (0..<6).map { index in
             ForgeEntry(
@@ -423,7 +438,7 @@ extension ForgeRunner {
                 asset: ForgeAsset(filename: "forge_0000\(index).mp4", subfolder: "video"),
                 finishedAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(index)))
         }
-        let sketches = demoSketches
+        let sketches = demoPosters
         if !sketches.isEmpty {
             for (index, entry) in made.enumerated() {
                 if let asset = entry.asset { ForgePosters.write(sketches[index % sketches.count], for: asset) }
@@ -433,7 +448,7 @@ extension ForgeRunner {
             id: "\(demoPromptID)gone", recipe: recipe.with(seed: 9), asset: nil,
             failure: ForgeFailure.unreachable(demoHost).description,
             finishedAt: Date(timeIntervalSince1970: 1_700_000_000))
-        return made + [lost]
+        return sketches.isEmpty ? made + [lost] : made
     }
 
     private static let demoPromptID = "demo"
