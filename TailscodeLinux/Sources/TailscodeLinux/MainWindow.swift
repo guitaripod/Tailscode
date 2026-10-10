@@ -214,6 +214,7 @@ final class MainWindow: @unchecked Sendable {
         gtk_paned_set_end_child(op(stack), terminal.widget)
         gtk_paned_set_position(op(stack), Preferences.divider(.terminal) ?? 600)
         gtk_paned_set_resize_start_child(op(stack), 1)
+        gtk_paned_set_shrink_start_child(op(stack), 0)
         gtk_paned_set_shrink_end_child(op(stack), 0)
         terminalPaned = stack
 
