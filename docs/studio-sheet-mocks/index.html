@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Studio sheet — mocks</title>
+<style>
+:root{color-scheme:dark light}
+body{margin:0;padding:32px 24px 64px;background:#17171b;color:#d8dbe2;font:14px/1.5 -apple-system,system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px}p.lead{margin:0 0 28px;color:#9aa0ac;max-width:80ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:28px}
+figure{margin:0}figure a{display:block}figure img{width:100%;display:block;border-radius:8px;background:#222}
+figcaption{margin-top:8px;color:#aab0bc}figcaption b{color:#e8ebf0}
+code{font:12px ui-monospace,Menlo,monospace;color:#ffd24a}
+</style></head><body>
+<h1>The Studio as a sheet — mocks</h1>
+<p class="lead">Real screenshots (<code>~/Dev/web/midgarcorp/public/screenshots/tailscode</code>) supply the conversation behind the scrim and the pictures inside the Studio; the sheet, its toolbar, dock, chips and shelf are rebuilt in HTML from <code>docs/studio-sheet.md</code> §4. Rebuild: <code>node gen.js &amp;&amp; node render.js</code> (Playwright chromium, 2× device scale; <code>wide-2560</code> at 1×).</p>
+<div class="grid">
+<figure><a href="mac-dark-open.html"><img src="mac-dark-open.png" alt=""></a><figcaption><b>mac-dark-open</b> — 1440×900 Mac window, sheet at rest: 24 pt sides, top 60 (52 title bar + 8), bottom flush, 14 pt corners, scrim 38 %.</figcaption></figure>
+<figure><a href="mac-light-open.html"><img src="mac-light-open.png" alt=""></a><figcaption><b>mac-light-open</b> — the same in the light face. No Mac light chat shot exists: the conversation is <code>desk-light-chat</code> scaled with a rebuilt Mac title bar (recomposition).</figcaption></figure>
+<figure><a href="mac-mid-open.html"><img src="mac-mid-open.png" alt=""></a><figcaption><b>mac-mid-open</b> — t = 176 ms of 320: 21.4 pt of travel left, scrim 20.9 %, sheet opacity 0.55; dashed outline is the rest position.</figcaption></figure>
+<figure><a href="geometry.html"><img src="geometry.png" alt=""></a><figcaption><b>geometry</b> — the open state with dimension lines: insets, toolbar, corner radius, scrim, the visible context strip.</figcaption></figure>
+<figure><a href="linux-dark-open.html"><img src="linux-dark-open.png" alt=""></a><figcaption><b>linux-dark-open</b> — 1920×1080 GTK window (Suomi dark); above 1,800 pt the sheet caps at 1,752 and centres, so 84 pt each side, not 24. Header row rebuilt in the Linux idiom.</figcaption></figure>
+<figure><a href="narrow-960.html"><img src="narrow-960.png" alt=""></a><figcaption><b>narrow-960</b> — 960×640: shelf folds to an 88 pt strip above the dock, chips fold to one Settings button. Recomposition from the real shot's elements, not a screenshot.</figcaption></figure>
+<figure><a href="scrim-variants.html"><img src="scrim-variants.png" alt=""></a><figcaption><b>scrim-variants</b> — 30 / 38 / 45 % (and 38 % with a hairline + shadow), context strips at 1:1 and whole windows at 50 %.</figcaption></figure>
+<figure><a href="wide-2560.html"><img src="wide-2560.png" alt=""></a><figcaption><b>wide-2560</b> — 2560×1440 at 1× (reduced): the 1,752 pt cap leaves 404 pt of window each side. The conversation behind is not reflowed (recomposition).</figcaption></figure>
+</div></body></html>
