@@ -205,6 +205,11 @@ final class HomeViewController: UIViewController {
                     {
                         ImageStudio.shared.choose(engine: engine)
                     }
+                    if let aspect = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_ASPECT"]
+                        .flatMap(ImageGenAspect.init(rawValue:))
+                    {
+                        ImageStudio.shared.choose(aspect: aspect)
+                    }
                     self.updateImageMark()
                     let words = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_PROMPT"]
                     if ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_LANE"] != nil {
@@ -218,6 +223,11 @@ final class HomeViewController: UIViewController {
                             ImageGenSighting(
                                 host: ImageStudio.shared.endpoint.displayHost, reachable: true,
                                 missingModels: ImageGenEngine.fast.files.map(\.path)))
+                    }
+                    if let seed = ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_SEED"]
+                        .flatMap(UInt64.init)
+                    {
+                        ImageStudio.shared.stage(seed: seed)
                     }
                     self.presentImage()
                     guard let words else { return }

@@ -9,11 +9,25 @@
 #   scripts/shots.sh --ipad          # the landscape workspace set on a 13" iPad
 #   scripts/shots.sh 07-home 08-usage
 #   TAILSCODE_SHOT_LOCALE=de-DE scripts/shots.sh   # the app in German, to marketing/appstore/l10n/de-DE/iphone
+#
+# The Studio shots (studio-paint, studio-done, video-run, video-done) need real pictures:
+#   TAILSCODE_STUDIO_ART=<folder with lighthouse.png, cat-roof.png, ... and manifest.json> scripts/shots.sh studio-paint
+# studio-paint and studio-done render against a mock ComfyUI that this script starts on
+# TAILSCODE_STUDIO_MOCK_HOST (default arch, over ssh) so the machine pill reads the real machine's
+# name, and stops again afterwards. scripts/shots-landing.sh runs the four in both appearances.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE=com.guitaripod.tailscode
-DEVICE_NAME=TailscodeShots
+DEVICE_NAME="${TAILSCODE_SHOT_DEVICE_NAME:-TailscodeShots}"
+DERIVED="${TAILSCODE_SHOT_DERIVED:-$ROOT/build}"
+STUDIO_ART="${TAILSCODE_STUDIO_ART:-}"
+STUDIO_MOCK_HOST="${TAILSCODE_STUDIO_MOCK_HOST:-arch}"
+STUDIO_MOCK_PORT="${TAILSCODE_STUDIO_MOCK_PORT:-8201}"
+STUDIO_PROMPT="a lighthouse on a cliff at dusk, waves breaking below, last light on the lamp room"
+STUDIO_SEED=2477689473
+STUDIO_STEPS=25
+STUDIO_SECONDS="${TAILSCODE_STUDIO_SECONDS:-5.5}"
 DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max
 LOCALE="${TAILSCODE_SHOT_LOCALE:-en-US}"
 OUT="$ROOT/marketing/appstore/iphone"
@@ -100,6 +114,10 @@ SHOTS=(
   "pv-demo-expand|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_EXPAND=1|14"
   "pv-demo-search|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_SEARCH=deep|16"
   "pv-search|--demo|TAILSCODE_OPEN_SESSION=demo-o1 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=8 TAILSCODE_MODELS_SEARCH=qwen|16"
+  "studio-paint|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_OPEN_IMAGE=$STUDIO_MOCK_HOST:$STUDIO_MOCK_PORT TAILSCODE_IMAGE_ENGINE=quality TAILSCODE_IMAGE_ASPECT=landscape TAILSCODE_IMAGE_SEED=$STUDIO_SEED|15"
+  "studio-done|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_OPEN_IMAGE=$STUDIO_MOCK_HOST:$STUDIO_MOCK_PORT TAILSCODE_IMAGE_ENGINE=quality TAILSCODE_IMAGE_ASPECT=landscape TAILSCODE_IMAGE_SEED=$STUDIO_SEED|30"
+  "video-run|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_VIDEO_STATE=running TAILSCODE_VIDEO_FRAME=1 TAILSCODE_FORGE_ART=$STUDIO_ART|12"
+  "video-done|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_VIDEO_STATE=done TAILSCODE_VIDEO_FRAME=1 TAILSCODE_FORGE_ART=$STUDIO_ART|14"
   "welcome||TAILSCODE_FAKE_TAILNET=up|5"
   "setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_FAKE_TAILNET=up|6"
 )
@@ -150,10 +168,10 @@ build() {
   cd "$ROOT"
   xcodegen generate >/dev/null
   xcodebuild -project Tailscode.xcodeproj -scheme Tailscode -configuration Debug \
-    -destination "generic/platform=iOS Simulator" -derivedDataPath build build \
+    -destination "generic/platform=iOS Simulator" -derivedDataPath "$DERIVED" build \
     >/tmp/tailscode-shots-build.log 2>&1 ||
     { grep -E "error:|BUILD FAILED" /tmp/tailscode-shots-build.log | tail -25; exit 1; }
-  find "$ROOT/build/Build/Products" -name Tailscode.app -maxdepth 3 | head -1
+  find "$DERIVED/Build/Products" -name Tailscode.app -maxdepth 3 | head -1
 }
 
 install_fresh() {
@@ -161,10 +179,35 @@ install_fresh() {
   xcrun simctl install "$1" "$2"
 }
 
+studio_ssh() { ssh -o BatchMode=yes "$STUDIO_MOCK_HOST" "$@"; }
+
+# Starts (or stops) the mock ComfyUI the Studio shots render against, on the machine whose name the
+# machine pill should read. "paint" holds the render at 60 % of its steps so the sketch is
+# recognisably forming; "done" lets it finish in the seconds the real machine took.
+studio_mock() {
+  local mode=$1 dir=tailscode-shots-mock pause=0
+  studio_ssh "if [ -f $dir/mock.pid ]; then kill \$(cat $dir/mock.pid) 2>/dev/null; rm -f $dir/mock.pid; fi" >/dev/null 2>&1 || true
+  [ "$mode" = stop ] && return 0
+  [ -n "$STUDIO_ART" ] || { echo "TAILSCODE_STUDIO_ART is not set" >&2; exit 1; }
+  [ "$mode" = paint ] && pause=$((STUDIO_STEPS * 3 / 5))
+  studio_ssh "mkdir -p $dir/out/studio $dir/results && find $dir/out -name 'tailscode-demo-new-*' -delete" >/dev/null 2>&1
+  rsync -a "$ROOT/scripts/mock-comfyui.py" "$STUDIO_MOCK_HOST:$dir/" >/dev/null 2>&1
+  rsync -a --exclude lighthouse.png --exclude contact.png "$STUDIO_ART"/*.png "$STUDIO_MOCK_HOST:$dir/out/studio/" >/dev/null 2>&1
+  rsync -a "$STUDIO_ART/lighthouse.png" "$STUDIO_MOCK_HOST:$dir/results/" >/dev/null 2>&1
+  studio_ssh "cd $dir && { MOCK_OUTPUT=\$PWD/out MOCK_RESULTS_FROM=\$PWD/results MOCK_RESULTS=lighthouse.png MOCK_PORT=$STUDIO_MOCK_PORT MOCK_RENDER_SECONDS=$STUDIO_SECONDS MOCK_PAUSE_AT_STEP=$pause nohup python3 mock-comfyui.py </dev/null >mock.log 2>&1 & echo \$! >mock.pid; }" >/dev/null 2>&1
+  sleep 2
+}
+
 capture() {
   local device=$1 name=$2 args=$3 envs=$4 delay=$5
   xcrun simctl terminate "$device" "$BUNDLE" >/dev/null 2>&1 || true
   local prefixed=(FOO=bar SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
+  case "$name" in
+    studio-paint | studio-done)
+      studio_mock "${name#studio-}"
+      prefixed+=("SIMCTL_CHILD_TAILSCODE_IMAGE_PROMPT=$STUDIO_PROMPT")
+      ;;
+  esac
   [ -n "${IPAD:-}" ] && prefixed+=(SIMCTL_CHILD_TAILSCODE_WINDOW=1376x1032 SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
   for pair in $envs $THEME_ENV; do prefixed+=("SIMCTL_CHILD_${pair}"); done
   env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
@@ -185,9 +228,10 @@ for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name args envs delay <<<"$shot"
   if [ $# -gt 0 ] && [[ ! " $* " == *" $name "* ]]; then continue; fi
   if [ -n "${IPAD:-}" ]; then install_fresh "$DEVICE" "$APP"; fi
-  case "$name" in welcome | setup) install_fresh "$DEVICE" "$APP" ;; esac
+  case "$name" in welcome | setup | studio-* | video-*) install_fresh "$DEVICE" "$APP" ;; esac
   capture "$DEVICE" "$name" "$args" "$envs" "$delay"
 done
 
 xcrun simctl terminate "$DEVICE" "$BUNDLE" >/dev/null 2>&1 || true
+case " $* " in *" studio-paint "* | *" studio-done "*) studio_mock stop ;; esac
 echo "-> $OUT"

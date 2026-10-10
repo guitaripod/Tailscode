@@ -311,7 +311,7 @@ final class StudioStageView: UIView {
                             .responseStat, color: Theme.Color.tertiaryLabel, alignment: .center)))
             }
             words = result
-            header.numberOfLines = 3
+            header.numberOfLines = 4
         case .painting, .waiting:
             words = NSAttributedString(
                 string: next.sentence ?? "",

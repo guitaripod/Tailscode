@@ -13,6 +13,12 @@ enum ClipPosters {
 
     static func cached(_ key: String) -> UIImage? { held.object(forKey: key as NSString) }
 
+    #if DEBUG
+        static func hang(_ image: UIImage, key: String) {
+            held.setObject(image, forKey: key as NSString)
+        }
+    #endif
+
     static func poster(of url: URL, key: String) async -> UIImage? {
         if let image = cached(key) { return image }
         if let running = loading[key] { return await running.value }

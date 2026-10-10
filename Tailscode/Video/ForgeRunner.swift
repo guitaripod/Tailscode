@@ -375,6 +375,7 @@ final class ForgeRunner {
             let asset = ForgeAsset(filename: "forge_00007.mp4", subfolder: "video", type: "output")
             board = ForgeBoard(recipe: recipe, endpoint: ForgeEndpoint(host: "arch"))
             board.filled(history: state == "empty" ? [] : Self.stagedHistory(recipe))
+            hangStagedPosters()
             switch state {
             case "unconfigured":
                 board = ForgeBoard(recipe: ForgeRecipe(), endpoint: nil)
@@ -439,6 +440,12 @@ final class ForgeRunner {
         /// A gradient standing in for the machine's sketch of the first frame, so the stage can be
         /// photographed drawing one without a renderer on the other end.
         private static func stagedSketch() -> ImageGenPreviewFrame {
+            if let art = ForgeStagedArt.image(named: "cat-roof") {
+                let sketch = ForgeStagedArt.scaled(
+                    ForgeStagedArt.cropped(art, toAspect: 1280.0 / 704.0), toWidth: 256)
+                return ImageGenPreviewFrame(
+                    encoding: .jpeg, bytes: sketch.jpegData(compressionQuality: 0.6) ?? Data())
+            }
             let renderer = UIGraphicsImageRenderer(size: CGSize(width: 192, height: 108))
             let image = renderer.image { context in
                 let colors = [UIColor.systemOrange.cgColor, UIColor.systemIndigo.cgColor]
@@ -451,8 +458,28 @@ final class ForgeRunner {
             return ImageGenPreviewFrame(encoding: .jpeg, bytes: image.jpegData(compressionQuality: 0.6) ?? Data())
         }
 
+        /// Puts each staged clip's own picture where its poster would have been read from, because
+        /// the renderer a staged board names is not there to be asked for a first frame.
+        private func hangStagedPosters() {
+            guard ForgeStagedArt.isOn, let endpoint = board.endpoint else { return }
+            for (entry, shelved) in zip(board.history, ForgeStagedArt.shelf) {
+                guard let asset = entry.asset, let name = shelved.art,
+                    let art = ForgeStagedArt.image(named: name)
+                else { continue }
+                ClipPosters.hang(
+                    ForgeStagedArt.scaled(art, toWidth: 240),
+                    key: "\(endpoint.host)/\(asset.annotatedName)")
+            }
+        }
+
         /// A picture file on this device, for a staged start-from.
         static func stagedPicture() -> ForgeFrame? {
+            if let art = ForgeStagedArt.image(named: "cat-roof"),
+                let data = ForgeStagedArt.scaled(art, toWidth: 900).pngData(),
+                let path = ImageGenFiles.stage(data, named: "staged.png")
+            {
+                return .file(path)
+            }
             let renderer = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 400))
             let image = renderer.image { context in
                 let colors = [UIColor.systemTeal.cgColor, UIColor.systemPink.cgColor]
@@ -507,15 +534,18 @@ final class ForgeRunner {
             return job
         }
 
+        private static let plainStagedWords = [
+            "a cat asleep on a warm tiled roof, late afternoon light",
+            "rain on a neon street, shallow depth of field",
+            "a paper boat going over a weir in slow motion",
+            "a lighthouse beam sweeping fog",
+            "a hand turning the page of an old atlas",
+            "steam rising off a cup on a cold morning",
+        ]
+
         private static func stagedHistory(_ recipe: ForgeRecipe) -> [ForgeEntry] {
-            let words = [
-                "a cat asleep on a warm tiled roof, late afternoon light",
-                "rain on a neon street, shallow depth of field",
-                "a paper boat going over a weir in slow motion",
-                "a lighthouse beam sweeping fog",
-                "a hand turning the page of an old atlas",
-                "steam rising off a cup on a cold morning",
-            ]
+            let words: [String] =
+                ForgeStagedArt.isOn ? ForgeStagedArt.shelf.map { $0.words } : Self.plainStagedWords
             return words.enumerated().map { index, prompt in
                 ForgeEntry(
                     id: "staged-\(index)", recipe: recipe.with(prompt: prompt).with(seed: 1000 + index),

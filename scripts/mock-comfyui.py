@@ -22,6 +22,9 @@ Environment:
     MOCK_RENDER_SECONDS    how long the sampler's steps take in all (default 30).
     MOCK_PAUSE_AT_STEP     hold a job at this sampler step until it is interrupted (default off).
     MOCK_PAUSE_FROM_JOB    the first job number MOCK_PAUSE_AT_STEP applies to (default 1).
+    MOCK_RESULTS_FROM      a folder outside MOCK_OUTPUT that MOCK_RESULTS entries are also looked
+                           for in, so a picture can be handed back by a render without sitting on
+                           the machine's shelf beforehand (default off).
     MOCK_RESULTS           comma-separated pictures the successive jobs hand back, wrapping
                            around after the last. Each entry is a bare filename or a path
                            relative to MOCK_OUTPUT (studio/a.png); a bare name is looked for in
@@ -47,6 +50,7 @@ PORT = int(os.environ.get("MOCK_PORT", "8190"))
 RENDER_SECONDS = float(os.environ.get("MOCK_RENDER_SECONDS", "30"))
 PAUSE_AT = int(os.environ.get("MOCK_PAUSE_AT_STEP", "0"))
 PAUSE_FROM_JOB = int(os.environ.get("MOCK_PAUSE_FROM_JOB", "1"))
+RESULTS_FROM = os.path.abspath(os.path.expanduser(os.environ["MOCK_RESULTS_FROM"])) if os.environ.get("MOCK_RESULTS_FROM") else None
 RESULT_NAMES = [r.strip() for r in os.environ.get("MOCK_RESULTS", "").split(",") if r.strip()]
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
 GENERATED_PREFIX = "tailscode-demo-new-"
@@ -82,6 +86,9 @@ def resolve(entry):
     for candidate in (os.path.join(OUTPUT, entry), os.path.join(OUTPUT, "studio", entry)):
         candidate = os.path.normpath(candidate)
         if candidate.startswith(OUTPUT + os.sep) and os.path.isfile(candidate): return candidate
+    if RESULTS_FROM:
+        candidate = os.path.normpath(os.path.join(RESULTS_FROM, entry))
+        if candidate.startswith(RESULTS_FROM + os.sep) and os.path.isfile(candidate): return candidate
     return None
 
 def choose_results():
@@ -97,7 +104,7 @@ def banner(missing):
           + (f", paused at step {PAUSE_AT} from job {PAUSE_FROM_JOB}" if PAUSE_AT else ""), flush=True)
     origin = "MOCK_RESULTS" if RESULT_NAMES else "the output folder"
     print(f"mock-comfyui: jobs hand back, in turn and wrapping around ({origin}):", flush=True)
-    for i, p in enumerate(results, 1): print(f"  {i}. {os.path.relpath(p, OUTPUT)}", flush=True)
+    for i, p in enumerate(results, 1): print(f"  {i}. {p if RESULTS_FROM and p.startswith(RESULTS_FROM) else os.path.relpath(p, OUTPUT)}", flush=True)
     for n in missing:
         print(f"  !  MOCK_RESULTS entry not found, skipped: {n} (looked in {OUTPUT} and {os.path.join(OUTPUT, 'studio')})",
               file=sys.stderr, flush=True)

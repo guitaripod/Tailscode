@@ -580,3 +580,14 @@ final class ImageStudio {
         NotificationCenter.default.post(name: ImageStudio.didChange, object: nil)
     }
 }
+
+#if DEBUG
+    extension ImageStudio {
+        /// Holds the seed the next render runs on, so a photographed render can carry the number a
+        /// real machine already gave the same words. `TAILSCODE_IMAGE_SEED` names it.
+        func stage(seed: UInt64) {
+            slot.seed.held = seed
+            announce()
+        }
+    }
+#endif
