@@ -5,6 +5,22 @@ extension TranscriptRow {
     var spacing: ChatRowSpacing { ChatLayout.spacing(of: kind) }
 }
 
+extension NSView {
+    private static var flowWidthKey: UInt8 = 0
+
+    /// The width a picture's row asks for in a strip, known when the row is made. The column reads
+    /// it instead of asking the layout engine for the row's fitting size in the middle of its own
+    /// layout, which is a pass inside a pass and leaves the rest of the page one pass short.
+    var flowWidth: CGFloat? {
+        get { (objc_getAssociatedObject(self, &Self.flowWidthKey) as? NSNumber).map { CGFloat($0.doubleValue) } }
+        set {
+            objc_setAssociatedObject(
+                self, &Self.flowWidthKey, newValue.map { NSNumber(value: Double($0)) },
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+}
+
 /// What a transcript row is for the purpose of the space around it: one of Core's classes, or the
 /// seam between two turns, which is not a row anybody reads but the air a new question is given.
 enum ChatRowSpacing: Hashable {

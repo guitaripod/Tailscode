@@ -15,6 +15,11 @@ final class LinkRailModel {
     let urls: [String]
     private let source: LinkCardSource
     private(set) var reading: LinkRailReading
+
+    /// A rail of one address has nothing to expand: it is the link. A press opens the address, no
+    /// plate comes up, and the line says so with an arrow where a longer rail has its chevron.
+    /// Core is to carry the same question on the reading; this is the one place to swap it.
+    var opensDirectly: Bool { urls.count == 1 }
     private(set) var icons: [String: NSImage] = [:]
     private var fetches = LinkRailFetches()
     private var watchers: [(owner: Weak, change: () -> Void)] = []
@@ -167,6 +172,9 @@ final class LinkRailLine: NSView, KeyboardPressable {
     let model: LinkRailModel
     var onActivate: ((_ viaKeyboard: Bool) -> Void)?
     var menuActions: (copyAll: () -> Void, openAll: () -> Void)?
+    /// What a rail of one address does when pressed: open the address, or with Command held copy
+    /// it, the way a link in the prose answers.
+    var directActions: (open: () -> Void, copy: () -> Void)?
 
     private let stack = NSView()
     private let chips: [FaviconChip]
@@ -250,8 +258,14 @@ final class LinkRailLine: NSView, KeyboardPressable {
         hostLabel.setContentHuggingPriority(single ? .required : .defaultLow, for: .horizontal)
 
         setAccessibilityElement(true)
-        setAccessibilityRole(.button)
-        setAccessibilityHelp(Localized.text("Shows the links"))
+        if model.opensDirectly {
+            setAccessibilityRole(.link)
+            setAccessibilityHelp(Localized.text("Opens the link"))
+            HoverPlate.attach(to: content, placement: .behind(PointerPlate.inlineOutset), radius: 6)
+        } else {
+            setAccessibilityRole(.button)
+            setAccessibilityHelp(Localized.text("Shows the links"))
+        }
         model.watch(self) { [weak self] in self?.restate() }
         restate()
     }
@@ -296,12 +310,17 @@ final class LinkRailLine: NSView, KeyboardPressable {
         }
         moreLabel.stringValue = reading.moreLabel ?? ""
         moreLabel.isHidden = reading.moreLabel == nil
+        if model.opensDirectly {
+            chevron.stringValue = "↗"
+            setAccessibilityLabel(Localized.text("%@, link", reading.items[0].face.headline))
+            return
+        }
         chevron.stringValue = expanded ? "⌄" : "›"
         setAccessibilityLabel(reading.spoken(expanded: expanded))
     }
 
     func setExpanded(_ open: Bool) {
-        guard open != expanded else { return }
+        guard !model.opensDirectly, open != expanded else { return }
         expanded = open
         restate()
         setAccessibilityExpanded(open)
@@ -317,21 +336,39 @@ final class LinkRailLine: NSView, KeyboardPressable {
         guard hitRect.contains(convert(event.locationInWindow, from: nil)) else {
             return super.mouseUp(with: event)
         }
+        if model.opensDirectly {
+            if event.modifierFlags.contains(.command) { directActions?.copy() } else { directActions?.open() }
+            return
+        }
         onActivate?(false)
     }
 
     override func keyDown(with event: NSEvent) {
         guard [49, 36, 76].contains(event.keyCode) else { return super.keyDown(with: event) }
-        onActivate?(true)
+        press()
     }
 
     override func accessibilityPerformPress() -> Bool {
-        onActivate?(true)
+        press()
         return true
     }
 
+    private func press() {
+        if model.opensDirectly {
+            directActions?.open()
+        } else {
+            onActivate?(true)
+        }
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
-        guard hitRect.contains(convert(event.locationInWindow, from: nil)), let menuActions else { return nil }
+        guard hitRect.contains(convert(event.locationInWindow, from: nil)) else { return nil }
+        if model.opensDirectly, let directActions {
+            let menu = NSMenu()
+            menu.addItem(ClosureMenuItem(title: Localized.text("Copy address")) { directActions.copy() })
+            return menu
+        }
+        guard let menuActions else { return nil }
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(title: LinkRailReading.copyAllTitle) { menuActions.copyAll() })
         menu.addItem(ClosureMenuItem(title: LinkRailReading.openAllTitle) { menuActions.openAll() })

@@ -378,6 +378,7 @@ final class TranscriptViewController: NSViewController {
         let top = view.safeAreaInsets.top + MacTheme.Spacing.s + strip
         chromeInsets = NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
         applyInsets()
+        railController.reposition()
     }
 
     /// What the floating chrome covers, kept apart from the room the fresh canvas adds under the
@@ -3151,6 +3152,93 @@ final class TranscriptViewController: NSViewController {
 
     /// The row standing at a height on the page, found by halving: the rows stand top-down in the
     /// order they are kept, so a pointer's row is a search rather than a walk.
+    #if DEBUG
+        /// `--open stage:<messages.json>[,rail=down|up][,code][,scroll=top|bottom|<row>]` — shows a
+        /// transcript from a file of messages in the cached shape, in place of whatever the pane
+        /// holds, so a layout, a rail or a code block can be looked at without a server that would
+        /// write the right conversation. A rail is opened as a press would, on the first rail on
+        /// the page, with the page scrolled so the plate has the room the directive names.
+        func stage(messagesAt path: String, directives: [String]) {
+            guard let data = FileManager.default.contents(atPath: path),
+                let messages = try? JSONDecoder().decode([ChatMessage].self, from: data)
+            else {
+                FileHandle.standardError.write(Data("stage: cannot read messages at \(path)\n".utf8))
+                return
+            }
+            for message in messages {
+                for part in message.parts {
+                    guard case .file(let reference) = part.kind, let file = reference.path,
+                        let image = NSImage(contentsOfFile: file),
+                        let rep = image.representations.first
+                    else { continue }
+                    ImageStore.shared.store(
+                        DecodedImage(
+                            image: image, data: Data(), pixelWidth: rep.pixelsWide,
+                            pixelHeight: rep.pixelsHigh),
+                        forKey: "\(message.id):\(part.id)")
+                }
+            }
+            let state = ConversationState(
+                messages: messages, status: .idle, connection: .live, hasLoadedTranscript: true)
+            apply(state: state, rows: rowBuilder.rows(for: messages, turnOpen: false))
+            view.layoutSubtreeIfNeeded()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                for directive in directives {
+                    let parts = directive.split(separator: "=", maxSplits: 1).map(String.init)
+                    switch parts[0] {
+                    case "scroll": self?.stageScroll(parts.count > 1 ? parts[1] : "bottom")
+                    case "rail": self?.stageRail(opensUpward: parts.count > 1 && parts[1] == "up")
+                    case "code": self?.stageCode()
+                    default: break
+                    }
+                }
+            }
+        }
+
+        private func stageScroll(_ to: String) {
+            view.layoutSubtreeIfNeeded()
+            let clip = scrollView.contentView
+            let range = max(0, canvas.frame.height - clip.bounds.height)
+            switch to {
+            case "top": clip.scroll(to: NSPoint(x: 0, y: 0))
+            case "bottom": clip.scroll(to: NSPoint(x: 0, y: range))
+            default:
+                guard let index = Int(to), index < rowViews.count else { return }
+                let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
+                clip.scroll(to: NSPoint(x: 0, y: min(range, max(0, frame.minY - 80))))
+            }
+            scrollView.reflectScrolledClipView(clip)
+            view.layoutSubtreeIfNeeded()
+        }
+
+        private func stageRail(opensUpward: Bool) {
+            guard let index = rowViews.firstIndex(where: { $0 is LinkRailLine }),
+                let line = rowViews[index] as? LinkRailLine
+            else { return }
+            let clip = scrollView.contentView
+            let range = max(0, canvas.frame.height - clip.bounds.height)
+            let frame = line.convert(line.bounds, to: canvas)
+            let wanted = opensUpward
+                ? frame.maxY - clip.bounds.height + 140 + scrollView.contentInsets.bottom
+                : frame.minY - 120
+            clip.scroll(to: NSPoint(x: 0, y: min(range, max(0, wanted))))
+            scrollView.reflectScrolledClipView(clip)
+            view.layoutSubtreeIfNeeded()
+            railController.activate(line, viaKeyboard: false)
+        }
+
+        private func stageCode() {
+            guard let index = renderedRows.firstIndex(where: {
+                if case .codeBlock = $0.kind { return true }
+                return false
+            }), index < rowViews.count else { return }
+            let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
+            let point = NSPoint(x: frame.midX, y: frame.midY)
+            guard let target = codeTarget(at: point) else { return }
+            hoverBar.stage(code: target)
+        }
+    #endif
+
     private func codeTarget(at point: NSPoint) -> MessageHoverBar.CodeTarget? {
         guard !placeholderShown, let index = rowIndex(atCanvasY: point.y),
             index < min(rowViews.count, renderedRows.count),
@@ -3169,7 +3257,8 @@ final class TranscriptViewController: NSViewController {
         guard !placeholderShown, let index = rowIndex(atCanvasY: point.y),
             index < rowViews.count, let line = rowViews[index] as? LinkRailLine
         else { return nil }
-        return line.hitRect.contains(line.convert(point, from: canvas)) ? line : nil
+        return !line.model.opensDirectly && line.hitRect.contains(line.convert(point, from: canvas))
+            ? line : nil
     }
 
     private func railLine(forKey key: String) -> LinkRailLine? {

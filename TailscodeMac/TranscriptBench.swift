@@ -190,8 +190,11 @@ enum TranscriptBench {
         let stack = FillingStack(topDown: true)
         stack.spacing = MacTheme.Spacing.m
         let stackRoot = stage(stack)
-        let stacked = rows.map { $0.makeView(context: context) }
-        for view in stacked { stack.addArrangedSubview(view) }
+        let stacked = rows.map { row -> NSView? in
+            if case .file = row.kind { return nil }
+            return row.makeView(context: context)
+        }
+        for view in stacked.compactMap({ $0 }) { stack.addArrangedSubview(view) }
         stackRoot.layoutSubtreeIfNeeded()
 
         let column = TranscriptColumn()
@@ -206,7 +209,7 @@ enum TranscriptBench {
 
         var disagreements: [String] = []
         for (index, row) in rows.enumerated() {
-            let expected = stacked[index].frame.height
+            guard let expected = stacked[index]?.frame.height else { continue }
             let actual = placed[index].frame.height
             guard abs(expected - actual) > 1 else { continue }
             disagreements.append(
@@ -214,7 +217,8 @@ enum TranscriptBench {
         }
         let stackHeight = stack.fittingSize.height
         print(
-            "   heights: stack \(Int(stackHeight))pt · column \(Int(column.intrinsicContentSize.height))pt"
+            "   heights: column \(Int(column.intrinsicContentSize.height))pt "
+                + "(the old one-gap stack, minus the pictures it cannot flow: \(Int(stackHeight))pt)"
                 + (disagreements.isEmpty
                     ? " · every row agrees" : " · \(disagreements.count) rows disagree"))
         for line in disagreements.prefix(8) { print("     \(line)") }

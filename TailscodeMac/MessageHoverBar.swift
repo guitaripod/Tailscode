@@ -365,6 +365,13 @@ final class MessageHoverBar: NSResponder {
         codeHideWork = nil
     }
 
+    #if DEBUG
+        /// Puts the tag on a block as a resting pointer would, for `--open stage:`.
+        func stage(code target: CodeTarget) {
+            showCode(target)
+        }
+    #endif
+
     /// Whether the code tag is up, and for which block — for a harness.
     var showingCode: CodeTarget? { codeTag.isHidden ? nil : codeShown }
 }

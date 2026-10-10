@@ -185,6 +185,7 @@ enum ImageRowView {
             imageView.setAccessibilityRole(.button)
             imageView.setAccessibilityLabel(Localized.text("Open %@", name))
             imageView.toolTip = name
+            imageView.flowWidth = size.width
             return imageView
         }
         let size = PictureThumb.placeholder(maxHeight: maxHeight)
@@ -204,6 +205,7 @@ enum ImageRowView {
             label.trailingAnchor.constraint(lessThanOrEqualTo: frame.trailingAnchor, constant: -6),
         ])
         frame.toolTip = name
+        frame.flowWidth = size.width
         context.requestImage?(reference, key)
         return frame
     }

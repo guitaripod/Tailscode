@@ -22,8 +22,28 @@ final class LinkRailController: NSResponder {
     private weak var canvas: NSView?
     private var hover = RailHover()
     private var plate: LinkRailPlateView?
-    private weak var anchor: LinkRailLine?
+    /// The rail the open plate hangs from. Its row host is watched for as long as it is the anchor:
+    /// the column moves a row without anyone telling the pane, and a plate that did not follow
+    /// would be left pointing at the place its rail used to stand.
+    private weak var anchor: LinkRailLine? {
+        didSet {
+            if let watched = oldValue?.superview {
+                NotificationCenter.default.removeObserver(
+                    self, name: NSView.frameDidChangeNotification, object: watched)
+            }
+            if let host = anchor?.superview {
+                host.postsFrameChangedNotifications = true
+                NotificationCenter.default.addObserver(
+                    self, selector: #selector(anchorMoved), name: NSView.frameDidChangeNotification,
+                    object: host)
+            }
+        }
+    }
     private var anchorKey: String?
+
+    @objc private func anchorMoved() {
+        reposition()
+    }
     private var pending: DispatchWorkItem?
     private var escapeMonitor: Any?
     private var keyboardDriven = false
@@ -47,6 +67,17 @@ final class LinkRailController: NSResponder {
                 rect: .zero,
                 options: [.mouseMoved, .mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
                 owner: self, userInfo: nil))
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        canvas.postsFrameChangedNotifications = true
+        host.postsFrameChangedNotifications = true
+        for (name, object) in [
+            (NSView.boundsDidChangeNotification, scrollView.contentView as NSView),
+            (NSView.frameDidChangeNotification, canvas as NSView),
+            (NSView.frameDidChangeNotification, host),
+        ] {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(anchorMoved), name: name, object: object)
+        }
     }
 
     override func mouseMoved(with event: NSEvent) { refresh() }
@@ -107,6 +138,7 @@ final class LinkRailController: NSResponder {
 
     /// A press on a rail, or a key on it: opens at once, or closes what is open.
     func activate(_ line: LinkRailLine, viaKeyboard: Bool) {
+        guard !line.model.opensDirectly else { return }
         if hover.open == line.key {
             close()
             return
@@ -178,8 +210,7 @@ final class LinkRailController: NSResponder {
         }
         plate.frame = RailPlacement.frame(
             rail: rail, plateSize: plate.plateSize, bounds: host.bounds, flipped: host.isFlipped,
-            upward: upward)
-    }
+            upward: upward)    }
 
     private func show(for line: LinkRailLine) {
         guard let host, let scrollView else { return }

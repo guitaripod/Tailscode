@@ -856,6 +856,15 @@ final class MainWindowController: NSWindowController {
             #endif
         case "renderer", "forgesetup":
             presentForge()?.openRenderer()
+        #if DEBUG
+            case "stage":
+                let spec = parts.count > 1 ? parts[1].split(separator: ",").map(String.init) : []
+                guard let path = spec.first else { break }
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.transcript.stage(messagesAt: path, directives: Array(spec.dropFirst()))
+                }
+        #endif
         case "delegate": presentDelegate()
         case "delegate-beta":
             presentDelegate()

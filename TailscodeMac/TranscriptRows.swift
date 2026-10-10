@@ -1093,6 +1093,16 @@ struct TranscriptRow: Hashable {
                 for address in model.urls { if let url = URL(string: address) { NSWorkspace.shared.open(url) } }
             }
         )
+        if model.opensDirectly, let address = URL(string: model.urls[0]) {
+            let text = model.urls[0]
+            line.directActions = (
+                open: { NSWorkspace.shared.open(address) },
+                copy: {
+                    RowKit.copyToClipboard(text)
+                    toast?(Localized.text("Copied"))
+                }
+            )
+        }
         model.begin(opened: false)
         return line
     }

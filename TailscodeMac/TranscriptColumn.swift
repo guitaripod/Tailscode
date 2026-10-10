@@ -51,7 +51,7 @@ final class TranscriptColumn: NSView {
 
     func insertArrangedSubview(_ row: NSView, at index: Int, spacing: ChatRowSpacing? = nil) {
         if row.superview != nil { row.removeFromSuperview() }
-        let host = RowHost(row: row, width: bounds.width)
+        let host = RowHost(row: row, width: max(bounds.width, row.flowWidth ?? 0))
         host.column = self
         host.spacing = spacing
         hosts[ObjectIdentifier(row)] = host
@@ -143,8 +143,7 @@ final class TranscriptColumn: NSView {
     /// The width a picture's row asks for: what it has resolved to, or what it would, before it
     /// has been laid out for the first time.
     private func rowWidth(of row: NSView) -> CGFloat {
-        let resolved = row.frame.width > 0 ? row.frame.width : row.fittingSize.width
-        return min(resolved, bounds.width)
+        min(row.flowWidth ?? row.frame.width, bounds.width)
     }
 }
 

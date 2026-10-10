@@ -370,6 +370,7 @@ enum ChatChecks {
             let view = NSView()
             view.translatesAutoresizingMaskIntoConstraints = false
             view.setContentHuggingPriority(.required, for: .horizontal)
+            view.flowWidth = width
             NSLayoutConstraint.activate([
                 view.widthAnchor.constraint(equalToConstant: width),
                 view.heightAnchor.constraint(equalToConstant: height),
@@ -478,6 +479,19 @@ enum ChatChecks {
             try expect(
                 line.hitRect.width > 0 && line.hitRect.width < line.frame.width,
                 "only the hosts and the chevron of a rail of \(count) are pressable, not the empty width beside them")
+            try expect(
+                model.opensDirectly == (count == 1),
+                "only a rail of one address opens directly, not a rail of \(count)")
+            if count == 1 {
+                try expect(
+                    line.accessibilityRole() == .link && line.accessibilityHelp() == Localized.text("Opens the link"),
+                    "a rail of one address is a link for VoiceOver, not a disclosure")
+                var opened = 0
+                var copied = 0
+                line.directActions = (open: { opened += 1 }, copy: { copied += 1 })
+                try expect(line.accessibilityPerformPress() && opened == 1 && copied == 0, "pressing it opens the address")
+                continue
+            }
             let plate = LinkRailPlateView(model: model, metrics: compact, width: 440)
             let expected = CGFloat(LinkRailPlate.plateHeight(rows: count, metrics: compact)) + 8
             try expect(
@@ -531,10 +545,17 @@ enum ChatChecks {
             try expect(
                 model.reading.items.allSatisfy { $0.face.headlineIsQuiet },
                 "before any page speaks every address of \(count) wears its host")
-            try expect(
-                line.accessibilityRole() == .button
-                    && line.accessibilityLabel() == model.reading.spoken(expanded: false),
-                "the rail of \(count) is one button saying how many links and which")
+            if count == 1 {
+                try expect(
+                    line.accessibilityRole() == .link
+                        && line.accessibilityLabel() == Localized.text("%@, link", "site1.example"),
+                    "the rail of one address says its host and that it is a link")
+            } else {
+                try expect(
+                    line.accessibilityRole() == .button
+                        && line.accessibilityLabel() == model.reading.spoken(expanded: false),
+                    "the rail of \(count) is one button saying how many links and which")
+            }
 
             model.begin(opened: false)
             try expect(asked.all.isEmpty, "nothing is asked of a page before the debounce is out")
@@ -552,7 +573,9 @@ enum ChatChecks {
                 try expect(model.reading.moreLabel == (count > 3 ? "+\(count - 3)" : nil), "the rest are counted")
             }
             try expect(
-                line.accessibilityLabel() == model.reading.spoken(expanded: false),
+                line.accessibilityLabel()
+                    == (count == 1
+                        ? Localized.text("%@, link", "Titled p1") : model.reading.spoken(expanded: false)),
                 "the spoken line follows the reading")
             model.begin(opened: true)
             model.begin(opened: true)
