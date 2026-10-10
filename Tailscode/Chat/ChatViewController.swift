@@ -3438,6 +3438,10 @@ final class ChatViewController: UIViewController {
         /// captured from a script the way every other screen already can be.
         private func openFirstAttachment() {
             for cell in collectionView.visibleCells {
+                if let strip = cell as? PictureStripCell, let thumb = strip.firstThumb {
+                    pictureStripCell(strip, didTap: 0, from: thumb)
+                    return
+                }
                 guard let cell = cell as? ImageBubbleCell, let image = cell.displayedImage else {
                     continue
                 }
@@ -3566,6 +3570,7 @@ final class ChatViewController: UIViewController {
         let change = { [weak self] in
             guard let self else { return }
             self.dataSource.apply(snapshot, animatingDifferences: false)
+            self.collectionView.performBatchUpdates(nil)
             self.collectionView.layoutIfNeeded()
             self.holdRail(id, at: before)
         }

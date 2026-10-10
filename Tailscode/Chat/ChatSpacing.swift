@@ -16,7 +16,7 @@ protocol RowGapCell: AnyObject {
 enum ChatSpacing {
     /// The margin above the first row of a transcript. It is the list's edge, not the air between
     /// two rows, so it is not a function of any pair.
-    static let edgeMargin = Theme.Spacing.s
+    static let edgeMargin = Theme.Spacing.xs
 
     /// What a drawn row is, for the purpose of the space around it. Cards that keep a plate —
     /// tables, subagent and workflow cards, boards, errors, the answerless turn — take the code

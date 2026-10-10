@@ -13,7 +13,6 @@ import UIKit
 final class LinkRailCell: UICollectionViewCell {
     static let reuseID = "LinkRailCell"
 
-    private let outer = UIStackView()
     private let rail = UIControl()
     private let faviconStack = UIView()
     private let summaryLabel = UILabel()
@@ -23,6 +22,10 @@ final class LinkRailCell: UICollectionViewCell {
     private var rows: [LinkRailRowView] = []
     private var topConstraint: NSLayoutConstraint!
     private var stackWidth: NSLayoutConstraint!
+    private var foldedBottom: NSLayoutConstraint!
+    private var railHeight: NSLayoutConstraint!
+    private var openTop: NSLayoutConstraint!
+    private var openBottom: NSLayoutConstraint!
 
     private var addresses: [String] = []
     private var reading = LinkRailReading(items: [])
@@ -79,25 +82,29 @@ final class LinkRailCell: UICollectionViewCell {
 
         list.axis = .vertical
         list.isHidden = true
-
-        outer.axis = .vertical
-        outer.translatesAutoresizingMaskIntoConstraints = false
-        outer.addArrangedSubview(rail)
-        outer.addArrangedSubview(list)
-        contentView.addSubview(outer)
+        list.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(rail)
+        contentView.addSubview(list)
 
         stackWidth = faviconStack.widthAnchor.constraint(equalToConstant: Self.faviconSize)
-        topConstraint = outer.topAnchor.constraint(equalTo: contentView.topAnchor)
+        topConstraint = rail.topAnchor.constraint(equalTo: contentView.topAnchor)
+        foldedBottom = rail.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+        openTop = list.topAnchor.constraint(equalTo: rail.bottomAnchor)
+        openBottom = list.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+        railHeight = rail.heightAnchor.constraint(
+            equalToConstant: CGFloat(Theme.Chat.metrics.railRowHeight))
+        railHeight.priority = .defaultHigh
         NSLayoutConstraint.activate([
+            railHeight,
             topConstraint,
-            outer.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            outer.leadingAnchor.constraint(
+            foldedBottom,
+            rail.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            outer.trailingAnchor.constraint(
+            rail.trailingAnchor.constraint(
                 equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
+            list.leadingAnchor.constraint(equalTo: rail.leadingAnchor),
+            list.trailingAnchor.constraint(equalTo: rail.trailingAnchor),
 
-            rail.heightAnchor.constraint(
-                greaterThanOrEqualToConstant: CGFloat(Theme.Chat.metrics.railRowHeight)),
 
             faviconStack.leadingAnchor.constraint(equalTo: rail.leadingAnchor),
             faviconStack.centerYAnchor.constraint(equalTo: rail.centerYAnchor),
@@ -174,6 +181,9 @@ final class LinkRailCell: UICollectionViewCell {
             traitCollection.preferredContentSizeCategory.isAccessibilityCategory ? 0 : 1
         chevron.transform = opened ? CGAffineTransform(rotationAngle: .pi / 2) : .identity
         list.isHidden = !opened
+        foldedBottom.isActive = !opened
+        openTop.isActive = opened
+        openBottom.isActive = opened
         rail.isAccessibilityElement = true
         rail.accessibilityTraits = .button
         rail.accessibilityLabel = reading.spoken(expanded: opened)
@@ -274,6 +284,14 @@ final class LinkRailCell: UICollectionViewCell {
         generation += 1
         fetchTask?.cancel()
         fetchTask = nil
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        guard previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory
+        else { return }
+        summaryLabel.numberOfLines =
+            traitCollection.preferredContentSizeCategory.isAccessibilityCategory ? 0 : 1
     }
 
     @objc private func railTapped() {

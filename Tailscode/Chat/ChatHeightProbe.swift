@@ -47,6 +47,12 @@
             let height = collectionView.collectionViewLayout.collectionViewContentSize.height
             guard abs(height - lastLogged) > 0.5 else { return }
             lastLogged = height
+            let everything = CGRect(x: 0, y: 0, width: collectionView.bounds.width, height: height)
+            let heights = (collectionView.collectionViewLayout.layoutAttributesForElements(in: everything) ?? [])
+                .sorted { $0.frame.minY < $1.frame.minY }
+                .map { "\($0.indexPath.item):\(Int($0.frame.height.rounded()))" }
+                .joined(separator: " ")
+            AppLogger.performance.info("chat rowHeights \(heights) session=\(sessionID)")
             AppLogger.performance.info(
                 "chat contentHeight=\(Int(height.rounded())) rows=\(rows) density=\(ChatDensitySetting.current.rawValue) session=\(sessionID)")
         }

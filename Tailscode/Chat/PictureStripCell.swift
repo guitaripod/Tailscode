@@ -95,6 +95,10 @@ final class PictureStripCell: UICollectionViewCell {
         }
     }
 
+    #if DEBUG
+        var firstThumb: UIView? { thumbs.first }
+    #endif
+
     private func placements(width: CGFloat) -> PictureStripLayout.Result {
         PictureStripLayout.layout(
             aspects: thumbs.map(\.aspect), width: Double(width), metrics: Theme.Chat.metrics)

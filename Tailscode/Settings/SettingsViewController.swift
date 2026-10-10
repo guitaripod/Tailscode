@@ -707,7 +707,9 @@ final class SettingsViewController: UIViewController {
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: "rectangle.compress.vertical")
             content.imageProperties.tintColor = Theme.Color.info
-            cell.accessories = [.popUpMenu(densityMenu())]
+            cell.accessories = [
+                .label(text: ChatDensitySetting.current.title), .disclosureIndicator(),
+            ]
         case .pro:
             content.text = "Tailscode Pro"
             if ProStore.shared.isPro {
@@ -931,20 +933,29 @@ final class SettingsViewController: UIViewController {
         return .customView(configuration: .init(customView: row, placement: .trailing()))
     }
 
-    /// The two densities as a pop-up on the row itself, the current one ticked: the choice is two
-    /// words, so it is made where it is read rather than on a screen of its own.
-    private func densityMenu() -> UIMenu {
-        UIMenu(
-            children: ChatDensity.allCases.map { density in
-                UIAction(
-                    title: density.title,
-                    state: density == ChatDensitySetting.current ? .on : .off
-                ) { [weak self] _ in
-                    Theme.Haptics.selection()
-                    ChatDensitySetting.set(density)
-                    self?.reconfigure([.chatDensity])
-                }
-            })
+    /// The two densities as a sheet over the row, the current one ticked: the choice is two
+    /// words, so it is made from the row that reads it rather than on a screen of its own.
+    private func chooseDensity(from indexPath: IndexPath) {
+        Theme.Haptics.tap()
+        let sheet = UIAlertController(
+            title: ChatDensitySetting.title, message: ChatDensitySetting.explanation,
+            preferredStyle: .actionSheet)
+        for density in ChatDensity.allCases {
+            let current = density == ChatDensitySetting.current
+            let action = UIAlertAction(
+                title: current ? density.title + " ✓" : density.title, style: .default
+            ) { [weak self] _ in
+                Theme.Haptics.selection()
+                ChatDensitySetting.set(density)
+                self?.reconfigure([.chatDensity])
+            }
+            sheet.addAction(action)
+        }
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        sheet.popoverPresentationController?.sourceView = collectionView
+        sheet.popoverPresentationController?.sourceRect =
+            collectionView.cellForItem(at: indexPath)?.frame ?? .zero
+        present(sheet, animated: true)
     }
 
     /// The row states the choice rather than offering it: which identity, and which of its two
@@ -1430,7 +1441,9 @@ extension SettingsViewController: UICollectionViewDelegate {
             Theme.Haptics.tap()
             let picker = ThemePickerViewController()
             navigationController?.pushViewController(picker, animated: true)
-        case .toggle, .version, .tailnetScan, .chatDensity:
+        case .chatDensity:
+            chooseDensity(from: indexPath)
+        case .toggle, .version, .tailnetScan:
             break
         }
     }
