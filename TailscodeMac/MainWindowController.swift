@@ -843,8 +843,11 @@ final class MainWindowController: NSWindowController {
         case "spend": presentSpend(for: transcript)
         case "git": presentGit(for: transcript)
         case "forge", "video":
-            let sheet = presentForge()
-            if parts.count > 1 { sheet?.demonstrate(parts[1]) }
+            if parts.count > 1 { StudioVideoDemo.apply(parts[1]) }
+            presentStudio(lane: .video)
+            #if DEBUG
+                driveForge()
+            #endif
         case "draw":
             transcript.showDraw(nil)
             splitPanes.persist()
@@ -855,7 +858,8 @@ final class MainWindowController: NSWindowController {
                 driveStudio()
             #endif
         case "renderer", "forgesetup":
-            presentForge()?.openRenderer()
+            presentStudio(lane: .video)
+            StudioWindowController.shared.video.openSetup()
         case "delegate": presentDelegate()
         case "delegate-beta":
             presentDelegate()
@@ -876,16 +880,28 @@ final class MainWindowController: NSWindowController {
     }
 
     /// The Studio, raised: one panel for the whole app, beside the conversation rather than over it.
-    /// `brief` is words to start from — the composer's Image lane sends what was typed there — and
-    /// nothing is rendered until a hand says Generate. While there is no Video lane to switch to, the
-    /// Video segment hands off to the forge sheet, which is this Mac's video surface until one exists.
+    /// `brief` is words to start from — the composer's lanes send what was typed there — and nothing
+    /// is rendered until a hand says Generate or Render.
     func presentStudio(lane: StudioLaneID = .image, brief: String? = nil) {
-        let studio = StudioWindowController.shared
-        studio.openVideoFallback = { [weak self] in self?.presentForge() }
-        studio.show(lane: lane, brief: brief)
+        StudioWindowController.shared.show(lane: lane, brief: brief)
     }
 
     #if DEBUG
+        /// What a headless run asks of the Video lane once it is up — `TAILSCODE_VIDEO_PROMPT` to
+        /// put words in the box, `TAILSCODE_VIDEO_FRAME` to start from a picture on disk — so a state
+        /// can be photographed without a hand on the keyboard.
+        private func driveForge() {
+            let environment = ProcessInfo.processInfo.environment
+            let lane = StudioWindowController.shared.video
+            if let path = environment["TAILSCODE_VIDEO_FRAME"], !path.isEmpty {
+                ForgeRunner.shared.start(from: .file(path))
+            }
+            if let words = environment["TAILSCODE_VIDEO_PROMPT"], !words.isEmpty {
+                lane.dock.take(brief: words)
+                lane.brief.rememberDraft(words)
+            }
+        }
+
         /// What a headless run asks of the Studio once it is up — `TAILSCODE_IMAGE_PROMPT` to paint,
         /// `TAILSCODE_IMAGE_REFERENCE` to start from a picture on disk — so a render against a stand-in
         /// ComfyUI can be watched and photographed without a hand on the keyboard.
@@ -902,14 +918,11 @@ final class MainWindowController: NSWindowController {
         }
     #endif
 
-    /// The forge, opened over the work rather than beside it. A render is a task somebody starts,
-    /// watches and collects — not a place they work — so it is a sheet on top of this window and the
-    /// conversation behind it is left exactly as it was. One already open is raised rather than made
-    /// a second time, and closing it never touches a render, which lives in `ForgeRunner`.
-    @discardableResult
-    func presentForge() -> ForgeSheet? {
-        guard let window else { return nil }
-        return ForgeSheet.present(on: window)
+    /// Video, which is the Studio's second lane: the same panel the pictures are made in, switched to
+    /// the clip. A render lives in `ForgeRunner`, so closing the panel never touches one, and opening
+    /// it again finds the render exactly where it was.
+    func presentForge() {
+        presentStudio(lane: .video)
     }
 
     /// The servers window, one per app: add, probe, update, sign in or remove a server, with the

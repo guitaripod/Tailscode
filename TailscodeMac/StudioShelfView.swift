@@ -44,7 +44,7 @@ final class StudioShelfView: NSView, NSCollectionViewDelegate {
         tile.onOpen = { [weak self] in
             guard let self, let item = self.byID[id] else { return }
             self.lane?.select(tile: id)
-            self.lane?.perform(.action(.open), on: item)
+            self.lane?.perform(.open, on: item)
         }
         tile.menuProvider = { [weak self] in self?.menu(for: id) }
         return tile
@@ -53,7 +53,7 @@ final class StudioShelfView: NSView, NSCollectionViewDelegate {
     init(lane: any StudioLane) {
         self.lane = lane
         super.init(frame: .zero)
-        heading.stringValue = Localized.text("Shelf").uppercased()
+        heading.stringValue = lane.shelfTitle.uppercased()
         heading.setAccessibilityElement(false)
         flow.itemSize = NSSize(width: StudioTheme.tile, height: StudioTheme.tile)
         flow.minimumLineSpacing = StudioTheme.gutter
@@ -77,7 +77,7 @@ final class StudioShelfView: NSView, NSCollectionViewDelegate {
         addSubview(note)
         applyInsets()
         setAccessibilityRole(.list)
-        setAccessibilityLabel(Localized.text("Shelf"))
+        setAccessibilityLabel(lane.shelfTitle)
         _ = source
         reload()
     }
@@ -205,9 +205,15 @@ final class StudioShelfView: NSView, NSCollectionViewDelegate {
             case .putOnStage:
                 title = ImageGenAction.stage.title
                 symbol = ImageGenAction.stage.symbol
+            case .open:
+                title = ImageGenAction.open.title
+                symbol = ImageGenAction.open.symbol
             case .action(let action):
                 title = action.title
                 symbol = action.symbol
+            case .verb(let verb):
+                title = verb.title
+                symbol = verb.symbol
             }
             let entry = ClosureMenuItem(title: title) { [weak lane] in lane?.perform(verb, on: item) }
             entry.image = StudioTheme.symbol(symbol, size: 12)
@@ -392,6 +398,7 @@ final class StudioTileView: NSView {
     private let wash = CALayer()
     private let bar = CALayer()
     private let badge = StudioPill()
+    private let length = StudioPill()
     private let glyph = NSImageView()
 
     init() {
@@ -418,7 +425,9 @@ final class StudioTileView: NSView {
         glyph.imageScaling = .scaleProportionallyDown
         addSubview(glyph)
         addSubview(badge)
+        addSubview(length)
         badge.isHidden = true
+        length.isHidden = true
         setAccessibilityRole(.button)
         restyle()
         NotificationCenter.default.addObserver(
@@ -454,19 +463,40 @@ final class StudioTileView: NSView {
         ring.isHidden = true
         bar.isHidden = true
         badge.isHidden = true
+        length.isHidden = true
         glyph.image = nil
+        picture.opacity = 1
     }
 
     func configure(item: StudioShelfItem, selected: Bool, tooltip: String) {
         toolTip = tooltip
-        setAccessibilityLabel(item.words.isEmpty ? (item.isJob ? Localized.text("Painting") : Localized.text("Picture")) : item.words)
+        let fallback: String
+        switch (item.kind, item.isJob) {
+        case (.clip, true): fallback = Localized.text("Rendering")
+        case (.clip, false): fallback = Localized.text("Clip")
+        case (.picture, true): fallback = Localized.text("Painting")
+        case (.picture, false): fallback = Localized.text("Picture")
+        }
+        setAccessibilityLabel(item.words.isEmpty ? fallback : item.words)
         setSelected(selected)
-        if item.kind == .clip {
+        if item.isMissing {
+            glyph.image = StudioTheme.symbol("exclamationmark.triangle", size: 16)
+            glyph.contentTintColor = MacTheme.Color.danger
+        } else if item.kind == .clip {
             glyph.image = StudioTheme.symbol("play.fill", size: 16)
+            glyph.contentTintColor = MacTheme.Color.tertiaryLabel
         } else if !hasPicture {
             glyph.image = StudioTheme.symbol("photo", size: 18)
         }
-        glyph.isHidden = hasPicture
+        glyph.isHidden = hasPicture && !item.isMissing
+        picture.opacity = item.isMissing ? 0.35 : 1
+        if let text = item.badge, !item.isJob {
+            length.text = text
+            length.isHidden = false
+        } else {
+            length.isHidden = true
+        }
+        needsLayout = true
     }
 
     func setSelected(_ selected: Bool) {
@@ -515,6 +545,10 @@ final class StudioTileView: NSView {
         glyph.frame = NSRect(x: bounds.midX - 12, y: bounds.midY - 12, width: 24, height: 24)
         let size = badge.fittingSize
         badge.frame = NSRect(x: 6, y: 6, width: size.width, height: size.height)
+        let long = length.fittingSize
+        length.frame = NSRect(
+            x: bounds.width - 6 - long.width, y: bounds.height - 6 - long.height, width: long.width,
+            height: long.height)
     }
 
     override func mouseDown(with event: NSEvent) {

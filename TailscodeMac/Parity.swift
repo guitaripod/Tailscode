@@ -300,21 +300,15 @@ enum ParityManifest {
                 appStore: .implemented("MacProStore"),
                 because:
                     "The unlock is a purchase, and a purchase is a receipt from the App Store — only one of the two Mac builds has any relationship with it. The store copy asks for the same product the phone does, so a supporter is already a supporter here; the direct copy is simply open.")
-        case .videoForge: return .implemented("ForgeSlotView")
-        case .forgeEntry: return .implemented("ForgeSheet")
+        case .videoForge: return .implemented("VideoLane")
+        case .forgeEntry: return .implemented("ForgeMarkButton")
         case .forgeSetup: return .implemented("ForgeSetupSheet")
         case .autoResume: return .implemented("armResume")
-        case .forgeHistory: return .implemented("presentClipMenu")
+        case .forgeHistory: return .implemented("StudioClipShelf")
         case .videoLane: return .implemented("laneControl")
-        case .videoPromptHelper:
-            return .gap(
-                "ForgeBrief, ForgeRewriteContext and the shared rewriter are Core's, but the Mac's forge has no Enhance control or helper menu yet; the Linux ForgePane is the shape to port")
-        case .videoLivePreview:
-            return .gap(
-                "ForgeJob.sketch carries every frame the socket sends, but ForgeHeroStage still draws the phase glyph while a render runs rather than the sketch")
-        case .videoFirstFrame:
-            return .gap(
-                "ForgeRecipe.frame and the image-to-video graph are Core's, but the Mac's forge has no Start from row, no Continue it on a clip, and no picture surface to animate from")
+        case .videoPromptHelper: return .implemented("ForgeRewriteContext")
+        case .videoLivePreview: return .implemented("StudioProgressLine")
+        case .videoFirstFrame: return .implemented("fillStartMenu")
         case .videoSound: return .implemented("hear")
         case .videoEstimate: return .implemented("expecting")
         case .reviewPrompt: return .implemented("MacReviewPrompt")

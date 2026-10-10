@@ -57,20 +57,25 @@ enum StudioDrop {
     /// machine's upload — the same ceiling an attachment to a chat has.
     static let ceiling = 24 * 1024 * 1024
 
-    /// Puts what was dropped where the next render will start from.
+    /// What a drop turned out to hold once it was read: a tile of the shelf it came from, a picture
+    /// file where it lies, or pixels that have no file behind them yet.
+    enum Picture {
+        case tile(String)
+        case path(String)
+        case pixels(Data)
+    }
+
+    /// Reads a drop down to the one picture it carries, or nothing when it carries none a render
+    /// could start from. Both lanes start from what this says; what each does with it is its own.
     @MainActor
-    static func hold(_ drop: StudioDrop, in studio: MacImageStudio, then done: @escaping @MainActor (Bool) -> Void) {
+    static func resolve(_ drop: StudioDrop, then done: @escaping @MainActor (Picture?) -> Void) {
         switch drop {
         case .tile(let id):
-            done(holdTile(id, in: studio))
+            done(.tile(id))
         case .file(let url):
-            guard isUsable(url) else { return done(false) }
-            studio.hold(ImageGenReference(path: url.path))
-            done(true)
+            done(isUsable(url) ? .path(url.path) : nil)
         case .pixels(let data):
-            guard data.count <= ceiling else { return done(false) }
-            studio.hold(data: data, named: "dropped.png")
-            done(true)
+            done(data.count <= ceiling ? .pixels(data) : nil)
         case .promised(let receiver):
             let folder = FileManager.default.temporaryDirectory
                 .appendingPathComponent("tailscode-drops", isDirectory: true)
@@ -79,12 +84,40 @@ enum StudioDrop {
                 atDestination: folder, options: [:], operationQueue: .main
             ) { url, error in
                 MainActor.assumeIsolated {
-                    guard error == nil, isUsable(url) else { return done(false) }
-                    studio.hold(ImageGenReference(path: url.path))
-                    done(true)
+                    done(error == nil && isUsable(url) ? .path(url.path) : nil)
                 }
             }
         }
+    }
+
+    /// Puts what was dropped where the next render will start from.
+    @MainActor
+    static func hold(_ drop: StudioDrop, in studio: MacImageStudio, then done: @escaping @MainActor (Bool) -> Void) {
+        resolve(drop) { picture in
+            switch picture {
+            case .tile(let id)?:
+                done(holdTile(id, in: studio))
+            case .path(let path)?:
+                studio.hold(ImageGenReference(path: path))
+                done(true)
+            case .pixels(let data)?:
+                studio.hold(data: data, named: "dropped.png")
+                done(true)
+            case nil:
+                done(false)
+            }
+        }
+    }
+
+    /// The pixel size of a picture on disk, read from its header.
+    static func pixelSize(ofFileAt path: String) -> (width: Int, height: Int)? {
+        guard !path.isEmpty, let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+            let height = properties[kCGImagePropertyPixelHeight] as? Int,
+            width > 0, height > 0
+        else { return nil }
+        return (width, height)
     }
 
     @MainActor

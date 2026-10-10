@@ -51,7 +51,7 @@ final class StudioChipButton: NSView {
     /// word for a switch — a switch's state is carried by its symbol as well as its fill.
     var title: String {
         switch chip.kind {
-        case .field: return chip.value
+        case .field, .forge, .sound: return chip.value
         case .cutout: return chip.label
         case .avoid:
             return chip.value.isEmpty
@@ -62,11 +62,20 @@ final class StudioChipButton: NSView {
         }
     }
 
+    /// The decision's own word, drawn in the quieter ink before its value — the Video lane's pills
+    /// read "Size 1280×704" where the Image lane's, which sit beside the composer's own, read the
+    /// value alone. A pill whose title already carries the word has no second one.
+    private var lead: String? {
+        guard chip.isLabelled, chip.kind != .avoid else { return nil }
+        return chip.label
+    }
+
     private static let padding: CGFloat = 10
     private static let symbolSide: CGFloat = 14
 
     var preferredWidth: CGFloat {
         var width = Self.padding + Self.symbolSide + 5 + StudioTheme.width(of: title, role: .control) + Self.padding
+        if let lead { width += StudioTheme.width(of: lead, role: .control) + 5 }
         if opens { width += 12 }
         return ceil(width)
     }
@@ -107,10 +116,17 @@ final class StudioChipButton: NSView {
                     width: size.width, height: size.height))
         }
         let attributes = MacTheme.Ramp.attributes(.control, color: colour)
+        var textX = Self.padding + Self.symbolSide + 5
+        if let lead {
+            let quiet = MacTheme.Ramp.attributes(.control, color: colour.withAlphaComponent(0.62))
+            let leadSize = (lead as NSString).size(withAttributes: quiet)
+            (lead as NSString).draw(
+                at: NSPoint(x: textX, y: (bounds.height - leadSize.height) / 2), withAttributes: quiet)
+            textX += ceil(leadSize.width) + 5
+        }
         let size = (title as NSString).size(withAttributes: attributes)
         (title as NSString).draw(
-            at: NSPoint(x: Self.padding + Self.symbolSide + 5, y: (bounds.height - size.height) / 2),
-            withAttributes: attributes)
+            at: NSPoint(x: textX, y: (bounds.height - size.height) / 2), withAttributes: attributes)
         if opens {
             let chevron = NSBezierPath()
             let x = bounds.width - Self.padding - 3
@@ -172,7 +188,7 @@ final class StudioChipButton: NSView {
 /// estimate gives way before a pill does.
 @MainActor
 final class StudioChipRow: NSView {
-    var onAvoid: ((NSView) -> Void)?
+    var onWords: ((NSView, StudioWordsField) -> Void)?
     var onPickLibrary: ((NSView) -> Void)?
     var isEnabled = true {
         didSet {
@@ -189,7 +205,7 @@ final class StudioChipRow: NSView {
         }
     }
 
-    private let studio: MacImageStudio
+    private let brief: any StudioBriefing
     private var chips: [StudioChip] = []
     private var buttons: [StudioChipButton] = []
     private let more = StudioChipButton(
@@ -203,8 +219,8 @@ final class StudioChipRow: NSView {
     private let estimate = StudioTheme.label(.panelFootnote, color: MacTheme.Color.secondaryLabel)
     private var overflow: [StudioChip] = []
 
-    init(studio: MacImageStudio) {
-        self.studio = studio
+    init(brief: any StudioBriefing) {
+        self.brief = brief
         super.init(frame: .zero)
         addSubview(more)
         addSubview(settings)
@@ -222,8 +238,7 @@ final class StudioChipRow: NSView {
     override var isFlipped: Bool { true }
 
     func reload() {
-        let blocked = studio.engineBlocked != nil
-        let next = StudioChips.read(slot: studio.slot, engineBlocked: blocked)
+        let next = brief.chips()
         let same = next.map(\.kind) == chips.map(\.kind)
         chips = next
         if !same {
@@ -238,8 +253,8 @@ final class StudioChipRow: NSView {
         } else {
             for (button, chip) in zip(buttons, next) { button.update(chip) }
         }
-        estimate.stringValue = studio.estimateLine
-        estimate.setAccessibilityLabel(studio.estimateLine)
+        estimate.stringValue = brief.estimateLine
+        estimate.setAccessibilityLabel(brief.estimateLine)
         needsLayout = true
     }
 
@@ -319,13 +334,11 @@ final class StudioChipRow: NSView {
     }
 
     private func press(_ chip: StudioChip, from anchor: NSView) {
-        switch chip.kind {
-        case .cutout:
-            studio.setCutout(!studio.slot.cutout)
-        case .avoid:
-            onAvoid?(anchor)
-        default:
-            guard let menu = StudioChipMenu.menu(for: chip.kind, studio: studio, library: { [weak self] in self?.onPickLibrary?(anchor) }) else { return }
+        if chip.kind == .cutout {
+            brief.toggle(chip)
+        } else if let field = brief.wordsField(for: chip) {
+            onWords?(anchor, field)
+        } else if let menu = brief.menu(for: chip, gallery: { [weak self] in self?.onPickLibrary?(anchor) }) {
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: anchor.bounds.height + 4), in: anchor)
         }
     }
@@ -344,23 +357,18 @@ final class StudioChipRow: NSView {
 
     private func item(for chip: StudioChip, anchor: NSView) -> NSMenuItem {
         let title = chip.value.isEmpty ? chip.label : "\(chip.label) · \(chip.value)"
-        switch chip.kind {
-        case .cutout:
-            let toggle = ClosureMenuItem(title: chip.label) { [weak self] in
-                guard let self else { return }
-                self.studio.setCutout(!self.studio.slot.cutout)
-            }
+        if chip.kind == .cutout {
+            let toggle = ClosureMenuItem(title: chip.label) { [weak self] in self?.brief.toggle(chip) }
             toggle.state = chip.isOn ? .on : .off
             toggle.subtitle = ImageGenStudioWords.cutoutDetail
             return toggle
-        case .avoid:
-            return ClosureMenuItem(title: title) { [weak self] in self?.onAvoid?(anchor) }
-        default:
-            let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            holder.submenu = StudioChipMenu.menu(
-                for: chip.kind, studio: studio, library: { [weak self] in self?.onPickLibrary?(anchor) })
-            return holder
         }
+        if let field = brief.wordsField(for: chip) {
+            return ClosureMenuItem(title: title) { [weak self] in self?.onWords?(anchor, field) }
+        }
+        let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        holder.submenu = brief.menu(for: chip, gallery: { [weak self] in self?.onPickLibrary?(anchor) })
+        return holder
     }
 }
 
@@ -416,7 +424,7 @@ enum StudioChipMenu {
             menu.addItem(hold)
         case .reference:
             StudioReferenceMenu.fill(menu, studio: studio, library: library)
-        case .cutout, .avoid:
+        case .cutout, .avoid, .sound, .forge:
             return nil
         }
         return menu
@@ -486,9 +494,9 @@ final class StudioStartSlot: NSView {
         didSet { alphaValue = isEnabled ? 1 : 0.55 }
     }
 
-    private let studio: MacImageStudio
+    private let brief: any StudioBriefing
     private let caption = StudioTheme.label(.panelFootnote, color: MacTheme.Color.onGlassSecondary, alignment: .center)
-    private var thumbnailPath: String?
+    private var thumbnailID: String?
     private var thumbnail: CGImage?
     private var thumbnailTask: Task<Void, Never>?
     private var dropping = false
@@ -498,8 +506,8 @@ final class StudioStartSlot: NSView {
         NSRect(x: bounds.maxX - 18, y: bounds.minY - 2, width: 20, height: 20)
     }
 
-    init(studio: MacImageStudio) {
-        self.studio = studio
+    init(brief: any StudioBriefing) {
+        self.brief = brief
         super.init(frame: .zero)
         caption.stringValue = Localized.text("Start from")
         addSubview(caption)
@@ -522,40 +530,38 @@ final class StudioStartSlot: NSView {
         needsDisplay = true
     }
 
+    private var holdsStart = false
+
     func reload() {
-        let held = studio.slot.reference
+        let held = brief.startHold
+        holdsStart = held != nil
         caption.isHidden = held != nil
         if let held {
-            let path = held.path.isEmpty ? (held.kept.flatMap { studio.library.thumbnailPath(of: $0) } ?? "") : held.path
-            if path != thumbnailPath {
-                thumbnailPath = path
+            if held.id != thumbnailID {
+                thumbnailID = held.id
                 thumbnail = nil
-                loadThumbnail(path)
+                loadThumbnail(held)
             }
             setAccessibilityLabel(
                 Localized.text("Start from: %@", held.name))
-            toolTip = ImageGenWords.referenceHint(held)
+            toolTip = held.tooltip
         } else {
-            thumbnailPath = nil
+            thumbnailID = nil
             thumbnail = nil
             thumbnailTask?.cancel()
-            setAccessibilityLabel(ImageGenWords.attachTitle)
-            toolTip = ImageGenWords.attachHint
+            setAccessibilityLabel(brief.startEmptyTitle)
+            toolTip = brief.startEmptyHint
         }
         needsDisplay = true
         needsLayout = true
     }
 
-    private func loadThumbnail(_ path: String) {
+    private func loadThumbnail(_ held: StudioStartHold) {
         thumbnailTask?.cancel()
-        guard !path.isEmpty else { return }
+        let id = held.id
         thumbnailTask = Task { [weak self] in
-            let image = await Task.detached {
-                FileManager.default.contents(atPath: path).flatMap {
-                    MacImageLibrary.downsample($0, longestSide: 160)
-                }
-            }.value
-            guard let self, !Task.isCancelled, self.thumbnailPath == path else { return }
+            let image = await held.thumbnail()
+            guard let self, !Task.isCancelled, self.thumbnailID == id else { return }
             self.thumbnail = image
             self.needsDisplay = true
         }
@@ -570,7 +576,7 @@ final class StudioStartSlot: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
         let shape = NSBezierPath(roundedRect: rect, xRadius: 12, yRadius: 12)
-        if studio.slot.reference != nil {
+        if holdsStart {
             NSGraphicsContext.saveGraphicsState()
             shape.addClip()
             if let thumbnail {
@@ -633,8 +639,8 @@ final class StudioStartSlot: NSView {
     override func mouseUp(with event: NSEvent) {
         guard isEnabled, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         let point = convert(event.locationInWindow, from: nil)
-        if studio.slot.reference != nil, NSRect(x: bounds.maxX - 20, y: 0, width: 20, height: 20).contains(point) {
-            studio.hold(nil)
+        if holdsStart, NSRect(x: bounds.maxX - 20, y: 0, width: 20, height: 20).contains(point) {
+            brief.releaseStart()
             return
         }
         openMenu()
@@ -642,7 +648,7 @@ final class StudioStartSlot: NSView {
 
     private func openMenu() {
         let menu = NSMenu()
-        StudioReferenceMenu.fill(menu, studio: studio) { [weak self] in
+        brief.fillStartMenu(menu) { [weak self] in
             guard let self else { return }
             self.onPickLibrary?(self)
         }
@@ -670,7 +676,7 @@ final class StudioStartSlot: NSView {
         dropping = false
         needsDisplay = true
         guard let drop = StudioDrop.read(sender.draggingPasteboard) else { return false }
-        StudioDrop.hold(drop, in: studio) { _ in }
+        brief.hold(drop: drop) { _ in }
         return true
     }
 }
@@ -1133,19 +1139,21 @@ final class StudioRewriteCard: StudioRaisedView {
     }
 }
 
-/// The avoid list, asked for in a small popover: a line of words the picture must keep out of the
-/// frame. Empty is the ordinary case — guidance stays low and a render stays fast.
+/// A line of words asked for in a small popover: what a picture must keep out of the frame, what a
+/// clip's sound is. Empty is the ordinary case — the machine decides and a render stays fast.
 @MainActor
-final class StudioAvoidPopover: NSViewController, NSTextFieldDelegate {
+final class StudioWordsPopover: NSViewController, NSTextFieldDelegate {
     private let field = NSTextField()
+    private let words: StudioWordsField
     private let apply: (String) -> Void
     private let cancel: () -> Void
 
-    init(current: String, apply: @escaping (String) -> Void, cancel: @escaping () -> Void) {
+    init(words: StudioWordsField, apply: @escaping (String) -> Void, cancel: @escaping () -> Void) {
+        self.words = words
         self.apply = apply
         self.cancel = cancel
         super.init(nibName: nil, bundle: nil)
-        field.stringValue = current
+        field.stringValue = words.current
     }
 
     @available(*, unavailable)
@@ -1154,10 +1162,10 @@ final class StudioAvoidPopover: NSViewController, NSTextFieldDelegate {
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 128))
         let title = StudioTheme.label(.panelLabel, color: MacTheme.Color.label)
-        title.stringValue = ImageGenWords.avoidTitle
+        title.stringValue = words.title
         let hint = StudioTheme.label(.panelFootnote, color: MacTheme.Color.secondaryLabel, lines: 3)
-        hint.stringValue = ImageGenWords.avoidHint
-        field.placeholderString = ImageGenWords.avoidPlaceholder
+        hint.stringValue = words.hint
+        field.placeholderString = words.placeholder
         field.font = MacTheme.Ramp.font(.panelLabel)
         field.delegate = self
         let apply = NSButton(title: ImageGenWords.applyTitle, target: self, action: #selector(applyPressed))
@@ -1183,21 +1191,21 @@ final class StudioAvoidPopover: NSViewController, NSTextFieldDelegate {
 /// travels.
 @MainActor
 final class StudioLibraryPicker: NSViewController, NSCollectionViewDataSource, NSCollectionViewDelegate {
-    private let studio: MacImageStudio
+    private let brief: any StudioBriefing
     private let pick: (ImageGenLibraryItem) -> Void
     private let collection = NSCollectionView()
     private let note = StudioTheme.label(.panelFootnote, color: MacTheme.Color.secondaryLabel)
     private var items: [ImageGenLibraryItem] = []
 
-    init(studio: MacImageStudio, pick: @escaping (ImageGenLibraryItem) -> Void) {
-        self.studio = studio
+    init(brief: any StudioBriefing, pick: @escaping (ImageGenLibraryItem) -> Void) {
+        self.brief = brief
         self.pick = pick
         super.init(nibName: nil, bundle: nil)
-        items = studio.library.items
-        studio.watch(self) { [weak self] change in
-            guard case .shelf = change, let self else { return }
-            self.items = self.studio.library.items
-            self.note.stringValue = self.studio.library.line
+        items = brief.library.items
+        brief.watchLibrary(self) { [weak self] in
+            guard let self else { return }
+            self.items = self.brief.library.items
+            self.note.stringValue = self.brief.library.line
             self.collection.reloadData()
         }
     }
@@ -1205,11 +1213,11 @@ final class StudioLibraryPicker: NSViewController, NSCollectionViewDataSource, N
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    isolated deinit { studio.unwatch(self) }
+    isolated deinit { brief.unwatchLibrary(self) }
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 380))
-        note.stringValue = studio.library.line
+        note.stringValue = brief.library.line
         note.frame = NSRect(x: 16, y: 352, width: 388, height: 16)
         let layout = NSCollectionViewFlowLayout()
         layout.itemSize = NSSize(width: 88, height: 88)
@@ -1241,7 +1249,7 @@ final class StudioLibraryPicker: NSViewController, NSCollectionViewDataSource, N
         let tile = collectionView.makeItem(
             withIdentifier: StudioPickerTile.identifier, for: indexPath)
         guard let tile = tile as? StudioPickerTile else { return tile }
-        tile.show(items[indexPath.item], library: studio.library)
+        tile.show(items[indexPath.item], library: brief.library)
         return tile
     }
 

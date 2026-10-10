@@ -46,10 +46,21 @@ struct StudioDragFile: Sendable {
     let data: Data
 }
 
+/// What the Image lane hands the Studio when a picture is to become a clip: the first frame, named
+/// as the renderer can open it, and the picture's own shape when it is known so the clip's size can
+/// follow it.
+struct StudioAnimateRequest: Sendable {
+    let frame: ForgeFrame
+    let width: Int?
+    let height: Int?
+}
+
 /// A verb a shelf tile offers on right-click, and that a dragged tile or a pressed key resolves to.
 enum StudioTileVerb: Equatable, Sendable {
     case putOnStage
+    case open
     case action(ImageGenAction)
+    case verb(StudioStageVerb)
 }
 
 /// The stage as a lane draws it: the shell lays it out and tells it how much of its foot the dock
@@ -73,10 +84,8 @@ protocol StudioDocking: AnyObject {
     func take(brief words: String)
 }
 
-/// A lane, as the shell sees it.
-///
-/// The Video lane of the next task plugs in by writing a type that conforms and adding it to
-/// `StudioShell.lanes`; nothing in the shell, the shelf or the toolbar names the Image lane.
+/// A lane, as the shell sees it. Nothing in the shell, the shelf or the toolbar names a lane: each
+/// hands over a stage, a dock and a shelf and answers the keys.
 @MainActor
 protocol StudioLane: AnyObject {
     var id: StudioLaneID { get }
@@ -84,7 +93,9 @@ protocol StudioLane: AnyObject {
     var dock: NSView & StudioDocking { get }
     var shelf: [StudioShelfItem] { get }
     var selectedTile: String? { get }
+    var shelfTitle: String { get }
     var shelfNote: String? { get }
+    var dismissNote: String? { get }
     var machine: StudioMachineFact { get }
     var queueCount: Int { get }
     var jobSketch: CGImage? { get }

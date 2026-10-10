@@ -16,10 +16,12 @@ struct StudioShelfItem: Equatable, Sendable, Identifiable {
     let isJob: Bool
     let madeAt: Date?
     let bytes: Int?
+    let badge: String?
+    let isMissing: Bool
 
     init(
         id: String, words: String, kind: Kind = .picture, isJob: Bool = false, madeAt: Date? = nil,
-        bytes: Int? = nil
+        bytes: Int? = nil, badge: String? = nil, isMissing: Bool = false
     ) {
         self.id = id
         self.words = words
@@ -27,6 +29,8 @@ struct StudioShelfItem: Equatable, Sendable, Identifiable {
         self.isJob = isJob
         self.madeAt = madeAt
         self.bytes = bytes
+        self.badge = badge
+        self.isMissing = isMissing
     }
 }
 
@@ -111,6 +115,40 @@ extension FileManager {
     }
 }
 
+/// A verb as the stage's capsule and a shelf tile's menu draw it: a word, a symbol, what it promises
+/// and whether it destroys something. The Image lane's come from Core's `ImageGenAction` and the
+/// Video lane's from its own vocabulary, so the capsule is one control for both and a lane decides
+/// only which verbs exist; `id` is what a lane resolves a press back to.
+struct StudioStageVerb: Equatable, Sendable {
+    let id: String
+    let title: String
+    let hint: String
+    let symbol: String
+    let isDestructive: Bool
+
+    init(id: String, title: String, hint: String, symbol: String, isDestructive: Bool = false) {
+        self.id = id
+        self.title = title
+        self.hint = hint
+        self.symbol = symbol
+        self.isDestructive = isDestructive
+    }
+
+    init(_ action: ImageGenAction) {
+        self.init(
+            id: action.rawValue, title: action == .reference ? action.phoneTitle : action.title,
+            hint: action.hint, symbol: action.symbol, isDestructive: action.isDestructive)
+    }
+
+    /// The Image lane's hand-off: this picture becomes the first frame of a clip.
+    static var animate: StudioStageVerb {
+        StudioStageVerb(
+            id: "animate", title: ForgeWords.animateTitle, hint: ForgeWords.animateHint, symbol: "film")
+    }
+
+    var imageAction: ImageGenAction? { ImageGenAction(rawValue: id) }
+}
+
 /// What the stage is saying, decided once from the slot and the machine's own socket so the stage,
 /// the verbs, the dock and the shelf can never disagree about it. Every sentence is Core's.
 enum StudioStageState: Equatable {
@@ -171,6 +209,7 @@ enum StudioRemedy: Equatable {
     case wake
     case useEngine(ImageGenEngine)
     case machine
+    case reuse
 
     static func choose(sighting: ImageGenSighting?, engine: ImageGenEngine) -> StudioRemedy {
         guard let sighting else { return .retry }
@@ -188,6 +227,7 @@ enum StudioRemedy: Equatable {
         case .wake: return Localized.text("Check again")
         case .useEngine(let engine): return Localized.text("Paint with %@", engine.label)
         case .machine: return ImageGenMachineWords.change
+        case .reuse: return Localized.text("Use these settings")
         }
     }
 }
@@ -208,8 +248,10 @@ enum StudioFolding {
 struct StudioChip: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
         case field(ImageGenField)
+        case forge(ForgeField)
         case cutout
         case avoid
+        case sound
         case seed
         case reference
     }
@@ -220,6 +262,20 @@ struct StudioChip: Equatable, Sendable {
     let symbol: String
     let isOn: Bool
     let isWarning: Bool
+    let isLabelled: Bool
+
+    init(
+        kind: Kind, label: String, value: String, symbol: String, isOn: Bool, isWarning: Bool,
+        isLabelled: Bool = false
+    ) {
+        self.kind = kind
+        self.label = label
+        self.value = value
+        self.symbol = symbol
+        self.isOn = isOn
+        self.isWarning = isWarning
+        self.isLabelled = isLabelled
+    }
 
     var spoken: String { value.isEmpty ? label : "\(label), \(value)" }
 }
@@ -277,6 +333,16 @@ enum StudioVerbs {
         guard state.showsPicture else { return [] }
         return ImageGenAction.offered(kept: kept, hasWords: hasWords, sharing: true, tapOpens: false)
     }
+
+    /// The same verbs as the capsule draws them, with the hand-off to the Video lane beside the one
+    /// that starts the next render from this picture: both begin something from what is on stage.
+    static func faces(state: StudioStageState, kept: Bool, hasWords: Bool) -> [StudioStageVerb] {
+        var faces = offered(state: state, kept: kept, hasWords: hasWords).map(StudioStageVerb.init)
+        if let index = faces.firstIndex(where: { $0.id == ImageGenAction.reference.rawValue }) {
+            faces.insert(.animate, at: index + 1)
+        }
+        return faces
+    }
 }
 
 /// The keys the Studio answers while it is in front, named once so the menu bar, the key monitor and
@@ -318,6 +384,20 @@ enum StudioKey: CaseIterable, Sendable {
 /// What the Studio's menu items say. The verbs are Core's own words; only the two shelf steps are the
 /// Mac's.
 enum StudioMenuWords {
+    /// What a menu item says for the lane that is in front: the keys are one table, and the verb a
+    /// key stands for is the lane's — Space opens a picture full size and plays or pauses a clip.
+    static func title(_ key: StudioKey, lane: StudioLaneID) -> String {
+        guard lane == .video else { return title(key) }
+        switch key {
+        case .generate: return Localized.text("Render")
+        case .previousTile: return Localized.text("Previous Clip")
+        case .nextTile: return Localized.text("Next Clip")
+        case .editThis: return ForgeWords.extendTitle
+        case .open: return Localized.text("Play or Pause")
+        default: return title(key)
+        }
+    }
+
     static func title(_ key: StudioKey) -> String {
         switch key {
         case .generate: return ImageGenWords.renderTitle(mode: .generate)
