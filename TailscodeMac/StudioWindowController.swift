@@ -2,29 +2,29 @@ import AppKit
 import TailscodeCore
 
 /// The Studio's presenter: one sheet for the whole app, risen inside the Tailscode window rather than
-/// opened beside it. It keeps the two lanes, runs Core's `StudioSheetState` over what the sheet does —
-/// rise, change lane, leave — and owns what has to be true around it: the keyboard is the sheet's while
-/// it is up, the opener gets focus back, and the conversation's chords are off until it starts to leave.
-/// Closing the sheet closes nothing else — the render lives in the studio above it — and opening it
-/// again finds the picture exactly where it was.
+/// opened beside it. It keeps the two lanes and what is the Studio's about the sheet — which lane it
+/// shows, the words a composer handed it, Esc's stop before close — while `SheetPresenter` runs Core's
+/// `StudioSheetState` over rise, change and leave, and owns what has to be true around it: the keyboard
+/// is the sheet's while it is up, the opener gets focus back, and the conversation's chords are off
+/// until it starts to leave. Closing the sheet closes nothing else — the render lives in the studio
+/// above it — and opening it again finds the picture exactly where it was.
 @MainActor
 final class StudioWindowController: NSObject {
     static let shared = StudioWindowController()
 
-    private(set) var state: StudioSheetState = .closed
-    private(set) var sheet: StudioSheetView?
+    private(set) var presenter: SheetPresenter?
+    private let stack: SheetStack
     private let imageLane: ImageLane
     private lazy var videoLane = VideoLane(runner: .shared)
     private(set) var current: StudioLaneID = .image
-    private weak var opener: NSResponder?
-    private var closeObserver: NSObjectProtocol?
 
     /// Replaces the system's reduced-motion setting, so a check can take both paths.
     var reducedMotionOverride: Bool?
 
     /// The app has one; a check builds its own over a studio of its own, so nothing it leaves behind
     /// outlives it as a global that a later render's callbacks would find.
-    init(studio: MacImageStudio = .shared) {
+    init(studio: MacImageStudio = .shared, stack: SheetStack = .shared) {
+        self.stack = stack
         imageLane = ImageLane(studio: studio)
         super.init()
         imageLane.onAnimate = { [weak self] request in
@@ -33,6 +33,10 @@ final class StudioWindowController: NSObject {
             self.show(lane: .video)
         }
     }
+
+    var state: StudioSheetState { presenter?.state ?? .closed }
+
+    var sheet: StudioSheetView? { presenter?.sheet as? StudioSheetView }
 
     /// Whether the sheet is up and holds the keyboard: from the first frame of its rise to the moment
     /// it starts to leave.
@@ -61,8 +65,11 @@ final class StudioWindowController: NSObject {
         sheetOwnsKeys(in: window) ? sheet?.workspace : nil
     }
 
+    /// Whether the keyboard is the Studio's in `window`: it is, from the first frame of its rise, unless
+    /// a viewer has been raised on it, which owns the keys and leaves the Studio's chords locked — they
+    /// would act on a surface nobody sees focus in.
     func sheetOwnsKeys(in window: NSWindow) -> Bool {
-        state.capturesKeys && sheet?.host === window
+        presenter?.ownsKeys == true && sheet?.host === window
     }
 
     /// The window a sheet opened without being told one rises in: the one it is already in, else the
@@ -77,78 +84,59 @@ final class StudioWindowController: NSObject {
     /// in that lane's box as the thing to make — the composer's Image lane sends them here — and
     /// nothing is rendered until a hand says Generate. Opening while it is up changes the lane and
     /// gives the words box the keyboard, with no motion; opening from another window moves it there.
+    /// A viewer raised on the Studio is closed by it: the lane the person asked for is what they look at.
     func show(lane id: StudioLaneID = .image, brief: String? = nil, in window: NSWindow? = nil) {
         guard let target = window ?? presentingWindow, target.contentView != nil else { return }
-        let sheet = ensureSheet()
-        if state != .closed, let host = sheet.host, host !== target { moveSheet(to: target) }
-        let (next, effect) = state.reduced(by: .show(lane: id.kind))
-        state = next
-        switch effect {
-        case .animateIn:
-            if !sheet.holds(target.firstResponder as? NSView) { opener = target.firstResponder }
-            sheet.install(in: target)
-            watchClose(of: target)
+        let presenter = ensurePresenter()
+        closeWhatStandsOnTheStudio(presenter)
+        let effect = presenter.show(
+            in: target, lane: id.kind,
+            prepare: { select(id) },
+            ready: {
+                placeBrief(brief, on: id)
+                refreshChrome()
+            })
+        if case .changeLane = effect {
             select(id)
-            sheet.capture()
+            sheet?.refreshKeyLoop()
             placeBrief(brief, on: id)
             refreshChrome()
-            sheet.layoutSubtreeIfNeeded()
-            sheet.animate(opening: true, reduced: reducedMotion) { [weak self] in self?.motionFinished() }
-        case .changeLane:
-            select(id)
-            sheet.refreshKeyLoop()
-            placeBrief(brief, on: id)
-            refreshChrome()
-        case .animateOut, .none:
-            break
         }
     }
 
-    /// Starts the sheet leaving. The conversation's chords, its accessibility tree and the opener's
-    /// focus are back at once — the motion is a courtesy, not a state anything waits on.
+    /// A sheet already standing when the Studio is asked for either ends first, with no motion, or is
+    /// above it and asked to leave, so the Studio never ends up beneath a sheet that has nothing to do with it.
+    private func closeWhatStandsOnTheStudio(_ presenter: SheetPresenter) {
+        if state == .closed {
+            stack.teardownOthers(than: presenter)
+        } else {
+            for above in stack.presenters.drop(while: { $0 !== presenter }).dropFirst() { above.dismiss() }
+        }
+    }
+
+    /// Starts the sheet leaving.
     func dismiss() {
-        let (next, effect) = state.reduced(by: .dismiss)
-        state = next
-        guard effect == .animateOut, let sheet else { return }
-        sheet.release()
-        restoreOpenerFocus()
-        sheet.animate(opening: false, reduced: reducedMotion) { [weak self] in self?.motionFinished() }
+        presenter?.dismiss()
     }
 
     /// The motion ended: a rising sheet is at rest, a leaving one is gone and its overlay with it.
     func motionFinished() {
-        let (next, _) = state.reduced(by: .finished)
-        state = next
-        if next == .closed { sheet?.uninstall() }
+        presenter?.motionFinished()
     }
 
     #if DEBUG
         /// Stops the motion where it stands and holds the sheet at `progress` of it, rising or leaving,
-        /// so a frame in the middle of the move can be photographed. The state is the one the motion
-        /// was in, so the keys and the menu answer as they would at that moment.
+        /// so a frame in the middle of the move can be photographed.
         func hold(at progress: Double, closing: Bool) {
-            guard let sheet else { return }
-            if closing {
-                if state.capturesKeys {
-                    sheet.release()
-                    restoreOpenerFocus()
-                }
-                state = .closing
-            } else {
-                state = .opening
-            }
-            sheet.cancelMotion(settingPresence: progress)
+            presenter?.hold(at: progress, closing: closing)
         }
     #endif
 
     /// ⌘W with the sheet up closes the sheet; the window is closed by the next one, or by its own
-    /// close button. Only the chord Core names counts, and only in the window the sheet is in.
+    /// close button. Only the chord Core names counts, and only in the window the sheet is in; with a
+    /// viewer on the Studio, the viewer's ⌘W is the one that is answered.
     func closesSheet(chord: KeyChord, command: Bool, keyWindow: NSWindow?) -> Bool {
-        guard state.capturesKeys, StudioSheetKeys.closes(chord, command: command),
-            keyWindow == nil || keyWindow === sheet?.host
-        else { return false }
-        dismiss()
-        return true
+        stack.closesTop(chord: chord, command: command, keyWindow: keyWindow)
     }
 
     /// What Esc does with the sheet up: stop a render that is out, and only then close.
@@ -161,13 +149,14 @@ final class StudioWindowController: NSObject {
         }
     }
 
-    private func ensureSheet() -> StudioSheetView {
-        if let sheet { return sheet }
+    private func ensurePresenter() -> SheetPresenter {
+        if let presenter { return presenter }
         let sheet = StudioSheetView()
+        let presenter = SheetPresenter(sheet: sheet, stack: stack)
+        presenter.reducedMotion = { [weak self] in self?.reducedMotion ?? false }
         sheet.workspace.onChange = { [weak self] _ in self?.refreshChrome() }
         sheet.workspace.onLaneKey = { [weak self] id in self?.show(lane: id) }
         sheet.workspace.onEscape = { [weak self] in self?.escapePressed() }
-        sheet.onScrimPress = { [weak self] in self?.dismiss() }
         let toolbar = sheet.toolbar
         toolbar.lanes.target = self
         toolbar.lanes.action = #selector(laneChosen)
@@ -182,39 +171,8 @@ final class StudioWindowController: NSObject {
         toolbar.done.action = #selector(donePressed)
         toolbar.pill.onPress = { [weak self] anchor in self?.activeLane?.presentMachine(from: anchor) }
         sheet.workspace.setLane(imageLane)
-        self.sheet = sheet
-        return sheet
-    }
-
-    /// Opening from another window takes the sheet out of the first one, with everything it held, and
-    /// puts it in the second at rest.
-    private func moveSheet(to window: NSWindow) {
-        guard let sheet else { return }
-        sheet.uninstall()
-        sheet.install(in: window)
-        sheet.apply(presence: 1)
-        sheet.capture()
-        opener = window.firstResponder
-        if state == .opening { state = state.reduced(by: .finished).state }
-        watchClose(of: window)
-    }
-
-    /// A window that closes with the sheet in it takes the sheet with it, with no motion to wait for.
-    private func watchClose(of window: NSWindow) {
-        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
-        closeObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification, object: window, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.teardown() }
-        }
-    }
-
-    private func teardown() {
-        state = .closed
-        opener = nil
-        sheet?.uninstall()
-        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
-        closeObserver = nil
+        self.presenter = presenter
+        return presenter
     }
 
     private func placeBrief(_ brief: String?, on id: StudioLaneID) {
@@ -224,13 +182,6 @@ final class StudioWindowController: NSObject {
         } else {
             shown.dock.focusWords()
         }
-    }
-
-    /// Focus goes back to whatever held it when the sheet opened, or to nothing when that is gone.
-    private func restoreOpenerFocus() {
-        guard let window = sheet?.host else { return }
-        if let opener, window.makeFirstResponder(opener) { return }
-        window.makeFirstResponder(nil)
     }
 
     private func select(_ id: StudioLaneID) {

@@ -537,9 +537,9 @@ final class MainMenu: NSObject {
     @objc private func videoForge() { hub.presentForge() }
     @objc private func openStudio() { hub.presentStudio() }
 
-    /// Close is the Studio's before it is the window's: with the sheet up, the chord Core names for it
-    /// closes the sheet, and only the next press — or the window's own close button — closes the
-    /// window. The chord is read off this item's own key equivalent, so a rebinding stays honest.
+    /// Close is a sheet's before it is the window's: with a sheet up, the chord Core names for it
+    /// closes the top sheet only, and only the next press — or the window's own close button — closes
+    /// the one beneath it or the window. The chord is read off this item's own key equivalent, so a rebinding stays honest.
     @objc private func closeFront(_ sender: NSMenuItem) {
         let mask = sender.keyEquivalentModifierMask
         let scalar = sender.keyEquivalent.unicodeScalars.first.map { UInt32($0.value) } ?? 0
@@ -547,7 +547,7 @@ final class MainMenu: NSObject {
             (mask.contains(.control) ? KeyChord.controlMask : 0) | (mask.contains(.shift) ? KeyChord.shiftMask : 0)
             | (mask.contains(.option) ? KeyChord.altMask : 0)
         if let chord = KeyChord.canonical(keyval: scalar, state: state),
-            StudioWindowController.shared.closesSheet(
+            SheetStack.shared.closesTop(
                 chord: chord, command: mask.contains(.command), keyWindow: NSApp.keyWindow)
         {
             return
@@ -602,7 +602,7 @@ extension MainMenu: NSMenuItemValidation {
     /// reachable without an open chat, so the number is read before the menu is chosen, never
     /// after.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if !StudioWindowController.shared.state.conversationChordsEnabled, let action = menuItem.action,
+        if !SheetStack.shared.conversationChordsEnabled, let action = menuItem.action,
             !Self.answersWhileStudioIsUp(action)
         {
             return false

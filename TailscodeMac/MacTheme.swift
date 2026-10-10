@@ -29,6 +29,18 @@ enum MacTheme {
         static var windowGround: NSColor {
             ThemePalette.color(\.canvas, system: .windowBackgroundColor)
         }
+        /// The lights-down neutral a picture is judged on: the dark face's canvas with its hue taken
+        /// out and its light turned down, the same in both faces, so a viewer sheet is a dark room in
+        /// a light window as well as in a dark one.
+        static var viewerGround: NSColor {
+            NSColor(name: nil) { _ in
+                var brightness: CGFloat = 0.1
+                NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
+                    brightness = canvas.usingColorSpace(.deviceRGB)?.brightnessComponent ?? brightness
+                }
+                return NSColor(white: brightness * 0.6, alpha: 1)
+            }
+        }
         /// Every raised content surface: cards, code blocks, gauge tracks, chips.
         static var canvasRaised: NSColor {
             ThemePalette.color(\.canvasRaised, system: .quaternarySystemFill)
