@@ -36,23 +36,24 @@ Asked for: instead of a separate window, the image and video Studio opens as a m
 └──┴──────────────────────────────────────────────────────────────────────────────┴──┘
  24 pt left/right; bottom flush to the window's edge (clipped by the window's own corner radius)
 ```
-- **Top inset** = the window's title-bar clearance (so the traffic lights and the chat title stay visible above the sheet) **+ 8 pt**, never less than 36 pt. **Left and right 24 pt. Bottom 0**: the sheet is attached to the bottom edge like a page sheet, which is what makes it read as rising out of the window rather than floating in it.
-- The sheet is the full remaining rectangle; it follows the window as it is resized (same insets, the Studio's own responsive folds apply: shelf → strip under 960 pt wide, chips → Settings under 760 pt tall).
-- Above 1,800 pt of window width the sheet stops growing at 1,752 pt and centres, so a very wide window does not stretch a 3:2 stage; below that it fills.
+- **Top inset** = the window's title-bar clearance (so the traffic lights and the chat title stay visible above the sheet) **+ 8 pt** when the window is at least 720 pt tall (the gap is 0 below that, to keep the stage's room), never less than 36 pt. The traffic lights are the window's own and stay at full brightness; only the content under the scrim is dimmed. **Left and right 24 pt. Bottom 0**: the sheet is attached to the bottom edge like a page sheet, which is what makes it read as rising out of the window rather than floating in it.
+- The sheet is the full remaining rectangle; it follows the window as it is resized (same insets). The Studio's own responsive folds are measured against **the sheet**, not the window: shelf → strip under 960 pt of sheet width (a window under ≈ 1,008 pt), chips → Settings under 760 pt of sheet height.
+- **Edge:** the sheet is separated from the scrimmed conversation by a 1-pt hairline in the rule token along its top and sides and a soft shadow cast upward onto the scrim (blur 24 pt, 30 % black) — in the dark face the canvas is otherwise the same colour as the chat (1.05:1 once scrimmed).
+- Above 1,800 pt of window width the sheet stops growing at 1,752 pt and centres (so the side margin is 24 pt up to 1,800 pt and grows after it), so a very wide window does not stretch a 3:2 stage; below that it fills.
 - **Toolbar inside the sheet** (there is no window title bar to borrow): lane switch leading, machine pill centred, queue count and **Done** trailing, 44 pt high, on the sheet's canvas; the same controls as the panel's toolbar, not new ones.
 
 ### 4.2 Scrim and context
-A black scrim at 38 % over everything the sheet does not cover (the conversation, the sidebar, the composer; in a split, every pane). It takes presses: **a press on it closes the sheet** (a draft and a render survive; nothing is lost by a stray click). It never blurs.
+A black scrim — **38 % in the dark face, 26 % in the light face** (a black 38 % turns a white conversation into a muddy slab) — over everything the sheet does not cover (the conversation, the sidebar, the composer; in a split, every pane). It takes presses: **a press on it closes the sheet** (a draft and a render survive; nothing is lost by a stray click). It never blurs.
 
 ### 4.3 Motion
-- **Open:** the sheet travels from 28 % of its own height below its final position to rest while fading in, and the scrim fades 0 → 38 %, over **320 ms**, ease-out (a critically damped spring on Apple platforms, `ease-out-cubic` elsewhere). **Close:** the reverse over **220 ms**, ease-in. One timeline for both parts.
+- **Open:** the sheet travels from 28 % of its own height below its final position to rest — **fully opaque from the first frame**, as a sheet is (a fade would show the conversation through the Studio) — while the scrim fades 0 → its alpha, over **320 ms**: a critically damped spring on Apple platforms, **ease-out-quad** elsewhere (cubic front-loads the travel: 91 % covered at 176 ms, so the move feels shorter than it is). **Close:** the reverse over **220 ms**, ease-in-quad. One timeline for both parts. Only under reduced motion does the sheet fade (a 120 ms cross-fade, no travel).
 - The Studio's content is laid out at its final size **before** the motion starts and is moved as one layer (Mac: the sheet layer's transform; Linux: a `GtkRevealer` slide-up or an allocation-neutral translate) — nothing inside re-lays-out per frame, and the live sketch's layer keeps its contents.
 - **Reduced motion:** a 120 ms cross-fade, no travel. The state machine is the same.
 - Opening while already open (the composer's Image lane pressed again, a menu item): no animation, the lane changes and the words box takes focus.
 
 ### 4.4 Dismissal and the keys
 - **Done**, **a press on the scrim**, **⌘W** (Mac) / **Ctrl+W** (Linux), and **Esc when no render is running** close the sheet.
-- **Esc while a render is running stops it** (the Studio's existing rule, ⎋ = Stop), and the next Esc closes. This is one tested rule in Core (`StudioSheetKeys.escape(renderIsOut:)`), the same on every desk.
+- **Esc while a render is running stops it** (the Studio's existing rule, ⎋ = Stop), and the next Esc closes. This is one tested rule in Core (`StudioSheetKeys.escape(renderIsOut:)`), the same on every desk. It is made visible, not just correct: while a render is out the dock's Stop button wears the ⎋ key, and Done's tooltip and accessibility hint say *Press Esc to stop, again to close*.
 - ⌘W / Ctrl+W closes the sheet first and only then, pressed again, the window. The window's red close button still closes the window.
 - ⌘1/⌘2 lanes, ⌘↩ Generate, ⌘E Enhance, ⌘⇧R Again, ⌘S Save, ⌘⇧E Edit this, Space Open, ←/→ the shelf: unchanged. **Every chord that acts on the conversation behind the sheet** (Send, Archive, Archived Chats, the pane verbs, find-in-chat, new chat…) is **disabled while the sheet is up**: menu items validate to disabled, the Linux chord table is bypassed, so a stray keystroke can never reach a chat nobody can see the focus of.
 
@@ -91,8 +92,17 @@ A pure state value in Core (`StudioSheetState`) so every client answers the same
 ## 8. Measures
 Open and close take their stated times; a frame trace shows no layout pass inside the sheet during either; the sheet's frame equals `StudioSheetGeometry` for six window sizes (selftest); every conversation chord is disabled with the sheet up and re-enabled after it; reduced motion cross-fades; the pointer and the keyboard work after opening a file picker from the sheet on Linux with the session's real compositor (the X11 lock that motivated the old design must not return).
 
-## 9. Mocks
-`docs/studio-sheet-mocks/` — the sheet open over a conversation in dark and light, mid-open, and in a narrow window; the notes there say what looking at them changed.
+## 9. Mocks, and what looking at them changed
+
+`docs/studio-sheet-mocks/` — the sheet open over a conversation in dark and light, mid-open, a geometry sheet with dimensions, a Linux window, a 960-wide window, the scrim at 30/38/45 %, and a 2,560-wide window (the conversation behind is the real shot; the Studio inside is recomposed in HTML around real crops, so read geometry and contrast from them, not pixels). Looked at:
+- **The sheet had almost no edge in the dark face** (canvas 1.05–1.07:1 against the scrimmed chat at every scrim strength): added the hairline and the upward shadow (§4.1).
+- **38 % is right for dark** (chat title 6.1:1, subtitle 3.0:1; 30 % lets the chat compete, 45 % drops the subtitle to 2.6:1) **and wrong for light**, where black turns a white chat into grey mud: 26 % there.
+- **The top strip reads as context, not a gap — because the title bar is in it.** The traffic lights stay vivid and read as window chrome; the doc now says so. The 8-pt gap is only a seam; it goes away in short windows.
+- **24-pt side insets read as a sheet, not a floating card, because the bottom is flush**; the bottom corners are a non-issue (the window's radius is about the inset).
+- **Two stacked bars (title bar + sheet toolbar ≈ 104 pt) cost the stage.** At 1440×900 the stage is 62.4 % of the window (the old panel: 66.5 %) — over the 60 % line, barely. At 960×640 it falls to 46.8 % and the picture is small, so the short-window rules above (no gap, thresholds on the sheet) matter.
+- **Ease-out-cubic hid the motion** (91 % of the travel done at 176 ms) and a fade would have shown the chat through the Studio: ease-out-quad and an opaque sheet.
+- **Nothing said Esc stops before it closes:** the Stop button wears ⎋ and Done explains itself.
+- **At 1,920 wide the 1,752-pt cap gives 84-pt sides** (§4.1 now says the side margin is 24 pt only up to 1,800); at 2,560 the centred sheet reads as a deliberate page.
 
 ## 10. Implementation (after §1–§9)
 1. Core: `StudioSheetGeometry` (frames for a window size), `StudioSheetMotion` (durations, travel, scrim alpha, curve names), `StudioSheetState` and `StudioSheetKeys`, tests; a parity capability `.studioSheet` (Mac and Linux implement it, iOS answers its full-screen modal), strings.
