@@ -194,6 +194,14 @@ enum Theme {
         static let xxxl: CGFloat = 48
     }
 
+    /// The table of numbers a transcript is laid out with, for a finger and the reader's chosen
+    /// density: no cell names a gap, a line height or a thumbnail size of its own.
+    enum Chat {
+        static var metrics: ChatMetrics {
+            ChatMetrics.metrics(for: ChatDensitySetting.current, input: .touch)
+        }
+    }
+
     enum Radius {
         static let card: CGFloat = 14
         static let bubble: CGFloat = 18

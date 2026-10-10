@@ -259,9 +259,12 @@ final class CompactionSummaryViewController: UIViewController {
         ])
     }
 
+    /// What the seam in the transcript no longer carries: the trade in words, the share of the
+    /// context that is still occupied as a bar, and the sentence that says what was replaced.
     private func statsHeader() -> UIView {
         let container = UIView()
         container.backgroundColor = Theme.Color.secondaryBackground
+        let story = CompactionStory.done(compaction)
 
         let label = UILabel()
         label.font = Theme.Ramp.font(.seamFootnote)
@@ -269,19 +272,60 @@ final class CompactionSummaryViewController: UIViewController {
         label.textColor = Theme.Color.secondaryLabel
         label.numberOfLines = 0
         label.text = Self.stats(for: compaction)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(label)
+
+        var rows: [UIView] = [label]
+        if let kept = story.keptFraction {
+            rows.append(keptBar(kept))
+        }
+        if let footnote = story.footnote {
+            let note = UILabel()
+            note.font = Theme.Ramp.font(.panelFootnote)
+            note.adjustsFontForContentSizeCategory = true
+            note.textColor = Theme.Color.tertiaryLabel
+            note.numberOfLines = 0
+            note.text = footnote
+            rows.append(note)
+        }
+
+        let stack = UIStackView(arrangedSubviews: rows)
+        stack.axis = .vertical
+        stack.spacing = Theme.Spacing.s
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: Theme.Spacing.m),
-            label.bottomAnchor.constraint(
+            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: Theme.Spacing.m),
+            stack.bottomAnchor.constraint(
                 equalTo: container.bottomAnchor, constant: -Theme.Spacing.m),
-            label.leadingAnchor.constraint(
+            stack.leadingAnchor.constraint(
                 equalTo: container.leadingAnchor, constant: Theme.Spacing.l),
-            label.trailingAnchor.constraint(
+            stack.trailingAnchor.constraint(
                 equalTo: container.trailingAnchor, constant: -Theme.Spacing.l),
         ])
         return container
+    }
+
+    /// The sliver of context the summary still occupies: a nearly empty bar is the point of
+    /// compacting, so it is what is drawn rather than what was freed.
+    private func keptBar(_ fraction: Double) -> UIView {
+        let track = UIView()
+        track.backgroundColor = Theme.Color.separator
+        track.layer.cornerRadius = 2
+        track.clipsToBounds = true
+        track.isAccessibilityElement = false
+        let fill = UIView()
+        fill.backgroundColor = Theme.Color.accent
+        fill.translatesAutoresizingMaskIntoConstraints = false
+        track.addSubview(fill)
+        NSLayoutConstraint.activate([
+            track.heightAnchor.constraint(equalToConstant: 4),
+            fill.topAnchor.constraint(equalTo: track.topAnchor),
+            fill.bottomAnchor.constraint(equalTo: track.bottomAnchor),
+            fill.leadingAnchor.constraint(equalTo: track.leadingAnchor),
+            fill.widthAnchor.constraint(
+                equalTo: track.widthAnchor, multiplier: CGFloat(min(max(fraction, 0.02), 1))),
+        ])
+        return track
     }
 
     private static func stats(for compaction: Compaction) -> String {

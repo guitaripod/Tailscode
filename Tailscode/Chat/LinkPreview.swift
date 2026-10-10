@@ -17,6 +17,12 @@ final class LinkPreviewStore {
         await LinkPreviewFetcher.shared.metadata(for: urlString)
     }
 
+    /// The icon already decoded for an address, read without waiting, so a rail built again paints
+    /// its favicons at once.
+    func cachedFavicon(for urlString: String) -> UIImage? {
+        imageCache.object(forKey: urlString as NSString)
+    }
+
     /// The page's icon, decoded. A failure is the fetcher's to remember, so a card scrolled back
     /// over does not retry it.
     func favicon(for urlString: String) async -> UIImage? {

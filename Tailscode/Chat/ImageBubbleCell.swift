@@ -8,12 +8,11 @@ protocol ImageBubbleCellDelegate: AnyObject {
     func imageBubbleCell(_ cell: ImageBubbleCell, menuFor payload: ImagePayload) -> UIMenu
 }
 
-/// An attached image, rendered at the size it actually is (capped) rather than
-/// in a fixed box, so a screenshot reads as a screenshot and a photo as a photo.
-/// A picture the agent sent names itself underneath; one you sent needs no
-/// caption and is drawn small (``ImagePreview``) — you already know what you
-/// handed over, and a tap still opens it full size. Press and hold for the
-/// things you do with a picture, or drag it straight into another app.
+/// A picture you sent, rendered at the size it actually is (capped) rather than in a fixed box,
+/// so a screenshot reads as a screenshot and a photo as a photo. It needs no caption and is drawn
+/// small (``ImagePreview``) — you already know what you handed over, and a tap still opens it full
+/// size. Press and hold for the things you do with a picture, or drag it straight into another
+/// app. The pictures an agent made are a `PictureStripCell`.
 final class ImageBubbleCell: UICollectionViewCell {
     static let reuseID = "ImageBubbleCell"
     weak var delegate: ImageBubbleCellDelegate?
@@ -24,14 +23,11 @@ final class ImageBubbleCell: UICollectionViewCell {
 
     private let bubble = UIView()
     private let imageView = UIImageView()
-    private let caption = UILabel()
     private let shimmer = CAGradientLayer()
     private let failure = UILabel()
     private var leadingPin: NSLayoutConstraint!
     private var trailingPin: NSLayoutConstraint!
     private var bubbleTop: NSLayoutConstraint!
-    private var imageBottomPin: NSLayoutConstraint!
-    private var captionBottomPin: NSLayoutConstraint!
     private var ratio: NSLayoutConstraint?
     private var widthPin: NSLayoutConstraint!
     private var maxHeightPin: NSLayoutConstraint!
@@ -39,12 +35,10 @@ final class ImageBubbleCell: UICollectionViewCell {
     private var file: FileReference?
     private var originalData: Data?
 
-    private static let maxHeight: CGFloat = 300
     private static let bubbleShare: CGFloat = 0.72
 
-    /// Extra gap above the bubble when this row opens a new turn.
-    var turnInset: CGFloat = 0 {
-        didSet { bubbleTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { bubbleTop.constant = gapAbove }
     }
 
     var displayedImage: UIImage? { imageView.image }
@@ -74,12 +68,6 @@ final class ImageBubbleCell: UICollectionViewCell {
         imageView.accessibilityTraits = [.image, .button]
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.answersPointer(cornerRadius: Theme.Radius.bubble)
-        caption.font = Theme.Ramp.font(.panelFootnote)
-        caption.adjustsFontForContentSizeCategory = true
-        caption.textColor = Theme.Color.secondaryLabel
-        caption.lineBreakMode = .byTruncatingMiddle
-        caption.isHidden = true
-        caption.translatesAutoresizingMaskIntoConstraints = false
         failure.font = Theme.Ramp.font(.panelFootnote)
         failure.textColor = Theme.Color.tertiaryLabel
         failure.textAlignment = .center
@@ -95,7 +83,6 @@ final class ImageBubbleCell: UICollectionViewCell {
         bubble.layer.addSublayer(shimmer)
         contentView.addSubview(bubble)
         bubble.addSubview(imageView)
-        bubble.addSubview(caption)
         bubble.addSubview(failure)
 
         leadingPin = bubble.leadingAnchor.constraint(
@@ -104,28 +91,19 @@ final class ImageBubbleCell: UICollectionViewCell {
             equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l)
         widthPin = Self.widthPin(bubble: bubble, container: contentView, mine: false)
         maxHeightPin = imageView.heightAnchor.constraint(
-            lessThanOrEqualToConstant: Self.maxHeight)
+            lessThanOrEqualToConstant: CGFloat(Theme.Chat.metrics.imageMaxHeight))
         bubbleTop = bubble.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
-        imageBottomPin = imageView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor)
-        captionBottomPin = caption.bottomAnchor.constraint(
-            equalTo: bubble.bottomAnchor, constant: -Theme.Spacing.s)
-        imageBottomPin.isActive = true
+            equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
             bubbleTop,
             bubble.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+                equalTo: contentView.bottomAnchor),
             widthPin,
             maxHeightPin,
             imageView.topAnchor.constraint(equalTo: bubble.topAnchor),
             imageView.leadingAnchor.constraint(equalTo: bubble.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: bubble.trailingAnchor),
-            caption.topAnchor.constraint(
-                equalTo: imageView.bottomAnchor, constant: Theme.Spacing.s),
-            caption.leadingAnchor.constraint(
-                equalTo: bubble.leadingAnchor, constant: Theme.Spacing.m),
-            caption.trailingAnchor.constraint(
-                equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.m),
+            imageView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor),
             failure.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
             failure.leadingAnchor.constraint(
                 equalTo: bubble.leadingAnchor, constant: Theme.Spacing.m),
@@ -156,9 +134,6 @@ final class ImageBubbleCell: UICollectionViewCell {
         imageView.image = nil
         imageView.alpha = 1
         failure.isHidden = true
-        caption.isHidden = true
-        imageBottomPin.isActive = true
-        captionBottomPin.isActive = false
         file = nil
         originalData = nil
         delegate = nil
@@ -178,7 +153,6 @@ final class ImageBubbleCell: UICollectionViewCell {
         self.file = file
         self.originalData = localData
         imageView.accessibilityLabel = file.displayName
-        showCaption(isUser ? nil : file.displayName)
         if let cached = AttachmentImageStore.shared.cached(file) {
             originalData = localData ?? AttachmentImageStore.shared.cachedData(file)
             show(cached, animated: false)
@@ -207,7 +181,8 @@ final class ImageBubbleCell: UICollectionViewCell {
     /// A picture you sent is a receipt, not something to read: it keeps the same shape and the
     /// same tap, at ``ImagePreview``'s share of the box a picture from the agent gets.
     private func applyDirection(mine: Bool) {
-        maxHeightPin.constant = CGFloat(ImagePreview.bound(Double(Self.maxHeight), mine: mine))
+        maxHeightPin.constant = CGFloat(
+            ImagePreview.bound(Theme.Chat.metrics.imageMaxHeight, mine: mine))
         widthPin.isActive = false
         widthPin = Self.widthPin(bubble: bubble, container: contentView, mine: mine)
         widthPin.isActive = true
@@ -221,21 +196,6 @@ final class ImageBubbleCell: UICollectionViewCell {
             multiplier: CGFloat(ImagePreview.share(Double(bubbleShare), mine: mine)))
         pin.priority = UILayoutPriority(999)
         return pin
-    }
-
-    /// A caption is what makes a picture from the agent legible as a file on the
-    /// server rather than an image from nowhere.
-    private func showCaption(_ name: String?) {
-        guard let name, !name.isEmpty else {
-            caption.isHidden = true
-            captionBottomPin.isActive = false
-            imageBottomPin.isActive = true
-            return
-        }
-        caption.text = name
-        caption.isHidden = false
-        imageBottomPin.isActive = false
-        captionBottomPin.isActive = true
     }
 
     /// The intrinsic aspect ratio drives the bubble's height, clamped so a tall

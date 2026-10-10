@@ -47,11 +47,11 @@ final class TableDraftCell: UICollectionViewCell {
         contentView.addSubview(card)
         card.addSubview(row)
         cardTop = card.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+            equalTo: contentView.topAnchor)
         NSLayoutConstraint.activate([
             cardTop,
             card.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+                equalTo: contentView.bottomAnchor),
             card.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             card.trailingAnchor.constraint(
@@ -67,9 +67,8 @@ final class TableDraftCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// Extra gap above the card when this row opens a new turn.
-    var turnInset: CGFloat = 0 {
-        didSet { cardTop.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { cardTop.constant = gapAbove }
     }
 
     func configure(_ draft: TableDraft) {

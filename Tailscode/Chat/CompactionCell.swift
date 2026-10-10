@@ -25,21 +25,21 @@ struct CompactionRow: Hashable {
 }
 
 /// The seam a compaction leaves in a conversation. Everything above it still reads normally but is
-/// gone from the agent's context, so the row is a full-width divider rather than a bubble: a rule
-/// across the transcript, then a card saying what was traded for what.
+/// gone from the agent's context, so the row is a divider line across the transcript — what was
+/// traded for what, in one 32-point row — and the summary, the bar and the explanation live in the
+/// reader it opens.
+///
+/// A summarize that is still running keeps the one thing a line cannot say, that it is moving: a
+/// thin sweep under the line, and the elapsed time ticking in it.
 final class CompactionCell: UICollectionViewCell {
     static let reuseID = "CompactionCell"
 
-    private let rule = UIView()
-    private let card = UIControl()
-    private let icon = UIImageView()
-    private let titleLabel = UILabel()
-    private let chevron = UIImageView()
-    private let detailLabel = UILabel()
+    private let seam = SeamLineView()
     private let track = UIView()
     private let fill = UIView()
-    private let footnote = UILabel()
     private var fillWidth: NSLayoutConstraint!
+    private var topConstraint: NSLayoutConstraint!
+    private var trackHeight: NSLayoutConstraint!
     private var ticker: Task<Void, Never>?
     private var startedAt: Date?
     private var onTap: (() -> Void)?
@@ -51,6 +51,10 @@ final class CompactionCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    var gapAbove: CGFloat = 0 {
+        didSet { topConstraint.constant = gapAbove }
+    }
+
     private func build() {
         NotificationCenter.default.addObserver(
             self, selector: #selector(restartSweeping),
@@ -59,83 +63,36 @@ final class CompactionCell: UICollectionViewCell {
             self, selector: #selector(retuneSweep),
             name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
 
-        rule.backgroundColor = Theme.Color.separator
-        rule.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(rule)
-
-        card.backgroundColor = Theme.Color.secondaryBackground
-        card.layer.cornerRadius = Theme.Radius.card
-        card.layer.cornerCurve = .continuous
-        card.translatesAutoresizingMaskIntoConstraints = false
-        card.addTarget(self, action: #selector(cardTapped), for: .touchUpInside)
-        contentView.addSubview(card)
-
-        icon.contentMode = .scaleAspectFit
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-        titleLabel.font = Theme.Ramp.font(.cardTitle)
-        titleLabel.adjustsFontForContentSizeCategory = true
-        titleLabel.textColor = Theme.Color.label
-        titleLabel.numberOfLines = 0
-        chevron.image = UIImage(
-            systemName: "chevron.right",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
-        chevron.tintColor = Theme.Color.tertiaryLabel
-        chevron.contentMode = .scaleAspectFit
-        chevron.setContentHuggingPriority(.required, for: .horizontal)
-
-        let header = UIStackView(arrangedSubviews: [icon, titleLabel, chevron])
-        header.axis = .horizontal
-        header.alignment = .firstBaseline
-        header.spacing = Theme.Spacing.s
-
-        detailLabel.font = Theme.Ramp.font(.panelDetail)
-        detailLabel.adjustsFontForContentSizeCategory = true
-        detailLabel.textColor = Theme.Color.secondaryLabel
-        detailLabel.numberOfLines = 0
+        seam.translatesAutoresizingMaskIntoConstraints = false
+        seam.addTarget(self, action: #selector(seamTapped), for: .touchUpInside)
+        contentView.addSubview(seam)
 
         track.backgroundColor = Theme.Color.separator
-        track.layer.cornerRadius = 2
         track.clipsToBounds = true
         track.translatesAutoresizingMaskIntoConstraints = false
-        fill.layer.cornerRadius = 2
+        fill.backgroundColor = Theme.Color.accent
         fill.translatesAutoresizingMaskIntoConstraints = false
         track.addSubview(fill)
+        contentView.addSubview(track)
         fillWidth = fill.widthAnchor.constraint(equalTo: track.widthAnchor, multiplier: 0.05)
-
-        footnote.font = Theme.Ramp.font(.panelFootnote)
-        footnote.adjustsFontForContentSizeCategory = true
-        footnote.textColor = Theme.Color.tertiaryLabel
-        footnote.numberOfLines = 0
-
-        let stack = UIStackView(arrangedSubviews: [header, detailLabel, track, footnote])
-        stack.axis = .vertical
-        stack.spacing = Theme.Spacing.xs
-        stack.setCustomSpacing(Theme.Spacing.s, after: detailLabel)
-        stack.setCustomSpacing(Theme.Spacing.s, after: track)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.isUserInteractionEnabled = false
-        card.addSubview(stack)
+        trackHeight = track.heightAnchor.constraint(equalToConstant: 0)
+        topConstraint = seam.topAnchor.constraint(equalTo: contentView.topAnchor)
 
         NSLayoutConstraint.activate([
-            rule.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m),
-            rule.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            rule.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            rule.heightAnchor.constraint(equalToConstant: 0.5),
-
-            card.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: Theme.Spacing.m),
-            card.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.m),
-            card.leadingAnchor.constraint(
+            topConstraint,
+            seam.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            card.trailingAnchor.constraint(
+            seam.trailingAnchor.constraint(
                 equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
 
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: Theme.Spacing.m),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -Theme.Spacing.m),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: Theme.Spacing.m),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -Theme.Spacing.m),
+            track.topAnchor.constraint(equalTo: seam.bottomAnchor),
+            track.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
+            track.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
+            track.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            trackHeight,
 
-            track.heightAnchor.constraint(equalToConstant: 4),
             fill.topAnchor.constraint(equalTo: track.topAnchor),
             fill.bottomAnchor.constraint(equalTo: track.bottomAnchor),
             fill.leadingAnchor.constraint(equalTo: track.leadingAnchor),
@@ -155,69 +112,59 @@ final class CompactionCell: UICollectionViewCell {
     func configure(_ row: CompactionRow, onTap: (() -> Void)?) {
         self.onTap = onTap
         stopTicking()
-        card.isUserInteractionEnabled = onTap != nil
-        chevron.isHidden = onTap == nil
+        setSweep(visible: false)
 
         switch row.state {
         case .done(let compaction):
-            configureDone(compaction)
+            let story = CompactionStory.done(compaction)
+            seam.show(
+                text: Self.line(for: story, compaction: compaction), symbol: nil,
+                tint: Theme.Color.secondaryLabel, tappable: onTap != nil && row.isReadable,
+                spoken: Self.spoken(for: story))
         case .running(let started, let waiting):
-            configureRunning(startedAt: started, waiting: waiting)
+            let story = CompactionStory.running(startedAt: started, waiting: waiting)
+            startedAt = started
+            seam.show(
+                text: Self.runningLine(story, startedAt: started), symbol: nil,
+                tint: Theme.Color.accent, tappable: false, spoken: story.title + ". " + story.detail)
+            setSweep(visible: true)
+            startTicking()
+            startSweeping()
         case .failed(let reason):
-            configureFailed(reason)
+            let story = CompactionStory.failed(reason)
+            seam.show(
+                text: story.title + " · " + story.detail, symbol: story.symbol,
+                tint: Theme.Color.warning, tappable: false)
         }
     }
 
-    private func configureDone(_ compaction: Compaction) {
-        let story = CompactionStory.done(compaction)
-        apply(story, tint: Theme.Color.accent)
-        setFill(story.keptFraction)
-        track.isHidden = story.keptFraction == nil
+    /// `Context compacted · 311.6k → 16.4k · 1m 54s`: the title, what was traded, how long it took.
+    /// What the seam leaves out — the word "tokens", the share freed, the bar — is in the reader it
+    /// opens, so the line stays one line.
+    private static func line(for story: CompactionStory, compaction: Compaction) -> String {
+        var parts = [story.title]
+        if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
+            parts.append("\(StatusFacts.tokens(before)) → \(StatusFacts.tokens(after))")
+        } else if let after = compaction.tokensAfter {
+            parts.append(StatusFacts.tokens(after))
+        }
+        if let duration = compaction.duration, duration >= 1 {
+            parts.append(StatusFacts.clock(duration))
+        }
+        return parts.joined(separator: " · ")
     }
 
-    private func configureRunning(startedAt: Date, waiting: Bool) {
-        let story = CompactionStory.running(startedAt: startedAt, waiting: waiting)
-        apply(story, tint: Theme.Color.accent)
-        track.isHidden = false
-        self.startedAt = startedAt
-        updateElapsed()
-        startTicking()
-        startSweeping()
+    private static func spoken(for story: CompactionStory) -> String {
+        [story.title, story.detail, story.footnote].compactMap { $0 }.joined(separator: ". ")
     }
 
-    private func configureFailed(_ reason: String) {
-        let story = CompactionStory.failed(reason)
-        apply(story, tint: Theme.Color.warning)
-        track.isHidden = true
+    private static func runningLine(_ story: CompactionStory, startedAt: Date) -> String {
+        story.title + " · " + CompactionStory.elapsedLine(startedAt: startedAt)
     }
 
-    private func apply(_ story: CompactionStory, tint: UIColor) {
-        symbol(story.symbol, tint: tint)
-        titleLabel.text = story.title
-        detailLabel.text = story.detail
-        fill.backgroundColor = Theme.Color.accent
-        footnote.text = story.footnote
-        footnote.isHidden = story.footnote == nil
-    }
-
-    private func symbol(_ name: String, tint: UIColor) {
-        icon.image = UIImage(
-            systemName: name,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold))
-        icon.tintColor = tint
-    }
-
-    private func setFill(_ fraction: Double?) {
-        let clamped = min(max(fraction ?? 0.05, 0.02), 1)
-        fillWidth.isActive = false
-        fillWidth = fill.widthAnchor.constraint(
-            equalTo: track.widthAnchor, multiplier: CGFloat(clamped))
-        fillWidth.isActive = true
-    }
-
-    private func updateElapsed() {
-        guard let startedAt else { return }
-        footnote.text = CompactionStory.elapsedLine(startedAt: startedAt)
+    private func setSweep(visible: Bool) {
+        trackHeight.constant = visible ? 2 : 0
+        track.isHidden = !visible
     }
 
     private func startTicking() {
@@ -225,8 +172,12 @@ final class CompactionCell: UICollectionViewCell {
         ticker = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
-                guard let self, !Task.isCancelled else { return }
-                self.updateElapsed()
+                guard let self, !Task.isCancelled, let started = self.startedAt else { return }
+                let story = CompactionStory.running(startedAt: started)
+                self.seam.show(
+                    text: Self.runningLine(story, startedAt: started), symbol: nil,
+                    tint: Theme.Color.accent, tappable: false,
+                    spoken: story.title + ". " + story.detail)
             }
         }
     }
@@ -236,6 +187,13 @@ final class CompactionCell: UICollectionViewCell {
         ticker = nil
         startedAt = nil
         fill.layer.removeAllAnimations()
+    }
+
+    private func setFill(_ fraction: Double) {
+        fillWidth.isActive = false
+        fillWidth = fill.widthAnchor.constraint(
+            equalTo: track.widthAnchor, multiplier: CGFloat(min(max(fraction, 0.02), 1)))
+        fillWidth.isActive = true
     }
 
     /// An indeterminate sweep: compaction reports no progress, and a bar that pretended to know
@@ -298,7 +256,7 @@ final class CompactionCell: UICollectionViewCell {
         sweep()
     }
 
-    @objc private func cardTapped() {
+    @objc private func seamTapped() {
         Theme.Haptics.tap()
         onTap?()
     }

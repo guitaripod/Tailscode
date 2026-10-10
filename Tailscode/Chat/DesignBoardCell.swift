@@ -15,12 +15,12 @@ final class DesignBoardCell: UICollectionViewCell {
     private let action = UIButton(type: .system)
     private var onOpen: (() -> Void)?
 
-    var turnInset: CGFloat = 0 {
-        didSet { topInset.constant = Theme.Spacing.xs + turnInset }
+    var gapAbove: CGFloat = 0 {
+        didSet { topInset.constant = gapAbove }
     }
 
     private lazy var topInset = card.topAnchor.constraint(
-        equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+        equalTo: contentView.topAnchor)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -78,7 +78,7 @@ final class DesignBoardCell: UICollectionViewCell {
         NSLayoutConstraint.activate([
             topInset,
             card.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+                equalTo: contentView.bottomAnchor),
             card.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             card.trailingAnchor.constraint(
@@ -98,7 +98,7 @@ final class DesignBoardCell: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         onOpen = nil
-        turnInset = 0
+        gapAbove = 0
     }
 
     func configure(_ reading: DesignCardReading, onOpen: (() -> Void)?) {

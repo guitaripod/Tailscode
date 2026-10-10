@@ -8,6 +8,11 @@ final class AnswerlessTurnCell: UICollectionViewCell {
     static let reuseID = "AnswerlessTurnCell"
 
     private let card = UIView()
+    private lazy var cardTop = card.topAnchor.constraint(equalTo: contentView.topAnchor)
+
+    var gapAbove: CGFloat = 0 {
+        didSet { cardTop.constant = gapAbove }
+    }
     private let icon = UIImageView()
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
@@ -66,9 +71,9 @@ final class AnswerlessTurnCell: UICollectionViewCell {
         card.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            cardTop,
             card.bottomAnchor.constraint(
-                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+                equalTo: contentView.bottomAnchor),
             card.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             card.trailingAnchor.constraint(
