@@ -69,6 +69,21 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.72" date="2026-10-10">
+      <description>
+        <p>The image studio and video forge are rebuilt around the picture, the chat is compact by default, and what you have read follows you between machines.</p>
+        <p>Changes:</p>
+        <ul>
+          <li>The image studio and the video forge take the Studio&#x27;s shape: the stage keeps its size from the machine&#x27;s sketch to the finished picture with a line along its foot for how far along it is, Save, Copy, Open, Again and Use as reference sit under it, the machine&#x27;s pictures and clips are a rail of real thumbnails (a strip in a narrow pane), and the machine you paint on is a pill in place of a note.</li>
+          <li>Chat density, in Preferences, defaults to Compact: tool, thinking and compaction lines are one flat line, pictures an agent made are a strip of thumbnails, the code header shows on hover, and the addresses in an answer gather in one small rail that opens over the transcript when you rest on it (one address is simply the link). Comfortable gives back the old spacing.</li>
+          <li>Rest on a message for Copy and Undo from here, and on a chat in the list for pin, save and archive.</li>
+          <li>Pane verbs: ctrl+w a walks the layouts, ctrl+w r rotates them, ctrl+w shift+h/j/k/l moves the focused pane to an edge, ctrl+w &gt; &lt; + - resize it, and a pane&#x27;s strip can be dragged onto another pane to swap or move it.</li>
+          <li>Answers stream in at the display&#x27;s own refresh rate again; the reveal is painted rather than laid out.</li>
+          <li>Read, pinned, archived and saved chats follow you between devices through the servers you already run (claude-bridge 1.14, omp-bridge 0.8); nothing goes through a cloud.</li>
+          <li>A flight recorder and a stall watchdog that sheds work instead of letting the machine freeze.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.68" date="2026-10-05">
       <description>
         <p>The model chooser, the dial popover, Quick Ask and the composer&#x27;s model button no longer cut a name, a limit or a hint off, at any window width or text scale.</p>
