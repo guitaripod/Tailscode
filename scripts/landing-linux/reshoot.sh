@@ -2,6 +2,7 @@
 # The Linux landing-page shots of the Studio and the compact chat, reproducible on the Arch box.
 #
 #   TSLP=~/tslp scripts/landing-linux/reshoot.sh <stage...>
+#   (DISP=90 MOCK_PORT=8233 TSLP=~/tslp2 for a second, independent run beside the first)
 #
 #   mock       start the stand-in ComfyUI on :8203 over $TSLP/mockout (a copy of the art's mock-output)
 #   assets     poster crops and the blurred sketch the forge demo is told about (needs $TSLP/art)
@@ -14,7 +15,7 @@
 #   all        every stage in that order, then stop
 #   stop       stop the harness and the mock
 #
-# Everything runs on display 87 of this machine, over the scripts/dev-linuxapp.sh harness: a 3840x2300
+# Everything runs on display $DISP (default 87; DISP, MOCK_PORT and GEOM override) of this machine, over the scripts/dev-linuxapp.sh harness: a 3840x2300
 # screen at GDK_SCALE=2 so a window 1920x1080 in layout is drawn at 3840x2160 and cropped from the top left.
 set -euo pipefail
 
@@ -23,12 +24,14 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=$T/out
 PYX=$HOME/.cache/tailscode-dev/xvenv/bin/python
 MOCK_PORT=${MOCK_PORT:-8203}
+DISP=${DISP:-87}
+GEOM=${GEOM:-3840x2300x24}
 LIGHTHOUSE_PROMPT="a lighthouse on a cliff at dusk, waves breaking below, last light on the lamp room"
-export MOCK_PORT TSLP=$T
+export MOCK_PORT DISP TSLP=$T
 mkdir -p "$OUT" "$T/assets"
 
 h() {
-    TAILSCODE_DEV_DISPLAY_NUM=87 TAILSCODE_DEV_GEOM=3840x2300x24 GDK_SCALE=2 \
+    TAILSCODE_DEV_DISPLAY_NUM=$DISP TAILSCODE_DEV_GEOM=$GEOM GDK_SCALE=2 \
         TAILSCODE_IMAGE_ENDPOINT=http://arch:$MOCK_PORT TAILSCODE_DEMO_FORGE_PORT=$MOCK_PORT \
         PATH=$HOME/.local/bin:$PATH "$T/scripts/dev-linuxapp.sh" "$@"
 }
@@ -40,7 +43,7 @@ shoot() {
     shift 3
     h stop >/dev/null 2>&1 || true
     prefs "$@"
-    h start --no-build --fresh --drive "$drive" -- --demo | tail -1
+    h start --release --no-build --fresh --drive "$drive" -- --demo | tail -1
     sleep "$wait"
     h shot "$OUT/$name.raw.png" >/dev/null
     magick "$OUT/$name.raw.png" -crop 3840x2160+0+0 +repage "$OUT/$name.png"
@@ -54,7 +57,7 @@ wshot() {
     local id
     id=$(h run "$PYX" "$HERE/winid.py" "$1")
     [ -n "$id" ] || { echo "no window $1" >&2; return 1; }
-    h run sh -c "xwd -display :87 -id $id -silent | magick xwd:- $OUT/$2.png"
+    h run sh -c "xwd -display :$DISP -id $id -silent | magick xwd:- $OUT/$2.png"
 }
 
 mock_stop() {
