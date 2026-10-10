@@ -101,12 +101,15 @@ enum TranscriptBench {
 
         let column = TranscriptColumn()
         column.spacing = MacTheme.Spacing.m
+        column.metrics = ChatLayout.metrics
         let root = stage(column)
         var hops: [Double] = []
         var start = max(0, rows.count - rowChunk)
         hops.append(
             time {
-                for row in rows[start...] { column.addArrangedSubview(row.makeView(context: context)) }
+                for row in rows[start...] {
+                    column.addArrangedSubview(row.makeView(context: context), spacing: row.spacing)
+                }
                 root.layoutSubtreeIfNeeded()
             })
         while start > 0 {
@@ -115,7 +118,8 @@ enum TranscriptBench {
             hops.append(
                 time {
                     for (offset, row) in rows[from..<upper].enumerated() {
-                        column.insertArrangedSubview(row.makeView(context: context), at: offset)
+                        column.insertArrangedSubview(
+                            row.makeView(context: context), at: offset, spacing: row.spacing)
                     }
                     root.layoutSubtreeIfNeeded()
                 })
@@ -145,7 +149,7 @@ enum TranscriptBench {
                     kind: .agentProse(
                         text: "A new answer arriving under everything else.",
                         rendered: MacMarkdown.render("A new answer arriving under everything else."))
-                ).makeView(context: context))
+                ).makeView(context: context), spacing: .row(.prose))
             root.layoutSubtreeIfNeeded()
         }
         var growth: [Double] = []
@@ -192,9 +196,12 @@ enum TranscriptBench {
 
         let column = TranscriptColumn()
         column.spacing = MacTheme.Spacing.m
+        column.metrics = ChatLayout.metrics
         let columnRoot = stage(column)
         let placed = rows.map { $0.makeView(context: context) }
-        for view in placed { column.addArrangedSubview(view) }
+        for (index, view) in placed.enumerated() {
+            column.addArrangedSubview(view, spacing: rows[index].spacing)
+        }
         columnRoot.layoutSubtreeIfNeeded()
 
         var disagreements: [String] = []

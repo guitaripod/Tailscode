@@ -13,11 +13,12 @@ import TailscodeCore
 @MainActor
 enum TileBench {
     static func isRequested(_ paths: ArraySlice<String>) -> Bool {
-        paths.first?.hasPrefix("tiles") == true
+        paths.first?.hasPrefix("tiles") == true || paths.first == ChatChecks.spec
     }
 
     static func run(_ spec: String) -> Never {
         if spec == TileChecks.spec { TileChecks.runAsChild() }
+        if spec == ChatChecks.spec { ChatChecks.runAsChild() }
         let fields = spec.split(separator: "=", maxSplits: 1).dropFirst().first.map(String.init)
         let parts = (fields ?? "4").split(separator: ":").compactMap { Double($0) }
         let panes = Int(parts.first ?? 4)

@@ -67,6 +67,7 @@ final class TranscriptViewController: NSViewController {
     private let context = TranscriptContext()
     private let rowBuilder = TranscriptRowBuilder()
     private let hoverBar = MessageHoverBar()
+    private let railController = LinkRailController()
     private let identityLabel = NSTextField(labelWithString: "")
     private var identityGlass: NSView?
     /// What a slot took off the screen when it claimed the pane, so putting a conversation back
@@ -283,6 +284,16 @@ final class TranscriptViewController: NSViewController {
         hoverBar.offersUndo = { [weak self] id in self?.context.offersUndo?(id) ?? false }
         hoverBar.undo = { [weak self] id in self?.context.confirmUndo?(id) }
         hoverBar.toast = { [weak self] text in self?.onToast?(text) }
+        hoverBar.locateCode = { [weak self] point in self?.codeTarget(at: point) }
+        hoverBar.blocked = { [weak self] in self?.railController.isOpen ?? false }
+
+        railController.install(in: container, over: scrollView, canvas: canvas)
+        railController.locate = { [weak self] point in self?.railLine(at: point) }
+        railController.lineForKey = { [weak self] key in self?.railLine(forKey: key) }
+        railController.toast = { [weak self] text in self?.onToast?(text) }
+        context.activateRail = { [weak self] line, viaKeyboard in
+            self?.railController.activate(line, viaKeyboard: viaKeyboard)
+        }
 
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -623,6 +634,7 @@ final class TranscriptViewController: NSViewController {
     func open(_ entry: SessionEntry, backend: any CodingAgentBackend) {
         clearSlot()
         hoverBar.dismiss()
+        railController.dismiss()
         guard self.entry?.session.id != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
         beginOpenJourney()
@@ -943,6 +955,7 @@ final class TranscriptViewController: NSViewController {
         }
         guard furnitureHidden.isEmpty else { return }
         hoverBar.dismiss()
+        railController.dismiss()
         furnitureHidden = view.subviews.filter { subview in
             subview !== identityGlass && subview !== page && subview !== draw && !subview.isHidden
                 && !isVideoSlot(subview)
@@ -1270,7 +1283,11 @@ final class TranscriptViewController: NSViewController {
 
     private func configureCanvas() {
         rowColumn.spacing = MacTheme.Spacing.m
+        rowColumn.metrics = ChatLayout.metrics
         rowColumn.translatesAutoresizingMaskIntoConstraints = false
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(chatDensityChanged), name: ChatDensitySetting.didChange,
+            object: nil)
 
         pendingStack.spacing = MacTheme.Spacing.s
         pendingStack.translatesAutoresizingMaskIntoConstraints = false
@@ -2937,6 +2954,7 @@ final class TranscriptViewController: NSViewController {
     private func showPlaceholder(_ text: String) {
         dismissChooser()
         hoverBar.dismiss()
+        railController.dismiss()
         if placeholderShown, currentPlaceholder == text { return }
         currentPlaceholder = text
         tearDownAllRows()
@@ -2971,7 +2989,7 @@ final class TranscriptViewController: NSViewController {
     private func updatedLastRowInPlace(_ rows: [TranscriptRow]) -> Bool {
         guard !placeholderShown, fillComplete,
             renderedRows.count == rows.count,
-            let last = rows.lastIndex(where: { !$0.isLinkEmbed }), last > 0,
+            let last = rows.lastIndex(where: { !$0.isLinkRail }), last > 0,
             renderedRows[last].key == rows[last].key, renderedRows[last] != rows[last],
             last < rowViews.count,
             renderedRows.prefix(last).elementsEqual(rows.prefix(last)),
@@ -3089,6 +3107,7 @@ final class TranscriptViewController: NSViewController {
         syncJumpPill()
         scheduleImageSweep()
         hoverBar.refresh()
+        railController.rowsChanged()
         if edit.complete, !findBar.isHidden { runFind(retarget: false) }
     }
 
@@ -3132,6 +3151,41 @@ final class TranscriptViewController: NSViewController {
 
     /// The row standing at a height on the page, found by halving: the rows stand top-down in the
     /// order they are kept, so a pointer's row is a search rather than a walk.
+    private func codeTarget(at point: NSPoint) -> MessageHoverBar.CodeTarget? {
+        guard !placeholderShown, let index = rowIndex(atCanvasY: point.y),
+            index < min(rowViews.count, renderedRows.count),
+            case .codeBlock(let language, let body) = renderedRows[index].kind,
+            rowViews[index].superview != nil
+        else { return nil }
+        let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
+        guard frame.contains(point) else { return nil }
+        return MessageHoverBar.CodeTarget(
+            key: renderedRows[index].key,
+            language: SyntaxHighlighter.displayName(for: language, source: body), body: body,
+            block: frame)
+    }
+
+    private func railLine(at point: NSPoint) -> LinkRailLine? {
+        guard !placeholderShown, let index = rowIndex(atCanvasY: point.y),
+            index < rowViews.count, let line = rowViews[index] as? LinkRailLine
+        else { return nil }
+        return line.hitRect.contains(line.convert(point, from: canvas)) ? line : nil
+    }
+
+    private func railLine(forKey key: String) -> LinkRailLine? {
+        guard let index = renderedRows.firstIndex(where: { $0.key == key }),
+            index < rowViews.count
+        else { return nil }
+        return rowViews[index] as? LinkRailLine
+    }
+
+    @objc private func chatDensityChanged() {
+        guard isViewLoaded else { return }
+        railController.dismiss()
+        rowColumn.metrics = ChatLayout.metrics
+        applyUIScale()
+    }
+
     private func rowIndex(atCanvasY y: CGFloat) -> Int? {
         var low = 0
         var high = min(rowViews.count, renderedRows.count) - 1
@@ -3324,7 +3378,7 @@ final class TranscriptViewController: NSViewController {
             let row = rows[index]
             let rowView = row.makeView(context: context)
             let at = min(index, rowViews.count)
-            rowColumn.insertArrangedSubview(rowView, at: at)
+            rowColumn.insertArrangedSubview(rowView, at: at, spacing: row.spacing)
             rowViews.insert(rowView, at: at)
             renderedRows.insert(row, at: at)
             let firstSight = enteredRows.insert(row.key).inserted
@@ -3397,7 +3451,7 @@ final class TranscriptViewController: NSViewController {
             var inserted: [NSView] = []
             for row in rows[from..<start] {
                 let rowView = row.makeView(context: context)
-                rowColumn.insertArrangedSubview(rowView, at: position)
+                rowColumn.insertArrangedSubview(rowView, at: position, spacing: row.spacing)
                 inserted.append(rowView)
                 enteredRows.insert(row.key)
                 position += 1
@@ -3444,7 +3498,7 @@ final class TranscriptViewController: NSViewController {
         let entering = rowsAnnounceArrival
         for row in rows {
             let rowView = row.makeView(context: context)
-            rowColumn.addArrangedSubview(rowView)
+            rowColumn.addArrangedSubview(rowView, spacing: row.spacing)
             let firstSight = enteredRows.insert(row.key).inserted
             if entering, firstSight, row.key != cascade.key, row.announcesArrival {
                 CascadeEntrance.animate(rowView)
@@ -3627,6 +3681,7 @@ final class TranscriptViewController: NSViewController {
         canvas.removeArrangedSubview(rowColumn)
         rowColumn.removeFromSuperview()
         column.spacing = MacTheme.Spacing.m
+        column.metrics = ChatLayout.metrics
         column.translatesAutoresizingMaskIntoConstraints = false
         canvas.insertArrangedSubview(column, at: index)
         rowColumn = column
@@ -3670,7 +3725,7 @@ final class TranscriptViewController: NSViewController {
                 if rowViews[index] === highlightedView { clearFindHighlight() }
                 rowViews[index].removeFromSuperview()
                 let rowView = renderedRows[index].makeView(context: context)
-                rowColumn.insertArrangedSubview(rowView, at: index)
+                rowColumn.insertArrangedSubview(rowView, at: index, spacing: renderedRows[index].spacing)
                 rowViews[index] = rowView
             }
         }
@@ -3941,6 +3996,8 @@ final class TranscriptViewController: NSViewController {
     @objc private func scrollBoundsChanged() {
         scheduleImageSweep()
         hoverBar.refresh()
+        railController.rowsChanged()
+        railController.reposition()
         guard !isAutoScrolling else { return }
         followClock = nil
         guard canvasHold == nil else {
@@ -3963,6 +4020,7 @@ final class TranscriptViewController: NSViewController {
     }
 
     @objc private func contentGrew() {
+        railController.reposition()
         if canvasHold != nil {
             recomputeFreshCanvas()
             return

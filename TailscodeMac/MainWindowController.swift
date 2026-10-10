@@ -1725,6 +1725,9 @@ final class MainWindowController: NSWindowController {
         if window?.firstResponder is KeyboardPressable, [49, 36, 76].contains(event.keyCode) {
             return event
         }
+        if window?.firstResponder is LinkRailPlateView, [36, 49, 76, 125, 126, 53].contains(event.keyCode) {
+            return event
+        }
         if pendingChords.isEmpty, window?.firstResponder is DividerSplitView,
             DividerSplitView.dividerKey(for: event) != nil
         {
