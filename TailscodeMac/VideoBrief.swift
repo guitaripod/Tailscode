@@ -128,7 +128,11 @@ final class VideoBrief: StudioBriefing {
         }
     }
 
+    /// The words the box holds, handed to the board — but only when they are different from what it
+    /// has: the board answers any edit by putting a finished render back to a draft, and a box that
+    /// was merely filled from the board says nothing the board does not already know.
     func rememberDraft(_ words: String) {
+        guard words != board.recipe.prompt else { return }
         runner.describe(words)
     }
 

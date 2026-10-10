@@ -246,7 +246,9 @@ enum SelfTest {
 
         let studioFailures = StudioCheck.run()
         if studioFailures.isEmpty {
-            report("studio: the shelf, the stage's states, the verbs, the chips, the folds and the keys all hold")
+            report(
+                "studio: both lanes' shelves, stage states, verbs, chips, the clip's start frame and passes, "
+                    + "what redraws on a change, the folds, the keys and the lane switch all hold")
         } else {
             report("studio: \(studioFailures.joined(separator: " · "))")
             failures += 1

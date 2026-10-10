@@ -96,6 +96,7 @@ final class VideoLane: StudioLane {
         runner.prepare()
         runner.probeIfUnchecked()
         if !runner.isDemo { brief.library.refresh() }
+        syncSketch()
         syncClock()
         emit(.everything)
     }
@@ -104,6 +105,7 @@ final class VideoLane: StudioLane {
     func stageForDemo(entryID: String?) {
         stageEntryID = entryID
         lastAsset = board.job.asset
+        syncSketch()
         located = [:]
         clipFailures = [:]
         previewFailures = []
@@ -123,13 +125,7 @@ final class VideoLane: StudioLane {
     /// person is typing are in none of them.
     private func runnerChanged() {
         let job = board.job
-        if !job.isBusy {
-            sketchImage = nil
-            sketchFrame = nil
-            sketchTask?.cancel()
-        } else if let frame = job.sketch, frame != sketchFrame {
-            decode(frame)
-        }
+        syncSketch()
         adoptLanded(job)
         let next = StudioVideoReading(board: board, missing: runner.missing)
         if next.shape.endpoint != reading.shape.endpoint {
@@ -147,6 +143,19 @@ final class VideoLane: StudioLane {
             emit(moved ? .everything : change)
         }
         syncClock()
+    }
+
+    /// The machine's newest sketch, decoded off the main actor; and let go of when no render is out,
+    /// because a sketch outlives its render only for as long as the stage needs to fade it.
+    private func syncSketch() {
+        let job = board.job
+        if !job.isBusy {
+            sketchImage = nil
+            sketchFrame = nil
+            sketchTask?.cancel()
+        } else if let frame = job.sketch, frame != sketchFrame {
+            decode(frame)
+        }
     }
 
     private func decode(_ frame: ImageGenPreviewFrame) {
@@ -196,6 +205,14 @@ final class VideoLane: StudioLane {
             MainActor.assumeIsolated { self?.emit(.progress) }
         }
         clock?.tolerance = 0.2
+    }
+
+    /// What the lane is holding, in one line, for the headless driver.
+    var driveState: String {
+        "state=\(state) verbs=\(videoStage.model.verbs.map(\.id)) playing=\(videoStage.isPlaying) "
+            + "tiles=\(shelf.count) selected=\(selectedTile ?? "-") stage=\(exhibit?.id ?? "-") "
+            + "clip=\(videoStage.model.clip?.id ?? "-") sketch=\(sketchImage != nil) "
+            + "size=\(videoStage.model.size.label) rect=\(videoStage.currentPictureRect) stage=\(videoStage.frame)"
     }
 
     var exhibit: ForgeEntry? {

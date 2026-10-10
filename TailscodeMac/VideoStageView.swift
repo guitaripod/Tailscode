@@ -79,6 +79,7 @@ final class VideoStageView: NSView, StudioStaging {
     private let playGlyph = VideoPlayGlyph()
 
     private var pictureRect: NSRect = .zero
+    private var landingPending = false
     private var link: CADisplayLink?
     private var sketchDirty = false
     private var dropping = false
@@ -217,11 +218,13 @@ final class VideoStageView: NSView, StudioStaging {
 
     private func recompute(from before: StudioVideoState) {
         loadClip(model.clip)
-        let landing = before.isWorking && model.state == .done
-        applyState(landing: landing)
+        let landed = before.isWorking && model.state == .done
+        if landed { landingPending = true }
+        if model.state != .done { landingPending = false }
+        applyState(landing: landingPending)
         needsLayout = true
         layoutSubtreeIfNeeded()
-        if landing, let words = model.landed { announce(words) }
+        if landed, let words = model.landed { announce(words) }
     }
 
     /// A finished clip is said once, politely: a screen reader cannot see it land.
@@ -487,7 +490,7 @@ final class VideoStageView: NSView, StudioStaging {
             x: pictureRect.midX - VideoPlayGlyph.side / 2, y: pictureRect.midY - VideoPlayGlyph.side / 2,
             width: VideoPlayGlyph.side, height: VideoPlayGlyph.side)
 
-        let capsuleSize = capsule.fitting(maxWidth: max(0, bounds.width - 2 * StudioTheme.stageMargin))
+        let capsuleSize = capsule.fitting(maxWidth: max(0, pictureRect.width - 24))
         capsule.frame = NSRect(
             x: pictureRect.midX - capsuleSize.width / 2,
             y: pictureRect.maxY - StudioTheme.capsuleLift - capsuleSize.height,
@@ -551,7 +554,7 @@ final class VideoStageView: NSView, StudioStaging {
     private func playerBecameReady() {
         playerReady = true
         if model.state == .done {
-            revealPlayer(landing: sketchLayer.contents != nil)
+            revealPlayer(landing: landingPending)
             updateGlyphs()
         }
     }
@@ -562,6 +565,7 @@ final class VideoStageView: NSView, StudioStaging {
     /// there.
     private func revealPlayer(landing: Bool) {
         let fading = landing && sketchLayer.contents != nil && StudioTheme.motionAllowed
+        landingPending = false
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         playerLayer.opacity = 1

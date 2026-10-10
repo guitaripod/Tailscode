@@ -600,7 +600,14 @@ extension MainMenu: NSMenuItemValidation {
             guard keys.indices.contains(menuItem.tag),
                 let workspace = StudioWorkspaceView.current(in: NSApp.keyWindow)
             else { return false }
-            return workspace.offers(keys[menuItem.tag])
+            let key = keys[menuItem.tag]
+            if let lane = workspace.lane?.id {
+                let hint = StudioMenuWords.keyHint(key)
+                menuItem.title =
+                    StudioMenuWords.title(key, lane: lane)
+                    + (key.chord.command || hint.isEmpty ? "" : "   " + hint)
+            }
+            return workspace.offers(key)
         }
         if menuItem.action == #selector(paneVerb(_:)) || menuItem.action == #selector(paneArrangement(_:))
         {

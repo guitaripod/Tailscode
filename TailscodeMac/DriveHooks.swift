@@ -17,7 +17,11 @@
     ///   holds; `resume=all|one` presses the banner's buttons
     /// - `sopen[=state]` raises the Studio; `skey=<cmd-return|esc|cmd-e|cmd-shift-e|cmd-shift-r|cmd-1|
     ///   cmd-2|cmd-s|left|right|space>` presses that key through the real event path into the
-    ///   Studio's window; `sstate` prints what the Studio is holding
+    ///   Studio's window; `sstate` prints what the Studio is holding; `sanimate` presses Animate this
+    ///   on the picture on the Image lane's stage; `smachineshot=<path>` writes the Video lane's
+    ///   machine sheet to a PNG, since a popover is not part of the window's own picture; `sdemo=<state>` stages a Video lane state while the
+    ///   Studio is up, so a render landing can be watched; `sfocus` gives the stage the keyboard, which is
+    ///   where Space plays a clip and the arrows walk the shelf
     /// - `quit` quits the ordinary way; `kill` sends this process SIGKILL, the crash a ring must survive
     @MainActor
     enum DriveHooks {
@@ -148,6 +152,27 @@
                 say(StudioDrive.state())
             case "stoolbar":
                 say(StudioDrive.toolbar())
+            case "smachineshot":
+                let sheet = StudioVideoMachineSheet(runner: .shared) {}
+                sheet.loadViewIfNeeded()
+                sheet.view.layoutSubtreeIfNeeded()
+                sheet.view.appearance = MacTheme.Chrome.appearance
+                if let rep = sheet.view.bitmapImageRepForCachingDisplay(in: sheet.view.bounds) {
+                    sheet.view.cacheDisplay(in: sheet.view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(
+                        to: URL(fileURLWithPath: argument))
+                    say("SMACHINESHOT \(argument) \(Int(sheet.view.bounds.width))x\(Int(sheet.view.bounds.height))")
+                }
+            case "sdemo":
+                StudioVideoDemo.apply(argument)
+            case "sfocus":
+                if let panel = StudioWindowController.shared.panel,
+                    let stage = StudioWindowController.shared.activeLane?.stage
+                {
+                    panel.makeFirstResponder(stage)
+                }
+            case "sanimate":
+                StudioWindowController.shared.image.animateStaged()
             case "smachine":
                 if let panel = StudioWindowController.shared.panel, let content = panel.contentView {
                     StudioWindowController.shared.activeLane?.presentMachine(from: content)
@@ -235,6 +260,7 @@
 
         static func state() -> String {
             let controller = StudioWindowController.shared
+            if controller.current == .video { return "SSTATE lane=video " + controller.video.driveState }
             let studio = controller.image.studio
             let phase: String
             switch studio.slot.phase {

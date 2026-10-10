@@ -286,15 +286,3 @@ struct StudioVideoReading: Equatable {
         return nil
     }
 }
-
-/// Where a clip's first frame comes from when a picture is put on the Start-from slot, and what the
-/// board then does with the size: a picture on this Mac is read for its shape, one the machine
-/// keeps carries the shape it was listed with, and the end of a clip takes that clip's own. The
-/// rule itself is Core's (`ForgeBoard.start`); this names the Mac's three doors into it.
-enum StudioStartFrom {
-    /// The shape of a picture file, read from its header, so the clip's size can follow it before
-    /// anything is decoded.
-    static func pixels(ofFileAt path: String) -> (width: Int, height: Int)? {
-        StudioDrop.pixelSize(ofFileAt: path)
-    }
-}

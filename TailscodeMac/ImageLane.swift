@@ -259,6 +259,11 @@ final class ImageLane: StudioLane {
         perform(action, on: exhibit)
     }
 
+    /// The Animate this verb pressed on whatever is on stage, for the headless driver.
+    func animateStaged() {
+        performOnStage(StudioStageVerb.animate)
+    }
+
     private func performOnStage(_ verb: StudioStageVerb) {
         guard let exhibit = studio.exhibit else { return }
         perform(verb, on: exhibit)

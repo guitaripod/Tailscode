@@ -11,12 +11,10 @@ import TailscodeCore
 /// is touched. The preference store is never written.
 @MainActor
 enum StudioVideoDemo {
-    /// The names `--open forge:<state>` understands, besides the board's own (`ForgeDemo.states`).
-    static let states = [
-        "empty", "drafting", "start", "waking", "queued", "running", "collecting", "done", "failed",
-        "cancelled", "missing", "rewrite", "unset",
-    ]
-
+    /// Puts a state on the runner: `--open forge:<state>` with `empty`, `drafting`, `start` (a first
+    /// frame held), `waking`, `queued`, `running`, `collecting`, `done`, `failed`, `cancelled`,
+    /// `missing` (a clip the renderer lost, chosen on the stage), `rewrite` (the helper's caption on
+    /// its card) or `unset` (no renderer), and anything else is the drafting state.
     static func apply(_ state: String) {
         let name = state.split(separator: ":").first.map(String.init) ?? state
         var board: ForgeBoard
