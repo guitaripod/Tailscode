@@ -23,6 +23,16 @@ final class ServerDirectory {
     private var ephemeralPasswords: [String: String] = [:]
     private let store: ConnectionProfileStore?
 
+    /// `TAILSCODE_DEMO_ONLY=1` leaves the stored servers out of a demo launch, so a picture of the
+    /// demo world shows nothing that belongs to the person whose Mac took it. Debug builds only.
+    private static var showsOnlyTheDemo: Bool {
+        #if DEBUG
+            return ProcessInfo.processInfo.environment["TAILSCODE_DEMO_ONLY"] == "1"
+        #else
+            return false
+        #endif
+    }
+
     init() {
         store = try? ConnectionProfileStore()
         reload()
@@ -46,7 +56,7 @@ final class ServerDirectory {
             return
         }
         ephemeralPasswords = [:]
-        var listed = (try? store?.profiles()) ?? []
+        var listed = Self.showsOnlyTheDemo ? [] : (try? store?.profiles()) ?? []
         isDemoMode = DemoMode.isActive
         if isDemoMode {
             listed.append(contentsOf: DemoWorld.profiles)

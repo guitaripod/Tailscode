@@ -3200,7 +3200,7 @@ final class TranscriptViewController: NSViewController {
             let clip = scrollView.contentView
             let range = max(0, canvas.frame.height - clip.bounds.height)
             switch to {
-            case "top": clip.scroll(to: NSPoint(x: 0, y: 0))
+            case "top": clip.scroll(to: NSPoint(x: 0, y: -scrollView.contentInsets.top))
             case "bottom": clip.scroll(to: NSPoint(x: 0, y: range))
             default:
                 guard let index = Int(to), index < rowViews.count else { return }

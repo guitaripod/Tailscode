@@ -20,7 +20,7 @@ enum MacCLI {
           TailscodeMac --demo                   open the scripted demo world (no server)
           TailscodeMac --connect <address>      save a server (--password, --name, --opencode, --omp)
           TailscodeMac --selftest               check the whole chain with no display
-          TailscodeMac --shot <path>            draw the window to a PNG (--shot-delay, --shot-size)
+          TailscodeMac --shot <path>            draw the window to a PNG (--shot-delay, --shot-size, --shot-scale, --shot-chrome)
           TailscodeMac --tree <path>            write every view's frame and ambiguity to a file
           TailscodeMac --open <surface>         open a named window first (servers, preferences, …)
           TailscodeMac --bench <transcript.json …>  time what cached transcripts cost to show
@@ -30,7 +30,8 @@ enum MacCLI {
 
     static let knownOptions: Set<String> = [
         "--selftest", "--connect", "--password", "--name", "--opencode", "--omp", "--demo",
-        "--shot", "--shot-delay", "--shot-size", "--tree", "--tree-constraints", "--open",
+        "--shot", "--shot-delay", "--shot-size", "--shot-scale", "--shot-chrome", "--tree",
+        "--tree-constraints", "--open",
         "--bench", "--flight", "--version", "--help", "-h",
     ]
 
