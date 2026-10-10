@@ -329,7 +329,9 @@ final class ChatViewController: UIViewController {
                     try? await Task.sleep(for: .seconds(Double(which) ?? 4))
                     guard let self,
                         let id = self.orderedIDs.first(where: {
-                            if case .linkRail? = self.rowsByID[$0]?.content { return true }
+                            if case .linkRail(let run)? = self.rowsByID[$0]?.content {
+                                return run.addresses.count > 1
+                            }
                             return false
                         })
                     else { return }
@@ -2505,6 +2507,7 @@ final class ChatViewController: UIViewController {
                 ModelCatalog.cached(for: contextID).first { $0.selection == selection }?.name
             })
         #if DEBUG
+            if let staged = ChatPictureStaging.linkRail() { rows.append(staged) }
             if let staged = ChatPictureStaging.row() { rows.append(staged) }
         #endif
         let previous = rowsByID

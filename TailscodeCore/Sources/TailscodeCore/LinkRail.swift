@@ -155,13 +155,19 @@ public struct LinkRailReading: Sendable, Equatable {
     public static var copyAllTitle: String { Localized.text("Copy all addresses") }
     public static var openAllTitle: String { Localized.text("Open all in browser") }
 
-    /// What a screen reader is told of the rail as one disclosure button: how many links, the first
-    /// two hosts, how many more, and whether the list is open.
+    /// Whether the rail is the link itself: a rail with exactly one address has nothing to expand,
+    /// so a tap opens the address the way a link in prose opens it, a long-press copies it, and
+    /// the line wears an arrow out rather than a chevron. Two or more addresses are a disclosure.
+    public var opensDirectly: Bool { count == 1 }
+
+    /// What a screen reader is told of the rail. A lone address is a link and is read as one,
+    /// whatever its state; two or more are one disclosure button: how many links, the first two
+    /// hosts, how many more, and whether the list is open.
     public func spoken(expanded: Bool) -> String {
-        let state = expanded ? Localized.text("expanded") : Localized.text("collapsed")
-        if count == 1 {
-            return Localized.text("Link: %@, %@", items[0].face.headline, state)
+        if opensDirectly {
+            return Localized.text("%@, link", items[0].face.headline)
         }
+        let state = expanded ? Localized.text("expanded") : Localized.text("collapsed")
         var seen = Set<String>()
         let hosts = items.prefix(2).map(\.face.host).filter { seen.insert($0).inserted }.joined(separator: ", ")
         let named = count > 2 ? Localized.text("%@ and %lld more", hosts, count - 2) : hosts

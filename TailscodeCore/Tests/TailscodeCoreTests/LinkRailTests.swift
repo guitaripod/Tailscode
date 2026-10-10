@@ -73,8 +73,8 @@ import Testing
             for: ["https://docs.example.com/guide"],
             metadata: ["https://docs.example.com/guide": LinkPreviewMetadata(title: "Getting started", faviconURL: nil)])
         #expect(titled.singleTitle == "Getting started")
-        #expect(titled.spoken(expanded: false) == "Link: Getting started, collapsed")
-        #expect(titled.spoken(expanded: true) == "Link: Getting started, expanded")
+        #expect(titled.spoken(expanded: false) == "Getting started, link")
+        #expect(titled.spoken(expanded: true) == "Getting started, link")
     }
 
     @Test func twoAddressesNameBothHostsAndHaveNoTitle() {

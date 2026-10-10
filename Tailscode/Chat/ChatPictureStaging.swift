@@ -12,6 +12,18 @@
             Int(ProcessInfo.processInfo.environment["TAILSCODE_STAGE_PICTURES"] ?? "") ?? 0
         }
 
+        /// `TAILSCODE_STAGE_LINKS=<count>` appends a rail of that many addresses, so the rail that
+        /// folds and unfolds can be photographed in a demo whose prose mentions only one.
+        static func linkRail() -> ChatRow? {
+            let count = Int(ProcessInfo.processInfo.environment["TAILSCODE_STAGE_LINKS"] ?? "") ?? 0
+            guard count > 0 else { return nil }
+            let hosts = ["github.com/swiftlang/swift", "docs.github.com/en/actions", "datatracker.ietf.org/doc/rfc6298", "www.rfc-editor.org/rfc/rfc8085"]
+            let addresses = (0..<count).map { "https://" + hosts[$0 % hosts.count] + ($0 >= hosts.count ? "/\($0)" : "") }
+            return ChatRow(
+                id: "staged:rail", messageID: "staged", role: .assistant,
+                content: .linkRail(LinkRailRun(addresses: addresses)))
+        }
+
         static func row() -> ChatRow? {
             let wanted = count
             guard wanted > 0 else { return nil }

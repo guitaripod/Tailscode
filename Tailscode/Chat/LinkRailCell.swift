@@ -36,6 +36,12 @@ final class LinkRailCell: UICollectionViewCell {
     private var onToggle: (() -> Void)?
     private var onOpen: ((URL) -> Void)?
 
+    private static let chevronIn = UIImage(
+        systemName: "chevron.right",
+        withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))
+    private static let arrowOut = UIImage(
+        systemName: "arrow.up.right",
+        withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold))
     private static let faviconSize: CGFloat = 14
     private static let faviconStep: CGFloat = 9
 
@@ -65,9 +71,6 @@ final class LinkRailCell: UICollectionViewCell {
         summaryLabel.isUserInteractionEnabled = false
         summaryLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        chevron.image = UIImage(
-            systemName: "chevron.right",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))
         chevron.tintColor = Theme.Color.tertiaryLabel
         chevron.contentMode = .center
         chevron.setContentHuggingPriority(.required, for: .horizontal)
@@ -179,17 +182,25 @@ final class LinkRailCell: UICollectionViewCell {
         summaryLabel.attributedText = summary()
         summaryLabel.numberOfLines =
             traitCollection.preferredContentSizeCategory.isAccessibilityCategory ? 0 : 1
-        chevron.transform = opened ? CGAffineTransform(rotationAngle: .pi / 2) : .identity
-        list.isHidden = !opened
-        foldedBottom.isActive = !opened
-        openTop.isActive = opened
-        openBottom.isActive = opened
+        let direct = reading.opensDirectly
+        let expanded = opened && !direct
+        chevron.image = direct ? Self.arrowOut : Self.chevronIn
+        chevron.transform = expanded ? CGAffineTransform(rotationAngle: .pi / 2) : .identity
+        list.isHidden = !expanded
+        foldedBottom.isActive = !expanded
+        openTop.isActive = expanded
+        openBottom.isActive = expanded
         rail.isAccessibilityElement = true
-        rail.accessibilityTraits = .button
-        rail.accessibilityLabel = reading.spoken(expanded: opened)
-        rail.accessibilityHint =
-            opened ? String(localized: "Double tap to hide the links")
-            : String(localized: "Double tap to show the links")
+        rail.accessibilityLabel = reading.spoken(expanded: expanded)
+        if direct {
+            rail.accessibilityTraits = .link
+            rail.accessibilityHint = String(localized: "Opens the link")
+        } else {
+            rail.accessibilityTraits = .button
+            rail.accessibilityHint =
+                expanded ? String(localized: "Double tap to hide the links")
+                : String(localized: "Double tap to show the links")
+        }
         for (row, item) in zip(rows, reading.items) { row.show(item) }
     }
 
@@ -226,6 +237,10 @@ final class LinkRailCell: UICollectionViewCell {
 
     private func rebuildRows() {
         rows.forEach { $0.removeFromSuperview() }
+        guard !reading.opensDirectly else {
+            rows = []
+            return
+        }
         rows = reading.items.map { item in
             let row = LinkRailRowView()
             row.onOpen = { [weak self] url in self?.onOpen?(url) }
@@ -294,7 +309,14 @@ final class LinkRailCell: UICollectionViewCell {
             traitCollection.preferredContentSizeCategory.isAccessibilityCategory ? 0 : 1
     }
 
+    /// A rail with one address has nothing to expand: it is the link, and a tap opens it the way a
+    /// link in prose opens. Two or more fold and unfold.
     @objc private func railTapped() {
+        if reading.opensDirectly, let url = reading.urls.first.flatMap(URL.init(string:)) {
+            Theme.Haptics.tap()
+            onOpen?(url)
+            return
+        }
         Theme.Haptics.selection()
         onToggle?()
     }
@@ -308,7 +330,9 @@ extension LinkRailCell: UIContextMenuInteractionDelegate {
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             guard let self else { return nil }
             let copy = UIAction(
-                title: LinkRailReading.copyAllTitle, image: UIImage(systemName: "doc.on.doc")
+                title: self.reading.opensDirectly
+                    ? String(localized: "Copy address") : LinkRailReading.copyAllTitle,
+                image: UIImage(systemName: "doc.on.doc")
             ) { [weak self] _ in
                 guard let self else { return }
                 UIPasteboard.general.string = self.reading.copyAllText
