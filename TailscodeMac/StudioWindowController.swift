@@ -267,6 +267,7 @@ final class StudioMachinePill: NSView {
         pulse.apply(next.isWorking ? ActivityKind.working.icon : nil)
         restyle()
         invalidateIntrinsicContentSize()
+        superview?.needsLayout = true
         needsLayout = true
         needsDisplay = true
     }
@@ -292,21 +293,30 @@ final class StudioMachinePill: NSView {
 
     override var intrinsicContentSize: NSSize {
         guard fact != nil else { return NSSize(width: 220, height: 28) }
-        let width = 14 + 8 + 8 + ceil(name.intrinsicContentSize.width) + 2 + 8
-            + ceil(line.intrinsicContentSize.width) + 4 + 8 + 14
+        let width = Self.nameX + nameWidth + Self.gap + lineWidth + Self.trailing
         return NSSize(width: min(max(width, 220), 520), height: 28)
     }
+
+    private static let nameX: CGFloat = 30
+    private static let gap: CGFloat = 8
+    private static let trailing: CGFloat = 26
+
+    /// The name's width as the ramp's font draws it. A text field's own intrinsic size came back a few
+    /// points short of what the bold face needs, so the frame this view handed the label truncated
+    /// "arch" to "ar…" in the window itself, not only in a picture of it.
+    private var nameWidth: CGFloat { StudioTheme.width(of: name.stringValue, role: .rowTitleStrong) + 4 }
+
+    private var lineWidth: CGFloat { StudioTheme.width(of: line.stringValue, role: .panelFootnote) + 4 }
 
     override func layout() {
         super.layout()
         dot.frame = NSRect(x: 14, y: (bounds.height - 8) / 2, width: 8, height: 8)
-        let nameWidth = ceil(name.intrinsicContentSize.width) + 2
         let lineHeight = StudioTheme.height(of: .panelFootnote)
         let nameHeight = StudioTheme.height(of: .rowTitleStrong)
-        name.frame = NSRect(x: 30, y: (bounds.height - nameHeight) / 2, width: nameWidth, height: nameHeight)
-        let lineX = 30 + nameWidth + 8
+        name.frame = NSRect(x: Self.nameX, y: (bounds.height - nameHeight) / 2, width: nameWidth, height: nameHeight)
+        let lineX = Self.nameX + nameWidth + Self.gap
         line.frame = NSRect(
-            x: lineX, y: (bounds.height - lineHeight) / 2, width: max(0, bounds.width - lineX - 26),
+            x: lineX, y: (bounds.height - lineHeight) / 2, width: max(0, bounds.width - lineX - Self.trailing),
             height: lineHeight)
     }
 

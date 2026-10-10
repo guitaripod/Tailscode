@@ -1,11 +1,12 @@
 #!/bin/bash
 # The Mac marketing shots of the Studio and the compact chat, from a debug build of this checkout:
-# mac-{dark,light}-studio, mac-dark-painting, mac-dark-video, mac-dark-chat, as 2880x1800 masters
-# (full/) and 1920x1200 web copies.
+# mac-{dark,light}-studio, mac-dark-painting, mac-dark-video, mac-{dark,light}-viewer, mac-dark-chat,
+# as 2880x1800 masters (full/) and 1920x1200 web copies. Every Studio shot is the whole window with the
+# sheet up over the conversation; the viewer shots stack the media viewer's sheet over the finished Studio.
 #
 #   ART=<dir of real art + manifest.json> scripts/landing-shots-mac.sh [shot ...]
 #
-# Shots: studio-dark studio-light painting video chat (default: all). Environment:
+# Shots: studio-dark studio-light painting video viewer-dark viewer-light chat (default: all). Environment:
 #   ART          the folder the art agents rendered (lighthouse.png ... , read by the assets script)
 #   MOCK_HOST    where the stand-in ComfyUI runs (default arch, over ssh; "localhost" runs it here)
 #   MOCK_PORT    its port (default 8202)
@@ -33,7 +34,7 @@ DOMAIN=com.guitaripod.tailscode.landing
 APP=$WORK/app/Tailscode.app
 BIN=$APP/Contents/MacOS/TailscodeMac
 SHOTS=("$@")
-[ ${#SHOTS[@]} -gt 0 ] || SHOTS=(studio-dark studio-light painting video chat)
+[ ${#SHOTS[@]} -gt 0 ] || SHOTS=(studio-dark studio-light painting video viewer-dark viewer-light chat)
 LIGHTHOUSE_SEED=$(python3 -c "import json,sys; print([m['seed'] for m in json.load(open('$ART/manifest.json')) if m['name']=='lighthouse'][0])")
 LIGHTHOUSE_PROMPT=$(python3 -c "import json,sys; print([m['prompt'] for m in json.load(open('$ART/manifest.json')) if m['name']=='lighthouse'][0])")
 MOCK_PID_FILE=$WORK/mock.pid
@@ -136,6 +137,15 @@ studio() {
         TAILSCODE_IMAGE_PROMPT="$LIGHTHOUSE_PROMPT" TAILSCODE_IMAGE_SEED="$LIGHTHOUSE_SEED"
 }
 
+viewer() {
+    local name=$1 look=$2
+    appearance "$look"
+    start_mock 6 0
+    OPEN=(--open studio)
+    capture "$WORK/$name.png" 26 TAILSCODE_DRIVE="17000:sfocus;18000:skey=space" TAILSCODE_IMAGE_ENDPOINT="$MOCK_ENDPOINT" \
+        TAILSCODE_IMAGE_PROMPT="$LIGHTHOUSE_PROMPT" TAILSCODE_IMAGE_SEED="$LIGHTHOUSE_SEED"
+}
+
 painting() {
     appearance dark
     start_mock 6 10
@@ -189,6 +199,8 @@ for shot in "${SHOTS[@]}"; do
         studio-light) studio mac-light-studio light; produced+=(mac-light-studio) ;;
         painting) painting; produced+=(mac-dark-painting) ;;
         video) video; produced+=(mac-dark-video) ;;
+        viewer-dark) viewer mac-dark-viewer dark; produced+=(mac-dark-viewer) ;;
+        viewer-light) viewer mac-light-viewer light; produced+=(mac-light-viewer) ;;
         chat) chat; produced+=(mac-dark-chat) ;;
         *) echo "unknown shot $shot" >&2; exit 2 ;;
     esac
