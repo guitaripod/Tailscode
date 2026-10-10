@@ -121,6 +121,7 @@ final class OverflowStripView: NSView {
     private func makeChip(_ chip: Chip) -> NSView {
         let badge = ActivityBadgeView(pointSize: 10)
         badge.activity = chip.activity
+        badge.isHidden = chip.activity == nil
         let label = NSTextField(labelWithString: Self.cut(chip.title))
         label.font = MacTheme.Ramp.font(.chip)
         label.textColor = MacTheme.Color.onGlass

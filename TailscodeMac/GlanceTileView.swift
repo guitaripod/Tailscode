@@ -88,6 +88,7 @@ final class GlanceTileView: NSView {
         densityLabel.setContentHuggingPriority(.required, for: .horizontal)
         densityLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         badge.setContentHuggingPriority(.required, for: .horizontal)
+        badge.isHidden = true
 
         for (symbol, words, action) in [
             ("arrow.up.left.and.arrow.down.right", Localized.text("Open full"), #selector(openFull)),
@@ -209,6 +210,7 @@ final class GlanceTileView: NSView {
             apply(reading)
         } else {
             badge.activity = nil
+            badge.isHidden = true
             tailLabel.stringValue = ""
             footer.isHidden = true
             stopClock()
@@ -218,6 +220,7 @@ final class GlanceTileView: NSView {
 
     private func apply(_ reading: GlanceReading) {
         badge.activity = reading.activity
+        badge.isHidden = reading.activity == nil
         footer.isHidden = false
         let waiting = reading.question != nil
         if let question = reading.question {

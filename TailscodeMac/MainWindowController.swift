@@ -2743,7 +2743,16 @@ private final class CheatsheetPanel: NSPanel {
             return
                 "TILES panes=\(tiles.paneCount) faces=\(faces.joined()) hidden=\(hidden) "
                 + "feeds=\(tiles.feedCount()) reparents=\(tiles.canvas.reparents) "
-                + "chip=\"\(liveChip.button.title)\""
+                + "chip=\"\(liveChip.button.title)\" level=\(Seatbelts.shared.level.code) "
+                + "budget=\(Seatbelts.shared.decision?.fullBudget ?? -1) governed="
+                + tiles.layout.paneIDs.map { id in
+                    switch Seatbelts.shared.decision?.densities[id] {
+                    case .full?: return "F"
+                    case .glance?: return "G"
+                    case .parked?: return "P"
+                    case nil: return "-"
+                    }
+                }.joined()
         }
 
         /// `restore`: what the safe restore is holding, in counts.

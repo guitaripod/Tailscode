@@ -859,6 +859,15 @@ final class SplitPaneHost: NSViewController, PaneTiling {
         schedulePersist()
     }
 
+    /// The bench's divider step: the outermost divider moved by `delta` points, as a drag does.
+    func benchNudgeFirstDivider(by delta: CGFloat) {
+        guard case .split(let id, _, _, _, _) = layout.root, let splitView = splitViews[id],
+            let first = splitView.arrangedSubviews.first
+        else { return }
+        let position = splitView.isVertical ? first.frame.width : first.frame.height
+        splitView.setPosition(position + delta, ofDividerAt: 0)
+    }
+
     func togglePinActive() {}
     func toggleParkActive() {}
     var activeIsPinned: Bool { false }

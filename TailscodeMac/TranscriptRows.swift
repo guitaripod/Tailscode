@@ -938,6 +938,7 @@ struct TranscriptRow: Hashable {
             let strip = NSStackView()
             strip.orientation = .horizontal
             strip.spacing = MacTheme.Spacing.xs
+            strip.setHuggingPriority(.defaultHigh, for: .horizontal)
             for letter in reading.letters {
                 strip.addArrangedSubview(
                     RowKit.label(
@@ -1236,6 +1237,7 @@ enum RowKit {
         let header = NSStackView(views: [icon, heading])
         header.orientation = .horizontal
         header.spacing = MacTheme.Spacing.s
+        header.setHuggingPriority(.defaultHigh, for: .horizontal)
         card.addArrangedSubview(header)
         card.addArrangedSubview(
             wrapping(

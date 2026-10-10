@@ -154,7 +154,7 @@ final class TileHost: NSViewController, PaneTiling {
         overlay.translatesAutoresizingMaskIntoConstraints = false
         canvas.addOverlay(overlay)
         let wide = overlay.widthAnchor.constraint(equalToConstant: 720)
-        wide.priority = .defaultLow
+        wide.priority = .init(700)
         NSLayoutConstraint.activate([
             overlay.topAnchor.constraint(
                 equalTo: canvas.safeAreaLayoutGuide.topAnchor, constant: MacTheme.Spacing.s),
@@ -564,6 +564,10 @@ final class TileHost: NSViewController, PaneTiling {
     func persist() {
         schedulePersist()
         onLayoutChanged?()
+        if currentKinds() != reconciledKinds {
+            reconcile()
+            applyFocusStyling()
+        }
     }
 
     private func schedulePersist() {
@@ -657,9 +661,12 @@ final class TileHost: NSViewController, PaneTiling {
 
     private func makeDivider(_ placement: DividerPlacement) -> TileDividerView {
         let view = TileDividerView(placement: placement)
+        view.onDragBegan = { [weak self] _ in self?.holdRows(true) }
         view.onDrag = { [weak self] id, position in self?.drag(id, to: position) }
         view.onDragEnded = { [weak self] _, moved in
-            guard let self, moved else { return }
+            guard let self else { return }
+            self.holdRows(false)
+            guard moved else { return }
             self.ratioCaptures += 1
             self.schedulePersist()
         }
@@ -785,6 +792,7 @@ final class TileHost: NSViewController, PaneTiling {
     /// longest-untouched whole peer is the one that steps down.
     func reconcile() {
         guard let placement else { return }
+        reconciledKinds = currentKinds()
         let focusedID = layout.focusedPane
         let now = CACurrentMediaTime()
         var faces: [PaneID: TileShellView.Face] = [:]
@@ -969,6 +977,7 @@ final class TileHost: NSViewController, PaneTiling {
     func applyGovernor(_ decision: GovernorDecision) {
         let previous = self.decision
         self.decision = decision
+        let kinds = currentKinds()
         let interval = decision.animation.glanceInterval
         for (id, feed) in feeds {
             feed.setInterval(interval)
@@ -982,10 +991,21 @@ final class TileHost: NSViewController, PaneTiling {
         }
         guard previous?.densities != decision.densities || previous?.fullBudget != decision.fullBudget
             || previous?.rowWindows != decision.rowWindows || previous?.level != decision.level
+            || kinds != reconciledKinds
         else { return }
         reconcile()
         applyFocusStyling()
     }
+
+    /// What every pane holds, as the density rules read it; a pane that became a chat since the
+    /// last reconcile — a restore's staggered wake, a chooser answered — is settled again.
+    private func currentKinds() -> [PaneID: PaneKind] {
+        var kinds: [PaneID: PaneKind] = [:]
+        for (id, pane) in panes { kinds[id] = pane.paneKind(held: held[id] != nil) }
+        return kinds
+    }
+
+    private var reconciledKinds: [PaneID: PaneKind] = [:]
 
     func setOccluded(_ occluded: Bool) {
         guard occluded != self.occluded else { return }
@@ -1010,18 +1030,41 @@ final class TileHost: NSViewController, PaneTiling {
     private func liveResize(_ live: Bool) {
         liveResizing = live
         if live {
-            deferredPeers = layout.paneIDs.filter { id in
-                id != layout.focusedPane && shells[id]?.face == .full
-                    && !(shells[id]?.isHidden ?? true)
-            }
-            for id in deferredPeers { panes[id]?.setLiveResize(true) }
+            hold(layout.paneIDs.filter { $0 != layout.focusedPane })
         } else {
             releaseDeferred()
         }
     }
 
+    /// A divider drag: every whole pane takes its frame live under the pointer, and every
+    /// transcript holds its rows' width until the drag ends — re-measuring a few hundred rows of
+    /// text is twenty to fifty milliseconds a pane on the Mac, which no drag step can afford —
+    /// then the focused pane catches up first and the rest one per frame.
+    func holdRows(_ holding: Bool) {
+        guard holding != dragHolding else { return }
+        dragHolding = holding
+        if holding {
+            hold(layout.paneIDs)
+        } else {
+            let focused = layout.focusedPane
+            deferredPeers = deferredPeers.filter { $0 == focused } + deferredPeers.filter { $0 != focused }
+            releaseDeferred()
+        }
+    }
+
+    private var dragHolding = false
+
+    private func hold(_ ids: [PaneID]) {
+        let fresh = ids.filter { id in
+            shells[id]?.face == .full && !(shells[id]?.isHidden ?? true)
+                && !deferredPeers.contains(id)
+        }
+        deferredPeers += fresh
+        for id in fresh { panes[id]?.setLiveResize(true) }
+    }
+
     private func releaseDeferred() {
-        guard !liveResizing, !deferredPeers.isEmpty else { return }
+        guard !liveResizing, !dragHolding, !deferredPeers.isEmpty else { return }
         let id = deferredPeers.removeFirst()
         panes[id]?.setLiveResize(false)
         guard !deferredPeers.isEmpty else { return }
@@ -1034,6 +1077,14 @@ final class TileHost: NSViewController, PaneTiling {
     func simulateLiveResize(_ live: Bool) {
         liveResize(live)
         if !live {
+            while !deferredPeers.isEmpty { releaseDeferred() }
+        }
+    }
+
+    /// The bench's way of holding rows for a drag and letting them all catch up at once.
+    func simulateDividerDrag(_ dragging: Bool) {
+        holdRows(dragging)
+        if !dragging {
             while !deferredPeers.isEmpty { releaseDeferred() }
         }
     }
@@ -1079,7 +1130,9 @@ final class TileHost: NSViewController, PaneTiling {
         }
     }
 
-    func seatbeltPanes(held: [PaneID: SplitPaneSession]) -> SeatbeltPanes {
+    /// The panes as the governor ranks them. A chat a restore is still resolving counts as a chat
+    /// (`waiting`), and only a pane the person paused or a safe restore holds counts as parked.
+    func seatbeltPanes(held waiting: [PaneID: SplitPaneSession]) -> SeatbeltPanes {
         var seen = SeatbeltPanes()
         let placement = self.placement
         for id in layout.paneIDs {
@@ -1089,13 +1142,13 @@ final class TileHost: NSViewController, PaneTiling {
             let placed = rect != nil && !paused
             seen.facts.append(
                 PaneFacts(
-                    id: id, kind: pane.paneKind(held: held[id] != nil),
+                    id: id, kind: pane.paneKind(held: waiting[id] != nil || held[id] != nil),
                     focused: id == layout.focusedPane, placed: placed,
                     width: rect?.width ?? 0, height: rect?.height ?? 0,
                     attention: attention(id), pinned: pinned.contains(id)))
             if rect == nil {
                 seen.hidden += 1
-            } else if paused {
+            } else if paused || (pane.currentEntry == nil && waiting[id] != nil) {
                 seen.parked += 1
             } else if shells[id]?.face == .glance {
                 seen.glance += 1

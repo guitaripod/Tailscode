@@ -16,6 +16,7 @@ enum PendingCards {
         heading.orientation = .horizontal
         heading.alignment = .firstBaseline
         heading.spacing = MacTheme.Spacing.s
+        heading.setHuggingPriority(.defaultHigh, for: .horizontal)
         heading.addArrangedSubview(
             RowKit.label("⏸", font: MacTheme.Ramp.font(.code), color: MacTheme.Color.warning))
         let what = request.title ?? request.toolName ?? Localized.text("a tool")

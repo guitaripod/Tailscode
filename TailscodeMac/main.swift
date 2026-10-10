@@ -24,6 +24,7 @@ enum MacCLI {
           TailscodeMac --tree <path>            write every view's frame and ambiguity to a file
           TailscodeMac --open <surface>         open a named window first (servers, preferences, …)
           TailscodeMac --bench <transcript.json …>  time what cached transcripts cost to show
+          TailscodeMac --bench-tiles <transcript.json …>  time a window of panes: open, divider, resize
           TailscodeMac --flight [minutes]       print the flight recorder's ring, newest last
           TailscodeMac --version
         """
@@ -32,7 +33,8 @@ enum MacCLI {
         "--selftest", "--connect", "--password", "--name", "--opencode", "--omp", "--demo",
         "--shot", "--shot-delay", "--shot-size", "--shot-scale", "--shot-chrome", "--tree",
         "--tree-constraints", "--open",
-        "--bench", "--flight", "--version", "--help", "-h",
+        "--bench", "--bench-tiles", "--legacy", "--canvas", "--counts", "--flight", "--version",
+        "--help", "-h",
     ]
 
     /// Whether an argument is a flag this CLI was never taught. A single dash and a capital —
@@ -117,6 +119,10 @@ MediaAccounts.install(KeychainSecretStore())
 
 if TranscriptBench.isRequested {
     TranscriptBench.run()
+}
+
+if TileCanvasBench.isRequested {
+    TileCanvasBench.run()
 }
 
 if SelfTest.isRequested {

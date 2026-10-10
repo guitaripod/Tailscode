@@ -331,7 +331,7 @@ final class TranscriptViewController: NSViewController {
             identity.leadingAnchor.constraint(
                 equalTo: container.leadingAnchor, constant: MacTheme.Spacing.l),
             identity.trailingAnchor.constraint(
-                lessThanOrEqualTo: findBar.leadingAnchor, constant: -MacTheme.Spacing.m),
+                lessThanOrEqualTo: container.trailingAnchor, constant: -MacTheme.Spacing.l),
 
             emptyLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
@@ -346,10 +346,17 @@ final class TranscriptViewController: NSViewController {
             chooserView.leadingAnchor.constraint(
                 greaterThanOrEqualTo: container.leadingAnchor, constant: MacTheme.Spacing.l),
         ])
+        identityBesideFind = identity.trailingAnchor.constraint(
+            lessThanOrEqualTo: findBar.leadingAnchor, constant: -MacTheme.Spacing.m)
+        identityBesideFind?.isActive = !findBar.isHidden
         view = container
         wireContext()
         beginLifetime()
     }
+
+    /// The pane's name gives way to the find bar only while the bar is open; a hidden bar still
+    /// has its width, and held to it the name of a narrow pane was cut to nothing.
+    private var identityBesideFind: NSLayoutConstraint?
 
     /// The pane's own name, on the same material as the rest of the floating layer. It is a control
     /// above the transcript rather than a caption inside it, and on bare canvas the prose that
@@ -1308,11 +1315,13 @@ final class TranscriptViewController: NSViewController {
     func setFindShown(_ shown: Bool) {
         if shown {
             findBar.isHidden = false
+            identityBesideFind?.isActive = true
             findBar.focusField()
             runFind(retarget: false)
         } else {
             guard !findBar.isHidden else { return }
             findBar.isHidden = true
+            identityBesideFind?.isActive = false
             findBar.clear()
             clearFindHighlight()
             findMatches = []

@@ -6,7 +6,8 @@ import TailscodeCore
 ///
 /// A drag is Core's: each step converts the pointer into the parent rectangle's coordinates and
 /// asks `SplitLayout.drag`, which clamps it so neither side drops below its minimum, and the
-/// canvas lays out live on every step — two panes re-measure in well under a frame on the Mac.
+/// canvas lays out live on every step: every pane takes its new frame under the pointer, while
+/// the transcripts hold their rows at the width they had and re-measure once when the drag ends.
 /// A double click evens the whole arrangement out. The ratio is written once, when the drag
 /// ends, and only if it moved.
 ///
@@ -16,6 +17,8 @@ import TailscodeCore
 final class TileDividerView: NSView {
     let id: SplitID
     private(set) var placement: DividerPlacement
+    /// The pointer went down on the seam and a drag may follow.
+    var onDragBegan: ((SplitID) -> Void)?
     /// A drag step: where the first side should now end, from the parent's leading edge.
     var onDrag: ((SplitID, Double) -> Void)?
     /// The drag let go; `moved` is whether any step changed the ratio.
@@ -145,6 +148,7 @@ final class TileDividerView: NSView {
         moved = false
         grabOffset = along(event) - placement.position
         needsLayout = true
+        onDragBegan?(id)
     }
 
     override func mouseDragged(with event: NSEvent) {

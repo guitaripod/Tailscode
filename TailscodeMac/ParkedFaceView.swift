@@ -108,6 +108,7 @@ final class ParkedFaceView: NSView {
     ) {
         titleLabel.stringValue = title
         badge.activity = activity
+        badge.isHidden = activity == nil
         detailLabel.stringValue = detail ?? ""
         detailLabel.isHidden = detail == nil
         let words = lastWords?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
