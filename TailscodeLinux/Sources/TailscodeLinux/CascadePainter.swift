@@ -98,7 +98,7 @@ final class CascadePainter: @unchecked Sendable {
     private var clockWidget: UnsafeMutablePointer<GtkWidget>?
     /// The markup the wave is holding, already null-terminated for the shim.
     ///
-    /// A frame is supposed to cost a substring and an attribute list. It stopped being that as
+    /// A frame is supposed to cost the wave and nothing that grows with the answer. It stopped being that as
     /// soon as the markup arrived as a `String`: handing a Swift string to a C parameter copies it
     /// into a fresh buffer, so the whole answer was allocated and thrown away sixty times a
     /// second, on top of the pane rebuilding the markup itself just as often. The answer changes
@@ -202,8 +202,12 @@ final class CascadePainter: @unchecked Sendable {
     func advance(to time: Double) -> Bool { live.advance(to: time) }
 
     /// Paints one frame into the label the live row keeps its words in. The markup was converted
-    /// and parsed when the stream last moved, so a frame is a substring and an attribute list
-    /// rather than a markdown parse.
+    /// and parsed when the stream last moved, so a frame is a reveal edge and twenty-six colours
+    /// rather than a markdown parse. The label is a reveal label: the shim sets its text and
+    /// attributes only when an arrival changes them, and a frame stores the edge and the wave and
+    /// asks for a redraw, so the label's own drawing is clipped to the words already written and
+    /// the wave's clusters are drawn by hand from the layout's own glyphs. No frame lays the
+    /// paragraph out again, whatever its length.
     ///
     /// Returns whether the words actually landed. The pane hands the widget over to the wave and
     /// stops diffing it — the whole point of painting in place is that the row is not rebuilt for

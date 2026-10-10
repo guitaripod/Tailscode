@@ -135,9 +135,10 @@ extension ChatPane {
     }
 
     /// One frame of the wave, painted into the live row's own label. The markup is the one the
-    /// painter was pointed at when the stream last moved, so a frame is a substring and an
-    /// attribute list — never a markdown parse, never a fresh copy of the answer, and never a
-    /// widget rebuild, which is what lets a selection survive the sentence it is in being written.
+    /// painter was pointed at when the stream last moved, so a frame is a reveal edge and the wave's
+    /// colours — never a markdown parse, never a fresh copy of the answer, never a re-layout of the
+    /// paragraph and never a widget rebuild, which is what lets a selection survive the sentence it
+    /// is in being written.
     ///
     /// Returns whether the words are where the row says they are. Painting in place is a promise
     /// made to the diff — the row is marked rendered and left alone — so every reason this can fail

@@ -207,6 +207,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkRevealGeometry()
+            report("reveal geometry: \(checks) claims hold — a frame paints the wave and lays nothing out")
+        } catch {
+            report("reveal geometry: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkRepeatingMotion()
             report("repeating motion: \(checks) claims hold — every never-ending lap asks again")
         } catch {
@@ -2808,7 +2816,7 @@ public enum SelfTest {
             throw SelfTestFailure("the sentence under test does not render")
         }
         guard gtk_init_check() != 0 else { return 0 }
-        let label = Gtk.label("", css: "agent-prose", selectable: true)
+        let label = Gtk.markupLabel("", css: "agent-prose")
         let painter = CascadePainter()
         painter.focus(
             "row:part", markup: markup, sealed: false, ultracode: false, clock: nil)
@@ -3417,6 +3425,189 @@ public enum SelfTest {
             ActivityKind.stalled(tasks: 1).icon.tone == .attention,
             !ActivityKind.stalled(tasks: 1).icon.motion.isAnimated
         else { throw SelfTestFailure("work the server found stuck does not read as stuck") }
+    }
+
+    /// The reveal paints; it never lays out. A real label in a real window, so the layout is the
+    /// one GTK draws, and every claim is read against Pango's own positions: nothing past the edge
+    /// is drawn, the wave's clusters sit where the layout puts those characters, a wave across a
+    /// wrap break lands on both lines, a right-to-left run hands the row back to the label, and a
+    /// hundred frames leave the layout exactly as it was.
+    private static func checkRevealGeometry() throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("reveal geometry: \(label)") }
+            checks += 1
+        }
+        func pump(_ seconds: Double) {
+            let until = Date().addingTimeInterval(seconds)
+            while Date() < until {
+                while g_main_context_iteration(nil, 0) != 0 {}
+                usleep(4000)
+            }
+        }
+        struct Plan {
+            var fallback = false
+            var empty = false
+            var clips: [(x: Double, y: Double, w: Double, h: Double)] = []
+            var units: [(x: Double, y: Double, w: Double, h: Double, first: Int, count: Int)] = []
+        }
+        func plan(_ label: UnsafeMutablePointer<GtkWidget>, _ visible: Int, wave: Int = 26) -> Plan {
+            var out = [Double](repeating: 0, count: 4 + 8 + 64 * 6)
+            let written = tailscode_label_reveal_plan(
+                label, Int32(visible), Int32(wave), &out, Int32(out.count))
+            var result = Plan()
+            guard written > 0 else { return result }
+            result.fallback = out[0] != 0
+            result.empty = out[1] != 0
+            for index in 0..<Int(out[2]) {
+                let base = 4 + index * 4
+                result.clips.append((out[base], out[base + 1], out[base + 2], out[base + 3]))
+            }
+            for index in 0..<Int(out[3]) {
+                let base = 12 + index * 6
+                result.units.append(
+                    (out[base], out[base + 1], out[base + 2], out[base + 3], Int(out[base + 4]),
+                        Int(out[base + 5])))
+            }
+            return result
+        }
+        let prose =
+            "The stream writes an answer slowly into a paragraph that wraps around the edge of "
+            + "the pane and never moves again after landing. Naïve café 日本語のテキスト and a ✅ "
+            + "mark, then more words so the paragraph runs on to a fourth line of the label."
+        let label = Gtk.markupLabel(prose, css: "agent-text")
+        let window = gtk_window_new()!
+        gtk_window_set_default_size(ptr(UnsafeMutableRawPointer(window)), 380, 500)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        gtk_widget_set_valign(label, GTK_ALIGN_START)
+        gtk_box_append(ptr(column), label)
+        gtk_window_set_child(ptr(UnsafeMutableRawPointer(window)), column)
+        defer { gtk_window_destroy(ptr(UnsafeMutableRawPointer(window))) }
+        var rgb = [UInt32](repeating: 0xd0d0d0, count: 26)
+        var alpha = [UInt16](repeating: 65535, count: 26)
+        let total = Int(tailscode_label_reveal(label, prose, 0, 26, &rgb, &alpha))
+        try expect(total == prose.unicodeScalars.count, "the label takes the paragraph whole")
+        gtk_window_present(ptr(UnsafeMutableRawPointer(window)))
+        pump(1.0)
+        guard let layout = gtk_label_get_layout(op(label)),
+            let layoutText = pango_layout_get_text(layout)
+        else { throw SelfTestFailure("reveal geometry: the label has no layout") }
+        var offsetX: Int32 = 0
+        var offsetY: Int32 = 0
+        gtk_label_get_layout_offsets(op(label), &offsetX, &offsetY)
+        let lineCount = Int(pango_layout_get_line_count(layout))
+        try expect(lineCount >= 4, "the paragraph wraps to several lines (\(lineCount))")
+
+        func position(ofCharacter character: Int) -> PangoRectangle {
+            var rect = PangoRectangle()
+            let pointer = g_utf8_offset_to_pointer(layoutText, glong(character))!
+            pango_layout_index_to_pos(
+                layout, Int32(UnsafePointer(pointer) - layoutText), &rect)
+            return rect
+        }
+
+        try expect(plan(label, 0).empty, "nothing is drawn before the first character")
+
+        for visible in [1, 7, 30, 61, 88, 103, 118, 140, 171, total - 1, total] {
+            let drawn = plan(label, visible)
+            try expect(
+                !drawn.fallback && !drawn.empty,
+                "\(visible): left-to-right text is painted by the wave")
+            guard let last = drawn.units.last, let first = drawn.units.first else {
+                throw SelfTestFailure(
+                    "reveal geometry: \(visible) characters left the wave with no clusters")
+            }
+            try expect(
+                last.first + last.count <= visible && last.first + last.count >= visible - 1,
+                "\(visible): the wave stops at the edge, not past it (ends at \(last.first + last.count))")
+            try expect(
+                drawn.units.count <= 26 && first.first + first.count > visible - 26,
+                "\(visible): the wave is the last 26 characters and no more")
+            for (a, b) in zip(drawn.units, drawn.units.dropFirst()) {
+                try expect(
+                    b.first == a.first + a.count, "\(visible): clusters follow each other with no gap")
+            }
+            for unit in drawn.units {
+                let rect = position(ofCharacter: unit.first)
+                let centre = Double(offsetY) + (Double(rect.y) + Double(rect.height) / 2) / 1024
+                try expect(
+                    abs(unit.x - (Double(offsetX) + Double(rect.x) / 1024)) < 1
+                        && centre >= unit.y && centre <= unit.y + unit.h,
+                    "\(visible): a cluster sits where the layout puts character \(unit.first)")
+            }
+            let lowest = drawn.units.map { $0.y + $0.h }.max() ?? 0
+            let drawnHeight = drawn.clips.map { $0.y + $0.h }.max() ?? 0
+            try expect(
+                drawn.clips.count <= 2 && drawnHeight <= lowest + 1,
+                "\(visible): the label's own drawing stops at the line holding the edge")
+            if drawn.clips.count == 2 {
+                try expect(
+                    abs(drawn.clips[1].w - first.x) < 1,
+                    "\(visible): the label's own drawing stops where the wave starts")
+            }
+        }
+
+        let lineStarts = (0..<lineCount).compactMap { line -> Int? in
+            guard let row = pango_layout_get_line_readonly(layout, Int32(line)) else { return nil }
+            return Int(g_utf8_pointer_to_offset(layoutText, layoutText + Int(row.pointee.start_index)))
+        }
+        try expect(lineStarts.count >= 4, "the layout reports where each line starts")
+        let across = plan(label, lineStarts[2] + 6)
+        let tops = Set(across.units.map { Int($0.y.rounded()) })
+        try expect(tops.count == 2, "a wave across a wrap break lands on both lines (\(tops.count))")
+        try expect(
+            across.clips.count == 2 && across.clips[1].y < across.units.last!.y,
+            "and the label's own drawing stops on the earlier of them")
+        let longLine = zip(lineStarts, lineStarts.dropFirst().map { $0 } + [total])
+            .first { $1 - $0 >= 30 }
+        try expect(longLine != nil, "a window this wide wraps at more than thirty characters")
+        let onLine = plan(label, (longLine?.1 ?? 0) - 2)
+        try expect(
+            Set(onLine.units.map { Int($0.y.rounded()) }).count == 1,
+            "a wave inside one line stays on it")
+
+        var widthBefore: Int32 = 0
+        var heightBefore: Int32 = 0
+        pango_layout_get_pixel_size(layout, &widthBefore, &heightBefore)
+        let serial = pango_layout_get_serial(layout)
+        let allocatedHeight = gtk_widget_get_height(label)
+        let allocatedWidth = gtk_widget_get_width(label)
+        for frame in 0..<100 {
+            try expect(
+                tailscode_label_reveal(label, prose, Int32(20 + frame), 26, &rgb, &alpha)
+                    == Int32(total),
+                "frame \(frame) is taken")
+            if frame % 10 == 0 { pump(0.02) }
+        }
+        pump(0.1)
+        var widthAfter: Int32 = 0
+        var heightAfter: Int32 = 0
+        pango_layout_get_pixel_size(gtk_label_get_layout(op(label)), &widthAfter, &heightAfter)
+        try expect(
+            gtk_label_get_layout(op(label)) == layout && pango_layout_get_serial(layout) == serial
+                && widthBefore == widthAfter && heightBefore == heightAfter
+                && gtk_widget_get_height(label) == allocatedHeight
+                && gtk_widget_get_width(label) == allocatedWidth,
+            "a hundred frames leave the layout as it was: same layout, same serial, same size")
+        try expect(
+            gtk_label_get_text(op(label)).map { String(cString: $0) } == prose,
+            "and the text the label holds")
+
+        let hebrew = "שלום עולם שלום עולם שלום עולם שלום עולם שלום עולם שלום עולם שלום עולם"
+        let rightToLeft = Gtk.markupLabel(hebrew, css: "agent-text")
+        gtk_box_append(ptr(column), rightToLeft)
+        _ = tailscode_label_reveal(rightToLeft, hebrew, 10, 26, &rgb, &alpha)
+        pump(0.5)
+        try expect(
+            plan(rightToLeft, 10).fallback,
+            "a right-to-left run hands the row back to the label rather than drawing it wrongly")
+
+        let plainLabel = Gtk.label("plain", css: "agent-text", selectable: false)
+        try expect(
+            tailscode_label_reveal(plainLabel, "plain", 2, 26, &rgb, &alpha) < 0,
+            "a label that cannot reveal says so, so the pane rebuilds the row")
+        return checks
     }
 
     /// Every motion in this client that never ends on its own, proved to ask the desk again rather

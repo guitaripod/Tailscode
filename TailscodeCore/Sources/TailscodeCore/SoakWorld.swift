@@ -17,29 +17,36 @@ public enum SoakWorld {
         public var rows: Int
         public var turnSeconds: Int
         public var listedSessions: Int
+        public var paragraphCharacters: Int
 
         public init(
             panes: Int = 5, tokensPerSecond: Double = 80, rows: Int = 600, turnSeconds: Int = 240,
-            listedSessions: Int = 200
+            listedSessions: Int = 200, paragraphCharacters: Int = 0
         ) {
             self.panes = max(1, panes)
             self.tokensPerSecond = max(1, tokensPerSecond)
             self.rows = max(0, rows)
             self.turnSeconds = max(1, turnSeconds)
             self.listedSessions = max(self.panes, listedSessions)
+            self.paragraphCharacters = max(0, paragraphCharacters)
         }
 
-        /// `N:R:K[:T]` — panes, tokens per second, transcript messages, and how long one reply
-        /// streams for. Anything unreadable is nil rather than a guess.
+        /// `N:R:K[:T[:P]]` — panes, tokens per second, transcript messages, how long one reply
+        /// streams for, and the length of the one unbroken paragraph each text segment of the
+        /// reply is (zero keeps the mixed markdown segments). Anything unreadable is nil rather
+        /// than a guess.
         public init?(parsing text: String) {
             let fields = text.split(separator: ":").map { String($0) }
-            guard (3...4).contains(fields.count), let panes = Int(fields[0]),
+            guard (3...5).contains(fields.count), let panes = Int(fields[0]),
                 let rate = Double(fields[1]), let rows = Int(fields[2]), panes > 0, rate > 0,
                 rows >= 0
             else { return nil }
-            let seconds = fields.count == 4 ? Int(fields[3]) : 240
-            guard let seconds, seconds > 0 else { return nil }
-            self.init(panes: panes, tokensPerSecond: rate, rows: rows, turnSeconds: seconds)
+            let seconds = fields.count >= 4 ? Int(fields[3]) : 240
+            let paragraph = fields.count == 5 ? Int(fields[4]) : 0
+            guard let seconds, seconds > 0, let paragraph, paragraph >= 0 else { return nil }
+            self.init(
+                panes: panes, tokensPerSecond: rate, rows: rows, turnSeconds: seconds,
+                paragraphCharacters: paragraph)
         }
 
         public var tokenInterval: Duration {
@@ -165,7 +172,11 @@ public enum SoakWorld {
                 MockScriptStep(
                     .partUpserted(messageID: "soak-reply", MessagePart(id: textID, kind: .text(""))),
                     delay: interval))
-            let tokens = tokenize(segmentText(segment)).prefix(remaining)
+            let text =
+                configuration.paragraphCharacters > 0
+                ? longParagraph(segment, characters: configuration.paragraphCharacters)
+                : segmentText(segment)
+            let tokens = tokenize(text).prefix(remaining)
             for token in tokens {
                 steps.append(
                     MockScriptStep(
@@ -254,6 +265,24 @@ public enum SoakWorld {
                 kind: .text(
                     "All green after the change. The fix is contained to `\(file)` and the regression test pins the behaviour, so this is safe to ship. Want me to open the PR?")),
         ]
+    }
+
+    /// One paragraph with no blank line in it, so the transcript keeps it as a single label however
+    /// long it runs.
+    private static func longParagraph(_ index: Int, characters: Int) -> String {
+        let sentences = [
+            "The retry policy measures its deadline from the start of the request rather than from the attempt, so a slow first call leaves later attempts no time at all.",
+            "Clamping the jitter factor inside the policy means a caller cannot widen it by accident, and the test can inject a fixed factor instead of sleeping.",
+            "Nothing else reads the old rounding, which `rg` confirms across every caller in the tree, so the change stays inside one file.",
+            "The flaky run was the third call site, whose test asserts on wall-clock time and fails whenever the machine is busy with something else.",
+        ]
+        var text = ""
+        var next = index
+        while text.count < characters {
+            text += sentences[next % sentences.count] + " "
+            next += 1
+        }
+        return String(text.prefix(characters))
     }
 
     private static func segmentText(_ index: Int) -> String {

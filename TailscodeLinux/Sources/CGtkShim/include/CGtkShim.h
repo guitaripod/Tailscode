@@ -274,18 +274,35 @@ gboolean tailscode_label_has_selection(GtkWidget *widget);
 /// Whether a widget is a label — the band tints the label inside a segment, whatever wrapped it.
 gboolean tailscode_is_label(GtkWidget *widget);
 
-/// The stream cascade, painted into a label from markup that is parsed once.
+/// A label that can play its words out, one character at a time. It is an ordinary `GtkLabel` in
+/// every other respect (selection, links, wrapping, find, copy), and with no reveal running its
+/// drawing is the label's own, untouched. Every markup label the transcript builds is one, because
+/// any prose row can become the one the agent is writing into.
+GtkWidget *tailscode_reveal_label_new(void);
+
+/// The stream cascade, painted into a reveal label from markup that is parsed once.
 ///
-/// The whole arrived paragraph is laid out and everything past `visible` is drawn at zero alpha
-/// rather than cut off — which is what makes the reveal read as writing rather than as a widget
-/// resizing: the text is measured when it arrives and never again, so no glyph moves after it
-/// lands and no line re-wraps under the reader. The last `wave` visible glyphs carry the
-/// per-character colour and alpha the shared cascade computed. Returns the markup's total rendered
-/// length, or -1 if it could not be parsed. A negative `visible` clears the wave and hands the
-/// label the whole markup back.
+/// The whole arrived paragraph is laid out when it arrives — its text and attributes are set only
+/// when they change — and a frame afterwards touches the layout not at all: it stores how many
+/// characters are visible and the wave's colours and asks for a redraw. The label's own drawing
+/// is then clipped to the words already written, and the last `wave` characters are drawn by hand
+/// from the layout's own glyphs in the wave's colours; nothing past the edge is drawn. So no glyph
+/// moves after it lands, no line re-wraps under the reader, and a frame costs the wave rather
+/// than the paragraph. A paragraph whose wave touches a right-to-left run is drawn whole by the
+/// label itself instead of drawn wrongly. Returns the markup's total rendered length, or -1 if it
+/// could not be parsed or the label is not a reveal label. A negative `visible` clears the wave
+/// and hands the label the whole markup back.
 int tailscode_label_reveal(
     GtkWidget *label, const char *markup, int visible, int wave,
     const unsigned int *rgb, const unsigned short *alpha);
+
+/// What a frame at `visible` characters would draw, as numbers, so the geometry can be checked
+/// without a screen. Writes `[fallback, empty, clipCount, unitCount]`, then two clip rectangles
+/// and then one `[x, y, width, height, firstChar, charCount]` per tinted cluster, all in widget
+/// pixels, and returns how many numbers it wrote, or -1 if the label has no layout or `capacity`
+/// is too small. The clips are what the label's own drawing may fill; the clusters are what the
+/// wave paints.
+int tailscode_label_reveal_plan(GtkWidget *label, int visible, int wave, double *out, int capacity);
 
 /// Where the last written glyph ends: the bottom of the line holding the label's `visible`th
 /// character, in pixels from the label's top. The whole layout's height once `visible` reaches

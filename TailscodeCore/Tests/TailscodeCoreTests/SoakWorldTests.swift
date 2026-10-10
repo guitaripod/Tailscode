@@ -14,6 +14,9 @@ struct SoakWorldTests {
         #expect(spec?.rows == 600)
         #expect(spec?.turnSeconds == 240)
         #expect(SoakWorld.Configuration(parsing: "3:200:10:30")?.turnSeconds == 30)
+        #expect(spec?.paragraphCharacters == 0)
+        #expect(SoakWorld.Configuration(parsing: "1:80:200:30:8000")?.paragraphCharacters == 8000)
+        #expect(SoakWorld.Configuration(parsing: "1:80:200:30:x") == nil)
         #expect(SoakWorld.Configuration(parsing: "0:80:600") == nil)
         #expect(SoakWorld.Configuration(parsing: "5:x:600") == nil)
         #expect(SoakWorld.Configuration(parsing: "5:80") == nil)
@@ -62,6 +65,21 @@ struct SoakWorldTests {
             let perSecond = Double(deltas) / seconds
             #expect(perSecond > rate * 0.85 && perSecond <= rate * 1.01, "rate \(rate): \(perSecond)")
         }
+    }
+
+    @Test("a paragraph length makes each text segment one unbroken paragraph of that length")
+    func longParagraphReply() {
+        let configuration = SoakWorld.Configuration(
+            panes: 1, tokensPerSecond: 80, rows: 0, turnSeconds: 30, paragraphCharacters: 2000)
+        var segments: [String: String] = [:]
+        for step in SoakWorld.replyTurn(configuration) {
+            if case .partTextDelta(_, let part, let delta) = step.event {
+                segments[part ?? "", default: ""] += delta
+            }
+        }
+        let first = segments["t0"] ?? ""
+        #expect(first.count == 2000)
+        #expect(!first.contains("\n"))
     }
 
     @Test("a send on the installed server streams the reply live at about R events a second")
