@@ -2,8 +2,8 @@ import AppKit
 import TailscodeCore
 
 /// A pane that paints. It is not a second image surface: it is the Studio's Image lane at pane size —
-/// the same stage, the same dock and a compact shelf strip, in the same workspace the panel uses — over
-/// a studio of its own, so two panes and the panel never share a prompt and none can stop another's
+/// the same stage, the same dock and a compact shelf strip, in the same workspace the sheet uses — over
+/// a studio of its own, so two panes and the sheet never share a prompt and none can stop another's
 /// render. The dividers resize it, zoom hides its siblings, and the layout snapshot restores that the
 /// pane was a draw slot and which machine it painted on.
 ///

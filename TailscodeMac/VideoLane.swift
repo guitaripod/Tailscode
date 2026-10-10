@@ -5,7 +5,7 @@ import TailscodeCore
 
 /// The Video lane: `ForgeRunner` seen through the seam the shell draws every lane through. The
 /// render, its socket and its board stay above the window in the runner — closing the Studio closes
-/// a panel and nothing else — and this owns the stage and the dock it hands over, and answers for
+/// a sheet and nothing else — and this owns the stage and the dock it hands over, and answers for
 /// everything that is specific to making a clip: which verbs a stage offers, what a shelf tile is,
 /// what the machine pill says. The Image lane's pieces are used wherever they are generic: the
 /// dock, the pills, the rewrite card, the capsule, the shelf and the machine's popover frame are

@@ -2,7 +2,7 @@ import AppKit
 import TailscodeCore
 
 /// Where a lane's stage, shelf and dock are put in relation to each other — one arrangement for the
-/// panel and for a pane in the grid, so a pane IS the Studio's lane at pane size rather than a
+/// sheet and for a pane in the grid, so a pane IS the Studio's lane at pane size rather than a
 /// second implementation of it. The stage fills the room with the dock floating over its foot, the
 /// shelf is a rail beside it, and when the room is narrow the rail folds into a strip above the dock
 /// and the dock's chips fold into one Settings control. Nothing here names a lane: a lane hands over a
@@ -21,14 +21,34 @@ final class StudioWorkspaceView: NSView {
     private(set) var folded = false
 
     /// Room left clear above the stage, for a host that floats something of its own over the top
-    /// edge — a pane's identity strip. The panel's is the toolbar's, which the safe area reports.
+    /// edge — a pane's identity strip, or the gap under the sheet's toolbar.
     var topPadding: CGFloat = 0 {
         didSet { needsLayout = true }
     }
 
+    /// Height the host carries beside the workspace — the sheet's toolbar — so the folds are measured
+    /// against the whole sheet rather than the part of it the workspace fills.
+    var hostChromeHeight: CGFloat = 0 {
+        didSet { needsLayout = true }
+    }
+
+    /// Whether the workspace paints the window's ground under everything it holds. The sheet paints
+    /// its own opaque canvas, and a second fill over it would be a second colour.
+    var paintsGround = true {
+        didSet { restyle() }
+    }
+
+    /// Called when Esc is pressed with the keyboard inside the workspace and the host is the sheet,
+    /// which owns what Esc means: stop a render that is out, and only then leave.
+    var onEscape: (() -> Void)?
+
+    /// How many times `layout()` has run, so a check can show that the sheet's motion never makes the
+    /// Studio lay itself out: the motion moves one layer and nothing inside it.
+    private(set) var layoutPasses = 0
+
     /// - Parameter scoped: a workspace inside a pane answers the Studio's keys only while the key
-    ///   window's focus is inside it, because the window holds a conversation's keys too; the panel
-    ///   answers them whenever it is key.
+    ///   window's focus is inside it, because the window holds a conversation's keys too; the sheet
+    ///   answers them whenever it is up, because it owns the keyboard until it leaves.
     init(scoped: Bool) {
         self.scoped = scoped
         super.init(frame: .zero)
@@ -52,7 +72,7 @@ final class StudioWorkspaceView: NSView {
     /// holds, so the Studio is the same colour as the window around it under every theme.
     private func restyle() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = MacTheme.Color.windowGround.cgColor
+            layer?.backgroundColor = paintsGround ? MacTheme.Color.windowGround.cgColor : nil
         }
     }
 
@@ -146,14 +166,13 @@ final class StudioWorkspaceView: NSView {
 
     override func layout() {
         super.layout()
-        guard let lane, let shelf, let window else { return }
+        layoutPasses += 1
+        guard let lane, let shelf else { return }
         let top = max(0, safeAreaInsets.top) + topPadding
-        let windowWidth = scoped ? bounds.width : window.frame.width
-        let windowHeight = scoped ? bounds.height : window.frame.height
-        let folds = StudioFolding.foldsShelf(width: Double(windowWidth))
+        let folds = StudioFolding.foldsShelf(width: Double(bounds.width))
         folded = folds
         shelf.orientation = folds ? .strip : .rail
-        lane.dock.foldsChips = StudioFolding.foldsChips(height: Double(windowHeight))
+        lane.dock.foldsChips = StudioFolding.foldsChips(height: Double(bounds.height + hostChromeHeight))
 
         let inset: CGFloat = scoped ? 8 : 12
         let gap: CGFloat = 10
@@ -189,20 +208,33 @@ final class StudioWorkspaceView: NSView {
             height: size.height)
     }
 
-    /// The keys the Studio answers while it is in front, resolved here rather than by the menu bar,
-    /// because a window that is in front owns its keys before the menu is asked — and because three of
-    /// them share a chord with a conversation's verb (⌘↩ sends, ⌘E archives, ⌘⇧E lists the archive),
-    /// so while focus is in the Studio they are always the Studio's and never fall through to a chat
-    /// nobody is looking at. Arrows and Space are only the Studio's while no text is being edited.
+    /// The keys the Studio answers while it is in front. In a pane they are resolved here rather than
+    /// by the menu bar, because a pane's window holds a conversation's keys too and three of the
+    /// Studio's chords are a conversation's verbs (⌘↩ sends, ⌘E archives, ⌘⇧E lists the archive): while
+    /// focus is in the pane they are the Studio's and never fall through to a chat nobody is looking
+    /// at. In the sheet the conversation's menu items are disabled while it is up, so the menu bar
+    /// answers the Studio's ⌘ chords and only what it cannot is taken here: Esc, the arrows and Space,
+    /// and the three chords the conversation's items still hold first — AppKit stops at the first item
+    /// that wears a chord even when that item is disabled, so Generate would never be reached.
+    /// Arrows and Space are only the Studio's while no text is being edited.
     private func handle(_ event: NSEvent) -> Bool {
         guard let window, event.window === window, let lane else { return false }
         if scoped {
             guard let responder = window.firstResponder as? NSView, responder.isDescendant(of: self) else {
                 return false
             }
+        } else if !StudioWindowController.shared.sheetOwnsKeys(in: window) {
+            return false
         }
         let editing = window.firstResponder is NSText
         guard let key = StudioKeys.match(event, editing: editing) else { return false }
+        if !scoped {
+            guard !key.chord.command || key.sharesChordWithConversation else { return false }
+            if key == .stop {
+                onEscape?()
+                return true
+            }
+        }
         switch key {
         case .imageLane:
             onLaneKey?(.image)
@@ -237,15 +269,17 @@ final class StudioWorkspaceView: NSView {
     }
 
     /// The workspace the key window's focus is in, for a menu bar that has to act on whichever
-    /// Studio is in front — the panel's or a pane's.
+    /// Studio is in front — the sheet's while it is up, else a pane's. With no key window, which is an
+    /// application that is not active, the sheet answers for the window it is in.
     static func current(in window: NSWindow?) -> StudioWorkspaceView? {
-        guard let window else { return nil }
+        guard let window = window ?? StudioWindowController.shared.sheet?.host else { return nil }
+        if let sheet = StudioWindowController.shared.sheetWorkspace(in: window) { return sheet }
         var view = window.firstResponder as? NSView
         while let held = view {
             if let workspace = held as? StudioWorkspaceView { return workspace }
             view = held.superview
         }
-        return (window as? StudioPanel)?.workspace
+        return nil
     }
 }
 

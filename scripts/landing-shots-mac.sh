@@ -18,8 +18,8 @@
 # person's own preferences are never touched, and a debug build is what honours the staging
 # variables (TAILSCODE_IMAGE_ENDPOINT, _IMAGE_SEED, _DEMO_ONLY, _VIDEO_CLIP, _VIDEO_POSTERS,
 # _VIDEO_CLEAN). Nothing here can capture a real screen: the offscreen --shot path draws the view
-# tree at 2x (--shot-scale) with the title bar (--shot-chrome), and the toolbar's glass is stood in
-# for (MacShot.standInForGlass). Only processes this script started are ever stopped.
+# tree at 2x (--shot-scale) with the title bar (--shot-chrome); the Studio is a sheet inside that window,
+# so it is part of the picture. Only processes this script started are ever stopped.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)

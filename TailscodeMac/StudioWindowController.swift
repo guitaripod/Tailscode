@@ -1,31 +1,31 @@
 import AppKit
 import TailscodeCore
 
-/// The Studio: one panel, not a sheet, so it can sit beside a conversation. A lane switch leads the
-/// toolbar, the machine pill sits in its centre, and the queue and Done are at its trailing edge;
-/// below them the lane's stage, a shelf and the brief dock. Closing the panel closes a window and
-/// nothing else — the render lives in the studio above it — and opening it again finds the picture
-/// exactly where it was.
+/// The Studio's presenter: one sheet for the whole app, risen inside the Tailscode window rather than
+/// opened beside it. It keeps the two lanes, runs Core's `StudioSheetState` over what the sheet does —
+/// rise, change lane, leave — and owns what has to be true around it: the keyboard is the sheet's while
+/// it is up, the opener gets focus back, and the conversation's chords are off until it starts to leave.
+/// Closing the sheet closes nothing else — the render lives in the studio above it — and opening it
+/// again finds the picture exactly where it was.
 @MainActor
-final class StudioWindowController: NSObject, NSToolbarDelegate, NSWindowDelegate {
+final class StudioWindowController: NSObject {
     static let shared = StudioWindowController()
 
-    private(set) var panel: StudioPanel?
-    private let imageLane = ImageLane(studio: .shared)
+    private(set) var state: StudioSheetState = .closed
+    private(set) var sheet: StudioSheetView?
+    private let imageLane: ImageLane
     private lazy var videoLane = VideoLane(runner: .shared)
     private(set) var current: StudioLaneID = .image
-    private let laneControl = NSSegmentedControl(
-        labels: StudioLaneID.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
-    private let pill = StudioMachinePill()
-    private let queue = StudioTheme.label(.panelFootnote, color: MacTheme.Color.secondaryLabel)
-    private let done = NSButton(title: ImageGenSurface.dismissTitle, target: nil, action: nil)
+    private weak var opener: NSResponder?
+    private var closeObserver: NSObjectProtocol?
 
-    private static let laneItem = NSToolbarItem.Identifier("studio.lane")
-    private static let machineItem = NSToolbarItem.Identifier("studio.machine")
-    private static let queueItem = NSToolbarItem.Identifier("studio.queue")
-    private static let doneItem = NSToolbarItem.Identifier("studio.done")
+    /// Replaces the system's reduced-motion setting, so a check can take both paths.
+    var reducedMotionOverride: Bool?
 
-    private override init() {
+    /// The app has one; a check builds its own over a studio of its own, so nothing it leaves behind
+    /// outlives it as a global that a later render's callbacks would find.
+    init(studio: MacImageStudio = .shared) {
+        imageLane = ImageLane(studio: studio)
         super.init()
         imageLane.onAnimate = { [weak self] request in
             guard let self else { return }
@@ -34,13 +34,17 @@ final class StudioWindowController: NSObject, NSToolbarDelegate, NSWindowDelegat
         }
     }
 
-    var isKey: Bool { panel?.isKeyWindow == true }
+    /// Whether the sheet is up and holds the keyboard: from the first frame of its rise to the moment
+    /// it starts to leave.
+    var isKey: Bool { state.capturesKeys }
 
     var activeLane: (any StudioLane)? { lane(current) }
 
     var image: ImageLane { imageLane }
 
     var video: VideoLane { videoLane }
+
+    private var reducedMotion: Bool { reducedMotionOverride ?? !StudioTheme.motionAllowed }
 
     /// The lane a segment of the switch stands for. The Video lane is built the first time somebody
     /// asks for it, so a Studio that only ever paints never watches the renderer.
@@ -51,150 +55,218 @@ final class StudioWindowController: NSObject, NSToolbarDelegate, NSWindowDelegat
         }
     }
 
-    /// Raises the Studio on a lane. With `brief` the words land in that lane's box as the thing to
-    /// make — the composer's Image lane sends them here — and nothing is rendered until a hand says
-    /// Generate.
-    func show(lane id: StudioLaneID = .image, brief: String? = nil) {
-        let panel = self.panel ?? makePanel()
-        select(id)
-        if panel.isMiniaturized { panel.deminiaturize(nil) }
-        panel.makeKeyAndOrderFront(nil)
+    /// The sheet's workspace when the sheet is up in `window` and holds the keyboard, which is the
+    /// workspace every Studio menu verb and key answers for.
+    func sheetWorkspace(in window: NSWindow) -> StudioWorkspaceView? {
+        sheetOwnsKeys(in: window) ? sheet?.workspace : nil
+    }
+
+    func sheetOwnsKeys(in window: NSWindow) -> Bool {
+        state.capturesKeys && sheet?.host === window
+    }
+
+    /// The window a sheet opened without being told one rises in: the one it is already in, else the
+    /// key Tailscode window, else the frontmost.
+    private var presentingWindow: NSWindow? {
+        if state != .closed, let host = sheet?.host { return host }
+        if let key = NSApp.keyWindow, key.windowController is MainWindowController { return key }
+        return NSApp.orderedWindows.first { $0.windowController is MainWindowController && $0.isVisible }
+    }
+
+    /// Raises the Studio on a lane, in `window` or wherever it already is. With `brief` the words land
+    /// in that lane's box as the thing to make — the composer's Image lane sends them here — and
+    /// nothing is rendered until a hand says Generate. Opening while it is up changes the lane and
+    /// gives the words box the keyboard, with no motion; opening from another window moves it there.
+    func show(lane id: StudioLaneID = .image, brief: String? = nil, in window: NSWindow? = nil) {
+        guard let target = window ?? presentingWindow, target.contentView != nil else { return }
+        let sheet = ensureSheet()
+        if state != .closed, let host = sheet.host, host !== target { moveSheet(to: target) }
+        let (next, effect) = state.reduced(by: .show(lane: id.kind))
+        state = next
+        switch effect {
+        case .animateIn:
+            if !sheet.holds(target.firstResponder as? NSView) { opener = target.firstResponder }
+            sheet.install(in: target)
+            watchClose(of: target)
+            select(id)
+            sheet.capture()
+            placeBrief(brief, on: id)
+            refreshChrome()
+            sheet.layoutSubtreeIfNeeded()
+            sheet.animate(opening: true, reduced: reducedMotion) { [weak self] in self?.motionFinished() }
+        case .changeLane:
+            select(id)
+            sheet.refreshKeyLoop()
+            placeBrief(brief, on: id)
+            refreshChrome()
+        case .animateOut, .none:
+            break
+        }
+    }
+
+    /// Starts the sheet leaving. The conversation's chords, its accessibility tree and the opener's
+    /// focus are back at once — the motion is a courtesy, not a state anything waits on.
+    func dismiss() {
+        let (next, effect) = state.reduced(by: .dismiss)
+        state = next
+        guard effect == .animateOut, let sheet else { return }
+        sheet.release()
+        restoreOpenerFocus()
+        sheet.animate(opening: false, reduced: reducedMotion) { [weak self] in self?.motionFinished() }
+    }
+
+    /// The motion ended: a rising sheet is at rest, a leaving one is gone and its overlay with it.
+    func motionFinished() {
+        let (next, _) = state.reduced(by: .finished)
+        state = next
+        if next == .closed { sheet?.uninstall() }
+    }
+
+    #if DEBUG
+        /// Stops the motion where it stands and holds the sheet at `progress` of it, rising or leaving,
+        /// so a frame in the middle of the move can be photographed. The state is the one the motion
+        /// was in, so the keys and the menu answer as they would at that moment.
+        func hold(at progress: Double, closing: Bool) {
+            guard let sheet else { return }
+            if closing {
+                if state.capturesKeys {
+                    sheet.release()
+                    restoreOpenerFocus()
+                }
+                state = .closing
+            } else {
+                state = .opening
+            }
+            sheet.cancelMotion(settingPresence: progress)
+        }
+    #endif
+
+    /// ⌘W with the sheet up closes the sheet; the window is closed by the next one, or by its own
+    /// close button. Only the chord Core names counts, and only in the window the sheet is in.
+    func closesSheet(chord: KeyChord, command: Bool, keyWindow: NSWindow?) -> Bool {
+        guard state.capturesKeys, StudioSheetKeys.closes(chord, command: command),
+            keyWindow == nil || keyWindow === sheet?.host
+        else { return false }
+        dismiss()
+        return true
+    }
+
+    /// What Esc does with the sheet up: stop a render that is out, and only then close.
+    func escapePressed() {
+        guard state.capturesKeys else { return }
+        let renderIsOut = activeLane?.offers(.stop) == true
+        switch StudioSheetKeys.escape(renderIsOut: renderIsOut) {
+        case .stopRender: activeLane?.perform(.stop)
+        case .closeSheet: dismiss()
+        }
+    }
+
+    private func ensureSheet() -> StudioSheetView {
+        if let sheet { return sheet }
+        let sheet = StudioSheetView()
+        sheet.workspace.onChange = { [weak self] _ in self?.refreshChrome() }
+        sheet.workspace.onLaneKey = { [weak self] id in self?.show(lane: id) }
+        sheet.workspace.onEscape = { [weak self] in self?.escapePressed() }
+        sheet.onScrimPress = { [weak self] in self?.dismiss() }
+        let toolbar = sheet.toolbar
+        toolbar.lanes.target = self
+        toolbar.lanes.action = #selector(laneChosen)
+        for (index, lane) in StudioLaneID.allCases.enumerated() {
+            toolbar.lanes.setToolTip(
+                lane == .image
+                    ? ImageGenEntryPoint.tooltip(configured: true)
+                    : ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil),
+                forSegment: index)
+        }
+        toolbar.done.target = self
+        toolbar.done.action = #selector(donePressed)
+        toolbar.pill.onPress = { [weak self] anchor in self?.activeLane?.presentMachine(from: anchor) }
+        sheet.workspace.setLane(imageLane)
+        self.sheet = sheet
+        return sheet
+    }
+
+    /// Opening from another window takes the sheet out of the first one, with everything it held, and
+    /// puts it in the second at rest.
+    private func moveSheet(to window: NSWindow) {
+        guard let sheet else { return }
+        sheet.uninstall()
+        sheet.install(in: window)
+        sheet.apply(presence: 1)
+        sheet.capture()
+        opener = window.firstResponder
+        if state == .opening { state = state.reduced(by: .finished).state }
+        watchClose(of: window)
+    }
+
+    /// A window that closes with the sheet in it takes the sheet with it, with no motion to wait for.
+    private func watchClose(of window: NSWindow) {
+        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.teardown() }
+        }
+    }
+
+    private func teardown() {
+        state = .closed
+        opener = nil
+        sheet?.uninstall()
+        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+        closeObserver = nil
+    }
+
+    private func placeBrief(_ brief: String?, on id: StudioLaneID) {
         let shown = lane(id)
         if let brief, !brief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             shown.dock.take(brief: brief)
         } else {
             shown.dock.focusWords()
         }
-        refreshChrome()
     }
 
-    private func makePanel() -> StudioPanel {
-        let panel = StudioPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered, defer: false)
-        panel.title = Localized.text("Studio")
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
-        panel.isReleasedWhenClosed = false
-        panel.isFloatingPanel = false
-        panel.hidesOnDeactivate = false
-        panel.becomesKeyOnlyIfNeeded = false
-        panel.collectionBehavior = [.fullScreenAuxiliary]
-        panel.contentMinSize = NSSize(width: 880, height: 640)
-        panel.delegate = self
-        MacTheme.Chrome.adopt(panel)
-        let workspace = StudioWorkspaceView(scoped: false)
-        workspace.onChange = { [weak self] _ in self?.refreshChrome() }
-        workspace.onLaneKey = { [weak self] id in self?.show(lane: id) }
-        panel.workspace = workspace
-        panel.contentView = workspace
-        if !panel.rememberFrame(as: "TailscodeStudio") {
-            panel.setContentSize(NSSize(width: 1180, height: 820))
-            panel.center()
-        }
-        let toolbar = NSToolbar(identifier: "studio.toolbar")
-        toolbar.delegate = self
-        toolbar.displayMode = .iconOnly
-        toolbar.allowsUserCustomization = false
-        toolbar.centeredItemIdentifiers = [Self.machineItem]
-        panel.toolbar = toolbar
-        panel.toolbarStyle = .unified
-        laneControl.segmentStyle = .automatic
-        laneControl.target = self
-        laneControl.action = #selector(laneChosen)
-        laneControl.setAccessibilityLabel(Localized.text("Studio lane"))
-        for (index, lane) in StudioLaneID.allCases.enumerated() {
-            laneControl.setToolTip(
-                lane == .image
-                    ? ImageGenEntryPoint.tooltip(configured: true)
-                    : ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil),
-                forSegment: index)
-        }
-        done.bezelStyle = .rounded
-        done.target = self
-        done.action = #selector(donePressed)
-        done.keyEquivalent = ""
-        pill.onPress = { [weak self] anchor in self?.activeLane?.presentMachine(from: anchor) }
-        self.panel = panel
-        workspace.setLane(imageLane)
-        return panel
+    /// Focus goes back to whatever held it when the sheet opened, or to nothing when that is gone.
+    private func restoreOpenerFocus() {
+        guard let window = sheet?.host else { return }
+        if let opener, window.makeFirstResponder(opener) { return }
+        window.makeFirstResponder(nil)
     }
 
     private func select(_ id: StudioLaneID) {
         current = id
-        laneControl.selectedSegment = id.rawValue
-        guard let workspace = panel?.workspace else { return }
+        guard let sheet else { return }
+        sheet.toolbar.lanes.selectedSegment = id.rawValue
         let next = lane(id)
-        if workspace.lane !== next { workspace.setLane(next) }
+        if sheet.workspace.lane !== next { sheet.workspace.setLane(next) }
     }
 
-    private func refreshChrome() {
+    func refreshChrome() {
+        guard let sheet else { return }
         let lane = lane(current)
-        let fact = lane.machine
-        pill.show(fact)
-        let count = lane.queueCount
-        queue.stringValue = "\(ImageGenMachineWords.queueLabel) \(count)"
-        queue.setAccessibilityLabel(queue.stringValue)
-        done.toolTip = lane.dismissNote
+        sheet.toolbar.pill.show(lane.machine)
+        let hint = lane.offers(.stop) ? StudioSheetWords.escapeHint : lane.dismissNote
+        sheet.toolbar.refresh(queue: lane.queueCount, hint: hint)
     }
 
     @objc private func laneChosen() {
-        let id = StudioLaneID(rawValue: laneControl.selectedSegment) ?? .image
+        let id = StudioLaneID(rawValue: sheet?.toolbar.lanes.selectedSegment ?? 0) ?? .image
         show(lane: id)
     }
 
     @objc private func donePressed() {
-        panel?.performClose(nil)
-    }
-
-    func windowDidBecomeKey(_ notification: Notification) {
-        refreshChrome()
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.laneItem, Self.machineItem, Self.queueItem, Self.doneItem, .flexibleSpace, .space]
-    }
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.laneItem, .flexibleSpace, Self.machineItem, .flexibleSpace, Self.queueItem, Self.doneItem]
-    }
-
-    func toolbar(
-        _ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-        willBeInsertedIntoToolbar flag: Bool
-    ) -> NSToolbarItem? {
-        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        switch itemIdentifier {
-        case Self.laneItem:
-            item.view = laneControl
-            item.label = Localized.text("Studio lane")
-        case Self.machineItem:
-            item.view = pill
-            item.label = ImageGenMachineWords.title
-        case Self.queueItem:
-            item.view = queue
-            item.label = ImageGenMachineWords.queueLabel
-        case Self.doneItem:
-            item.view = done
-            item.label = ImageGenSurface.dismissTitle
-        default:
-            return nil
-        }
-        item.isBordered = false
-        return item
+        dismiss()
     }
 }
 
-/// The Studio's window: a titled, resizable panel that is key and main like any other window — it is
-/// a place to work, beside a conversation, not a floating utility — and that knows its workspace so
-/// the menu bar can act on it.
-@MainActor
-final class StudioPanel: NSPanel {
-    var workspace: StudioWorkspaceView?
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+extension StudioLaneID {
+    /// The lane as Core's sheet state machine names it.
+    var kind: StudioLaneKind {
+        switch self {
+        case .image: return .image
+        case .video: return .video
+        }
+    }
 }
 
 /// The toolbar's pill: a status dot that breathes only while the machine is working and is still
