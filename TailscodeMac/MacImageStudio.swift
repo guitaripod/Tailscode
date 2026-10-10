@@ -107,6 +107,17 @@ final class MacImageStudio {
         #endif
     }
 
+    /// A seed named for a headless run — `TAILSCODE_IMAGE_SEED` — so a stand-in machine that hands
+    /// back a picture it already rendered can be given the seed that picture was made with, and the
+    /// caption under it states what is true of the picture. Debug builds only.
+    static var pinnedSeed: UInt64? {
+        #if DEBUG
+            return ProcessInfo.processInfo.environment["TAILSCODE_IMAGE_SEED"].flatMap { UInt64($0) }
+        #else
+            return nil
+        #endif
+    }
+
     init(endpoint: ImageGenEndpoint?) {
         let resolved =
             endpoint ?? Self.pinnedEndpoint ?? ImageGenDoor.current().endpoint
@@ -432,7 +443,7 @@ final class MacImageStudio {
         stageCleared = false
         sketch = nil
         draft = nil
-        let recipe = slot.recipe(prompt: text, seed: slot.seed.next())
+        let recipe = slot.recipe(prompt: text, seed: Self.pinnedSeed ?? slot.seed.next())
         let fresh = ImageGenRunner(endpoint: slot.endpoint, recipe: recipe)
         runner = fresh
         MacHaptics.shared.play(.send)

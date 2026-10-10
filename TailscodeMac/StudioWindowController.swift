@@ -269,15 +269,15 @@ final class StudioMachinePill: NSView {
 
     override var intrinsicContentSize: NSSize {
         guard fact != nil else { return NSSize(width: 220, height: 28) }
-        let width = 14 + 8 + 8 + ceil(name.intrinsicContentSize.width) + 8
-            + ceil(line.intrinsicContentSize.width) + 8 + 14
+        let width = 14 + 8 + 8 + ceil(name.intrinsicContentSize.width) + 2 + 8
+            + ceil(line.intrinsicContentSize.width) + 4 + 8 + 14
         return NSSize(width: min(max(width, 220), 520), height: 28)
     }
 
     override func layout() {
         super.layout()
         dot.frame = NSRect(x: 14, y: (bounds.height - 8) / 2, width: 8, height: 8)
-        let nameWidth = ceil(name.intrinsicContentSize.width)
+        let nameWidth = ceil(name.intrinsicContentSize.width) + 2
         let lineHeight = StudioTheme.height(of: .panelFootnote)
         let nameHeight = StudioTheme.height(of: .rowTitleStrong)
         name.frame = NSRect(x: 30, y: (bounds.height - nameHeight) / 2, width: nameWidth, height: nameHeight)
