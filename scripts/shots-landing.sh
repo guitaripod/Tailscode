@@ -21,7 +21,7 @@ WORK="$(mktemp -d)"
 NAMES=(studio-paint studio-done video-run video-done)
 
 island_in() {
-  python3 - "$1" <<'PY'
+  python3 -W ignore - "$1" <<'PY'
 import sys
 from PIL import Image
 im = Image.open(sys.argv[1]).convert("RGB")
