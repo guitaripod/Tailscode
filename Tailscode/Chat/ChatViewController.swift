@@ -430,7 +430,7 @@ final class ChatViewController: UIViewController {
         }
         if UIApplication.shared.applicationState == .active {
             AppActivityController.shared.seen(viewModel.session.id)
-            SessionSeenStore.markSeen(viewModel.session.id)
+            if !setAsideUnread { SessionSeenStore.markSeen(viewModel.session.id) }
         }
         if !announcedIdentity {
             announcedIdentity = true
@@ -572,7 +572,7 @@ final class ChatViewController: UIViewController {
         AppActivityController.shared.hidden(self)
         cascade.release()
         flushDraft()
-        SessionSeenStore.markSeen(viewModel.session.id)
+        if !setAsideUnread { SessionSeenStore.markSeen(viewModel.session.id) }
         viewModel.stopSubagentTracking()
         if !isChangingColumns,
             isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true
@@ -2413,6 +2413,7 @@ final class ChatViewController: UIViewController {
         defer { wasRunningWhenMarked = running }
         guard viewIfLoaded?.window != nil, UIApplication.shared.applicationState == .active
         else { return }
+        guard !setAsideUnread else { return }
         let now = CACurrentMediaTime()
         let ended = wasRunningWhenMarked && !running
         guard ended || now - lastReadMarkAt >= Self.readMarkInterval else { return }
@@ -3755,6 +3756,31 @@ final class ChatViewController: UIViewController {
                 ) { [weak self] _ in self?.toggleSaved() }
             ])
         }
+        let marks = UIDeferredMenuElement.uncached { [weak self] completion in
+            guard let self else { return completion([]) }
+            let profileID = self.viewModel.contextID
+            let sessionID = self.viewModel.session.id
+            let pinned = SessionPinStore.contains(profileID: profileID, sessionID: sessionID)
+            let archived = ArchivedChatStore.contains(profileID: profileID, sessionID: sessionID)
+            completion([
+                UIAction(
+                    title: pinned ? String(localized: "Unpin") : String(localized: "Pin"),
+                    image: UIImage(systemName: pinned ? "pin.slash" : "pin")
+                ) { _ in
+                    Theme.Haptics.tap()
+                    SessionPinStore.toggle(profileID: profileID, sessionID: sessionID)
+                },
+                UIAction(
+                    title: String(localized: "Mark as unread"),
+                    image: UIImage(systemName: "envelope.badge")
+                ) { [weak self] _ in self?.markUnreadFromHere() },
+                UIAction(
+                    title: archived
+                        ? String(localized: "Unarchive") : String(localized: "Archive"),
+                    image: UIImage(systemName: archived ? "tray.and.arrow.up" : "archivebox")
+                ) { [weak self] _ in self?.toggleArchivedFromHere() },
+            ])
+        }
         let commands = UIDeferredMenuElement.uncached { [weak self] completion in
             guard let self, !self.viewModel.composerCommands.isEmpty else { return completion([]) }
             completion([
@@ -3770,7 +3796,7 @@ final class ChatViewController: UIViewController {
                 image: UIImage(systemName: "magnifyingglass")
             ) { [weak self] _ in self?.openFind() }
         ]
-        children += [commands, jump, subagents, regenerate, usage, save]
+        children += [commands, jump, subagents, regenerate, usage, save, marks]
         children.append(
             UIAction(
                 title: String(localized: "Share transcript"),
@@ -3816,6 +3842,29 @@ final class ChatViewController: UIViewController {
         return UIBarButtonItem(
             image: UIImage(systemName: "ellipsis.circle"),
             menu: UIMenu(children: children))
+    }
+
+    private var setAsideUnread = false
+
+    /// A chat set aside as unread from inside it stays unread: leaving it, or the next line
+    /// arriving in it, must not read it again. Left alone, the screen the reader is looking at
+    /// would undo the press the moment it drew the next frame.
+    private func markUnreadFromHere() {
+        setAsideUnread = true
+        SessionSeenStore.markUnread(
+            viewModel.session.id, updatedAt: viewModel.sessionSnapshot.updatedAt)
+        Theme.Haptics.tap()
+        presentToast(String(localized: "Marked as unread"))
+    }
+
+    private func toggleArchivedFromHere() {
+        let archived = ArchivedChatStore.toggle(
+            profileID: viewModel.contextID, sessionID: viewModel.session.id)
+        Theme.Haptics.tap()
+        presentToast(
+            archived
+                ? String(localized: "Archived — hidden from the list, kept on the server")
+                : String(localized: "Back in the chat list"))
     }
 
     /// Saving from inside a conversation is the moment it usually matters, and
@@ -6272,12 +6321,7 @@ extension ChatViewController: KeyActionHost {
         case .toggleSaved:
             toggleSaved()
         case .archiveSelected:
-            let archived = ArchivedChatStore.toggle(
-                profileID: viewModel.contextID, sessionID: viewModel.session.id)
-            presentToast(
-                archived
-                    ? String(localized: "Archived — hidden from the list, kept on the server")
-                    : String(localized: "Back in the chat list"))
+            toggleArchivedFromHere()
         case .renameSelected:
             guard viewModel.canRename else { return false }
             promptRename()
