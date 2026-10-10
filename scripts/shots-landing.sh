@@ -20,11 +20,30 @@ DEST="${1:?output folder}"
 WORK="$(mktemp -d)"
 NAMES=(studio-paint studio-done video-run video-done)
 
+island_in() {
+  python3 - "$1" <<'PY'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert("RGB")
+box = im.crop((380, 40, 940, 140))
+dark = sum(1 for p in box.getdata() if max(p) < 6)
+sys.exit(0 if dark > box.width * box.height * 0.5 else 1)
+PY
+}
+
 for appearance in dark light; do
-  TAILSCODE_SHOT_THEME=suomi TAILSCODE_SHOT_APPEARANCE=$appearance \
-    TAILSCODE_SHOT_OUT="$WORK/$appearance" "$ROOT/scripts/shots.sh" "${NAMES[@]}"
+  export TAILSCODE_SHOT_THEME=suomi TAILSCODE_SHOT_APPEARANCE=$appearance
+  out="$WORK/$appearance"
+  TAILSCODE_SHOT_OUT="$out" "$ROOT/scripts/shots.sh" "${NAMES[@]}"
+  for name in "${NAMES[@]}"; do
+    for attempt in 1 2 3 4; do
+      island_in "$out/$name.png" || break
+      echo "  $name: the simulator drew the Dynamic Island, shooting again"
+      TAILSCODE_SHOT_OUT="$out" "$ROOT/scripts/shots.sh" "$name"
+    done
+  done
   for i in 0 1 2 3; do
-    python3 - "$WORK/$appearance/${NAMES[$i]}.png" "$DEST/suomi-$appearance-$((13 + i)).webp" <<'PY'
+    python3 - "$out/${NAMES[$i]}.png" "$DEST/suomi-$appearance-$((13 + i)).webp" <<'PY'
 import sys
 from PIL import Image
 Image.open(sys.argv[1]).convert("RGB").save(sys.argv[2], "WEBP", quality=85, method=6)
