@@ -5,6 +5,10 @@
 #   TAILSCODE_STUDIO_ART=<folder of real pictures + manifest.json> \
 #   scripts/shots-landing.sh <output folder, e.g. ~/Dev/web/midgarcorp/public/screenshots/tailscode>
 #
+# With --chat it reshoots the conversation screens instead, so the page shows the compact
+# transcript and its link rail: 01 live, 02 the dial, 03 approval, 05 subagents, 06 work. The
+# others of the twelve do not change with the transcript's look, and are left as they are.
+#
 # 13 studio-paint  the image studio mid-render, the machine's sketch on the stage
 # 14 studio-done   the finished picture, its real facts, the verbs and the shelf
 # 15 video-run     the video forge mid-render, second pass
@@ -15,10 +19,18 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CHAT=""
+[ "${1:-}" = "--chat" ] && { CHAT=1; shift; }
 DEST="${1:?output folder}"
-: "${TAILSCODE_STUDIO_ART:?TAILSCODE_STUDIO_ART is not set}"
 WORK="$(mktemp -d)"
-NAMES=(studio-paint studio-done video-run video-done)
+if [ -n "$CHAT" ]; then
+  NAMES=(01-live 02-dial 03-approval 05-subagents 02-work)
+  NUMBERS=(01 02 03 05 06)
+else
+  : "${TAILSCODE_STUDIO_ART:?TAILSCODE_STUDIO_ART is not set}"
+  NAMES=(studio-paint studio-done video-run video-done)
+  NUMBERS=(13 14 15 16)
+fi
 
 island_in() {
   python3 -W ignore - "$1" <<'PY'
@@ -42,8 +54,8 @@ for appearance in dark light; do
       TAILSCODE_SHOT_OUT="$out" "$ROOT/scripts/shots.sh" "$name"
     done
   done
-  for i in 0 1 2 3; do
-    python3 - "$out/${NAMES[$i]}.png" "$DEST/suomi-$appearance-$((13 + i)).webp" <<'PY'
+  for i in "${!NAMES[@]}"; do
+    python3 - "$out/${NAMES[$i]}.png" "$DEST/suomi-$appearance-${NUMBERS[$i]}.webp" <<'PY'
 import sys
 from PIL import Image
 Image.open(sys.argv[1]).convert("RGB").save(sys.argv[2], "WEBP", quality=85, method=6)
