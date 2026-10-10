@@ -536,6 +536,10 @@ void tailscode_monitor_size(GtkWidget *near, int *width, int *height);
 /// shift-Enter marking a range is the same gesture with another device.
 bool tailscode_shift_held(GtkWidget *near);
 
+/// Whether control is held, read from the keyboard at signal time like ``tailscode_shift_held``:
+/// a link row's "clicked" carries no event, and control-click copies where a click opens.
+bool tailscode_ctrl_held(GtkWidget *near);
+
 /// What the main loop did since the last read, in monotonic microseconds: time outside `g_poll`
 /// (busy), time inside it (idle), and the longest stretch between leaving one poll and entering
 /// the next, a slice still running at the read included.

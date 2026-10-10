@@ -10,6 +10,10 @@ extension ChatPane {
     func installMessageHover(on overlay: UnsafeMutablePointer<GtkWidget>) {
         hoverOverlay = overlay
         gtk_overlay_add_overlay(op(overlay), messageBar.widget)
+        rails.install(on: overlay)
+        Gtk.onKey(root) { [weak self] keyval, _ in
+            keyval == Keymap.escape && self?.rails.escape() == true
+        }
         messageBar.copy = { [weak self] id in self?.copyMessage(id) }
         messageBar.undo = { [weak self] id in self?.confirmUndo(messageID: id) }
         Gtk.onPointer(
@@ -22,6 +26,7 @@ extension ChatPane {
             leave: { [weak self] in
                 guard let self else { return }
                 self.hoverPointer = nil
+                self.rails.pointerLeft()
                 self.messageBar.scheduleHide()
             })
     }
@@ -37,6 +42,7 @@ extension ChatPane {
     func messageHoverScrolled() {
         guard hoverPointer != nil else { return }
         messageBar.dismiss()
+        rails.dismiss()
         hoverHeldOff = true
         hoverQuietToken &+= 1
         let token = hoverQuietToken
@@ -72,6 +78,10 @@ extension ChatPane {
     private func evaluateHover() {
         guard let point = hoverPointer, let overlay = hoverOverlay, !hoverHeldOff else { return }
         guard !pointerHeld else { return }
+        if rails.pointerMoved(x: point.x, y: point.y) {
+            messageBar.scheduleHide()
+            return
+        }
         if messageBar.contains(x: point.x, y: point.y, in: overlay) {
             messageBar.cancelHide()
             return

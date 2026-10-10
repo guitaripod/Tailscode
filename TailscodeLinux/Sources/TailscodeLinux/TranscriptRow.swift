@@ -4,6 +4,14 @@ import CodingAgentKit
 import Foundation
 import TailscodeCore
 
+/// What was done to a rail: clicked, opened or closed from the keyboard, or walked into with the
+/// down arrow.
+enum RailAct: Sendable {
+    case click
+    case key
+    case down
+}
+
 /// What a row needs from the window that is not in the row itself: which rows are open, the
 /// pictures and subagent transcripts already fetched, and the callbacks that fetch more. Rows are
 /// rebuilt freely; this survives them.
@@ -37,6 +45,11 @@ final class TranscriptContext: @unchecked Sendable {
     /// moment: two cards in the same frame would disagree about what time it is.
     var liveNow: Date = Date()
     var onToggle: (@Sendable (String, Bool) -> Void)?
+    /// A press, or a key, on a link rail: the pane owns the one plate every rail's addresses open
+    /// onto, so a rail only says which of them it is.
+    var railAct: (@Sendable (Int, RailAct) -> Void)?
+    /// A rail's widget was destroyed, so a plate that belongs to it must not outlive it.
+    var railGone: (@Sendable (Int) -> Void)?
     /// Called with a just-opened disclosure's widget bits: the pane scrolls the minimum needed to
     /// show the opened body, never past the point where the clicked header would leave the top.
     var revealRow: (@Sendable (UInt) -> Void)?
@@ -163,7 +176,9 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     ) -> [TranscriptRow] {
         lock.lock()
         defer { lock.unlock() }
-        let current = MatrixTheme.palette.name + (Preferences.linkEmbeds ? "" : ":plain-links")
+        let current =
+            MatrixTheme.palette.name + (Preferences.linkEmbeds ? "" : ":plain-links")
+            + ":" + Preferences.chatDensity.rawValue
         if current != look {
             cache.removeAll(keepingCapacity: true)
             look = current
@@ -197,7 +212,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         }
         cache = next
         all = TranscriptRow.placeBoard(in: all)
-        return Preferences.compactTools ? TranscriptRow.fuse(all) : all
+        return TranscriptRow.strip(Preferences.compactTools ? TranscriptRow.fuse(all) : all)
     }
 }
 
@@ -250,10 +265,12 @@ struct TranscriptRow: Hashable {
         /// colors are baked into it, which is what makes a theme change a row change the diff sees.
         case agentProse(text: String, markup: String)
         case codeBlock(language: String?, body: String)
-        /// The preview card for an address the prose above it mentioned. The address is the whole
-        /// of its identity: the card fetches its own face, so a streamed address that is still
-        /// growing moves no other row.
-        case linkEmbed(url: String)
+        /// The one line under a run of prose that holds every address the run mentioned. It exists
+        /// only once the run has closed, so a streaming answer never carries a rail its own growth
+        /// would keep pushing down, and its addresses are the whole of its identity.
+        case linkRail(urls: [String])
+        /// Pictures the agent made, consecutive ones sharing a single wrapping row of thumbnails.
+        case pictureStrip([StripPicture])
         case table(MarkdownTable)
         /// A table still being written: its card, its count, and none of its rows measured.
         case tableDraft(TableDraft)
@@ -286,6 +303,12 @@ struct TranscriptRow: Hashable {
         /// `restoring` is this device's own press, worn by the button until the server answers.
         case revertBanner(RevertBanner, restoring: Bool)
         case turnBreak
+    }
+
+    /// One picture of a strip: the row key its pixels are cached under, and what to fetch.
+    struct StripPicture: Hashable {
+        let key: String
+        let reference: FileReference
     }
 
     let key: String
@@ -336,6 +359,7 @@ struct TranscriptRow: Hashable {
     ) -> [TranscriptRow] {
         let sealed = sealed ?? !message.isStreaming
         var rows: [TranscriptRow] = []
+        var run = ProseRun()
         for part in message.parts {
             let key = "\(message.id):\(part.id)"
             switch part.kind {
@@ -368,15 +392,7 @@ struct TranscriptRow: Hashable {
                                     markup: PangoMarkdown.render(
                                         prose, dim: palette.textDim, code: palette.info,
                                         accent: palette.accent, cache: cacheMarkup))))
-                        let growing = TableDraft.isGrowing(
-                            segment: index, of: segments.count, sealed: sealed)
-                        let addresses = LinkEmbedPolicy.urls(
-                            in: prose, enabled: Preferences.linkEmbeds, growing: growing)
-                        for (n, url) in addresses.enumerated() {
-                            rows.append(
-                                TranscriptRow(
-                                    key: "\(key):s\(index):embed\(n)", kind: .linkEmbed(url: url)))
-                        }
+                        run.add(prose, at: rows.count - 1)
                     case .code(let language, let body):
                         rows.append(
                             TranscriptRow(
@@ -392,6 +408,14 @@ struct TranscriptRow: Hashable {
                                     ? .tableDraft(TableDraft(table)) : .table(table)))
                     }
                 }
+                continue
+            case .unknown:
+                continue
+            default:
+                break
+            }
+            run.close(into: &rows, messageID: message.id, followedByFurniture: true, open: !sealed)
+            switch part.kind {
             case .reasoning(let text):
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
@@ -417,10 +441,11 @@ struct TranscriptRow: Hashable {
                     TranscriptRow(
                         key: key,
                         kind: .note(TranscriptNoteReading.read(note, modelName: modelName))))
-            case .unknown:
+            case .text, .unknown:
                 continue
             }
         }
+        run.close(into: &rows, messageID: message.id, followedByFurniture: false, open: !sealed)
         if let answerless = AnswerlessTurnReading.read(message, prompt: prompt) {
             rows.append(
                 TranscriptRow(key: "\(message.id):answerless", kind: .answerless(answerless)))
@@ -432,6 +457,42 @@ struct TranscriptRow: Hashable {
                 TranscriptRow(key: "\(message.id):stats", kind: .responseStats(stats)))
         }
         return rows
+    }
+
+    /// The consecutive prose of one message between two pieces of furniture, from which the rail
+    /// under it is made. Code and tables inside the run do not end it — they are part of the same
+    /// answer — and the rail docks under the run's last paragraph.
+    struct ProseRun {
+        private var texts: [String] = []
+        private var lastProse = 0
+        private var railCount = 0
+
+        mutating func add(_ prose: String, at index: Int) {
+            texts.append(prose)
+            lastProse = index
+        }
+
+        /// Ends the run: when it has settled and mentioned any address, the rail goes in under its
+        /// last paragraph. A run at the tail of a message still being written is not settled, and
+        /// neither is anything in a message whose turn is open and whose last row is the live one.
+        mutating func close(
+            into rows: inout [TranscriptRow], messageID: String, followedByFurniture: Bool,
+            open: Bool
+        ) {
+            defer { texts = [] }
+            guard !texts.isEmpty else { return }
+            let settled = LinkRailPolicy.isSettled(
+                lastRowIsLive: open && !followedByFurniture,
+                followedByFurniture: followedByFurniture, turnIsOpen: open)
+            let urls = LinkRailPolicy.addresses(
+                inRun: texts, enabled: Preferences.linkEmbeds, settled: settled)
+            guard !urls.isEmpty else { return }
+            rows.insert(
+                TranscriptRow(
+                    key: "\(messageID):rail\(railCount)", kind: .linkRail(urls: urls)),
+                at: lastProse + 1)
+            railCount += 1
+        }
     }
 
     /// Rows for a whole transcript, with a hairline between turns so the reading rhythm survives
@@ -451,7 +512,38 @@ struct TranscriptRow: Hashable {
             all += rows
         }
         all = placeBoard(in: all)
-        return Preferences.compactTools ? fuse(all) : all
+        return strip(Preferences.compactTools ? fuse(all) : all)
+    }
+
+    /// Consecutive pictures the agent made become one row of thumbnails. A picture that is the
+    /// person's own stays where it is — it belongs to the prompt it was sent with — and so does
+    /// anything that is not an image. The strip is named after its first picture, so a picture
+    /// arriving beside it changes the strip's value and not its identity.
+    static func strip(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+        func picture(_ row: TranscriptRow) -> StripPicture? {
+            guard case .file(let reference, let mine) = row.kind, !mine,
+                (reference.mime ?? "").hasPrefix("image/")
+            else { return nil }
+            return StripPicture(key: row.key, reference: reference)
+        }
+        var result: [TranscriptRow] = []
+        result.reserveCapacity(rows.count)
+        var pending: [StripPicture] = []
+        func flush() {
+            guard let first = pending.first else { return }
+            result.append(TranscriptRow(key: first.key, kind: .pictureStrip(pending)))
+            pending = []
+        }
+        for row in rows {
+            if let one = picture(row) {
+                pending.append(one)
+            } else {
+                flush()
+                result.append(row)
+            }
+        }
+        flush()
+        return result
     }
 
     /// The agent's plan shows once: the last call that moved the to-do list becomes the board —
@@ -544,11 +636,17 @@ struct TranscriptRow: Hashable {
         }
     }
 
-    /// Whether this row is a preview card rather than something the agent wrote. A card is docked
-    /// after the prose that mentioned its address, so while that prose is still being written the
-    /// card is the last row though the prose is the one being streamed into.
-    var isLinkEmbed: Bool {
-        if case .linkEmbed = kind { return true }
+    /// Whether this row is a strip that draws the picture cached under `key`.
+    func holdsPicture(_ key: String) -> Bool {
+        guard case .pictureStrip(let pictures) = kind else { return false }
+        return pictures.contains { $0.key == key }
+    }
+
+    /// Whether this row is a link rail rather than something the agent wrote. A rail is docked
+    /// under the prose that mentioned its addresses, so it is never the row being streamed into,
+    /// whatever it is last among.
+    var isLinkRail: Bool {
+        if case .linkRail = kind { return true }
         return false
     }
 
@@ -603,8 +701,10 @@ struct TranscriptRow: Hashable {
             return text
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
-        case .linkEmbed(let url):
-            return url
+        case .linkRail(let urls):
+            return urls.joined(separator: " ")
+        case .pictureStrip(let pictures):
+            return pictures.map { $0.reference.filename ?? $0.reference.path ?? "" }.joined(separator: " ")
         case .table(let table):
             return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
         case .tableDraft(let draft):
@@ -664,8 +764,10 @@ struct TranscriptRow: Hashable {
             return Gtk.markupLabel(markup, css: "agent-text")
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body, key: key, context: context)
-        case .linkEmbed(let url):
-            return LinkCardView.make(url: url, context: context)
+        case .linkRail(let urls):
+            return LinkRailView.make(urls: urls, key: key, context: context)
+        case .pictureStrip(let pictures):
+            return PictureStripView.make(pictures, context: context)
         case .table(let table):
             return Self.table(table, key: key)
         case .tableDraft(let draft):
@@ -705,9 +807,7 @@ struct TranscriptRow: Hashable {
         case .revertBanner(let banner, let restoring):
             return Self.revertBanner(banner, restoring: restoring, context: context)
         case .turnBreak:
-            let rule = Gtk.hairline()
-            Gtk.margins(rule, top: 10, bottom: 10)
-            return rule
+            return Gtk.hairline()
         }
     }
 
@@ -784,23 +884,37 @@ struct TranscriptRow: Hashable {
         return chunks
     }
 
-    /// A fenced block: the language and a copy in the header, a gutter of line numbers, the code
-    /// scrolling sideways and never down, and under a long one a button naming the lines behind
-    /// it. Opening grows the block in the page, so the transcript's own scroll carries it.
+    /// A fenced block: a gutter of line numbers, the code scrolling sideways and never down, and
+    /// under a long one a button naming the lines behind it. The language and the copy are not a
+    /// header row spending a line on every block but a plate at the block's top trailing corner,
+    /// shown while the pointer is over the block or focus is inside it. Opening grows the block in
+    /// the page, so the transcript's own scroll carries it.
     private static func codeBlock(
+        language: String?, body: String, key: String, context: TranscriptContext?
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let column = codeColumn(language: language, body: body, key: key, context: context)
+        let wrap = gtk_overlay_new()!
+        Gtk.addClass(wrap, "code-wrap")
+        gtk_overlay_set_child(op(wrap), column)
+        let plate = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        Gtk.addClass(plate, "code-plate")
+        gtk_widget_set_halign(plate, GTK_ALIGN_END)
+        gtk_widget_set_valign(plate, GTK_ALIGN_START)
+        let tag = Gtk.label(
+            SyntaxHighlighter.displayName(for: language, source: body), css: "code-header",
+            selectable: false)
+        gtk_widget_set_valign(tag, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(plate), tag)
+        gtk_box_append(ptr(plate), copyButton(body, toast: context?.toast))
+        gtk_overlay_add_overlay(op(wrap), plate)
+        return wrap
+    }
+
+    private static func codeColumn(
         language: String?, body: String, key: String, context: TranscriptContext?
     ) -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
         Gtk.addClass(column, "code-block")
-
-        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let tag = Gtk.label(
-            SyntaxHighlighter.displayName(for: language, source: body), css: "code-header",
-            selectable: false)
-        gtk_widget_set_hexpand(tag, 1)
-        gtk_box_append(ptr(header), tag)
-        gtk_box_append(ptr(header), copyButton(body, toast: context?.toast))
-        gtk_box_append(ptr(column), header)
 
         let foldKey = "\(key)#code"
         let state = FoldState(opened: context?.isExpanded(foldKey) ?? false)
@@ -983,59 +1097,56 @@ struct TranscriptRow: Hashable {
         return column
     }
 
-    /// A compaction is a seam, not a message: the rule says the transcript restarted here, and the
-    /// card says what was traded for what — the trade in tokens, the sliver of context the summary
-    /// still occupies drawn as a bar, and what carried over. The CLI's machine-facing summary —
-    /// tens of thousands of words — opens in a reader window rather than cramped into the flow.
+    /// A compaction is a seam, not a message: one divider line saying what was traded for what —
+    /// `── Context compacted · 311.6k → 16.4k tokens · 1m 54s ›` — where a card with a bar and a
+    /// sentence used to stand. The bar and the sentence moved to the reader the line opens, which
+    /// is also where the CLI's machine-facing summary, tens of thousands of words, has always
+    /// been read rather than cramped into the flow. A seam with no summary behind it is not
+    /// pressable and wears no chevron.
     private static func seam(
         _ compaction: Compaction, key: String, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
         let story = CompactionStory.done(compaction)
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
-        gtk_box_append(ptr(column), Gtk.hairline())
-
-        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
-        Gtk.addClass(card, "card")
-        Gtk.addClass(card, "card-compaction")
-
-        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(ptr(heading), Gtk.label("◆", css: "glyph-done", selectable: false))
-        let title = Gtk.label(story.title, css: "card-title", wrap: true, selectable: false)
-        gtk_widget_set_hexpand(title, 1)
-        gtk_widget_set_halign(title, GTK_ALIGN_START)
-        gtk_box_append(ptr(heading), title)
-        gtk_box_append(ptr(card), heading)
-
-        let detail = Gtk.label(story.detail, css: "tool-detail", wrap: true, selectable: false)
-        gtk_widget_set_halign(detail, GTK_ALIGN_START)
-        gtk_box_append(ptr(card), detail)
-
-        if let kept = story.keptFraction {
-            let bar = gtk_progress_bar_new()!
-            Gtk.addClass(bar, "seam-bar")
-            gtk_progress_bar_set_fraction(op(bar), kept)
-            gtk_box_append(ptr(card), bar)
+        let readable = story.isReadable
+        let words = [story.title, story.detail].joined(separator: " · ") + (readable ? " ›" : "")
+        let label = Gtk.label(words, css: "seam-text", selectable: false)
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
+        gtk_label_set_single_line_mode(op(label), 1)
+        guard let summary = story.summary, readable else {
+            return dividerLine(around: label)
         }
-
-        if let footnote = story.footnote {
-            let label = Gtk.label(footnote, css: "seam-footnote", wrap: true, selectable: false)
-            gtk_widget_set_halign(label, GTK_ALIGN_START)
-            gtk_box_append(ptr(card), label)
+        let present = context.presentText
+        let header = [CompactionStory.summaryHeader(compaction), story.footnote]
+            .compactMap { $0 }.joined(separator: "\n")
+        let press = gtk_button_new()!
+        Gtk.addClass(press, "flat")
+        Gtk.addClass(press, "seam-line-press")
+        gtk_button_set_child(ptr(press), label)
+        gtk_widget_set_tooltip_text(press, Localized.text("Read the summary"))
+        gtk_widget_set_cursor_from_name(press, "pointer")
+        Gtk.connect(UnsafeMutableRawPointer(press), "clicked") {
+            present?(Localized.text("Compaction summary"), header, summary, false)
         }
+        return dividerLine(around: press)
+    }
 
-        if let summary = story.summary, story.isReadable {
-            let present = context.presentText
-            let header = CompactionStory.summaryHeader(compaction)
-            let read = Gtk.button(Localized.text("Read the summary"), css: ["flat", "seam-read"]) {
-                present?(Localized.text("Compaction summary"), header, summary, false)
-            }
-            gtk_widget_set_halign(read, GTK_ALIGN_START)
-            gtk_box_append(ptr(card), read)
-        }
-
-        gtk_box_append(ptr(column), card)
-        gtk_box_append(ptr(column), Gtk.hairline())
-        return column
+    /// A line the transcript restarts on: a hairline either side of whatever the line says, at
+    /// the flat line's own height.
+    static func dividerLine(around middle: UnsafeMutablePointer<GtkWidget>)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        Gtk.addClass(line, "seam-line")
+        gtk_widget_set_size_request(line, -1, Int32(TranscriptGaps.metrics.seamRowHeight))
+        let before = Gtk.hairline()
+        let after = Gtk.hairline()
+        gtk_widget_set_valign(before, GTK_ALIGN_CENTER)
+        gtk_widget_set_valign(after, GTK_ALIGN_CENTER)
+        gtk_widget_set_valign(middle, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(line), before)
+        gtk_box_append(ptr(line), middle)
+        gtk_box_append(ptr(line), after)
+        return line
     }
 
     /// A prompt that has been written and not sent, drawn as the prompt it will become — same
@@ -1470,13 +1581,12 @@ struct TranscriptRow: Hashable {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         gtk_box_append(
             ptr(row), Gtk.label(line.glyph, css: line.tone.glyphCSS, selectable: false))
-        let text = Gtk.label(line.text, css: textTone, wrap: true, selectable: false)
-        gtk_widget_set_halign(text, GTK_ALIGN_START)
-        gtk_widget_set_hexpand(text, 1)
+        let text = Gtk.label(line.text, css: textTone, selectable: false)
+        gtk_label_set_ellipsize(op(text), PANGO_ELLIPSIZE_END)
+        gtk_label_set_single_line_mode(op(text), 1)
         gtk_box_append(ptr(row), text)
-        gtk_widget_set_halign(row, GTK_ALIGN_START)
         gtk_widget_set_tooltip_text(row, line.spoken)
-        return row
+        return dividerLine(around: row)
     }
 
     /// The turn waiting on its provider. It asks nothing of the person (no retry button, no stop

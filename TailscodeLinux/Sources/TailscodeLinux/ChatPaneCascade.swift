@@ -9,8 +9,8 @@ extension ChatPane {
     /// the network delivered. Only the last row can be live — anything after it is proof the
     /// stream has moved on — and only the kinds that grow a character at a time qualify, so a tool
     /// call landing after a paragraph settles that paragraph rather than freezing it half-written.
-    /// The preview cards docked under a paragraph are not the stream moving on: they are the
-    /// paragraph's own, so the last row that is not a card is the one that counts.
+    /// The link rail docked under a paragraph is not the stream moving on: it is the paragraph's
+    /// own, so the last row that is not a rail is the one that counts.
     ///
     /// The row itself is held at its markdown-safe prefix, so the renderer never sees `**bold`
     /// without its closer. A code block is exempt: its punctuation is the language's rather than
@@ -20,7 +20,7 @@ extension ChatPane {
     /// take the row (reduced motion, markup the parser refuses) the cut goes with it: a prefix
     /// nothing is going to reveal is just an answer with its last words missing.
     func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
-        let liveIndex = running ? rows.lastIndex(where: { !$0.isLinkEmbed }) : nil
+        let liveIndex = running ? rows.lastIndex(where: { !$0.isLinkRail }) : nil
         let live = liveIndex.flatMap { rows[$0].streamedText == nil ? nil : rows[$0] }
         let released = cascade.key
         if let abandoned, abandoned != live?.key { self.abandoned = nil }

@@ -188,13 +188,37 @@ enum Preferences {
         write(value ? nil : false, forKey: LinkEmbedsSetting.defaultsKey)
     }
 
-    /// Tighter vertical rhythm everywhere in the canvas.
-    static var denseRows: Bool {
-        flag("tailscode.denseRows", environment: "TAILSCODE_DENSE")
+    /// How close the transcript sets its rows. The choice is Core's (`ChatDensitySetting`, one key
+    /// on every client); `TAILSCODE_DENSE` is the harness's override of it — `1` is compact, `0`
+    /// comfortable — so a density can be shot or asserted without a click, and it is the old
+    /// switch's name kept working rather than a second setting.
+    static var chatDensity: ChatDensity {
+        if let raw = ProcessInfo.processInfo.environment["TAILSCODE_DENSE"] {
+            return raw == "1" ? .compact : .comfortable
+        }
+        return ChatDensitySetting.current
     }
 
-    static func setDenseRows(_ value: Bool) {
-        write(value, forKey: "tailscode.denseRows")
+    static func setChatDensity(_ value: ChatDensity) {
+        write(value.rawValue, forKey: ChatDensitySetting.key)
+        ChatDensitySetting.set(value)
+    }
+
+    /// The old "Tighter rows" switch becomes the density setting once, at launch. All it ever said
+    /// was "tighter", which is now the default, so whatever it held — on, off or never touched —
+    /// arrives at the density Core says (`ChatDensitySetting.migrate`) unless the person has
+    /// already chosen one, and the retired key is let go of so it is never read again.
+    static func migrateLegacyDensity() {
+        let legacyKey = "tailscode.denseRows"
+        guard SettingsFile.stored(forKey: legacyKey) != nil || defaults.object(forKey: legacyKey) != nil
+        else { return }
+        let legacy = defaults.object(forKey: legacyKey) as? Bool
+        if SettingsFile.stored(forKey: ChatDensitySetting.key) == nil,
+            defaults.object(forKey: ChatDensitySetting.key) == nil
+        {
+            write(ChatDensitySetting.migrate(legacyDenseRows: legacy).rawValue, forKey: ChatDensitySetting.key)
+        }
+        write(nil, forKey: legacyKey)
     }
 
     static var vimComposer: Bool {
@@ -344,6 +368,17 @@ enum SettingsDialog {
                 MatrixTheme.install()
                 onLayoutChanged()
             })
+        let densities = ChatDensity.allCases
+        adw_preferences_group_add(
+            ptr(appearance),
+            comboRow(
+                title: ChatDensitySetting.title,
+                subtitle: ChatDensitySetting.explanation,
+                options: densities.map(\.title),
+                selected: densities.firstIndex(of: Preferences.chatDensity) ?? 0
+            ) { index in
+                Preferences.setChatDensity(densities[index])
+            })
 
         let type = group(
             Localized.text("Type size"), on: page,
@@ -439,17 +474,6 @@ enum SettingsDialog {
                 value: Preferences.autoResume
             ) { value in
                 Preferences.setAutoResume(value)
-            })
-        adw_preferences_group_add(
-            ptr(transcript),
-            switchRow(
-                title: Localized.text("Tighter rows"),
-                subtitle: Localized.text("Less air between parts and turns"),
-                value: Preferences.denseRows
-            ) { value in
-                Preferences.setDenseRows(value)
-                MatrixTheme.install()
-                onLayoutChanged()
             })
         adw_preferences_group_add(
             ptr(transcript),

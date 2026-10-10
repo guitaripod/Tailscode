@@ -10,6 +10,10 @@ import TailscodeCore
 Trace.stamp("main")
 SettingsFile.load()
 
+/// The retired "Tighter rows" switch becomes the chat density once, now that the file has been
+/// read back and before the first stylesheet is made from it.
+Preferences.migrateLegacyDensity()
+
 /// The keys for panes this client no longer contains. The registry is Core's and every client
 /// answers it, so a chord left bound to a pane that was removed is a key that does nothing and a
 /// cheat sheet that documents it.

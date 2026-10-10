@@ -430,6 +430,9 @@ final class MainWindow: @unchecked Sendable {
                     self.activePane.scroll(by: Double(argument) ?? 200)
                 case "jump":
                     self.activePane.jumpToBottom()
+                case "contentheight":
+                    FileHandle.standardOutput.write(
+                        Data("CONTENTHEIGHT \(self.activePane.contentHeightSummary)\n".utf8))
                 case "servers":
                     self.presentServers()
                 case "updates":
@@ -1070,6 +1073,16 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_cursor_from_name(usageBox, "pointer")
         gtk_widget_set_tooltip_text(usageBox, Localized.text("The full quota picture"))
         Gtk.onRelease(usageBox) { [weak self] in self?.presentUsage() }
+        NotificationCenter.default.addObserver(
+            forName: ChatDensitySetting.didChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            SettingsFile.capture()
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                MatrixTheme.install()
+                self.applyLayoutPreferences()
+            }
+        }
         NotificationCenter.default.addObserver(
             forName: QuotaBoardStore.didChange, object: nil, queue: nil
         ) { [weak self] _ in
