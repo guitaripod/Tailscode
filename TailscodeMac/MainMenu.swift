@@ -311,6 +311,12 @@ final class MainMenu: NSObject {
                 [.command, .option]))
         menu.addItem(item(Localized.text("Swap Split"), #selector(exchangeSplit), ""))
         menu.addItem(item(Localized.text("Even Out Splits"), #selector(equalizeSplits), ""))
+        for holder in PaneMenu.items(
+            keys: { [hub] in hub.shortcutKeys(for: $0) }, verb: #selector(paneVerb(_:)),
+            arrangement: #selector(paneArrangement(_:)), target: self)
+        {
+            menu.addItem(holder)
+        }
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Zoom In"), #selector(zoomIn), "+"))
         let unshifted = item(Localized.text("Zoom In"), #selector(zoomIn), "=")
@@ -506,6 +512,17 @@ final class MainMenu: NSObject {
     @objc fileprivate func focusSplitDown() { run(.focusSplit(.down)) }
     @objc fileprivate func exchangeSplit() { run(.exchangeSplit) }
     @objc fileprivate func equalizeSplits() { run(.equalizeSplits) }
+
+    @objc fileprivate func paneVerb(_ sender: NSMenuItem) {
+        guard let action = sender.representedObject as? KeyAction else { return }
+        run(action)
+    }
+
+    @objc fileprivate func paneArrangement(_ sender: NSMenuItem) {
+        guard let shape = sender.representedObject as? SplitArrangement else { return }
+        if hub.window?.isVisible != true { hub.showWindow(nil) }
+        hub.arrangeSplits(shape)
+    }
 }
 
 extension MainMenu: NSMenuItemValidation {
@@ -522,6 +539,14 @@ extension MainMenu: NSMenuItemValidation {
             #selector(exchangeSplit), #selector(equalizeSplits),
         ]
         if let action = menuItem.action, treeVerbs.contains(action) {
+            return hub.splitPanes.paneCount > 1
+        }
+        if menuItem.action == #selector(paneVerb(_:)) || menuItem.action == #selector(paneArrangement(_:))
+        {
+            if let shape = menuItem.representedObject as? SplitArrangement {
+                menuItem.state =
+                    SplitEven.shape(of: hub.splitPanes.layout) == shape ? .on : .off
+            }
             return hub.splitPanes.paneCount > 1
         }
         let modelVerbs: Set<Selector> = [
