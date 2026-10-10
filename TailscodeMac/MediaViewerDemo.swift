@@ -8,8 +8,6 @@ import TailscodeCore
 /// `TAILSCODE_VIEWER_ART` at a folder of PNGs to look at real ones.
 @MainActor
 enum MediaViewerDemo {
-    static let states = ["pictures", "loading", "clip"]
-
     private static let drawnCount = 7
 
     static func open(_ state: String, in window: NSWindow?) {
