@@ -288,6 +288,7 @@ enum ParityManifest {
                     "The whole of the debt on a self-built copy is that nothing here can replace the app. A copy the App Store installed is a copy the App Store replaces, so that job is not this window's to owe: the servers are handled identically, and the app's own row states what this copy is rather than a version it has no store record to check.")
         case .designBoards: return .implemented("DesignBoardWindowController")
         case .linkEmbeds: return .implemented("LinkCardView")
+        case .chatDensity: return .gap("compact density lands with this client's compact-chat work: the setting, the flat furniture lines and the per-relationship gaps")
         case .supporterInvitation:
             return .varies(
                 direct: .notApplicable("the direct build is unlocked and sells nothing"),

@@ -192,6 +192,7 @@ enum ParityManifest {
         case .updateCenter: return .implemented("UpdateCenterViewController")
         case .designBoards: return .implemented("DesignBoardViewController")
         case .linkEmbeds: return .implemented("LinkEmbedCell")
+        case .chatDensity: return .gap("compact density lands with this client's compact-chat work: the setting, the flat furniture lines and the per-relationship gaps")
         case .proUnlock: return .implemented("ProStore")
         case .supporterInvitation: return .implemented("SupporterCell")
         case .reviewPrompt: return .implemented("ReviewPromptCoordinator")
