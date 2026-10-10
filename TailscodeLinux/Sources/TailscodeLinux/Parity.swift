@@ -151,6 +151,7 @@ enum ParityManifest {
         case .imageLibrary: return .implemented("DrawLibrary")
         case .imagePromptHelper: return .implemented("helperSections")
         case .imageLivePreview: return .implemented("adoptSketch")
+        case .studioSheet: return .gap("the sheet lands with the Linux sheet task")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("acceptChatDrops")
         case .clickToActivate: return .implemented("onPressCapture")

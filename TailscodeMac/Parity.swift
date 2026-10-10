@@ -228,6 +228,7 @@ enum ParityManifest {
         case .imageLibrary: return .implemented("MacImageLibrary")
         case .imagePromptHelper: return .implemented("StudioEnhanceControl")
         case .imageLivePreview: return .implemented("sketchLayer")
+        case .studioSheet: return .gap("the sheet lands with the Mac sheet task")
         case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("onChatDropped")
         case .clickToActivate: return .implemented("pressLanded")

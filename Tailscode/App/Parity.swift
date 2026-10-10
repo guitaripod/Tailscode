@@ -137,6 +137,7 @@ enum ParityManifest {
         case .imageLibrary: return .implemented("ImageLibrary")
         case .imagePromptHelper: return .implemented("StudioHelperMenu")
         case .imageLivePreview: return .implemented("sketch")
+        case .studioSheet: return .notApplicable("a phone has no window to be inside: the Studio is the full-screen modal it has always been, and an iPad uses the same")
         case .watchDirectory: return .notApplicable("the board is what an empty video slot shows instead of a text box, and a phone has no slot to show it in; a full-screen browser of what is on would be a different app, not this capability")
         case .watchAccounts: return .notApplicable("nothing on a phone reads a follow list — there is no board and no slot to put one in, so an account here would sign in to feed a surface that does not exist")
         case .listBesideConversation: return .implemented("WorkspaceSplitViewController")
