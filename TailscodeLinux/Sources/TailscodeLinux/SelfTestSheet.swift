@@ -194,7 +194,8 @@ extension SelfTest {
         sheet.show(.image)
         _ = pump(2.0) { sheet.state == .open }
         sheet.dismiss()
-        _ = pump(0.1)
+        try expect(sheet.state == .closing, "a sheet asked to leave is leaving")
+        sheet.hold(at: 0.5)
         let leaving = sheet.progress
         sheet.show(.video)
         try expect(

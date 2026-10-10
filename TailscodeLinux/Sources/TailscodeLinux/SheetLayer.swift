@@ -344,7 +344,7 @@ final class SheetLayer: @unchecked Sendable {
             return
         }
         let span = StudioSheetMotion.duration(opening: opening, reduced: motionReduced) * distance
-        let link = Link(self, from: from, target: target, opening: opening, span: span, started: Self.now())
+        let link = Link(self, from: from, target: target, opening: opening, span: span)
         _ = Gtk.releaseInstalled
         tick = tailscode_add_owned_tick(
             host,
@@ -357,26 +357,25 @@ final class SheetLayer: @unchecked Sendable {
     }
 
     /// What one running motion needs between frames: where it started from and is going, how long
-    /// it takes and when it began. The clock holds it, and it holds the layer only weakly, so a
-    /// layer let go of while its clock runs is a clock that ends on its next frame.
+    /// it takes and when its first frame was drawn. The motion begins at that frame rather than at
+    /// the request, so whatever the main loop was busy with between the two — a content's first
+    /// layout, a decode — is not taken out of the motion, which would otherwise arrive already
+    /// finished. The clock holds it, and it holds the layer only weakly, so a layer let go of while
+    /// its clock runs is a clock that ends on its next frame.
     private final class Link {
         weak var layer: SheetLayer?
         let from: Double
         let target: Double
         let opening: Bool
         let span: Double
-        let started: Double
+        var started: Double?
 
-        init(
-            _ layer: SheetLayer, from: Double, target: Double, opening: Bool, span: Double,
-            started: Double
-        ) {
+        init(_ layer: SheetLayer, from: Double, target: Double, opening: Bool, span: Double) {
             self.layer = layer
             self.from = from
             self.target = target
             self.opening = opening
             self.span = span
-            self.started = started
         }
     }
 
@@ -384,7 +383,10 @@ final class SheetLayer: @unchecked Sendable {
     /// sheet's translation and the scrim's alpha follow the same share, and the frame that reaches
     /// the end settles the state. Returns whether the clock keeps running.
     private func step(_ link: Link) -> Bool {
-        let elapsed = Self.now() - link.started
+        let now = Self.now()
+        let started = link.started ?? now
+        link.started = started
+        let elapsed = now - started
         guard elapsed < link.span else {
             tick = 0
             settle(link.target)
