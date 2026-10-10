@@ -104,7 +104,18 @@ Open and close take their stated times; a frame trace shows no layout pass insid
 - **Nothing said Esc stops before it closes:** the Stop button wears ⎋ and Done explains itself.
 - **At 1,920 wide the 1,752-pt cap gives 84-pt sides** (§4.1 now says the side margin is 24 pt only up to 1,800); at 2,560 the centred sheet reads as a deliberate page.
 
-## 10. Implementation (after §1–§9)
+## 10. The media viewer rides the same sheet
+
+Asked for next: the media viewer opens like this modal too. What the viewer is today: on the Mac `ImageViewer` is a floating `NSWindow` (`GalleryWindow`) and the Video lane's *Open* opens a second player window; on Linux `ImageGallery` (the conversation's pictures) and `DrawViewer` (the Studio's) are two more `GtkWindow`s. The same two reasons apply — a viewer is something you look at and leave, and a window for it competes with the one the person is in — so it becomes a sheet:
+
+- **One sheet machinery, two contents.** The sheet host (scrim, frame from `StudioSheetGeometry`, motion, state machine, key routing, conversation-chord lockout, focus trap, accessibility) stops being the Studio's and takes a *content*: the Studio workspace, or the gallery. A small stack manager owns up to two (`StudioSheetMetrics.maximumDepth`).
+- **From the conversation:** a depth-0 sheet over the chat — same insets, same scrim. **From the Studio** (the verbs capsule's *Open*, a shelf tile's double-click, the Video lane's *Open full size*): a depth-1 sheet over the Studio — `stackInset` (12 pt) further in on the top and both sides so the Studio's edge shows above it; the scrim darkens the Studio only. Esc, ⌘W/Ctrl+W, Done and a press on the scrim close **the top sheet only**.
+- **The viewer's canvas is the lights-down neutral** it has always been, in both faces (a picture is judged on a dark neutral); its toolbar row (44 pt) carries the filename and `n of m`, previous/next, the actions it already offers (Save, Copy, Open with…, Live Text where the platform has it) and Done. Nothing new is invented: same actions, same pager, same zoom (`+ − 0` and `1` for 1:1, double-click, scroll/pinch), Live Text unchanged.
+- **Keys while a viewer is up:** ←/→/Home/End page, Space pages forward as today, Esc closes, ⌘C/Ctrl+C copies the picture, ⌘S/Ctrl+S saves; every conversation chord stays locked, and the Studio's own chords are locked while the viewer is on top of it.
+- **Clips:** on the Mac the Video lane's *Open full size* plays the clip inside this sheet (an `AVPlayerView` with its controls, the same canvas) instead of a separate player window; Linux plays clips as it does today (mpv has no embeddable surface the sheet can own) and says so.
+- **Not changed:** the iOS gallery (`ImageViewerViewController`) stays the full-screen paged modal it is; the Studio's own stage is not a viewer and does not become one.
+
+## 11. Implementation (after §1–§10)
 1. Core: `StudioSheetGeometry` (frames for a window size), `StudioSheetMotion` (durations, travel, scrim alpha, curve names), `StudioSheetState` and `StudioSheetKeys`, tests; a parity capability `.studioSheet` (Mac and Linux implement it, iOS answers its full-screen modal), strings.
 2. Mac: `StudioSheetView` overlay in the main window's content, hosting the existing `StudioWorkspaceView`, replacing `StudioPanel`; menu validation; motion; selftests.
 3. Linux: the sheet in the main window's overlay hosting both lanes in one stack; `ImageWindow`/`ForgeWindow` removed; chord routing; drive verbs and selftests updated.
