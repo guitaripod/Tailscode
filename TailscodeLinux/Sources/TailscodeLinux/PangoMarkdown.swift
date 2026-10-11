@@ -18,6 +18,13 @@ enum PangoMarkdown {
     private static let cacheLimit = 4096
     private static let cacheByteLimit = 8 << 20
 
+    /// Bytes the memo holds now, for the soak line.
+    static var cachedBytes: Int {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return cacheBytes
+    }
+
     /// Rendering runs once per prose segment per streamed state, and a long conversation replays
     /// the same three hundred segments on every token — so the answer is remembered. The colors
     /// are part of the key: a palette change is a different rendering, not a stale hit. Trailing

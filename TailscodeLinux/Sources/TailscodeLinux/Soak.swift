@@ -8,11 +8,14 @@ import TailscodeCore
 /// world and turns them on; nothing here runs otherwise. Every five seconds, from a thread of its
 /// own so a wedged main loop still reports, one line goes to stdout:
 ///
-/// `SOAK t= dt= rss= anon= thr= fds= heap= rows= pending= maxPending= lag50= lag95= lagMax= lagN= ticks= tickRuns=
+/// `SOAK t= dt= rss= anon= thr= fds= heap= heapFree= heapMapped= mdCache= synCache= rows= pending= maxPending= lag50= lag95= lagMax= lagN= ticks= tickRuns=
 /// frames= parses= parseHits= listSaves= listSaveMs= applies= applyMs= paints= paintMs= drains= guarded= ready=
 /// drainMs= drainP95= drainMax= frameMs= frameMax= layoutMs= phasePaintMs= cpu= mainCpu=`
 ///
 /// `heap` is the KiB malloc reports in use (`mallinfo2`), which tells retention from fragmentation;
+/// `heapFree` is the KiB it holds free inside its arenas and `heapMapped` the KiB in blocks it
+/// serves with their own mapping, which `heap` leaves out, `mdCache` and `synCache` the KiB the
+/// markdown and syntax memos hold;
 /// `rows` is transcript row widgets made and not yet finalized.
 /// `frameMs` is the time spent inside frame cycles — ticks, layout and paint — over the window,
 /// `frameMax` the longest single cycle, `layoutMs` the part up to the end of the layout phase and
@@ -127,6 +130,16 @@ enum Soak {
         FileHandle.standardOutput.write(Data((line() + "\n").utf8))
     }
 
+    /// Hands malloc's free arena tails back to the system and reports the resident size either
+    /// side of it, which is how much of the footprint was held free rather than in use.
+    static func trimAndReport() {
+        let before = procStatus()["VmRSS"] ?? 0
+        let released = tailscode_heap_trim()
+        let after = procStatus()["VmRSS"] ?? 0
+        FileHandle.standardOutput.write(
+            Data("SOAKTRIM released=\(released) rssBefore=\(before) rssAfter=\(after)\n".utf8))
+    }
+
     private static func line() -> String {
         var sample = TailscodeSoakSample()
         tailscode_soak_read(&sample)
@@ -152,6 +165,10 @@ enum Soak {
                 "thr=\(status["Threads"] ?? 0)",
                 "fds=\(fds)",
                 "heap=\(tailscode_heap_in_use() / 1024)",
+                "heapFree=\(tailscode_heap_free() / 1024)",
+                "heapMapped=\(tailscode_heap_mapped() / 1024)",
+                "mdCache=\(PangoMarkdown.cachedBytes / 1024)",
+                "synCache=\(PangoSyntax.cachedBytes / 1024)",
                 "rows=\(tailscode_soak_rows())",
                 "pending=\(sample.pending)",
                 "maxPending=\(sample.pending_max)",

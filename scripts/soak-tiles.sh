@@ -6,6 +6,7 @@
 #   scripts/soak-tiles.sh --panes 5 --seconds 120 --zoom-at 60    zoom one pane halfway
 #   scripts/soak-tiles.sh ... --paragraph 8000                    every reply segment is one unbroken 8000-character paragraph
 #   scripts/soak-tiles.sh ... --shed 1                            hold the governor at a level (0 calm … 4 critical)
+#   scripts/soak-tiles.sh ... --trim                              malloc_trim(0) 5 s before the end, with the resident size either side
 #   scripts/soak-tiles.sh ... --turn 40                           every reply ends after 40 s, so the load stops and recovery can be read
 #   scripts/soak-tiles.sh ... --assert                            exit 1 past docs/tiling.md 10.7
 #   scripts/soak-tiles.sh ... --build                             release build first
@@ -25,7 +26,7 @@ set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 PANES=5 RATE=80 ROWS=600 SECONDS_=180 WARMUP=60 HAMMER=no ZOOM_AT="" ASSERT=no BUILD=no
-ARRANGE=grid LABEL="" OUT="" SHED="" PARAGRAPH="" TURN=""
+ARRANGE=grid LABEL="" OUT="" SHED="" PARAGRAPH="" TURN="" TRIM=no
 while [ $# -gt 0 ]; do
     case "$1" in
     --panes) PANES=$2; shift ;;
@@ -43,6 +44,7 @@ while [ $# -gt 0 ]; do
     --shed) SHED=$2; shift ;;
     --paragraph) PARAGRAPH=$2; shift ;;
     --turn) TURN=$2; shift ;;
+    --trim) TRIM=yes ;;
     --out) OUT=$2; shift ;;
     *) sed -n '2,20p' "$0" >&2; exit 2 ;;
     esac
@@ -69,7 +71,7 @@ if [ -z "${SOAK_IN_SCOPE:-}" ]; then
         -- env SOAK_IN_SCOPE=1 "$0" \
         --panes "$PANES" --rate "$RATE" --rows "$ROWS" --seconds "$SECONDS_" --warmup "$WARMUP" \
         --arrange "$ARRANGE" --label "$LABEL" --out "$OUT" ${SHED:+--shed "$SHED"} \
-        ${PARAGRAPH:+--paragraph "$PARAGRAPH"} ${TURN:+--turn "$TURN"} \
+        ${PARAGRAPH:+--paragraph "$PARAGRAPH"} ${TURN:+--turn "$TURN"} $([ "$TRIM" = yes ] && echo --trim || true) \
         ${SUFFIX:+$([ "$HAMMER" = yes ] && echo --hammer || true)} ${ZOOM_AT:+--zoom-at "$ZOOM_AT"} \
         "--$([ "$ASSERT" = yes ] && echo assert || echo no-assert)"
 fi
@@ -84,6 +86,7 @@ rm -rf "$STATE/home"
 SEND_MS=12000
 DRIVE="4000:soakopen=$ARRANGE;$SEND_MS:soaksend;$((SEND_MS + 200)):soakstats"
 [ "$HAMMER" = yes ] && DRIVE="$DRIVE;$((SEND_MS + 3000)):soakhammer=$((SECONDS_ - 10))"
+[ "$TRIM" = yes ] && DRIVE="$DRIVE;$((SEND_MS + SECONDS_ * 1000 - 6000)):soakstats;$((SEND_MS + SECONDS_ * 1000 - 5500)):soaktrim;$((SEND_MS + SECONDS_ * 1000 - 5000)):soakstats"
 [ -n "$SHED" ] && DRIVE="2000:shed=$SHED;$DRIVE"
 [ -n "${SOAK_DRIVE_PREFIX:-}" ] && DRIVE="$SOAK_DRIVE_PREFIX;$DRIVE"
 [ -n "$ZOOM_AT" ] && DRIVE="$DRIVE;$((SEND_MS + ZOOM_AT * 1000)):szoom;$((SEND_MS + ZOOM_AT * 1000 + 100)):soakstats"

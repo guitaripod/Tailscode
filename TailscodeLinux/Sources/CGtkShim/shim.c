@@ -3581,6 +3581,39 @@ long tailscode_heap_in_use(void) {
     return (long)info.uordblks;
 }
 
+/// Bytes malloc holds free inside its arenas: RSS that is not in use, the signature of
+/// fragmentation.
+long tailscode_heap_free(void) {
+    struct mallinfo2 info = mallinfo2();
+    return (long)info.fordblks;
+}
+
+/// Bytes in blocks malloc serves with their own mapping, which `heap` does not count.
+long tailscode_heap_mapped(void) {
+    struct mallinfo2 info = mallinfo2();
+    return (long)info.hblkhd;
+}
+
+/// Gives the free tails of every arena back to the system; non-zero when memory was released.
+int tailscode_heap_trim(void) {
+    return malloc_trim(0);
+}
+
+/// glibc gives every thread that allocates up to eight times the core count's worth of arenas,
+/// and a row build on one thread freed on the main thread leaves free chunks in an arena no one
+/// else will reuse: measured, the resident size ran ahead of what malloc had in use by 40 MiB
+/// after three minutes of one streaming pane. Two arenas keep the main thread's own and one for
+/// every worker, which is enough for the row pumps and holds that gap to about a third.
+/// `TAILSCODE_MALLOC_ARENAS` names another count, and 0 leaves glibc's own choice alone, which is
+/// how the soak measures the difference.
+void tailscode_malloc_tune(void) {
+#ifdef M_ARENA_MAX
+    const char *named = getenv("TAILSCODE_MALLOC_ARENAS");
+    int arenas = named ? atoi(named) : 2;
+    if (arenas > 0) mallopt(M_ARENA_MAX, arenas);
+#endif
+}
+
 
 static atomic_long tailscode_soak_rows_alive = 0;
 

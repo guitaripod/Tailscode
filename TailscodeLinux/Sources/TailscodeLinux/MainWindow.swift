@@ -564,6 +564,8 @@ final class MainWindow: @unchecked Sendable {
                     self.soakHammer(seconds: Int(argument) ?? 60)
                 case "soakstats":
                     Soak.report()
+                case "soaktrim":
+                    Soak.trimAndReport()
                 case "split":
                     _ = self.perform(.splitPane(argument == "down" ? .vertical : .horizontal))
                 case "sfocus":
