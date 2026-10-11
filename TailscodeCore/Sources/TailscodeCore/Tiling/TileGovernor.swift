@@ -271,6 +271,7 @@ public struct TileGovernor: Sendable {
         public var relaxFor: TimeInterval = 20
         public var relaxGap: TimeInterval = 15
         public var relaxCeiling: TimeInterval = 120
+        /// An escalation this soon after a relax is the load coming back, and doubles the delay.
         public var oscillationWindow: TimeInterval = 120
         /// A run this long with no escalation forgets the doubled relax delay.
         public var relaxReset: TimeInterval = 600
@@ -293,7 +294,6 @@ public struct TileGovernor: Sendable {
     private var quietSince: TimeInterval?
     private var lastEscalation: TimeInterval = -.infinity
     private var lastRelax: TimeInterval = -.infinity
-    private var escalations: [TimeInterval] = []
     private var relaxDelay: TimeInterval
     private var floorUntil: (level: ShedLevel, until: TimeInterval)?
     private var fullSince: [PaneID: TimeInterval] = [:]
@@ -316,7 +316,7 @@ public struct TileGovernor: Sendable {
 
     public var level: ShedLevel { lastLevel }
 
-    /// The relax delay in force, which doubles after two escalations inside two minutes.
+    /// The relax delay in force, which doubles each time load returns within two minutes of a relax.
     public var currentRelaxDelay: TimeInterval { relaxDelay }
 
     /// Holds the level at or above `level` until `until`: the safe restore's floor after two
@@ -463,8 +463,7 @@ public struct TileGovernor: Sendable {
         busySince = nil
         criticalSince = nil
         quietSince = nil
-        escalations = escalations.filter { now - $0 < tuning.oscillationWindow } + [now]
-        if escalations.count >= 2 {
+        if now - lastRelax < tuning.oscillationWindow {
             relaxDelay = min(tuning.relaxCeiling, relaxDelay * 2)
         }
     }
