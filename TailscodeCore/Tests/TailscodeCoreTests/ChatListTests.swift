@@ -312,6 +312,12 @@ struct ChatListTests {
         #expect(issues.isEmpty, "NewChatChooserCheck: \(issues)")
     }
 
+    @Test("Self-check of the folder browser stays clean")
+    func folderBrowserCheck() {
+        let issues = FolderBrowserCheck.run()
+        #expect(issues.isEmpty, "FolderBrowserCheck: \(issues)")
+    }
+
     @Test("Paths are found the way command names are")
     func fuzzyPaths() {
         #expect(FuzzyRank.hit("kontu", in: "/home/m/Dev/kontu", separators: ["/"])?.tier == .segment)

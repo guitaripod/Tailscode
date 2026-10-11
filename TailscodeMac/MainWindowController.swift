@@ -861,7 +861,7 @@ final class MainWindowController: NSWindowController {
         case "preferences", "prefs": presentPreferences()
         case "analytics": presentAnalytics()
         case "usage", "quotas": presentUsageWindow()
-        case "newchat": presentNewChat()
+        case "newchat": presentNewChat(browsing: parts.count > 1 && parts[1] == "browse")
         case "quickask": presentQuickAsk(demoServer: parts.count > 1 && parts[1] == "long")
         case "cheatsheet", "shortcuts": presentCheatsheet()
         case "commands": transcript.presentCommandCatalog()
@@ -931,7 +931,7 @@ final class MainWindowController: NSWindowController {
         default:
             FileHandle.standardError.write(
                 Data(
-                    ("unknown surface \(name) — servers, updates, preferences, analytics, newchat, "
+                    ("unknown surface \(name) — servers, updates, preferences, analytics, newchat[:browse], "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
                         + "forge[:state], studio[:state[+viewer]], viewer[:state], draw, renderer, delegate\n").utf8))
         }
@@ -1155,7 +1155,7 @@ final class MainWindowController: NSWindowController {
     /// the form that fixes the actual problem — rather than an empty picker.
     /// - Parameter profile: the server the sheet opens on, when the question has already been
     ///   answered somewhere else — a pane's chooser — so it is never asked twice.
-    func presentNewChat(on profile: ConnectionProfile? = nil) {
+    func presentNewChat(on profile: ConnectionProfile? = nil, browsing: Bool = false) {
         let profiles = ServerDirectory.shared.profiles
         guard !profiles.isEmpty else {
             presentServers()
@@ -1168,7 +1168,7 @@ final class MainWindowController: NSWindowController {
             guard let self, let window = self.window else { return }
             NewChatSheet.present(
                 on: window, profiles: profiles, entries: entries, unreachable: down,
-                localAddresses: locals, preferredServer: profile?.id,
+                localAddresses: locals, preferredServer: profile?.id, browsing: browsing,
                 onFix: { [weak self] fix, done in self?.applyNewChatFix(fix, done: done) }
             ) { [weak self] profile, directory, done in
                 self?.createChat(on: profile, directory: directory, done: done)

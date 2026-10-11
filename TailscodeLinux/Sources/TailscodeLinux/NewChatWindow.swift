@@ -49,10 +49,11 @@ final class NewChatWindow: @unchecked Sendable {
     private var buttons: UnsafeMutablePointer<GtkWidget>!
     private var rowWidgets: [UInt] = []
 
-    /// - Parameter onBrowse: how this client opens a folder picker, given the server's profile id,
-    ///   what has been typed so far — the picker opens where the field points when that is a real
-    ///   folder — and what to do with the path. Only a local server ever asks; a remote one has no
-    ///   browse row, because a native picker would offer this disk's folders on its behalf.
+    /// - Parameter onBrowse: how this client opens its native folder picker, given the server's
+    ///   profile id, what has been typed so far — the picker opens where the field points when that
+    ///   is a real folder — and what to do with the path. Only a local server ever asks: a native
+    ///   picker would offer this disk's folders on behalf of a remote one, which is walked through
+    ///   `FolderBrowserWindow` instead.
     /// - Parameters:
     ///   - onStart: mints the chat and answers with nothing when it worked, or with the reason it
     ///     did not. The window stays up until that answer arrives.
@@ -404,7 +405,25 @@ final class NewChatWindow: @unchecked Sendable {
         beginStart(profileID: profileID, directory: directory?.isEmpty == false ? directory : nil)
     }
 
+    /// This machine's own folders are the native chooser's to show; any other server is walked
+    /// through its own listing, and a folder picked there starts the chat outright — the picker
+    /// already asked the one question left.
     private func browse(profileID: String) {
+        guard let server = chooser.servers.first(where: { $0.profileID == profileID }) else {
+            return
+        }
+        guard !server.isLocal else { return browseLocally(profileID: profileID) }
+        let query = chooser.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let seed = PathCompletion.parent(of: query).flatMap { $0.hasPrefix("/") ? $0 : nil }
+        FolderBrowserWindow.present(
+            servers: chooser.servers.filter(\.canBrowse), entries: entries,
+            preferredServer: profileID, start: seed, parent: window
+        ) { [weak self] chosen, path in
+            Gtk.onMain { [weak self] in self?.start(profileID: chosen, directory: path) }
+        }
+    }
+
+    private func browseLocally(profileID: String) {
         onBrowse(profileID, chooser.query) { [weak self] picked in
             Gtk.onMain { [weak self] in
                 guard let self else { return }

@@ -10,7 +10,8 @@ import TailscodeCore
 /// means in each of the two modes. This sheet draws that answer and does nothing else, so the Mac,
 /// the phone and the Linux desktop are the same modal rendered three times. When the chosen server
 /// is this same Mac, Browse… opens the desktop's own folder chooser — the one place a native picker
-/// tells the truth; a remote server never offers it rather than offering the wrong disk.
+/// tells the truth; a remote server opens `FolderBrowserSheet` instead, which reads that machine's
+/// own listing rather than offering the wrong disk.
 @MainActor
 final class NewChatSheet: NSObject {
     private static var active: [NewChatSheet] = []
@@ -91,6 +92,7 @@ final class NewChatSheet: NSObject {
     static func present(
         on host: NSWindow, profiles: [ConnectionProfile], entries: [SessionEntry],
         unreachable: [String], localAddresses: Set<String>, preferredServer: String? = nil,
+        browsing: Bool = false,
         onFix: @escaping @MainActor (
             NewChatFailure.Fix, @escaping @MainActor (NewChatFailure?) -> Void
         ) -> Void = { _, done in done(nil) },
@@ -111,6 +113,7 @@ final class NewChatSheet: NSObject {
             active.removeAll { $0 === sheet }
         }
         sheet.rebuild()
+        if browsing, let server = sheet.chooser.server { sheet.browse(profileID: server.profileID) }
     }
 
     private init(
@@ -279,9 +282,9 @@ final class NewChatSheet: NSObject {
         }
     }
 
-    /// Only a server that is this same Mac offers to browse: a native folder picker is the truth
-    /// about this disk and a lie about anyone else's, and a remote listing is the file tree's job,
-    /// not a modal's.
+    /// This Mac browses with the system's own panel, the one picker that tells the truth about this
+    /// disk; any other server browses through its own folder listing, which is offered only when
+    /// its backend can list files at all.
     private static func servers(
         profiles: [ConnectionProfile], unreachable: [String], localAddresses: Set<String>
     ) -> [NewChatServer] {
@@ -291,7 +294,9 @@ final class NewChatSheet: NSObject {
                 profileID: profile.id, name: profile.name, backend: profile.backend,
                 address: ServerLabel.address(profile),
                 reachable: !unreachable.contains(ServerLabel.display(profile)),
-                canBrowse: local, isLocal: local)
+                canBrowse: local || ServerDirectory.shared.backend(for: profile)
+                    is any FileBrowsingBackend,
+                isLocal: local)
         }
     }
 
@@ -529,8 +534,13 @@ final class NewChatSheet: NSObject {
     }
 
     /// The panel is a decision in its own right — a folder picked in it was chosen, not typed — so
-    /// its OK starts the conversation instead of filling the field for a second confirmation.
+    /// its OK starts the conversation instead of filling the field for a second confirmation. The
+    /// browser over a remote server decides the same way: the folder it picks starts the chat.
     private func browse(profileID: String) {
+        guard chooser.servers.first(where: { $0.profileID == profileID })?.isLocal == true else {
+            browseRemote(preferring: profileID)
+            return
+        }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -541,6 +551,22 @@ final class NewChatSheet: NSObject {
         panel.beginSheetModal(for: sheet) { [weak self] response in
             guard response == .OK, let picked = panel.url else { return }
             self?.start(profileID: profileID, directory: picked.path)
+        }
+    }
+
+    /// The browser opens in the folder a half-typed absolute path sits in, and cycles through every
+    /// server that can list its folders, this one first.
+    private func browseRemote(preferring profileID: String) {
+        let typed = chooser.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let profiles = self.profiles
+        let entries = self.entries
+        FolderBrowserSheet.present(
+            over: sheet, servers: chooser.servers.filter(\.canBrowse), entries: entries,
+            preferredServer: profileID,
+            start: typed.hasPrefix("/") ? PathCompletion.parent(of: typed) : nil,
+            regather: { Self.directories(for: profiles, entries: entries) }
+        ) { [weak self] chosenServer, directory in
+            self?.start(profileID: chosenServer, directory: directory)
         }
     }
 
@@ -579,8 +605,15 @@ final class NewChatSheet: NSObject {
     static func isLocal(_ profile: ConnectionProfile, localAddresses: Set<String>) -> Bool {
         guard let host = profile.baseURL.host?.lowercased() else { return false }
         if localAddresses.contains(host) { return true }
+        guard !isAddressLiteral(host) else { return false }
         let shortNames = Set(localAddresses.map { String($0.split(separator: ".").first ?? "") })
         return shortNames.contains(String(host.split(separator: ".").first ?? ""))
+    }
+
+    /// An address has no short name: `100.91.211.44` shares its first label, `100`, with every other
+    /// machine on the tailnet, so matching it as a name called each of them this Mac.
+    private static func isAddressLiteral(_ host: String) -> Bool {
+        host.contains(":") || host.allSatisfy { $0.isNumber || $0 == "." }
     }
 
     /// The picker opens where the chooser points when that is a real folder here, expanding a

@@ -455,6 +455,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        let folderFailures = FolderBrowserCheck.run()
+        if folderFailures.isEmpty {
+            report("folder browser: paths walk, filters narrow, servers cycle")
+        } else {
+            report("folder browser: \(folderFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         let selectionFailures = ChatSelectionCheck.run()
         if selectionFailures.isEmpty {
             report("chat selection: marks key on the server, prune, and say what they did")

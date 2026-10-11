@@ -382,15 +382,30 @@
             switch state {
             case "select":
                 list?.tourSelect(3)
-            case "newchat", "newchatquery", "newchatnormal":
+            case "newchat", "newchatquery", "newchatnormal", "newchatbrowse", "newchatbrowsefilter",
+                "newchatbrowsedeep":
                 list?.tourNewChat()
                 await hold(1.5)
                 if state == "newchatquery" { newChat?.tourType("dev") }
                 if state == "newchatnormal" { newChat?.tourLeaveField() }
+                if state.hasPrefix("newchatbrowse") {
+                    newChat?.tourBrowse()
+                    await hold(2.5)
+                    if state == "newchatbrowsefilter" { folderBrowser?.tourType("de") }
+                    if state == "newchatbrowsedeep" {
+                        folderBrowser?.tourDescend()
+                        await hold(1.5)
+                        folderBrowser?.tourDescend()
+                    }
+                }
             default:
                 break
             }
             AppLogger.ui.info("chatswalk: settled")
+        }
+
+        private var folderBrowser: FolderBrowserViewController? {
+            presentedNav?.viewControllers.compactMap { $0 as? FolderBrowserViewController }.last
         }
 
         private var newChat: NewChatViewController? {

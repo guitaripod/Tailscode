@@ -662,20 +662,37 @@ final class NewChatViewController: UIViewController {
         }
     }
 
-    /// The server's own file tree, pushed inside this sheet rather than replacing it, so browsing
-    /// is one of the modal's answers instead of a different screen that forgets what was typed.
+    /// The folder browser, pushed inside this sheet rather than replacing it, so browsing is one of
+    /// the modal's answers instead of a different screen that forgets what was typed. It opens on
+    /// the folder a half-typed path sits in and carries every machine that can list its disk, so
+    /// the person can hop servers without coming back here. Choosing pops back first: the sheet's
+    /// own status card is what reports a server that refuses the chat.
     private func pushBrowser(profileID: String) {
-        guard
-            let backend = viewModel.backend(forProfileID: profileID) as? (any FileBrowsingBackend)
-        else { return }
+        let browsable = chooser.servers.filter(\.canBrowse)
+        guard browsable.contains(where: { $0.profileID == profileID }) else { return }
         field.resignFirstResponder()
         sheetPresentationController?.animateChanges {
             sheetPresentationController?.selectedDetentIdentifier = .large
         }
-        let browser = FileBrowserViewController(backend: backend, profileID: profileID)
-        browser.onSelect = { [weak self] path in
-            self?.finish(profileID: profileID, directory: path)
+        let servers = chooser.servers
+        let browser = FolderBrowserViewController(
+            servers: browsable,
+            directories: Self.directories(for: servers, entries: viewModel.entries),
+            entries: viewModel.entries, preferredServer: profileID,
+            start: PathCompletion.parent(of: chooser.query.trimmingCharacters(in: .whitespaces)),
+            verb: purpose == .start ? .start : .use,
+            backends: { [weak viewModel] in
+                viewModel?.backend(forProfileID: $0) as? (any FileBrowsingBackend)
+            },
+            directories: { [weak viewModel] in
+                Self.directories(for: servers, entries: viewModel?.entries ?? [])
+            })
+        browser.onSelect = { [weak self] profileID, path in
+            guard let self else { return }
+            self.navigationController?.popToViewController(self, animated: true)
+            self.finish(profileID: profileID, directory: path)
         }
+        browser.onStarred = { [weak self] in self?.regather() }
         navigationController?.pushViewController(browser, animated: true)
     }
 
@@ -795,6 +812,11 @@ final class NewChatViewController: UIViewController {
             chooser.type(text)
             syncMode()
             reload()
+        }
+
+        func tourBrowse() {
+            guard let profileID = chooser.server?.profileID else { return }
+            pushBrowser(profileID: profileID)
         }
 
         func tourLeaveField() {
