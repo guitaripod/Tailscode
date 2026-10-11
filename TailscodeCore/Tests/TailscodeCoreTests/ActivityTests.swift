@@ -442,8 +442,28 @@ struct ConnectionPhaseTests {
             drawn += 1
             last = time
         }
-        #expect(drawn == 29)
+        #expect(drawn == 30)
         #expect(drawn <= Int(ActivityTuning.frameRate))
+    }
+
+    @Test("Marks that started at different moments draw on the same ticks")
+    func marksShareTheGrid() {
+        let starts = [0, 7, 13]
+        var lasts = [-1.0, -1.0, -1.0]
+        var drawnTicks = Set<Int>()
+        var counts = [0, 0, 0]
+        for tick in 0..<120 {
+            let time = quantised(Double(tick) / 60)
+            for mark in starts.indices where tick >= starts[mark] {
+                guard ActivityTuning.wantsFrame(at: time, lastDrawn: lasts[mark]) else { continue }
+                lasts[mark] = time
+                counts[mark] += 1
+                drawnTicks.insert(tick)
+            }
+        }
+        #expect(drawnTicks.count <= 60 + starts.count - 1, "the marks painted \(drawnTicks.count) distinct ticks")
+        #expect(counts[0] == 60)
+        #expect(counts.allSatisfy { $0 >= 53 })
     }
 
     /// The clock a GTK frame clock reads is whole microseconds, and the whole bug lived in the

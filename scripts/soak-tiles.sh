@@ -6,8 +6,11 @@
 #   scripts/soak-tiles.sh --panes 5 --seconds 120 --zoom-at 60    zoom one pane halfway
 #   scripts/soak-tiles.sh ... --paragraph 8000                    every reply segment is one unbroken 8000-character paragraph
 #   scripts/soak-tiles.sh ... --shed 1                            hold the governor at a level (0 calm … 4 critical)
+#   scripts/soak-tiles.sh ... --trim                              malloc_trim(0) 5 s before the end, with the resident size either side
+#   scripts/soak-tiles.sh ... --turn 40                           every reply ends after 40 s, so the load stops and recovery can be read
 #   scripts/soak-tiles.sh ... --assert                            exit 1 past docs/tiling.md 10.7
 #   scripts/soak-tiles.sh ... --build                             release build first
+#   SOAK_DRIVE_PREFIX='2000:winsize=2500x1350' scripts/soak-tiles.sh ...   drive verbs run before the open (a bigger window, so every pane has room to be whole)
 #
 # The app runs from the worktree's own release build (TailscodeLinux/.build/release), because a
 # debug build measures the optimiser's absence. The whole harness — Xvfb, bus, app — runs inside
@@ -23,7 +26,7 @@ set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 PANES=5 RATE=80 ROWS=600 SECONDS_=180 WARMUP=60 HAMMER=no ZOOM_AT="" ASSERT=no BUILD=no
-ARRANGE=grid LABEL="" OUT="" SHED="" PARAGRAPH=""
+ARRANGE=grid LABEL="" OUT="" SHED="" PARAGRAPH="" TURN="" TRIM=no
 while [ $# -gt 0 ]; do
     case "$1" in
     --panes) PANES=$2; shift ;;
@@ -40,6 +43,8 @@ while [ $# -gt 0 ]; do
     --label) LABEL=$2; shift ;;
     --shed) SHED=$2; shift ;;
     --paragraph) PARAGRAPH=$2; shift ;;
+    --turn) TURN=$2; shift ;;
+    --trim) TRIM=yes ;;
     --out) OUT=$2; shift ;;
     *) sed -n '2,20p' "$0" >&2; exit 2 ;;
     esac
@@ -66,7 +71,7 @@ if [ -z "${SOAK_IN_SCOPE:-}" ]; then
         -- env SOAK_IN_SCOPE=1 "$0" \
         --panes "$PANES" --rate "$RATE" --rows "$ROWS" --seconds "$SECONDS_" --warmup "$WARMUP" \
         --arrange "$ARRANGE" --label "$LABEL" --out "$OUT" ${SHED:+--shed "$SHED"} \
-        ${PARAGRAPH:+--paragraph "$PARAGRAPH"} \
+        ${PARAGRAPH:+--paragraph "$PARAGRAPH"} ${TURN:+--turn "$TURN"} $([ "$TRIM" = yes ] && echo --trim || true) \
         ${SUFFIX:+$([ "$HAMMER" = yes ] && echo --hammer || true)} ${ZOOM_AT:+--zoom-at "$ZOOM_AT"} \
         "--$([ "$ASSERT" = yes ] && echo assert || echo no-assert)"
 fi
@@ -81,9 +86,11 @@ rm -rf "$STATE/home"
 SEND_MS=12000
 DRIVE="4000:soakopen=$ARRANGE;$SEND_MS:soaksend;$((SEND_MS + 200)):soakstats"
 [ "$HAMMER" = yes ] && DRIVE="$DRIVE;$((SEND_MS + 3000)):soakhammer=$((SECONDS_ - 10))"
+[ "$TRIM" = yes ] && DRIVE="$DRIVE;$((SEND_MS + SECONDS_ * 1000 - 6000)):soakstats;$((SEND_MS + SECONDS_ * 1000 - 5500)):soaktrim;$((SEND_MS + SECONDS_ * 1000 - 5000)):soakstats"
 [ -n "$SHED" ] && DRIVE="2000:shed=$SHED;$DRIVE"
+[ -n "${SOAK_DRIVE_PREFIX:-}" ] && DRIVE="$SOAK_DRIVE_PREFIX;$DRIVE"
 [ -n "$ZOOM_AT" ] && DRIVE="$DRIVE;$((SEND_MS + ZOOM_AT * 1000)):szoom;$((SEND_MS + ZOOM_AT * 1000 + 100)):soakstats"
-export TAILSCODE_SOAK="$PANES:$RATE:$ROWS:$((SECONDS_ + 60))${PARAGRAPH:+:$PARAGRAPH}"
+export TAILSCODE_SOAK="$PANES:$RATE:$ROWS:${TURN:-$((SECONDS_ + 60))}${PARAGRAPH:+:$PARAGRAPH}"
 
 echo "soak $LABEL: TAILSCODE_SOAK=$TAILSCODE_SOAK drive=$DRIVE out=$OUT" >&2
 "$HARNESS" start --release --no-build --clean --drive "$DRIVE" -- --demo
@@ -109,6 +116,12 @@ while :; do
     sleep 1
 done
 cp "$STATE/app.log" "$OUT/app.log"
+cp "$STATE/home/state/tailscode/flight.ring" "$OUT/flight.ring" 2>/dev/null || true
+mkdir -p "$OUT/state/tailscode"
+if cp "$STATE/home/state/tailscode/flight.ring" "$OUT/state/tailscode/flight.ring" 2>/dev/null; then
+    XDG_STATE_HOME="$OUT/state" "$REPO/TailscodeLinux/.build/release/tailscode" --flight >"$OUT/flight.txt" 2>&1 || true
+fi
+[ -f "$OUT/flight.txt" ] && { grep -E "shed [0-9]->[0-9]|stall" "$OUT/flight.txt" | sed -E "s/ +/ /g" || true; }
 journal_oom=$(journalctl --user --since "@${started%.*}" 2>/dev/null | grep -iE "oom|memory.max" | tail -3 || true)
 
 python3 - "$OUT" "$SEND_MS" "$WARMUP" "$ASSERT" "$CLK" "${died:-}" "$PANES" "$journal_oom" <<'PY'
@@ -166,6 +179,7 @@ summary = {
     "live_ticks": statistics.median(s["ticks"] for s in live) if live else float("nan"),
     "tick_runs_s": rate("tickRuns"),
     "frames_s": rate("frames"),
+    "frame_ms_s": rate("frameMs") if live and "frameMs" in live[0] else float("nan"),
     "parses_s": rate("parses"),
     "parse_hits_s": rate("parseHits"),
     "list_saves_s": rate("listSaves"),
@@ -175,6 +189,13 @@ summary = {
     "cpu_pct": cpu_pct,
     "main_cpu_p50": statistics.median(s["mainCpu"] for s in live) if live else float("nan"),
     "main_cpu_p95": pct([s["mainCpu"] for s in live], 0.95),
+    "applies_s": rate("applies"),
+    "apply_ms_s": rate("applyMs"),
+    "drains_s": rate("drains") if live and "drains" in live[0] else float("nan"),
+    "drain_guarded_s": rate("guarded") if live and "guarded" in live[0] else float("nan"),
+    "drain_ready_max": max((s.get("ready", 0) for s in live), default=float("nan")),
+    "drain_p95_ms": statistics.median(s["drainP95"] for s in live if "drainP95" in s) if live and "drainP95" in live[0] else float("nan"),
+    "drain_max_ms": max((s.get("drainMax", 0) for s in live), default=float("nan")),
     "hammer": hammer[-1] if hammer else "-",
     "windows": len(live),
 }

@@ -317,6 +317,11 @@ final class MainMenu: NSObject {
         {
             menu.addItem(holder)
         }
+        menu.addItem(item(Localized.text("Next Pane"), #selector(nextPane), "]", [.command, .option]))
+        menu.addItem(
+            item(Localized.text("Previous Pane"), #selector(previousPane), "[", [.command, .option]))
+        menu.addItem(bound(Localized.text("Keep Live"), #selector(keepPaneLive), .pinSplit))
+        menu.addItem(bound(Localized.text("Pause Pane"), #selector(pausePane), .parkSplit))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Zoom In"), #selector(zoomIn), "+"))
         let unshifted = item(Localized.text("Zoom In"), #selector(zoomIn), "=")
@@ -592,6 +597,11 @@ final class MainMenu: NSObject {
         if hub.window?.isVisible != true { hub.showWindow(nil) }
         hub.arrangeSplits(shape)
     }
+
+    @objc fileprivate func nextPane() { run(.cycleSplit(true)) }
+    @objc fileprivate func previousPane() { run(.cycleSplit(false)) }
+    @objc fileprivate func keepPaneLive() { run(.pinSplit) }
+    @objc fileprivate func pausePane() { run(.parkSplit) }
 }
 
 extension MainMenu: NSMenuItemValidation {
@@ -635,6 +645,18 @@ extension MainMenu: NSMenuItemValidation {
                 menuItem.state =
                     SplitEven.shape(of: hub.splitPanes.layout) == shape ? .on : .off
             }
+            return hub.splitPanes.paneCount > 1
+        }
+        if menuItem.action == #selector(keepPaneLive) {
+            menuItem.state = hub.splitPanes.activeIsPinned ? .on : .off
+            return hub.splitPanes.supportsDensity && hub.splitPanes.paneCount > 1
+        }
+        if menuItem.action == #selector(pausePane) {
+            menuItem.state = hub.splitPanes.activeIsParked ? .on : .off
+            return hub.splitPanes.supportsDensity && hub.splitPanes.paneCount > 1
+                && hub.currentEntry != nil
+        }
+        if menuItem.action == #selector(nextPane) || menuItem.action == #selector(previousPane) {
             return hub.splitPanes.paneCount > 1
         }
         let modelVerbs: Set<Selector> = [

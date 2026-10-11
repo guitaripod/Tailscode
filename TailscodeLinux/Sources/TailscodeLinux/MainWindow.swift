@@ -68,7 +68,7 @@ final class MainWindow: @unchecked Sendable {
     private var sessionRows: [String: [TranscriptRow]] = [:]
     private var sessionRowOrder: [String] = []
 
-    private var entries: [SessionEntry] = []
+    private(set) var entries: [SessionEntry] = []
     /// The configured servers, kept on the main context so an empty pane can ask its question in
     /// the same frame the split happens rather than after a hop through the directory actor.
     private var knownProfiles: [ConnectionProfile] = []
@@ -140,7 +140,7 @@ final class MainWindow: @unchecked Sendable {
     private var lastCatalogWarm: [String: Date] = [:]
     private var usageStripSignature = ""
 
-    private var splitHost: SplitHost!
+    private(set) var splitHost: PaneTiling!
     /// What each restored pane was showing, until the listing carries the session and the pane
     /// can open it for real.
     private var pendingBindings: [PaneID: SplitPaneSession] = [:]
@@ -153,10 +153,18 @@ final class MainWindow: @unchecked Sendable {
     private var restoreWake = RestoreWake(order: [])
     private var wakeScheduled = false
     private var restoreBanner: RestoreBanner?
+    private(set) var liveChip: UnsafeMutablePointer<GtkWidget>?
+    private(set) var liveChipText = ""
 
     var windowWidget: UnsafeMutablePointer<GtkWidget>? { window }
 
     var activePane: ChatPane { splitHost.activePane }
+
+    /// The selftest's way of giving a window that was never presented the tiling it would have
+    /// built, so a verb that tells the window the focus moved has a window to tell.
+    func installTiling(_ tiling: PaneTiling) {
+        splitHost = tiling
+    }
 
     /// The canvas follows the desktop, and the chats you had are on screen before the first byte
     /// crosses the tailnet — with liveness stripped from the cache, so nothing shown from it can
@@ -179,7 +187,12 @@ final class MainWindow: @unchecked Sendable {
         observeMissedActivity()
 
         Trace.stamp("present begin")
-        splitHost = SplitHost(host: self)
+        Seatbelts.shared.restoreLiveBudget()
+        splitHost = TilingChoice.isLegacy ? SplitHost(host: self) : TileHost(host: self)
+        if let tile = splitHost as? TileHost {
+            tile.listFace = { [weak self] session in self?.listFace(for: session) }
+            tile.onDensityChanged = { [weak self] in self?.updateLiveChip() }
+        }
         if let raw = UserDefaults.standard.string(forKey: SplitSnapshot.defaultsKey),
             let snapshot = SplitSnapshot.decode(raw)
         {
@@ -551,6 +564,8 @@ final class MainWindow: @unchecked Sendable {
                     self.soakHammer(seconds: Int(argument) ?? 60)
                 case "soakstats":
                     Soak.report()
+                case "soaktrim":
+                    Soak.trimAndReport()
                 case "split":
                     _ = self.perform(.splitPane(argument == "down" ? .vertical : .horizontal))
                 case "sfocus":
@@ -606,7 +621,7 @@ final class MainWindow: @unchecked Sendable {
                     gtk_native_get_surface_transform(op(window), &shadowX, &shadowY)
                     let described = self.splitHost.orderedPanes.enumerated().map {
                         index, pane -> String in
-                        let bounds = Gtk.bounds(of: pane.root, in: window) ?? (0, 0, 0, 0)
+                        let bounds = Gtk.bounds(of: pane.frame, in: window) ?? (0, 0, 0, 0)
                         let composer =
                             Gtk.bounds(of: pane.composerScroller, in: window) ?? (0, 0, 0, 0)
                         return String(
@@ -888,8 +903,8 @@ final class MainWindow: @unchecked Sendable {
                     let pane = panes[index]
                     let payload = PaneDragPayload(
                         profileID: entry.profileID, sessionID: entry.session.id)
-                    let x = u * Double(gtk_widget_get_width(pane.root))
-                    let y = v * Double(gtk_widget_get_height(pane.root))
+                    let x = u * Double(gtk_widget_get_width(pane.frame))
+                    let y = v * Double(gtk_widget_get_height(pane.frame))
                     if verb == "drag" {
                         self.splitHost.hover(pane, payload: payload, x: x, y: y)
                         FileHandle.standardOutput.write(
@@ -958,7 +973,7 @@ final class MainWindow: @unchecked Sendable {
                             "STATE follows=\(pane.followsBottom) rows=\(pane.renderedRows.count)/\(pane.lastFullRows.count) value=\(Int(value)) bottom=\(Int(upper))\n"
                             .utf8))
                 default:
-                    break
+                    if !self.driveTiles(verb, argument) { self.driveLive(verb, argument) }
                 }
             }
         }
@@ -1211,6 +1226,12 @@ final class MainWindow: @unchecked Sendable {
         adw_header_bar_pack_end(
             op(header),
             Gtk.button("⌨", css: ["flat"]) { [weak self] in self?.togglePane(.terminal) })
+        let chip = Gtk.menuButton("", css: ["flat", "live-chip"]) { [weak self] in
+            self?.liveChipSections() ?? []
+        }
+        gtk_widget_set_visible(chip, 0)
+        adw_header_bar_pack_end(op(header), chip)
+        liveChip = chip
         adw_toolbar_view_add_top_bar(op(toolbar), header)
         contentHeader = header
 
@@ -1228,6 +1249,69 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// Whether a pane verb that is a switch is on for the focused pane, for the mark in the menu.
+    private func paneMenuMarks(_ id: String) -> Bool {
+        guard let tile = splitHost as? TileHost else { return false }
+        switch id {
+        case "split.pin": return tile.activeIsPinned
+        case "split.park": return tile.activeIsParked
+        default: return false
+        }
+    }
+
+    /// What the chat list last heard about a conversation, for a pane that holds it without
+    /// streaming it: its title and the face its row wears.
+    func listFace(for session: SplitPaneSession) -> (title: String, activity: ActivityKind?)? {
+        guard
+            let entry = entries.first(where: {
+                $0.profileID == session.profileID && $0.session.id == session.sessionID
+            })
+        else { return nil }
+        let model = SessionRowModel(
+            entry: entry, unreachable: unreachable.contains(entry.profileID), unread: false,
+            saved: false)
+        return (model.title, model.state.activity)
+    }
+
+    /// The live chip: how many chats are whole out of how many are open, drawn only once there are
+    /// two to count.
+    func updateLiveChip() {
+        guard let chip = liveChip, let tile = splitHost as? TileHost else { return }
+        let counts = tile.liveCounts
+        let shown = counts.chats > 1
+        if gtk_widget_get_visible(chip) != (shown ? 1 : 0) {
+            gtk_widget_set_visible(chip, shown ? 1 : 0)
+        }
+        guard shown else { return }
+        let title = LiveChipReading.title(
+            live: counts.live, chats: counts.chats, decision: tile.lastDecision)
+        guard title != liveChipText else { return }
+        liveChipText = title
+        gtk_menu_button_set_label(op(chip), title)
+        tailscode_set_accessible_label(chip, title)
+    }
+
+    private func liveChipSections() -> [Gtk.MenuSection] {
+        guard let tile = splitHost as? TileHost else { return [] }
+        let decision = tile.lastDecision
+        var rows = [
+            Gtk.MenuRow(title: LiveChipReading.explanation(decision: decision), detail: nil),
+            Gtk.MenuRow(
+                title: Localized.text("Keep all live"), detail: nil,
+                on: Seatbelts.shared.liveBudget == .all,
+                action: {
+                    Gtk.onMain {
+                        Seatbelts.shared.setLiveBudget(
+                            Seatbelts.shared.liveBudget == .all ? .auto : .all)
+                    }
+                }),
+        ]
+        if decision?.level.overridesPreference == true {
+            rows.append(Gtk.MenuRow(title: LiveChipReading.ignoredNote, detail: nil))
+        }
+        return [Gtk.MenuSection(heading: nil, rows: rows)]
+    }
+
     /// The pane verbs in the menu, for a person who never learns the chords: Core's groups in
     /// Core's order, each row wearing the keys it is on right now, rebinding included. Only a
     /// window with something to arrange offers them.
@@ -1242,17 +1326,23 @@ final class MainWindow: @unchecked Sendable {
                 })
         }
         var sections = [Gtk.MenuSection(heading: Localized.text("Panes"), rows: named)]
-        for group in SplitMenu.groups {
-            let rows = group.shortcutIDs.compactMap { id -> Gtk.MenuRow? in
+        var groups = SplitMenu.groups.map { ($0.title, $0.shortcutIDs) }
+        groups.append((Localized.text("Focus"), ["split.cycle", "split.cycleBack"]))
+        if splitHost.supportsDensity {
+            groups.append((Localized.text("Live"), ["split.pin", "split.park"]))
+        }
+        for (title, ids) in groups {
+            let rows = ids.compactMap { id -> Gtk.MenuRow? in
                 guard let definition = SplitMenu.definition(id) else { return nil }
                 let keys = shortcuts.effective[id]?.joined(separator: " / ")
                 return Gtk.MenuRow(
                     title: definition.title, detail: keys,
+                    on: paneMenuMarks(id),
                     action: { [weak self] in
                         Gtk.onMain { [weak self] in _ = self?.perform(definition.action) }
                     })
             }
-            sections.append(Gtk.MenuSection(heading: group.title, rows: rows))
+            sections.append(Gtk.MenuSection(heading: title, rows: rows))
         }
         return sections
     }
@@ -1313,126 +1403,19 @@ final class MainWindow: @unchecked Sendable {
         splitHost.persist()
     }
 
-    /// Watches a conversation whose pane moved on, so a turn still in flight keeps its LIVE NOW
-    /// seat until it settles. A pane switching chats (or closing) stops streaming, and a listing
-    /// — opencode's especially — cannot say a turn is running; this keeps the one subscription
-    /// alive in the background and feeds the sidebar exactly what the pane saw.
-    private var backgroundWatch: [String: (id: UUID, task: Task<Void, Never>)] = [:]
-    private var backgroundPresence: [String: SessionPresence] = [:]
+    /// The process's live runtime: the window's drain, the one conversation hub and the edge
+    /// services every pane and background watch share.
+    let live = LiveRuntime()
+
+    /// Conversations a pane moved on from, watched so a turn still in flight keeps its LIVE NOW seat
+    /// until it settles and a held queue still drains. Each is a `watching` lease on the hub, keyed
+    /// as the sidebar keys a chat.
+    var watchLeases: [String: LiveLease] = [:]
+    var backgroundPresence: [String: SessionPresence] = [:]
     /// What each conversation's last settled witness said, carried across the moment one watcher
     /// hands a chat to another. Without it, opening a live chat on a server whose listing cannot
     /// report a turn dropped the row to RECENT for one round trip and then took it back.
     private var presenceLedger = PresenceLedger()
-
-    func keepWatching(_ conversation: AgentConversation, entry: SessionEntry) {
-        let key = SessionPinStore.key(entry.profileID, entry.session.id)
-        stopWatching(key)
-        let id = UUID()
-        let task = Task { [weak self] in
-            var lastReading: SessionPresence = .running(nil)
-            var handoff = TurnHandoff()
-            while !Task.isCancelled {
-                let stream = await conversation.states()
-                for await state in stream {
-                    guard let self else { return }
-                    handoff.observe(state, sendsInFlight: false)
-                    if await Self.drainHeld(
-                        conversation, entry: entry, state: state, handoff: &handoff)
-                    {
-                        continue
-                    }
-                    let reading = SessionPresence.reading(state, step: nil)
-                    let changed = reading != lastReading
-                    lastReading = reading
-                    let settled = reading == .unobserved
-                    Gtk.onMain { [weak self] in
-                        guard let self, self.backgroundWatch[key]?.id == id else { return }
-                        self.backgroundPresence[key] = reading
-                        if changed { self.renderSidebar() }
-                        if settled { self.stopWatching(key) }
-                    }
-                    if settled { return }
-                }
-            }
-            Gtk.onMain { [weak self] in
-                guard let self, self.backgroundWatch[key]?.id == id else { return }
-                self.backgroundWatch[key] = nil
-                self.backgroundPresence[key] = nil
-                self.renderSidebar()
-            }
-        }
-        backgroundWatch[key] = (id, task)
-    }
-
-
-    /// A conversation a pane left running still owes its queue: the next waiting message goes the
-    /// moment the turn yields, read from the store rather than from any pane, because the pane
-    /// that wrote it may be showing something else by now. Answers whether a message went, so
-    /// the watch knows the turn is not over.
-    private static func drainHeld(
-        _ conversation: AgentConversation, entry: SessionEntry, state: ConversationState,
-        handoff: inout TurnHandoff
-    ) async -> Bool {
-        guard SendQueueDrain.mayDrain(state, handoff: handoff) else { return false }
-        var held = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
-        guard let next = held.takeFirst() else { return false }
-        SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
-        handoff.begin(after: state)
-        do {
-            try await conversation.send(
-                next.text, model: next.model, reasoningEffort: next.effort,
-                attachments: next.attachments)
-            return true
-        } catch {
-            handoff.end()
-            held.requeueAtHead(next)
-            SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
-            return false
-        }
-    }
-
-    /// Every conversation the store is holding a message for gets a watch, so a queue written
-    /// before the app quit goes when its turn yields rather than when somebody opens the chat.
-    /// A chat a pane is showing drains from the pane; a held chat the listing no longer has waits
-    /// for a listing that does.
-    private func wakeHeldQueues() {
-        let held = SendQueueStore.all()
-        guard !held.isEmpty else { return }
-        let entries = self.entries
-        Task { [weak self] in
-            let profiles = await ServerDirectory.shared.profiles()
-            for record in held {
-                guard let entry = entries.first(where: {
-                        $0.session.id == record.sessionID && $0.profileID == record.profileID
-                    }),
-                    let profile = profiles.first(where: { $0.id == record.profileID }),
-                    let backend = await ServerDirectory.shared.backend(for: profile)
-                else { continue }
-                Gtk.onMain { [weak self] in
-                    guard let self else { return }
-                    let key = SessionPinStore.key(record.profileID, record.sessionID)
-                    var shown = false
-                    self.splitHost.eachPane { pane in
-                        if pane.sessionID == record.sessionID, pane.entry?.profileID == record.profileID {
-                            shown = true
-                        }
-                    }
-                    guard self.backgroundWatch[key] == nil, !shown else { return }
-                    self.keepWatching(
-                        AgentConversation(
-                            backend: backend, sessionID: entry.session.id,
-                            cache: AppCache.sessionCache),
-                        entry: entry)
-                }
-            }
-        }
-    }
-
-    func stopWatching(_ key: String) {
-        backgroundWatch[key]?.task.cancel()
-        backgroundWatch[key] = nil
-        backgroundPresence[key] = nil
-    }
 
     /// A pane took a conversation: the window chrome follows it only when that pane is the
     /// focused one — an unfocused pane opening in the background must not steal the title bar.
@@ -1581,7 +1564,7 @@ final class MainWindow: @unchecked Sendable {
             next.append(entry)
             next.sort { $0.session.updatedAt > $1.session.updatedAt }
             entries = next
-            if !next.isEmpty { Soak.timeListSave { SessionListCache.save(next) } }
+            if !next.isEmpty { Soak.timeListSave { SessionListCache.enqueueSave(next) } }
             SessionMarks.reconcile(with: [entry])
             renderSidebar()
             splitHost.eachPane { pane in
@@ -1603,7 +1586,7 @@ final class MainWindow: @unchecked Sendable {
         let (entries, unreachable) = await ServerDirectory.shared.entries(
             knownDirectories: Array(known), previous: self.entries)
         let heard = await ServerDirectory.shared.lastHeard
-        if !entries.isEmpty { SessionListCache.save(entries) }
+        if !entries.isEmpty { SessionListCache.enqueueSave(entries) }
         await SessionMarkSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
         Gtk.onMain { SessionMarks.reconcile(with: entries) }
         UpdateWatch.keep(profiles)
@@ -1722,6 +1705,7 @@ final class MainWindow: @unchecked Sendable {
             })
         banner.attach(to: splitHost.container)
         restoreBanner = banner
+        splitHost.setHeld(parkedBindings)
     }
 
     private static var parkedPlaceholder: String {
@@ -1742,8 +1726,13 @@ final class MainWindow: @unchecked Sendable {
     }
 
     /// One paused chat back into the wake.
+    func resumeRestored(_ paneID: PaneID) {
+        resume(paneID)
+    }
+
     private func resume(_ paneID: PaneID) {
         guard let binding = parkedBindings.removeValue(forKey: paneID) else { return }
+        defer { splitHost.setHeld(parkedBindings) }
         splitHost.panes[paneID]?.showPlaceholder(Localized.text("Connecting…"))
         pendingBindings[paneID] = binding
         if parkedBindings.isEmpty { dismissRestoreBanner() }
@@ -1763,6 +1752,14 @@ final class MainWindow: @unchecked Sendable {
     /// The panes as the governor reads them: what each holds, whether the zoom left it on screen,
     /// its size, and what it is asking of the person.
     private func seatbeltPanes() -> SeatbeltPanes {
+        if let tile = splitHost as? TileHost {
+            var waiting = pendingBindings
+            for (id, entry) in readyToWake {
+                waiting[id] = SplitPaneSession(profileID: entry.profileID, sessionID: entry.session.id)
+            }
+            for (id, binding) in parkedBindings { waiting[id] = binding }
+            return tile.seatbeltPanes(waiting: waiting)
+        }
         let layout = splitHost.layout
         var facts: [PaneFacts] = []
         var placed = 0
@@ -1812,7 +1809,7 @@ final class MainWindow: @unchecked Sendable {
     /// Rebuilding two hundred rows of widgets is a visible stutter — nothing is touched unless
     /// what the list would say actually differs from what it says now, and only the first
     /// screenful or two are built.
-    private func renderSidebar() {
+    func renderSidebar() {
         if sidebarPointerHeld {
             sidebarRenderHeld = true
             return
@@ -2108,9 +2105,7 @@ final class MainWindow: @unchecked Sendable {
                 profileID: entry.profileID, sessionID: entry.session.id)
         }
         _ = splitHost.restore(SplitSnapshot(layout: layout, sessions: sessions))
-        for (pane, entry) in zip(layout.paneIDs, chosen) {
-            splitHost.panes[pane]?.open(entry)
-        }
+        openInTurns(Array(zip(layout.paneIDs, chosen)))
         splitHost.persist()
         marks.clear()
         lastSidebar = nil
@@ -3298,6 +3293,7 @@ final class MainWindow: @unchecked Sendable {
         stashDrafts()
         DraftStore.flush()
         SettingsFile.flush()
+        SessionListCache.flushEnqueuedSave()
         Seatbelts.shared.exitClean()
         g_application_quit(ptr(app))
     }
@@ -3820,8 +3816,12 @@ final class MainWindow: @unchecked Sendable {
             .arrangeSplits:
             focused = .transcript
             splitHost.perform(action)
-        case .pinSplit, .parkSplit:
-            return false
+        case .pinSplit:
+            guard splitHost.supportsDensity else { return false }
+            splitHost.togglePinActive()
+        case .parkSplit:
+            guard splitHost.supportsDensity else { return false }
+            splitHost.toggleParkActive()
         case .toggleProjectScope:
             toggleProjectScope()
         case .quickAsk:
@@ -3978,8 +3978,8 @@ final class MainWindow: @unchecked Sendable {
             return
         }
         let pane = panes[target]
-        let x = u * Double(gtk_widget_get_width(pane.root))
-        let y = v * Double(gtk_widget_get_height(pane.root))
+        let x = u * Double(gtk_widget_get_width(pane.frame))
+        let y = v * Double(gtk_widget_get_height(pane.frame))
         if drop {
             let took = splitHost.receivePaneDrop(
                 PaneMovePayload(pane: panes[source].id).encoded, on: pane.id, x: x, y: y)

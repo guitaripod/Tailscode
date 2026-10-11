@@ -18,6 +18,10 @@ static void (*tailscode_box_release)(void *) = NULL;
 
 void tailscode_set_box_release(void (*release)(void *)) { tailscode_box_release = release; }
 
+void tailscode_box_release_call(void *data) {
+    if (data && tailscode_box_release) tailscode_box_release(data);
+}
+
 static void tailscode_box_destroy(gpointer data, GClosure *closure) {
     (void)closure;
     if (data && tailscode_box_release) tailscode_box_release(data);
@@ -119,10 +123,62 @@ void tailscode_soak_enable(void) {
     g_timeout_add_full(G_PRIORITY_DEFAULT, 100, tailscode_soak_lag_tick, NULL, NULL);
 }
 
+static gint64 tailscode_soak_cycle_began = 0;
+static gint64 tailscode_soak_layout_ended = 0;
+static atomic_long tailscode_soak_cycle_us = 0;
+static atomic_long tailscode_soak_cycle_max_us = 0;
+static atomic_long tailscode_soak_layout_us = 0;
+static atomic_long tailscode_soak_paint_us = 0;
+
+static void tailscode_soak_layout_done(GdkFrameClock *clock, gpointer unused) {
+    (void)clock;
+    (void)unused;
+    if (tailscode_soak_cycle_began == 0) return;
+    tailscode_soak_layout_ended = g_get_monotonic_time();
+    atomic_fetch_add_explicit(
+        &tailscode_soak_layout_us, tailscode_soak_layout_ended - tailscode_soak_cycle_began,
+        memory_order_relaxed);
+}
+
+static void tailscode_soak_paint_done(GdkFrameClock *clock, gpointer unused) {
+    (void)clock;
+    (void)unused;
+    if (tailscode_soak_layout_ended == 0) return;
+    atomic_fetch_add_explicit(
+        &tailscode_soak_paint_us, g_get_monotonic_time() - tailscode_soak_layout_ended,
+        memory_order_relaxed);
+    tailscode_soak_layout_ended = 0;
+}
+
+static void tailscode_soak_before_paint(GdkFrameClock *clock, gpointer unused) {
+    (void)clock;
+    (void)unused;
+    tailscode_soak_cycle_began = g_get_monotonic_time();
+}
+
+static void tailscode_soak_after_paint(GdkFrameClock *clock, gpointer unused) {
+    (void)clock;
+    (void)unused;
+    if (tailscode_soak_cycle_began == 0) return;
+    gint64 cycle = g_get_monotonic_time() - tailscode_soak_cycle_began;
+    atomic_fetch_add_explicit(&tailscode_soak_cycle_us, cycle, memory_order_relaxed);
+    long worst = atomic_load_explicit(&tailscode_soak_cycle_max_us, memory_order_relaxed);
+    while (cycle > worst
+        && !atomic_compare_exchange_weak(&tailscode_soak_cycle_max_us, &worst, cycle)) {}
+    tailscode_soak_cycle_began = 0;
+}
+
+/// Counts frames, and times each frame cycle from `before-paint` to `after-paint` — the ticks,
+/// the layout and the paint together — which is the share of the main thread the toolkit spends
+/// drawing rather than the app spends applying.
 gboolean tailscode_soak_watch_frames(GtkWidget *widget) {
     GdkFrameClock *clock = widget ? gtk_widget_get_frame_clock(widget) : NULL;
     if (!clock) return FALSE;
     g_signal_connect(clock, "after-paint", G_CALLBACK(tailscode_soak_frame), NULL);
+    g_signal_connect(clock, "before-paint", G_CALLBACK(tailscode_soak_before_paint), NULL);
+    g_signal_connect_after(clock, "after-paint", G_CALLBACK(tailscode_soak_after_paint), NULL);
+    g_signal_connect_after(clock, "layout", G_CALLBACK(tailscode_soak_layout_done), NULL);
+    g_signal_connect_after(clock, "paint", G_CALLBACK(tailscode_soak_paint_done), NULL);
     return TRUE;
 }
 
@@ -138,6 +194,10 @@ void tailscode_soak_read(TailscodeSoakSample *out) {
     out->parse_hits = atomic_load(&tailscode_soak_parse_hits);
     out->tick_runs = atomic_load(&tailscode_soak_tick_runs);
     out->frames = atomic_load(&tailscode_soak_frames);
+    out->frame_us = atomic_load(&tailscode_soak_cycle_us);
+    out->frame_max_us = atomic_exchange(&tailscode_soak_cycle_max_us, 0);
+    out->layout_us = atomic_load(&tailscode_soak_layout_us);
+    out->paint_us = atomic_load(&tailscode_soak_paint_us);
     g_mutex_lock(&tailscode_soak_lock);
     int count = tailscode_soak_lag_count;
     gint64 *lags = g_memdup2(tailscode_soak_lags, sizeof(gint64) * (count > 0 ? count : 1));
@@ -1373,6 +1433,13 @@ void tailscode_watch_animations(GtkWidget *lifetime, void (*handler)(void *), vo
     g_signal_connect_object(
         settings, "notify::gtk-enable-animations", G_CALLBACK(tailscode_animations_changed),
         lifetime, 0);
+}
+
+/// Tells every motion watcher to decide again without changing the desk's setting: the shed level
+/// took the pulses away or gave them back.
+void tailscode_notify_animations(void) {
+    GtkSettings *settings = gtk_settings_get_default();
+    if (settings) g_object_notify(G_OBJECT(settings), "gtk-enable-animations");
 }
 
 void tailscode_set_animations_enabled(gboolean enabled) {
@@ -3393,6 +3460,175 @@ char *tailscode_paned_reading(
 gboolean tailscode_focus_on_divider(GtkWidget *root) {
     GtkWidget *focus = tailscode_focused_widget(root);
     if (!focus) return FALSE;
+    if (tailscode_tile_divider_is(focus)) return TRUE;
     GtkWidget *parent = gtk_widget_get_parent(focus);
     return parent && GTK_IS_PANED(parent) && tailscode_paned_handle(GTK_PANED(parent)) == focus;
 }
+
+/// The tiling drain's seat on the main context: one idle at `GDK_PRIORITY_REDRAW + 10`, below the
+/// frame clock's paint, so applying the panes' newest states takes the gap between frames and can
+/// never starve painting; and while it is pending, a 100 ms `G_PRIORITY_DEFAULT` guard that runs
+/// one ready slot if the idle has not run by then, so a stream's ending state can never wait behind
+/// an animation that outranks it. Requests are idempotent while one is pending and may come from
+/// any thread. Settled means silent: with nothing requested there is no source at all.
+struct TailscodeDrain {
+    void (*run)(void *, int);
+    void *data;
+    GMutex lock;
+    guint idle_id;
+    guint guard_id;
+};
+
+static gboolean tailscode_drain_guard(gpointer raw) {
+    TailscodeDrain *drain = raw;
+    g_mutex_lock(&drain->lock);
+    if (drain->idle_id == 0) {
+        drain->guard_id = 0;
+        g_mutex_unlock(&drain->lock);
+        return G_SOURCE_REMOVE;
+    }
+    g_mutex_unlock(&drain->lock);
+    drain->run(drain->data, 1);
+    return G_SOURCE_CONTINUE;
+}
+
+static gboolean tailscode_drain_idle(gpointer raw) {
+    TailscodeDrain *drain = raw;
+    g_mutex_lock(&drain->lock);
+    drain->idle_id = 0;
+    guint guard = drain->guard_id;
+    drain->guard_id = 0;
+    g_mutex_unlock(&drain->lock);
+    if (guard) g_source_remove(guard);
+    drain->run(drain->data, 0);
+    return G_SOURCE_REMOVE;
+}
+
+TailscodeDrain *tailscode_drain_new(void (*run)(void *, int), void *data) {
+    TailscodeDrain *drain = g_new0(TailscodeDrain, 1);
+    drain->run = run;
+    drain->data = data;
+    g_mutex_init(&drain->lock);
+    return drain;
+}
+
+void tailscode_drain_request(TailscodeDrain *drain) {
+    if (!drain) return;
+    g_mutex_lock(&drain->lock);
+    if (drain->idle_id == 0) {
+        drain->idle_id = g_idle_add_full(GDK_PRIORITY_REDRAW + 10, tailscode_drain_idle, drain, NULL);
+        if (drain->guard_id == 0)
+            drain->guard_id = g_timeout_add_full(G_PRIORITY_DEFAULT, 100, tailscode_drain_guard, drain, NULL);
+    }
+    g_mutex_unlock(&drain->lock);
+}
+
+gboolean tailscode_drain_pending(TailscodeDrain *drain) {
+    if (!drain) return FALSE;
+    g_mutex_lock(&drain->lock);
+    gboolean pending = drain->idle_id != 0;
+    g_mutex_unlock(&drain->lock);
+    return pending;
+}
+
+typedef struct {
+    void (*handler)(void *);
+    void *data;
+    GdkFrameClock *clock;
+    gulong signal;
+} TailscodeAfterFrame;
+
+static void tailscode_after_frame_fired(GdkFrameClock *clock, gpointer raw) {
+    TailscodeAfterFrame *box = raw;
+    g_signal_handler_disconnect(clock, box->signal);
+    TailscodeIdle *idle = g_new0(TailscodeIdle, 1);
+    idle->handler = box->handler;
+    idle->data = box->data;
+    g_idle_add_full(GDK_PRIORITY_REDRAW + 10, tailscode_idle_trampoline, idle, NULL);
+    g_object_unref(box->clock);
+    g_free(box);
+}
+
+/// Work for the gap after the next frame: a one-shot on the widget's frame clock `after-paint`
+/// hands the work to an idle, so whatever came before it has been laid out and painted first, and
+/// a frame is asked for so the wait is never longer than one. A first fill that adds its rows in
+/// hops at the default priority added them all before the frame that laid them out — one slice the
+/// size of the whole transcript, five of them for five panes. With no frame clock (an unrealized
+/// widget) the work simply goes to an idle.
+void tailscode_between_frames(GtkWidget *widget, void (*handler)(void *), void *data) {
+    GdkFrameClock *clock = widget ? gtk_widget_get_frame_clock(widget) : NULL;
+    if (!clock) {
+        TailscodeIdle *idle = g_new0(TailscodeIdle, 1);
+        idle->handler = handler;
+        idle->data = data;
+        g_idle_add_full(GDK_PRIORITY_REDRAW + 10, tailscode_idle_trampoline, idle, NULL);
+        return;
+    }
+    TailscodeAfterFrame *box = g_new0(TailscodeAfterFrame, 1);
+    box->handler = handler;
+    box->data = data;
+    box->clock = g_object_ref(clock);
+    box->signal = g_signal_connect(clock, "after-paint", G_CALLBACK(tailscode_after_frame_fired), box);
+    gdk_frame_clock_request_phase(clock, GDK_FRAME_CLOCK_PHASE_AFTER_PAINT);
+}
+
+#include <malloc.h>
+
+/// Bytes malloc reports in use, for the soak: growth here is retention, growth in RSS beside a
+/// flat figure here is fragmentation.
+long tailscode_heap_in_use(void) {
+    struct mallinfo2 info = mallinfo2();
+    return (long)info.uordblks;
+}
+
+/// Bytes malloc holds free inside its arenas: RSS that is not in use, the signature of
+/// fragmentation.
+long tailscode_heap_free(void) {
+    struct mallinfo2 info = mallinfo2();
+    return (long)info.fordblks;
+}
+
+/// Bytes in blocks malloc serves with their own mapping, which `heap` does not count.
+long tailscode_heap_mapped(void) {
+    struct mallinfo2 info = mallinfo2();
+    return (long)info.hblkhd;
+}
+
+/// Gives the free tails of every arena back to the system; non-zero when memory was released.
+int tailscode_heap_trim(void) {
+    return malloc_trim(0);
+}
+
+/// glibc gives every thread that allocates up to eight times the core count's worth of arenas,
+/// and a row build on one thread freed on the main thread leaves free chunks in an arena no one
+/// else will reuse: measured, the resident size ran ahead of what malloc had in use by 40 MiB
+/// after three minutes of one streaming pane. Two arenas keep the main thread's own and one for
+/// every worker, which is enough for the row pumps and holds that gap to about a third.
+/// `TAILSCODE_MALLOC_ARENAS` names another count, and 0 leaves glibc's own choice alone, which is
+/// how the soak measures the difference.
+void tailscode_malloc_tune(void) {
+#ifdef M_ARENA_MAX
+    const char *named = getenv("TAILSCODE_MALLOC_ARENAS");
+    int arenas = named ? atoi(named) : 2;
+    if (arenas > 0) mallopt(M_ARENA_MAX, arenas);
+#endif
+}
+
+
+static atomic_long tailscode_soak_rows_alive = 0;
+
+static void tailscode_soak_row_finalized(gpointer data, GObject *gone) {
+    (void)data;
+    (void)gone;
+    atomic_fetch_sub_explicit(&tailscode_soak_rows_alive, 1, memory_order_relaxed);
+}
+
+/// Counts a transcript row widget until it is finalized, so the soak can tell rows that were
+/// dropped from rows that were only removed from the screen.
+void tailscode_soak_track_row(GtkWidget *widget) {
+    if (!widget) return;
+    atomic_fetch_add_explicit(&tailscode_soak_rows_alive, 1, memory_order_relaxed);
+    g_object_weak_ref(G_OBJECT(widget), tailscode_soak_row_finalized, NULL);
+}
+
+long tailscode_soak_rows(void) { return atomic_load(&tailscode_soak_rows_alive); }

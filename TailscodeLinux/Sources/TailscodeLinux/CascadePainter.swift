@@ -64,9 +64,20 @@ enum CascadeBudget {
         level: .calm, reducedMotion: false)
     nonisolated(unsafe) private(set) static var level = ShedLevel.calm
 
+    /// Told when the budget changes, so the panes can restate their drain rates and the focused
+    /// pane can let go of a reveal the level no longer allows. Main loop only.
+    nonisolated(unsafe) static var onChange: (() -> Void)?
+
     static func apply(_ next: AnimationBudget, level newLevel: ShedLevel) {
+        guard next != budget || newLevel != level else { return }
+        let pulsesChanged = next.pulses != budget.pulses
         budget = next
         level = newLevel
+        Trace.mark("budget restate begin")
+        onChange?()
+        Trace.mark("budget restate slots done")
+        if pulsesChanged { tailscode_notify_animations() }
+        Trace.mark("budget restate end")
     }
 
     /// Whether the written-not-pasted reveal runs at all.
@@ -81,6 +92,21 @@ enum CascadeBudget {
     static var minimumInterval: Double? {
         guard level > .calm, budget.tickCap > 0 else { return nil }
         return 1 / budget.tickCap - 0.004
+    }
+
+    /// Whether a display tick is one the reveal may move on: the tempo's grid at the budget's tick
+    /// cap, so the reveal lands on the same ticks as every breathing mark and the window paints
+    /// once for all of them.
+    static func wantsStep(at time: Double, lastStep: Double) -> Bool {
+        guard budget.tickCap > 0 else { return false }
+        return ActivityTuning.wantsFrame(at: time, lastDrawn: lastStep, rate: budget.tickCap)
+    }
+
+    /// The shortest gap between two applies of the focused pane's states: the reveal's own tick,
+    /// because a state applied faster than the reveal can move is a relayout and a paint nobody can
+    /// see. With no clocks allowed at all it falls to the peers' rate.
+    static var focusedApplyInterval: TimeInterval {
+        minimumInterval ?? ChatPane.peerApplyInterval
     }
 }
 
@@ -136,15 +162,26 @@ final class CascadePainter: @unchecked Sendable {
     /// The rendered text behind markup — what a reader sees, which is what the reveal counts. The
     /// shim parses once and remembers, so asking for it costs nothing on a frame that has already
     /// painted it.
-    private static func renderedText(of markup: [CChar]) -> String? {
-        let text = markup.withUnsafeBufferPointer { tailscode_markup_text($0.baseAddress) }
+    private static func renderedText(
+        of markup: [CChar], holder: UnsafeMutableRawPointer?
+    ) -> String? {
+        let text = markup.withUnsafeBufferPointer { tailscode_markup_text(holder, $0.baseAddress) }
         guard let text else { return nil }
         return String(cString: text)
     }
 
     static func renderedText(of markup: String) -> String? {
-        renderedText(of: Array(markup.utf8CString))
+        renderedText(of: Array(markup.utf8CString), holder: nil)
     }
+
+    /// The same reading through this painter's own parse, which the frames that follow reuse.
+    func renderedText(of markup: String) -> String? {
+        Self.renderedText(of: Array(markup.utf8CString), holder: holder)
+    }
+
+    /// The object this painter's parse is cached on: the pane's transcript, one per pane, so two
+    /// panes writing at once never evict each other's parse. Set once by the pane.
+    var holder: UnsafeMutableRawPointer?
 
     /// Points the wave at the row the stream is writing into, or lets go of it. Letting go settles
     /// the row at once: a finished paragraph with a glowing tail is a lie about what is live.
@@ -162,7 +199,7 @@ final class CascadePainter: @unchecked Sendable {
         self.ultracode = ultracode
         let bytes = Array(markup.utf8CString)
         guard RepeatingMotion.allowed, CascadeBudget.reveals, let id,
-            let rendered = Self.renderedText(of: bytes)
+            let rendered = Self.renderedText(of: bytes, holder: holder)
         else {
             release()
             return
@@ -234,7 +271,7 @@ final class CascadePainter: @unchecked Sendable {
         let shown = live.revealed
         let landed = markup.withUnsafeBufferPointer { bytes in
             tailscode_label_reveal(
-                label, bytes.baseAddress, Int32(shown), Int32(span), &rgb, &alpha) >= 0
+                label, holder, bytes.baseAddress, Int32(shown), Int32(span), &rgb, &alpha) >= 0
         }
         if landed { live.lands(shown, at: Self.now) }
         return landed
@@ -245,7 +282,7 @@ final class CascadePainter: @unchecked Sendable {
     /// row is now whole, so a repair that could not be made is not mistaken for one that was.
     @discardableResult
     func settle(_ label: UnsafeMutablePointer<GtkWidget>, markup: String) -> Bool {
-        tailscode_label_reveal(label, markup, -1, 0, nil, nil) >= 0
+        tailscode_label_reveal(label, nil, markup, -1, 0, nil, nil) >= 0
     }
 
     /// The wave's second clock, and the reason a stuck answer cannot outlive its turn.
@@ -299,7 +336,7 @@ final class CascadePainter: @unchecked Sendable {
 
     private func step() {
         let now = Self.now
-        if let interval = CascadeBudget.minimumInterval, now - lastStep < interval { return }
+        guard CascadeBudget.wantsStep(at: now, lastStep: lastStep) else { return }
         lastStep = now
         guard live.advance(to: now) else { return }
         onFrame?()

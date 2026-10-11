@@ -8,8 +8,22 @@ import TailscodeCore
 /// world and turns them on; nothing here runs otherwise. Every five seconds, from a thread of its
 /// own so a wedged main loop still reports, one line goes to stdout:
 ///
-/// `SOAK t= dt= rss= anon= thr= fds= pending= maxPending= lag50= lag95= lagMax= lagN= ticks= tickRuns=
-/// frames= parses= parseHits= listSaves= listSaveMs= applies= applyMs= cpu= mainCpu=`
+/// `SOAK t= dt= rss= anon= thr= fds= heap= heapFree= heapMapped= mdCache= synCache= rows= pending= maxPending= lag50= lag95= lagMax= lagN= ticks= tickRuns=
+/// frames= parses= parseHits= listSaves= listSaveMs= applies= applyMs= paints= paintMs= drains= guarded= ready=
+/// drainMs= drainP95= drainMax= frameMs= frameMax= layoutMs= phasePaintMs= cpu= mainCpu=`
+///
+/// `heap` is the KiB malloc reports in use (`mallinfo2`), which tells retention from fragmentation;
+/// `heapFree` is the KiB it holds free inside its arenas and `heapMapped` the KiB in blocks it
+/// serves with their own mapping, which `heap` leaves out, `mdCache` and `synCache` the KiB the
+/// markdown and syntax memos hold;
+/// `rows` is transcript row widgets made and not yet finalized.
+/// `frameMs` is the time spent inside frame cycles — ticks, layout and paint — over the window,
+/// `frameMax` the longest single cycle, `layoutMs` the part up to the end of the layout phase and
+/// `phasePaintMs` the paint phase.
+///
+/// `drains` is how many passes the tiling drain ran, `guarded` how many of those the 100 ms
+/// starvation guard ran, `ready` the most slots ready at once (the deepest the mailboxes got),
+/// and `drainMs`, `drainP95`, `drainMax` its total, 95th percentile and worst pass in ms.
 ///
 /// `lagN` is how many times the 100 ms lag timer fired in the window (zero means the main loop
 /// never reached it, and `lagMax` is then the time since it last did); `ticks` is the number of
@@ -32,6 +46,9 @@ enum Soak {
         var at = ContinuousClock.now
         var tickRuns = 0
         var frames = 0
+        var frameMicroseconds = 0
+        var layoutMicroseconds = 0
+        var paintMicroseconds = 0
         var parses = 0
         var parseHits = 0
         var cpuTicks = 0
@@ -113,12 +130,23 @@ enum Soak {
         FileHandle.standardOutput.write(Data((line() + "\n").utf8))
     }
 
+    /// Hands malloc's free arena tails back to the system and reports the resident size either
+    /// side of it, which is how much of the footprint was held free rather than in use.
+    static func trimAndReport() {
+        let before = procStatus()["VmRSS"] ?? 0
+        let released = tailscode_heap_trim()
+        let after = procStatus()["VmRSS"] ?? 0
+        FileHandle.standardOutput.write(
+            Data("SOAKTRIM released=\(released) rssBefore=\(before) rssAfter=\(after)\n".utf8))
+    }
+
     private static func line() -> String {
         var sample = TailscodeSoakSample()
         tailscode_soak_read(&sample)
         let (saveCount, saveNanoseconds) = drain(saves)
         let (applyCount, applyNanoseconds) = drain(applies)
         let (paintCount, paintNanoseconds) = drain(paints)
+        let drained = LiveDrainStats.takeSoak()
         let status = procStatus()
         let fds = ((try? FileManager.default.contentsOfDirectory(atPath: "/proc/self/fd"))?.count ?? 1) - 1
         let cpuNow = cpuTicks(of: "/proc/self/stat")
@@ -136,6 +164,12 @@ enum Soak {
                 "anon=\(status["RssAnon"] ?? 0)",
                 "thr=\(status["Threads"] ?? 0)",
                 "fds=\(fds)",
+                "heap=\(tailscode_heap_in_use() / 1024)",
+                "heapFree=\(tailscode_heap_free() / 1024)",
+                "heapMapped=\(tailscode_heap_mapped() / 1024)",
+                "mdCache=\(PangoMarkdown.cachedBytes / 1024)",
+                "synCache=\(PangoSyntax.cachedBytes / 1024)",
+                "rows=\(tailscode_soak_rows())",
                 "pending=\(sample.pending)",
                 "maxPending=\(sample.pending_max)",
                 "lag50=\(String(format: "%.1f", sample.lag50_ms))",
@@ -145,6 +179,10 @@ enum Soak {
                 "ticks=\(tailscode_live_ticks())",
                 "tickRuns=\(sample.tick_runs - state.tickRuns)",
                 "frames=\(sample.frames - state.frames)",
+                "frameMs=\(String(format: "%.1f", Double(sample.frame_us - state.frameMicroseconds) / 1000))",
+                "frameMax=\(String(format: "%.1f", Double(sample.frame_max_us) / 1000))",
+                "layoutMs=\(String(format: "%.1f", Double(sample.layout_us - state.layoutMicroseconds) / 1000))",
+                "phasePaintMs=\(String(format: "%.1f", Double(sample.paint_us - state.paintMicroseconds) / 1000))",
                 "parses=\(sample.parses - state.parses)",
                 "parseHits=\(sample.parse_hits - state.parseHits)",
                 "listSaves=\(saveCount)",
@@ -153,12 +191,21 @@ enum Soak {
                 "applyMs=\(String(format: "%.1f", Double(applyNanoseconds) / 1e6))",
                 "paints=\(paintCount)",
                 "paintMs=\(String(format: "%.1f", Double(paintNanoseconds) / 1e6))",
+                "drains=\(drained.passes)",
+                "guarded=\(drained.guarded)",
+                "ready=\(drained.ready)",
+                "drainMs=\(String(format: "%.1f", drained.seconds * 1000))",
+                "drainP95=\(String(format: "%.2f", drained.p95 * 1000))",
+                "drainMax=\(String(format: "%.2f", drained.worst * 1000))",
                 "cpu=\(String(format: "%.1f", cpu))",
                 "mainCpu=\(String(format: "%.1f", mainCpu))",
             ]
             state.at = now
             state.tickRuns = sample.tick_runs
             state.frames = sample.frames
+            state.frameMicroseconds = sample.frame_us
+            state.layoutMicroseconds = sample.layout_us
+            state.paintMicroseconds = sample.paint_us
             state.parses = sample.parses
             state.parseHits = sample.parse_hits
             state.cpuTicks = cpuNow

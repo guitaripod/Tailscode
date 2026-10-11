@@ -273,8 +273,9 @@ final class CascadePainter {
     /// A mark says a fact and thirty frames a second is plenty to say it with; this is a renderer,
     /// writing an answer out glyph by glyph under the reader's eye, and text revealed at thirty
     /// reads as a hand that stutters rather than one that writes. It asks for the panel's own rate
-    /// on purpose — `ActivityTuning` governs marks, not the cascade — until the window sheds load,
-    /// when `MotionBudget` holds it to the level's tick cap.
+    /// on purpose — `ActivityTuning` governs marks, not the cascade — while this is the only pane
+    /// streaming, and takes the rate `CascadeRate` gives for the number streaming and the level
+    /// the window sheds at, through `MotionBudget`.
     private func start() {
         guard link == nil, let host else { return }
         let link = host.displayLink(target: self, selector: #selector(tick))

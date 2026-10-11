@@ -21,15 +21,25 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
     @MainActor private var guardArmed = false
     @MainActor private var wakeArmed: TimeInterval?
     @MainActor private var lastRun: TimeInterval = 0
-    /// A pass that overran the budget rests for twice as long as it ran before the next one, so
-    /// applying states never takes more than a third of the main thread however heavy one apply
-    /// is: the layout and paint it causes, input and every other clock keep the rest.
+    /// When the next pass may run. A pass is charged for everything it set off — its applies and
+    /// the layout, display and Core Animation commit AppKit runs for them before the run loop turns
+    /// again — and the next one waits until that cost is `duty` of the time since it started, so
+    /// streaming panes never take more than that share of the main thread however heavy one frame
+    /// is. Charging the applies alone left the commit, which costs three to five times as much,
+    /// uncounted: the main thread sat at 0.8 with five panes in a Release build.
     @MainActor private var restUntil: TimeInterval = 0
-    static let restFactor: TimeInterval = 2
+    static let duty: Double = 0.25
+    /// The start of the pass whose commit has not been measured yet.
+    @MainActor private var chargedFrom: TimeInterval?
+    @MainActor private var turnObserver: CFRunLoopObserver?
     @MainActor private(set) var linkTicks = 0
     @MainActor private(set) var guardRuns = 0
     @MainActor private(set) var drainPasses = 0
     @MainActor private(set) var worstPass: TimeInterval = 0
+    /// Passes charged with their commit, and the time those frames cost, for the bench.
+    @MainActor private(set) var chargedFrames = 0
+    @MainActor private(set) var chargedTime: TimeInterval = 0
+    @MainActor private(set) var worstFrame: TimeInterval = 0
 
     static let starvationGuard: TimeInterval = 0.1
 
@@ -148,7 +158,11 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
         drainPasses += 1
         let took = now() - start
         worstPass = max(worstPass, took)
-        restUntil = took > (drain?.budget ?? 0) ? now() + took * Self.restFactor : 0
+        restUntil = start + took / Self.duty
+        if outcome?.applied.isEmpty == false {
+            chargedFrom = start
+            observeTurn()
+        }
         if !isPending { link?.isPaused = true }
         if let wakeAt = outcome?.wakeAt, wakeArmed.map({ wakeAt < $0 }) ?? true {
             wakeArmed = wakeAt
@@ -159,6 +173,33 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
                 }
             }
         }
+    }
+
+    /// Watches for the end of the run-loop turn a pass ran in. The display link fires inside the
+    /// update cycle's step and AppKit lays out, displays and commits in the same step, so the first
+    /// observer callout after a pass — the next turn starting, or the loop going to sleep — is where
+    /// the frame it caused has been paid for.
+    @MainActor private func observeTurn() {
+        guard turnObserver == nil else { return }
+        let activities: CFRunLoopActivity = [.beforeTimers, .beforeWaiting, .exit]
+        let observer = CFRunLoopObserverCreateWithHandler(
+            kCFAllocatorDefault, activities.rawValue, true, CFIndex.max
+        ) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.turnEnded() }
+        }
+        guard let observer else { return }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        turnObserver = observer
+    }
+
+    @MainActor private func turnEnded() {
+        guard let started = chargedFrom else { return }
+        chargedFrom = nil
+        let cost = now() - started
+        chargedFrames += 1
+        chargedTime += cost
+        worstFrame = max(worstFrame, cost)
+        restUntil = max(restUntil, started + cost / Self.duty)
     }
 
     /// The governor's tick cap, read the same way the cascade reads it.

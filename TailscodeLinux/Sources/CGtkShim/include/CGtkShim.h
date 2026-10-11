@@ -13,6 +13,9 @@ void tailscode_connect(gpointer instance, const char *signal, GCallback handler,
 /// which the handler is provably never called again.
 void tailscode_set_box_release(void (*release)(void *));
 
+/// Releases one such closure by hand, for an owner that is not a signal connection.
+void tailscode_box_release_call(void *data);
+
 /// Runs `handler(data)` once on the GLib main context, then frees nothing — the Swift side owns
 /// `data` and releases it inside the handler.
 void tailscode_on_main(void (*handler)(void *), void *data);
@@ -28,6 +31,13 @@ typedef struct {
     long parse_hits;
     long tick_runs;
     long frames;
+    /// Microseconds spent inside frame cycles (before-paint to after-paint), running total.
+    long frame_us;
+    /// The longest single frame cycle since the last read.
+    long frame_max_us;
+    /// Of those, the ticks and the layout phase, and the paint phase.
+    long layout_us;
+    long paint_us;
     int lag_samples;
     double lag50_ms;
     double lag95_ms;
@@ -348,9 +358,11 @@ GtkWidget *tailscode_reveal_label_new(void);
 /// than the paragraph. A paragraph whose wave touches a right-to-left run is drawn whole by the
 /// label itself instead of drawn wrongly. Returns the markup's total rendered length, or -1 if it
 /// could not be parsed or the label is not a reveal label. A negative `visible` clears the wave
-/// and hands the label the whole markup back.
+/// and hands the label the whole markup back. The parse is cached on `holder` (see
+/// `tailscode_markup_text`); a NULL holder parses into the scratch entry, which is what a one-off
+/// settle wants.
 int tailscode_label_reveal(
-    GtkWidget *label, const char *markup, int visible, int wave,
+    GtkWidget *label, gpointer holder, const char *markup, int visible, int wave,
     const unsigned int *rgb, const unsigned short *alpha);
 
 /// What a frame at `visible` characters would draw, as numbers, so the geometry can be checked
@@ -368,9 +380,11 @@ int tailscode_label_reveal_plan(GtkWidget *label, int visible, int wave, double 
 double tailscode_label_revealed_height(GtkWidget *label, int visible);
 
 /// The markup's rendered text — what a reader actually sees, with every marker already eaten.
-/// The caller paces over this, so it has to be the same string the label will show. Owned by the
-/// one-entry parse cache and valid until the next call with different markup.
-const char *tailscode_markup_text(const char *markup);
+/// The caller paces over this, so it has to be the same string the label will show. Owned by
+/// `holder`'s parse cache (a scratch entry when `holder` is NULL) and valid until the next call
+/// on that holder with different markup. `tailscode_label_reveal` takes the same holder, so the
+/// rendered length and every frame after it read one parse per holder.
+const char *tailscode_markup_text(gpointer holder, const char *markup);
 
 /// A callback on the widget's own frame clock. A chained timeout drifts against the compositor and
 /// lands two frames in one and none in the next, which is the stutter a cascade exists to remove;
@@ -407,6 +421,8 @@ void tailscode_watch_animations(GtkWidget *lifetime, void (*handler)(void *), vo
 /// about animations, which is how a claim about re-asking is proved rather than asserted. Nothing
 /// in the app calls it — a client that wrote the desktop's motion setting would be answering a
 /// question it is supposed to be asking.
+/// Re-asks every motion watcher whether it may move, as a change of the desk's setting would.
+void tailscode_notify_animations(void);
 void tailscode_set_animations_enabled(gboolean enabled);
 
 /// The tailnet radar: a drawing area that shows a scan as a dial rather than a spinner. Every
@@ -603,3 +619,34 @@ gboolean tailscode_systemd_set_unit_properties(
 /// Names the calling thread for `ps`, `top` and `/proc/self/task/<tid>/comm` (15 characters kept).
 /// `prctl` is variadic, which Swift cannot call.
 void tailscode_name_thread(const char *name);
+
+/// The tiling drain's seat on the main context (see shim.c): `run(data, one)` is called from an
+/// idle below the frame clock's paint with `one` false, or from the 100 ms starvation guard with
+/// `one` true, which asks for exactly one ready slot. `request` is idempotent while pending and
+/// callable from any thread.
+typedef struct TailscodeDrain TailscodeDrain;
+TailscodeDrain *tailscode_drain_new(void (*run)(void *, int), void *data);
+void tailscode_drain_request(TailscodeDrain *drain);
+gboolean tailscode_drain_pending(TailscodeDrain *drain);
+
+/// Runs `handler(data)` once after `widget`'s next frame has been laid out and painted (asking for
+/// that frame), from an idle below the frame clock. Same ownership rule as `tailscode_on_main`.
+void tailscode_between_frames(GtkWidget *widget, void (*handler)(void *), void *data);
+
+/// Bytes malloc reports in use (`mallinfo2().uordblks`), for the soak line.
+long tailscode_heap_in_use(void);
+/// Bytes malloc holds free inside its arenas, and bytes it serves in blocks with their own mapping.
+long tailscode_heap_free(void);
+long tailscode_heap_mapped(void);
+
+/// Gives the free tails of every arena back to the system, for the soak.
+int tailscode_heap_trim(void);
+
+/// Caps glibc's malloc arenas, called before the first thread starts.
+void tailscode_malloc_tune(void);
+
+/// Transcript row widgets made and not yet finalized, counted while the soak runs.
+void tailscode_soak_track_row(GtkWidget *widget);
+long tailscode_soak_rows(void);
+
+#include "tile.h"

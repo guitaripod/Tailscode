@@ -13,8 +13,10 @@
     /// - `pressure=<nominal|strained|critical|auto>` replaces what the kernel says
     /// - `shed=<0…4|auto>` pins the level
     /// - `level` prints the level and why; `flight[=n]` prints the newest records of the ring
-    /// - `split=<n>` opens the first chats as one tiling; `restore` prints what the safe restore
-    ///   holds; `resume=all|one` presses the banner's buttons
+    /// - `split=<n>` opens the first chats as one tiling (`mainstack=<n>` as main and stack);
+    ///   `tile=<verb>[,args]` runs a canvas verb (zoom, next, promote, rotate, arrange, pin, park,
+    ///   equal, wider, focus,n, size,w,h, sidebar); `tiles` prints the panes' faces; `restore` prints
+    ///   what the safe restore holds; `resume=all|one` presses the banner's buttons
     /// - `sopen[=state]` raises the Studio; `skey=<cmd-return|esc|cmd-e|cmd-shift-e|cmd-shift-r|cmd-1|
     ///   cmd-2|cmd-s|cmd-w|cmd-n|left|right|space>` presses that key through the real event path into
     ///   the Studio's window; `sheet` prints the sheet's state, frame against Core's and layout
@@ -220,6 +222,12 @@
                 }
             case "sdraw":
                 say(StudioDrive.draws(main))
+            case "mainstack":
+                main?.driveSplit(Int(argument) ?? 5, as: .mainStack)
+            case "tile":
+                main?.driveTile(argument)
+            case "tiles":
+                say(main?.driveTilesReport() ?? "TILES no window")
             case "restore":
                 say(main?.driveRestoreReport() ?? "RESTORE no window")
             case "resume":

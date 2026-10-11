@@ -14,17 +14,53 @@ extern void tailscode_soak_note_parse(int hit);
 
 #define TAILSCODE_REVEAL_WAVE_MAX 64
 
-/// One live row at a time, so one parse is all the cache ever has to hold. Re-rendering markdown
-/// and re-parsing markup on every frame was the cost that made a smooth reveal stutter; this makes
-/// a frame a substring and a clip.
-static char *tailscode_reveal_markup = NULL;
-static char *tailscode_reveal_text = NULL;
-static PangoAttrList *tailscode_reveal_attrs = NULL;
-static int tailscode_reveal_length = 0;
+/// One parse per holder. Re-rendering markdown and re-parsing markup on every frame was the cost
+/// that made a smooth reveal stutter, so a frame is a substring and a clip. The cache used to be
+/// one entry for the whole process, and two panes streaming at once took turns evicting each
+/// other; now each holder — a pane's own transcript, since the rendered length is needed before
+/// the live row's label exists — keeps its own entry on the object (`g_object_set_data_full`),
+/// freed with it. A call with no holder uses a scratch entry, for settles and one-off reads that
+/// need no memory of the last markup. Every parse takes the next generation from one process-wide
+/// counter, so a label's remembered edge can never be mistaken for another entry's.
+typedef struct {
+    char *markup;
+    char *text;
+    PangoAttrList *attrs;
+    int length;
+    guint generation;
+} TailscodeRevealCache;
+
+static TailscodeRevealCache tailscode_reveal_scratch = {NULL, NULL, NULL, 0, 0};
 static guint tailscode_reveal_generation = 0;
 
-static gboolean tailscode_reveal_parse(const char *markup) {
-    if (tailscode_reveal_markup && strcmp(tailscode_reveal_markup, markup) == 0) {
+static void tailscode_reveal_cache_clear(TailscodeRevealCache *cache) {
+    g_free(cache->markup);
+    g_free(cache->text);
+    if (cache->attrs) pango_attr_list_unref(cache->attrs);
+    cache->markup = NULL;
+    cache->text = NULL;
+    cache->attrs = NULL;
+    cache->length = 0;
+}
+
+static void tailscode_reveal_cache_free(gpointer raw) {
+    TailscodeRevealCache *cache = raw;
+    tailscode_reveal_cache_clear(cache);
+    g_free(cache);
+}
+
+static TailscodeRevealCache *tailscode_reveal_cache_of(gpointer holder) {
+    if (!holder || !G_IS_OBJECT(holder)) return &tailscode_reveal_scratch;
+    TailscodeRevealCache *cache = g_object_get_data(G_OBJECT(holder), "tailscode-reveal-cache");
+    if (cache) return cache;
+    cache = g_new0(TailscodeRevealCache, 1);
+    g_object_set_data_full(
+        G_OBJECT(holder), "tailscode-reveal-cache", cache, tailscode_reveal_cache_free);
+    return cache;
+}
+
+static gboolean tailscode_reveal_parse(TailscodeRevealCache *cache, const char *markup) {
+    if (cache->markup && strcmp(cache->markup, markup) == 0) {
         tailscode_soak_note_parse(1);
         return TRUE;
     }
@@ -32,20 +68,19 @@ static gboolean tailscode_reveal_parse(const char *markup) {
     PangoAttrList *attrs = NULL;
     char *text = NULL;
     if (!pango_parse_markup(markup, -1, 0, &attrs, &text, NULL, NULL)) return FALSE;
-    g_free(tailscode_reveal_markup);
-    g_free(tailscode_reveal_text);
-    if (tailscode_reveal_attrs) pango_attr_list_unref(tailscode_reveal_attrs);
-    tailscode_reveal_markup = g_strdup(markup);
-    tailscode_reveal_text = text;
-    tailscode_reveal_attrs = attrs;
-    tailscode_reveal_length = (int)g_utf8_strlen(text, -1);
-    tailscode_reveal_generation++;
+    tailscode_reveal_cache_clear(cache);
+    cache->markup = g_strdup(markup);
+    cache->text = text;
+    cache->attrs = attrs;
+    cache->length = (int)g_utf8_strlen(text, -1);
+    cache->generation = ++tailscode_reveal_generation;
     return TRUE;
 }
 
-const char *tailscode_markup_text(const char *markup) {
-    if (!markup || !tailscode_reveal_parse(markup)) return NULL;
-    return tailscode_reveal_text;
+const char *tailscode_markup_text(gpointer holder, const char *markup) {
+    TailscodeRevealCache *cache = tailscode_reveal_cache_of(holder);
+    if (!markup || !tailscode_reveal_parse(cache, markup)) return NULL;
+    return cache->text;
 }
 
 /// Prose wraps at the pane's width, and a label that stops wrapping runs off the edge of the
@@ -400,9 +435,10 @@ GtkWidget *tailscode_reveal_label_new(void) {
 /// Where the reveal edge sits in the label's text, in bytes. A reveal only moves forward within an
 /// arrival, so the previous answer is the starting point and a frame walks the characters that
 /// were added rather than the whole paragraph.
-static int tailscode_reveal_edge_bytes(TailscodeRevealState *self, int seen) {
-    const char *text = tailscode_reveal_text;
-    if (self->edge_generation == tailscode_reveal_generation && seen >= self->edge_chars) {
+static int tailscode_reveal_edge_bytes(
+    TailscodeRevealState *self, const TailscodeRevealCache *cache, int seen) {
+    const char *text = cache->text;
+    if (self->edge_generation == cache->generation && seen >= self->edge_chars) {
         const char *edge =
             g_utf8_offset_to_pointer(text + self->edge_bytes, seen - self->edge_chars);
         self->edge_chars = seen;
@@ -410,34 +446,35 @@ static int tailscode_reveal_edge_bytes(TailscodeRevealState *self, int seen) {
         return self->edge_bytes;
     }
     const char *edge = g_utf8_offset_to_pointer(text, seen);
-    self->edge_generation = tailscode_reveal_generation;
+    self->edge_generation = cache->generation;
     self->edge_chars = seen;
     self->edge_bytes = (int)(edge - text);
     return self->edge_bytes;
 }
 
 int tailscode_label_reveal(
-    GtkWidget *label, const char *markup, int visible, int wave,
+    GtkWidget *label, gpointer holder, const char *markup, int visible, int wave,
     const unsigned int *rgb, const unsigned short *alpha) {
     if (!label || !GTK_IS_LABEL(label) || !markup || !TAILSCODE_IS_REVEAL_LABEL(label)) return -1;
     TailscodeRevealState *self = tailscode_reveal_state(label);
-    if (!tailscode_reveal_parse(markup)) return -1;
-    int length = tailscode_reveal_length;
+    TailscodeRevealCache *cache = tailscode_reveal_cache_of(holder);
+    if (!tailscode_reveal_parse(cache, markup)) return -1;
+    int length = cache->length;
     if (visible < 0) {
         self->active = FALSE;
         gtk_label_set_attributes(GTK_LABEL(label), NULL);
         gtk_label_set_markup(GTK_LABEL(label), markup);
         tailscode_label_keep_wrapping(GTK_LABEL(label));
         const char *landed = gtk_label_get_text(GTK_LABEL(label));
-        if (!landed || strcmp(landed, tailscode_reveal_text) != 0) return -1;
+        if (!landed || strcmp(landed, cache->text) != 0) return -1;
         gtk_widget_queue_draw(label);
         return length;
     }
 
     const char *shown = gtk_label_get_text(GTK_LABEL(label));
-    if (!shown || strcmp(shown, tailscode_reveal_text) != 0) {
-        gtk_label_set_text(GTK_LABEL(label), tailscode_reveal_text);
-        gtk_label_set_attributes(GTK_LABEL(label), tailscode_reveal_attrs);
+    if (!shown || strcmp(shown, cache->text) != 0) {
+        gtk_label_set_text(GTK_LABEL(label), cache->text);
+        gtk_label_set_attributes(GTK_LABEL(label), cache->attrs);
         tailscode_label_keep_wrapping(GTK_LABEL(label));
         self->edge_generation = 0;
     }
@@ -451,7 +488,7 @@ int tailscode_label_reveal(
     }
     self->wave = count;
     self->visible = seen;
-    tailscode_reveal_edge_bytes(self, seen);
+    tailscode_reveal_edge_bytes(self, cache, seen);
     self->active = TRUE;
     gtk_widget_queue_draw(label);
     return length;

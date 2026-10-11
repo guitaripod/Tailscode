@@ -215,6 +215,13 @@ extension TranscriptViewController {
         }
     }
 
+    /// A frame of the wave from the painter's own clock, counted for the bench.
+    func paintCascadeFrame() {
+        let started = CACurrentMediaTime()
+        paintCascade()
+        noteCascadeFrame(CACurrentMediaTime() - started)
+    }
+
     /// One frame of the wave, painted into the live row's own label instead of through the row
     /// diff: the text a person is reading must not be torn down and rebuilt a hundred times a
     /// second, or a selection cannot survive the sentence it is in being written.

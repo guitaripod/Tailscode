@@ -69,6 +69,8 @@ final class TranscriptViewController: NSViewController {
     private let hoverBar = MessageHoverBar()
     private let railController = LinkRailController()
     private let identityLabel = NSTextField(labelWithString: "")
+    private let identityPin = NSImageView()
+    private let identityAlso = NSTextField(labelWithString: "")
     private var identityGlass: NSView?
     /// What a slot took off the screen when it claimed the pane, so putting a conversation back
     /// shows exactly what was showing. Half this chrome owns its own visibility — an empty
@@ -89,6 +91,9 @@ final class TranscriptViewController: NSViewController {
     private(set) var skippedFrames = 0
     /// Main-thread time spent building and applying those frames.
     private(set) var applyTime: TimeInterval = 0
+    /// Frames the wave painted on its own clock, and the main-thread time they took.
+    private(set) var cascadeFrames = 0
+    private(set) var cascadeTime: TimeInterval = 0
     /// The drain's name for this pane's slot.
     let paneID = PaneID()
     /// Everything this pane started that has to stop when it stops being alive: the lease, the
@@ -329,7 +334,7 @@ final class TranscriptViewController: NSViewController {
             identity.leadingAnchor.constraint(
                 equalTo: container.leadingAnchor, constant: MacTheme.Spacing.l),
             identity.trailingAnchor.constraint(
-                lessThanOrEqualTo: findBar.leadingAnchor, constant: -MacTheme.Spacing.m),
+                lessThanOrEqualTo: container.trailingAnchor, constant: -MacTheme.Spacing.l),
 
             emptyLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
@@ -344,10 +349,17 @@ final class TranscriptViewController: NSViewController {
             chooserView.leadingAnchor.constraint(
                 greaterThanOrEqualTo: container.leadingAnchor, constant: MacTheme.Spacing.l),
         ])
+        identityBesideFind = identity.trailingAnchor.constraint(
+            lessThanOrEqualTo: findBar.leadingAnchor, constant: -MacTheme.Spacing.m)
+        identityBesideFind?.isActive = !findBar.isHidden
         view = container
         wireContext()
         beginLifetime()
     }
+
+    /// The pane's name gives way to the find bar only while the bar is open; a hidden bar still
+    /// has its width, and held to it the name of a narrow pane was cut to nothing.
+    private var identityBesideFind: NSLayoutConstraint?
 
     /// The pane's own name, on the same material as the rest of the floating layer. It is a control
     /// above the transcript rather than a caption inside it, and on bare canvas the prose that
@@ -357,8 +369,18 @@ final class TranscriptViewController: NSViewController {
         identityLabel.textColor = MacTheme.Color.onGlassSecondary
         identityLabel.lineBreakMode = .byTruncatingMiddle
         identityLabel.setContentCompressionResistancePriority(.init(300), for: .horizontal)
-        let strip = PaneStripView(views: [identityLabel])
+        identityPin.image = NSImage(
+            systemSymbolName: "pin.fill", accessibilityDescription: Localized.text("Keep live"))
+        identityPin.contentTintColor = MacTheme.Color.onGlassSecondary
+        identityPin.isHidden = true
+        identityPin.setContentHuggingPriority(.required, for: .horizontal)
+        identityAlso.font = MacTheme.Ramp.font(.paneIdentity)
+        identityAlso.textColor = MacTheme.Color.onGlassSecondary
+        identityAlso.isHidden = true
+        identityAlso.setContentCompressionResistancePriority(.init(250), for: .horizontal)
+        let strip = PaneStripView(views: [identityPin, identityLabel, identityAlso])
         strip.payload = { [weak self] in self?.paneMovePayload?() }
+        strip.spacing = MacTheme.Spacing.xs
         strip.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.xs, left: MacTheme.Spacing.s, bottom: MacTheme.Spacing.xs,
             right: MacTheme.Spacing.s)
@@ -782,6 +804,17 @@ final class TranscriptViewController: NSViewController {
         refreshIdentity()
     }
 
+    /// What the tiling adds to the pane's name: a pin when the person asked to keep it live, and
+    /// which other pane shows the same chat, so two views of one conversation are never mistaken
+    /// for two conversations.
+    func setIdentityExtras(pinned: Bool, alsoOpenIn other: Int?) {
+        identityPin.isHidden = !pinned
+        identityAlso.isHidden = other == nil
+        if let other {
+            identityAlso.stringValue = "· " + Localized.text("also open in pane %@", "\(other)")
+        }
+    }
+
     /// A pane holds one thing at a time. A chat opened into a slot binds, streams, retitles the
     /// window and starts notifying behind a player that still covers the pane edge to edge — live
     /// and invisible, with no way back short of closing the pane — so the slot goes first.
@@ -1067,18 +1100,83 @@ final class TranscriptViewController: NSViewController {
         apply(state: state, rows: rows)
     }
 
-    /// How many rows this pane realises. The focused pane keeps the person's window; a peer keeps
-    /// the governor's peer window for the shed level, never under 60 — every realised row joins the
-    /// window's one layout engine, whose cost grows faster than the row count, so eight panes of
-    /// full windows is a window that cannot be laid out.
+    func noteCascadeFrame(_ seconds: TimeInterval) {
+        cascadeFrames += 1
+        cascadeTime += seconds
+    }
+
+    /// How many rows this pane realises. The focused pane keeps the person's window; a full peer
+    /// keeps the window the governor's decision gave it — every realised row joins the window's one
+    /// layout engine, whose cost grows faster than the row count, so eight panes of full windows is
+    /// a window that cannot be laid out. A peer the governor has not ranked yet keeps the window
+    /// of the level it is at. From strained up every peer is a glance tile and realises no rows at
+    /// all; the one full peer that can exist there sits beside a focused slot, and it keeps the
+    /// loaded level's window rather than none.
     private var rowLimit: Int {
         let own = max(windowLimit, Self.transcriptWindowPreference)
         guard !isFocusedPane else { return own }
-        return min(own, max(60, TileGovernor.peerRowWindow(level: Seatbelts.shared.level)))
+        let window = peerRowWindow ?? TileGovernor.peerRowWindow(level: Seatbelts.shared.level)
+        return min(own, window > 0 ? window : TileGovernor.peerRowWindow(level: .loaded))
     }
 
+    /// The governor's row window for this pane while it is a full peer; nil until a decision
+    /// names one.
+    private var peerRowWindow: Int?
+
+    /// Takes the row window the governor gave this pane. A narrower window takes effect at the
+    /// next state; nothing is torn down here, because the very next frame rebuilds the tail.
+    func setRowWindow(_ window: Int?) {
+        peerRowWindow = window
+    }
+
+    /// Whether the window's live resize has asked this pane to keep its rows at the width they
+    /// were measured at: a peer takes its new frame at once and re-measures its rows once, when
+    /// the resize ends, rather than on every step of the drag.
+    private(set) var defersRowWidth = false
+    private var heldCanvasWidth: NSLayoutConstraint?
+
+    /// Holds the transcript's rows at their current width (clipped or padded by the pane) until
+    /// released, when they take the pane's width again in one pass.
+    func setLiveResize(_ deferring: Bool) {
+        guard deferring != defersRowWidth, isViewLoaded else { return }
+        defersRowWidth = deferring
+        if deferring {
+            let held = canvas.widthAnchor.constraint(equalToConstant: max(1, canvas.frame.width))
+            canvasWidth?.isActive = false
+            held.isActive = true
+            heldCanvasWidth = held
+        } else {
+            heldCanvasWidth?.isActive = false
+            heldCanvasWidth = nil
+            canvasWidth?.isActive = true
+        }
+    }
+
+    /// Lets go of every row view and every kept page while the pane is out of sight, keeping the
+    /// conversation it belongs to, the composer's draft and the queue. Taking the chat back
+    /// rebuilds the tail from the newest state, the same way a first open does.
+    func releaseRows() {
+        guard isParked else { return }
+        keptPages = [:]
+        keptOrder = []
+        sessionRows = [:]
+        sessionRowOrder = []
+        lastStreamedKey = nil
+        stopTailRepair()
+        abandoned = nil
+        releaseFreshCanvas(animated: false)
+        tearDownAllRows()
+        placeholderShown = true
+    }
+
+    /// Whether the pane holds any row views, for the selftest that proves a demoted pane let them go.
+    var holdsRows: Bool { !rowViews.isEmpty || !keptPages.isEmpty }
+
+    /// Messages waiting in this chat's queue, as this pane last read them.
+    var queuedCount: Int { queue.count }
+
     /// Whether this pane may take a streaming row up for the reveal: only the focused one.
-    var revealsAnswers: Bool { isFocusedPane }
+    var revealsAnswers: Bool { MotionBudget.reveals(focused: isFocusedPane) }
 
     /// The focused pane's frames go first when a frame cannot apply every pane.
     func setFocusedPane(_ focused: Bool) {
@@ -1225,11 +1323,13 @@ final class TranscriptViewController: NSViewController {
     func setFindShown(_ shown: Bool) {
         if shown {
             findBar.isHidden = false
+            identityBesideFind?.isActive = true
             findBar.focusField()
             runFind(retarget: false)
         } else {
             guard !findBar.isHidden else { return }
             findBar.isHidden = true
+            identityBesideFind?.isActive = false
             findBar.clear()
             clearFindHighlight()
             findMatches = []
@@ -1317,13 +1417,18 @@ final class TranscriptViewController: NSViewController {
         scrollView.drawsBackground = false
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        let leading = canvas.leadingAnchor.constraint(equalTo: clip.leadingAnchor)
+        let trailing = canvas.trailingAnchor.constraint(equalTo: clip.trailingAnchor)
+        trailing.priority = .defaultHigh
+        let width = canvas.widthAnchor.constraint(equalTo: clip.widthAnchor)
         NSLayoutConstraint.activate([
-            canvas.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
-            canvas.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
-            canvas.topAnchor.constraint(equalTo: clip.topAnchor),
-            canvas.widthAnchor.constraint(equalTo: clip.widthAnchor),
+            leading, trailing, canvas.topAnchor.constraint(equalTo: clip.topAnchor), width,
         ])
+        canvasWidth = width
     }
+
+    /// The canvas's width as the clip's, released while a live resize holds the rows still.
+    private var canvasWidth: NSLayoutConstraint?
 
     /// The whole floating layer — the status capsule and the writing card — is one glass group,
     /// so its neighbouring shapes read as a single wet surface and merge when they touch. The
@@ -1332,7 +1437,7 @@ final class TranscriptViewController: NSViewController {
         statusBand.perform = { [weak self] action in self?.onBandAction?(action) }
 
         composer.isHidden = true
-        cascade.onFrame = { [weak self] in self?.paintCascade() }
+        cascade.onFrame = { [weak self] in self?.paintCascadeFrame() }
         cascade.onStalled = { [weak self] in self?.giveUpCascade() }
         context.editQueued = { [weak self] id in self?.editQueued(id) }
         context.pendingAct = { [weak self] id, act in self?.actOnPending(id, act) }
@@ -2850,6 +2955,7 @@ final class TranscriptViewController: NSViewController {
         emptyLabel.textColor = MacTheme.Color.secondaryLabel
         identityLabel.font = MacTheme.Ramp.font(.paneIdentity)
         identityLabel.textColor = MacTheme.Color.onGlassSecondary
+        identityAlso.font = MacTheme.Ramp.font(.paneIdentity)
         earlierButton.font = MacTheme.Ramp.font(.panelFootnote)
         earlierButton.contentTintColor = MacTheme.Color.secondaryLabel
         jumpButton.font = MacTheme.Ramp.font(.pill)

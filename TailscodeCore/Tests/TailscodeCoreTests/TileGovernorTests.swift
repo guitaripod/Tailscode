@@ -113,33 +113,56 @@ struct TileGovernorTests {
         #expect(moves.map(\.0) == [1.5, 22, 37])
     }
 
-    @Test("Two escalations inside two minutes double the relax delay, up to 120 s, and calm forgets it")
+    @Test("A climb through every level leaves the relax delay alone")
+    func climbKeepsRelaxDelay() {
+        var governor = TileGovernor(cores: 8)
+        let climb = Self.run(&governor, to: 14) { _, _ in GovernorSample(loopBusy: 0.7) }
+        #expect(climb.map(\.1.to) == [.busy, .loaded, .strained, .critical])
+        #expect(governor.currentRelaxDelay == 20)
+    }
+
+    @Test("Load that returns within two minutes of a relax doubles the relax delay, up to 120 s, and calm forgets it")
     func relaxDoubling() {
         var governor = TileGovernor(cores: 8)
         #expect(governor.currentRelaxDelay == 20)
-        let rises = Self.run(&governor, to: 3) { _, _ in GovernorSample(loopBusy: 0.7) }
-        #expect(rises.count == 1)
+        var time = 0.0
+        var delays: [TimeInterval] = []
+        for _ in 0..<5 {
+            while governor.level == .calm {
+                time += 0.5
+                _ = governor.evaluate(now: time, sample: GovernorSample(loopBusy: 0.7), panes: Self.chats(), setting: .auto)
+            }
+            delays.append(governor.currentRelaxDelay)
+            while governor.level != .calm {
+                time += 0.5
+                _ = governor.evaluate(now: time, sample: GovernorSample(loopBusy: 0.1), panes: Self.chats(), setting: .auto)
+            }
+        }
+        #expect(delays == [20, 40, 80, 120, 120])
+        _ = governor.evaluate(now: time + 700, sample: GovernorSample(), panes: Self.chats(), setting: .auto)
         #expect(governor.currentRelaxDelay == 20)
-        _ = Self.run(&governor, from: 3.5, to: 6.5) { _, _ in GovernorSample(loopBusy: 0.7) }
-        #expect(governor.level == .loaded)
-        #expect(governor.currentRelaxDelay == 40)
-        _ = Self.run(&governor, from: 7, to: 10) { _, _ in GovernorSample(loopBusy: 0.7) }
-        #expect(governor.currentRelaxDelay == 80)
-        _ = Self.run(&governor, from: 10.5, to: 13.5) { _, _ in GovernorSample(loopBusy: 0.7) }
+    }
+
+    @Test("A critical level that load has left steps down every 15 s after 20 s of quiet")
+    func recoveryAfterAClimb() {
+        var governor = TileGovernor(cores: 8)
+        _ = Self.run(&governor, to: 14) { _, _ in GovernorSample(loopBusy: 0.7) }
         #expect(governor.level == .critical)
-        #expect(governor.currentRelaxDelay == 120)
-        _ = governor.evaluate(now: 613.5, sample: GovernorSample(), panes: Self.chats(), setting: .auto)
-        #expect(governor.currentRelaxDelay == 20)
+        let moves = Self.run(&governor, from: 14.5, to: 120) { _, _ in GovernorSample(loopBusy: 0.05) }
+        #expect(moves.map(\.1.to) == [.strained, .loaded, .busy, .calm])
+        #expect(moves.map(\.0) == [34.5, 49.5, 64.5, 79.5])
     }
 
     @Test("A doubled relax delay holds the level longer")
     func doubledDelayHolds() {
         var governor = TileGovernor(cores: 8)
         _ = governor.evaluate(now: 0, sample: GovernorSample(worstStall: 0.3), panes: Self.chats(), setting: .auto)
-        _ = governor.evaluate(now: 2, sample: GovernorSample(worstStall: 0.3), panes: Self.chats(), setting: .auto)
-        #expect(governor.level == .critical)
-        let moves = Self.run(&governor, from: 2.5, to: 45) { _, _ in GovernorSample(loopBusy: 0.1) }
-        #expect(moves.first?.0 == 42.5)
+        _ = Self.run(&governor, from: 0.5, to: 25) { _, _ in GovernorSample(loopBusy: 0.1) }
+        #expect(governor.level == .busy)
+        _ = governor.evaluate(now: 30, sample: GovernorSample(worstStall: 0.3), panes: Self.chats(), setting: .auto)
+        #expect(governor.currentRelaxDelay == 40)
+        let moves = Self.run(&governor, from: 30.5, to: 90) { _, _ in GovernorSample(loopBusy: 0.1) }
+        #expect(moves.first?.0 == 70.5)
     }
 
     @Test("Ten minutes of load that a shed relieves settles instead of oscillating")

@@ -510,7 +510,7 @@ enum SelfTest {
         if tiles.failures.isEmpty {
             report(
                 "tiles: a frame applies the newest state, one conversation per chat, parked panes "
-                    + "own nothing, closed panes are freed, a split needs room (\(tiles.notes))")
+                    + "own nothing, closed panes are freed, a split needs room, the canvas places every pane where Core says and never re-parents one (\(tiles.notes))")
         } else {
             report("tiles: \(tiles.failures.joined(separator: " · "))")
             failures += 1
@@ -1007,6 +1007,16 @@ enum SelfTest {
         try expect(
             MotionBudget.cascadeRange.maximum == 120,
             "at the panel's own rate, as the transcript doctrine asks")
+        MotionBudget.apply(.calm, streaming: 1, focusedStreaming: true)
+        try expect(MotionBudget.cascadeRange.maximum == 120, "one streaming pane keeps the panel's rate")
+        MotionBudget.apply(.calm, streaming: 2, focusedStreaming: true)
+        try expect(MotionBudget.cascadeRange.maximum == 60, "two streaming panes share sixty")
+        MotionBudget.apply(.calm, streaming: 4, focusedStreaming: true)
+        try expect(MotionBudget.cascadeRange.maximum == 30, "four streaming panes share thirty")
+        MotionBudget.apply(.calm, streaming: 1, focusedStreaming: false)
+        try expect(MotionBudget.cascadeRange.maximum == 30, "a peer streaming alone never exceeds thirty")
+        try expect(!MotionBudget.reveals(focused: false), "and only the focused pane reveals")
+        MotionBudget.apply(.calm)
         MotionBudget.apply(.busy)
         try expect(MotionBudget.cascadeRange.maximum == 30, "busy holds the reveal to 30 fps")
         MotionBudget.apply(.loaded)

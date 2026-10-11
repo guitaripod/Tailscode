@@ -256,6 +256,30 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkTileCanvas()
+            report("tile canvas: \(checks) claims hold — rects, layers, hiding, no re-parent, dividers, disposal")
+        } catch {
+            report("tile canvas: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkTileHost()
+            report("tile host: \(checks) claims hold — placement, densities, overflow, dividers, pins, snapshot")
+        } catch {
+            report("tile host: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkLegacyTiling()
+            report("legacy tiling: \(checks) claims hold — the nested host still boots")
+        } catch {
+            report("legacy tiling: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkStudioSheet()
             report("studio sheet: \(checks) claims hold — one frame, one window, one keyboard")
         } catch {
@@ -3385,7 +3409,7 @@ public enum SelfTest {
         defer { gtk_window_destroy(ptr(UnsafeMutableRawPointer(window))) }
         var rgb = [UInt32](repeating: 0xd0d0d0, count: 26)
         var alpha = [UInt16](repeating: 65535, count: 26)
-        let total = Int(tailscode_label_reveal(label, prose, 0, 26, &rgb, &alpha))
+        let total = Int(tailscode_label_reveal(label, nil, prose, 0, 26, &rgb, &alpha))
         try expect(total == prose.unicodeScalars.count, "the label takes the paragraph whole")
         gtk_window_present(ptr(UnsafeMutableRawPointer(window)))
         pump(1.0)
@@ -3474,7 +3498,7 @@ public enum SelfTest {
         let allocatedWidth = gtk_widget_get_width(label)
         for frame in 0..<100 {
             try expect(
-                tailscode_label_reveal(label, prose, Int32(20 + frame), 26, &rgb, &alpha)
+                tailscode_label_reveal(label, nil, prose, Int32(20 + frame), 26, &rgb, &alpha)
                     == Int32(total),
                 "frame \(frame) is taken")
             if frame % 10 == 0 { pump(0.02) }
@@ -3496,7 +3520,7 @@ public enum SelfTest {
         let hebrew = "שלום עולם שלום עולם שלום עולם שלום עולם שלום עולם שלום עולם שלום עולם"
         let rightToLeft = Gtk.markupLabel(hebrew, css: "agent-text")
         gtk_box_append(ptr(column), rightToLeft)
-        _ = tailscode_label_reveal(rightToLeft, hebrew, 10, 26, &rgb, &alpha)
+        _ = tailscode_label_reveal(rightToLeft, nil, hebrew, 10, 26, &rgb, &alpha)
         pump(0.5)
         try expect(
             plan(rightToLeft, 10).fallback,
@@ -3504,7 +3528,7 @@ public enum SelfTest {
 
         let plainLabel = Gtk.label("plain", css: "agent-text", selectable: false)
         try expect(
-            tailscode_label_reveal(plainLabel, "plain", 2, 26, &rgb, &alpha) < 0,
+            tailscode_label_reveal(plainLabel, nil, "plain", 2, 26, &rgb, &alpha) < 0,
             "a label that cannot reveal says so, so the pane rebuilds the row")
         return checks
     }
