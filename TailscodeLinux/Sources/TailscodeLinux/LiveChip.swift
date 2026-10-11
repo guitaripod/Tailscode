@@ -22,7 +22,7 @@ enum LiveChipReading {
         ]
         if let decision, decision.level > .calm, let reason = decision.reasons.first {
             lines.append(
-                Localized.text("Fewer chats stay whole while this computer is %@.", reason.chipWord))
+                Localized.text("Fewer chats stay whole right now (%@).", reason.chipWord))
         }
         return lines.joined(separator: " ")
     }

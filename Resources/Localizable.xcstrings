@@ -268447,6 +268447,574 @@
           }
         }
       }
+    },
+    "Divider between pane %@ and pane %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divider between pane %@ and pane %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trennlinie zwischen Kachel %@ und Kachel %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divisor entre el panel %@ y el panel %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Séparateur entre le volet %@ et le volet %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divisore tra il riquadro %@ e il riquadro %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペイン%@とペイン%@の境界"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "패인 %@와(과) 패인 %@ 사이의 구분선"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dzielnik między panelem %@ a panelem %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divisor entre o painel %@ e o painel %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "窗格%@与窗格%@之间的分隔条"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "窗格%@與窗格%@之間的分隔線"
+          }
+        }
+      }
+    },
+    "Fewer chats stay whole right now (%@).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fewer chats stay whole right now (%@)."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im Moment bleiben weniger Chats vollständig (%@)."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora se mantienen completos menos chats (%@)."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moins de conversations restent entières pour le moment (%@)."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al momento restano interi meno chat (%@)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在、フル表示のチャットは少なくなっています（%@）。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "지금은 전체 표시되는 대화가 줄었습니다 (%@)."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obecnie mniej czatów pozostaje w pełnej postaci (%@)."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No momento, menos conversas ficam completas (%@)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前保持完整显示的对话较少（%@）。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前保持完整顯示的對話較少（%@）。"
+          }
+        }
+      }
+    },
+    "Pick a chat, or n for a new one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a chat, or n for a new one."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wähle einen Chat oder drücke n für einen neuen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige un chat, o pulsa n para uno nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez une conversation, ou n pour en créer une."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli una chat, oppure premi n per una nuova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットを選ぶか、n で新しいチャットを始めます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대화를 고르거나 n을 눌러 새 대화를 시작하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wybierz czat albo naciśnij n, aby utworzyć nowy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha uma conversa ou pressione n para uma nova."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个对话，或按 n 新建对话。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選擇一個對話，或按 n 建立新對話。"
+          }
+        }
+      }
+    },
+    "The focused chat and a few others stay whole; the rest show as glance tiles, so many panes never slow this computer down.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The focused chat and a few others stay whole; the rest show as glance tiles, so many panes never slow this computer down."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der fokussierte Chat und einige weitere bleiben vollständig; die übrigen erscheinen als Überblick-Kacheln, damit viele Bereiche diesen Computer nie ausbremsen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El chat enfocado y unos pocos más se mantienen completos; el resto se muestra como mosaicos de vistazo, para que muchos paneles nunca ralenticen este equipo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La conversation active et quelques autres restent entières ; les autres s’affichent en tuiles d’aperçu, pour que de nombreux volets ne ralentissent jamais cet ordinateur."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La chat in primo piano e poche altre restano intere; le altre appaiono come riquadri a colpo d'occhio, così molti riquadri non rallentano mai questo computer."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォーカス中のチャットといくつかのチャットはそのまま表示され、残りは一覧タイルで表示されます。ペインが多くてもこのコンピュータが重くなりません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "포커스된 대화와 몇 개의 대화는 전체로 유지되고 나머지는 요약 타일로 표시되므로, 패인이 많아도 이 컴퓨터가 느려지지 않습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktywny czat i kilka innych pozostają w pełnej postaci, a reszta pokazuje się jako kafelki podglądu, dzięki czemu wiele paneli nigdy nie spowolni tego komputera."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A conversa em foco e algumas outras ficam completas; as demais aparecem como blocos de resumo, para que muitos painéis nunca deixem este computador lento."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获得焦点的对话和少数几个对话保持完整显示，其余以概览磁贴呈现，这样窗格再多也不会拖慢这台电脑。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取得焦點的對話和少數幾個對話保持完整顯示，其餘以概覽磚塊呈現，這樣窗格再多也不會拖慢這台電腦。"
+          }
+        }
+      }
+    },
+    "Ignored while this computer is strained: keeping it responsive comes first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignored while this computer is strained: keeping it responsive comes first."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird ignoriert, solange dieser Computer unter Last steht: Reaktionsfähigkeit hat Vorrang."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se ignora mientras este equipo está sobrecargado: mantenerlo ágil es lo primero."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignoré tant que cet ordinateur est sous tension : rester réactif passe avant tout."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignorato finché questo computer è sotto pressione: la reattività viene prima."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このコンピュータの負荷が高い間は無視されます。応答性の維持が最優先です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 컴퓨터에 부하가 클 때는 무시됩니다. 반응성을 유지하는 것이 우선입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pomijane, gdy ten komputer jest przeciążony: responsywność jest ważniejsza."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignorado enquanto este computador está sobrecarregado: manter a resposta rápida vem primeiro."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台电脑负载过高时会被忽略：保持响应流畅优先。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台電腦負載過高時會被忽略：保持回應流暢優先。"
+          }
+        }
+      }
+    },
+    "busy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "busy"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ausgelastet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ocupado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "occupé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "occupato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高負荷"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "바쁨"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "obciążony"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ocupado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "繁忙"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "繁忙"
+          }
+        }
+      }
+    },
+    "memory": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "memory"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speicher"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "memoria"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mémoire"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "memoria"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メモリ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "메모리"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pamięć"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "memória"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内存"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記憶體"
+          }
+        }
+      }
+    },
+    "warm": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "warm"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "warm"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "caliente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "chaud"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "caldo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高温"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발열"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ciepło"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "quente"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "过热"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "過熱"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
