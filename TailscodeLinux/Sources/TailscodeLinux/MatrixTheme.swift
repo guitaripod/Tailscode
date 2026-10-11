@@ -1883,6 +1883,63 @@ enum MatrixTheme {
         .restore-banner button:hover { border-color: \(accent); }
         .restore-banner button.restore-primary { border-color: \(warn); color: \(warn); }
         .restore-banner button.restore-dismiss { border-color: transparent; color: \(textDim); }
+        tile-canvas, .tile-shell { background-color: \(canvas); }
+        .tile-face { background-color: \(canvas); border: 1px solid transparent; }
+        .glance-tile.pane-focused, .parked-face.pane-focused {
+            border-color: alpha(\(accent), 0.55);
+        }
+        .glance-header {
+            background-color: \(canvasRaised);
+            border-bottom: 1px solid \(rule);
+            padding: 2px 10px;
+            min-height: 24px;
+        }
+        .glance-title { color: \(text); \(t(.rowTitle)) }
+        .glance-pin { color: \(accent); \(t(.chip)) }
+        .glance-badge { color: \(textDim); \(t(.chip)) }
+        .glance-tail { color: \(text); \(t(.rowDetail)) }
+        .glance-tail.glance-waiting, .glance-foot.glance-waiting { color: \(warn); }
+        .glance-footer { padding: 2px 10px 6px 10px; }
+        .glance-foot { color: \(textDim); \(t(.chip)) }
+        .glance-actions { opacity: 0; }
+        .glance-tile:hover .glance-actions { opacity: 1; }
+        .glance-action {
+            min-height: 0;
+            min-width: 0;
+            padding: 0 5px;
+            color: \(textDim);
+            border-radius: 0;
+        }
+        .glance-action:hover { color: \(text); }
+        .parked-detail { color: \(textDim); \(t(.rowDetail)) }
+        .parked-tail { color: \(textDim); opacity: 0.7; \(t(.rowDetail)) }
+        .parked-age { color: \(textDim); \(t(.chip)) }
+        .parked-resume {
+            \(t(.chip))
+            min-height: 0;
+            padding: 3px 14px;
+            background-color: \(canvas);
+            border: 1px solid \(rule);
+            border-radius: 0;
+            color: \(text);
+        }
+        .parked-resume:hover { border-color: \(accent); }
+        tile-divider { color: \(rule); }
+        tile-divider:hover, tile-divider:focus-visible, tile-divider.dragging { color: \(accent); }
+        .tile-ghost { background-color: alpha(\(accent), 0.8); }
+        .tile-strip { background-color: \(canvasRaised); border-top: 1px solid \(rule); }
+        .tile-chip {
+            \(t(.chip))
+            min-height: 0;
+            padding: 1px 8px;
+            border: 1px solid \(rule);
+            border-radius: 0;
+            color: \(text);
+        }
+        .tile-chip:hover { border-color: \(accent); }
+        .tile-chip-dot { color: \(warn); }
+        .tile-strip-more { color: \(textDim); \(t(.chip)) }
+        .live-chip { \(t(.chip)) }
         .find-hit {
             background-color: \(palette.findHit);
             box-shadow: inset 2px 0 0 \(warn);

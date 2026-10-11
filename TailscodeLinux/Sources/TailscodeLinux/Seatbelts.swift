@@ -10,6 +10,8 @@ struct SeatbeltPanes {
     var placed: Int
     /// Panes the zoom has hidden, and chats a safe restore left paused.
     var hidden: Int
+    /// Chats drawn as glance tiles.
+    var glance = 0
 
     static let empty = SeatbeltPanes(facts: [], placed: 0, hidden: 0)
 }
@@ -31,6 +33,12 @@ final class Seatbelts: @unchecked Sendable {
     private(set) var lastDecision: GovernorDecision?
     private var touched: [PaneID: TimeInterval] = [:]
     private var panes: (() -> SeatbeltPanes)?
+    /// Told every decision on the main loop, so the window can give each pane the density the
+    /// governor assigns.
+    var onDecision: ((GovernorDecision) -> Void)?
+    /// How many chats the person asked to keep whole: `Keep all live` is `.all`, otherwise the
+    /// governor's own budget. At strained and above the governor caps it whatever it says.
+    private(set) var liveBudget: LiveBudget = .auto
     private var started = false
     private var ledger: LaunchLedger?
     private var paneCount = 0
@@ -48,6 +56,28 @@ final class Seatbelts: @unchecked Sendable {
     private let watchdog = Watchdog()
 
     var isStarted: Bool { started }
+
+    static let liveBudgetKey = "tailscode.liveBudget"
+
+    /// Reads the person's choice back from the settings file, once, before the window is built.
+    func restoreLiveBudget() {
+        liveBudget = UserDefaults.standard.string(forKey: Self.liveBudgetKey) == "all" ? .all : .auto
+    }
+
+    /// `Keep all live` on or off, remembered, and applied at once rather than at the next second.
+    func setLiveBudget(_ budget: LiveBudget) {
+        liveBudget = budget
+        SettingsFile.set(budget == .all ? "all" : nil, forKey: Self.liveBudgetKey)
+        tick()
+    }
+
+    /// One divider step's relayout, in milliseconds: the worst of the second goes to the ring.
+    func noteRelayout(_ milliseconds: Double) {
+        let rounded = Int(milliseconds.rounded())
+        lock.lock()
+        publication.relayoutMs = max(publication.relayoutMs, rounded)
+        lock.unlock()
+    }
 
     /// Writes this launch's ledger as not yet closed and decides how the window comes back from
     /// what the last launch left. Main loop, before the panes are restored.
@@ -162,7 +192,7 @@ final class Seatbelts: @unchecked Sendable {
             loopBusy: reading.loop.busy2, worstStall: reading.worstSinceLast, host: snapshot.host,
             ownMemory: snapshot.ownMemory, reducedMotion: reducedMotion, watchdog: watchdogHint)
         let decision = governor.evaluate(
-            now: reading.now, sample: sample, panes: facts, setting: .auto)
+            now: reading.now, sample: sample, panes: facts, setting: liveBudget)
         lastDecision = decision
         let effective = forced ?? decision.level
         var fresh: [String] = []
@@ -180,11 +210,17 @@ final class Seatbelts: @unchecked Sendable {
         }
         CascadeBudget.apply(
             TileGovernor.animation(level: effective, reducedMotion: reducedMotion), level: effective)
+        var shown = decision
+        shown.level = effective
+        shown.fullBudget = governor.fullBudget(level: effective, setting: liveBudget)
+        shown.animation = TileGovernor.animation(level: effective, reducedMotion: reducedMotion)
+        onDecision?(shown)
         lock.lock()
         publication.busy = reading.loop.busy2
         publication.worstMs = max(publication.worstMs, Int((reading.worstSinceLast * 1000).rounded()))
         publication.level = effective.rawValue
-        publication.panes = FlightPanes(full: current.placed, glance: 0, parked: current.hidden)
+        publication.panes = FlightPanes(
+            full: current.placed, glance: current.glance, parked: current.hidden)
         let drained = LiveDrainStats.takeFlight()
         publication.mailbox = drained.ready
         publication.drainP95Ms = drained.passes > 0 ? (drained.p95 * 10_000).rounded() / 10 : nil
@@ -236,7 +272,10 @@ final class Seatbelts: @unchecked Sendable {
         events = []
         let loop = publication
         let done = exited
-        if !pending.isEmpty || !poked { publication.worstMs = 0 }
+        if !pending.isEmpty || !poked {
+            publication.worstMs = 0
+            publication.relayoutMs = 0
+        }
         lock.unlock()
         guard !done, !pending.isEmpty || !poked else { return }
         let counts = ProcessCounts.read()

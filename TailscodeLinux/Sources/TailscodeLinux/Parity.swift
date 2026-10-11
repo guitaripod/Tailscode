@@ -127,13 +127,10 @@ enum ParityManifest {
         case .gitState: return .implemented("GitPanel")
         case .terminalPane: return .implemented("TerminalPane")
         case .listBesideConversation: return .implemented("makeSidebarPane")
-        case .paneDensity: return .gap("panes are all full; glance and parked faces, the live chip and the governor that assigns density are built in the canvas milestone")
+        case .paneDensity: return .implemented("GlanceTile")
         case .paneArrangements: return .implemented("paneMenuSections")
-        case .paneOverflow: return .gap("the nested split host has no overflow strip and never hides a pane for want of room; built in the canvas milestone")
-        case .paneResizeByKey:
-            return .partial(
-                "onDividerKey",
-                missing: "the divider's splitter role: GTK 4.22's GtkPaned handle exposes the generic role and a host cannot assign another, so a screen reader reads each divider's label and its position between the extremes but is not told it is a splitter")
+        case .paneOverflow: return .implemented("OverflowStrip")
+        case .paneResizeByKey: return .implemented("TileDivider")
         case .paneRearrange: return .implemented("receivePaneDrop")
         case .safeRestore: return .implemented("parkRestoredChats")
         case .flightRecorder: return .implemented("FlightWriter")
@@ -141,7 +138,7 @@ enum ParityManifest {
             return .partial(
                 "ResourceGuard.apply",
                 missing: "terminal launches and Flatpak cannot be limited; the governor still applies")
-        case .splitPanes: return .implemented("SplitHost")
+        case .splitPanes: return .implemented("TileHost")
         case .videoSlot: return .implemented("VideoPane")
         case .watchDirectory: return .implemented("WatchBoard.make")
         case .watchAccounts: return .implemented("WatchSignInDialog")

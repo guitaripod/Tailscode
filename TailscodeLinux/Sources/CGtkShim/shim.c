@@ -18,6 +18,10 @@ static void (*tailscode_box_release)(void *) = NULL;
 
 void tailscode_set_box_release(void (*release)(void *)) { tailscode_box_release = release; }
 
+void tailscode_box_release_call(void *data) {
+    if (data && tailscode_box_release) tailscode_box_release(data);
+}
+
 static void tailscode_box_destroy(gpointer data, GClosure *closure) {
     (void)closure;
     if (data && tailscode_box_release) tailscode_box_release(data);
@@ -3456,6 +3460,7 @@ char *tailscode_paned_reading(
 gboolean tailscode_focus_on_divider(GtkWidget *root) {
     GtkWidget *focus = tailscode_focused_widget(root);
     if (!focus) return FALSE;
+    if (tailscode_tile_divider_is(focus)) return TRUE;
     GtkWidget *parent = gtk_widget_get_parent(focus);
     return parent && GTK_IS_PANED(parent) && tailscode_paned_handle(GTK_PANED(parent)) == focus;
 }

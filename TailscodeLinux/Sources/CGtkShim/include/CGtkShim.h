@@ -13,6 +13,9 @@ void tailscode_connect(gpointer instance, const char *signal, GCallback handler,
 /// which the handler is provably never called again.
 void tailscode_set_box_release(void (*release)(void *));
 
+/// Releases one such closure by hand, for an owner that is not a signal connection.
+void tailscode_box_release_call(void *data);
+
 /// Runs `handler(data)` once on the GLib main context, then frees nothing — the Swift side owns
 /// `data` and releases it inside the handler.
 void tailscode_on_main(void (*handler)(void *), void *data);
@@ -636,3 +639,5 @@ long tailscode_heap_in_use(void);
 /// Transcript row widgets made and not yet finalized, counted while the soak runs.
 void tailscode_soak_track_row(GtkWidget *widget);
 long tailscode_soak_rows(void);
+
+#include "tile.h"

@@ -39,6 +39,8 @@ struct LoopPublication: Sendable, Equatable {
     var mailbox = 0
     /// The 95th percentile of the drain's passes in the last second, ms.
     var drainP95Ms: Double?
+    /// The longest divider relayout in the last second, ms; zero when no divider moved.
+    var relayoutMs = 0
 }
 
 /// The Linux end of the flight recorder: Core's `FlightRing` at `$XDG_STATE_HOME/tailscode/
@@ -69,7 +71,7 @@ final class FlightWriter: @unchecked Sendable {
             fds: counts.fds, panes: loop.panes, lv: loop.level,
             busy: silentMs > 0 ? 1 : loop.busy, stall: max(loop.worstMs, silentMs), mb: loop.mailbox,
             dr: loop.drainP95Ms,
-            ps: pressure.recorded, av: pressure.availableMB, own: pressure.ownMemory, rl: 0,
+            ps: pressure.recorded, av: pressure.availableMB, own: pressure.ownMemory, rl: Double(loop.relayoutMs),
             ev: event)
     }
 

@@ -140,7 +140,7 @@ final class MainWindow: @unchecked Sendable {
     private var lastCatalogWarm: [String: Date] = [:]
     private var usageStripSignature = ""
 
-    private(set) var splitHost: SplitHost!
+    private(set) var splitHost: PaneTiling!
     /// What each restored pane was showing, until the listing carries the session and the pane
     /// can open it for real.
     private var pendingBindings: [PaneID: SplitPaneSession] = [:]
@@ -153,10 +153,18 @@ final class MainWindow: @unchecked Sendable {
     private var restoreWake = RestoreWake(order: [])
     private var wakeScheduled = false
     private var restoreBanner: RestoreBanner?
+    private(set) var liveChip: UnsafeMutablePointer<GtkWidget>?
+    private(set) var liveChipText = ""
 
     var windowWidget: UnsafeMutablePointer<GtkWidget>? { window }
 
     var activePane: ChatPane { splitHost.activePane }
+
+    /// The selftest's way of giving a window that was never presented the tiling it would have
+    /// built, so a verb that tells the window the focus moved has a window to tell.
+    func installTiling(_ tiling: PaneTiling) {
+        splitHost = tiling
+    }
 
     /// The canvas follows the desktop, and the chats you had are on screen before the first byte
     /// crosses the tailnet — with liveness stripped from the cache, so nothing shown from it can
@@ -179,7 +187,12 @@ final class MainWindow: @unchecked Sendable {
         observeMissedActivity()
 
         Trace.stamp("present begin")
-        splitHost = SplitHost(host: self)
+        Seatbelts.shared.restoreLiveBudget()
+        splitHost = TilingChoice.isLegacy ? SplitHost(host: self) : TileHost(host: self)
+        if let tile = splitHost as? TileHost {
+            tile.listFace = { [weak self] session in self?.listFace(for: session) }
+            tile.onDensityChanged = { [weak self] in self?.updateLiveChip() }
+        }
         if let raw = UserDefaults.standard.string(forKey: SplitSnapshot.defaultsKey),
             let snapshot = SplitSnapshot.decode(raw)
         {
@@ -606,7 +619,7 @@ final class MainWindow: @unchecked Sendable {
                     gtk_native_get_surface_transform(op(window), &shadowX, &shadowY)
                     let described = self.splitHost.orderedPanes.enumerated().map {
                         index, pane -> String in
-                        let bounds = Gtk.bounds(of: pane.root, in: window) ?? (0, 0, 0, 0)
+                        let bounds = Gtk.bounds(of: pane.frame, in: window) ?? (0, 0, 0, 0)
                         let composer =
                             Gtk.bounds(of: pane.composerScroller, in: window) ?? (0, 0, 0, 0)
                         return String(
@@ -888,8 +901,8 @@ final class MainWindow: @unchecked Sendable {
                     let pane = panes[index]
                     let payload = PaneDragPayload(
                         profileID: entry.profileID, sessionID: entry.session.id)
-                    let x = u * Double(gtk_widget_get_width(pane.root))
-                    let y = v * Double(gtk_widget_get_height(pane.root))
+                    let x = u * Double(gtk_widget_get_width(pane.frame))
+                    let y = v * Double(gtk_widget_get_height(pane.frame))
                     if verb == "drag" {
                         self.splitHost.hover(pane, payload: payload, x: x, y: y)
                         FileHandle.standardOutput.write(
@@ -958,7 +971,7 @@ final class MainWindow: @unchecked Sendable {
                             "STATE follows=\(pane.followsBottom) rows=\(pane.renderedRows.count)/\(pane.lastFullRows.count) value=\(Int(value)) bottom=\(Int(upper))\n"
                             .utf8))
                 default:
-                    self.driveLive(verb, argument)
+                    if !self.driveTiles(verb, argument) { self.driveLive(verb, argument) }
                 }
             }
         }
@@ -1211,6 +1224,12 @@ final class MainWindow: @unchecked Sendable {
         adw_header_bar_pack_end(
             op(header),
             Gtk.button("⌨", css: ["flat"]) { [weak self] in self?.togglePane(.terminal) })
+        let chip = Gtk.menuButton("", css: ["flat", "live-chip"]) { [weak self] in
+            self?.liveChipSections() ?? []
+        }
+        gtk_widget_set_visible(chip, 0)
+        adw_header_bar_pack_end(op(header), chip)
+        liveChip = chip
         adw_toolbar_view_add_top_bar(op(toolbar), header)
         contentHeader = header
 
@@ -1226,6 +1245,59 @@ final class MainWindow: @unchecked Sendable {
             }
             return [Gtk.MenuSection(heading: nil, rows: chat)] + self.paneMenuSections()
         }
+    }
+
+    /// What the chat list last heard about a conversation, for a pane that holds it without
+    /// streaming it: its title and the face its row wears.
+    func listFace(for session: SplitPaneSession) -> (title: String, activity: ActivityKind?)? {
+        guard
+            let entry = entries.first(where: {
+                $0.profileID == session.profileID && $0.session.id == session.sessionID
+            })
+        else { return nil }
+        let model = SessionRowModel(
+            entry: entry, unreachable: unreachable.contains(entry.profileID), unread: false,
+            saved: false)
+        return (model.title, model.state.activity)
+    }
+
+    /// The live chip: how many chats are whole out of how many are open, drawn only once there are
+    /// two to count.
+    func updateLiveChip() {
+        guard let chip = liveChip, let tile = splitHost as? TileHost else { return }
+        let counts = tile.liveCounts
+        let shown = counts.chats > 1
+        if gtk_widget_get_visible(chip) != (shown ? 1 : 0) {
+            gtk_widget_set_visible(chip, shown ? 1 : 0)
+        }
+        guard shown else { return }
+        let title = LiveChipReading.title(
+            live: counts.live, chats: counts.chats, decision: tile.lastDecision)
+        guard title != liveChipText else { return }
+        liveChipText = title
+        gtk_menu_button_set_label(op(chip), title)
+        tailscode_set_accessible_label(chip, title)
+    }
+
+    private func liveChipSections() -> [Gtk.MenuSection] {
+        guard let tile = splitHost as? TileHost else { return [] }
+        let decision = tile.lastDecision
+        var rows = [
+            Gtk.MenuRow(title: LiveChipReading.explanation(decision: decision), detail: nil),
+            Gtk.MenuRow(
+                title: Localized.text("Keep all live"), detail: nil,
+                on: Seatbelts.shared.liveBudget == .all,
+                action: {
+                    Gtk.onMain {
+                        Seatbelts.shared.setLiveBudget(
+                            Seatbelts.shared.liveBudget == .all ? .auto : .all)
+                    }
+                }),
+        ]
+        if decision?.level.overridesPreference == true {
+            rows.append(Gtk.MenuRow(title: LiveChipReading.ignoredNote, detail: nil))
+        }
+        return [Gtk.MenuSection(heading: nil, rows: rows)]
     }
 
     /// The pane verbs in the menu, for a person who never learns the chords: Core's groups in
@@ -1615,6 +1687,7 @@ final class MainWindow: @unchecked Sendable {
             })
         banner.attach(to: splitHost.container)
         restoreBanner = banner
+        splitHost.setHeld(parkedBindings)
     }
 
     private static var parkedPlaceholder: String {
@@ -1635,8 +1708,13 @@ final class MainWindow: @unchecked Sendable {
     }
 
     /// One paused chat back into the wake.
+    func resumeRestored(_ paneID: PaneID) {
+        resume(paneID)
+    }
+
     private func resume(_ paneID: PaneID) {
         guard let binding = parkedBindings.removeValue(forKey: paneID) else { return }
+        defer { splitHost.setHeld(parkedBindings) }
         splitHost.panes[paneID]?.showPlaceholder(Localized.text("Connecting…"))
         pendingBindings[paneID] = binding
         if parkedBindings.isEmpty { dismissRestoreBanner() }
@@ -1656,6 +1734,14 @@ final class MainWindow: @unchecked Sendable {
     /// The panes as the governor reads them: what each holds, whether the zoom left it on screen,
     /// its size, and what it is asking of the person.
     private func seatbeltPanes() -> SeatbeltPanes {
+        if let tile = splitHost as? TileHost {
+            var waiting = pendingBindings
+            for (id, entry) in readyToWake {
+                waiting[id] = SplitPaneSession(profileID: entry.profileID, sessionID: entry.session.id)
+            }
+            for (id, binding) in parkedBindings { waiting[id] = binding }
+            return tile.seatbeltPanes(waiting: waiting)
+        }
         let layout = splitHost.layout
         var facts: [PaneFacts] = []
         var placed = 0
@@ -3712,8 +3798,12 @@ final class MainWindow: @unchecked Sendable {
             .arrangeSplits:
             focused = .transcript
             splitHost.perform(action)
-        case .pinSplit, .parkSplit:
-            return false
+        case .pinSplit:
+            guard splitHost.supportsDensity else { return false }
+            splitHost.togglePinActive()
+        case .parkSplit:
+            guard splitHost.supportsDensity else { return false }
+            splitHost.toggleParkActive()
         case .toggleProjectScope:
             toggleProjectScope()
         case .quickAsk:
@@ -3870,8 +3960,8 @@ final class MainWindow: @unchecked Sendable {
             return
         }
         let pane = panes[target]
-        let x = u * Double(gtk_widget_get_width(pane.root))
-        let y = v * Double(gtk_widget_get_height(pane.root))
+        let x = u * Double(gtk_widget_get_width(pane.frame))
+        let y = v * Double(gtk_widget_get_height(pane.frame))
         if drop {
             let took = splitHost.receivePaneDrop(
                 PaneMovePayload(pane: panes[source].id).encoded, on: pane.id, x: x, y: y)

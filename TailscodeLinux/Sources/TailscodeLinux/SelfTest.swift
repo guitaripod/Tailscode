@@ -256,6 +256,30 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkTileCanvas()
+            report("tile canvas: \(checks) claims hold — rects, layers, hiding, no re-parent, dividers, disposal")
+        } catch {
+            report("tile canvas: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkTileHost()
+            report("tile host: \(checks) claims hold — placement, densities, overflow, dividers, pins, snapshot")
+        } catch {
+            report("tile host: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkLegacyTiling()
+            report("legacy tiling: \(checks) claims hold — the nested host still boots")
+        } catch {
+            report("legacy tiling: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkStudioSheet()
             report("studio sheet: \(checks) claims hold — one frame, one window, one keyboard")
         } catch {

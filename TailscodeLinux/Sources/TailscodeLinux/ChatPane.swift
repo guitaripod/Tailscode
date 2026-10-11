@@ -14,6 +14,11 @@ final class ChatPane: @unchecked Sendable {
     weak var host: MainWindow?
 
     let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    /// What the tiling puts in the canvas for this pane — its shell — when it has one, so a caller
+    /// asking where the pane is gets the rectangle it was given even while a glance covers the
+    /// conversation. Without a shell it is the conversation itself.
+    var outer: UnsafeMutablePointer<GtkWidget>?
+    var frame: UnsafeMutablePointer<GtkWidget> { outer ?? root }
     private let identityLabel = Gtk.label("", css: "pane-identity", selectable: false)
     /// What the strip says without the activity glyph: the name a divider gives this pane when it
     /// introduces itself to a screen reader.
@@ -963,6 +968,67 @@ final class ChatPane: @unchecked Sendable {
         if visible { refreshIdentity() }
     }
 
+    /// What the strip says about the pane beyond its name: that it is kept live, and which other
+    /// pane shows the same conversation.
+    func setIdentityExtras(pinned: Bool, alsoOpenIn other: Int?) {
+        guard pinned != identityPinned || other != identityAlsoOpenIn else { return }
+        identityPinned = pinned
+        identityAlsoOpenIn = other
+        refreshIdentity()
+    }
+
+    private var identityPinned = false
+    private var identityAlsoOpenIn: Int?
+
+    /// What kind of pane this is, for layout and the governor: a slot by what it shows, a chat by
+    /// holding or waiting for a conversation, and nothing otherwise.
+    func paneKind(held: Bool) -> PaneKind {
+        if let kindOverride { return kindOverride }
+        if drawEndpoint != nil { return .draw }
+        if webTarget != nil { return .web }
+        if videoTarget != nil { return .video }
+        if entry != nil || held { return .chat }
+        return .empty
+    }
+
+    /// What the selftest says a pane is, so a pane can be a chat for the tiling's rules without a
+    /// server to hold the conversation.
+    var kindOverride: PaneKind?
+
+    /// Messages this device is holding for the conversation, for a glance's footer.
+    var queuedCount: Int { queue.count }
+
+    /// Lets go of the transcript's row widgets while the pane is parked, keeping the rows' memo so
+    /// the next lease refills the tail through the ordinary first fill. A demoted pane keeps them
+    /// for a while so a glance pressed again comes back as it was; after that they are only
+    /// memory.
+    func releaseRows() {
+        guard isParked, !isShutDown, !renderedRows.isEmpty, !pointerHeld else { return }
+        messageBar.dismiss()
+        tearDownAllRows()
+        fillComplete = false
+        followsBottom = true
+        heldRows = nil
+    }
+
+    var rowCount: Int { renderedRows.count }
+
+    /// How many rows a peer of the focused pane realises: the governor's window for the shed level,
+    /// or nothing in particular for the focused pane, which uses the person's own preference.
+    private var rowWindowOverride: Int?
+
+    private var rowLimit: Int {
+        rowWindowOverride ?? max(windowLimit, Preferences.transcriptWindow)
+    }
+
+    func setRowWindow(_ rows: Int?) {
+        let wanted = rows.map { max(60, $0) }
+        guard wanted != rowWindowOverride else { return }
+        rowWindowOverride = wanted
+        guard !isParked, !isShutDown, let state = lastState, !placeholderShown else { return }
+        apply(state: state, rows: lastFullRows)
+    }
+
     /// Turns this pane into a video slot, or points the one it already is at something else. The
     /// chat furniture is hidden rather than destroyed, so a slot is a state of a pane and not a
     /// second kind of object the split tree would have to learn.
@@ -1212,8 +1278,19 @@ final class ChatPane: @unchecked Sendable {
         setIdentity("\(title) · \(server)", activity: identityActivity)
     }
 
+    /// The pin and the twin the strip appends to the name, in that order.
+    private var identityExtras: String {
+        var extras = ""
+        if identityPinned { extras += " · ◆" }
+        if let other = identityAlsoOpenIn {
+            extras += " · " + Localized.text("also open in pane %@", "\(other)")
+        }
+        return extras
+    }
+
     private func setIdentity(_ text: String, activity: ActivityKind?) {
         identityName = text
+        let text = text + identityExtras
         guard let activity, !isParked else {
             ActivityPulse.apply(nil, to: identityLabel)
             gtk_label_set_text(op(identityLabel), text)
@@ -1395,7 +1472,7 @@ final class ChatPane: @unchecked Sendable {
             placeholderShown = true
             lastFullRows = remembered
             lastFullCount = remembered.count
-            let limit = max(windowLimit, Preferences.transcriptWindow)
+            let limit = rowLimit
             let windowed =
                 remembered.count > limit ? Array(remembered.suffix(limit)) : remembered
             applyRows(windowed)
@@ -1853,7 +1930,7 @@ final class ChatPane: @unchecked Sendable {
         if let sessionID { host?.rememberRows(rows, for: sessionID) }
         let appended = max(0, rows.count - lastFullCount)
         lastFullCount = rows.count
-        let limit = max(windowLimit, Preferences.transcriptWindow)
+        let limit = rowLimit
         let windowed = rows.count > limit ? Array(rows.suffix(limit)) : rows
         let hiddenCount = rows.count - windowed.count
         gtk_widget_set_visible(earlierButton, hiddenCount > 0 ? 1 : 0)
@@ -2650,7 +2727,7 @@ final class ChatPane: @unchecked Sendable {
                     if let state = self.lastState {
                         self.apply(state: state, rows: self.lastFullRows)
                     } else {
-                        let limit = max(self.windowLimit, Preferences.transcriptWindow)
+                        let limit = self.rowLimit
                         let rows = self.lastFullRows
                         self.applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
                     }
@@ -3027,7 +3104,7 @@ final class ChatPane: @unchecked Sendable {
             index < rowWidgets.count
         else { return }
         while renderedRows.count > index { removeRowWidget(at: renderedRows.count - 1) }
-        let limit = max(windowLimit, Preferences.transcriptWindow)
+        let limit = rowLimit
         let rows = lastFullRows
         applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
     }

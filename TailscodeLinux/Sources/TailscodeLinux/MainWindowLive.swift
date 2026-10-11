@@ -193,7 +193,7 @@ extension MainWindow {
         guard let (first, entry) = pairs.first else { return }
         splitHost.panes[first]?.open(entry)
         let rest = Array(pairs.dropFirst())
-        guard !rest.isEmpty, let root = splitHost.panes[first]?.root else { return }
+        guard !rest.isEmpty, let root = splitHost.panes[first]?.frame else { return }
         FillTurns.take(on: root) { [weak self] in self?.openInTurns(rest) }
     }
 }
