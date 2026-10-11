@@ -2,63 +2,73 @@
   "iphone": [
     {
       "master": "01-live",
-      "slug": "01-agents-anywhere",
-      "headline": "Claude Code, opencode,\nOh My Pi — sur votre iPhone",
-      "subline": "Chaque tour en direct dans votre main, sur votre tailnet."
-    },
-    {
-      "master": "02-dial",
-      "slug": "02-model-and-effort",
-      "headline": "Choisissez le modèle.\nRéglez sa réflexion.",
-      "subline": "Un tap sur la pastille — vos favoris épinglés à un balayage."
+      "slug": "01-agents-in-your-pocket",
+      "headline": "Vos agents de code,\ndans votre poche",
+      "subline": "Claude Code, opencode et Oh My Pi — en direct sur votre iPhone.",
+      "highlight": "votre poche"
     },
     {
       "master": "03-approval",
-      "slug": "03-approve-remote",
-      "headline": "Commande risquée,\napprouvée à distance",
-      "subline": "Autorisez une fois, toujours, ou refusez — en plein tour."
+      "slug": "02-approve-anywhere",
+      "headline": "Approuvez-le\ndepuis n’importe où",
+      "subline": "Autorisez une fois, toujours ou refusez, pendant que l’agent attend.",
+      "highlight": "n’importe où"
     },
     {
-      "master": "07-home",
+      "master": "02-dial",
+      "slug": "03-model-and-effort",
+      "headline": "Choisissez le modèle.\nRéglez sa réflexion.",
+      "subline": "Un tap sur le sélecteur — vos favoris épinglés à un balayage.",
+      "highlight": "sa réflexion"
+    },
+    {
+      "master": "07-home-ultra",
       "slug": "04-one-board",
       "headline": "Chaque machine,\nun seul tableau",
-      "subline": "Tours en direct, projets et non lus — déjà triés."
-    },
-    {
-      "master": "15-delegate",
-      "slug": "05-delegate",
-      "headline": "Confiez le travail\nroutinier aux modèles moins chers",
-      "subline": "Une échelle de modèles et un vérificateur qui tranche — rien n'est appliqué avant la réussite."
-    },
-    {
-      "master": "02-work",
-      "slug": "06-real-work",
-      "headline": "Chaque diff, chaque\ncommande, en ligne",
-      "subline": "Les outils se déploient avec leur vraie sortie."
-    },
-    {
-      "master": "05-subagents",
-      "slug": "07-agent-fanout",
-      "headline": "Une nuée d'agents,\nen un coup d'œil",
-      "subline": "Les sous-agents s'accrochent au tour qui les a lancés."
+      "subline": "Tours en direct, projets et non lus — déjà triés.",
+      "highlight": "un seul tableau"
     },
     {
       "master": "04-question",
-      "slug": "08-answer-blockers",
+      "slug": "05-it-asks",
       "headline": "Quand il a besoin\nde vous, il demande",
-      "subline": "Répondez à la question de l'agent d'un geste."
+      "subline": "Une question arrive en carte. Répondez d’un tap.",
+      "highlight": "il demande"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "06-hand-off",
+      "headline": "Confiez le travail\nde routine",
+      "subline": "Modèle moins cher d’abord, vérificateur ensuite : rien sans succès.",
+      "highlight": "de routine"
     },
     {
       "master": "08-usage",
-      "slug": "09-know-your-limits",
+      "slug": "07-know-your-limits",
       "headline": "Connaissez vos limites\navant de les atteindre",
-      "subline": "Chaque fenêtre avec son propre compte à rebours, lu depuis vos machines."
+      "subline": "Chaque fenêtre avec son compte à rebours, lu sur vos machines.",
+      "highlight": "vos limites"
     },
     {
-      "master": "setup",
-      "slug": "10-verified-setup",
-      "headline": "Trois étapes,\nchacune vérifiée",
-      "subline": "Votre tailnet, vos machines, aucun cloud entre les deux."
+      "master": "widgets",
+      "slug": "08-widgets",
+      "headline": "Vos quotas sur\nl’écran d’accueil",
+      "subline": "Aux couleurs de chaque fournisseur — et sur l’écran verrouillé aussi.",
+      "highlight": "l’écran d’accueil"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "09-what-it-costs",
+      "headline": "Voyez le coût,\ntour par tour",
+      "subline": "Dépense par jour, modèle et projet, sur toutes vos machines.",
+      "highlight": "le coût"
+    },
+    {
+      "master": "welcome",
+      "slug": "10-private",
+      "headline": "Rien ne quitte\nvotre tailnet",
+      "subline": "Aucun compte. Aucune télémétrie. Open source.",
+      "highlight": "tailnet"
     }
   ],
   "ipad_headline_swap": {

@@ -2,63 +2,73 @@
   "iphone": [
     {
       "master": "01-live",
-      "slug": "01-agents-anywhere",
-      "headline": "Claude Code, opencode,\nOh My Pi——在手机上",
-      "subline": "每一轮都实时在你手中，走你自己的 tailnet。"
-    },
-    {
-      "master": "02-dial",
-      "slug": "02-model-and-effort",
-      "headline": "选好模型\n定好思考深度",
-      "subline": "点一下胶囊——固定的收藏一滑即达。"
+      "slug": "01-agents-in-your-pocket",
+      "headline": "你的编程智能体\n装进口袋",
+      "subline": "Claude Code、opencode、Oh My Pi 尽在掌中",
+      "highlight": "口袋"
     },
     {
       "master": "03-approval",
-      "slug": "03-approve-remote",
-      "headline": "有风险的命令\n随时随地审批",
-      "subline": "允许一次、总是允许，或拒绝——轮次进行中也行。"
+      "slug": "02-approve-anywhere",
+      "headline": "无论身在何处\n都能审批",
+      "subline": "允许一次、始终允许或拒绝——智能体等待时即可处理。",
+      "highlight": "无论身在何处"
     },
     {
-      "master": "07-home",
+      "master": "02-dial",
+      "slug": "03-model-and-effort",
+      "headline": "选好模型\n定好思考强度",
+      "subline": "轻点模型与强度栏——固定的收藏一滑即达。",
+      "highlight": "思考强度"
+    },
+    {
+      "master": "07-home-ultra",
       "slug": "04-one-board",
       "headline": "每台机器\n一块面板",
-      "subline": "实时轮次、项目、未读——早已分类好。"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "05-delegate",
-      "headline": "例行工作\n交给更便宜的模型",
-      "subline": "一梯模型加一位裁决的验证器——通过之前不会应用任何改动。"
-    },
-    {
-      "master": "02-work",
-      "slug": "06-real-work",
-      "headline": "每处 diff\n每条命令，内联",
-      "subline": "工具调用展开，附带真实输出。"
-    },
-    {
-      "master": "05-subagents",
-      "slug": "07-agent-fanout",
-      "headline": "智能体展开\n一眼看尽",
-      "subline": "子智能体停靠在生成它的那一轮里。"
+      "subline": "实时轮次、项目和未读——早已分好类。",
+      "highlight": "一块面板"
     },
     {
       "master": "04-question",
-      "slug": "08-answer-blockers",
+      "slug": "05-it-asks",
       "headline": "需要你时\n它会开口问",
-      "subline": "轻点一下，回答智能体的问题。"
+      "subline": "问题以卡片形式出现，轻点即可回答。",
+      "highlight": "开口问"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "06-hand-off",
+      "headline": "把例行工作\n交给更便宜的模型",
+      "subline": "更便宜的模型先试，验证器裁决，过关才落地。",
+      "highlight": "例行工作"
     },
     {
       "master": "08-usage",
-      "slug": "09-know-your-limits",
+      "slug": "07-know-your-limits",
       "headline": "触顶之前\n先知道上限",
-      "subline": "每个窗口都有自己的重置时钟，从你的机器读取。"
+      "subline": "每个周期及其重置时钟，都从你的机器读取。",
+      "highlight": "触顶之前"
     },
     {
-      "master": "setup",
-      "slug": "10-verified-setup",
-      "headline": "三个步骤\n每步都验证",
-      "subline": "你的 tailnet，你的机器，中间没有云。"
+      "master": "widgets",
+      "slug": "08-widgets",
+      "headline": "你的配额\n就在主屏幕",
+      "subline": "每个供应商各自的颜色——锁定屏幕上也有。",
+      "highlight": "主屏幕"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "09-what-it-costs",
+      "headline": "看清每一轮\n花了多少钱",
+      "subline": "按天、模型和项目统计花费，合并所有机器。",
+      "highlight": "花了多少钱"
+    },
+    {
+      "master": "welcome",
+      "slug": "10-private",
+      "headline": "数据绝不离开\n你的 tailnet",
+      "subline": "无账户、无遥测、开源。",
+      "highlight": "绝不离开"
     }
   ],
   "ipad_headline_swap": {

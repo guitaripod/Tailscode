@@ -2,63 +2,73 @@
   "iphone": [
     {
       "master": "01-live",
-      "slug": "01-agents-anywhere",
-      "headline": "Claude Code, opencode,\nOh My Pi — dal tuo iPhone",
-      "subline": "Ogni turno live nella tua mano, sul tuo tailnet."
-    },
-    {
-      "master": "02-dial",
-      "slug": "02-model-and-effort",
-      "headline": "Scegli il modello.\nImposta quanto ragiona.",
-      "subline": "Un tocco sulla pillola — i tuoi preferiti fissati a uno swipe."
+      "slug": "01-agents-in-your-pocket",
+      "headline": "Gli agenti di codice,\nsempre in tasca",
+      "subline": "Claude Code, opencode e Oh My Pi — live sul tuo telefono.",
+      "highlight": "in tasca"
     },
     {
       "master": "03-approval",
-      "slug": "03-approve-remote",
-      "headline": "Comando rischioso,\napprovato a distanza",
-      "subline": "Consenti una volta, sempre, o nega — a metà turno."
+      "slug": "02-approve-anywhere",
+      "headline": "Approva da\novunque",
+      "subline": "Consenti una volta, sempre o nega — mentre l'agente aspetta.",
+      "highlight": "ovunque"
     },
     {
-      "master": "07-home",
+      "master": "02-dial",
+      "slug": "03-model-and-effort",
+      "headline": "Scegli il modello.\nRegola quanto ragiona.",
+      "subline": "Un tocco sul selettore — i preferiti fissati a uno swipe.",
+      "highlight": "quanto ragiona"
+    },
+    {
+      "master": "07-home-ultra",
       "slug": "04-one-board",
       "headline": "Ogni macchina,\nuna sola board",
-      "subline": "Turni live, progetti e non letti — già in ordine."
-    },
-    {
-      "master": "15-delegate",
-      "slug": "05-delegate",
-      "headline": "Passa il lavoro di routine\na modelli più economici",
-      "subline": "Una scala di modelli e un verificatore che decide — nulla viene applicato finché non passa."
-    },
-    {
-      "master": "02-work",
-      "slug": "06-real-work",
-      "headline": "Ogni diff, ogni\ncomando, in linea",
-      "subline": "Le chiamate agli strumenti si aprono con l'output reale."
-    },
-    {
-      "master": "05-subagents",
-      "slug": "07-agent-fanout",
-      "headline": "Agenti a sciame,\nin un colpo d'occhio",
-      "subline": "I subagenti si agganciano al turno che li ha lanciati."
+      "subline": "Turni live, progetti e non letti — già in ordine.",
+      "highlight": "una sola board"
     },
     {
       "master": "04-question",
-      "slug": "08-answer-blockers",
-      "headline": "Quando ha bisogno\ndi te, chiede",
-      "subline": "Rispondi alla domanda dell'agente con un tocco."
+      "slug": "05-it-asks",
+      "headline": "Se ha bisogno di te,\nchiede",
+      "subline": "Una domanda arriva come scheda. Rispondi con un tocco.",
+      "highlight": "chiede"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "06-hand-off",
+      "headline": "Affida il lavoro\ndi routine",
+      "subline": "Un modello economico prova per primo; un verificatore decide.",
+      "highlight": "di routine"
     },
     {
       "master": "08-usage",
-      "slug": "09-know-your-limits",
-      "headline": "Conosci i tuoi limiti\nprima di raggiungerli",
-      "subline": "Ogni finestra con il suo orologio di reset, letto dalle tue macchine."
+      "slug": "07-know-your-limits",
+      "headline": "Conosci i limiti\nprima di esaurirli",
+      "subline": "Ogni finestra con il suo orologio di reset, letta dalle tue macchine.",
+      "highlight": "prima di esaurirli"
     },
     {
-      "master": "setup",
-      "slug": "10-verified-setup",
-      "headline": "Tre passaggi,\nognuno verificato",
-      "subline": "Il tuo tailnet, le tue macchine, nessun cloud in mezzo."
+      "master": "widgets",
+      "slug": "08-widgets",
+      "headline": "Le tue quote nella\nSchermata Home",
+      "subline": "Nel colore di ogni fornitore — e anche sulla Schermata di blocco.",
+      "highlight": "Schermata Home"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "09-what-it-costs",
+      "headline": "Vedi quanto costa,\nturno per turno",
+      "subline": "Spesa per giorno, modello e progetto, unita su ogni macchina.",
+      "highlight": "quanto costa"
+    },
+    {
+      "master": "welcome",
+      "slug": "10-private",
+      "headline": "Nulla esce dal\ntuo tailnet",
+      "subline": "Nessun account. Nessuna telemetria. Open source.",
+      "highlight": "tailnet"
     }
   ],
   "ipad_headline_swap": {

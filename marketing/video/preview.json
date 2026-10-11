@@ -1,0 +1,43 @@
+{
+  "start": 1.3,
+  "duration": 29.4,
+  "captions": [
+    {
+      "text": "Every machine, one board",
+      "accent": "#546BFF",
+      "start": 0.4,
+      "end": 4.2
+    },
+    {
+      "text": "Send a task in one sentence",
+      "accent": "#A855F7",
+      "start": 4.8,
+      "end": 8.0
+    },
+    {
+      "text": "Watch it work, live",
+      "accent": "#30D158",
+      "start": 8.6,
+      "end": 14.2,
+      "top": 420
+    },
+    {
+      "text": "Set how hard it thinks",
+      "accent": "#A855F7",
+      "start": 15.0,
+      "end": 17.4
+    },
+    {
+      "text": "Approve it from anywhere",
+      "accent": "#FFB020",
+      "start": 18.4,
+      "end": 22.6
+    },
+    {
+      "text": "Know your limits",
+      "accent": "#FF7A29",
+      "start": 25.0,
+      "end": 29.0
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "01-agents-in-your-pocket": {
+    "accent": "#546BFF",
+    "device": {
+      "width": 1230
+    },
+    "callouts": []
+  },
+  "02-approve-anywhere": {
+    "accent": "#FFB020",
+    "device": {
+      "width": 1200
+    },
+    "callouts": []
+  },
+  "03-model-and-effort": {
+    "accent": "#A855F7",
+    "device": {},
+    "callouts": []
+  },
+  "04-one-board": {
+    "accent": "#30D158",
+    "device": {},
+    "callouts": []
+  },
+  "05-it-asks": {
+    "accent": "#32C8E6",
+    "device": {
+      "width": 1200
+    },
+    "callouts": []
+  },
+  "06-hand-off": {
+    "accent": "#FF5FA2",
+    "device": {
+      "width": 1200
+    },
+    "callouts": []
+  },
+  "07-know-your-limits": {
+    "accent": "#FF7A29",
+    "device": {
+      "width": 1200
+    },
+    "callouts": [
+      {
+        "box": [
+          0.035,
+          0.17,
+          0.72,
+          0.31
+        ],
+        "scale": 1.24,
+        "at": [
+          0.5,
+          0.481
+        ]
+      }
+    ]
+  },
+  "08-widgets": {
+    "accent": "#6E78FF",
+    "kind": "widgets"
+  },
+  "09-what-it-costs": {
+    "accent": "#3DDC97",
+    "device": {
+      "width": 1200
+    },
+    "callouts": [
+      {
+        "box": [
+          0.035,
+          0.235,
+          0.66,
+          0.329
+        ],
+        "scale": 1.45,
+        "at": [
+          0.5,
+          0.497
+        ]
+      }
+    ]
+  },
+  "10-private": {
+    "accent": "#8C98FF",
+    "device": {
+      "width": 1200
+    },
+    "callouts": [
+      {
+        "box": [
+          0.03,
+          0.425,
+          0.97,
+          0.605
+        ],
+        "scale": 0.95,
+        "at": [
+          0.5,
+          0.64
+        ]
+      }
+    ]
+  }
+}

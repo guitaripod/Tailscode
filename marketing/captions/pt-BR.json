@@ -2,63 +2,73 @@
   "iphone": [
     {
       "master": "01-live",
-      "slug": "01-agents-anywhere",
-      "headline": "Claude Code, opencode,\nOh My Pi — do seu iPhone",
-      "subline": "Cada turno ao vivo na sua mão, na sua tailnet."
-    },
-    {
-      "master": "02-dial",
-      "slug": "02-model-and-effort",
-      "headline": "Escolha o modelo.\nDefina o quanto ele pensa.",
-      "subline": "Um toque na pílula — seus favoritos fixados a um deslize."
+      "slug": "01-agents-in-your-pocket",
+      "headline": "Seus agentes de código\nno seu bolso",
+      "subline": "Claude Code, opencode e Oh My Pi — ao vivo no seu iPhone.",
+      "highlight": "no seu bolso"
     },
     {
       "master": "03-approval",
-      "slug": "03-approve-remote",
-      "headline": "Comando arriscado,\naprovado a distância",
-      "subline": "Permita uma vez, sempre, ou negue — no meio do turno."
+      "slug": "02-approve-anywhere",
+      "headline": "Aprove de\nqualquer lugar",
+      "subline": "Permitir uma vez, sempre ou negar — enquanto o agente espera.",
+      "highlight": "qualquer lugar"
     },
     {
-      "master": "07-home",
+      "master": "02-dial",
+      "slug": "03-model-and-effort",
+      "headline": "Escolha o modelo.\nDose quanto ele pensa.",
+      "subline": "Um toque na etiqueta — seus favoritos fixados a um deslize.",
+      "highlight": "quanto ele pensa"
+    },
+    {
+      "master": "07-home-ultra",
       "slug": "04-one-board",
       "headline": "Cada máquina,\num só painel",
-      "subline": "Turnos ao vivo, projetos e não lidos — já organizados."
-    },
-    {
-      "master": "15-delegate",
-      "slug": "05-delegate",
-      "headline": "Passe o trabalho de rotina\npara modelos mais baratos",
-      "subline": "Uma escada de modelos e um verificador que decide — nada é aplicado até passar."
-    },
-    {
-      "master": "02-work",
-      "slug": "06-real-work",
-      "headline": "Cada diff, cada\ncomando, em linha",
-      "subline": "As chamadas de ferramentas mostram a saída real."
-    },
-    {
-      "master": "05-subagents",
-      "slug": "07-agent-fanout",
-      "headline": "Um enxame de\nagentes, num relance",
-      "subline": "Subagentes se encaixam no turno que os criou."
+      "subline": "Turnos ao vivo, projetos e não lidos — já organizados.",
+      "highlight": "um só painel"
     },
     {
       "master": "04-question",
-      "slug": "08-answer-blockers",
-      "headline": "Quando precisa\nde você, pergunta",
-      "subline": "Responda à pergunta do agente com um toque."
+      "slug": "05-it-asks",
+      "headline": "Se precisar de você,\nele pergunta",
+      "subline": "A pergunta chega como um cartão. Responda com um toque.",
+      "highlight": "ele pergunta"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "06-hand-off",
+      "headline": "Passe a rotina\npara modelos baratos",
+      "subline": "Um modelo barato tenta; um verificador decide. Só entra se passar.",
+      "highlight": "a rotina"
     },
     {
       "master": "08-usage",
-      "slug": "09-know-your-limits",
+      "slug": "07-know-your-limits",
       "headline": "Conheça seus limites\nantes de atingi-los",
-      "subline": "Cada janela com seu próprio relógio de reset, lido das suas máquinas."
+      "subline": "Cada janela com seu relógio de reset, lido das suas máquinas.",
+      "highlight": "antes de atingi-los"
     },
     {
-      "master": "setup",
-      "slug": "10-verified-setup",
-      "headline": "Três passos,\ncada um verificado",
-      "subline": "Sua tailnet, suas máquinas, sem nuvem no meio."
+      "master": "widgets",
+      "slug": "08-widgets",
+      "headline": "Suas cotas na\nTela de Início",
+      "subline": "Na cor de cada provedor — e na Tela de Bloqueio também.",
+      "highlight": "Tela de Início"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "09-what-it-costs",
+      "headline": "Veja quanto custa,\nturno a turno",
+      "subline": "Gasto por dia, modelo e projeto, somado em todas as máquinas.",
+      "highlight": "quanto custa"
+    },
+    {
+      "master": "welcome",
+      "slug": "10-private",
+      "headline": "Nada sai da\nsua tailnet",
+      "subline": "Sem conta. Sem telemetria. Código aberto.",
+      "highlight": "sua tailnet"
     }
   ],
   "ipad_headline_swap": {

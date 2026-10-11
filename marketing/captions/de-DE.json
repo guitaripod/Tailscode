@@ -2,63 +2,73 @@
   "iphone": [
     {
       "master": "01-live",
-      "slug": "01-agents-anywhere",
-      "headline": "Claude Code, opencode,\nOh My Pi — vom iPhone aus",
-      "subline": "Jeder Zug live in deiner Hand, über dein eigenes Tailnet."
-    },
-    {
-      "master": "02-dial",
-      "slug": "02-model-and-effort",
-      "headline": "Modell wählen.\nDenktiefe festlegen.",
-      "subline": "Ein Tipp auf die Pille — deine angehefteten Favoriten einen Wisch entfernt."
+      "slug": "01-agents-in-your-pocket",
+      "headline": "Deine Coding-Agenten\nin der Tasche",
+      "subline": "Claude Code, opencode und Oh My Pi — live auf dem iPhone.",
+      "highlight": "in der Tasche"
     },
     {
       "master": "03-approval",
-      "slug": "03-approve-remote",
-      "headline": "Riskanter Befehl,\nFreigabe unterwegs",
-      "subline": "Einmal, immer oder nie erlauben — mitten im Zug."
+      "slug": "02-approve-anywhere",
+      "headline": "Freigabe von\nüberall",
+      "subline": "Einmal erlauben, immer oder ablehnen — während der Agent wartet.",
+      "highlight": "überall"
     },
     {
-      "master": "07-home",
+      "master": "02-dial",
+      "slug": "03-model-and-effort",
+      "headline": "Modell wählen.\nDenktiefe festlegen.",
+      "subline": "Ein Tipp auf die Modellwahl — deine Favoriten einen Wisch entfernt.",
+      "highlight": "Denktiefe festlegen"
+    },
+    {
+      "master": "07-home-ultra",
       "slug": "04-one-board",
       "headline": "Jede Maschine,\nein Board",
-      "subline": "Live-Züge, Projekte und Ungelesenes — schon sortiert."
-    },
-    {
-      "master": "15-delegate",
-      "slug": "05-delegate",
-      "headline": "Routinearbeit an\ngünstigere Modelle",
-      "subline": "Eine Modellleiter und ein Prüfer, der entscheidet — angewendet wird erst nach bestandener Prüfung."
-    },
-    {
-      "master": "02-work",
-      "slug": "06-real-work",
-      "headline": "Jeder Diff, jeder\nBefehl, inline",
-      "subline": "Tool-Aufrufe entfalten sich mit echter Ausgabe."
-    },
-    {
-      "master": "05-subagents",
-      "slug": "07-agent-fanout",
-      "headline": "Ein Schwarm Agenten\nauf einen Blick",
-      "subline": "Subagenten docken im Zug an, der sie gestartet hat."
+      "subline": "Live-Züge, Projekte und Ungelesenes — schon sortiert.",
+      "highlight": "ein Board"
     },
     {
       "master": "04-question",
-      "slug": "08-answer-blockers",
+      "slug": "05-it-asks",
       "headline": "Wenn nötig,\nfragt der Agent",
-      "subline": "Beantworte die Frage des Agenten mit einem Tipp."
+      "subline": "Eine Frage kommt als Karte. Antworte mit einem Tipp.",
+      "highlight": "fragt der Agent"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "06-hand-off",
+      "headline": "Routinearbeit an\ngünstigere Modelle",
+      "subline": "Günstigeres Modell probiert es — übernommen wird nur, was besteht.",
+      "highlight": "Routinearbeit"
     },
     {
       "master": "08-usage",
-      "slug": "09-know-your-limits",
+      "slug": "07-know-your-limits",
       "headline": "Kenne deine Limits,\nbevor du sie erreichst",
-      "subline": "Jedes Fenster mit eigener Reset-Uhr, von deinen Maschinen gelesen."
+      "subline": "Jedes Fenster mit eigener Reset-Uhr, von deinen Maschinen gelesen.",
+      "highlight": "Kenne deine Limits"
     },
     {
-      "master": "setup",
-      "slug": "10-verified-setup",
-      "headline": "Drei Schritte,\njeder geprüft",
-      "subline": "Dein Tailnet, deine Maschinen, keine Cloud dazwischen."
+      "master": "widgets",
+      "slug": "08-widgets",
+      "headline": "Kontingente auf dem\nHome-Bildschirm",
+      "subline": "In der Farbe jedes Anbieters — und auch auf dem Sperrbildschirm.",
+      "highlight": "Home-Bildschirm"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "09-what-it-costs",
+      "headline": "Sieh die Kosten,\nZug um Zug",
+      "subline": "Ausgaben nach Tag, Modell und Projekt — über alle Maschinen zusammen.",
+      "highlight": "Kosten"
+    },
+    {
+      "master": "welcome",
+      "slug": "10-private",
+      "headline": "Nichts verlässt\ndein Tailnet",
+      "subline": "Kein Konto. Keine Telemetrie. Quelloffen.",
+      "highlight": "Tailnet"
     }
   ],
   "ipad_headline_swap": {

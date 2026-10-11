@@ -2,63 +2,73 @@
   "iphone": [
     {
       "master": "01-live",
-      "slug": "01-agents-anywhere",
-      "headline": "Claude Code, opencode,\nOh My Pi——スマホから",
-      "subline": "すべてのターンがライブで手元に、自分の tailnet で。"
-    },
-    {
-      "master": "02-dial",
-      "slug": "02-model-and-effort",
-      "headline": "モデルを選び、\n思考の深さを決める",
-      "subline": "ピルをタップするだけ——ピン留めしたお気に入りもスワイプ一つで。"
+      "slug": "01-agents-in-your-pocket",
+      "headline": "AIエージェントを\nポケットに",
+      "subline": "Claude Code・opencode・Oh My Piをライブで",
+      "highlight": "ポケット"
     },
     {
       "master": "03-approval",
-      "slug": "03-approve-remote",
-      "headline": "危険なコマンドを\nどこからでも承認",
-      "subline": "許可は一度だけ、常に、または拒否——ターン中でも。"
+      "slug": "02-approve-anywhere",
+      "headline": "どこからでも\n承認できる",
+      "subline": "1回だけ許可・常に許可・拒否——待っている間に。",
+      "highlight": "どこからでも"
     },
     {
-      "master": "07-home",
+      "master": "02-dial",
+      "slug": "03-model-and-effort",
+      "headline": "モデルを選び、\n思考の強度を決める",
+      "subline": "モデル名を一度タップ——ピン留めのお気に入りはスワイプで。",
+      "highlight": "強度を決める"
+    },
+    {
+      "master": "07-home-ultra",
       "slug": "04-one-board",
       "headline": "すべての端末、\nひとつのボードに",
-      "subline": "ライブなターン、プロジェクト、未読——もう仕分け済み。"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "05-delegate",
-      "headline": "定型作業は\n安価なモデルへ",
-      "subline": "モデルのラダーと判定する検証役——合格するまで何も適用されない。"
-    },
-    {
-      "master": "02-work",
-      "slug": "06-real-work",
-      "headline": "diffもコマンドも\nインラインで",
-      "subline": "ツール実行が実際の出力とともに展開。"
-    },
-    {
-      "master": "05-subagents",
-      "slug": "07-agent-fanout",
-      "headline": "広がるエージェント\nその全体が一目で",
-      "subline": "サブエージェントは生成したターンの中に。"
+      "subline": "ライブなターン、プロジェクト、未読——もう仕分け済み。",
+      "highlight": "ボード"
     },
     {
       "master": "04-question",
-      "slug": "08-answer-blockers",
-      "headline": "必要なとき\nエージェントは聞く",
-      "subline": "エージェントの質問にタップで答える。"
+      "slug": "05-it-asks",
+      "headline": "必要なときは、\nエージェントが聞く",
+      "subline": "質問はカードで届く。タップひとつで答えられる。",
+      "highlight": "聞く"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "06-hand-off",
+      "headline": "定型作業は\n安価なモデルへ",
+      "subline": "安価なモデルが先に試し、検証役が判定。合格するまで何も適用されない。",
+      "highlight": "定型作業"
     },
     {
       "master": "08-usage",
-      "slug": "09-know-your-limits",
+      "slug": "07-know-your-limits",
       "headline": "上限に達する前に\n限界を把握",
-      "subline": "各ウィンドウのリセット時計を、あなたのマシンから読み取り。"
+      "subline": "各ウィンドウとリセット時刻を、あなたのマシンから読み取り。",
+      "highlight": "達する前に"
     },
     {
-      "master": "setup",
-      "slug": "10-verified-setup",
-      "headline": "検証済みの\n3ステップ",
-      "subline": "自分の tailnet、自分のマシン、クラウドは介さない。"
+      "master": "widgets",
+      "slug": "08-widgets",
+      "headline": "あなたの利用枠を\nホーム画面に",
+      "subline": "各プロバイダーの色で表示、ロック画面にも。",
+      "highlight": "ホーム画面"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "09-what-it-costs",
+      "headline": "1ターンごとの\n費用がわかる",
+      "subline": "日別・モデル別・プロジェクト別の支出、全マシンを合算。",
+      "highlight": "費用がわかる"
+    },
+    {
+      "master": "welcome",
+      "slug": "10-private",
+      "headline": "tailnetから\n一歩も出ない",
+      "subline": "アカウント不要。テレメトリなし。オープンソース。",
+      "highlight": "一歩も出ない"
     }
   ],
   "ipad_headline_swap": {
