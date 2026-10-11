@@ -4,7 +4,8 @@ import CodingAgentKit
 import QuartzCore
 import TailscodeCore
 
-/// `TailscodeMac --bench-tiles <transcript.json …> [--legacy | --canvas] [--counts 1,2,4,6]` —
+/// `TailscodeMac --bench tiles <transcript.json …> [--legacy | --canvas] [--counts 1,2,4,6]`
+/// (`--bench-tiles` is the older spelling and still works) —
 /// what a window of panes costs to open, to drag a divider in and to resize, for the frame-placed
 /// canvas and for the nested split controllers it replaces, from transcripts this Mac has cached
 /// (`~/Library/Caches/Sessions/messages-*.json`; the soak server's transcripts when none is given).
@@ -13,12 +14,13 @@ import TailscodeCore
 /// front: a window with no screen still keeps one layout engine, while a view with no window
 /// builds a fresh one each pass and prices every layout ten to a hundred times over. Every pane is
 /// full — no governor runs here — so the two hosts lay out exactly the same rows. A last pass
-/// streams the soak firehose into four canvas panes and reads the main run loop's busy share;
-/// with no frame clock served to a window nobody sees, the drain runs on its 100 ms guard, so the
-/// figure is the pipeline's cost without paint, not a frame-paced reading.
+/// is `TileBench` with four panes for each host asked for: the soak firehose in a window ordered
+/// front, under the governor, with the main thread's busy share, its CPU and its apply share.
 @MainActor
 enum TileCanvasBench {
     static var isRequested: Bool { CommandLine.arguments.contains("--bench-tiles") }
+
+    private static let flags = ["--bench-tiles", "--bench"]
 
     static func run() -> Never {
         let app = NSApplication.shared
@@ -31,7 +33,7 @@ enum TileCanvasBench {
         exit(0)
     }
 
-    private static let size = NSSize(width: 1600, height: 1000)
+    static let size = NSSize(width: 1600, height: 1000)
     private static var windows: [NSWindow] = []
 
     private static func ms(_ seconds: Double) -> String { String(format: "%.1f", seconds * 1000) }
@@ -59,15 +61,15 @@ enum TileCanvasBench {
         }
     }
 
-    private enum Kind: String {
+    enum Kind: String {
         case canvas
         case legacy
     }
 
     private static func bench() async {
         let arguments = CommandLine.arguments
-        guard let flag = arguments.firstIndex(of: "--bench-tiles") else { return }
-        let paths = arguments[(flag + 1)...].prefix { !$0.hasPrefix("-") }
+        guard let flag = arguments.firstIndex(where: { flags.contains($0) }) else { return }
+        let paths = arguments[(flag + 1)...].prefix { !$0.hasPrefix("-") }.filter { $0 != "tiles" }
         let cached: [[ChatMessage]] = paths.compactMap { path in
             guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
                 let messages = try? JSONDecoder().decode([ChatMessage].self, from: data),
@@ -109,7 +111,9 @@ enum TileCanvasBench {
                 }
             }
         }
-        await streaming(panes: 4)
+        for kind in kinds {
+            await TileBench.bench(panes: 4, rate: 80, rows: 600, seconds: 20, kind: kind)
+        }
     }
 
     /// One scripted server whose sessions are the cached transcripts, cycled to eight chats.
@@ -131,7 +135,7 @@ enum TileCanvasBench {
             agentType: .claudeCode, scripts: scripts, interactive: true, sessions: sessions)
     }
 
-    private static func makeHost(_ kind: Kind) -> any PaneTiling {
+    static func makeHost(_ kind: Kind) -> any PaneTiling {
         switch kind {
         case .canvas: return TileHost()
         case .legacy: return SplitPaneHost()
@@ -246,69 +250,17 @@ enum TileCanvasBench {
         await wait(0.5)
     }
 
-    /// Moves the outermost divider by `delta` points the way a drag step does in each host.
-    private static func dividerStep(_ host: any PaneTiling, by delta: CGFloat) {
+    /// Moves the first divider that changes widths — the costly kind, every row re-measures — by
+    /// `delta` points the way a drag step does in each host.
+    static func dividerStep(_ host: any PaneTiling, by delta: CGFloat) {
         if let canvas = host as? TileHost {
-            guard let divider = canvas.placement?.dividers.first else { return }
+            guard
+                let divider = canvas.placement?.dividers.first(where: { $0.line.height > $0.line.width })
+                    ?? canvas.placement?.dividers.first
+            else { return }
             canvas.drag(divider.id, to: divider.position + Double(delta))
         } else if let legacy = host as? SplitPaneHost {
             legacy.benchNudgeFirstDivider(by: delta)
-        }
-    }
-
-    /// The soak firehose into four canvas panes for fifteen seconds, read by the loop meter.
-    private static func streaming(panes count: Int) async {
-        let configuration = SoakWorld.Configuration(
-            panes: count, tokensPerSecond: 80, rows: 600, turnSeconds: 75, listedSessions: count)
-        let backend = SoakWorld.install(configuration)
-        guard let sessions = try? await backend.listSessions(), sessions.count >= count else {
-            print("bench-tiles: the soak server listed no sessions")
-            return
-        }
-        for kind in [Kind.canvas, .legacy] {
-            let host = makeHost(kind)
-            host.makePane = { TranscriptViewController() }
-            let window = NSWindow(
-                contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable],
-                backing: .buffered, defer: false)
-            window.isReleasedWhenClosed = false
-            windows.append(window)
-            window.contentView = host.view
-            host.bootstrap()
-            if let layout = SplitEven.arrange(ids: (0..<count).map { _ in PaneID() }, as: .grid) {
-                _ = host.restore(SplitSnapshot(layout: layout, sessions: [:]))
-            }
-            let panes = host.orderedPanes
-            for (index, pane) in panes.enumerated() {
-                pane.open(
-                    SessionEntry(
-                        profileID: SoakWorld.profile.id, profileName: "soak", host: "soak",
-                        backendType: .claudeCode, session: sessions[index]), backend: backend)
-                pane.setFocusedPane(index == 0)
-            }
-            await wait(20) { panes.allSatisfy { $0.currentState?.hasLoadedTranscript == true } }
-            await wait(2)
-            let meter = LoopMeter()
-            meter.install()
-            for pane in panes { pane.benchSend("stream") }
-            await wait(2)
-            var busy: [Double] = []
-            var worst: TimeInterval = 0
-            for _ in 0..<15 {
-                try? await Task.sleep(for: .seconds(1))
-                let reading = meter.reading()
-                busy.append(reading.busy1)
-                worst = max(worst, reading.worst1)
-            }
-            meter.uninstall()
-            let mean = busy.reduce(0, +) / Double(max(1, busy.count))
-            print(
-                String(
-                    format: "streaming %@: %d panes at 80 tok/s into 600-message transcripts: loop busy mean %.2f p95 %.2f, worst slice %.0f ms",
-                    kind.rawValue, count, mean, p95(busy), worst * 1000))
-            host.eachPane { $0.shutdownPane() }
-            window.contentView = nil
-            await wait(1)
         }
     }
 }

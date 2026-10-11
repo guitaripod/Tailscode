@@ -24,7 +24,7 @@ enum MacCLI {
           TailscodeMac --tree <path>            write every view's frame and ambiguity to a file
           TailscodeMac --open <surface>         open a named window first (servers, preferences, …)
           TailscodeMac --bench <transcript.json …>  time what cached transcripts cost to show
-          TailscodeMac --bench-tiles <transcript.json …>  time a window of panes: open, divider, resize
+          TailscodeMac --bench tiles[=N:R:K:S]  time a window of panes: open, divider, resize, or N streaming (--bench-tiles is the older spelling)
           TailscodeMac --flight [minutes]       print the flight recorder's ring, newest last
           TailscodeMac --version
         """

@@ -4,13 +4,17 @@ import ObjectiveC
 import QuartzCore
 import TailscodeCore
 
-/// `TailscodeMac --bench tiles=N[:R:K:S]` — N panes streaming the soak server's firehose at R
-/// tokens a second into K-message transcripts for S seconds, in a window ordered front so the
-/// display link and the layout engine run as they do for a person, measured from inside: the main
-/// run loop's busy share and worst slice (`LoopMeter`), how late a 100 ms main-queue timer fires
-/// (the depth of anything queued on the main thread), the footprint's slope, and frames applied
-/// against states received. Then every pane but one is hidden for a few seconds, as a zoom does,
-/// and the same numbers are taken again.
+/// `TailscodeMac --bench tiles=N[:R:K:S] [--legacy]` — N panes of the frame-placed canvas (the
+/// nested split controllers with `--legacy`) streaming the soak server's firehose at R tokens a
+/// second into K-message transcripts for S seconds, in a window ordered front so the display
+/// link, the layout engine and the shed governor run as they do for a person, measured from
+/// inside: the main run loop's busy share and worst slice (`LoopMeter`), the main thread's own
+/// CPU and the share of it spent applying frames, how late a 100 ms main-queue timer fires (the
+/// depth of anything queued on the main thread), the footprint's slope, the shed level the
+/// governor held, and frames applied against states received. Then a divider is stepped while
+/// the panes still stream, and every pane but the focused one is zoomed away for a few seconds
+/// and the same numbers are taken again. `--bench tiles` with no count is the layout bench
+/// (`TileCanvasBench`), whose streaming pass is this one.
 @MainActor
 enum TileBench {
     static func isRequested(_ paths: ArraySlice<String>) -> Bool {
@@ -26,10 +30,12 @@ enum TileBench {
         let rate = parts.count > 1 ? parts[1] : 80
         let rows = Int(parts.count > 2 ? parts[2] : 600)
         let seconds = parts.count > 3 ? parts[3] : 20
+        let kind: TileCanvasBench.Kind =
+            CommandLine.arguments.contains("--legacy") ? .legacy : .canvas
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         Task { @MainActor in
-            await bench(panes: panes, rate: rate, rows: rows, seconds: seconds)
+            await bench(panes: panes, rate: rate, rows: rows, seconds: seconds, kind: kind)
             exit(0)
         }
         app.run()
@@ -45,6 +51,7 @@ enum TileBench {
         var skipped = 0
         var mainCPU: Double = 0
         var applyShare: Double = 0
+        var levels: [Int] = []
     }
 
     /// The main thread's port, for its CPU time: a second reading of how busy it is that does not
@@ -105,6 +112,7 @@ enum TileBench {
             let reading = meter.reading()
             window.busy.append(reading.busy1)
             window.worst = max(window.worst, reading.worst1)
+            window.levels.append(Seatbelts.shared.level.rawValue)
             if let bytes = MemoryPressure.footprintBytes() {
                 window.footprints.append(
                     (CACurrentMediaTime() - start, Double(bytes) / 1_048_576))
@@ -135,9 +143,26 @@ enum TileBench {
                 slope(window.footprints), Double(window.applied) / seconds / Double(panes),
                 Double(window.skipped) / seconds / Double(panes)))
         print("  busy each second: " + window.busy.map { String(format: "%.2f", $0) }.joined(separator: " "))
+        print(
+            "  shed level each second: "
+                + window.levels.map { ShedLevel(rawValue: $0)?.code ?? "?" }.joined(separator: " "))
     }
 
-    private static func bench(panes count: Int, rate: Double, rows: Int, seconds: Double) async {
+    private static func dividerSteps(_ host: any PaneTiling, window: NSWindow) async -> [Double] {
+        var steps: [Double] = []
+        for step in 0..<24 {
+            let started = CACurrentMediaTime()
+            TileCanvasBench.dividerStep(host, by: step % 2 == 0 ? 6 : -6)
+            window.contentView?.layoutSubtreeIfNeeded()
+            steps.append((CACurrentMediaTime() - started) * 1000)
+            try? await Task.sleep(for: .milliseconds(40))
+        }
+        return steps
+    }
+
+    static func bench(
+        panes count: Int, rate: Double, rows: Int, seconds: Double, kind: TileCanvasBench.Kind
+    ) async {
         let configuration = SoakWorld.Configuration(
             panes: count, tokensPerSecond: rate, rows: rows, turnSeconds: Int(seconds) + 60,
             listedSessions: count)
@@ -146,35 +171,39 @@ enum TileBench {
             print("tiles: the soak server listed no sessions")
             return
         }
-        let size = NSSize(width: 1600, height: 1000)
+        let size = TileCanvasBench.size
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable],
             backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        let root = NSView(frame: NSRect(origin: .zero, size: size))
-        window.contentView = root
+        let host = TileCanvasBench.makeHost(kind)
+        host.makePane = { TranscriptViewController() }
+        window.contentView = host.view
         window.orderFrontRegardless()
-        let columns = Int(ceil(sqrt(Double(count))))
-        let lines = Int(ceil(Double(count) / Double(columns)))
-        let width = size.width / CGFloat(columns)
-        let height = size.height / CGFloat(lines)
-        var panes: [TranscriptViewController] = []
-        let meter = LoopMeter()
-        meter.install()
+        host.bootstrap()
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "tailscode-bench-\(getpid())")
+        try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        Seatbelts.shared.start(
+            ringURL: scratch.appendingPathComponent("flight.ring"),
+            ledgerURL: scratch.appendingPathComponent("launch.json"))
+        Seatbelts.shared.panes = { host.seatbeltPanes(held: [:]) }
+        Seatbelts.shared.onDecision = { host.applyGovernor($0) }
+        let meter = Seatbelts.shared.meter
         let opening = CACurrentMediaTime()
-        for index in 0..<count {
-            let pane = TranscriptViewController()
-            pane.view.frame = NSRect(
-                x: CGFloat(index % columns) * width, y: CGFloat(index / columns) * height,
-                width: width - 1, height: height - 1)
-            pane.view.autoresizingMask = []
-            root.addSubview(pane.view)
-            let entry = SessionEntry(
-                profileID: SoakWorld.profile.id, profileName: "soak", host: "soak",
-                backendType: .claudeCode, session: sessions[index])
-            pane.open(entry, backend: backend)
-            pane.benchFocus(index == 0)
-            panes.append(pane)
+        if count > 1,
+            let layout = SplitEven.arrange(ids: (0..<count).map { _ in PaneID() }, as: .grid)
+        {
+            _ = host.restore(SplitSnapshot(layout: layout, sessions: [:]))
+        }
+        let panes = host.orderedPanes
+        for (index, pane) in panes.enumerated() {
+            pane.open(
+                SessionEntry(
+                    profileID: SoakWorld.profile.id, profileName: "soak", host: "soak",
+                    backendType: .claudeCode, session: sessions[index % sessions.count]),
+                backend: backend)
+            pane.setFocusedPane(index == 0)
         }
         let openCost = (CACurrentMediaTime() - opening) * 1000
         let loadStart = CACurrentMediaTime()
@@ -186,8 +215,8 @@ enum TileBench {
         let loaded = (CACurrentMediaTime() - loadStart) * 1000
         print(
             String(
-                format: "tiles: %d panes, %.0f tok/s, %d messages, %.0f s · open %.0f ms, loaded in %.0f ms",
-                count, rate, rows, seconds, openCost, loaded))
+                format: "tiles %@: %d panes (%d placed), %.0f tok/s, %d messages, %.0f s · open %.0f ms, loaded in %.0f ms",
+                kind.rawValue, count, panes.count, rate, rows, seconds, openCost, loaded))
         try? await Task.sleep(for: .seconds(2))
         let idle = await measure(3, meter: meter, panes: panes)
         report("idle", idle, seconds: 3, panes: count)
@@ -202,16 +231,19 @@ enum TileBench {
             if abl.contains("D"), v.layer != nil { v.layer?.needsDisplayOnBoundsChange = false; v.layer?.drawsAsynchronously = false }
             v.subviews.forEach(walk)
         }
-        walk(root)
+        walk(host.view)
         if ProcessInfo.processInfo.environment["TS_CENSUS"] != nil { DisplayCensus.install() }
         DisplayCensus.counts = [:]
         let streaming = await measure(seconds, meter: meter, panes: panes)
         report("streaming", streaming, seconds: seconds, panes: count)
         DisplayCensus.dump(seconds: seconds)
+        let seen = host.seatbeltPanes(held: [:])
         print(
             String(
-                format: "process cpu %.0f%% of one core",
-                (processCPU() - cpuBefore) / (seconds + 2) * 100))
+                format: "process cpu %.0f%% of one core, panes live %d glance %d hidden %d parked %d, max shed level %@",
+                (processCPU() - cpuBefore) / (seconds + 2) * 100, seen.live, seen.glance,
+                seen.hidden, seen.parked,
+                ShedLevel(rawValue: streaming.levels.max() ?? 0)?.code ?? "?"))
         print("clock: \(TranscriptViewController.benchClock)")
         print(
             "cascade frames per s, ms each: "
@@ -223,7 +255,26 @@ enum TileBench {
         print(
             "apply cost per frame (ms): "
                 + panes.map { String(format: "%.1f", $0.benchApplyCost) }.joined(separator: " "))
-        for pane in panes.dropFirst() { pane.benchHide(true) }
+        if count > 1 {
+            let steps = await dividerSteps(host, window: window)
+            print(
+                String(
+                    format: "divider step while streaming, rows live: median %.1f p95 %.1f worst %.1f ms (%d steps, 40 ms apart)",
+                    pct(steps, 0.5), pct(steps, 0.95), steps.max() ?? 0, steps.count))
+            if let canvas = host as? TileHost {
+                canvas.simulateDividerDrag(true)
+                let held = await dividerSteps(host, window: window)
+                let release = CACurrentMediaTime()
+                canvas.simulateDividerDrag(false)
+                window.contentView?.layoutSubtreeIfNeeded()
+                print(
+                    String(
+                        format: "divider step while streaming, rows held as a drag holds them: median %.1f p95 %.1f worst %.1f ms, release catches every pane up in %.1f ms",
+                        pct(held, 0.5), pct(held, 0.95), held.max() ?? 0,
+                        (CACurrentMediaTime() - release) * 1000))
+            }
+        }
+        if count > 1 { host.zoomActive() }
         let zoomed = await measure(5, meter: meter, panes: Array(panes.prefix(1)))
         report("zoomed onto one", zoomed, seconds: 5, panes: 1)
         let hiddenDrawn = panes.dropFirst().map(\.benchFrames.applied)
@@ -232,9 +283,7 @@ enum TileBench {
             $0.0.benchFrames.applied != $0.1
         }.count
         print("hidden panes still applying states: \(stillDrawing) of \(count - 1)")
-        for pane in panes.dropFirst() { pane.benchHide(false) }
         for pane in panes { pane.shutdownPane() }
-        meter.uninstall()
         window.orderOut(nil)
     }
 }
