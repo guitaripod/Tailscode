@@ -69,6 +69,25 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.74" date="2026-10-11">
+      <description>
+        <p>Tiling is rebuilt around what the machine can afford, so five chats streaming at once no longer take the desktop with them.</p>
+        <p>Changes:</p>
+        <ul>
+          <li>Panes sit in one canvas laid out from the window&#x27;s size: a split that would leave a pane too small is refused with a note, a pane with no room moves to a strip along the edge instead of being squeezed, and split, close and zoom move panes rather than rebuilding them.</li>
+          <li>Dividers have a nine-pixel grip, resize with the arrow keys, double-click to even out, and switch to a ghost line when a live drag gets expensive.</li>
+          <li>A governor decides how many chats stay whole: the one you are in always is, the others rest as a glance tile or a paused face when the machine is busy, a "Live 3 of 5" chip says why, and Keep all live overrides it until the machine is genuinely strained. The pane menu gains Pause Pane, Keep Live, Promote to main, Open full, and Next and Previous Pane.</li>
+          <li>After an unclean exit your chats come back paused under a banner and wake one at a time.</li>
+          <li>On desktops that start apps in systemd scopes, Tailscode puts memory and CPU limits on itself at launch so a runaway can no longer starve the whole machine, and a flight recorder keeps the last hour of counts and durations, never content, for diagnosis.</li>
+        </ul>
+        <p>Fixes:</p>
+        <ul>
+          <li>Four or five chats streaming at once collapsed the app: every conversation state was posted to the main loop one at a time until memory ran out. A conversation is now read once per chat and a pane applies only the newest state each frame; eight chats at 200 tokens a second stay under a gigabyte.</li>
+          <li>Opening several panes no longer holds the main loop in one long slice, and a pane hidden or zoomed away stops streaming.</li>
+          <li>Two panes writing at once no longer evict each other&#x27;s cached text markup.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.73" date="2026-10-11">
       <description>
         <p>The Studio and the picture viewer rise as sheets inside the Tailscode window, and a long chat of pictures no longer flickers or spikes the CPU.</p>
