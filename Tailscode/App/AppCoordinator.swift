@@ -105,6 +105,9 @@ final class AppCoordinator: NSObject {
                 openSettingsForDebug(slug: slug)
             }
             if CommandLine.arguments.contains("--tour") { TourDriver.start(in: window) }
+            if CommandLine.arguments.contains("--preview-tour") {
+                TourDriver.startPreview(in: window)
+            }
             if CommandLine.arguments.contains("--slashwalk") {
                 TourDriver.startSlashWalk(in: window)
             }

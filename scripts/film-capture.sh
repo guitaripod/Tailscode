@@ -7,13 +7,15 @@
 # resident (unread badges only appear on the second launch).
 #
 # Usage: scripts/film-capture.sh [seconds] [out.mov]
+#   TOUR_ARG=--preview-tour  films the thirty-second App Store preview take instead of the long tour
+#   APP=<path to Tailscode.app>  films a build other than build-sim/
 set -euo pipefail
 
 DURATION=${1:-46}
 OUT=${2:-/tmp/tailscode-screen.mov}
 BUNDLE=com.guitaripod.tailscode
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-APP=$ROOT/build-sim/Build/Products/Debug-iphonesimulator/Tailscode.app
+APP=${APP:-$ROOT/build-sim/Build/Products/Debug-iphonesimulator/Tailscode.app}
 NAME=TailscodeFilm
 
 # gtimeout is coreutils; fall back to running bare if it is not on PATH so the
@@ -59,7 +61,7 @@ rm -f "$OUT"
 xcrun simctl io "$udid" recordVideo --codec h264 --force "$OUT" >/tmp/film-record.log 2>&1 &
 rec=$!
 sleep 2
-T 30 xcrun simctl launch "$udid" "$BUNDLE" --demo --tour >/dev/null
+T 30 xcrun simctl launch "$udid" "$BUNDLE" --demo ${TOUR_ARG:---tour} >/dev/null
 sleep "$DURATION"
 kill -INT $rec
 wait $rec 2>/dev/null || true

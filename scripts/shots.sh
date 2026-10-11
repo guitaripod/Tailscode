@@ -9,6 +9,7 @@
 #   scripts/shots.sh --ipad          # the landscape workspace set on a 13" iPad
 #   scripts/shots.sh 07-home 08-usage
 #   TAILSCODE_SHOT_LOCALE=de-DE scripts/shots.sh   # the app in German, to marketing/appstore/l10n/de-DE/iphone
+#   TAILSCODE_SHOT_SKIP_BUILD=1 scripts/shots.sh …  # reuse the app the last run built (a per-locale pass)
 #
 # The Studio shots (studio-paint, studio-done, video-run, video-done) need real pictures:
 #   TAILSCODE_STUDIO_ART=<folder with lighthouse.png, cat-roof.png, ... and manifest.json> scripts/shots.sh studio-paint
@@ -76,6 +77,8 @@ SHOTS=(
   "05-subagents|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_AGENTS=first|11"
   "06-render|--demo|TAILSCODE_OPEN_SESSION=demo-o1|9"
   "07-home|--demo|TAILSCODE_HIDE_DEMO_BADGE=1|6"
+  "07-home-ultra|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_HOME_DIAL=level:ultracode|7"
+  "widgets-store|--demo --widget-preview-store||6"
   "08-usage|--demo --usage||7"
   "09-chats|--demo|TAILSCODE_OPEN_CHATS=1|7"
   "02-dial|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=rail:ultracode|14"
@@ -166,6 +169,10 @@ boot_device() {
 
 build() {
   cd "$ROOT"
+  if [ -n "${TAILSCODE_SHOT_SKIP_BUILD:-}" ]; then
+    find "$DERIVED/Build/Products" -name Tailscode.app -maxdepth 3 | head -1
+    return
+  fi
   xcodegen generate >/dev/null
   xcodebuild -project Tailscode.xcodeproj -scheme Tailscode -configuration Debug \
     -destination "generic/platform=iOS Simulator" -derivedDataPath "$DERIVED" build \

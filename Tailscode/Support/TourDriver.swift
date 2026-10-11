@@ -28,6 +28,18 @@
             Task { await driver.run() }
         }
 
+        /// The thirty-second take the App Store preview is cut from: the board, one sentence
+        /// typed and sent, the answer streaming, the effort rail, an approval answered, and the
+        /// Usage screen — the pitch in the order a person meets it. It is one pass and nothing in it
+        /// waits for a person, so every run lands on the same frames.
+        static func startPreview(in window: UIWindow) {
+            AppPreferences.autoExpandThinking = true
+            isFilming = true
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.preview() }
+        }
+
         /// Walks the composer through every state `/` can put it in, holding each one long enough
         /// to be photographed. The completion list is the one surface with no still of its own in
         /// the film, and its states — ranked, fuzzy, argument, unknown, catalog — are exactly the
@@ -153,6 +165,48 @@
             await seam()
             await budget()
             AppLogger.ui.info("tour: end")
+        }
+
+        /// About 29 seconds. Where it spends them: the board (0–4.5), a sentence sent and the answer
+        /// arriving (4.5–16), the effort rail (16–19), an approval (19–26), the quotas (26–29).
+        private func preview() async {
+            AppLogger.ui.info("preview: begin")
+            home?.tourResetBoard(seenAge: 300_000)
+            await hold(1.5)
+            await glide(home?.tourScrollView, by: 260, duration: 1.7)
+            await hold(0.3)
+            home?.tourAim(serverIndex: 0, directory: "/Users/demo/dev/pulse-server")
+            await hold(0.8)
+
+            home?.tourFocusComposer()
+            await hold(0.6)
+            await home?.tourType("Add a retry budget to the sync client", perCharacter: 0.045)
+            await hold(0.6)
+            home?.tourSendComposer()
+            await hold(3.2)
+            await glide(chat?.tourScrollView, by: -260, duration: 1.8)
+            await hold(0.4)
+            chat?.tourScrollToBottom()
+            await hold(2.4)
+
+            await chat?.tourDial("rail:ultracode")
+            await hold(2.0)
+
+            await popToHome(hold: 0.7)
+            home?.openSession(withID: "demo-c3")
+            await hold(1.6)
+            await glide(chat?.tourScrollView, by: -400, duration: 1.5)
+            await hold(0.5)
+            chat?.tourAllowPermission()
+            await hold(1.9)
+            await popToHome(hold: 0.5)
+
+            await glide(home?.tourScrollView, to: 4000, duration: 0.9)
+            home?.pushUsage()
+            await hold(2.2)
+            await glide(topScrollView, by: 700, duration: 2.0)
+            await hold(1.4)
+            AppLogger.ui.info("preview: end")
         }
 
         /// 0.0–9.5 — the whole fleet on one board, then aim at the project this

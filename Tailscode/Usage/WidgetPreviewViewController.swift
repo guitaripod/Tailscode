@@ -16,10 +16,12 @@
             case home
             case states
             case lock
+            case store
 
             static func from(arguments: [String]) -> Mode {
                 if arguments.contains("--widget-preview-alt") { return .states }
                 if arguments.contains("--widget-preview-lock") { return .lock }
+                if arguments.contains("--widget-preview-store") { return .store }
                 return .home
             }
 
@@ -28,11 +30,16 @@
                 case .home: return "Widget Preview · Home"
                 case .states: return "Widget Preview · States"
                 case .lock: return "Widget Preview · Lock"
+                case .store: return "Widget Preview · Store"
                 }
             }
         }
 
         private let mode: Mode
+
+        /// The flat colour the store layout sits on, so a marketing script can cut each tile out of the
+        /// capture by what is not this colour.
+        static let keyColor = UIColor(red: 1, green: 0, blue: 1, alpha: 1)
 
         init(mode: Mode) {
             self.mode = mode
@@ -42,7 +49,7 @@
         override func viewDidLoad() {
             super.viewDidLoad()
             title = mode.title
-            view.backgroundColor = Theme.Color.assistantBubble
+            view.backgroundColor = mode == .store ? Self.keyColor : Theme.Color.assistantBubble
             let host = UIHostingController(rootView: WidgetPreviewGrid(mode: mode))
             host.view.backgroundColor = .clear
             addChild(host)
@@ -111,6 +118,32 @@
         }
 
         var body: some View {
+            if mode == .store {
+                storeLayout
+            } else {
+                scrolling
+            }
+        }
+
+        /// One of each Home Screen family, healthy, on a flat key colour: the layout the store panel
+        /// cuts its tiles from.
+        private var storeLayout: some View {
+            ZStack {
+                Color(red: 1, green: 0, blue: 1)
+                VStack(spacing: 14) {
+                    tile(entry(stored), 338, 354) { LargeUsageView(entry: $0, palette: $1) }
+                    tile(entry(stored), 338, 158) { MediumUsageView(entry: $0, palette: $1) }
+                    HStack(spacing: 14) {
+                        tile(entry(stored), 158, 158) { SmallUsageView(entry: $0, palette: $1) }
+                        tile(entry(balanceOnly), 158, 158) { SmallUsageView(entry: $0, palette: $1) }
+                    }
+                }
+                .padding(.top, 40)
+            }
+            .ignoresSafeArea()
+        }
+
+        private var scrolling: some View {
             ScrollView {
                 VStack(spacing: 10) {
                     switch mode {
@@ -142,6 +175,8 @@
                             tile(entry(empty), 158, 158) { SmallUsageView(entry: $0, palette: $1) }
                             tile(entry(empty), 158, 158) { MediumUsageView(entry: $0, palette: $1) }
                         }
+                    case .store:
+                        EmptyView()
                     case .lock:
                         label("One provider · detailed")
                         tile(entry(trimmed(1), detail: .detailed), 338, 354) {
