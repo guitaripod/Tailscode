@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import Synchronization
 
 /// Persists the merged cross-server session list so a cold launch renders the
 /// last-known chats instantly instead of empty sections while every server is
@@ -42,9 +43,19 @@ public enum SessionListCache {
                 backendType: $0.backendType, session: $0.session)
         }
         guard let data = try? JSONEncoder().encode(cached) else { return }
-        try? data.write(
-            to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        guard lastWritten.withLock({ $0 != data }) else { return }
+        guard
+            (try? data.write(
+                to: fileURL,
+                options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])) != nil
+        else { return }
+        lastWritten.withLock { $0 = data }
     }
+
+    /// The bytes the file holds. Every poll and every status change republishes the listing, and
+    /// nearly all of them leave the two hundred rows exactly as they were, so a write that would
+    /// replace the file with itself is not made.
+    private static let lastWritten = Mutex<Data?>(nil)
 
     @MainActor private static var pending: [SessionEntry]?
     @MainActor private static var writer: Task<Void, Never>?
