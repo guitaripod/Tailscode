@@ -115,8 +115,37 @@ final class SessionListViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         if hasAppeared { Task { await viewModel.load() } }
+        takeDeferredRender()
         hasAppeared = true
         startClockRefresh()
+    }
+
+    /// A list nobody can see is not drawn. On a phone this controller outlives its visit — Home
+    /// sits in front of it, or a conversation does — and every listing, activity tick and read mark
+    /// that arrived meanwhile used to rebuild a row model and a snapshot for each chat the servers
+    /// hold, for a screen no one was looking at. The reading is kept as a debt and paid when the
+    /// list is about to appear, from the state it holds by then rather than from each step on the
+    /// way.
+    private var owesRender = false
+
+    /// Whether this list may draw itself now; when it may not, the draw is remembered.
+    private func mayRender() -> Bool {
+        guard viewIfLoaded?.window != nil || isAppearing else {
+            owesRender = true
+            return false
+        }
+        return true
+    }
+
+    private var isAppearing = false
+
+    private func takeDeferredRender() {
+        guard owesRender else { return }
+        owesRender = false
+        isAppearing = true
+        defer { isAppearing = false }
+        rebuildChips()
+        applySnapshot()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -314,6 +343,7 @@ final class SessionListViewController: UIViewController {
     }
 
     private func rebuildChips() {
+        guard mayRender() else { return }
         chipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         chipStack.addArrangedSubview(
             chip(title: String(localized: "All"), isSelected: filter == .all) { [weak self] in
@@ -1177,6 +1207,7 @@ final class SessionListViewController: UIViewController {
     /// cursor, select-all and the held selection all address, because an `IndexPath` into a
     /// sectioned snapshot is not a position a person has.
     private func applySnapshot() {
+        guard mayRender() else { return }
         let entries = filteredEntries()
         let sections = sectionedRows(for: entries)
         let rows = sections.flatMap(\.1)

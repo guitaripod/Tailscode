@@ -44,13 +44,17 @@ struct CascadeTail {
         guard total > 0, storage.length == total else { return }
         let shown = min(max(revealed, 0), total)
         let bandStart = max(0, shown - span)
+        let hiddenFrom = Self.hiddenStart(in: storage)
+        let tailIsHidden = hiddenFrom <= shown
+        let restoreFrom = min(bandStart, hiddenFrom)
+        let restoreTo = tailIsHidden ? shown : total
         storage.beginEditing()
         base.enumerateAttributes(
-            in: NSRange(location: bandStart, length: total - bandStart), options: []
+            in: NSRange(location: restoreFrom, length: restoreTo - restoreFrom), options: []
         ) { attributes, range, _ in
             storage.setAttributes(attributes, range: range)
         }
-        if shown < total {
+        if shown < total, !tailIsHidden {
             storage.addAttribute(
                 .foregroundColor, value: UIColor.clear,
                 range: NSRange(location: shown, length: total - shown))
@@ -59,17 +63,33 @@ struct CascadeTail {
         storage.endEditing()
     }
 
-    /// The hex of the colour a glyph already wears. Neighbouring glyphs share one attribute run and
-    /// so one colour object, which makes the previous answer the answer nearly every time.
-    private func settledHex(
-        of colour: UIColor?, _ traits: UITraitCollection, _ fallback: String,
-        _ lastColour: inout UIColor?, _ lastHex: inout String
-    ) -> String {
+    /// Where the invisible tail the last frame left begins, or the end when there is none. Read off
+    /// the storage itself rather than remembered beside it, so a storage something else rewrote
+    /// can only make the answer wider, never wrong. Reveal moves forward, so a tail that is hidden
+    /// already is hidden past this frame's reveal as well and needs no second coat of clear: a
+    /// frame has to put back only the glyphs between where the tail began and where it begins now,
+    /// not copy the attributes of everything the reader has not reached yet.
+    private static func hiddenStart(in storage: NSAttributedString) -> Int {
+        let total = storage.length
+        guard total > 0 else { return 0 }
+        var run = NSRange(location: 0, length: 0)
+        let colour = storage.attribute(
+            .foregroundColor, at: total - 1, longestEffectiveRange: &run,
+            in: NSRange(location: 0, length: total))
+        return (colour as? UIColor)?.isEqual(UIColor.clear) == true ? run.location : total
+    }
+
+    /// The channels of the colour a glyph already wears. Neighbouring glyphs share one attribute
+    /// run and so one colour object, which makes the previous answer the answer nearly every time.
+    private func settledChannels(
+        of colour: UIColor?, _ traits: UITraitCollection, _ fallback: CascadeTint.Channels,
+        _ lastColour: inout UIColor?, _ lastChannels: inout CascadeTint.Channels
+    ) -> CascadeTint.Channels {
         guard let colour else { return fallback }
-        if let lastColour, lastColour === colour { return lastHex }
+        if let lastColour, lastColour === colour { return lastChannels }
         lastColour = colour
-        lastHex = CascadeTint.hex(colour, traits)
-        return lastHex
+        lastChannels = CascadeTint.channels(colour, traits)
+        return lastChannels
     }
 
     /// The wave tints what is already there rather than replacing it: a keyword in a code block, a
@@ -78,20 +98,21 @@ struct CascadeTail {
     private func tint(_ string: NSMutableAttributedString, upTo shown: Int, settled: UIColor) {
         guard span > 0, shown > 0 else { return }
         let traits = UITraitCollection.current
-        let fallback = CascadeTint.hex(settled, traits)
-        let leading = CascadeTint.hex(edge, traits)
-        let burn = CascadeTint.hex(spark, traits)
+        let fallback = CascadeTint.channels(settled, traits)
+        let leading = CascadeTint.channels(edge, traits)
+        let burn = CascadeTint.channels(spark, traits)
         var lastColour: UIColor?
-        var lastHex = fallback
+        var lastChannels = fallback
         for distance in 0..<min(span, shown) {
             let index = shown - 1 - distance
-            let range = NSRange(location: index, length: 1)
             let existing = string.attribute(.foregroundColor, at: index, effectiveRange: nil)
-            let base = settledHex(of: existing as? UIColor, traits, fallback, &lastColour, &lastHex)
+            let base = settledChannels(
+                of: existing as? UIColor, traits, fallback, &lastColour, &lastChannels)
             let sample = StreamCascade.sample(distance: distance, phase: phase)
-            let colour = CascadeTint.colour(sample, settled: base, edge: leading, spark: burn)
             string.addAttribute(
-                .foregroundColor, value: colour.withAlphaComponent(sample.alpha), range: range)
+                .foregroundColor,
+                value: CascadeTint.colour(sample, settled: base, edge: leading, spark: burn),
+                range: NSRange(location: index, length: 1))
         }
     }
 }
@@ -104,12 +125,18 @@ struct CascadeTail {
 /// drift nobody notices until two screenshots sit side by side.
 @MainActor
 enum CascadeTint {
-    static func colour(_ sample: CascadeSample, settled: String, edge: String, spark: String)
+    typealias Channels = (red: Double, green: Double, blue: Double)
+
+    /// The wave is arithmetic and stays arithmetic: a frame walks this a couple of dozen times, so
+    /// the colours cross as numbers and a hex string is never built to be parsed straight back.
+    static func colour(_ sample: CascadeSample, settled: Channels, edge: Channels, spark: Channels)
         -> UIColor
     {
-        let warmed = Contrast.blend(settled, edge, sample.heat * 0.86) ?? settled
-        let lit = Contrast.blend(warmed, spark, sample.shimmer) ?? warmed
-        return colour(lit)
+        let warmed = Contrast.blendChannels(settled, edge, sample.heat * 0.86)
+        let lit = Contrast.blendChannels(warmed, spark, sample.shimmer)
+        return UIColor(
+            red: CGFloat(lit.red), green: CGFloat(lit.green), blue: CGFloat(lit.blue),
+            alpha: CGFloat(sample.alpha))
     }
 
     /// The specular colour the band pushes toward: brighter than the accent in the dark, denser in
@@ -117,10 +144,13 @@ enum CascadeTint {
     /// Under a theme the extreme is the palette's own ink rather than white or near-black, because
     /// a spark that leaves the palette reads as a defect in the glyph rather than as light.
     static func spark(for edge: UIColor, traits: UITraitCollection) -> UIColor {
-        let hex = hex(edge, traits)
         let toward =
             traits.palette?.text ?? (traits.userInterfaceStyle == .light ? "#101014" : "#ffffff")
-        return colour(Contrast.blend(hex, toward, 0.5) ?? hex)
+        guard let target = Contrast.channels(toward) else { return edge }
+        let mixed = Contrast.blendChannels(channels(edge, traits), target, 0.5)
+        return UIColor(
+            red: CGFloat(mixed.red), green: CGFloat(mixed.green), blue: CGFloat(mixed.blue),
+            alpha: 1)
     }
 
     /// The leading edge: the app's accent, or the shared rainbow while ultracode is on, so the
@@ -131,25 +161,14 @@ enum CascadeTint {
         return UIColor(red: stop.red, green: stop.green, blue: stop.blue, alpha: 1)
     }
 
-    static func hex(_ colour: UIColor, _ traits: UITraitCollection) -> String {
+    static func channels(_ colour: UIColor, _ traits: UITraitCollection) -> Channels {
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
         var alpha: CGFloat = 0
         colour.resolvedColor(with: traits).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
         func clamp(_ value: CGFloat) -> Double { Double(min(max(value, 0), 1)) }
-        return Contrast.hex(red: clamp(red), green: clamp(green), blue: clamp(blue))
-    }
-
-    static func colour(_ hex: String) -> UIColor {
-        var digits = Substring(hex)
-        if digits.hasPrefix("#") { digits = digits.dropFirst() }
-        guard let value = UInt32(digits, radix: 16) else { return .label }
-        return UIColor(
-            red: CGFloat((value >> 16) & 0xff) / 255,
-            green: CGFloat((value >> 8) & 0xff) / 255,
-            blue: CGFloat(value & 0xff) / 255,
-            alpha: 1)
+        return (clamp(red), clamp(green), clamp(blue))
     }
 }
 

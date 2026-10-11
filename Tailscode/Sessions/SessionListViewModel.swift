@@ -13,7 +13,12 @@ final class SessionListViewModel {
 
     private var sources: [Source]
     private var sourcesRevision: Int
-    private(set) var entries: [SessionEntry] = []
+    private(set) var entries: [SessionEntry] = [] {
+        didSet { entriesRevision &+= 1 }
+    }
+    /// Moves whenever `entries` is touched, so a reading derived from the whole listing can be held
+    /// until the listing changes instead of being worked out again for every redraw.
+    private(set) var entriesRevision = 0
     private(set) var unreachable: [String] = []
     /// When each server was last heard from, by this device's clock. Cards measure their durations
     /// against this rather than against `now`, so a machine that stopped answering stops its clocks

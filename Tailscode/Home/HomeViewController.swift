@@ -1152,7 +1152,10 @@ final class HomeViewController: UIViewController {
         let isUnread = SessionSeenStore.unreadEvaluator()
         let liveIDs = Set(live.map(\.session.id))
         let serverIDs = Set(viewModel.servers.map(\.id))
-        let listed = Set(viewModel.entries.map { "\($0.profileID)\u{1}\($0.session.id)" })
+        let listed =
+            savedChats.isEmpty
+            ? Set<String>()
+            : Set(viewModel.entries.map { "\($0.profileID)\u{1}\($0.session.id)" })
         let savedCards = Array(
             savedChats.lazy
                 .filter { self.isOpenable($0, servers: serverIDs, listed: listed) }
@@ -1172,10 +1175,11 @@ final class HomeViewController: UIViewController {
         }
         let shown = liveIDs.union(savedCards.map(\.chat.sessionID))
         let archived = ArchivedChatStore.all()
-        let recent = viewModel.entries.filter {
-            !shown.contains($0.session.id)
-                && !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id))
-        }.prefix(workspace == nil ? 6 : 0)
+        let recent = Array(
+            viewModel.entries.lazy.filter {
+                !shown.contains($0.session.id)
+                    && !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id))
+            }.prefix(workspace == nil ? 6 : 0))
         if !recent.isEmpty {
             snapshot.appendSections([.recent])
             snapshot.appendItems(
@@ -1295,7 +1299,19 @@ final class HomeViewController: UIViewController {
         return kept
     }
 
+    private var projectMemo: (revision: Int, cards: [ProjectCard])?
+
+    /// The listing's busiest folders. Worked out over every chat the servers hold, so it is held
+    /// until the listing itself changes rather than redone for each of the redraws a turn asks for.
     private func projectCards() -> [ProjectCard] {
+        let revision = viewModel.entriesRevision
+        if let memo = projectMemo, memo.revision == revision { return memo.cards }
+        let cards = computeProjectCards()
+        projectMemo = (revision, cards)
+        return cards
+    }
+
+    private func computeProjectCards() -> [ProjectCard] {
         struct Key: Hashable {
             let profileID: String
             let directory: String
