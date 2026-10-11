@@ -177,6 +177,8 @@ final class ChatPane: @unchecked Sendable {
     private let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)
     private let earlierButton = gtk_button_new()!
     private var windowLimit = 400
+    private var windowWidened = false
+
     private(set) var lastFullRows: [TranscriptRow] = []
     private var lastFullCount = 0
 
@@ -364,6 +366,7 @@ final class ChatPane: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(earlierButton), "clicked") { [weak self] in
             guard let self, let state = self.lastState else { return }
             self.windowLimit += 400
+            self.windowWidened = true
             self.rowTailMessages += 600
             self.apply(state: state, rows: self.lastFullRows)
             self.feed.rebuild(state)
@@ -904,6 +907,9 @@ final class ChatPane: @unchecked Sendable {
         isFocusedPane = focused
         if !focused { letGoOfCascade() }
         restateDrainPriority()
+        if focused, !isParked, let state = lastState, lastFullRows.count > renderedRows.count {
+            apply(state: state, rows: lastFullRows)
+        }
     }
 
     /// Focused first, then a pane that needs the person or failed, then everyone else.
@@ -1017,8 +1023,18 @@ final class ChatPane: @unchecked Sendable {
     /// or nothing in particular for the focused pane, which uses the person's own preference.
     private var rowWindowOverride: Int?
 
+    /// The calm figure of the governor's peer row window, which a peer wears until the canvas has
+    /// decided one. A peer is read at a glance, and every row it holds is a widget the window lays
+    /// out, paints and pays memory for, so panes opened together were thousands of rows put back
+    /// one frame at a time, most of them above a fold nobody was looking at. The focused pane keeps
+    /// the person's own window, a peer takes it the moment the focus arrives, and a peer whose
+    /// reader pressed the earlier-rows button keeps what was asked for.
+    private static let peerRowWindow = TileGovernor.peerRowWindow(level: .calm)
+
     private var rowLimit: Int {
-        rowWindowOverride ?? max(windowLimit, Preferences.transcriptWindow)
+        let preferred = max(windowLimit, Preferences.transcriptWindow)
+        guard !isFocusedPane, !windowWidened else { return preferred }
+        return min(preferred, rowWindowOverride ?? Self.peerRowWindow)
     }
 
     func setRowWindow(_ rows: Int?) {
@@ -1445,6 +1461,7 @@ final class ChatPane: @unchecked Sendable {
         renderAttachments()
         ActivityInbox.clear(sessionID: entry.session.id)
         windowLimit = 400
+        windowWidened = false
         rowTailMessages = 300
         lastFullRows = []
         lastFullCount = 0
@@ -2724,6 +2741,7 @@ final class ChatPane: @unchecked Sendable {
                 FillTurns.take(on: root) { [weak self] in
                     guard let self else { return }
                     self.isFillingInChunks = false
+                    guard !self.isParked else { return }
                     if let state = self.lastState {
                         self.apply(state: state, rows: self.lastFullRows)
                     } else {
@@ -6168,15 +6186,31 @@ private final class ObserverToken: @unchecked Sendable {
     init(_ observer: NSObjectProtocol) { self.observer = observer }
 }
 
-/// One first-fill hop per frame, across every pane in the window.
+/// One first-fill hop at a time, across every pane in the window, spending a bounded share of the
+/// main thread.
 ///
 /// A pane fills an opened transcript from its tail a chunk of rows at a time, and every chunk has
 /// to be laid out before the next is added or the chunking buys nothing. Five panes opened at once
 /// were five chunks laid out in the same frame, each frame the size of all of them; here the panes
 /// take turns, one chunk after each frame, so no frame lays out more than one pane's chunk.
+///
+/// Hop after hop, one frame apiece, is still a loop that never rests: a chunk and the layout it
+/// causes cost a frame cycle each, and a window of panes opened together kept the main thread
+/// near fully busy for as long as it took to put every row back, which the governor reads as load
+/// and answers by shedding before anything has streamed. So each hop measures what the main
+/// thread spent between its start and the end of the frame that drew it, and the next one waits
+/// until that work is no more than `duty` of the time since — the backfill is background work and
+/// leaves the rest of the loop to whatever else is happening, which is also why it slows down
+/// by itself while a turn streams.
 enum FillTurns {
     nonisolated(unsafe) private static var waiting: [@Sendable () -> Void] = []
     nonisolated(unsafe) private static var scheduled = false
+    nonisolated(unsafe) private static var lastHop: (wall: Double, cpu: Double)?
+
+    /// The share of the main thread a backfill may take over the time since its last hop.
+    static let duty = 0.4
+    /// The longest a hop is held back, so a very busy loop still makes progress.
+    static let longestRest = 0.4
 
     static func take(
         on widget: UnsafeMutablePointer<GtkWidget>, _ hop: @escaping @Sendable () -> Void
@@ -6185,17 +6219,49 @@ enum FillTurns {
         schedule(on: widget)
     }
 
+    /// Seconds to wait before the next hop so that the work since the last one stays within the
+    /// duty.
+    static func rest(wall: Double, cpu: Double, since last: (wall: Double, cpu: Double)?) -> Double {
+        guard let last else { return 0 }
+        let spent = cpu - last.cpu
+        let needed = spent / duty - (wall - last.wall)
+        return min(longestRest, max(0, needed))
+    }
+
     private static func schedule(on widget: UnsafeMutablePointer<GtkWidget>) {
         guard !scheduled, !waiting.isEmpty else { return }
         scheduled = true
         let bits = UInt(bitPattern: widget)
         Gtk.betweenFrames(of: widget) {
-            scheduled = false
-            guard !waiting.isEmpty else { return }
-            let hop = waiting.removeFirst()
-            hop()
-            if let raw = UnsafeMutableRawPointer(bitPattern: bits) { schedule(on: ptr(raw)) }
+            let wait = rest(wall: wallClock(), cpu: mainThreadCPU(), since: lastHop)
+            if wait > 0 {
+                Gtk.after(UInt32((wait * 1000).rounded(.up))) { run(bits) }
+            } else {
+                run(bits)
+            }
         }
+    }
+
+    private static func run(_ bits: UInt) {
+        scheduled = false
+        guard !waiting.isEmpty else {
+            lastHop = nil
+            return
+        }
+        let hop = waiting.removeFirst()
+        lastHop = (wallClock(), mainThreadCPU())
+        hop()
+        if let raw = UnsafeMutableRawPointer(bitPattern: bits) { schedule(on: ptr(raw)) }
+    }
+
+    private static func wallClock() -> Double { seconds(CLOCK_MONOTONIC) }
+
+    private static func mainThreadCPU() -> Double { seconds(CLOCK_THREAD_CPUTIME_ID) }
+
+    private static func seconds(_ clock: clockid_t) -> Double {
+        var now = timespec()
+        clock_gettime(clock, &now)
+        return Double(now.tv_sec) + Double(now.tv_nsec) / 1e9
     }
 }
 
