@@ -301,3 +301,41 @@ scripts/build-macapp-isolated.sh --root mb --run "--bench tiles=4:80:600:20"
 ssh macbook 'caffeinate -u -t 2'   # before each run, or the display link is not served and the 100 ms guard paces the drain
 scripts/build-macapp-isolated.sh --root mb --selftest   # includes the tiles child check
 ```
+
+### Mac canvas, Release
+
+Measured 2026-10-11 on the reference Mac (macOS 27.2, Xcode 27, **Release** builds from `scripts/build-macapp-isolated.sh --release --root m2`, wt/m2 at the merge of wt/mc) with `TailscodeMac --bench tiles=N:80:600:20`: N panes of the frame-placed canvas (`TileHost`, grid arrangement) on `SoakWorld` sessions of 600 messages in a 1600×1000 window ordered front with the display awake (`caffeinate -u`), the shed governor running (`Seatbelts` sampling once a second, its decisions applied to the host), one send per pane, 20 s of 80 tok/s firehose after a 2 s ramp. Busy and worst slice are the main run loop's (`LoopMeter`, 1 s windows); main CPU is the main thread's own CPU time over the window; the divider step is a 6 pt move of the first divider that changes widths (every row re-measures), timed with its layout, 24 steps 40 ms apart while the panes keep streaming, once with rows live and once with rows held the way a pointer drag holds them (`TileHost.holdRows`); footprint is `phys_footprint` at the end of the 20 s. Each N is one 20 s run; two runs of the same N differ by up to 0.2 busy when the governor sheds during the load burst, so the second block lists the first run's reading where it disagreed.
+
+| Measure | N=2 | N=4 | N=5 | N=8 |
+|---|---|---|---|---|
+| main busy mean / p95 | 0.44 / 0.81 | 0.47 / 0.73 | 0.29 / 0.42 | 0.35 / 0.42 |
+| main thread CPU (share) | 0.43 | 0.46 | 0.28 | 0.35 |
+| share spent applying frames | 0.07 | 0.07 | 0.05 | 0.07 |
+| worst slice (ms) | 66 | 58 | 155 | 71 |
+| lag p95 / worst (ms) | 24 / 36 | 26 / 36 | 28 / 126 | 27 / 45 |
+| divider step, rows live, median / p95 (ms) | 44.5 / 48.9 | 46.8 / 53.9 | 39.1 / 42.2 | 40.7 / 57.2 |
+| divider step, rows held (a real drag), median / p95 (ms) | 8.4 / 9.8 | 9.0 / 11.1 | 9.2 / 11.6 | 8.8 / 9.2 |
+| footprint at end (MiB) | 279 | 462 | 233 | 304 |
+| shed level held (panes live / glance at the end) | calm (2 / 0) | calm (4 / 0) | loaded (1 / 4) | busy (3 / 5) |
+| frames applied per pane per s | 11.1 | 7.1 | 1.8 | 1.5 |
+| frames charged (layout and commit set off), each | 17.3 ms | 20.3 ms | 26.0 ms | 27.2 ms |
+| zoomed onto one (5 s): busy mean, worst slice | 0.50, 89 ms | 0.50, 123 ms | 0.24, 73 ms | 0.25, 51 ms |
+| hidden panes still applying | 0 of 1 | 0 of 3 | 0 of 4 | 0 of 7 |
+
+The first run of the same code (before the divider step moved to a width-changing divider and gained its held variant) read N=2 0.46 / 70 ms, N=4 0.45 / 60 ms (and 0.47 and 0.45 on two later runs), N=5 0.47 / 77 ms **calm** with 4 panes live and one glance and 493 MiB, N=8 0.35 / 77 ms busy. N=5 is therefore bimodal: calm at 0.47 when the load burst stays under the governor's 0.65 for 2 s, `loaded` at 0.29 when it does not. N=8 never loads in 20 s (`loaded in 20004 ms`: a glance or parked pane holds no transcript), and sits at `busy` for the whole window.
+
+What it says:
+
+- **Busy at four streaming panes is 0.45–0.47 in Release, against the 0.35 target.** Not met. It does not grow with N (0.44 at two panes, 0.47 at four): the cost is the focused pane's streaming, and a single zoomed pane costs 0.49–0.50, because the drain is duty-limited (`MacHostClock.duty` 0.25: a pass and the commit it sets off may take a quarter of the time since it started) and peers apply at what is left. The 0.35 and 0.29 readings are the governor shedding (cascade capped at 30 Hz at `busy`, peers glance tiles), not the calm pipeline getting cheaper.
+- **Where the main thread goes at four panes** (`sample` of the main thread over 8 s of streaming, 1 017 non-idle samples): about two thirds in AppKit's display cycle after a frame (Auto Layout of the transcript's view tree about 18 %, `NSViewBackingLayer.display` and `display_if_needed` about 23 %, the rest Core Animation commit and observers), about 18 % in the display link's own callout, almost all of it `applyNewestFrame` (16 %: row build 3 %, `apply(state:rows:)` 4 %, the composer 1 %; the wave's paint is 0.4–0.5 ms a tick at 87–99 ticks a second), about 6 % in the pin-to-bottom corrector and 1.5 % in the governor's own sample. Applying is 0.05–0.07 of the thread in every column; the layout and display each applied frame sets off is 17–27 ms. The row builds are therefore not the cost: moving them off the main thread (`SingleFlightPump`, as Linux does) would take about 3 % of the busy samples, 10 % with the rest of the apply.
+- **Two levers measured, neither shipped.** `duty` 0.15 left busy at 0.42 and halved the frames applied (2.4 per pane per second); 0.10 shed to `busy` and failed to load in 20 s. The cascade link at 60 Hz read 0.41 and at 30 Hz 0.36 with the level still `calm`: roughly 2 ms of layout and display a tick, on top of the painter's own 0.5, which is the doctrine's price for a 120 Hz reveal (`CLAUDE.md` asks for up to 120 Hz on the Mac). Getting to 0.35 calm needs the live row to stop re-laying out its whole answer on every wave tick (paint only the band the wave covers), which is a change to the cascade rather than the tiling.
+- **Divider step: 8.4–9.2 ms through the path a pointer takes, 39–47 ms with rows live.** A drag holds transcript rows from mouse-down and catches every pane up once at the release (0.1–1.0 ms while streaming, 43–47 ms for four idle full panes), so the 16 ms budget is met where it is a drag; a divider moved by a call that does not hold rows (the bench's first leg, a keyboard nudge) re-measures every row of every full pane at the new width and costs what a resize costs. Legacy `SplitPaneHost`, 4 panes, in the same bench: 13.4 ms median live (it nudges its own first divider, which is not the same divider, so the two are not like for like), 0.36 busy but at `loaded` with 2.7 frames per pane per second.
+- **No hitch over 100 ms: not met around a zoom and under shedding.** The worst slice is 58–71 ms while streaming at N=2, 4 and 8, 155 ms at N=5 when the governor was shedding, and the zoom itself is one 123 ms (N=4) or 150 ms (N=5, first run) slice, the focused pane re-laying out 600 rows at the full width.
+- **Footprint** ends at 233–462 MiB for 2–8 panes (Debug: 309–827), flat in N once peers hold the governor's row window.
+
+```sh
+ssh macbook 'caffeinate -u -t 2'
+scripts/build-macapp-isolated.sh --root m2 --release --run "--bench tiles=4:80:600:20"
+scripts/build-macapp-isolated.sh --root m2 --release --run "--bench tiles --counts 2,4"   # open, divider, resize for canvas and legacy, then the streaming pass for each
+scripts/build-macapp-isolated.sh --root m2 --release --run "--bench tiles=4:80:600:20 --legacy"
+```
