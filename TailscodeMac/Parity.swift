@@ -181,7 +181,7 @@ enum ParityManifest {
         case .paneDensity: return .implemented("GlanceTileView")
         case .paneArrangements: return .implemented("PaneMenu")
         case .paneOverflow: return .implemented("OverflowStripView")
-        case .paneResizeByKey: return .implemented("DividerAccessibilityElement")
+        case .paneResizeByKey: return .implemented("moveDivider")
         case .paneRearrange: return .implemented("receivePaneDrop")
         case .safeRestore: return .implemented("RestoreBannerView")
         case .flightRecorder: return .implemented("FlightWriter")

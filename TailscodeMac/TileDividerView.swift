@@ -26,6 +26,8 @@ final class TileDividerView: NSView {
     var onEqualize: (() -> Void)?
     /// An assistive increment or decrement, in points along the axis.
     var onStep: ((SplitID, Double) -> Void)?
+    /// A key on the seam while it holds the keyboard; answers whether the seam moved or took it.
+    var onKey: ((SplitID, DividerKey) -> Bool)?
 
     private let line = CALayer()
     private var hovered = false
@@ -48,6 +50,26 @@ final class TileDividerView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     nonisolated override var isFlipped: Bool { true }
+
+    override var acceptsFirstResponder: Bool { onKey != nil }
+
+    override func becomeFirstResponder() -> Bool {
+        needsLayout = true
+        return super.becomeFirstResponder()
+    }
+
+    override func resignFirstResponder() -> Bool {
+        needsLayout = true
+        return super.resignFirstResponder()
+    }
+
+    private var holdsKeyboard: Bool { window?.firstResponder === self }
+
+    override func keyDown(with event: NSEvent) {
+        guard let key = DividerSplitView.dividerKey(for: event), onKey?(id, key) == true else {
+            return super.keyDown(with: event)
+        }
+    }
 
     private var vertical: Bool { placement.axis == .horizontal }
 
@@ -80,7 +102,7 @@ final class TileDividerView: NSView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        let thickness: CGFloat = hovered || dragging ? 2 : 1
+        let thickness: CGFloat = hovered || dragging || holdsKeyboard ? 2 : 1
         if vertical {
             line.frame = NSRect(
                 x: (bounds.width - thickness) / 2, y: 0, width: thickness, height: bounds.height)
@@ -95,7 +117,7 @@ final class TileDividerView: NSView {
     /// A seam at rest is the separator; under the pointer or while it moves it takes the accent,
     /// two points wide, so the band a person can grab is visible before they grab it.
     private func restyle() {
-        let active = hovered || dragging
+        let active = hovered || dragging || holdsKeyboard
         line.backgroundColor =
             (active ? MacTheme.Color.accent : MacTheme.Color.separator).cgColor
     }
@@ -144,6 +166,7 @@ final class TileDividerView: NSView {
             onEqualize?()
             return
         }
+        window?.makeFirstResponder(self)
         dragging = true
         moved = false
         grabOffset = along(event) - placement.position

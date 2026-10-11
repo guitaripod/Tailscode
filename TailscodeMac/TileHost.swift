@@ -181,6 +181,7 @@ final class TileHost: NSViewController, PaneTiling {
         shells[id] = shell
         shell.install(body: pane.view)
         addChild(pane)
+        pane.paneMovePayload = { PaneMovePayload(pane: id) }
         wireShell(shell, id: id)
         canvas.addPane(shell)
     }
@@ -671,6 +672,7 @@ final class TileHost: NSViewController, PaneTiling {
             self.schedulePersist()
         }
         view.onEqualize = { [weak self] in self?.equalize() }
+        view.onKey = { [weak self] id, key in self?.moveDivider(id, by: key) ?? false }
         view.onStep = { [weak self] id, delta in
             guard let self, let divider = self.placement?.divider(id) else { return }
             self.drag(id, to: divider.position + delta)
@@ -707,6 +709,17 @@ final class TileHost: NSViewController, PaneTiling {
         canvas.needsLayout = true
         canvas.layoutSubtreeIfNeeded()
         lastDragCost = CACurrentMediaTime() - started
+    }
+
+    /// A key on a focused seam: the same clamped move the pointer makes, written once.
+    @discardableResult
+    func moveDivider(_ split: SplitID, by key: DividerKey) -> Bool {
+        guard let placement = currentPlacement() else { return false }
+        guard layout.move(split, by: key, in: placement) else { return true }
+        ratioCaptures += 1
+        relayout()
+        schedulePersist()
+        return true
     }
 
     private func placeStrip(_ placement: PanePlacement) {
@@ -1204,14 +1217,23 @@ final class TileHost: NSViewController, PaneTiling {
         guard let shell = shells[id], let zone = zoneUnderPointer(sender, over: id) else {
             return false
         }
-        let title = payload(from: sender).flatMap { chatTitleForDrop?($0) }
+        let caption: String
+        if let moving = panePayload(from: sender) {
+            guard moving.pane != id, layout.contains(moving.pane) else {
+                clearDropHighlight()
+                return false
+            }
+            caption = zone.moveVerb
+        } else {
+            caption = zone.caption(payload(from: sender).flatMap { chatTitleForDrop?($0) })
+        }
         let rect = PaneDropTarget.highlight(
             for: zone, width: Double(shell.frame.width), height: Double(shell.frame.height))
         dropHighlight.show(
             frame: NSRect(
                 x: shell.frame.minX + rect.x, y: shell.frame.minY + rect.y, width: rect.width,
                 height: rect.height),
-            caption: zone.caption(title))
+            caption: caption)
         dropZone = (id, zone)
         return true
     }
@@ -1223,10 +1245,37 @@ final class TileHost: NSViewController, PaneTiling {
 
     private func receiveDrop(_ sender: NSDraggingInfo, on id: PaneID) -> Bool {
         clearDropHighlight()
-        guard let pane = panes[id], let payload = payload(from: sender),
-            let zone = zoneUnderPointer(sender, over: id)
-        else { return false }
+        guard let pane = panes[id], let zone = zoneUnderPointer(sender, over: id) else {
+            return false
+        }
+        if let moving = panePayload(from: sender) {
+            return receivePaneDrop(moving, on: id, zone: zone)
+        }
+        guard let payload = payload(from: sender) else { return false }
         return onChatDropped?(pane, payload, zone) ?? false
+    }
+
+    /// A pane let go over another. A pane dropped on itself or carrying a pane the tree no longer
+    /// holds changes nothing, and the pane that moved is the one that takes the focus. No pane view
+    /// is rebuilt: the canvas only gives every shell its new frame.
+    @discardableResult
+    func receivePaneDrop(_ moving: PaneMovePayload, on id: PaneID, zone: PaneDropZone) -> Bool {
+        guard layout.contains(moving.pane),
+            let intent = PaneDropTarget.move(moving.pane, onto: id, zone: zone),
+            layout.apply(intent)
+        else { return false }
+        layout.focus(moving.pane)
+        relayout()
+        onFocusChanged?()
+        persist()
+        return true
+    }
+
+    private func panePayload(from sender: NSDraggingInfo) -> PaneMovePayload? {
+        guard let text = sender.draggingPasteboard.string(forType: .tailscodePane) else {
+            return nil
+        }
+        return PaneMovePayload.decode(text)
     }
 
     private func payload(from sender: NSDraggingInfo) -> PaneDragPayload? {
@@ -1302,3 +1351,98 @@ final class GlanceFeed {
         lease.cancel()
     }
 }
+
+#if DEBUG
+    extension TileHost {
+        /// The tree as the driver reads it: how many panes, what shape, which holds the focus and
+        /// in what reading order, by the first characters of each pane's id.
+        func driveOrder(_ label: String) -> String {
+            let order = layout.paneIDs.map { String($0.raw.prefix(4)) }.joined(separator: ",")
+            let focus = layout.paneIDs.firstIndex(of: layout.focusedPane) ?? -1
+            return
+                "\(label) panes=\(layout.paneCount) shape=\(SplitEven.shape(of: layout)) "
+                + "focus=\(focus) zoom=\(layout.zoomedPane != nil) order=\(order)"
+        }
+
+        /// Every pane's frame in the canvas's own coordinates, top-left origin, in reading order.
+        func driveGeometry() -> String {
+            canvas.layoutSubtreeIfNeeded()
+            let frames = layout.paneIDs.enumerated().compactMap { index, id -> String? in
+                guard let shell = shells[id] else { return nil }
+                let rect = shell.frame
+                return String(
+                    format: "%d(%.0f,%.0f %.0fx%.0f)", index, rect.minX, rect.minY, rect.width,
+                    rect.height)
+            }
+            return
+                "GEOM \(frames.joined(separator: " ")) canvas=\(Int(canvas.bounds.width))x\(Int(canvas.bounds.height))"
+        }
+
+        /// What VoiceOver would be told about each divider, in reading order, and whether it holds
+        /// the keyboard.
+        func driveDividers() -> String {
+            let lines = layout.splitIDs.enumerated().compactMap { index, id -> String? in
+                guard let divider = dividers[id] else { return nil }
+                let value = (divider.accessibilityValue() as? NSNumber)?.doubleValue ?? -1
+                let low = (divider.accessibilityMinValue() as? NSNumber)?.doubleValue ?? -1
+                let high = (divider.accessibilityMaxValue() as? NSNumber)?.doubleValue ?? -1
+                return String(
+                    format: "%d role=%@ pos=%.3f range=%.0f...%.0f focused=%d \"%@\"", index,
+                    divider.accessibilityRole()?.rawValue ?? "-", value, low, high,
+                    divider.window?.firstResponder === divider ? 1 : 0,
+                    divider.accessibilityLabel() ?? "-")
+            }
+            return "DIVIDERS \(lines.count) " + lines.joined(separator: " | ")
+        }
+
+        /// A key on divider `index` without a keyboard: it takes focus and moves as a key would.
+        func driveDivider(_ index: Int, key: DividerKey) -> Bool {
+            let ids = layout.splitIDs
+            guard ids.indices.contains(index), let divider = dividers[ids[index]] else {
+                return false
+            }
+            view.window?.makeFirstResponder(divider)
+            return moveDivider(ids[index], by: key)
+        }
+
+        private func driveZone(_ shell: TileShellView, u: Double, v: Double) -> PaneDropZone {
+            PaneDropTarget.zone(
+                x: u * Double(shell.bounds.width), y: v * Double(shell.bounds.height),
+                width: Double(shell.bounds.width), height: Double(shell.bounds.height))
+        }
+
+        /// A strip carried over another pane without a pointer: the highlight is drawn where
+        /// letting go would put the pane, captioned with the move it would make.
+        func drivePaneHover(target: Int, u: Double, v: Double, source: Int) -> String {
+            let ids = layout.paneIDs
+            guard ids.indices.contains(target), ids.indices.contains(source),
+                let shell = shells[ids[target]]
+            else { return "PDRAG no-target" }
+            guard target != source else {
+                clearDropHighlight()
+                return "PDRAG - caption=-"
+            }
+            let zone = driveZone(shell, u: u, v: v)
+            let rect = PaneDropTarget.highlight(
+                for: zone, width: Double(shell.frame.width), height: Double(shell.frame.height))
+            dropHighlight.show(
+                frame: NSRect(
+                    x: shell.frame.minX + rect.x, y: shell.frame.minY + rect.y, width: rect.width,
+                    height: rect.height),
+                caption: zone.moveVerb)
+            return "PDRAG \(target) \(zone) caption=\(zone.moveVerb)"
+        }
+
+        /// A strip dropped on another pane: `target` and `source` are reading-order indexes and
+        /// `u`, `v` where in the target the pointer is, as fractions from its top-left.
+        func drivePaneDrop(target: Int, u: Double, v: Double, source: Int) -> String {
+            let ids = layout.paneIDs
+            guard ids.indices.contains(target), ids.indices.contains(source),
+                let shell = shells[ids[target]]
+            else { return "PDROP no-target" }
+            let zone = driveZone(shell, u: u, v: v)
+            let took = receivePaneDrop(PaneMovePayload(pane: ids[source]), on: ids[target], zone: zone)
+            return "PDROP took=\(took) zone=\(zone) panes=\(paneCount)"
+        }
+    }
+#endif

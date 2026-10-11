@@ -129,6 +129,15 @@ protocol PaneTiling: NSViewController {
     /// Keep Live and Pause Pane have nothing to act on there.
     var supportsDensity: Bool { get }
 
+    #if DEBUG
+        func driveOrder(_ label: String) -> String
+        func driveGeometry() -> String
+        func driveDividers() -> String
+        func driveDivider(_ index: Int, key: DividerKey) -> Bool
+        func drivePaneHover(target: Int, u: Double, v: Double, source: Int) -> String
+        func drivePaneDrop(target: Int, u: Double, v: Double, source: Int) -> String
+    #endif
+
     /// Chats a safe restore is holding paused, so the panes that hold them wear the paused face.
     func setHeld(_ held: [PaneID: SplitPaneSession])
     /// What the governor ranks and the recorder counts, asked once a second.

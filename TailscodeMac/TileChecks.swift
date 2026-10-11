@@ -372,7 +372,7 @@ enum TileChecks {
         try expect(host.canvas.paneAdds == adds, "the verbs added \(host.canvas.paneAdds - adds) pane views")
         try expect(host.canvas.paneRemovals == 0, "the verbs removed \(host.canvas.paneRemovals) pane views")
         try framesMatch("main and stack")
-        notes.append("canvas: 4 panes, \(SplitArrangement.cycle.count) arrangements and 11 verbs, 0 re-parents")
+        notes.append("canvas: 4 panes, \(SplitArrangement.cycle.count) arrangements, 11 verbs, a divider key and a pane drop, 0 re-parents")
 
         host.view.setFrameSize(NSSize(width: 320, height: 800))
         try framesMatch("narrow")
@@ -444,6 +444,23 @@ enum TileChecks {
         host.view.setFrameSize(NSSize(width: 1200, height: 800))
         host.view.layoutSubtreeIfNeeded()
 
+        let seam = host.layout.splitIDs[0]
+        try expect(host.dividerViews[seam]?.acceptsFirstResponder == true, "a seam does not take the keyboard")
+        let seamBefore = host.placement?.divider(seam)?.position
+        try expect(host.moveDivider(seam, by: .forward(large: true)), "a divider key was refused")
+        try framesMatch("after a divider key")
+        try expect(host.placement?.divider(seam)?.position != seamBefore, "a divider key moved nothing")
+        let moving = host.layout.paneIDs[0]
+        let landing = host.layout.paneIDs[1]
+        try expect(
+            host.receivePaneDrop(PaneMovePayload(pane: moving), on: landing, zone: .split(.right)),
+            "a pane dropped on another was refused")
+        try framesMatch("after a pane drop")
+        try expect(host.layout.focusedPane == moving, "the pane that moved did not take the focus")
+        try expect(host.canvas.reparents == 0, "a pane drop re-parented a pane")
+        try expect(
+            !host.receivePaneDrop(PaneMovePayload(pane: moving), on: moving, zone: .fill),
+            "a pane dropped on itself changed the tree")
         weak var closed: TranscriptViewController?
         weak var closedShell: TileShellView?
         host.splitActive(axis: .vertical)

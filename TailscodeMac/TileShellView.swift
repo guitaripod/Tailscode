@@ -33,7 +33,7 @@ final class TileShellView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = true
-        registerForDraggedTypes([.tailscodeChat])
+        registerForDraggedTypes([.tailscodeChat, .tailscodePane])
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
     }
@@ -113,11 +113,16 @@ final class TileShellView: NSView {
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        onDragEntered?(sender) == true ? .copy : []
+        onDragEntered?(sender) == true ? operation(for: sender) : []
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        onDragEntered?(sender) == true ? .copy : []
+        onDragEntered?(sender) == true ? operation(for: sender) : []
+    }
+
+    /// A pane in flight moves; a chat in flight is opened where it lands, which AppKit spells copy.
+    private func operation(for sender: any NSDraggingInfo) -> NSDragOperation {
+        sender.draggingPasteboard.types?.contains(.tailscodePane) == true ? .move : .copy
     }
 
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {

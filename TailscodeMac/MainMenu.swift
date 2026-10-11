@@ -341,25 +341,6 @@ final class MainMenu: NSObject {
         return holder(menu)
     }
 
-    /// The arrangements a window of panes can be rebuilt as, in the order `ctrl+w a` walks them;
-    /// the item itself wears whatever single chord the shortcut set gives the cycle.
-    private func arrangeItem() -> NSMenuItem {
-        let menu = NSMenu(title: Localized.text("Arrange"))
-        let rows: [(String, SplitArrangement)] = [
-            (Localized.text("Columns"), .sideBySide), (Localized.text("Rows"), .stacked),
-            (Localized.text("Grid"), .grid), (Localized.text("Main and Stack"), .mainStack),
-        ]
-        for (title, arrangement) in rows {
-            let entry = item(title, #selector(arrangePanes(_:)), "", [])
-            entry.representedObject = arrangement.rawValue
-            entry.image = NSImage(systemSymbolName: arrangement.symbolName, accessibilityDescription: nil)
-            menu.addItem(entry)
-        }
-        menu.addItem(.separator())
-        menu.addItem(bound(Localized.text("Next Arrangement"), #selector(cycleArrangement), .arrangeSplits))
-        return submenu(Localized.text("Arrange"), menu)
-    }
-
     private func makeGoMenu() -> NSMenuItem {
         let menu = NSMenu(title: Localized.text("Go"))
         menu.addItem(item(Localized.text("Next Chat"), #selector(nextChat), "]"))
@@ -639,9 +620,7 @@ extension MainMenu: NSMenuItemValidation {
         let treeVerbs: Set<Selector> = [
             #selector(closeSplit), #selector(zoomSplit), #selector(focusSplitLeft),
             #selector(focusSplitRight), #selector(focusSplitUp), #selector(focusSplitDown),
-            #selector(exchangeSplit), #selector(equalizeSplits), #selector(promotePane),
-            #selector(rotatePanes), #selector(nextPane), #selector(previousPane),
-            #selector(cycleArrangement), #selector(arrangePanes(_:)),
+            #selector(exchangeSplit), #selector(equalizeSplits),
         ]
         if let action = menuItem.action, treeVerbs.contains(action) {
             return hub.splitPanes.paneCount > 1
