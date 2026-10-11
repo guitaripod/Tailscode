@@ -135,7 +135,9 @@ enum Kit {
     /// URLSession can hold until the turn ends, and whether a bridge can really push.
     /// 0.35.0 lets a delegated patch wait to be read: review, the patch, apply and discard.
     /// 0.35.1 stops a Linux binary trapping on a resource bundle it was never given.
-    static let version = Version(0, 36, 0)
+    /// 0.36.1 writes a streaming answer's saved transcript at most every thirty seconds and not
+    /// at all when nothing changed.
+    static let version = Version(0, 36, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

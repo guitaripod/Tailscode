@@ -69,6 +69,20 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.75" date="2026-10-11">
+      <description>
+        <p>A remote machine&#x27;s folders can be walked from the new-chat window, and a long answer no longer rewrites the saved conversation every few seconds as it streams.</p>
+        <p>Changes:</p>
+        <ul>
+          <li>Browse on a remote server opens a folder browser: a path you can click back along, up and back buttons, a filter that narrows as you type, places to jump to (home, the root, your starred and recent folders, your projects), a star on any folder, and a note of how many chats already work in each.</li>
+          <li>It remembers where you were on each server, Ctrl+S hops to another machine without leaving, Ctrl+B stars the folder you are in, and Ctrl+Enter starts the chat there. It works from the keyboard alone: arrows or Ctrl+N and Ctrl+P to move, Enter to open a folder, Alt+Up and Alt+Left to go up and back, Tab to complete.</li>
+        </ul>
+        <p>Fixes:</p>
+        <ul>
+          <li>A long answer used to rewrite the whole saved conversation every five seconds while it streamed, which could add up to more than a gigabyte a day. It is now written once per half minute, and not at all when nothing changed.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.74" date="2026-10-11">
       <description>
         <p>Tiling is rebuilt around what the machine can afford, so five chats streaming at once no longer take the desktop with them.</p>
