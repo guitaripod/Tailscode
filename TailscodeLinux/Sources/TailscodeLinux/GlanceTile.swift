@@ -50,6 +50,7 @@ final class GlanceTile: @unchecked Sendable {
     private var position = (index: 1, count: 1)
     private var capacityChars = 0
     private var capacityLines = 0
+    private var lastSize: (width: Double, height: Double)?
     private(set) var renders = 0
     private(set) var shownTail = ""
 
@@ -157,6 +158,7 @@ final class GlanceTile: @unchecked Sendable {
             stopClock()
         }
         speak()
+        if let lastSize, reading != nil { fit(width: lastSize.width, height: lastSize.height) }
     }
 
     private func apply(_ reading: GlanceReading) {
@@ -272,20 +274,32 @@ final class GlanceTile: @unchecked Sendable {
     }
 
     /// The characters the tail has room for: the columns a line of its face holds times the lines
-    /// between the header and the footer. Asked once the tile has a size, and again when it changes.
+    /// the tile can show before its footer would be pushed out of its rectangle. The lines are
+    /// found by asking the tile how tall it wants to be at each count, not by arithmetic on a
+    /// guessed line height, so a type scale or a font that runs taller costs a line of tail and
+    /// never the footer. Asked once the tile has a size, and again when it changes.
     func fit(width: Double, height: Double) {
         guard width > 0, height > 0 else { return }
+        lastSize = (width, height)
         let metrics = Self.glyphMetrics(of: tail)
-        let usableWidth = max(0, width - 22)
-        let usableHeight = max(0, height - 24 - 24 - 12)
-        let columns = max(8, Int(usableWidth / max(1, metrics.width)))
-        let lines = max(1, min(8, Int(usableHeight / max(1, metrics.height))))
+        let columns = max(8, Int(max(0, width - 22) / max(1, metrics.width)))
+        var lines = 8
+        gtk_label_set_lines(op(tail), Int32(lines))
+        while lines > 1, Self.wantedHeight(of: widget, width: Int32(width)) > height {
+            lines -= 1
+            gtk_label_set_lines(op(tail), Int32(lines))
+        }
         let chars = columns * lines
         guard chars != capacityChars || lines != capacityLines else { return }
         capacityChars = chars
         capacityLines = lines
-        gtk_label_set_lines(op(tail), Int32(lines))
         if let reading { apply(reading) }
+    }
+
+    private static func wantedHeight(of widget: UnsafeMutablePointer<GtkWidget>, width: Int32) -> Double {
+        var natural: Int32 = 0
+        gtk_widget_measure(widget, GTK_ORIENTATION_VERTICAL, width, nil, &natural, nil, nil)
+        return Double(natural)
     }
 
     private static func glyphMetrics(of label: UnsafeMutablePointer<GtkWidget>) -> (

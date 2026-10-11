@@ -107,4 +107,45 @@ extension TileHost {
         strip.press(strip.chips[index].id)
         return true
     }
+
+    private final class BenchRun: @unchecked Sendable {
+        var costs: [Double] = []
+    }
+
+    /// A divider moved a few points at a time while the panes stream, and what each step cost:
+    /// the canvas's own allocation, which includes every transcript's relayout beneath it. The
+    /// number the live-or-ghost threshold is set from.
+    func driveDragBench(steps: Int, completion: @escaping @Sendable (String) -> Void) {
+        let ids = layout.splitIDs
+        guard let id = ids.first, let divider = currentPlacement()?.divider(id) else {
+            return completion("DRAGBENCH no divider")
+        }
+        let base = divider.position
+        let run = BenchRun()
+        step(0, of: steps, id: id, base: base, run: run, completion: completion)
+    }
+
+    private func step(
+        _ index: Int, of steps: Int, id: SplitID, base: Double, run: BenchRun,
+        completion: @escaping @Sendable (String) -> Void
+    ) {
+        if index > 0 { run.costs.append(canvas.lastAllocateMilliseconds) }
+        guard index < steps else {
+            let sorted = run.costs.sorted()
+            let mean = run.costs.reduce(0, +) / Double(max(1, run.costs.count))
+            let p95 = sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, sorted.count * 95 / 100)]
+            let rows = orderedPanes.map { String($0.rowCount) }.joined(separator: ",")
+            completion(
+                String(
+                    format: "DRAGBENCH steps=%d mean=%.2fms p95=%.2fms max=%.2fms rows=%@ panes=%d",
+                    run.costs.count, mean, p95, sorted.last ?? 0, rows, paneCount))
+            commitDrag(id, to: base)
+            return
+        }
+        let wiggle = (index % 2 == 0 ? 1.0 : -1.0) * Double(8 + (index % 5) * 6)
+        commitDrag(id, to: base + wiggle)
+        Gtk.after(60) { [weak self] in
+            self?.step(index + 1, of: steps, id: id, base: base, run: run, completion: completion)
+        }
+    }
 }

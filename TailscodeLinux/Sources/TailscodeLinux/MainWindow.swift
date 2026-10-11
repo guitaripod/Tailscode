@@ -1247,6 +1247,16 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// Whether a pane verb that is a switch is on for the focused pane, for the mark in the menu.
+    private func paneMenuMarks(_ id: String) -> Bool {
+        guard let tile = splitHost as? TileHost else { return false }
+        switch id {
+        case "split.pin": return tile.activeIsPinned
+        case "split.park": return tile.activeIsParked
+        default: return false
+        }
+    }
+
     /// What the chat list last heard about a conversation, for a pane that holds it without
     /// streaming it: its title and the face its row wears.
     func listFace(for session: SplitPaneSession) -> (title: String, activity: ActivityKind?)? {
@@ -1314,17 +1324,23 @@ final class MainWindow: @unchecked Sendable {
                 })
         }
         var sections = [Gtk.MenuSection(heading: Localized.text("Panes"), rows: named)]
-        for group in SplitMenu.groups {
-            let rows = group.shortcutIDs.compactMap { id -> Gtk.MenuRow? in
+        var groups = SplitMenu.groups.map { ($0.title, $0.shortcutIDs) }
+        groups.append((Localized.text("Focus"), ["split.cycle", "split.cycleBack"]))
+        if splitHost.supportsDensity {
+            groups.append((Localized.text("Live"), ["split.pin", "split.park"]))
+        }
+        for (title, ids) in groups {
+            let rows = ids.compactMap { id -> Gtk.MenuRow? in
                 guard let definition = SplitMenu.definition(id) else { return nil }
                 let keys = shortcuts.effective[id]?.joined(separator: " / ")
                 return Gtk.MenuRow(
                     title: definition.title, detail: keys,
+                    on: paneMenuMarks(id),
                     action: { [weak self] in
                         Gtk.onMain { [weak self] in _ = self?.perform(definition.action) }
                     })
             }
-            sections.append(Gtk.MenuSection(heading: group.title, rows: rows))
+            sections.append(Gtk.MenuSection(heading: title, rows: rows))
         }
         return sections
     }

@@ -44,6 +44,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
     private var sizeAllowsFull: [PaneID: Bool] = [:]
     private var feeds: [PaneID: GlanceFeed] = [:]
     private var releaseTokens: [PaneID: Int] = [:]
+    private var releaseSerial = 0
     private var promotionHold: [PaneID: TimeInterval] = [:]
     private var readings: [PaneID: (reading: GlanceReading, at: Date)] = [:]
     private var reliefToken: MemoryReliefToken?
@@ -77,6 +78,9 @@ final class TileHost: PaneTiling, @unchecked Sendable {
         var moved = false
     }
 
+    /// The harness's way of choosing the drag mode: nil lets the measured relayout decide.
+    var forcedGhost: Bool?
+
     /// The step cost past which a divider drag stops moving the panes under the pointer and moves
     /// a line instead, committing once on release.
     static let liveDragLimit = 8.0
@@ -89,6 +93,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
             self?.solve(width: width, height: height, sink: sink)
         }
         gtk_overlay_set_child(op(container), canvas.widget)
+        tailscode_set_accessible_label(canvas.widget, Localized.text("Panes"))
         buildOverlays()
         let pane = makePane(layout.focusedPane)
         adopt(pane, as: layout.focusedPane)
@@ -399,7 +404,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
         applyFocusStyling()
     }
 
-    private func currentPlacement() -> PanePlacement? {
+    func currentPlacement() -> PanePlacement? {
         let size = canvas.size
         guard size.width > 0, size.height > 0 else { return placement }
         return solvePlacement(size)
@@ -515,7 +520,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
     private func beginDrag(_ id: SplitID, x: Double, y: Double) {
         guard let divider = placement?.divider(id) else { return }
         let pointer = divider.axis == .horizontal ? x : y
-        let ghosting = canvas.lastAllocateMilliseconds >= Self.liveDragLimit
+        let ghosting = forcedGhost ?? (canvas.lastAllocateMilliseconds >= Self.liveDragLimit)
         drag = DividerDrag(
             id: id, axis: divider.axis, startPosition: divider.position, startPointer: pointer,
             ghosting: ghosting, lastTarget: divider.position)
@@ -559,7 +564,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
         persist()
     }
 
-    private func commitDrag(_ id: SplitID, to target: Double) {
+    func commitDrag(_ id: SplitID, to target: Double) {
         guard let placement, layout.drag(id, to: target, in: placement) else { return }
         canvas.invalidate()
     }
@@ -992,7 +997,8 @@ final class TileHost: PaneTiling, @unchecked Sendable {
     /// it was; after that the rows go, and coming back refills the tail.
     private func scheduleRelease(_ id: PaneID) {
         guard releaseTokens[id] == nil else { return }
-        let token = (releaseTokens.values.max() ?? 0) + 1
+        releaseSerial += 1
+        let token = releaseSerial
         releaseTokens[id] = token
         Gtk.after(UInt32(demotedKeep * 1000)) { [weak self] in
             guard let self, self.releaseTokens[id] == token else { return }

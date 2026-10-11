@@ -43,6 +43,13 @@ extension MainWindow {
             let arrangement = SplitArrangement.allCases.first { "\($0)".lowercased() == argument.lowercased() }
             if let arrangement { tile.arrange(arrangement) }
             say("ARRANGE \(argument) -> \(SplitEven.shape(of: tile.layout))")
+        case "ghost":
+            tile.forcedGhost = argument == "on" ? true : argument == "off" ? false : nil
+            say("GHOST \(argument)")
+        case "dragbench":
+            tile.driveDragBench(steps: Int(argument) ?? 20) {
+                FileHandle.standardOutput.write(Data(($0 + "\n").utf8))
+            }
         case "keeplive":
             Seatbelts.shared.setLiveBudget(argument == "off" ? .auto : .all)
             say("KEEPLIVE \(Seatbelts.shared.liveBudget == .all)")
