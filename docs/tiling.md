@@ -793,6 +793,16 @@ Each milestone is shippable on its own, ends with the install step for the clien
 **M1. Stop the bleeding in the current structure.**
 Core primitives first (`LatestWins`, `SingleFlightPump`, `TileDrain`, `PaneLifetime`), then applied to the existing panes: stream-to-main coalescing (Linux and Mac), per-label reveal cache, cascade only in the focused pane and capped, non-actor `SessionListCache` coalesced save on Linux, park hidden panes (cancel stream and clocks on zoom-away), one conversation per session via a first `ConversationHub`, atomic `SendQueueStore.takeFirst`, a pane cap from room (refuse a split below the glance minimum), Mac coalesced `persist()`.
 *Accept:* the soak at 5 panes meets the budgets with the old nested hosts; mailbox depth ≤ 1; hidden panes own no clocks.
+*Linux soak verdict, 2026-10-11, `wt/l1b`* (numbers in `docs/tiling-baseline.md`, "After M1 (Linux)"; R = 80, K = 600, 180 s, capped scope, release build):
+- No unbounded backlog: **met.** Deepest `pending` is 3–20 at N = 1…8 (baseline 10 at N = 1, 11 511 at N = 4, 28 785 at N = 8) and is 0–4 at the end of every run; the drain holds at most N ready slots, one state each; no lag-silent window in any run.
+- RSS flat: **not met.** No runaway (N = 5: 30 MiB/min against 2.7–3.2 GiB/min; N = 8: 41 against 12 447), but the slope is 7–9 MiB/min at N = 1, as before, and grows with N × R (N = 8 at R = 200: 123 MiB/min). The 5 MB/min budget is met at no N. About 1.1–2 KiB per streamed token event, cause unattributed.
+- N = 8 survives: **met.** No kill at R = 80 (peak 788 MiB) or R = 200 (944 MiB, 120 s); N = 5 at R = 200 also survives (685 MiB). Baseline: killed at 10 GiB after 65 s and 36 s.
+- UI frame clock keeps running: **met.** 26–60 frames/s in every run (baseline 0 at N ≥ 4); worst frame cycle 30–140 ms. From N = 4 the governor sheds (N = 4 to level 3, N ≥ 5 to level 4, the first step during the open, before the send), the cascade clock is off and frames sit on the 30 fps cap.
+- Main loop busy p95 ≤ 0.35: **not met** above N = 1 (23 % at N = 1, 41, 60, 68, 70 and 88 % at N = 2, 3, 4, 5 and 8).
+- Worst slice ≤ 120 ms: **mostly met**; one 140–166 ms second 2 s after each entry into level 3. Opening N panes costs at most about 110 ms against 0.85–3.83 s.
+- Drain pass p95 ≤ 4 ms: **not met** from N = 2 (5–7.5 ms; max 11 ms).
+- Mailbox depth ≤ 1: each slot holds one state by construction; the scripted `pending_max <= 1` check fails (3–20).
+- Hidden panes own no clocks, structural-verb and hammer budgets: not measured in this matrix.
 *Rollback:* each item is a separate commit.
 
 **M2. Core model and governor.**

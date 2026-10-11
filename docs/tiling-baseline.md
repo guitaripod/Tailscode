@@ -154,6 +154,119 @@ scripts/soak-tiles.sh --panes 5 --seconds 180 --assert   # exit 1 past the 10.7 
 
 Each run writes `app.log` (the `SOAK` lines), `proc.csv` (1 s external samples) and `summary.txt` under `${TMPDIR:-/tmp}/tailscode-soak/<label>` (or `--out`). The `SOAK` fields are documented in `TailscodeLinux/Sources/TailscodeLinux/Soak.swift`. A one-off run without the script is `TAILSCODE_SOAK=5:80:600 scripts/dev-linuxapp.sh start --release --clean --drive '4000:soakopen;12000:soaksend' -- --demo`, inside the same capped scope.
 
+## After M1 (Linux)
+
+Measured 2026-10-11 on `wt/l1b` (source at `e9dfa7e7`; the commit above it only adds localization strings), the same release build type, the same capped scope (`MemoryMax=10G`, `MemorySwapMax=0`, `CPUQuota=1200%`, `OOMPolicy=continue`), the same load (`SoakWorld`, K = 600, one send per pane at R tok/s, one list upsert per streaming session per second) and the same window as the baseline: 180 s of streaming at R = 80, 120 s at R = 200. The headless harness ran on its own display (`TAILSCODE_DEV_DISPLAY_NUM=95`), so nothing touched the desktop. Other agents were again running on the 28-core host: load average 7.9 at the start of the first run, 10.8–11.8 at the end of the last. Two values in a cell are two separate runs; N = 5 and N = 8 were run once at R = 80, and N = 5 and N = 8 once at R = 200. Raw logs are not committed.
+
+The pipeline under test: `ConversationHub` leases, `SingleFlightPump` row builds off the main loop, `LatestWins` mailboxes and the `TileDrain` slot walk at `GDK_PRIORITY_REDRAW + 10` (the as-built notes in `docs/tiling.md` 7.5).
+
+### Results at R = 80 tok/s, K = 600, 3 minutes streaming
+
+| Measure | N=1 | N=2 | N=3 | N=4 | N=5 | N=8 |
+|---|---|---|---|---|---|---|
+| outcome | steady | steady | steady | steady, shed to 3 | steady, shed to 4 | **survived**, shed to 4 |
+| baseline outcome | steady | steady | steady, saturated | collapsed | collapsed | OOM-killed at 65–67 s |
+| RSS peak (MiB) | 373 / 372 | 442 / 438 | 490 / 495 | 562 / 554 | 606 | 788 |
+| RSS slope (MiB/min) | 6.9 / 8.5 | 13.5 / 18.9 | 18.2 / 19.0 | 23.6 / 21.7 | 29.9 | 41.2 |
+| baseline RSS slope (MiB/min) | 5.9 / 6.5 | 14.3 | 27.2 / 25.4 | 263 | 2 750 / 3 238 | 12 447 |
+| threads (min–max) | 73–75 / 74–75 | 77–80 / 77–81 | 82–86 / 82–85 | 86–90 / 85–89 | 90–93 | 103–111 |
+| fds | 27 flat | 27 flat | 27 flat | 27 flat | 27 flat | 27 flat |
+| deepest `pending` | 5 / 3 | 5 / 8 | 9 / 9 | 9 / 12 | 11 | 20 |
+| baseline deepest `pending` | 10 / 11 | 32 | 66 / 71 | 11 511 | 14 912 / 11 054 | 28 785 |
+| lag p50, median window (ms) | 0.6 / 0.6 | 0.6 / 0.6 | 0.8 / 0.7 | 0.9 / 0.9 | 1.1 | 8.7 |
+| lag p95, median window (ms) | 1.4 / 2.3 | 5.9 / 5.9 | 10.0 / 9.6 | 12.4 / 12.4 | 16.6 | 28.1 |
+| worst lag (ms) | 10 / 12 | 20 / 17 | 22 / 29 | 106 / 125 | 31 | 65 |
+| lag-silent 5 s windows | 0 | 0 | 0 | 0 | 0 | 0 |
+| frames/s | 60.0 / 60.0 | 59.9 / 59.9 | 59.4 / 59.3 | 47.0 / 44.2 | 36.0 | 29.6 |
+| worst frame cycle in a 5 s window (ms) | 30 / 36 | 61 / 42 | 44 / 47 | 139 / 140 | 75 | 73 |
+| live frame-clock callbacks | 5 | 7 | 9 | 0 | 0 | 0 |
+| callback runs/s | 251 / 252 | 442 / 443 | 569 / 566 | 287 / 208 | 0 | 0 |
+| reveal parses/s | 4.8 / 4.7 | 6.9 / 6.9 | 7.7 / 7.7 | 9.3 / 10.2 | 10.7 | 10.1 |
+| parse-cache hits/s | 27.9 / 28.2 | 28.4 / 28.2 | 27.4 / 27.7 | 12.6 / 9.2 | 2.2 | 3.7 |
+| list saves/s on GTK thread | 1.0 | 2.0 | 3.0 | 4.0 | 5.0 | 8.0 |
+| list save ms/s on GTK thread | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.1 |
+| state applies/s, all panes | 4.8 / 4.8 | 9.4 / 9.5 | 12.4 / 12.3 | 19.6 / 20.6 | 24.4 | 26.6 |
+| apply ms/s on GTK thread | 10.4 / 10.1 | 19.1 / 19.2 | 25.1 / 24.4 | 40.0 / 41.4 | 49.9 | 58.2 |
+| drain passes/s | 4.8 / 4.8 | 7.3 / 7.5 | 7.2 / 7.1 | 13.7 / 14.7 | 16.1 | 13.1 |
+| most drain slots ready at once | 1 / 1 | 2 / 2 | 3 / 3 | 4 / 4 | 4 | 7 |
+| drain pass p95, median window (ms) | 3.6 / 3.4 | 5.1 / 3.9 | 6.0 / 6.0 | 5.6 / 5.5 | 5.9 | 6.9 |
+| drain pass max (ms) | 5.0 / 8.8 | 8.0 / 7.4 | 7.6 / 8.0 | 7.3 / 7.5 | 9.8 | 10.3 |
+| drain passes the 100 ms guard ran, /s | 0 | 0 | 0 | 0 | 0 | 0.7 |
+| shed level reached (flight ring) | 0 | 0 | 0 | 3 | 4 | 4 |
+| process CPU (% of one core) | 92 / 92 | 182 / 182 | 275 / 275 | 360 / 357 | 442 | 661 |
+| main-thread CPU p50 / p95 (%) | 20 / 23, 20 / 22 | 35 / 41, 36 / 41 | 54 / 60, 54 / 60 | 59 / 68, 57 / 66 | 62 / 70 | 86 / 88 |
+| baseline main-thread CPU p50 / p95 (%) | 58 / 62, 60 / 85 | 91 / 93 | 97 / 98, 96 / 97 | 99 / 99 | 99 / 100 | 99 / 99 |
+| loop-meter busy p50 / p95 (flight ring, second run) | 0.21 / 0.26 | 0.37 / 0.47 | 0.55 / 0.65 | 0.59 / 0.71 | 0.63 / 0.72 | 0.86 / 0.92 |
+| seconds with a slice over 120 ms (ring, after 20 s) | 0 of 177 | 0 of 176 | 0 of 178 | 1 of 179 (140 ms) | 1 of 178 (166 ms) | 0 of 179 (worst 73 ms) |
+| opening N panes: worst slice in the first 12 s (ms, ring) | 61 | 100 | 98 | 99 | 102 | 111 |
+| baseline opening slice | — | 0.85 s | 1.40 s | 1.98 s | 2.53 s | 3.83 s |
+
+Reading notes for the table:
+
+- RSS slope is measured after the same 60 s warm-up. Rates are per second over the 5 s windows from 10 s after the send. The shed level and the slice counts come from the flight ring, which was kept for the second N = 1–4 run and the only N = 5 and N = 8 runs; the first N = 1–4 runs were not captured, so their level is unknown.
+- "Opening: worst slice" is the largest ring stall in the first 12 s, which holds the launch and the open at 4 s (second run for N = 1–4); the first SOAK window (the launch and the open) shows `lagMax` of 23–105 ms. It is an upper bound on a per-open slice, not a clean one.
+- fds are 27, not 26: one more than the baseline, flat in every run (the base count of the build, not growth).
+- "Live frame-clock callbacks" are 0 from N = 4 on because the shed level there has switched the cascade clock off (see below), not because frames stopped: frames/s is 29–47.
+- At N = 5 and N = 8 the median `lag` and `frames` are taken at shed level 4 for nearly the whole window. The numbers measure the app in its own most conservative state, not at calm.
+
+### Rate sweep (where the knee is)
+
+| Run | outcome | deepest `pending` | worst lag | frames/s | main p95 | RSS peak | RSS slope | shed level |
+|---|---|---|---|---|---|---|---|---|
+| N=5, R=200 | steady, shed to 4 | 11 | 38 ms | 34.1 | 76 % | 685 MiB | 78 MiB/min | 4 |
+| N=8, R=200 | **survived**, shed to 4 | 18 | 80 ms | 26.1 | 89 % | 944 MiB | 123 MiB/min | 4 |
+| baseline N=5, R=200 | OOM-killed 36 s after send | 30 189 | 13.2 s | 0 | 99 % | 10 336 MiB | — | — |
+
+Other numbers of these two runs: drain pass p95 6.7 and 7.5 ms (max 9.0 and 11.0 ms), most slots ready at once 4 and 8, loop-meter busy p50 / p95 0.70 / 0.79 and 0.89 / 0.93, 1 of 119 seconds over 120 ms at N = 5 (155 ms) and 0 of 117 at N = 8 (worst 87 ms), worst frame cycle 49 and 87 ms. Neither run was killed or approached the cap.
+
+### Shed ladder (flight ring)
+
+The governor moves on the `busy` rule only; the pressure columns of every ring read 0.0/0.0.
+
+| Run | transitions (seconds after launch) |
+|---|---|
+| N = 1, 2, 3 at R = 80 | none, level 0 throughout |
+| N = 4 at R = 80 | 0→1 at 66 s, 1→2 at 71 s, 2→3 at 76 s |
+| N = 5 at R = 80 | 0→2 at 10 s, 2→3 at 18 s, 3→4 at 72 s |
+| N = 8 at R = 80 | 0→2 at 10 s, 2→4 at 14 s |
+| N = 5 at R = 200 | 0→2 at 10 s, 2→3 at 18 s, 3→4 at 23 s |
+| N = 8 at R = 200 | 0→2 at 10 s, 2→4 at 14 s |
+
+The send is at 12 s, so at N = 5 and N = 8 the first escalation (to level 2) happens during the open, before any streaming, and the loop starts the turn already shed. Once at level 4 no run came back down within its window.
+
+### Against the 10.7 starting budgets (N = 5, R = 80, K = 600)
+
+| Measure | Budget | Before | After |
+|---|---|---|---|
+| main-loop busy p95 | ≤ 0.35 | 0.996 | 0.70 main-thread CPU share (loop meter 0.72): **misses** |
+| worst main-loop slice | ≤ 120 ms | 17–33 s | 31 ms worst lag; 1 ring second at 166 ms: **marginal miss** |
+| RSS slope after warm-up | ≤ 5 MB/min | 2.7–3.2 GiB/min | 30 MiB/min: **misses**, runaway gone |
+| threads, fds | flat ± 4 | flat | 90–93 threads, 27 fds: met |
+| deepest mailbox | ≤ 1 | 11 054–14 912 queued closures | 11 `pending`, 4 drain slots ready at once (each slot holds at most one state): the scripted check `pending_max <= 1` **fails**, the queue is bounded |
+| drain per frame | p95 ≤ 4 ms | no drain | 5.9 ms (3.4–3.6 ms at N = 1): **misses** at N ≥ 2 |
+| structural verb | ≤ 1 frame, 0 re-parents | not measured | not run |
+
+### What misses, and what it means
+
+- **RSS grows linearly with the tokens streamed, and M1 did not change that.** The slope is 7–9 MiB/min at N = 1 against 5.9–6.5 before, and grows with N × R: 30 MiB/min at N = 5, 41 at N = 8, 78 at N = 5 and R = 200, 123 at N = 8 and R = 200. Divided by the token events streamed it is about 1.1–2 KiB each at every N and R, against the mock's own replay log of about 80 bytes per token. The `heap` field (bytes malloc reports in use) moves with it (N = 5: 209 → 275 MiB in 160 s), so it is held bytes rather than fragmentation, while the transcript rows stay at their windowed count (400 per pane). What holds it is unattributed. It is bounded by the length of a reply, not a backlog: N = 8 ended a 3-minute turn at 788 MiB with a 10 GiB cap. A 5 MB/min slope is not met by this pipeline, and nothing in M1 aims at it.
+- **Busy share still misses at N ≥ 2.** One pane is at 20 % (baseline 58–60 %), but the share grows with N: 41 / 60 / 68 / 70 / 88 % at N = 2 / 3 / 4 / 5 / 8. Applies fall a long way (4.8 to 26.6 per second over all panes, against 78 per pane per second) and they are bounded, but the M1 as-built notes measured each apply of a streaming pane as a relayout, a scroll and a repaint, and this run did not separate those costs again. The 0.35 budget is met only at N = 1.
+- **Startup trips the governor.** Opening five or eight 600-row panes (the first fill, one pane per frame) already keeps the loop at 0.9 busy for several seconds, and the governor escalates to level 2 at 10 s, before the send. N = 8 reaches level 4 two seconds after the send. So at N ≥ 5 the app streams at levels 3–4 for the whole window: the cascade clock is off (`live ticks 0`, `paints 0`), the reveal is arrival-granularity, and frames sit at 26–36/s on the level's 30 fps cap. At N = 4 the escalation comes late (66–76 s after launch) and ends at level 3. That is the stall rule doing what it was written to do, but it means these runs never show N ≥ 5 at calm, and the 60 fps and the cascade cannot be had there with today's costs. No run was seen to de-escalate.
+- **Worst slice.** The lag timer's worst value is under 120 ms in every run but one N = 4 run (125 ms). The ring saw exactly one second above 120 ms in each run that passed through level 3, and each of them is 2 s after the transition into level 3: 140 ms at 78 s (N = 4, entered at 76 s), 166 ms at 20 s (N = 5 at R = 80, entered at 18 s), 155 ms at 20 s (N = 5 at R = 200, entered at 18 s). `docs/tiling.md`'s as-built notes (M0, Linux) say `MemoryRelief` is asked on an escalation into 3 or 4; whether that is the slice was not tested.
+- **Drain pass p95 is above 4 ms** from N = 2 up (5–7.5 ms at the median window), so a single pass overruns its 4 ms budget there; the maximum pass is 7–11 ms, never more.
+- **Not run.** The hammer, the zoom run and the structural-verb budget were not part of this matrix and are not measured here.
+
+### Commands
+
+```sh
+cd TailscodeLinux && swift build -c release && cd ..
+export TAILSCODE_DEV_DISPLAY_NUM=95
+scripts/soak-tiles.sh --panes 1 --seconds 180 --no-assert     # and --panes 2, 3, 4, 5, 8
+scripts/soak-tiles.sh --panes 5 --rate 200 --seconds 120 --no-assert
+scripts/soak-tiles.sh --panes 8 --rate 200 --seconds 120 --no-assert
+```
+
+The flight ring of a run is `$STATE/home/state/tailscode/flight.ring` of the harness and is deleted by the next start, so copy it out between runs and read it with `XDG_STATE_HOME=<dir> tailscode --flight`.
+
 ## Mac
 
 Measured 2026-10-06 on the reference Mac (macOS 27.2, Xcode 27, Debug builds from `scripts/build-macapp-isolated.sh`) with `TailscodeMac --bench tiles=N:80:600:20`: N panes on `SoakWorld` sessions of 600 messages, one send per pane, 20 s of 80 tok/s firehose, in a 1600×1000 window ordered front (the display awake through `caffeinate -u`, so the display link is served). "Old" is master at `8bdf52d3` (each pane's own `AgentConversation`, every state built and applied on the main thread from the pane's stream loop) with only the bench and an apply counter added; "new" is `wt/mb` (hub leases, latest-wins mailboxes, the frame-paced drain). Busy and worst slice are Ma's `LoopMeter` (main run loop, 1 s windows); lag is how late a 100 ms main-queue timer fires, the Mac's stand-in for a queue depth; the footprint slope is a least-squares fit over the 20 s, which the growing answers themselves dominate and is noisy at that length. The Mac cannot run the Linux soak harness; there is no external process sampler here.
