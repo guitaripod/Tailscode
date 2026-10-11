@@ -267,6 +267,73 @@ scripts/soak-tiles.sh --panes 8 --rate 200 --seconds 120 --no-assert
 
 The flight ring of a run is `$STATE/home/state/tailscode/flight.ring` of the harness and is deleted by the next start, so copy it out between runs and read it with `XDG_STATE_HOME=<dir> tailscode --flight`.
 
+## After M3 (Linux)
+
+Measured 2026-10-11 on `wt/l3` (the canvas, `a5cc6c3b` plus the glance footer fit and the drag-bench verbs; nothing in the streaming path differs from the committed code), the same release build type, capped scope, load (`SoakWorld`, K = 600, R = 80, one send per pane, one list upsert per streaming session per second) and 180 s of streaming as the two tables above. The harness ran on its own displays (85, 86, 87), so nothing touched the desktop. The host was loaded by other agents again (load average 13–17).
+
+What changed under the soak: the nested panes are gone, every pane sits in one canvas, and densities are applied — the governor's budget (four whole chats at 28 cores while calm) and the room decide which chats are whole, and the rest are glance tiles fed at the shed level's glance rate from a `.glance` lease. Peers that are whole realise `TileGovernor.peerRowWindow` rows. The canvas does not touch the stream path.
+
+Two things make the columns below different from the M1 columns more than the code does:
+
+- **The harness window is small.** The soak's window is the app's default size, so the canvas is 1069 × 552 and a 3 × 3 grid of eight panes gives each 356 × 184, under the 200-point height a whole chat needs. All eight chats are therefore glances from the first frame (`f/g/x` 0/8/0 in the ring), nothing is applied but the tiles, and that run measures the cheapest case the design has, not N = 8 under load. The second N = 8 column is the same load in a 2500 × 1350 window (`SOAK_DRIVE_PREFIX='2000:winsize=2500x1350'`), where 4 chats are whole and 4 are glances.
+- **No run shed.** N = 5 stayed at level 0 for all 180 s in the second run (the first run's ring was not kept); N = 8 in the large window moved 0 → 1 once, at 194 s. In M1 N = 5 was at level 4 from 72 s (level 2 from the open) and N = 8 at level 4 from 14 s.
+
+### Results at R = 80 tok/s, K = 600, 3 minutes streaming
+
+| Measure | N=5 run 1 | N=5 run 2 | N=8, default window | N=8, 2500 × 1350 | M1 N=5 | M1 N=8 |
+|---|---|---|---|---|---|---|
+| outcome | steady | steady, level 0 | steady, all glance | steady, level 0 → 1 once | steady, shed to 4 | survived, shed to 4 |
+| whole / glance / hidden (ring `f/g/x`) | 4/1/0 (ring lost) | 4/1/0 | 0/8/0 | 4/4/0 | not applied | not applied |
+| RSS peak (MiB) | 548 | 530 | 515 | 677 | 606 | 788 |
+| RSS slope (MiB/min) | 32.2 | 27.5 | 19.3 | 24.3 | 29.9 | 41.2 |
+| threads (min–max) | 91–95 | 90–92 | 100–102 | 101–106 | 90–93 | 103–111 |
+| fds | 27 flat | 27 flat | 27 flat | 27 flat | 27 flat | 27 flat |
+| deepest `pending` | 13 | 11 | 10 | 16 | 11 | 20 |
+| lag p50 / p95, median window (ms) | 0.7 / 7.5 | 0.8 / 10.3 | 0.6 / 1.4 | 0.8 / 18.1 | 1.1 / 16.6 | 8.7 / 28.1 |
+| worst lag (ms) | 93 | 31 | 40 | 38 | 31 | 65 |
+| lag-silent 5 s windows | 0 | 0 | 0 | 0 | 0 | 0 |
+| frames/s | 49.4 | 58.3 | 58.6 | 54.8 | 36.0 | 29.6 |
+| state applies/s, all panes | 14.7 | 16.6 | 0 | 5.2 | 24.4 | 26.6 |
+| apply ms/s on GTK thread | 29.6 | 32.7 | 0 | 11.7 | 49.9 | 58.2 |
+| drain pass p95 / max (ms) | 5.1 / 21.9 | 5.8 / 7.9 | 3.9 / 4.9 | 6.1 / 8.6 | 5.9 / 9.8 | 6.9 / 10.3 |
+| most drain slots ready at once | 5 | 5 | 8 | 8 | 4 | 7 |
+| process CPU (% of one core) | 225 | 363 | 21 | 367 | 442 | 661 |
+| main-thread CPU p50 / p95 (%) | 47 / 63 | 56 / 61 | 11 / 12 | 54 / 63 | 62 / 70 | 86 / 88 |
+| loop-meter busy p50 / p95 (ring) | — | 0.58 / 0.68 | 0.02–0.13 | 0.57 / 0.78 | 0.63 / 0.72 | 0.86 / 0.92 |
+| seconds with a slice over 120 ms (ring) | — | 0 of 173 | — | 0 of 174 | 1 of 178 | 0 of 179 |
+
+### Against the 10.7 starting budgets (N = 5)
+
+| Measure | Budget | M1 | M3 |
+|---|---|---|---|
+| main-loop busy p95 | ≤ 0.35 | 0.72 (loop meter) | 0.68: **misses**, closer; the share was 0.78 at N = 8 with four chats whole |
+| worst main-loop slice | ≤ 120 ms | 1 second at 166 ms | none in 173 s: **met** |
+| RSS slope after warm-up | ≤ 5 MB/min | 30 MiB/min | 27–32 MiB/min: **misses**, unchanged; the canvas does not touch what holds the memory |
+| threads, fds | flat ± 4 | met | met |
+| deepest mailbox | ≤ 1 | 11 `pending`, 4 slots ready | 11–13 `pending`, 5 slots ready (one state each): the scripted `pending_max <= 1` still fails, the queue is bounded |
+| drain per frame | p95 ≤ 4 ms | 5.9 ms | 5.1–5.8 ms: **misses** |
+| structural verb | ≤ 1 frame, 0 re-parents | not run | 0 re-parents over 50 verbs (selftest `tile host`); the last canvas allocation after one was 0.6 ms: **met** |
+| divider step | live if ≤ 8 ms, else ghost | — | mean 7.0 ms, p95 24 ms across a width change with a 400-row focused pane (Release, harness); the adaptive rule flips to a ghost after two steps over 8 ms. A height-only step costs 0.2 ms |
+
+### What the numbers say
+
+- **The frame clock holds and the loop is calmer at the same load.** N = 5 draws 49–58 frames a second where M1 drew 36 and shed to level 4; no second of the ring has a slice over 120 ms. Applies fall from 24 to 15–17 a second because a glance applies at the glance rate and whole peers at five a second. The governor never needed to shed in the large-window runs, which is also why the cascade clock stayed on (13–18 live frame-clock callbacks).
+- **The default window cannot hold eight chats whole**, and the result says so rather than flattering the code: all eight are tiles, the main thread is at 11 %, and nothing in M1's N = 8 column is comparable to it. The comparable column is the large window: 677 MiB (788), lag p95 18 ms (28), main-thread p95 63 % (88), 54.8 frames a second (29.6).
+- **RSS growth is where it was.** 19–32 MiB/min across all four columns, 1.1–2 KiB per streamed token as before; the canvas does not change it and `releaseRows` does not help a pane that is still streaming. The 5 MB/min budget stays unmet and unattributed.
+- **Not measured here:** the hammer and zoom runs (`--hammer`, `--zoom-at`) were not run on the canvas in this matrix; the structural-verb budget is read from the selftest, not from a soak.
+
+### Commands
+
+```sh
+cd TailscodeLinux && swift build -c release && cd ..
+export TAILSCODE_DEV_DISPLAY_NUM=85
+scripts/soak-tiles.sh --panes 5 --seconds 180 --no-assert
+scripts/soak-tiles.sh --panes 8 --seconds 180 --no-assert
+SOAK_DRIVE_PREFIX='2000:winsize=2500x1350' TAILSCODE_DEV_GEOM=2560x1400x24 scripts/soak-tiles.sh --panes 8 --seconds 180 --no-assert
+```
+
+`scripts/soak-tiles.sh` now copies the flight ring into the run's output directory (`flight.ring`), read with `XDG_STATE_HOME=<dir> tailscode --flight`, and accepts `SOAK_DRIVE_PREFIX` for drive verbs that run before the open.
+
 ## Mac
 
 Measured 2026-10-06 on the reference Mac (macOS 27.2, Xcode 27, Debug builds from `scripts/build-macapp-isolated.sh`) with `TailscodeMac --bench tiles=N:80:600:20`: N panes on `SoakWorld` sessions of 600 messages, one send per pane, 20 s of 80 tok/s firehose, in a 1600×1000 window ordered front (the display awake through `caffeinate -u`, so the display link is served). "Old" is master at `8bdf52d3` (each pane's own `AgentConversation`, every state built and applied on the main thread from the pane's stream loop) with only the bench and an apply counter added; "new" is `wt/mb` (hub leases, latest-wins mailboxes, the frame-paced drain). Busy and worst slice are Ma's `LoopMeter` (main run loop, 1 s windows); lag is how late a 100 ms main-queue timer fires, the Mac's stand-in for a queue depth; the footprint slope is a least-squares fit over the 20 s, which the growing answers themselves dominate and is noisy at that length. The Mac cannot run the Linux soak harness; there is no external process sampler here.

@@ -8,6 +8,7 @@
 #   scripts/soak-tiles.sh ... --shed 1                            hold the governor at a level (0 calm … 4 critical)
 #   scripts/soak-tiles.sh ... --assert                            exit 1 past docs/tiling.md 10.7
 #   scripts/soak-tiles.sh ... --build                             release build first
+#   SOAK_DRIVE_PREFIX='2000:winsize=2500x1350' scripts/soak-tiles.sh ...   drive verbs run before the open (a bigger window, so every pane has room to be whole)
 #
 # The app runs from the worktree's own release build (TailscodeLinux/.build/release), because a
 # debug build measures the optimiser's absence. The whole harness — Xvfb, bus, app — runs inside
@@ -82,6 +83,7 @@ SEND_MS=12000
 DRIVE="4000:soakopen=$ARRANGE;$SEND_MS:soaksend;$((SEND_MS + 200)):soakstats"
 [ "$HAMMER" = yes ] && DRIVE="$DRIVE;$((SEND_MS + 3000)):soakhammer=$((SECONDS_ - 10))"
 [ -n "$SHED" ] && DRIVE="2000:shed=$SHED;$DRIVE"
+[ -n "${SOAK_DRIVE_PREFIX:-}" ] && DRIVE="$SOAK_DRIVE_PREFIX;$DRIVE"
 [ -n "$ZOOM_AT" ] && DRIVE="$DRIVE;$((SEND_MS + ZOOM_AT * 1000)):szoom;$((SEND_MS + ZOOM_AT * 1000 + 100)):soakstats"
 export TAILSCODE_SOAK="$PANES:$RATE:$ROWS:$((SECONDS_ + 60))${PARAGRAPH:+:$PARAGRAPH}"
 
@@ -109,6 +111,7 @@ while :; do
     sleep 1
 done
 cp "$STATE/app.log" "$OUT/app.log"
+cp "$STATE/home/state/tailscode/flight.ring" "$OUT/flight.ring" 2>/dev/null || true
 journal_oom=$(journalctl --user --since "@${started%.*}" 2>/dev/null | grep -iE "oom|memory.max" | tail -3 || true)
 
 python3 - "$OUT" "$SEND_MS" "$WARMUP" "$ASSERT" "$CLK" "${died:-}" "$PANES" "$journal_oom" <<'PY'
