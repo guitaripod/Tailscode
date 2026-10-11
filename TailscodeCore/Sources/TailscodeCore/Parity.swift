@@ -131,6 +131,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case newChatDefaults
     case newChatFailure
     case newChatPathCompletion
+    case serverFolderBrowser
     case keyboardShortcuts
     case shortcutCheatsheet
     case fileBrowser
@@ -704,6 +705,10 @@ public enum CapabilityRegistry {
             title: "The path field is a shell",
             spec:
                 "A path typed into the new-chat modal completes against the server's real disk, not this device's memory: the moment the query looks like a path, the chooser names the folder it sits in (NewChatChooser.wantedListing — asked once per folder, because the parent only changes at slash boundaries) and the client answers it over the /files route the file browser already rides, offering every subdirectory whose name the letters find, case-blind, ranked and highlighted by the same FuzzyRank as everything else (PathCompletion.matches). Tab at the top of the list is the shell's tab: the longest continuation every candidate shares, spelled the way the disk spells it, a lone candidate completing whole with its trailing slash so the walk continues without another keystroke (PathCompletion.completed); a cursor deliberately walked onto a row keeps the old meaning and adopts that row. A listing that comes back for a query the person has already left, or from a server no longer chosen, is dropped rather than rendered stale; a folder the server refused is neither offered nor asked for again; and a bridge too old to list says nothing, so the modal degrades to exactly what it was. The rows read live off the disk wear no badge — the remembered ones keep theirs — and Enter on any of them starts the chat there like Enter always did."),
+        CapabilityDefinition(
+            id: .serverFolderBrowser, area: "servers", title: "Walking another machine's folders",
+            spec:
+                "Browse the server… in the new-chat modal opens FolderBrowser, one walk for every client and every server: the listing the server already serves over /files (the same route path completion rides), folders only, A to Z, read once per folder and kept so going up or back never asks again. The path is a row of crumbs that each jump back to where they name, with ~ standing for the server's home once a listing has said where that is; up, back, home and the root are one press each; typing filters the folder in view by the same FuzzyRank as everything else and enter opens what the filter narrowed to, a typed absolute or ~ path jumps there outright, and backspace on an empty filter climbs a level. The places a person already works — starred, recent, the folders its own chats are in — are jumps in a sidebar, every folder says how many chats work in it or below it, and the folder on screen can be starred. One verb picks: Start here uses the folder in view, or the one the filter narrowed to, and starts the chat there without a second confirmation. Every server is a keystroke away (⌃s) and remembers where it was left; a half-typed path in the modal opens the browser at the folder it sits in. A folder the server refuses says which and leaves the way up open; a server that cannot list at all says that instead and leaves the typed path as it was. The native picker remains the answer for the machine the client runs on, where it tells the truth."),
         CapabilityDefinition(
             id: .newChatFailure, area: "servers", title: "A chat that cannot start says why",
             spec:

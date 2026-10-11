@@ -123,6 +123,7 @@ enum ParityManifest {
         case .serverAutoUpdate: return .implemented("UpdateMonitor.setAutoUpdate")
         case .newChat: return .implemented("NewChatViewController")
         case .newChatPathCompletion: return .implemented("NewChatViewController")
+        case .serverFolderBrowser: return .implemented("FolderBrowserViewController")
         case .newChatDefaults: return .implemented("renderDefaults")
         case .newChatFailure: return .implemented("NewChatStatusView")
         case .keyboardShortcuts: return .implemented("KeyBridge")

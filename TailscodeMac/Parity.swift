@@ -150,6 +150,7 @@ enum ParityManifest {
         case .serverAutoUpdate: return .implemented("renderAutomation")
         case .newChat: return .implemented("NewChatSheet")
         case .newChatPathCompletion: return .implemented("NewChatSheet")
+        case .serverFolderBrowser: return .implemented("FolderBrowserSheet")
         case .newChatDefaults: return .implemented("renderDefaults")
         case .newChatFailure: return .implemented("NewChatStatusView")
         case .keyboardShortcuts:

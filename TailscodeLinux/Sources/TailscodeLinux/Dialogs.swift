@@ -444,9 +444,9 @@ enum Dialogs {
     /// function owns is the translation from this desktop's own facts into it — which profiles
     /// exist, which of them is this same machine, and what "Browse…" can mean.
     ///
-    /// Only a local server offers to browse: the desktop's own folder chooser is the one place a
-    /// native picker tells the truth, and pointing it at this disk on behalf of a machine across
-    /// the tailnet would offer folders that are not there.
+    /// Every server offers to browse. The desktop's own folder chooser is the one place a native
+    /// picker tells the truth, so it answers for this machine only; a machine across the tailnet is
+    /// walked through its own listing by ``FolderBrowserWindow``.
     /// - Parameters:
     ///   - unreachable: the profiles that did not answer the last listing, so the modal can say a
     ///     machine is down before a folder is chosen on it rather than after.
@@ -476,7 +476,7 @@ enum Dialogs {
                 profileID: profile.id, name: profile.name, backend: profile.backend,
                 address: ServerLabel.address(profile),
                 reachable: !unreachable.contains(profile.id),
-                canBrowse: local.contains(profile.id),
+                canBrowse: true,
                 isLocal: local.contains(profile.id))
         }
         let parentBits = parent.map { UInt(bitPattern: $0) } ?? 0
