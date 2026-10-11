@@ -1153,12 +1153,13 @@ final class TileHost: NSViewController, PaneTiling {
             let rect = placement?.frames[id]
             let paused = userParked.contains(id) || held[id] != nil
             let placed = rect != nil && !paused
+            let reading = attention(id)
             seen.facts.append(
                 PaneFacts(
                     id: id, kind: pane.paneKind(held: waiting[id] != nil || held[id] != nil),
                     focused: id == layout.focusedPane, placed: placed,
                     width: rect?.width ?? 0, height: rect?.height ?? 0,
-                    attention: attention(id), pinned: pinned.contains(id)))
+                    attention: reading, pinned: pinned.contains(id)))
             if rect == nil {
                 seen.hidden += 1
             } else if paused || (pane.currentEntry == nil && waiting[id] != nil) {
@@ -1167,6 +1168,10 @@ final class TileHost: NSViewController, PaneTiling {
                 seen.glance += 1
             } else {
                 seen.live += 1
+                if reading == .running {
+                    seen.streaming += 1
+                    if id == layout.focusedPane { seen.focusedStreaming = true }
+                }
             }
         }
         seen.occluded = occluded

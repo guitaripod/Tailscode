@@ -451,6 +451,34 @@ What it says:
 - **No hitch over 100 ms: not met around a zoom and under shedding.** The worst slice is 58–71 ms while streaming at N=2, 4 and 8, 155 ms at N=5 when the governor was shedding, and the zoom itself is one 123 ms (N=4) or 150 ms (N=5, first run) slice, the focused pane re-laying out 600 rows at the full width.
 - **Footprint** ends at 233–462 MiB for 2–8 panes (Debug: 309–827), flat in N once peers hold the governor's row window.
 
+### Mac, cascade rate by streaming count
+
+Measured 2026-10-11 on the same Mac and bench as above (Release, `--bench tiles=N:80:600:20`, one run per cell, `scripts/build-macapp-isolated.sh --root mcap --release`), before and after `CascadeRate` (Core): the cascade link and the shared drain link take their range from the number of full panes with a turn running and the governor's level, instead of 60-120 Hz at every count. Rate table (`CascadeRate.ceiling`): 0 or 1 streaming 120 Hz (the display's own rate, range 60-120), 2 streaming 60 (30-60), 3 or more 30 (10-30); a peer never above 30; from busy up the governor's tick cap applies on top (30, 20, 10, none) and from loaded nothing exceeds 30. The count is read once a second with the governor's sample, so a rate follows a change within a second.
+
+| Measure | N=1 | N=2 | N=4 | N=5 | N=8 |
+|---|---|---|---|---|---|
+| streaming panes (rate asked) | 1 (120) | 2 (60) | 4 (30) | 4 live + 1 glance (30) | 3 live + 5 glance (30, `busy`) |
+| main busy mean, before | 0.47 | 0.43 | 0.46 | 0.45 | 0.35 |
+| main busy mean, after | 0.46 | 0.40 | 0.37 (0.36 on a second run) | 0.37 | 0.36 |
+| main busy p95, before / after | 0.71 / 0.67 | 0.65 / 0.65 | 0.79 / 0.43 | 0.64 / 0.43 | 0.43 / 0.45 |
+| worst slice streaming (ms), before / after | 66 / 58 | 67 / 79 | 74 / 91 | 86 / 78 | 178 / 129 |
+| cascade frames per s (focused pane), before / after | 94 / 98 | 97 / 56 | 89 / 32 | 88 / 32 | 27 / 28 |
+| frames applied per pane per s, before / after | 16.5 / 17.2 | 12.5 / 9.6 | 7.0 / 3.4 | 5.8 / 2.6 | 1.5 / 1.5 |
+| zoomed onto one (5 s): busy, before / after | 0.50 / 0.49 | 0.47 / 0.24 | 0.26 / 0.51 | 0.25 / 0.51 | 0.34 / 0.34 |
+| zoomed onto one: worst slice (ms), before / after | 57 / 50 | 108 / 63 | 75 / 122 (153 on the second run) | 111 / 54 | 53 / 106 |
+| shed level during the zoom, before / after | calm / calm | calm / loaded | loaded / calm | loaded / calm | busy / busy |
+
+What it says:
+
+- **Busy at four streaming panes fell from 0.46 to 0.36-0.37, against the 0.35 target.** Not met, by 0.01-0.02. Two panes read 0.40 (from 0.43) and five 0.37 (from 0.45). One pane alone is unchanged (0.46, 98 cascade frames a second), which is the point: the 120 Hz reveal is still there whenever one pane is the only one writing.
+- **The price is peers.** Frames applied per pane per second at four panes halved (7.0 to 3.4) because the shared drain link also runs at 30, so a peer's transcript advances in coarser steps; the focused pane's reveal is unaffected in character (32 frames a second against 89, at 0.68 ms each).
+- **The zoom columns moved the other way for a reason that is not the rate.** Before, the zoom at N=4 and N=5 ran at `loaded` (instant reveal, 0.25) because the governor had shed during the burst; after, the window stayed `calm` the whole run, so the zoomed pane streams at 120 Hz and costs the single-pane 0.51. The N=2 zoom went the other way (it shed to `loaded` after). Read the zoom columns as the shed level's, not the rate's.
+- **Worst slice, target 100 ms.** Streaming: met at N=1 (58), 2 (79), 4 (91; 88 on a second run), 5 (78), missed at N=8 (129, from 178). Around a zoom: met at N=1, 2, 5 (50, 63, 54), missed at N=4 (122, and 153 on the second run: the focused pane re-laying out 600 rows at the full width) and N=8 (106).
+
+```sh
+scripts/build-macapp-isolated.sh --root mcap --release --run "--bench tiles=4:80:600:20"
+```
+
 ```sh
 ssh macbook 'caffeinate -u -t 2'
 scripts/build-macapp-isolated.sh --root m2 --release --run "--bench tiles=4:80:600:20"

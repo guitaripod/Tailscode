@@ -15,6 +15,10 @@ struct SeatbeltPanes: Sendable {
     /// Chat panes holding a session they are not streaming: parked by a safe restore, waiting
     /// their turn in a staggered one, or paused by the person.
     var parked = 0
+    /// Full panes with a turn running: the transcripts a cascade frame can set off a layout in.
+    var streaming = 0
+    /// Whether the focused pane is one of them.
+    var focusedStreaming = false
     /// The window is minimized or not visible at all.
     var occluded = false
 }
@@ -22,12 +26,15 @@ struct SeatbeltPanes: Sendable {
 /// What the current shed level lets the window spend on motion, read by every clock it governs.
 ///
 /// The cascade reveal runs below loaded, becomes instant at loaded, and every other animation
-/// stops at strained. The cascade's own display link is held to the level's tick cap from busy up;
-/// calm leaves it at the panel's rate, because a reveal at thirty frames reads as a hand that
-/// stutters (the transcript doctrine asks for up to 120 Hz on the Mac).
+/// stops at strained. The cascade's own display link takes its rate from `CascadeRate`: the
+/// panel's own rate for the one pane streaming alone, because a reveal at thirty frames reads as
+/// a hand that stutters (the transcript doctrine asks for up to 120 Hz on the Mac), stepping down
+/// as more panes stream and held to the level's tick cap from busy up.
 @MainActor
 enum MotionBudget {
     private(set) static var level: ShedLevel = .calm
+    private(set) static var streaming = 0
+    private(set) static var focusedStreaming = false
     static let didChange = Notification.Name("tailscode.mac.motionBudget.didChange")
 
     private static var reduceMotion: Bool {
@@ -44,24 +51,37 @@ enum MotionBudget {
     /// Whether anything else may move: entrances, breathing marks, laps.
     static var animationAllowed: Bool { !reduceMotion && budget.pulses }
 
-    /// The cascade link's rate at this level.
+    /// The cascade link's rate at this level and with this many panes streaming. A level that
+    /// allows no clock at all still hands the shared drain link the panel's range, which is
+    /// where it has always stood at critical.
     static var cascadeRange: CAFrameRateRange {
-        guard level > .calm, budget.tickCap > 0 else {
+        let range = CascadeRate.range(
+            streaming: streaming, level: level, focused: focusedStreaming || streaming == 0)
+        guard range.maximum > 0 else {
             return CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         }
-        let cap = Float(budget.tickCap)
-        return CAFrameRateRange(minimum: min(cap, 10), maximum: cap, preferred: cap)
+        return CAFrameRateRange(
+            minimum: Float(range.minimum), maximum: Float(range.maximum),
+            preferred: Float(range.preferred))
     }
 
-    /// Moves the budget to a level. When what may move changes, every clock is asked again: the
-    /// cascade through `didChange`, and every repeating lap through the same workspace notice a
-    /// reduced-motion switch sends, which each of them already answers by re-deciding.
-    static func apply(_ next: ShedLevel) {
-        guard next != level else { return }
+    /// Whether this pane may take a streaming row up for the reveal at the current level.
+    static func reveals(focused: Bool) -> Bool {
+        CascadeRate.reveals(focused: focused, level: level, reducedMotion: reduceMotion)
+    }
+
+    /// Moves the budget to a level and a count of streaming panes. When what may move changes,
+    /// every clock is asked again: the cascade through `didChange`, and every repeating lap
+    /// through the same workspace notice a reduced-motion switch sends, which each of them
+    /// already answers by re-deciding. A count that moves the rate is a change like a level's.
+    static func apply(_ next: ShedLevel, streaming count: Int = 0, focusedStreaming focused: Bool = false) {
+        guard next != level || count != streaming || focused != focusedStreaming else { return }
         let animatedBefore = animationAllowed
         let cascadeBefore = cascadeAllowed
         let rangeBefore = cascadeRange
         level = next
+        streaming = count
+        focusedStreaming = focused
         if cascadeBefore != cascadeAllowed || rangeBefore != cascadeRange {
             NotificationCenter.default.post(name: didChange, object: nil)
         }
@@ -262,7 +282,8 @@ final class Seatbelts {
             AppLogger.performance.info("shed: \(events[0]) · \(decision.reasons.map(\.code).joined(separator: ", "))")
         }
         level = next
-        MotionBudget.apply(next)
+        MotionBudget.apply(
+            next, streaming: seen.streaming, focusedStreaming: seen.focusedStreaming)
         if next > previous, MemoryRelief.depth(for: next) != nil {
             let relieved = MemoryRelief.shared.relieve(level: next)
             events.append("relief \(relieved.count)")

@@ -1176,7 +1176,7 @@ final class TranscriptViewController: NSViewController {
     var queuedCount: Int { queue.count }
 
     /// Whether this pane may take a streaming row up for the reveal: only the focused one.
-    var revealsAnswers: Bool { isFocusedPane }
+    var revealsAnswers: Bool { MotionBudget.reveals(focused: isFocusedPane) }
 
     /// The focused pane's frames go first when a frame cannot apply every pane.
     func setFocusedPane(_ focused: Bool) {

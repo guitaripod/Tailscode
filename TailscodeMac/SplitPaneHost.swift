@@ -895,6 +895,10 @@ final class SplitPaneHost: NSViewController, PaneTiling {
                 seen.parked += 1
             } else {
                 seen.live += 1
+                if running {
+                    seen.streaming += 1
+                    if paneID == layout.focusedPane { seen.focusedStreaming = true }
+                }
             }
         }
         seen.occluded = occluded
