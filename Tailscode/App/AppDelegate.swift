@@ -10,6 +10,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         AppLogger.lifecycle.info("didFinishLaunching")
         ReviewPromptPolicy.migrateIfNeeded()
         FieldMetrics.shared.start()
+        MainStallMonitor.shared.start()
         ShortcutSet.configDirectoryOverride = FileManager.default.urls(
             for: .documentDirectory, in: .userDomainMask
         ).first

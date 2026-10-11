@@ -1212,6 +1212,14 @@ final class HomeViewController: UIViewController {
         }
         appliedContent = content
         if !stale.isEmpty { snapshot.reconfigureItems(stale) }
+        if stale.isEmpty, previous.sectionIdentifiers == snapshot.sectionIdentifiers,
+            previous.itemIdentifiers == snapshot.itemIdentifiers
+        {
+            updateEmptyState(itemCount: snapshot.numberOfItems)
+            applyOrbState()
+            consumePendingDeepLink()
+            return
+        }
         dataSource.apply(snapshot, animatingDifferences: shouldAnimate(from: previous, to: snapshot))
         updateEmptyState(itemCount: snapshot.numberOfItems)
         applyOrbState()

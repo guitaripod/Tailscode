@@ -1338,8 +1338,11 @@ final class ChatViewController: UIViewController {
         let previous = lastRenderedGoal
         lastRenderedGoal = state.goal
         if let active = state.activeGoal {
-            goalChip.configuration?.title = active.condition
-            goalChip.accessibilityLabel = String(localized: "Working toward: \(active.condition)")
+            if goalChip.configuration?.title != active.condition {
+                goalChip.configuration?.title = active.condition
+                goalChip.accessibilityLabel = String(
+                    localized: "Working toward: \(active.condition)")
+            }
             goalChip.isHidden = false
         } else {
             goalChip.isHidden = true
@@ -2494,6 +2497,10 @@ final class ChatViewController: UIViewController {
 
     private let segmentMemo = SegmentRowMemo()
 
+    /// Where every tool call stood when the transcript was last built, so a call that has just
+    /// completed is told from one that was already done without keeping a second copy of every row.
+    private var lastToolStatuses: [String: ToolStatus] = [:]
+
     private func rebuildTranscript(_ state: ConversationState) -> TranscriptRebuild {
         let runs = WorkflowRunAssembly.runs(
             messages: state.messages, agents: viewModel.trackedSubagents)
@@ -2680,22 +2687,19 @@ final class ChatViewController: UIViewController {
             lastStreamingID = streamingID
         }
         if let rebuild {
-            let previousToolStatuses = Self.collectToolStatuses(
-                from: rebuild.previous.values.flatMap { row in
+            let currentToolStatuses = Self.collectToolStatuses(
+                from: rebuild.rows.lazy.flatMap { row -> [ActivityStep] in
                     if case .activity(let steps) = row.content { return steps }
                     return []
                 })
-            let currentToolStatuses = Self.collectToolStatuses(from: rebuild.rows.flatMap { row in
-                if case .activity(let steps) = row.content { return steps }
-                return []
-            })
-            for (id, previousStatus) in previousToolStatuses {
+            for (id, previousStatus) in lastToolStatuses {
                 if let currentStatus = currentToolStatuses[id],
                     previousStatus != currentStatus, currentStatus == .completed
                 {
                     Theme.Haptics.step()
                 }
             }
+            lastToolStatuses = currentToolStatuses
         }
         let animated = animateNextRender && hasRevealed
         animateNextRender = false
@@ -3194,14 +3198,19 @@ final class ChatViewController: UIViewController {
     private func renderNavStatus() {
         guard !lastStatusPhaseText.isEmpty else { return }
         guard let started = turnStartedAt else {
-            navStatusLabel.text = lastStatusPhaseText
+            setNavStatusText(lastStatusPhaseText)
             return
         }
         let seconds = Int(Date().timeIntervalSince(started))
         let elapsed = seconds >= 60
             ? String(format: "%d:%02d", seconds / 60, seconds % 60) : "\(seconds)s"
-        navStatusLabel.text = seconds >= 3
-            ? "\(lastStatusPhaseText) · \(elapsed)" : lastStatusPhaseText
+        setNavStatusText(
+            seconds >= 3 ? "\(lastStatusPhaseText) · \(elapsed)" : lastStatusPhaseText)
+    }
+
+    private func setNavStatusText(_ text: String) {
+        guard navStatusLabel.text != text else { return }
+        navStatusLabel.text = text
     }
 
     /// How full the model's window is, always visible above the composer once the transcript can
@@ -3311,13 +3320,21 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    private var shownSpendBadge: String?
+
+    /// A chip is reconfigured only when what it says has changed. A transcript state arrives for
+    /// every token of an answer, and writing a button's configuration — which UIKit answers with a
+    /// full update and a layout pass — to say the same words again is a cost per token for nothing.
     private func updateSpendChip() {
         guard let spend = spendReading.value, !spend.isEmpty else {
             spendChip.isHidden = true
+            shownSpendBadge = nil
             return
         }
-        spendChip.configuration?.title = spend.badge
         spendChip.isHidden = false
+        guard shownSpendBadge != spend.badge else { return }
+        shownSpendBadge = spend.badge
+        spendChip.configuration?.title = spend.badge
     }
 
     private func presentSpend() {
@@ -3344,11 +3361,17 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    private var shownContextFill: ContextFill?
+
     private func updateContextChip() {
         guard let contextFill else {
             contextChip.isHidden = true
+            shownContextFill = nil
             return
         }
+        contextChip.isHidden = false
+        guard shownContextFill != contextFill else { return }
+        shownContextFill = contextFill
         let ink: UIColor
         switch contextFill.tone {
         case .quiet: ink = Theme.Color.secondaryLabel
@@ -3363,7 +3386,6 @@ final class ChatViewController: UIViewController {
             systemName: "cylinder.split.1x2",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
         contextChip.accessibilityLabel = contextFill.accessibilityLabel
-        contextChip.isHidden = false
     }
 
     /// The whole window behind the chip's one ring, as a sheet, with Compact as the one thing it
@@ -3393,7 +3415,7 @@ final class ChatViewController: UIViewController {
         return rows.filter { seen.insert($0.id).inserted }
     }
 
-    private static func collectToolStatuses(from steps: [ActivityStep]) -> [String: ToolStatus] {
+    private static func collectToolStatuses(from steps: some Sequence<ActivityStep>) -> [String: ToolStatus] {
         var map: [String: ToolStatus] = [:]
         for step in steps {
             if case .tool(let call) = step { map[call.id] = call.status }
@@ -3850,8 +3872,15 @@ final class ChatViewController: UIViewController {
     /// a badged symbol: `ellipsis.circle.badge.exclamationmark` does not exist, so
     /// asking for it returned nil and blanked the button in the one state where
     /// the menu behind it matters most.
+    private var shownOverflowBadge: (item: ObjectIdentifier, hasPermission: Bool)?
+
     private func updateOverflowBadge(hasPermission: Bool) {
         guard let barItem = navigationItem.rightBarButtonItems?.last else { return }
+        let shown = (item: ObjectIdentifier(barItem), hasPermission: hasPermission)
+        guard shownOverflowBadge?.item != shown.item
+            || shownOverflowBadge?.hasPermission != shown.hasPermission
+        else { return }
+        shownOverflowBadge = shown
         barItem.image = UIImage(systemName: "ellipsis.circle")
         barItem.tintColor = hasPermission ? Theme.Color.warning : nil
     }
