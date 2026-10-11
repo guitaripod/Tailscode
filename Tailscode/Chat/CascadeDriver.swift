@@ -59,6 +59,19 @@ struct CascadeTail {
         storage.endEditing()
     }
 
+    /// The hex of the colour a glyph already wears. Neighbouring glyphs share one attribute run and
+    /// so one colour object, which makes the previous answer the answer nearly every time.
+    private func settledHex(
+        of colour: UIColor?, _ traits: UITraitCollection, _ fallback: String,
+        _ lastColour: inout UIColor?, _ lastHex: inout String
+    ) -> String {
+        guard let colour else { return fallback }
+        if let lastColour, lastColour === colour { return lastHex }
+        lastColour = colour
+        lastHex = CascadeTint.hex(colour, traits)
+        return lastHex
+    }
+
     /// The wave tints what is already there rather than replacing it: a keyword in a code block, a
     /// link, an inline code span all keep their own colour as the settled end of the blend, so a
     /// glyph leaving the wave lands on the colour it would have had if it had never been in one.
@@ -68,11 +81,13 @@ struct CascadeTail {
         let fallback = CascadeTint.hex(settled, traits)
         let leading = CascadeTint.hex(edge, traits)
         let burn = CascadeTint.hex(spark, traits)
+        var lastColour: UIColor?
+        var lastHex = fallback
         for distance in 0..<min(span, shown) {
             let index = shown - 1 - distance
             let range = NSRange(location: index, length: 1)
             let existing = string.attribute(.foregroundColor, at: index, effectiveRange: nil)
-            let base = (existing as? UIColor).map { CascadeTint.hex($0, traits) } ?? fallback
+            let base = settledHex(of: existing as? UIColor, traits, fallback, &lastColour, &lastHex)
             let sample = StreamCascade.sample(distance: distance, phase: phase)
             let colour = CascadeTint.colour(sample, settled: base, edge: leading, spark: burn)
             string.addAttribute(

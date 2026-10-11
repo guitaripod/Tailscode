@@ -1134,16 +1134,30 @@ final class SessionListViewController: UIViewController {
         }
     }
 
-    private func rowModel(for entry: SessionEntry, saved: Set<String>, unreachable: Set<String>)
-        -> SessionRowModel
-    {
-        SessionRowModel(
+    /// What every row of one render is judged against, read from the stores once. The evaluator and
+    /// the pin list each copy their whole backing store out of `UserDefaults`, so asking per row
+    /// made one render cost the length of the list times the length of the store.
+    private struct RowContext {
+        let saved: Set<String>
+        let unreachable: Set<String>
+        let pins: Set<String>
+        let isUnread: (String, Date) -> Bool
+
+        static func read(saved: Set<String>, unreachable: Set<String>) -> RowContext {
+            RowContext(
+                saved: saved, unreachable: unreachable, pins: Set(SessionPinStore.all()),
+                isUnread: SessionSeenStore.unreadEvaluator())
+        }
+    }
+
+    private func rowModel(for entry: SessionEntry, in context: RowContext) -> SessionRowModel {
+        let key = SessionPinStore.key(entry.profileID, entry.session.id)
+        return SessionRowModel(
             entry: entry,
-            unreachable: unreachable.contains(entry.profileID),
-            unread: SessionSeenStore.unreadEvaluator()(entry.session.id, entry.session.updatedAt),
-            saved: saved.contains(SessionPinStore.key(entry.profileID, entry.session.id)),
-            pinned: SessionPinStore.contains(
-                profileID: entry.profileID, sessionID: entry.session.id),
+            unreachable: context.unreachable.contains(entry.profileID),
+            unread: context.isUnread(entry.session.id, entry.session.updatedAt),
+            saved: context.saved.contains(key),
+            pinned: context.pins.contains(key),
             presence: presence(for: entry),
             observedAt: viewModel.observedAt[entry.profileID])
     }
@@ -1155,9 +1169,8 @@ final class SessionListViewController: UIViewController {
     private func sectionedRows(for entries: [SessionEntry]) -> [(SessionSection, [SessionRowModel])]
     {
         let saved = Set(SavedChatStore.all().map { SessionPinStore.key($0.profileID, $0.sessionID) })
-        let unreachable = Set(viewModel.unreachable)
-        return groupIntoSections(
-            entries.map { rowModel(for: $0, saved: saved, unreachable: unreachable) })
+        let context = RowContext.read(saved: saved, unreachable: Set(viewModel.unreachable))
+        return groupIntoSections(entries.map { rowModel(for: $0, in: context) })
     }
 
     /// The flattened order the sections draw becomes `visibleEntries` — the one list the keyboard
@@ -2100,19 +2113,22 @@ extension SessionListViewController {
         let archived = ArchivedChatStore.all()
         let unreachable = Set(viewModel.unreachable)
         let live = viewModel.entries.filter(isLive)
-        let unread = SessionSeenStore.unreadEvaluator()
+        let context = RowContext.read(saved: [], unreachable: unreachable)
+        let pinRanks = Dictionary(
+            SessionPinStore.all().enumerated().map { ($0.element, $0.offset) },
+            uniquingKeysWith: { first, _ in first })
         let pinned = viewModel.entries
             .compactMap { entry in
-                SessionPinStore.rank(profileID: entry.profileID, sessionID: entry.session.id)
+                pinRanks[SessionPinStore.key(entry.profileID, entry.session.id)]
                     .map { (rank: $0, entry: entry) }
             }
             .sorted { $0.rank < $1.rank }
             .map { pin in
-                let row = rowModel(for: pin.entry, saved: [], unreachable: unreachable)
+                let row = rowModel(for: pin.entry, in: context)
                 return ChatListDigest.Pinned(
                     key: ChatSelection.key(pin.entry), title: pin.entry.session.title,
                     backend: pin.entry.backendType, activity: row.state.activity,
-                    unread: unread(pin.entry.session.id, pin.entry.session.updatedAt))
+                    unread: context.isUnread(pin.entry.session.id, pin.entry.session.updatedAt))
             }
         return ChatListDigest(
             servers: viewModel.servers.map { profile in
