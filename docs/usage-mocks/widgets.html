@@ -1,0 +1,91 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+:root{--claude:#d97757;--grok:#e8e8eb;--oc:#03b000;--ds:#4d6bfe;--warn:#ff9f0a;--danger:#ff453a;--ok:#30d158}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#26262a;font:13px/1.2 -apple-system,"SF Pro Text",system-ui,sans-serif;color:#fff;padding:34px;width:1380px}
+h1{font:600 22px -apple-system;margin-bottom:6px}.sub{color:#9a9aa0;margin-bottom:24px;font-size:14px}
+.cap{font:600 12px -apple-system;color:#a0a0a8;letter-spacing:.06em;text-transform:uppercase;margin:0 0 9px 3px}
+.grp{display:flex;gap:26px;align-items:flex-start;margin-bottom:34px}
+.w{border-radius:26px;padding:16px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.07)}
+.s{width:170px;height:170px}.m{width:364px;height:170px}.l{width:364px;height:382px}
+.cl{background:linear-gradient(135deg,rgba(217,119,87,.30),rgba(217,119,87,.05) 70%),#141416}
+.oc{background:linear-gradient(135deg,rgba(3,176,0,.26),rgba(3,176,0,.04) 70%),#141416}
+.ds{background:linear-gradient(135deg,rgba(77,107,254,.30),rgba(77,107,254,.05) 70%),#141416}
+.hd{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.hd b{font-size:13px;font-weight:700}.hd small{color:#7c7c84;font-size:10px;font-weight:600}
+.pill{margin-left:auto;font-size:8.5px;font-weight:800;letter-spacing:.04em;padding:2px 6px;border-radius:8px;display:flex;gap:4px;align-items:center}
+.pill i{width:5px;height:5px;border-radius:3px;background:var(--ok);display:block}
+.ring{position:relative;flex:none}.ring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 15px -apple-system;font-feature-settings:"tnum"}
+.ring .r{position:absolute;inset:0;border-radius:50%}
+.hh{display:flex;gap:9px;align-items:center}
+.hh div b{display:block;font-size:12px;font-weight:600}.hh div span{display:flex;gap:4px;align-items:center;color:#a2a2a9;font-size:10.5px;margin-top:2px}
+.dot{width:6px;height:6px;border-radius:3px;display:inline-block}
+.rw{margin-top:7px}.rl{display:flex;align-items:baseline;gap:5px;font-size:11px}
+.rl .n{font-weight:500}.rl .p{color:#8e8e96}.rl em{margin-left:auto;font:700 11.5px -apple-system;font-style:normal;font-feature-settings:"tnum"}
+.bar{height:4.5px;border-radius:3px;background:rgba(255,255,255,.14);margin-top:3px;overflow:hidden}.bar i{display:block;height:100%;border-radius:3px}
+.cp{color:#76767e;font-size:9.5px;margin-top:2px}
+.mid{display:flex;gap:16px}.mid .left{width:76px;flex:none}.mid .right{flex:1}
+.lbl{font-size:10.5px;font-weight:600;margin-top:6px;line-height:1.25}.rs{color:#a2a2a9;font-size:10.5px;margin-top:2px}
+.card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:9px 11px;margin-bottom:7px}
+.card .t{display:flex;align-items:baseline;gap:6px;margin-bottom:6px}.card .t b{font-size:13px}.card .t span{color:#8e8e96;font-size:10.5px}.card .t u{margin-left:auto;text-decoration:none;color:#a2a2a9;font-size:10.5px}
+.big{font:700 31px -apple-system;font-feature-settings:"tnum";letter-spacing:-.5px}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:6px;color:#8e8e96;text-align:center}
+</style></head><body>
+<h1>Usage widgets — proposed</h1>
+<div class="sub">Rows share the app's anatomy (label · reset, value, bar). Colour says who (brand dot, bar) until a window is tight (amber) or used up (red); brand is the default under the System theme.</div>
+
+<div class="cap">Small — hero + two windows · wall · balance · empty</div>
+<div class="grp">
+ <div class="w s cl"><div class="hd"><b>Usage</b><small>+4</small><div class="pill" style="background:rgba(217,119,87,.2);color:var(--claude)">LIVE<i></i></div></div>
+  <div class="hh"><div class="ring" style="width:50px;height:50px"><div class="r" style="background:conic-gradient(var(--claude) 0 47%,rgba(255,255,255,.14) 47% 100%);-webkit-mask:radial-gradient(circle,transparent 18px,#000 19px)"></div><b style="font-size:13px">47%</b></div><div><b>Input</b><span><i class="dot" style="background:var(--claude)"></i>Claude</span><span>↻ 1h 14m</span></div></div>
+  <div class="rw"><div class="rl"><span class="n">5-hour</span><span class="p">opencode</span><em style="color:var(--oc)">28%</em></div><div class="bar"><i style="width:28%;background:var(--oc)"></i></div></div>
+  <div class="rw"><div class="rl"><span class="n">Chat</span><span class="p">Grok</span><em>12%</em></div><div class="bar"><i style="width:12%;background:var(--grok)"></i></div></div>
+ </div>
+ <div class="w s cl"><div class="hd"><b>Claude</b><div class="pill" style="background:rgba(217,119,87,.2);color:var(--claude)">LIVE<i></i></div></div>
+  <div class="hh"><div class="ring" style="width:50px;height:50px"><div class="r" style="background:var(--danger);-webkit-mask:radial-gradient(circle,transparent 18px,#000 19px)"></div><b style="font-size:10px;text-align:center;line-height:1.05;padding:0 8px">Used up</b></div><div><b>Input</b><span>↻ 1h 14m</span></div></div>
+  <div class="rw"><div class="rl"><span class="n">Output</span><em>32%</em></div><div class="bar"><i style="width:32%;background:var(--claude)"></i></div></div>
+  <div class="rw"><div class="rl"><span class="n">Cache</span><em>18%</em></div><div class="bar"><i style="width:18%;background:var(--claude)"></i></div></div>
+ </div>
+ <div class="w s ds"><div class="hd"><b>DeepSeek</b><div class="pill" style="background:rgba(77,107,254,.22);color:#8fa2ff">LIVE<i></i></div></div>
+  <div style="margin-top:14px;color:#8e8e96;font-size:10.5px;font-weight:600">Balance</div>
+  <div class="big" style="color:#9fb0ff;margin-top:2px">$104.32</div>
+  <div class="cp" style="margin-top:6px;font-size:10px">Topped up $100.00</div><div class="cp" style="font-size:10px;margin-top:1px">Granted $4.32</div>
+ </div>
+ <div class="w s" style="background:#141416"><div class="empty"><div style="font-size:26px">◔</div><b style="color:#d8d8dc;font-size:13px">No usage data</b><span style="font-size:10.5px">Open Tailscode once and<br>pick a server</span></div></div>
+</div>
+
+<div class="cap">Medium — hero column + four windows · at the wall</div>
+<div class="grp">
+ <div class="w m cl"><div class="hd"><b>Usage</b><small>all clear</small><div class="pill" style="background:rgba(217,119,87,.2);color:var(--claude)">LIVE<i></i></div></div>
+  <div class="mid"><div class="left"><div class="ring" style="width:64px;height:64px"><div class="r" style="background:conic-gradient(var(--claude) 0 47%,rgba(255,255,255,.14) 47% 100%);-webkit-mask:radial-gradient(circle,transparent 24px,#000 25px)"></div><b>47%</b></div><div class="lbl">Claude · Input</div><div class="rs">↻ 1h 14m</div></div>
+   <div class="right">
+    <div class="rw" style="margin-top:0"><div class="rl"><i class="dot" style="background:var(--claude)"></i><span class="n">Output</span><span class="p">Claude</span><em>32%</em></div><div class="bar"><i style="width:32%;background:var(--claude)"></i></div></div>
+    <div class="rw"><div class="rl"><i class="dot" style="background:var(--oc)"></i><span class="n">5-hour</span><span class="p">opencode</span><em>28%</em></div><div class="bar"><i style="width:28%;background:var(--oc)"></i></div></div>
+    <div class="rw"><div class="rl"><i class="dot" style="background:var(--grok)"></i><span class="n">Chat</span><span class="p">Grok</span><em>12%</em></div><div class="bar"><i style="width:12%;background:var(--grok)"></i></div></div>
+    <div class="rw"><div class="rl"><i class="dot" style="background:var(--ds)"></i><span class="n">Balance</span><span class="p">DeepSeek</span><em style="color:#9fb0ff">$104.32</em></div></div>
+   </div></div></div>
+ <div class="w m cl"><div class="hd"><b>Claude</b><small>Input is used up · back 1h 14m</small><div class="pill" style="background:rgba(217,119,87,.2);color:var(--claude)">LIVE<i></i></div></div>
+  <div class="mid"><div class="left"><div class="ring" style="width:64px;height:64px"><div class="r" style="background:var(--danger);-webkit-mask:radial-gradient(circle,transparent 24px,#000 25px)"></div><b style="font-size:11px">Used up</b></div><div class="lbl">Input</div><div class="rs">↻ 1h 14m</div></div>
+   <div class="right">
+    <div class="rw" style="margin-top:0"><div class="rl"><span class="n">Output</span><em>32%</em></div><div class="bar"><i style="width:32%;background:var(--claude)"></i></div><div class="cp">resets 3h 59m</div></div>
+    <div class="rw"><div class="rl"><span class="n">Cache</span><em>18%</em></div><div class="bar"><i style="width:18%;background:var(--claude)"></i></div><div class="cp">resets 11h 59m</div></div>
+   </div></div></div>
+</div>
+
+<div class="cap">Large — one card per provider</div>
+<div class="grp">
+ <div class="w l cl"><div class="hd"><b>Usage</b><small>all clear</small><div class="pill" style="background:rgba(217,119,87,.2);color:var(--claude)">LIVE<i></i></div></div>
+  <div class="card"><div class="t"><i class="dot" style="background:var(--claude)"></i><b>Claude</b><span>Max 20×</span><u>↻ 1h 14m</u></div>
+   <div class="rw" style="margin-top:0"><div class="rl"><span class="n">Token input</span><em>47%</em></div><div class="bar"><i style="width:47%;background:var(--claude)"></i></div></div>
+   <div class="rw"><div class="rl"><span class="n">Token output</span><em>32%</em></div><div class="bar"><i style="width:32%;background:var(--claude)"></i></div></div></div>
+  <div class="card"><div class="t"><i class="dot" style="background:var(--oc)"></i><b>opencode</b><span>$10/mo</span><u>↻ 1h 29m</u></div>
+   <div class="rw" style="margin-top:0"><div class="rl"><span class="n">5-hour</span><em>28%</em></div><div class="bar"><i style="width:28%;background:var(--oc)"></i></div></div>
+   <div class="rw"><div class="rl"><span class="n">Weekly</span><em>14%</em></div><div class="bar"><i style="width:14%;background:var(--oc)"></i></div></div></div>
+  <div class="card"><div class="t"><i class="dot" style="background:var(--grok)"></i><b>Grok</b><span>X Premium+</span><u>↻ 44:55</u></div>
+   <div class="rw" style="margin-top:0"><div class="rl"><span class="n">Chat messages</span><em>12%</em></div><div class="bar"><i style="width:12%;background:var(--grok)"></i></div></div></div>
+  <div class="card" style="margin-bottom:0"><div class="t"><i class="dot" style="background:var(--ds)"></i><b>DeepSeek</b><span>Prepaid balance</span><u style="color:#9fb0ff;font-weight:700;font-size:15px">$104.32</u></div></div>
+  <div class="cp" style="margin-top:7px;font-size:10px">+2 more · updated moments ago</div>
+ </div>
+</div>
+</body></html>

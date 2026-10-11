@@ -29,7 +29,8 @@ final class RingGaugeView: UIView {
         percentLabel.textColor = Theme.Color.label
         percentLabel.textAlignment = .center
         percentLabel.adjustsFontSizeToFitWidth = true
-        percentLabel.minimumScaleFactor = 0.6
+        percentLabel.minimumScaleFactor = 0.3
+        percentLabel.numberOfLines = 1
         percentLabel.text = "—"
         percentLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(percentLabel)

@@ -171,7 +171,11 @@ struct SmallUsageView: View {
             /// hero in the tile rather than hanging it from the header.
             if extras.isEmpty { Spacer(minLength: 0) }
             if let hero {
-                heroBlock(hero)
+                if hero.fraction == nil {
+                    balanceBlock(hero)
+                } else {
+                    heroBlock(hero)
+                }
             }
             ForEach(extras) { row in
                 QuotaRowView(
@@ -204,10 +208,43 @@ struct SmallUsageView: View {
         }
     }
 
+    /// Money with no ceiling has no ring to wear, so the figure is the tile: what it is, the amount
+    /// at a size worth crossing a room for, and what it is made of.
+    private func balanceBlock(_ hero: WidgetGlance.Row) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(hero.shortLabel)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(hero.value)
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+                .foregroundStyle(palette.color(hero.tone, slug: hero.slug))
+            if !hero.caption.isEmpty {
+                Text(hero.caption)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(3)
+                    .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(hero.spoken)
+    }
+
     private func heroBlock(_ hero: WidgetGlance.Row) -> some View {
         HStack(spacing: 8) {
-            HeroValue(row: hero, palette: palette, size: 44, lineWidth: 6)
+            HeroValue(row: hero, palette: palette, size: 50, lineWidth: 6)
             VStack(alignment: .leading, spacing: 1) {
+                if glance.heroIsWalled {
+                    Text(hero.value)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(palette.color(hero.tone, slug: hero.slug))
+                        .lineLimit(1)
+                }
                 Text(hero.shortLabel)
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
@@ -276,27 +313,45 @@ struct MediumUsageView: View {
         }
     }
 
+    /// The title, a few words on how the account stands where they fit, and where the reading came
+    /// from. The long sentence the shipped header carried was shrunk to illegibility to fit; this
+    /// is short, and absent when there is no room for it rather than small.
     private var header: some View {
-        HStack(spacing: 6) {
-            Text(glance.title)
-                .font(.subheadline.weight(.bold))
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            Text(glance.verdict)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            FreshnessPill(
-                freshness: glance.freshness, palette: palette, slug: glance.providers.first?.slug)
+        ViewThatFits(in: .horizontal) {
+            headerLine(showsHeadline: true)
+            headerLine(showsHeadline: false)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(glance.title). \(glance.verdict)")
     }
 
+    private func headerLine(showsHeadline: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(glance.title)
+                .font(.subheadline.weight(.bold))
+                .lineLimit(1)
+            if showsHeadline, !glance.headline.isEmpty {
+                Text(glance.headline)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            Spacer(minLength: 4)
+            FreshnessPill(
+                freshness: glance.freshness, palette: palette, slug: glance.providers.first?.slug)
+        }
+    }
+
     private func heroColumn(_ hero: WidgetGlance.Row) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HeroRing(row: hero, palette: palette, size: 62, lineWidth: 8)
+            if glance.heroIsWalled {
+                Text(hero.value)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(palette.color(hero.tone, slug: hero.slug))
+                    .lineLimit(1)
+            }
             Text(
                 glance.providers.count > 1
                     ? "\(hero.providerShort) · \(hero.shortLabel)" : hero.shortLabel
@@ -350,6 +405,10 @@ struct LargeUsageView: View {
                     stack(maxRows: 3, captions: true, hero: false)
                     stack(maxRows: 3, captions: false, hero: false)
                     stack(maxRows: 2, captions: false, hero: false)
+                    stack(maxRows: 2, captions: false, hero: false, maxProviders: 4)
+                    stack(maxRows: 2, captions: false, hero: false, maxProviders: 3)
+                    stack(maxRows: 2, captions: false, hero: false, maxProviders: 2)
+                    stack(maxRows: 1, captions: false, hero: false, maxProviders: 2)
                 }
             }
         }
@@ -357,8 +416,13 @@ struct LargeUsageView: View {
         .widgetURL(usageURL())
     }
 
-    private func stack(maxRows: Int, captions: Bool, hero: Bool) -> some View {
-        let shown = glance.providers.reduce(0) { $0 + min($1.rows.count, maxRows) }
+    /// A widget that is too short for its providers drops the last of them and says how many
+    /// windows that left out, rather than overflowing its tile and losing the header off the top.
+    private func stack(maxRows: Int, captions: Bool, hero: Bool, maxProviders: Int = .max)
+        -> some View
+    {
+        let providers = Array(glance.providers.prefix(maxProviders))
+        let shown = providers.reduce(0) { $0 + min($1.rows.count, maxRows) }
         let hidden = glance.rows.count - shown
         return VStack(alignment: .leading, spacing: 9) {
             header
@@ -369,7 +433,7 @@ struct LargeUsageView: View {
             if hero, let row = glance.hero {
                 heroBand(row)
             }
-            ForEach(glance.providers) { provider in
+            ForEach(providers) { provider in
                 card(provider, maxRows: maxRows, captions: captions)
             }
             if hidden > 0 {

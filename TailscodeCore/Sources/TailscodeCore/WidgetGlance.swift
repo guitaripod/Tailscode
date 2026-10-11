@@ -266,6 +266,31 @@ public struct WidgetGlance: Sendable, Equatable {
         return Localized.text("+%@ more", String(extra))
     }
 
+    /// The account in two or three words, for a header that has a few points of width and not a
+    /// sentence: that nothing needs attention, or which window does and how full it is.
+    public var headline: String {
+        guard let hero else { return "" }
+        /// A header that already says whose widget this is names the window, not the owner again.
+        let who = providers.count == 1 ? hero.shortLabel : hero.providerShort
+        switch hero.tone {
+        case .danger:
+            if (hero.fraction ?? 0) >= QuotaSurface.exhaustedFloor {
+                return Localized.text("%@ used up", who)
+            }
+            return "\(who) \(hero.value)"
+        case .warn:
+            return "\(who) \(hero.value)"
+        case .ok, .balance, .quiet:
+            return Localized.text("All clear")
+        }
+    }
+
+    /// Whether the window the glance leads with is at its wall.
+    public var heroIsWalled: Bool {
+        guard let fraction = hero?.fraction else { return false }
+        return fraction >= QuotaSurface.exhaustedFloor
+    }
+
     /// The one line an inline accessory has: who, how full, and how long until it opens again.
     public var inlineText: String {
         guard let hero else { return Self.emptyTitle }

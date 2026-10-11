@@ -1,0 +1,106 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+:root{--bg:#000;--card:#1c1c1e;--card2:#2c2c2e;--ink:#fff;--ink2:#98989f;--ink3:#636366;--claude:#d97757;--grok:#e8e8eb;--oc:#03b000;--ds:#4d6bfe;--ol:#f0f0f0;--warn:#ff9f0a;--danger:#ff453a;--ok:#30d158}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#2a2a2d;font:15px/1.25 -apple-system,"SF Pro Text",system-ui,sans-serif;color:var(--ink);padding:36px;width:1500px}
+h1{font:600 22px -apple-system;margin-bottom:6px}.sub{color:#9a9aa0;margin-bottom:26px;font-size:14px}
+.row{display:flex;gap:34px;align-items:flex-start}
+.cap{font:600 12px -apple-system;color:#a0a0a8;letter-spacing:.06em;text-transform:uppercase;margin:0 0 10px 4px}
+.phone{width:420px;height:880px;background:var(--bg);border-radius:46px;overflow:hidden;position:relative;border:1px solid #3a3a3d}
+.status{height:54px;padding:18px 34px 0;font-weight:600;font-size:16px}
+.nav{height:48px;display:flex;align-items:center;padding:0 16px;position:relative}
+.nav .b{width:40px;height:40px;border-radius:20px;background:#1c1c1e;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff}
+.nav .t{position:absolute;left:0;right:0;text-align:center;pointer-events:none}
+.nav .t b{display:block;font-weight:600;font-size:16px}.nav .t span{font-size:11px;color:var(--ink2)}
+.nav .sp{flex:1}
+.chips{display:flex;gap:8px;padding:10px 16px 6px;overflow:hidden}
+.chip{height:32px;border-radius:16px;padding:0 13px;display:flex;align-items:center;gap:7px;font-weight:500;font-size:14px;background:#1c1c1e;color:var(--ink2);white-space:nowrap}
+.chip i{width:8px;height:8px;border-radius:4px;display:block}
+.chip.on{color:var(--ink)}
+.stack{padding:6px 16px;display:flex;flex-direction:column;gap:10px}
+.card{background:var(--card);border-radius:20px;padding:14px 16px}
+.hero{display:flex;gap:16px;align-items:center;padding:14px 16px}
+.ring{width:84px;height:84px;border-radius:50%;position:relative;flex:none}
+.ring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 24px -apple-system;font-feature-settings:"tnum"}
+.hl{font-size:11px;font-weight:600;letter-spacing:.07em;color:var(--ink2);text-transform:uppercase}
+.hn{font:600 19px -apple-system;margin:3px 0 4px}
+.hr{color:var(--ink2);font-size:13px;display:flex;gap:5px;align-items:center}
+.pill{display:inline-block;margin-top:8px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:10px}
+.ph{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.ph .d{width:9px;height:9px;border-radius:5px}
+.ph b{font-weight:600;font-size:17px}.ph span{color:var(--ink2);font-size:13px}
+.live{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.06em;padding:3px 7px;border-radius:8px}
+.more{color:var(--ink2);font-size:18px;letter-spacing:1px;margin-left:8px}
+.win{margin-top:11px}.win:first-of-type{margin-top:0}
+.wl{display:flex;align-items:baseline;gap:7px}
+.wl b{font-weight:500;font-size:15px}.wl s{text-decoration:none;color:var(--ink2);font-size:12.5px}
+.wl em{margin-left:auto;font:700 15px -apple-system;font-style:normal;font-feature-settings:"tnum"}
+.bar{height:6px;border-radius:3px;background:rgba(255,255,255,.12);margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px}
+.foot{color:var(--ink2);font-size:14px;display:flex;justify-content:space-between;padding:2px 6px}
+.off{display:flex;align-items:center;gap:12px;padding:10px 0}.off+.off{border-top:1px solid #2c2c2e}
+.off .ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#000}
+.off b{font-weight:600;font-size:15px;display:block}.off span{color:var(--ink2);font-size:12.5px}
+.off u{margin-left:auto;text-decoration:none;color:#4d9bff;font-size:14px;font-weight:500}
+.month{display:flex;flex-direction:column;gap:10px}
+.mh{display:flex;align-items:baseline;justify-content:space-between}.mh b{font-weight:600;font-size:17px}.mh span{color:var(--ink2);font-size:15px}
+.spark{display:flex;gap:3px;align-items:flex-end;height:44px}.spark i{flex:1;border-radius:2px;background:#5a64d8}
+.img{width:420px;border-radius:46px;border:1px solid #3a3a3d;display:block}
+</style></head><body>
+<h1>Usage — before and after</h1>
+<div class="sub">Left: the screen as shipped (simulator, demo data). Right: the proposed screen, two scroll positions.</div>
+<div class="row">
+ <div><div class="cap">Before · top</div><img class="img" src="assets/before-top.png"></div>
+ <div><div class="cap">Before · bottom</div><img class="img" src="assets/before-bottom.png"></div>
+</div>
+<div style="height:30px"></div>
+<div class="row">
+ <div><div class="cap">After · top</div>
+ <div class="phone">
+  <div class="status">12.37</div>
+  <div class="nav"><div class="b">‹</div><div class="t"><b>Usage</b><span>Updated just now</span></div><div class="sp"></div><div class="b" style="font-size:16px">☰</div></div>
+  <div class="chips">
+   <div class="chip on" style="background:rgba(217,119,87,.20)"><i style="background:var(--claude)"></i>Claude</div>
+   <div class="chip on"><i style="background:var(--grok)"></i>Grok</div>
+   <div class="chip on"><i style="background:var(--oc)"></i>opencode</div>
+   <div class="chip"><i style="background:var(--ds);opacity:.5"></i>DeepSeek</div>
+  </div>
+  <div class="stack">
+   <div class="card hero">
+    <div class="ring"><div style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(var(--warn) 0 62%,rgba(255,255,255,.12) 62% 100%);-webkit-mask:radial-gradient(circle,transparent 31px,#000 32px)"></div><b>62%</b></div>
+    <div style="flex:1"><div class="hl">Next send · tightest window</div><div class="hn">Claude · Session</div><div class="hr">↻ resets in 2h 47m</div><span class="pill" style="background:rgba(255,159,10,.16);color:var(--warn)">Getting tight</span></div>
+   </div>
+   <div class="card">
+    <div class="ph"><i class="d" style="background:var(--claude)"></i><b>Claude</b><span>Max 20×</span><span class="live" style="background:rgba(217,119,87,.18);color:var(--claude)">LIVE</span><span class="more">···</span></div>
+    <div class="win"><div class="wl"><b>Session</b><s>resets 2h 47m</s><em style="color:var(--warn)">62%</em></div><div class="bar"><i style="width:62%;background:var(--warn)"></i></div></div>
+    <div class="win"><div class="wl"><b>Weekly</b><s>resets 3d 14h</s><em>34%</em></div><div class="bar"><i style="width:34%;background:var(--claude)"></i></div></div>
+    <div class="win"><div class="wl"><b>Opus</b><s>resets 3d 14h</s><em>11%</em></div><div class="bar"><i style="width:11%;background:var(--claude)"></i></div></div>
+   </div>
+   <div class="card">
+    <div class="ph"><i class="d" style="background:var(--grok)"></i><b>Grok</b><span>SuperGrok</span><span class="live" style="background:rgba(255,255,255,.12);color:#ddd">LIVE</span><span class="more">···</span></div>
+    <div class="win"><div class="wl"><b>Tokens</b><s>resets 8h 59m</s><em>27%</em></div><div class="bar"><i style="width:27%;background:var(--grok)"></i></div></div>
+    <div class="win"><div class="wl"><b>Requests</b><s>resets 8h 59m</s><em>8%</em></div><div class="bar"><i style="width:8%;background:var(--grok)"></i></div></div>
+   </div>
+  </div>
+ </div></div>
+ <div><div class="cap">After · bottom</div>
+ <div class="phone">
+  <div class="status">12.38</div>
+  <div class="nav"><div class="b">‹</div><div class="t"><b>Usage</b><span>Updated just now</span></div><div class="sp"></div><div class="b" style="font-size:16px">☰</div></div>
+  <div class="stack" style="padding-top:14px">
+   <div class="card">
+    <div class="ph" style="margin-bottom:4px"><b>More providers</b></div>
+    <div class="off"><div class="ic" style="background:var(--ds)">D</div><div><b>DeepSeek</b><span>Prepaid balance</span></div><u>Add key</u></div>
+    <div class="off"><div class="ic" style="background:var(--ol)">O</div><div><b>Ollama Cloud</b><span>Session and weekly windows</span></div><u>Add key</u></div>
+   </div>
+   <div class="card month">
+    <div class="mh"><b>The month in numbers</b><span>~$1,899 ›</span></div>
+    <div class="spark"><i style="height:22%"></i><i style="height:32%"></i><i style="height:48%"></i><i style="height:12%;opacity:.3"></i><i style="height:86%"></i><i style="height:60%"></i><i style="height:52%"></i><i style="height:10%;opacity:.3"></i><i style="height:36%"></i><i style="height:48%"></i><i style="height:62%"></i><i style="height:72%"></i><i style="height:80%"></i><i style="height:28%"></i><i style="height:8%;opacity:.3"></i><i style="height:96%"></i><i style="height:76%"></i><i style="height:40%"></i><i style="height:92%"></i><i style="height:56%"></i><i style="height:30%"></i><i style="height:44%"></i><i style="height:100%"></i><i style="height:70%"></i><i style="height:64%"></i><i style="height:88%"></i><i style="height:10%;opacity:.3"></i><i style="height:34%;background:#4d9bff"></i></div>
+   </div>
+   <div class="foot"><span>How usage is counted</span><span>›</span></div>
+  </div>
+  <div style="position:absolute;left:20px;right:20px;bottom:30px;color:#6b6b72;font-size:12px;line-height:1.4">Everything that was a paragraph per card is one row: the offers collapse into one card, and the per-card “How this is counted” becomes one footer.</div>
+ </div></div>
+</div>
+</body></html>

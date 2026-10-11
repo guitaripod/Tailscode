@@ -339,6 +339,38 @@ public enum QuotaSurface {
         fraction >= exhaustedFloor
     }
 
+    /// How hard a window is pressing, in the four words every client uses and the two thresholds
+    /// every colour ramp turns on, so a bar going amber and the word beside it cannot disagree.
+    public enum Pressure: Sendable, Equatable, CaseIterable {
+        case roomToSpare
+        case gettingTight
+        case nearlyOut
+        case usedUp
+
+        /// A window is *tight* from here, and *nearly out* from the second figure; a wall is
+        /// ``QuotaSurface/exhaustedFloor``.
+        public static let tightFloor: Double = 0.6
+        public static let nearlyOutFloor: Double = 0.85
+
+        public init(fraction: Double) {
+            switch fraction {
+            case QuotaSurface.exhaustedFloor...: self = .usedUp
+            case (Self.nearlyOutFloor + .ulpOfOne)...: self = .nearlyOut
+            case Self.tightFloor...: self = .gettingTight
+            default: self = .roomToSpare
+            }
+        }
+
+        public var title: String {
+            switch self {
+            case .roomToSpare: return Localized.text("Room to spare")
+            case .gettingTight: return Localized.text("Getting tight")
+            case .nearlyOut: return Localized.text("Nearly out")
+            case .usedUp: return Localized.text("Used up")
+            }
+        }
+    }
+
     /// The message StatusFacts should show for a failed turn: the wall in one line when the
     /// failure is one, the failure's own words when it is not, and nothing at all for a wall the
     /// chat has already moved away from.

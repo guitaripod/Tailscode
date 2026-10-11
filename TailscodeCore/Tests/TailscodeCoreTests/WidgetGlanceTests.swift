@@ -76,6 +76,32 @@ struct WidgetGlanceTests {
         #expect(reading.verdict.contains("2h 0m"))
     }
 
+    @Test("The headline is short enough for a header, and says only what needs saying")
+    func headlineIsShort() {
+        let clear = glance([quota("Claude", [("5-hour", 0.2)])])
+        #expect(clear.headline == "All clear")
+        #expect(!clear.heroIsWalled)
+
+        let tight = glance([quota("Claude", [("5-hour", 0.9)]), quota("Grok", [("Chat", 0.1)])])
+        #expect(tight.headline.hasPrefix("Claude"))
+        #expect(tight.headline.contains("90%"))
+
+        let walled = glance([quota("Claude", [("5-hour", 1.0)]), quota("Grok", [("Chat", 0.1)])])
+        #expect(walled.headline == "Claude used up")
+        #expect(walled.heroIsWalled)
+
+        #expect(glance([]).headline == "")
+    }
+
+    @Test("A header that already names the provider names the window instead")
+    func headlineDoesNotRepeatTheTitle() {
+        let walled = glance([quota("Claude", [("5-hour", 1.0)])])
+        #expect(walled.title == "Claude")
+        #expect(walled.headline == "5-hour used up")
+        let tight = glance([quota("Claude", [("5-hour", 0.9)])])
+        #expect(tight.headline == "5-hour 90%")
+    }
+
     @Test("A window whose stated reset has passed is not a wall")
     func spentWindowIsNotAWall() {
         let stale = WidgetQuota(

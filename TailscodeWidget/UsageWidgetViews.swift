@@ -67,14 +67,19 @@ struct WidgetPalette {
         case .danger: return slot(\.danger, fallback: .red)
         case .warn: return slot(\.warn, fallback: .orange)
         case .balance:
-            return choice == .provider ? (brand(slug) ?? slot(\.info, fallback: .blue))
+            return speaksInBrand ? (brand(slug) ?? slot(\.info, fallback: .blue))
                 : slot(\.info, fallback: .blue)
         case .ok:
-            return choice == .provider ? (brand(slug) ?? slot(\.accent, fallback: .teal))
+            return speaksInBrand ? (brand(slug) ?? slot(\.accent, fallback: .teal))
                 : slot(\.accent, fallback: .teal)
         case .quiet: return .secondary
         }
     }
+
+    /// Whether rows that are simply fine are drawn in their provider's own colour. Asked for by
+    /// choosing it, and the default where no theme is on: "System" has no palette to speak in, and a
+    /// widget that fell back to the platform's tint made every provider the same colour.
+    private var speaksInBrand: Bool { choice == .provider || palette == nil }
 
     /// A provider's identity mark, which stays its own colour at every level of fullness — the dot
     /// beside a name is saying who, not how much. It keeps the brand even where the rows are drawn
@@ -173,6 +178,7 @@ struct HeroRing: View {
 
     private var color: Color { palette.color(row.tone, slug: row.slug) }
     private var trimmed: CGFloat { CGFloat(min(1, max(0.02, row.fraction ?? 1))) }
+    private var isWall: Bool { (row.fraction ?? 0) >= QuotaSurface.exhaustedFloor }
 
     var body: some View {
         ZStack {
@@ -181,13 +187,19 @@ struct HeroRing: View {
                 .trim(from: 0, to: trimmed)
                 .stroke(stroke, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            Text(row.value)
-                .font(.system(size: size * (row.kind == .balance ? 0.20 : 0.27), weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .minimumScaleFactor(0.5)
-                .lineLimit(1)
-                .padding(.horizontal, lineWidth)
-                .foregroundStyle(.primary)
+            if isWall {
+                Image(systemName: "exclamationmark")
+                    .font(.system(size: size * 0.38, weight: .heavy))
+                    .foregroundStyle(color)
+            } else {
+                Text(row.value)
+                    .font(.system(size: size * (row.kind == .balance ? 0.20 : 0.27), weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .padding(.horizontal, lineWidth)
+                    .foregroundStyle(.primary)
+            }
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
@@ -268,11 +280,7 @@ struct QuotaRowGrid: View {
             ForEach(rows) { row in
                 let color = palette.color(row.tone, slug: row.slug)
                 GridRow {
-                    Text(label(row))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                    label(row)
                         .gridColumnAlignment(.leading)
                     Group {
                         if let fraction = row.fraction {
@@ -317,11 +325,34 @@ struct QuotaRowGrid: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func label(_ row: WidgetGlance.Row) -> String {
+    /// The window's own name, and — where several providers share the widget — who it belongs to
+    /// as a colour first and a word second. The label takes the width it needs and the bar the
+    /// width that is left, so a name is never cut to make room for a bar. A label on its own is
+    /// left at ordinary priority: raising it would let the label column claim the room a wide
+    /// tile's bar column is meant to fill.
+    @ViewBuilder
+    private func label(_ row: WidgetGlance.Row) -> some View {
         let window = abbreviated ? row.shortLabel : row.label
-        return showsProvider ? "\(row.providerShort) · \(window)" : window
+        if showsProvider {
+            HStack(spacing: 4) {
+                Circle().fill(palette.identity(row.slug)).frame(width: 5, height: 5)
+                Text(window)
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                Text(row.providerShort)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .layoutPriority(1)
+        } else {
+            Text(window)
+                .font(.caption2.weight(.medium))
+                .lineLimit(1)
+        }
     }
 }
 

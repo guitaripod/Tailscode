@@ -343,3 +343,21 @@ struct QuotaEvidenceTests {
         #expect(QuotaSurface.hottestExhausted(in: standing) != nil)
     }
 }
+
+@Suite struct QuotaPressureTests {
+    @Test func theFourWordsTurnOnTheTwoFloorsAndTheWall() {
+        #expect(QuotaSurface.Pressure(fraction: 0) == .roomToSpare)
+        #expect(QuotaSurface.Pressure(fraction: 0.599) == .roomToSpare)
+        #expect(QuotaSurface.Pressure(fraction: 0.6) == .gettingTight)
+        #expect(QuotaSurface.Pressure(fraction: 0.85) == .gettingTight)
+        #expect(QuotaSurface.Pressure(fraction: 0.851) == .nearlyOut)
+        #expect(QuotaSurface.Pressure(fraction: 0.999) == .nearlyOut)
+        #expect(QuotaSurface.Pressure(fraction: 1) == .usedUp)
+        #expect(QuotaSurface.Pressure(fraction: 1.4) == .usedUp)
+    }
+
+    @Test func aFractionOutsideTheRangeStillReadsAsSomething() {
+        #expect(QuotaSurface.Pressure(fraction: -0.2) == .roomToSpare)
+        #expect(QuotaSurface.Pressure(fraction: .infinity) == .usedUp)
+    }
+}
