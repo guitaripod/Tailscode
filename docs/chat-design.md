@@ -33,7 +33,7 @@ picture.
 | Zone | Holds | Rule |
 |---|---|---|
 | Header | the conversation's title; under it the one status line (phase, tool, clock) | The title stays during a turn. Status is a second line, never a replacement. |
-| Notice | at most one banner | Priority: signed out → quota wall → offline → failed; reconnecting is status only. |
+| Notice | at most one banner | Priority: signed out → quota wall → offline → failed; reconnecting is status only. The desktops' slot is the signed-out banner; their offline and quota states read in the band, where the action to take is. |
 | Transcript | rows | Prompt is the heavy voice; answers fill the pane; a turn costs the same gap on every client. |
 | Dock | what the end of the transcript holds | Order, top to bottom: pending sends → queued → turn-state cards (revert, interrupted, retry, compaction, thinking) → needs-you (question, permission). |
 | Facts row | context, spend, branch, goal, agents out, background work, attachments | One row; what is live leads, so scrolling sideways never hides it. Hidden when it has nothing to say, and appearing or leaving never moves the transcript a reader is reading. |
@@ -114,8 +114,8 @@ fills the composer (and does not send).
 | Interrupted | — | — | interrupted card | — | ready |
 | Compacting | Compacting · 1:20 | — | compaction card | — | Queue |
 | Queued | Writing · N queued | — | queued rows | — | Queue |
-| Offline | Offline | offline banner | — | — | ready |
+| Offline | Offline | iOS: banner, tap to retry · desktops: the band's phase, click to reconnect | — | — | ready |
 | Reconnecting | Reconnecting · 4s | — | — | — | ready |
 | Signed out | — | signed-out banner | — | — | ready |
-| Background work | In the background · 2 | — | — | background chip | ready |
+| Background work | In the background · 2 | — | — | iOS: background chip · desktops: the band's phase | ready |
 | Idle | — | — | — | context, spend, branch | ready |

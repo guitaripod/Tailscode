@@ -924,7 +924,7 @@ final class SplitPaneHost: NSViewController, PaneTiling {
     }
 
     private func applyIdentity() {
-        let several = layout.paneCount > 1
+        let several = layout.paneCount > 1 && layout.zoomedPane == nil
         for pane in panes.values { pane.setIdentityVisible(several) }
     }
 }

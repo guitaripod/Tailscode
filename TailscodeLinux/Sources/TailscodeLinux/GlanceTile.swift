@@ -196,7 +196,7 @@ final class GlanceTile: @unchecked Sendable {
         gtk_widget_set_visible(modelLabel, chip == nil ? 0 : 1)
         applyEffort(reading.effort)
 
-        gtk_label_set_text(op(queueLabel), "⏳\(reading.queued)")
+        gtk_label_set_text(op(queueLabel), "\(SendQueueReading.glyph)\(reading.queued)")
         gtk_widget_set_visible(queueLabel, reading.queued == 0 ? 0 : 1)
         let tasks = reading.background?.tasks ?? 0
         gtk_label_set_text(op(backgroundLabel), "⚙ \(tasks)")

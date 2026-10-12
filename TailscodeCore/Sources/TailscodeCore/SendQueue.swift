@@ -142,7 +142,7 @@ public struct SendQueue: Sendable, Hashable {
 /// so it states, in the row itself, that it can be changed.
 public enum SendQueueReading {
     /// The mark a waiting row wears on the text clients.
-    public static let glyph = "⏳"
+    public static let glyph = "◷"
     /// The symbol it wears on the Apple clients.
     public static let symbol = "clock.badge"
 
