@@ -63,6 +63,20 @@ extension DeviceStores {
             }
         }
 
+        @Test("A demo asked for on the command line leaves nothing for the next launch to find")
+        func launchDemoIsNotRemembered() {
+            withCleanStore {
+                DemoMode.enterForThisLaunch()
+                #expect(DemoMode.isActive)
+                #expect(UserDefaults.standard.object(forKey: DemoMode.defaultsKey) == nil)
+                DemoMode.leave()
+                #expect(!DemoMode.isActive)
+                DemoMode.enter()
+                #expect(UserDefaults.standard.bool(forKey: DemoMode.defaultsKey))
+                DemoMode.leave()
+            }
+        }
+
         @Test("The handoff carries the install command verbatim between the other two steps")
         func handoffMessage() {
             let command = "curl -fsSL https://example.com/install.sh | BRIDGE_PASSWORD=abc bash"

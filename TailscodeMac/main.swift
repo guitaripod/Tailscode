@@ -155,7 +155,7 @@ if Connect.isRequested {
 }
 
 if CommandLine.arguments.contains("--demo") {
-    DemoMode.enter()
+    DemoMode.enterForThisLaunch()
 }
 
 let delegate = AppDelegate()
