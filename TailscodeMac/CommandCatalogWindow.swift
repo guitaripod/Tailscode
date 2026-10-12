@@ -40,6 +40,7 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
         window.title = Localized.text("Commands")
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 420, height: 320)
+        MacTheme.Chrome.adopt(window)
         super.init(window: window)
         window.contentView = makeContent()
         window.initialFirstResponder = searchField
@@ -72,6 +73,8 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
         searchField.placeholderString = Localized.text(
             "Search %@ commands", "\(commands.count)")
         searchField.sendsSearchStringImmediately = true
+        searchField.target = self
+        searchField.action = #selector(searchChanged)
         searchField.delegate = self
         searchField.translatesAutoresizingMaskIntoConstraints = false
         searchField.setContentHuggingPriority(.required, for: .vertical)
@@ -145,7 +148,10 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
             : Localized.text("No command matches “%@”", query)
     }
 
-    func controlTextDidChange(_ obj: Notification) { rebuild() }
+    /// The field's action rather than its text-change notification: the clear button empties the
+    /// field without a keystroke, so only the action hears every way the filter can change, and
+    /// sending it immediately keeps it as live as typing.
+    @objc private func searchChanged() { rebuild() }
 
     /// The catalog is where a keyboard grammar is discovered, so it is answered from the keyboard:
     /// the caret stays in the field while ↑↓ walk the list under it, and Return takes what the walk

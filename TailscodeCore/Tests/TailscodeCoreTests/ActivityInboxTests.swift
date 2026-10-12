@@ -204,6 +204,85 @@ extension DeviceStores {
       #expect(ActivityInbox.reconciled([], rows: [], authoritative: ["p1"]) == nil)
     }
 
+    private func notice(
+      _ session: String, at: Date, reason: MissedActivity.Reason = .turnEnded
+    ) -> MissedActivity {
+      MissedActivity(
+        identifier: "n:\(session)", profileID: "p1", sessionID: session, title: "A chat",
+        body: "b", reason: reason, at: at)
+    }
+
+    private func moved(_ session: String, at: TimeInterval?) -> ActivityObservation {
+      ActivityObservation(
+        profileID: "p1", sessionID: session, title: "A chat", isActive: false,
+        updatedAt: at.map(Date.init(timeIntervalSince1970:)))
+    }
+
+    @Test("A chat read on another device is no longer news here")
+    func readElsewhereSettlesFinishedNews() {
+      let raised = Date(timeIntervalSince1970: 1_000)
+      let later = raised.addingTimeInterval(ActivityInbox.listingLag + 1)
+      let entries = [notice("s1", at: raised)]
+      #expect(
+        ActivityInbox.reconciled(
+          entries, rows: [moved("s1", at: 900)], authoritative: ["p1"],
+          isUnread: { _, _ in false }, now: later) == [])
+      #expect(
+        ActivityInbox.reconciled(
+          entries, rows: [moved("s1", at: 900)], authoritative: ["p1"],
+          isUnread: { _, _ in true }, now: later) == nil)
+    }
+
+    @Test("A listing from before the turn ended cannot settle the news it has not heard of")
+    func freshNewsIsGivenTimeToBeListed() {
+      let raised = Date(timeIntervalSince1970: 1_000)
+      let soon = raised.addingTimeInterval(ActivityInbox.listingLag - 1)
+      #expect(
+        ActivityInbox.reconciled(
+          [notice("s1", at: raised)], rows: [moved("s1", at: 900)], authoritative: ["p1"],
+          isUnread: { _, _ in false }, now: soon) == nil)
+    }
+
+    @Test("Looking at a chat never answers the question it is waiting on")
+    func readingDoesNotAnswerARequest() {
+      let raised = Date(timeIntervalSince1970: 1_000)
+      let later = raised.addingTimeInterval(ActivityInbox.listingLag + 1)
+      let entries = [
+        notice("s1", at: raised, reason: .needsAnswer),
+        notice("s2", at: raised, reason: .needsApproval),
+      ]
+      #expect(
+        ActivityInbox.reconciled(
+          entries, rows: [moved("s1", at: 900), moved("s2", at: 900)], authoritative: ["p1"],
+          isUnread: { _, _ in false }, now: later) == nil)
+    }
+
+    @Test("A listing that cannot say when a chat moved never calls it read")
+    func unknownMomentIsNotRead() {
+      let raised = Date(timeIntervalSince1970: 1_000)
+      let later = raised.addingTimeInterval(ActivityInbox.listingLag + 1)
+      #expect(
+        ActivityInbox.reconciled(
+          [notice("s1", at: raised)], rows: [moved("s1", at: nil)], authoritative: ["p1"],
+          isUnread: { _, _ in false }, now: later) == nil)
+    }
+
+    @Test("Clearing the list reads the chats behind finished news, and only those")
+    func clearingReadsTheFinishedChats() {
+      fresh()
+      let defaults = UserDefaults.standard
+      defaults.removeObject(forKey: SessionSeenStore.seenKey)
+      ActivityInbox.record([
+        alert("done:s1", session: "s1"),
+        alert("question:1", session: "s2", reason: .needsAnswer),
+      ])
+      ActivityInbox.clearAll()
+      #expect(SessionSeenStore.values()["s1"] != nil)
+      #expect(SessionSeenStore.values()["s2"] == nil)
+      defaults.removeObject(forKey: SessionSeenStore.seenKey)
+      MarkIntentStore.forgetAllForTesting()
+    }
+
     @Test("A notice about an unnamed chat is named by the words that started it")
     func nameFallsBackToThePrompt() {
       #expect(MissedActivity.name(title: "A chat", latestPrompt: "anything") == "A chat")

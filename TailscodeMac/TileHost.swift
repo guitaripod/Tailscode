@@ -753,7 +753,9 @@ final class TileHost: NSViewController, PaneTiling {
                 entry.session.hasPlaceholderTitle
                 ? Localized.text("New conversation") : entry.session.title
             let activity: ActivityKind?
-            if let reading = readings[id], shells[id]?.face != .full {
+            if placement?.hidden.contains(id) == true {
+                activity = hiddenActivity(of: entry)
+            } else if let reading = readings[id], shells[id]?.face != .full {
                 activity = reading.reading.activity
             } else if let state = pane.currentState {
                 activity = ActivityKind.inFlight(in: state)
@@ -768,6 +770,27 @@ final class TileHost: NSViewController, PaneTiling {
             return listed
         }
         return (Localized.text("No conversation"), nil)
+    }
+
+    /// A pane out of the placement holds the state it parked with, which stops being true the
+    /// moment it parks. A turn it handed to the background watch is read from that watch, and
+    /// anything else from the chat list's listing, so its chip keeps telling the truth.
+    private func hiddenActivity(of entry: SessionEntry) -> ActivityKind? {
+        let key = SessionPinStore.key(entry.profileID, entry.session.id)
+        if let presence = TileRuntime.shared.backgroundPresence[key], presence.isInFlight {
+            return SessionRowModel(
+                entry: entry, unreachable: false, unread: false, saved: false, presence: presence
+            ).state.activity
+        }
+        return listFace?(SplitPaneSession(profileID: entry.profileID, sessionID: entry.session.id))?
+            .activity
+    }
+
+    /// Redraws the overflow chips from what is known now: the window calls it when a watched
+    /// conversation's reading changes, since the strip is otherwise only drawn by a layout pass.
+    func refreshStrip() {
+        guard let placement, !placement.hidden.isEmpty else { return }
+        placeStrip(placement)
     }
 
     private func densityGeometryChanged(_ placement: PanePlacement) -> Bool {
@@ -1002,6 +1025,7 @@ final class TileHost: NSViewController, PaneTiling {
                 noteState(state, for: id)
             }
         }
+        refreshStrip()
         guard previous?.densities != decision.densities || previous?.fullBudget != decision.fullBudget
             || previous?.rowWindows != decision.rowWindows || previous?.level != decision.level
             || kinds != reconciledKinds

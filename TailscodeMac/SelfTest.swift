@@ -470,6 +470,14 @@ enum SelfTest {
             failures += 1
         }
 
+        do {
+            try checkToastWidth()
+            report("toasts: a sentence is given the width it takes")
+        } catch {
+            report("toasts: \(error)")
+            failures += 1
+        }
+
         #if !TAILSCODE_MAS
             let shellOutput = TerminalPane.shell("echo tailscode-shell-ok", in: nil)
             if shellOutput.contains("tailscode-shell-ok") {
@@ -3758,6 +3766,27 @@ enum SelfTest {
             seen[probeSession] = nil
             defaults.set(seen, forKey: "tailscode.seen.sessions")
         }
+    }
+
+    /// A toast is a sentence in a capsule, not a pill: the width it asks for must be the width of
+    /// the sentence, because a wrapping label left to Auto Layout collapses to nothing and every
+    /// confirmation in the app becomes a blank circle.
+    private static func checkToastWidth() throws {
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("toast case failed: \(label)") }
+        }
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 400))
+        let sentence = "Pin a model and level with ⌃S in the model dial"
+        let label = NSTextField(wrappingLabelWithString: sentence)
+        label.font = MacTheme.Ramp.font(.panelLabel)
+        let wanted = label.attributedStringValue.size().width
+        let asked = ToastPresenter.width(of: label, in: host)
+        try expect(asked >= wanted - 1, "a sentence \(wanted)pt long was given \(asked)pt")
+        try expect(asked < host.bounds.width, "a sentence was given more than the pane has")
+        let long = String(repeating: "word ", count: 120)
+        label.stringValue = long
+        let capped = ToastPresenter.width(of: label, in: host)
+        try expect(capped < host.bounds.width, "a long sentence was not held to the pane")
     }
 
     /// A picture must come back byte-identical, keyed to its server file — and two different

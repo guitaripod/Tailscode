@@ -228,6 +228,7 @@ enum PendingCards {
         private var custom: [Int: String] = [:]
         private var buttons: [String: NSButton] = [:]
         private var drafts: [Int: DraftScope] = [:]
+        private var fields: [Int: NSTextField] = [:]
 
         init(request: QuestionRequest, submit: @escaping ([[String]]) -> Void) {
             self.request = request
@@ -244,6 +245,10 @@ enum PendingCards {
             drafts[question] = scope
         }
 
+        func register(question: Int, field: NSTextField) {
+            fields[question] = field
+        }
+
         func submitSingle(_ answer: String) {
             forgetDrafts()
             submit([[answer]])
@@ -256,11 +261,22 @@ enum PendingCards {
             if let index = current.firstIndex(of: option) {
                 current.remove(at: index)
             } else {
-                if !multiple { current = [] }
+                if !multiple {
+                    current = []
+                    discardCustom(question)
+                }
                 current.append(option)
             }
             chosen[question] = current
             restyle(question)
+        }
+
+        /// A single-select ask takes one answer, so choosing an option lets go of the words typed
+        /// beside it — otherwise both would go out while the field still showed only one of them.
+        private func discardCustom(_ question: Int) {
+            custom[question] = nil
+            fields[question]?.stringValue = ""
+            if let scope = drafts[question] { DraftStore.clear(scope) }
         }
 
         func setCustom(question: Int, answer: String) {
@@ -322,6 +338,7 @@ enum PendingCards {
             target = self
             action = #selector(entered)
             delegate = self
+            collector.register(question: question, field: self)
             if let draft {
                 collector.register(question: question, draft: draft)
                 restore(DraftStore.text(for: draft), into: collector)

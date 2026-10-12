@@ -15,7 +15,7 @@ extension DeviceStores {
       let defaults = UserDefaults.standard
       for key in [
         SessionPinStore.storageKey, SessionPinStore.stampsKey, ArchivedChatStore.storageKey,
-        SessionSeenStore.seenKey, SessionSeenStore.baselineKey,
+        SessionSeenStore.seenKey, SessionSeenStore.baselineKey, MarkOffers.storageKey,
       ] {
         defaults.removeObject(forKey: key)
       }
@@ -39,6 +39,57 @@ extension DeviceStores {
           readAt: readAt.map { Date(timeIntervalSince1970: $0) }))
     }
 
+    @Test("A pin made before the server could keep it survives the server's first answer and is offered")
+    func localPinSurvivesFirstContact() {
+      fresh()
+      SessionPinStore.adopt(order: ["p1/a"], stamps: ["p1/a": 1_700_000_000])
+      SessionMarks.reconcile(with: [entry("a", pinned: false, archived: false)])
+      #expect(SessionPinStore.all() == ["p1/a"])
+      let offered = MarkIntentStore.all().filter { $0.mark == .pinned }
+      #expect(offered.map(\.sessionID) == ["a"])
+      #expect(offered.first?.on == true)
+      #expect(offered.first?.at == Date(timeIntervalSince1970: 1_700_000_000))
+    }
+
+    @Test("An archive made before the server could keep it is offered before any decision")
+    func localArchiveIsOfferedAsTheOldestDecision() {
+      fresh()
+      _ = ArchivedChatStore.toggle(profileID: "p1", sessionID: "a")
+      SessionMarks.reconcile(with: [entry("a", pinned: false, archived: false)])
+      #expect(ArchivedChatStore.contains(profileID: "p1", sessionID: "a"))
+      let offered = MarkIntentStore.all().first { $0.mark == .archived }
+      #expect(offered?.at == SessionMarks.beforeAnyDecision)
+    }
+
+    @Test("An old pin offered to a server is not past its lifetime for being old")
+    func offeredDecisionOutlivesItsAge() {
+      fresh()
+      SessionPinStore.adopt(order: ["p1/a"], stamps: ["p1/a": 1_000_000_000])
+      SessionMarks.reconcile(with: [entry("a", pinned: false, archived: false)])
+      let stored = UserDefaults.standard.data(forKey: MarkIntentStore.storageKey)
+      let decoded = stored.flatMap { try? JSONDecoder().decode([MarkIntent].self, from: $0) }
+      #expect(decoded?.count == 1)
+      #expect(decoded?.first?.noted.map { Date().timeIntervalSince($0) < 60 } == true)
+    }
+
+    @Test("A server is offered this device's decisions once, and one that keeps no marks never")
+    func offeredOnce() {
+      fresh()
+      SessionPinStore.adopt(order: ["p1/a", "p2/b"], stamps: ["p1/a": 1_700_000_000, "p2/b": 1_700_000_001])
+      SessionMarks.reconcile(with: [entry("a", pinned: false, archived: false), entry("b", profile: "p2")])
+      #expect(MarkIntentStore.all().map(\.sessionID) == ["a"])
+      MarkIntentStore.forgetAllForTesting()
+      SessionMarks.reconcile(with: [entry("a", pinned: false, archived: false)])
+      #expect(MarkIntentStore.all().isEmpty)
+    }
+
+    @Test("A pin on a server that keeps no marks says it stays on this device")
+    func deviceOnlyServerSaysSo() {
+      #expect(SessionMarks.deviceOnlyNotice(for: entry("a")) != nil)
+      #expect(SessionMarks.deviceOnlyNotice(for: entry("a", pinned: false)) == nil)
+      #expect(SessionMarks.deviceOnlyNotice(for: entry("a", pinned: true)) == nil)
+    }
+
     @Test("A pin made on another device arrives, in the order it was made")
     func pinsArriveInOrder() {
       fresh()
@@ -53,6 +104,7 @@ extension DeviceStores {
     @Test("A pin dropped on another device goes here too")
     func unpinTravels() {
       fresh()
+      MarkOffers.record(["p1"])
       SessionPinStore.toggle(profileID: "p1", sessionID: "a")
       MarkIntentStore.forgetAllForTesting()
       SessionMarks.reconcile(with: [entry("a", pinned: false, archived: false)])

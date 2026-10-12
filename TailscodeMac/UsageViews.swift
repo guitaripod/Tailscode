@@ -285,7 +285,7 @@ final class UsageFooterView: NSView {
                 UsageFormat.gaugeBar(
                     fraction: fraction, width: 44, height: 4,
                     fill: UsageFormat.fillColor(
-                        severity: UsageFormat.severity(fraction), slug: line.slug)))
+                        severity: Self.severity(of: line.tone), slug: line.slug)))
         }
         if !line.trailing.isEmpty {
             let value = RowKit.label(
@@ -301,6 +301,16 @@ final class UsageFooterView: NSView {
         row.alignment = .centerY
         row.spacing = MacTheme.Spacing.xs
         return row
+    }
+
+    /// The bar wears the severity of the tone the dot and the number already wear, because the
+    /// fraction alone calls anything above 85% danger while the glance keeps danger for the wall.
+    private static func severity(of tone: QuotaGlance.Tone) -> String {
+        switch tone {
+        case .danger: return "danger"
+        case .warn: return "warn"
+        default: return "ok"
+        }
     }
 
     /// Where the words start on a line that carries no dot. The column it has to meet is one glyph

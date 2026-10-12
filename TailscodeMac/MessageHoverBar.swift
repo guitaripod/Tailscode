@@ -47,6 +47,15 @@ final class MessageHoverBar: NSResponder {
     private let stamp = NSTextField(labelWithString: "")
     private var glass: NSView?
     private var shown: Target?
+    /// What the capsule's verbs were built from. A message still being written gains words and a
+    /// prompt gains an undo while the pointer rests on it, so the verbs are rebuilt when either
+    /// changes rather than only when the pointer moves to another message.
+    private var offered: VerbSet?
+
+    private struct VerbSet: Equatable {
+        var copy: Bool
+        var undo: Bool
+    }
     private var hideWork: DispatchWorkItem?
     private let codeTag = BarCapsule()
     private let codeStack = NSStackView()
@@ -125,6 +134,7 @@ final class MessageHoverBar: NSResponder {
     func dismiss() {
         cancelHide()
         shown = nil
+        offered = nil
         capsule.alphaValue = 0
         capsule.isHidden = true
         dismissCode()
@@ -142,8 +152,12 @@ final class MessageHoverBar: NSResponder {
         let sameMessage =
             shown?.messageID == target.messageID && shown?.isPrompt == target.isPrompt
         shown = target
-        if !sameMessage {
-            stack.setViews(verbs(for: target, message: message), in: .leading)
+        let offer = VerbSet(
+            copy: !Self.words(of: message).isEmpty,
+            undo: target.isPrompt && offersUndo?(target.messageID) == true)
+        if !sameMessage || offer != offered {
+            offered = offer
+            stack.setViews(verbs(for: target, offer: offer), in: .leading)
             stamp.stringValue = Self.stamp(message.createdAt)
             stamp.toolTip = message.createdAt.formatted(date: .complete, time: .standard)
         }
@@ -171,18 +185,20 @@ final class MessageHoverBar: NSResponder {
         }
     }
 
-    private func verbs(for target: Target, message: ChatMessage) -> [NSView] {
+    private func verbs(for target: Target, offer: VerbSet) -> [NSView] {
         var views: [NSView] = [stamp]
         let id = target.messageID
-        let words = Self.words(of: message)
-        if !words.isEmpty {
+        if offer.copy {
             views.append(
                 Self.button(symbol: "doc.on.doc", tip: Localized.text("Copy")) { [weak self] in
+                    guard let self, let message = self.message?(id) else { return }
+                    let words = Self.words(of: message)
+                    guard !words.isEmpty else { return }
                     RowKit.copyToClipboard(words)
-                    self?.toast?(Localized.text("Copied"))
+                    self.toast?(Localized.text("Copied"))
                 })
         }
-        if target.isPrompt, offersUndo?(id) == true {
+        if offer.undo {
             views.append(
                 Self.button(symbol: RevertReading.actionSymbol, tip: RevertReading.actionTitle) {
                     [weak self] in self?.undo?(id)

@@ -32,6 +32,7 @@ final class MainWindowController: NSWindowController {
     private var terminalItem: NSSplitViewItem?
     private var dividerSavingEnabled = false
     private var shortcuts = ShortcutSet.load()
+    var onShortcutsReloaded: (() -> Void)?
     private var pendingChords: [KeyChord] = []
     private var focused: Pane = .chats
     /// What each restored pane was showing, until the cached listing carries the session and the
@@ -131,7 +132,10 @@ final class MainWindowController: NSWindowController {
     private func wireLiveRuntime(_ window: NSWindow) {
         let runtime = TileRuntime.shared
         runtime.clock.host = window.contentView
-        runtime.onPresenceChanged = { [weak self] in self?.sidebar.notePresenceChanged() }
+        runtime.onPresenceChanged = { [weak self] in
+            self?.sidebar.notePresenceChanged()
+            (self?.splitPanes as? TileHost)?.refreshStrip()
+        }
         splitPanes.onRefused = { [weak self] text in self?.toast(text) }
         Seatbelts.shared.onDecision = { [weak self] decision in
             self?.splitPanes.applyGovernor(decision)
@@ -401,11 +405,28 @@ final class MainWindowController: NSWindowController {
             return
         }
         UserDefaults.standard.set(entry.session.id, forKey: "tailscode.lastSession")
+        showTitle(of: entry)
+        retargetTerminal(to: entry.session.directory)
+    }
+
+    /// The window wears the focused chat's name and server.
+    private func showTitle(of entry: SessionEntry) {
         window?.title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
         window?.subtitle = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
-        retargetTerminal(to: entry.session.directory)
+    }
+
+    /// A pane keeps the entry it was opened with, so a chat the server named after it arrived, or
+    /// one renamed since, would wear its first title until the focus moved. The listing is what
+    /// knows the current one.
+    private func refreshTitleFromListing() {
+        guard let current = transcript.currentEntry,
+            let fresh = sidebar.allEntries.first(where: {
+                $0.profileID == current.profileID && $0.session.id == current.session.id
+            })
+        else { return }
+        showTitle(of: fresh)
     }
 
     /// The marked chats opened all at once as one even tiling: the tree replaces what the window
@@ -481,6 +502,10 @@ final class MainWindowController: NSWindowController {
         toasts.show(text)
     }
 
+    var sidebarShown: Bool { sidebarItem?.isCollapsed == false }
+
+    var terminalShown: Bool { terminalItem?.isCollapsed == false }
+
     /// The single key a binding puts an action on right now, overrides included, for a menu item
     /// to show — so a chord rebound in the keybindings file is the chord the menu names. A
     /// sequence has no menu spelling and is left off.
@@ -495,24 +520,45 @@ final class MainWindowController: NSWindowController {
         return keys.isEmpty ? nil : keys.joined(separator: " / ")
     }
 
+    /// The menu bar's Delete, which like Save, Archive and Rename answers for the chat that is
+    /// open rather than for the list's cursor; marked chats still outrank it, the number having
+    /// been read in the menu's title. The `x` key keeps the cursor's meaning.
+    func deleteOpenChat() {
+        if sidebar.markedCount > 0 {
+            sidebar.presentDeleteFromKeyboard()
+            return
+        }
+        guard let currentEntry, let currentBackend else { return }
+        sidebar.presentDelete(entry: currentEntry, backend: currentBackend)
+    }
+
     /// Rebuilds the panes as the arrangement a menu item named.
     func arrangeSplits(_ arrangement: SplitArrangement) {
         focused = .transcript
         splitPanes.arrange(arrangement)
     }
 
+    /// Insert is asked first, then the contexts a verb like Keep Live lives in alone. Outside
+    /// insert a chord must carry control or option to be shown: a bare key bound for the normal
+    /// context would become a menu key equivalent and take that letter from every text field.
     static func boundChord(for action: KeyAction, in shortcuts: ShortcutSet) -> KeyChord? {
-        let map = shortcuts.actions[.insert] ?? shortcuts.actions[.normal] ?? [:]
-        let tokens = map.filter { $0.value == action && !$0.key.contains(",") }.keys.sorted()
-        guard let token = tokens.first, let colon = token.firstIndex(of: ":"),
-            let keyval = UInt32(token[token.index(after: colon)...])
-        else { return nil }
-        let flags = token[..<colon]
-        var state: UInt32 = 0
-        if flags.contains("c") { state |= KeyChord.controlMask }
-        if flags.contains("s") { state |= KeyChord.shiftMask }
-        if flags.contains("a") { state |= KeyChord.altMask }
-        return KeyChord.canonical(keyval: keyval, state: state)
+        for context in [KeyContext.insert, .normal, .terminal] {
+            let map = shortcuts.actions[context] ?? [:]
+            let tokens = map.filter { $0.value == action && !$0.key.contains(",") }.keys.sorted()
+            for token in tokens {
+                guard let colon = token.firstIndex(of: ":"),
+                    let keyval = UInt32(token[token.index(after: colon)...])
+                else { continue }
+                let flags = token[..<colon]
+                if context != .insert, !flags.contains("c"), !flags.contains("a") { continue }
+                var state: UInt32 = 0
+                if flags.contains("c") { state |= KeyChord.controlMask }
+                if flags.contains("s") { state |= KeyChord.shiftMask }
+                if flags.contains("a") { state |= KeyChord.altMask }
+                return KeyChord.canonical(keyval: keyval, state: state)
+            }
+        }
+        return nil
     }
 
     /// The dial's answers to a control turned in quick steps — a wheel notch, a preset chord — each
@@ -531,6 +577,7 @@ final class MainWindowController: NSWindowController {
     func reloadShortcuts() {
         shortcuts = ShortcutSet.load()
         pendingChords = []
+        onShortcutsReloaded?()
         if let cheatsheet, cheatsheet.isVisible {
             cheatsheet.close()
             presentCheatsheet()
@@ -994,6 +1041,11 @@ final class MainWindowController: NSWindowController {
             }
             serversWindow?.onNeedsPro = { [weak self] in self?.presentPro() }
             serversWindow?.onOpenUpdateCenter = { [weak self] in self?.presentUpdates() }
+            serversWindow?.workingTurns = { [weak self] profileID in
+                self?.sidebar.allEntries.filter {
+                    $0.profileID == profileID && $0.session.isWorking
+                }.count ?? 0
+            }
         }
         serversWindow?.present()
     }
@@ -1035,7 +1087,7 @@ final class MainWindowController: NSWindowController {
                     self?.transcript.composer.applyPreferences()
                 },
                 onTranscriptChanged: { [weak self] in
-                    self?.transcript.applyUIScale()
+                    self?.splitPanes.eachPane { $0.applyUIScale() }
                     Task { await self?.sidebar.refresh() }
                 },
                 onReloadShortcuts: { [weak self] in
@@ -1250,6 +1302,7 @@ final class MainWindowController: NSWindowController {
     /// pane already showing it if one is, else through the ordinary open into the focused pane.
     func openSession(withID id: String) {
         window?.makeKeyAndOrderFront(nil)
+        MacNotifier.clearNotices(sessionID: id)
         if let pane = splitPanes.pane(showing: id) {
             splitPanes.focus(pane, grabKeyboard: false)
             return
@@ -1353,6 +1406,7 @@ final class MainWindowController: NSWindowController {
         sidebar.onEntriesChanged = { [weak self] in
             guard let self else { return }
             self.restateChoosers()
+            self.refreshTitleFromListing()
             self.resolvePendingBindings()
             self.wakeHeldQueues(entries: self.sidebar.entries)
         }
@@ -1573,10 +1627,7 @@ final class MainWindowController: NSWindowController {
         UserDefaults.standard.set(entry.session.id, forKey: "tailscode.lastSession")
         transcript.open(entry, backend: backend)
         retargetTerminal(to: entry.session.directory)
-        window?.title =
-            entry.session.hasPlaceholderTitle
-            ? Localized.text("New conversation") : entry.session.title
-        window?.subtitle = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
+        showTitle(of: entry)
         splitPanes.persist()
     }
 
@@ -2051,16 +2102,29 @@ final class MainWindowController: NSWindowController {
         UserDefaults.standard.object(forKey: pane.key) as? Bool ?? pane.defaultShown
     }
 
+    /// Toggles from what the split item actually is, not from the stored flag: a divider dragged
+    /// shut collapses the item without asking this method, and a toggle that trusted the flag
+    /// would answer the next press by doing nothing. Hiding the pane that holds the keyboard hands
+    /// the keyboard to the transcript, because a region that is gone cannot receive a chord.
     private func togglePane(_ pane: ClosablePane) {
-        let shown = !paneShown(pane)
-        UserDefaults.standard.set(shown, forKey: pane.key)
         let item: NSSplitViewItem?
         switch pane {
         case .sidebar: item = sidebarItem
         case .terminal: item = terminalItem
         case .files: item = nil
         }
+        let shown = item?.isCollapsed ?? !paneShown(pane)
+        UserDefaults.standard.set(shown, forKey: pane.key)
         guard let item else { return }
+        if !shown {
+            let holdsKeyboard: Bool
+            switch pane {
+            case .sidebar: holdsKeyboard = focused == .chats
+            case .terminal: holdsKeyboard = focused == .terminal || terminalHasFocus
+            case .files: holdsKeyboard = false
+            }
+            if holdsKeyboard { focus(.transcript) }
+        }
         NSAnimationContext.runAnimationGroup(
             { _ in item.animator().isCollapsed = !shown },
             completionHandler: { [weak self] in
@@ -2113,6 +2177,8 @@ final class MainWindowController: NSWindowController {
     @objc private func dividersMoved() {
         guard dividerSavingEnabled else { return }
         let defaults = UserDefaults.standard
+        if let sidebarItem { defaults.set(!sidebarItem.isCollapsed, forKey: ClosablePane.sidebar.key) }
+        if let terminalItem { defaults.set(!terminalItem.isCollapsed, forKey: ClosablePane.terminal.key) }
         if let sidebarItem, !sidebarItem.isCollapsed {
             let width = sidebarItem.viewController.view.frame.width
             if width >= sidebarItem.minimumThickness {

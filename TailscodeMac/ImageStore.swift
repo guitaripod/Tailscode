@@ -155,7 +155,7 @@ enum ImageRowView {
             ?? reference.path.map { URL(fileURLWithPath: $0, isDirectory: false).lastPathComponent }
             ?? "file"
         let isImage = (reference.mime ?? "").hasPrefix("image/")
-        guard isImage else {
+        guard isImage, !(context.isImageRefused?(key) ?? false) else {
             return RowKit.label(
                 "📎 \(name)", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
         }

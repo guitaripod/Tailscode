@@ -124,6 +124,7 @@ final class SidebarViewController: NSViewController {
     private var holdGeneration = 0
     private static let pointerHoldCeiling: TimeInterval = 1.2
     private var refreshTask: Task<Void, Never>?
+    private var toldDeviceOnly: Set<String> = []
     /// One live listing per server, keyed by the profile it was opened for, so a server removed,
     /// re-added or re-addressed gets its stream replaced rather than kept.
     private var listStreams: [String: (profile: ConnectionProfile, task: Task<Void, Never>)] = [:]
@@ -188,6 +189,7 @@ final class SidebarViewController: NSViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(orbSettingChanged), name: PresenceOrbSetting.didChange,
             object: nil)
+        observeDecisions()
 
         updateFooter.onOpen = { [weak self] in self?.onOpenUpdates?() }
         supporterCard.onUnlock = { [weak self] in self?.onOpenPro?() }
@@ -319,6 +321,7 @@ final class SidebarViewController: NSViewController {
             focusedSessionID.map { $0() == entry.session.id } ?? (selectedID == entry.session.id)
         selectedID = entry.session.id
         SessionSeenStore.markSeen(entry.session.id)
+        MacNotifier.clearNotices(sessionID: entry.session.id)
         render()
         scrollSelectionIntoView()
         guard !alreadyShowing else { return }
@@ -401,12 +404,24 @@ final class SidebarViewController: NSViewController {
         let row = SessionRowModel(
             entry: entry, unreachable: false, unread: false, saved: false,
             presence: (presenceSource?() ?? lastPresence)[ChatSelection.key(entry)] ?? .unobserved)
-        announce?(ChatArchiveRule.word(filed: filed, title: row.title, unfinished: row.isUnfinished))
+        let word = ChatArchiveRule.word(
+            filed: filed, title: row.title, unfinished: row.isUnfinished)
+        announce?([word, deviceOnlyNotice(for: entry)].compactMap { $0 }.joined(separator: "\n"))
     }
 
     func togglePinned(_ entry: SessionEntry) {
         SessionPinStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
         render()
+        if let notice = deviceOnlyNotice(for: entry) { announce?(notice) }
+    }
+
+    /// Said once per server per launch: a person pinning a dozen chats on a machine that keeps no
+    /// marks needs to hear it the first time, not at every press.
+    private func deviceOnlyNotice(for entry: SessionEntry) -> String? {
+        guard let notice = SessionMarks.deviceOnlyNotice(for: entry),
+            toldDeviceOnly.insert(entry.profileID).inserted
+        else { return nil }
+        return notice
     }
 
     func toggleUnread(_ entry: SessionEntry) {
@@ -698,7 +713,8 @@ final class SidebarViewController: NSViewController {
         let observations = models.map {
             ActivityObservation(
                 profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
-                title: $0.title, isActive: $0.entry.session.isActive == true)
+                title: $0.title, isActive: $0.entry.session.isActive == true,
+                updatedAt: $0.entry.session.updatedAt)
         }
         MacNotifier.shared.observeListing(observations, openSessionID: selectedID)
         ActivityInbox.reconcile(
@@ -1287,6 +1303,24 @@ final class SidebarViewController: NSViewController {
         filter = ""
         open(entry)
         render()
+    }
+
+    /// What a person decided about a chat reaches this list from more than its own presses — a
+    /// server's listing adopting a pin made on the phone, a chat read on another desk, a notice
+    /// answered from a banner — and none of those is a listing this table would otherwise redraw
+    /// for. A write that changed nothing is not posted and a redraw that changes nothing touches no
+    /// row, so listening to every store the rows are drawn from costs nothing at rest.
+    private func observeDecisions() {
+        let names = [
+            SessionPinStore.didChange, SessionSeenStore.didSync, SavedChatStore.didChange,
+            ArchivedChatStore.didChange, ActivityInbox.didChange,
+        ]
+        for name in names {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
+                [weak self] _ in
+                MainActor.assumeIsolated { self?.render() }
+            }
+        }
     }
 
     @objc private func orbSettingChanged() {

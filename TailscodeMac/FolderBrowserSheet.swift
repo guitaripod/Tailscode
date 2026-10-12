@@ -517,12 +517,14 @@ final class FolderBrowserSheet: NSObject {
             let shown = name.count > 24 ? String(name.prefix(23)) + "…" : name
             title = Localized.text("Start in %@", shown)
         }
+        let enabled = browser.choice != nil
         start.attributedTitle = NSAttributedString(
             string: title,
             attributes: [
-                .font: MacTheme.Ramp.font(.panelLabel), .foregroundColor: MacTheme.Color.onAccent,
+                .font: MacTheme.Ramp.font(.panelLabel),
+                .foregroundColor: enabled ? MacTheme.Color.onAccent : NSColor.disabledControlTextColor,
             ])
-        start.isEnabled = browser.choice != nil
+        start.isEnabled = enabled
     }
 
     @objc private func goBack() { perform(.back) }

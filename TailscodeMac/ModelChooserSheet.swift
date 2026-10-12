@@ -32,6 +32,7 @@ final class ModelChooserSheet: NSObject {
     private let machineStrip = ChipFlow()
     private let doorStrip = ChipFlow()
     private let consequence = FittedWrapLabel()
+    private let hint = FittedWrapLabel()
     private var entries: [Entry] = []
     private var monitor: Any?
 
@@ -155,7 +156,6 @@ final class ModelChooserSheet: NSObject {
         empty.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(empty)
 
-        let hint = FittedWrapLabel()
         hint.stringValue = chooser.hint
         hint.font = MacTheme.Ramp.font(.rowNote)
         hint.textColor = MacTheme.Color.tertiaryLabel
@@ -192,6 +192,8 @@ final class ModelChooserSheet: NSObject {
     }
 
     private func teardown() {
+        briefingPopover?.close()
+        briefingPopover = nil
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         if let size = sheet.contentView?.frame.size {
@@ -226,11 +228,12 @@ final class ModelChooserSheet: NSObject {
     /// A catalog that arrived while the sheet is open: the list, the summary and the machine strip
     /// are re-answered from it, and what the reader was doing — the query, the tab — survives the
     /// answer. A server that comes back from a restart reaches the open sheet this way.
-    func update(sources: [ModelSource]) {
+    func update(sources: [ModelSource], quotas: [UsageQuota]? = nil) {
+        if let quotas { self.quotas = quotas }
         let query = chooser.query
         let machine = chooser.machine
         let door = chooser.door
-        chooser = ModelChooser(sources: sources, selected: chooser.selected, quotas: quotas)
+        chooser = ModelChooser(sources: sources, selected: chooser.selected, quotas: self.quotas)
         chooser.search(query)
         chooser.setMachine(machine)
         chooser.setDoor(door)
@@ -346,6 +349,8 @@ final class ModelChooserSheet: NSObject {
     /// One chip per machine, the tab under the cursor in accent. Drawn only past one machine: a
     /// tab bar with one tab is chrome pretending to be a control.
     private func rebuildMachines() {
+        briefingPopover?.close()
+        briefingPopover = nil
         machineStrip.isHidden = !chooser.showsMachines
         var chips: [NSView] = []
         if chooser.showsMachines {
@@ -443,6 +448,7 @@ final class ModelChooserSheet: NSObject {
             }
         }
         summary.stringValue = chooser.summary
+        hint.stringValue = chooser.hint
         summary.toolTip = chooser.summary
         empty.stringValue = chooser.emptyResult ?? ""
         empty.isHidden = chooser.emptyResult == nil

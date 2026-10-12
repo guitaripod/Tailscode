@@ -67,23 +67,31 @@ final class MachinePermissionsView: NSView {
         let token = watchToken
         Task { [weak self] in
             while let owner = self, owner.window?.isVisible == true, token == owner.watchToken {
-                await owner.refresh()
-                guard let owner = self, owner.window?.isVisible == true, token == owner.watchToken,
-                    let permissions = owner.current, MachinePermissionReading.isShown(permissions),
-                    !permissions.isComplete
+                let answered = await owner.refresh()
+                guard let owner = self, owner.window?.isVisible == true, token == owner.watchToken
                 else { break }
+                if answered {
+                    guard let permissions = owner.current,
+                        MachinePermissionReading.isShown(permissions), !permissions.isComplete
+                    else { break }
+                }
                 try? await Task.sleep(for: MachinePermissionReading.pollInterval)
             }
             self?.watching = false
         }
     }
 
-    private func refresh() async {
+    /// Whether the machine answered at all. A failed ask leaves the checklist as it was and is
+    /// asked again on the next turn of the watch, because the watch that gave up on a first
+    /// failure left a Mac with its grants missing and nothing on screen to say so.
+    private func refresh() async -> Bool {
         do {
             apply(try await backend.machinePermissions())
+            return true
         } catch {
             Self.log.error(
                 "machinePermissions failed: \(String(describing: error), privacy: .public)")
+            return false
         }
     }
 

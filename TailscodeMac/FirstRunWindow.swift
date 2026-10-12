@@ -176,10 +176,12 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
 
     /// Step 2's pill and the button both name a machine that answered, so neither may outlive the
     /// question they answered: changing the address or the agent unsays them until the next probe
-    /// speaks, rather than leaving a green tick over a host nobody has reached.
+    /// speaks, rather than leaving a green tick — or the line naming the host that answered — over
+    /// a host nobody has reached.
     private func clearVerification() {
         verified = nil
         setPill(agentPill, text: "", color: MacTheme.Color.secondaryLabel)
+        diagnosisLabel.stringValue = ""
         connectButton.title = Localized.text("Connect")
     }
 

@@ -37,6 +37,8 @@ final class TranscriptContext {
     /// show the opened body, never past the point where the clicked header would leave the top.
     var revealRow: ((NSView) -> Void)?
     var requestImage: ((FileReference, String) -> Void)?
+    /// Whether a picture's bytes arrived and would not decode, so its row settles as a filename.
+    var isImageRefused: ((String) -> Bool)?
     var requestSubagent: ((ToolCall) -> Void)?
     /// A workflow agent is fetched by its own id: it has no spawning call to name it.
     var requestWorkflowAgent: ((String) -> Void)?
@@ -1696,11 +1698,14 @@ enum RowKit {
 
     /// A tool's output, given room to be read: whole when it is short, its first lines and a
     /// button naming the rest when it is long — never a box that scrolls inside the transcript.
-    static func foldedOutput(_ output: String, render: @escaping (String) -> NSAttributedString)
-        -> NSView
-    {
-        var opened = false
-        let fold = TranscriptBlocks.fold(output, expanded: false)
+    /// Whether it is opened belongs to the caller, because the row is rebuilt whenever the call
+    /// beneath it changes and a reader's "show more" must not fold itself back up.
+    static func foldedOutput(
+        _ output: String, opened startsOpen: Bool = false, onToggle: ((Bool) -> Void)? = nil,
+        render: @escaping (String) -> NSAttributedString
+    ) -> NSView {
+        var opened = startsOpen
+        let fold = TranscriptBlocks.fold(output, expanded: opened)
         let field = attributedLabel(render(fold.shown))
         guard let title = fold.toggleLabel else { return field }
         let column = FillingStack()
@@ -1711,6 +1716,7 @@ enum RowKit {
         let button = Weak<NSButton>(nil)
         let toggle = linkButton(title) {
             opened.toggle()
+            onToggle?(opened)
             let fold = TranscriptBlocks.fold(output, expanded: opened)
             shown.value?.attributedStringValue = render(fold.shown)
             button.value?.title = fold.toggleLabel ?? ""

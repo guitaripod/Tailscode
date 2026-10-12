@@ -636,21 +636,52 @@ final class DelegateWindowController: NSWindowController {
         alert.beginSheetModal(for: window)
     }
 
+    /// A press that did not reach the dispatcher names what it was and says why in the transport's
+    /// own words, as the phone's alert does — an Approve that went nowhere must never look like one
+    /// that was taken.
+    private func presentFailure(_ title: String, _ error: any Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = title
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: Localized.text("OK"))
+        guard let window else {
+            alert.runModal()
+            return
+        }
+        alert.beginSheetModal(for: window)
+    }
+
     private func respondToApproval(runID: String, approved: Bool) {
         guard let host = selectedHost else { return }
-        Task { [desk] in try? await desk.approve(runID: runID, host: host, approved: approved) }
+        Task { [weak self, desk] in
+            do {
+                try await desk.approve(runID: runID, host: host, approved: approved)
+            } catch {
+                self?.presentFailure(Localized.text("The answer did not reach the dispatcher"), error)
+            }
+        }
     }
 
     private func cancelRun(_ runID: String) {
         guard let host = selectedHost else { return }
-        Task { [desk] in try? await desk.cancel(runID: runID, host: host) }
+        Task { [weak self, desk] in
+            do {
+                try await desk.cancel(runID: runID, host: host)
+            } catch {
+                self?.presentFailure(Localized.text("The run did not cancel"), error)
+            }
+        }
     }
 
     private func replayRun(_ runID: String, tier: String) {
         guard let host = selectedHost else { return }
         Task { [weak self, desk] in
-            if let started = try? await desk.replay(runID: runID, host: host, tier: tier, ceiling: nil) {
+            do {
+                let started = try await desk.replay(runID: runID, host: host, tier: tier, ceiling: nil)
                 self?.select(runID: started)
+            } catch {
+                self?.presentFailure(Localized.text("The replay did not start"), error)
             }
         }
     }
@@ -1491,7 +1522,6 @@ final class DelegateRunView: NSView {
         switch action.role {
         case .primary:
             button.bezelColor = MacTheme.Color.accent
-            button.keyEquivalent = "\r"
         case .normal:
             break
         case .destructive:

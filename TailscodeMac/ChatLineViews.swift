@@ -28,7 +28,9 @@ final class SeamLineView: NSView, KeyboardPressable {
         icon.contentTintColor = tint
         icon.setContentHuggingPriority(.required, for: .horizontal)
         icon.setAccessibilityElement(false)
-        let label = RowKit.label(text, font: MacTheme.Ramp.font(.note), color: tint)
+        let label = RowKit.label(text, font: MacTheme.Ramp.font(.seamLabel), color: tint)
+        label.attributedStringValue = NSAttributedString(
+            string: text, attributes: MacTheme.Ramp.attributes(.seamLabel, color: tint))
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         middle.setViews([icon, label], in: .leading)

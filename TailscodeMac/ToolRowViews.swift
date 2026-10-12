@@ -56,7 +56,7 @@ enum ToolRowView {
                 if open { reveal?(row) }
             }
         ) {
-            RowKit.inset(bodyColumn(call, summary, context: context) ?? NSView(), leading: 26)
+            RowKit.inset(bodyColumn(call, summary, key: key, context: context) ?? NSView(), leading: 26)
         }
     }
 
@@ -75,7 +75,10 @@ enum ToolRowView {
         let worst: ToolStatus =
             calls.contains { $0.status == .error }
             ? .error : calls.contains { $0.status == .running } ? .running : .completed
-        let mark = disclosureMark(context.isExpanded(key))
+        let expanded =
+            !context.expanded.isClosed(key)
+            && (context.isExpanded(key) || steps.contains { context.expanded.isOpen($0.key) })
+        let mark = disclosureMark(expanded)
         header.addArrangedSubview(mark)
         header.addArrangedSubview(glyphLabel(worst, in: context))
         header.addArrangedSubview(
@@ -120,7 +123,7 @@ enum ToolRowView {
         let reveal = context.revealRow
         return DisclosureRow(
             header: header,
-            expanded: context.isExpanded(key) || steps.contains { context.expanded.isOpen($0.key) },
+            expanded: expanded,
             lineHeight: ToolRowView.lineHeight,
             onToggle: { open, row in
                 mark.stringValue = ToolRowView.disclosureGlyph(open)
@@ -250,7 +253,7 @@ enum ToolRowView {
 
     /// What the disclosure opens onto, or nil when the line already says everything.
     private static func bodyColumn(
-        _ call: ToolCall, _ summary: ToolCallSummary, context: TranscriptContext
+        _ call: ToolCall, _ summary: ToolCallSummary, key: String, context: TranscriptContext
     ) -> NSView? {
         let column = FillingStack()
         column.spacing = 4
@@ -305,8 +308,13 @@ enum ToolRowView {
         }
 
         if let output = displayableOutput(call, summary), !output.isEmpty {
+            let foldKey = "\(key)#output"
+            let foldToggle = context.onToggle
             column.addArrangedSubview(
-                RowKit.foldedOutput(output) { shown in
+                RowKit.foldedOutput(
+                    output, opened: context.isExpanded(foldKey),
+                    onToggle: { foldToggle?(foldKey, $0) }
+                ) { shown in
                     MacMarkdown.plainWithLinks(
                         shown, font: MacTheme.Ramp.font(.toolOutput),
                         color: MacTheme.Color.secondaryLabel)

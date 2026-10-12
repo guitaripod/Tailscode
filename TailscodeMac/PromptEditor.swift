@@ -399,4 +399,16 @@ final class PastingTextView: NSTextView {
         guard onPaste?() != true else { return }
         super.pasteAsPlainText(sender)
     }
+
+    /// ⌘⌫ is delete-to-line-start in every text field on the Mac, and it is also the chord of the
+    /// menu's Delete conversation. A key equivalent reaches the view under the cursor before the
+    /// menu bar, so the box takes it here and the menu never sees a person editing a draft.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard modifiers == .command, event.keyCode == 51, window?.firstResponder === self else {
+            return super.performKeyEquivalent(with: event)
+        }
+        deleteToBeginningOfLine(nil)
+        return true
+    }
 }

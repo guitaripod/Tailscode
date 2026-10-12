@@ -1848,7 +1848,8 @@ final class MainWindow: @unchecked Sendable {
         let observations = rows.map {
             ActivityObservation(
                 profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
-                title: $0.title, isActive: $0.entry.session.isActive == true)
+                title: $0.title, isActive: $0.entry.session.isActive == true,
+                updatedAt: $0.entry.session.updatedAt)
         }
         Notifier.shared.observeListing(
             observations, openSessionID: selectedID, windowActive: windowIsActive)

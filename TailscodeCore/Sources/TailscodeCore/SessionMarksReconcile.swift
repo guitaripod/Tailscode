@@ -15,9 +15,62 @@ public enum SessionMarks {
         SessionOwners.remember(entries)
         SavedChatStore.reconcile(with: entries)
         let reporting = entries.filter { $0.session.reportsMarks }
+        offerLocalDecisions(toProfiles: Set(reporting.map(\.profileID)))
         reconcilePins(reporting)
         reconcileArchive(reporting)
         reconcileReads(entries)
+    }
+
+    /// A decision older than any a person could have made, which a server applies only to a mark
+    /// it holds no decision about: the bridge keeps the later of two decisions, so offering this
+    /// can fill a gap and can never overrule anything.
+    static let beforeAnyDecision = Date(timeIntervalSince1970: 946_684_800)
+
+    /// Hands a server the pins and archives this device made while it could not keep them.
+    ///
+    /// A server that begins reporting marks — a bridge just updated, or restarted onto a build that
+    /// has them — answers `pinned: false` for every chat it has never heard about, and adopting that
+    /// answer would erase the pins a person made on this device in the meantime. So the first time a
+    /// profile is seen reporting, each local pin and archive for it is offered as the decision it
+    /// always was: the pin at the moment it was made, the archive before any decision (the device
+    /// never recorded when). Each leaves an intent, which outranks the listing until it is
+    /// delivered, so nothing is lost on the way, and the server weighs it against anything it was
+    /// told since, so nothing is overruled either. Offered once per profile.
+    static func offerLocalDecisions(toProfiles profiles: Set<String>) {
+        let fresh = profiles.subtracting(MarkOffers.made())
+        guard !fresh.isEmpty else { return }
+        let stamps = SessionPinStore.stamps()
+        for key in SessionPinStore.all() {
+            guard let (profile, session) = split(key), fresh.contains(profile) else { continue }
+            let at = stamps[key].map(Date.init(timeIntervalSince1970:)) ?? beforeAnyDecision
+            MarkIntentStore.note(
+                sessionID: session, profileID: profile, mark: .pinned, on: true, at: at)
+        }
+        for key in ArchivedChatStore.all() {
+            guard let (profile, session) = split(key), fresh.contains(profile) else { continue }
+            MarkIntentStore.note(
+                sessionID: session, profileID: profile, mark: .archived, on: true,
+                at: beforeAnyDecision)
+        }
+        MarkOffers.record(fresh)
+    }
+
+    private static func split(_ key: String) -> (profile: String, session: String)? {
+        guard let slash = key.firstIndex(of: "/") else { return nil }
+        return (String(key[..<slash]), String(key[key.index(after: slash)...]))
+    }
+
+    /// What to tell a person whose pin or archive will not leave this device, or nil when it will.
+    ///
+    /// A server that reports no marks (opencode, a bridge older than 1.14 — or one still running a
+    /// binary built before it) keeps nothing a person decides, and says so only by silence, so a pin
+    /// made on it is on this device and nowhere else. Without a word, that reads as a sync that
+    /// does not work.
+    public static func deviceOnlyNotice(for entry: SessionEntry) -> String? {
+        guard !entry.session.reportsMarks else { return nil }
+        return Localized.text(
+            "Kept on this device only — %@ cannot keep pins or archives yet",
+            ServerLabel.display(name: entry.profileName, backend: entry.backendType))
     }
 
     private static func reconcilePins(_ entries: [SessionEntry]) {
@@ -147,5 +200,20 @@ enum MarkReconcile {
             changes[report.sessionID] = report.readAt
         }
         return changes
+    }
+}
+
+/// The profiles whose servers have been offered this device's pins and archives, so an offer is
+/// made once and not at every listing.
+enum MarkOffers {
+    static let storageKey = "tailscode.marks.offered"
+    nonisolated(unsafe) private static let defaults = UserDefaults.standard
+
+    static func made() -> Set<String> {
+        Set(defaults.stringArray(forKey: storageKey) ?? [])
+    }
+
+    static func record(_ profiles: Set<String>) {
+        defaults.set(made().union(profiles).sorted(), forKey: storageKey)
     }
 }

@@ -15,8 +15,18 @@ final class ToastPresenter {
     /// The capsule on screen, kept so a keyed toast can rewrite it in place and push its dwell
     /// out. `generation` tells the dismissal that was scheduled for it whether it is still the
     /// latest word.
-    private var showing: (label: NSTextField, glass: NSView, key: String?, generation: Int)?
+    private var showing: Capsule?
     private var generations = 0
+
+    /// One capsule on screen. The label's width is a constraint of its own, because a wrapping
+    /// label has no width unless it is given one and the glass around it takes its size from it.
+    private struct Capsule {
+        let label: NSTextField
+        let glass: NSView
+        let width: NSLayoutConstraint
+        let key: String?
+        var generation: Int
+    }
 
     init(anchor: @escaping () -> (host: NSView, above: NSLayoutYAxisAnchor)?) {
         self.anchor = anchor
@@ -36,6 +46,9 @@ final class ToastPresenter {
                 generations += 1
                 current.generation = generations
                 current.label.stringValue = text
+                if let host = current.glass.superview {
+                    current.width.constant = Self.width(of: current.label, in: host)
+                }
                 showing = current
                 announce(text, from: current.glass)
                 scheduleDismissal(generation: current.generation, text: text)
@@ -74,12 +87,15 @@ final class ToastPresenter {
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
+        let labelWidth = label.widthAnchor.constraint(
+            equalToConstant: Self.width(of: label, in: host))
         let padded = NSView()
         padded.translatesAutoresizingMaskIntoConstraints = false
         padded.addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: padded.leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(equalTo: padded.trailingAnchor, constant: -14),
+            labelWidth,
+            label.leadingAnchor.constraint(equalTo: padded.leadingAnchor, constant: Self.inset),
+            label.trailingAnchor.constraint(equalTo: padded.trailingAnchor, constant: -Self.inset),
             label.topAnchor.constraint(equalTo: padded.topAnchor, constant: 8),
             label.bottomAnchor.constraint(equalTo: padded.bottomAnchor, constant: -8),
         ])
@@ -99,9 +115,24 @@ final class ToastPresenter {
             glass.animator().alphaValue = 1
         }
         generations += 1
-        showing = (label, glass, key, generations)
+        showing = Capsule(
+            label: label, glass: glass, width: labelWidth, key: key, generation: generations)
         scheduleDismissal(generation: generations, text: text)
     }
+
+    /// How wide the sentence wants to be: its one-line width, up to what the pane can hold, past
+    /// which the label wraps. Measured rather than left to Auto Layout, which gives a wrapping label
+    /// no width at all and leaves the capsule a blank pill.
+    static func width(of label: NSTextField, in host: NSView) -> CGFloat {
+        let available = host.bounds.width > 0 ? host.bounds.width : 600
+        let ceiling = max(160, available - 2 * MacTheme.Spacing.xl - 2 * inset)
+        label.preferredMaxLayoutWidth = ceiling
+        let room = NSRect(x: 0, y: 0, width: ceiling, height: .greatestFiniteMagnitude)
+        let wanted = label.cell?.cellSize(forBounds: room).width ?? ceiling
+        return min(ceiling, ceil(wanted) + 1)
+    }
+
+    private static let inset: CGFloat = 14
 
     private func scheduleDismissal(generation: Int, text: String) {
         Task { [weak self] in

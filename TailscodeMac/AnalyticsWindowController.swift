@@ -128,7 +128,7 @@ final class AnalyticsWindowController: NSWindowController {
         UsageWindow.current = chosen
         window?.title = chosen.surfaceTitle
         analytics = nil
-        reload()
+        if loading { render() } else { reload() }
     }
 
     private func reload() {
@@ -138,7 +138,13 @@ final class AnalyticsWindowController: NSWindowController {
         let span = UsageWindow.current
         Task { [weak self] in
             guard let self else { return }
-            self.analytics = await self.fetch(span)
+            let fetched = await self.fetch(span)
+            guard span == UsageWindow.current else {
+                self.loading = false
+                self.reload()
+                return
+            }
+            self.analytics = fetched
             MacGameCenter.shared.note(self.analytics)
             self.loading = false
             self.render()
@@ -167,8 +173,11 @@ final class AnalyticsWindowController: NSWindowController {
         Task { @MainActor [weak self] in self?.repaint() }
     }
 
+    /// The span picker stays on a message too: a span that has nothing to show, or is still being
+    /// read, is one the reader has to be able to leave.
     private func renderMessage(_ text: String) {
         clearColumn()
+        column.addArrangedSubview(windowPicker)
         column.addArrangedSubview(
             RowKit.label(text, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.secondaryLabel))
         column.addArrangedSubview(footer())

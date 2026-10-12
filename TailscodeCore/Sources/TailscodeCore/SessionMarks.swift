@@ -22,15 +22,21 @@ public struct MarkIntent: Codable, Hashable, Sendable {
     public let mark: SessionMark
     public let on: Bool
     public let at: Date
+    /// When the intent was made, which is what its lifetime runs from. `at` is when the person
+    /// decided, and an old decision offered to a server that never heard of it would otherwise be
+    /// past its lifetime the moment it was written. Nil on an intent written before this existed.
+    public let noted: Date?
 
     public init(
-        sessionID: String, profileID: String?, mark: SessionMark, on: Bool, at: Date = Date()
+        sessionID: String, profileID: String?, mark: SessionMark, on: Bool, at: Date = Date(),
+        noted: Date? = Date()
     ) {
         self.sessionID = sessionID
         self.profileID = profileID
         self.mark = mark
         self.on = on
         self.at = at
+        self.noted = noted
     }
 
     var key: String { "\(sessionID)\u{1}\(mark.rawValue)" }
@@ -139,7 +145,7 @@ public enum MarkIntentStore {
             cache = []
             return []
         }
-        let fresh = stored.filter { Date().timeIntervalSince($0.at) < lifetime }
+        let fresh = stored.filter { Date().timeIntervalSince($0.noted ?? $0.at) < lifetime }
         cache = fresh
         return fresh
     }

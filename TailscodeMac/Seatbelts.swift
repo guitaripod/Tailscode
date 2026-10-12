@@ -129,9 +129,22 @@ final class Seatbelts {
     var panes: (() -> SeatbeltPanes)?
     /// Told every decision, so the window can park what the governor parks.
     var onDecision: ((GovernorDecision) -> Void)?
+    static let liveBudgetKey = "tailscode.liveBudget"
+
     /// How many chats the person asked to keep whole: `Keep all live` is `.all`, otherwise the
-    /// governor's own budget. Held for the session; at strained and above the governor caps it.
-    var liveBudget: LiveBudget = .auto
+    /// governor's own budget. Remembered across launches under the key and the `"all"` / absent
+    /// encoding Linux uses; at strained and above the governor caps it.
+    var liveBudget: LiveBudget = UserDefaults.standard.string(forKey: Seatbelts.liveBudgetKey) == "all"
+        ? .all : .auto
+    {
+        didSet {
+            if liveBudget == .all {
+                UserDefaults.standard.set("all", forKey: Self.liveBudgetKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.liveBudgetKey)
+            }
+        }
+    }
 
     /// Starts everything: the ring and its launch record, the loop meter, the watchdog, the
     /// pressure source, the one-second sample and the SIGTERM path to a clean quit. Called once

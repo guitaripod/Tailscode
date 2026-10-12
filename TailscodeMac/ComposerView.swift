@@ -494,7 +494,7 @@ final class ComposerView: NSView {
                 self.modelsByProfile[profileID] = reading.models
                 self.reachableByProfile[profileID] = reading.reachable
                 self.models = reading.models
-                self.modelSheet?.update(sources: self.modelSources())
+                self.modelSheet?.update(sources: self.modelSources(), quotas: self.quotasForModels?())
                 self.refreshPills()
             }
         }
@@ -724,8 +724,9 @@ final class ComposerView: NSView {
     }
 
     /// One notch of the wheel or one ⌃⌥ arrow: the next stop cold-to-hot from the level the dial
-    /// shows, pinned at both ends. Nothing opens; the pill and a toast are the whole answer, and a
-    /// model that takes no level says so rather than letting the wheel turn in silence.
+    /// shows, pinned at both ends. Nothing opens and nothing is said — the pill's word and bars
+    /// move under the pointer, which is the whole answer — except for a model that takes no level,
+    /// which says so rather than letting the wheel turn in silence.
     func stepEffort(by delta: Int) {
         let options = effortOptions()
         guard ModelEffort.isOffered(options: options) else {
@@ -734,11 +735,10 @@ final class ComposerView: NSView {
         }
         let next = ModelDial.step(displayedEffort(), by: delta, options: options)
         if next != displayedEffort() { setEffort(next) }
-        onDialToast?(ModelDial.stepped(to: next))
     }
 
     /// The level handed back to the machine, from the Model menu: the server's own stop on the
-    /// ladder, reached without opening anything.
+    /// ladder, reached without opening anything. The pill goes hollow, which is the answer.
     func setServerDecidesEffort() {
         let options = effortOptions()
         guard ModelEffort.isOffered(options: options) else {
@@ -746,7 +746,6 @@ final class ComposerView: NSView {
             return
         }
         if displayedEffort() != nil { setEffort(nil) }
-        onDialToast?(ModelDial.stepped(to: nil))
     }
 
     /// The pinned pairs this chat's machine can run, in the order they were pinned, each with the

@@ -15,6 +15,7 @@ final class SignInSheet {
     private let status = NSTextField(wrappingLabelWithString: "")
     private let linkColumn = NSStackView()
     private let codeField = NSTextField()
+    private var beginTask: Task<Void, Never>?
 
     static func present(
         on host: NSWindow, serverName: String, backend: any AuthenticatingBackend,
@@ -78,11 +79,11 @@ final class SignInSheet {
     }
 
     private func begin(serverName: String) {
-        Task { [weak self] in
+        beginTask = Task { [weak self] in
             do {
                 guard let backend = self?.backend else { return }
                 let auth = try await backend.beginSignIn()
-                guard let self else { return }
+                guard let self, !Task.isCancelled else { return }
                 guard let url = auth.pending?.url else {
                     self.setStatus(
                         Localized.text(
@@ -95,6 +96,7 @@ final class SignInSheet {
                 self.codeField.isEnabled = true
                 self.sheet.makeFirstResponder(self.codeField)
             } catch {
+                guard !Task.isCancelled else { return }
                 self?.setStatus(
                     Localized.text(
                         "Could not start a sign-in: %@",
@@ -149,10 +151,18 @@ final class SignInSheet {
     }
 
     /// Closing an unfinished sign-in tells the server to stop waiting for a code that will never
-    /// come, so the next attempt starts clean.
+    /// come, so the next attempt starts clean. The cancel waits for a request for the link that is
+    /// still in flight to settle first: sent beside it, the server could register the attempt
+    /// after the cancel and leave a pending sign-in nobody can finish.
     @objc private func cancelSheet() {
         let backend = backend
-        Task.detached { try? await backend.cancelSignIn() }
+        let pending = beginTask
+        pending?.cancel()
+        beginTask = nil
+        Task.detached {
+            await pending?.value
+            try? await backend.cancelSignIn()
+        }
         close()
     }
 

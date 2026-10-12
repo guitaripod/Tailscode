@@ -449,6 +449,13 @@ final class GitDiffWindowController: NSWindowController {
     func present() {
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        text.textStorage?.setAttributedString(
+            NSAttributedString(
+                string: Localized.text("Loading…"),
+                attributes: [
+                    .foregroundColor: MacTheme.Color.secondaryLabel,
+                    .font: MacTheme.Ramp.font(.panelLabel),
+                ]))
         Task { [weak self] in
             guard let self else { return }
             let patch = await self.load()

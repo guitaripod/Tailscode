@@ -43,12 +43,19 @@ public struct ActivityObservation: Sendable {
     public let sessionID: String
     public let title: String
     public let isActive: Bool
+    /// When the server last saw the conversation move, which is what a read mark is weighed
+    /// against. Nil from a caller that does not know, and a row with no moment is never judged read.
+    public let updatedAt: Date?
 
-    public init(profileID: String, sessionID: String, title: String, isActive: Bool) {
+    public init(
+        profileID: String, sessionID: String, title: String, isActive: Bool,
+        updatedAt: Date? = nil
+    ) {
         self.profileID = profileID
         self.sessionID = sessionID
         self.title = title
         self.isActive = isActive
+        self.updatedAt = updatedAt
     }
 }
 

@@ -47,6 +47,9 @@ final class ServersWindow: NSWindowController {
     var onNeedsPro: (@MainActor () -> Void)?
     /// What to open when somebody reaches past one server's own card to the whole picture.
     var onOpenUpdateCenter: (@MainActor () -> Void)?
+    /// How many conversations the sidebar's listing says are working on one server right now —
+    /// what a restart of that server would stop, and so what the confirmation owes the reader.
+    var workingTurns: (@MainActor (String) -> Int)?
     private let listColumn = FillingStack()
     /// Every claude-bridge row's embedded software card, by profile id — rewritten in place from
     /// the ledger rather than rebuilt, so a job landing a reading every couple of seconds does not
@@ -63,6 +66,8 @@ final class ServersWindow: NSWindowController {
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
     private let passwordHint = NSTextField(wrappingLabelWithString: ServerPasswordRule.summary)
     private let addressField = NSTextField()
+    private let probeButton = NSButton()
+    private var isProbing = false
     private let nameField = NSTextField()
     private let passwordField = NSSecureTextField()
     private let claudeRadio = NSButton(radioButtonWithTitle: "claude-bridge · 4098", target: nil, action: nil)
@@ -184,8 +189,12 @@ final class ServersWindow: NSWindowController {
         applyTheme()
 
         let close = NSButton(title: Localized.text("Close"), target: self, action: #selector(closeWindow))
-        let probe = NSButton(
-            title: Localized.text("Probe and save"), target: self, action: #selector(probeAndSave))
+        let probe = probeButton
+        probe.title = Localized.text("Probe and save")
+        probe.bezelStyle = .rounded
+        probe.setButtonType(.momentaryPushIn)
+        probe.target = self
+        probe.action = #selector(probeAndSave)
         probe.keyEquivalent = "\r"
         #if TAILSCODE_MAS
             let actions = NSStackView(views: [Self.spacer(), close, probe])
@@ -341,7 +350,7 @@ final class ServersWindow: NSWindowController {
         MacDialogs.confirm(
             on: window,
             title: ServerRestart.confirmTitle(profile.name),
-            body: ServerRestart.confirmBody(workingTurns: 0),
+            body: ServerRestart.confirmBody(workingTurns: workingTurns?(profile.id) ?? 0),
             confirmLabel: ServerRestart.action
         ) { [weak self] in
             Task { [weak self] in
@@ -457,6 +466,7 @@ final class ServersWindow: NSWindowController {
     #endif
 
     @objc private func probeAndSave() {
+        guard !isProbing else { return }
         let raw = addressField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         var password = passwordField.stringValue
@@ -481,11 +491,13 @@ final class ServersWindow: NSWindowController {
         }
 
         setStatus(Localized.text("Probing %@…", address.url.absoluteString))
+        setProbing(true)
         Task { [weak self] in
             let verdict = await ProbeSweep.best(
                 address: address, password: password.isEmpty ? nil : password,
                 preferring: backend)
             guard let self else { return }
+            defer { self.setProbing(false) }
             switch verdict.outcome {
             case .ok(let agent, let version):
                 let profile = ConnectionProfile(
@@ -539,6 +551,14 @@ final class ServersWindow: NSWindowController {
                 self.setStatus(cause)
             }
         }
+    }
+
+    /// A probe in flight owns the form: Return pressed twice, or Return and then the button, would
+    /// otherwise save the same server twice under two fresh ids.
+    private func setProbing(_ probing: Bool) {
+        isProbing = probing
+        probeButton.isEnabled = !probing
+        addressField.isEnabled = !probing
     }
 
     private func softwareReading(_ profile: ConnectionProfile) -> UpdateReading? {

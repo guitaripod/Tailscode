@@ -202,14 +202,16 @@ final class TranscriptViewController: NSViewController {
     private var sessionRows: [String: [TranscriptRow]] = [:]
     private var sessionRowOrder: [String] = []
     private var inFlightImages: Set<String> = []
-    /// Pictures this chat could not get — the server refused them, or the bytes would not decode —
-    /// so a row rebuilt on every streamed token does not ask for them again. Forgotten with the chat.
+    /// Pictures whose bytes arrived and would not decode — an SVG, a truncated file — so their row
+    /// settles as a filename and is not asked for again. A fetch that failed on the network is not
+    /// listed: the next time the row is built it asks again. Forgotten with the chat.
     private var refusedImages: Set<String> = []
     /// Pictures a row has asked for and the transcript has not yet judged worth fetching: held here
     /// until the reader is within a screen of the row that wants them.
     private var wantedImages: [String: FileReference] = [:]
     private var imageSweepScheduled = false
     private var inFlightSubagents: Set<String> = []
+    private var answeringQuestions: Set<String> = []
     private var findMatches: [Int] = []
     private var findCursor = 0
     private var highlightedView: NSView?
@@ -1568,6 +1570,9 @@ final class TranscriptViewController: NSViewController {
         context.requestImage = { [weak self] reference, key in
             self?.noteImageWanted(reference, key: key)
         }
+        context.isImageRefused = { [weak self] key in
+            self?.refusedImages.contains(key) ?? false
+        }
         context.requestSubagent = { [weak self] call in
             self?.fetchSubagent(call)
         }
@@ -2175,22 +2180,35 @@ final class TranscriptViewController: NSViewController {
 
     private func respond(to permission: PermissionRequest, decision: PermissionDecision) {
         guard let conversation else { return }
-        Task { try? await conversation.respond(to: permission, decision: decision) }
+        Task { [weak self] in
+            do {
+                try await conversation.respond(to: permission, decision: decision)
+            } catch {
+                self?.onToast?(AgentErrorText.readable(error))
+            }
+        }
     }
 
     /// Claude answers by message, so the answer goes out through the ordinary send path — a
     /// bridge busy with a live turn refuses a side-channel call but queues a message. The card
-    /// stops asking immediately either way.
+    /// is settled only once the server has taken the message: an answer that did not go leaves the
+    /// question standing, with the reason, instead of losing the words behind a card that vanished.
+    /// A press while the first is still on the wire is ignored so one answer cannot go twice.
     private func answer(_ question: QuestionRequest, answers: [[String]]) {
-        guard let conversation else { return }
+        guard let conversation, answeringQuestions.insert(question.id).inserted else { return }
         let byMessage = backend?.capabilities.answersQuestionsByMessage == true
-        Task {
-            if byMessage {
-                await conversation.markAnswered(question)
-                try? await conversation.send(question.answerMessage(answers))
-            } else {
-                try? await conversation.answer(question, answers: answers)
+        Task { [weak self] in
+            do {
+                if byMessage {
+                    try await conversation.send(question.answerMessage(answers))
+                    await conversation.markAnswered(question)
+                } else {
+                    try await conversation.answer(question, answers: answers)
+                }
+            } catch {
+                self?.onToast?(AgentErrorText.readable(error))
             }
+            self?.answeringQuestions.remove(question.id)
         }
     }
 
@@ -2337,8 +2355,14 @@ final class TranscriptViewController: NSViewController {
                 send.text, model: send.model, effort: send.effort,
                 attachments: send.attachments, reusing: id)
         case .edit:
+            let words = QueuedSend(
+                text: send.text, model: send.model, effort: send.effort,
+                attachments: send.attachments)
+            guard composer.adoptForEditing(words) else {
+                onToast?(Localized.text("Send or clear what is in the composer first."))
+                return
+            }
             pending.remove(id: id)
-            composer.insertText(send.text)
             redrawPending()
         case .discard:
             pending.remove(id: id)
@@ -4158,7 +4182,9 @@ final class TranscriptViewController: NSViewController {
             guard let self else { return }
             self.inFlightImages.remove(key)
             guard let decoded else {
+                guard data != nil else { return }
                 self.refusedImages.insert(key)
+                self.replaceRows { $0.key == key }
                 return
             }
             ImageStore.shared.store(decoded, forKey: key)

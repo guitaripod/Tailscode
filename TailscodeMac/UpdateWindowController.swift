@@ -68,6 +68,7 @@ final class UpdateBoardViewController: NSViewController {
     private let column = FillingStack()
     private let scroll = AppearanceReportingScrollView()
     private let statusLabel = NSTextField(labelWithString: "")
+    private var statusToken = 0
     private let heroHeadline = NSTextField(labelWithString: "")
     private let heroDetail = NSTextField(wrappingLabelWithString: "")
     private let heroChecked = NSTextField(labelWithString: "")
@@ -216,6 +217,7 @@ final class UpdateBoardViewController: NSViewController {
         buttons.orientation = .horizontal
         buttons.spacing = MacTheme.Spacing.s
         statusLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.isHidden = true
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         heroCard.spacing = MacTheme.Spacing.s
         heroCard.edgeInsets = NSEdgeInsets(
@@ -295,9 +297,22 @@ final class UpdateBoardViewController: NSViewController {
         for card in cards.values { card.applyTheme() }
     }
 
+    /// A line about a press is news for a few seconds, not a fixture: left alone it outlived every
+    /// press after it and every reopening of the window, so it clears itself unless a newer line
+    /// has taken its place, and an empty label takes no row in the card.
     private func setStatus(_ text: String) {
         statusLabel.stringValue = text
+        statusLabel.isHidden = text.isEmpty
+        statusToken += 1
+        guard !text.isEmpty else { return }
+        let token = statusToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.statusLinger) { [weak self] in
+            guard let self, token == self.statusToken else { return }
+            self.setStatus("")
+        }
     }
+
+    private static let statusLinger: TimeInterval = 6
 }
 
 /// The one thing on this screen that can hear a light↔dark switch, on the scroll view standing in

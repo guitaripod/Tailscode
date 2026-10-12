@@ -70,6 +70,21 @@ final class MacNotifier: NSObject {
         deliver(alerts)
     }
 
+    /// Opening a conversation answers every notice about it, in both places a notice lives: the
+    /// inbox alone would let the next pass adopt a banner still standing in Notification Center
+    /// and file it all over again.
+    static func clearNotices(sessionID: String) {
+        ActivityInbox.clear(sessionID: sessionID)
+        UNUserNotificationCenter.current().getDeliveredNotifications { delivered in
+            let identifiers = delivered.filter {
+                $0.request.content.userInfo["sessionID"] as? String == sessionID
+            }.map(\.request.identifier)
+            guard !identifiers.isEmpty else { return }
+            UNUserNotificationCenter.current().removeDeliveredNotifications(
+                withIdentifiers: identifiers)
+        }
+    }
+
     /// Raised and written down in one step: a notice nobody happened to be at the screen for is
     /// the whole event lost otherwise, so what banners also goes to the list that keeps it until
     /// someone looks.

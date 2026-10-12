@@ -85,9 +85,11 @@ public struct MissedActivity: Codable, Hashable, Sendable, Identifiable {
 /// down here, and stays written down until it is either answered on the server (the same
 /// withdrawal that takes the notification back) or actually looked at.
 ///
-/// Device-local on purpose, like the archive and the seen marks: two machines watching the same
-/// tailnet have each missed different things, and "what I have not looked at" is a fact about a
-/// person at a screen, not about a session on a server.
+/// The list is device-local on purpose: two machines watching the same tailnet have each raised
+/// different alerts, and "what I have not looked at" is a fact about a person at a screen. What
+/// settles an entry is not local — a chat read on any device is read everywhere, because the read
+/// mark travels through the servers, so the same look that clears the unread dot clears the news
+/// (``reconcile(_:authoritativeProfileIDs:now:)``).
 public enum ActivityInbox {
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
     static let storageKey = "tailscode.activity.missed"
@@ -245,18 +247,39 @@ public enum ActivityInbox {
     ///   unreachable server says nothing about its sessions, and treating its silence as deletion
     ///   would empty the list exactly when the app can least afford to lose it.
     public static func reconcile(
-        _ rows: [ActivityObservation], authoritativeProfileIDs: Set<String>
+        _ rows: [ActivityObservation], authoritativeProfileIDs: Set<String>,
+        now: Date = Date()
     ) {
         let current = all()
-        guard let next = reconciled(current, rows: rows, authoritative: authoritativeProfileIDs)
+        let isUnread = SessionSeenStore.unreadEvaluator()
+        guard
+            let next = reconciled(
+                current, rows: rows, authoritative: authoritativeProfileIDs, isUnread: isUnread,
+                now: now)
         else { return }
+        let kept = Set(next.map(\.identifier))
+        let read = current.filter { entry in
+            guard !kept.contains(entry.identifier) else { return false }
+            let row = rows.first {
+                $0.profileID == entry.profileID && $0.sessionID == entry.sessionID
+            }
+            return isRead(entry, in: row, isUnread: isUnread, now: now)
+        }
+        markCleared(read.map(\.identifier), at: now)
         write(next)
     }
+
+    /// How long a notice is given before a listing may call its chat read. A notice is raised the
+    /// moment a turn ends, and the listing that follows can still be the one from before the turn
+    /// moved the conversation — read against it, a chat nobody has opened looks read and the news
+    /// is gone before anyone could see it.
+    static let listingLag: TimeInterval = 20
 
     /// The decision behind ``reconcile(_:authoritativeProfileIDs:)``, as a value: the new list, or
     /// nil when nothing about it changed — a refresh that changes nothing must not post.
     static func reconciled(
-        _ entries: [MissedActivity], rows: [ActivityObservation], authoritative: Set<String>
+        _ entries: [MissedActivity], rows: [ActivityObservation], authoritative: Set<String>,
+        isUnread: ((String, Date) -> Bool)? = nil, now: Date = Date()
     ) -> [MissedActivity]? {
         guard !entries.isEmpty else { return nil }
         var known: [String: ActivityObservation] = [:]
@@ -273,6 +296,10 @@ public enum ActivityInbox {
                 changed = true
                 continue
             }
+            if let isUnread, isRead(entry, in: row, isUnread: isUnread, now: now) {
+                changed = true
+                continue
+            }
             guard !AgentSession.isPlaceholderTitle(row.title), row.title != entry.title else {
                 next.append(entry)
                 continue
@@ -281,6 +308,23 @@ public enum ActivityInbox {
             changed = true
         }
         return changed ? next : nil
+    }
+
+    /// Whether the conversation behind a finished-news notice has been looked at since, on this
+    /// device or on any other that told its server.
+    ///
+    /// What was missed is a fact about the person, so reading the chat anywhere is what settles
+    /// it: the read mark travels through the servers (`SessionSeenStore.adopt`), and this asks the
+    /// same question the unread dot does, so the list and the dot cannot disagree about a chat. A
+    /// request still waiting on a person is never settled by a look — only by being answered.
+    static func isRead(
+        _ entry: MissedActivity, in row: ActivityObservation?,
+        isUnread: (String, Date) -> Bool, now: Date
+    ) -> Bool {
+        guard !entry.isBlocking, let row, let updatedAt = row.updatedAt,
+            now.timeIntervalSince(entry.at) > listingLag
+        else { return false }
+        return !isUnread(row.sessionID, updatedAt)
     }
 
     /// A request answered on the server is no longer something you missed. The notifier withdraws
@@ -307,9 +351,17 @@ public enum ActivityInbox {
         write(kept)
     }
 
+    /// Clearing the list is saying the news has been dealt with, and what is dealt with is read:
+    /// the chats behind finished-news are marked read, which is what carries the dismissal to every
+    /// other device — each of them settles the same entries from the read mark — instead of leaving
+    /// the list full on the desk the person was not at. A request still waiting on a person is
+    /// cleared from the list and nothing more, because a look does not answer it.
     public static func clearAll(at now: Date = Date()) {
         let current = all()
         guard !current.isEmpty else { return }
+        for sessionID in Set(current.lazy.filter { !$0.isBlocking }.map(\.sessionID)) {
+            SessionSeenStore.markSeen(sessionID)
+        }
         markCleared(current.map(\.identifier), at: now)
         write([])
     }

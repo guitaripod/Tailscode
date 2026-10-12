@@ -56,6 +56,10 @@ enum OllamaUsage {
     @discardableResult
     static func refresh() async -> OllamaCloud.Reading? {
         let key = await Task.detached(operation: { OllamaCredentials.token }).value
+        guard key != nil else {
+            lastReading = nil
+            return nil
+        }
         let reading = await OllamaCloud.refresh(key: key)
         if let reading { lastReading = reading }
         return reading ?? lastReading

@@ -99,8 +99,9 @@ enum MacMarkdown {
             if hashes <= 6, trimmed.dropFirst(hashes).first == " " {
                 let body = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
                 var style = Style()
-                style.size = hashes <= 2 ? size(.headline) : size(.panelTitle)
-                style.bold = true
+                let role: TypeRole = hashes <= 2 ? .headline : .panelTitle
+                style.size = size(role)
+                style.weight = Typography.spec(role).weight
                 return heading(inline(body, base: style))
             }
         }
@@ -449,7 +450,7 @@ enum MacMarkdown {
     private static func attributes(_ style: Style) -> [NSAttributedString.Key: Any] {
         let size = style.size * MacTheme.UIScale.factor
         let weight: NSFont.Weight =
-            if style.bold {
+            if style.bold, style.weight != .bold {
                 .semibold
             } else {
                 switch style.weight {

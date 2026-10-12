@@ -11,8 +11,14 @@ final class MainMenu: NSObject {
     private unowned let hub: MainWindowController
     private let modelMenu = NSMenu(title: Localized.text("Model"))
 
+    private var paneMenuHolders: [NSMenuItem] = []
+    private var keepLiveItem: NSMenuItem?
+    private var pauseItem: NSMenuItem?
+
     init(hub: MainWindowController) {
         self.hub = hub
+        super.init()
+        hub.onShortcutsReloaded = { [weak self] in self?.refreshPaneChords() }
     }
 
     func install() {
@@ -242,16 +248,43 @@ final class MainMenu: NSObject {
     /// An item wearing whatever single chord the shortcut set binds its action to, or none.
     private func bound(_ title: String, _ action: Selector, _ keyAction: KeyAction) -> NSMenuItem {
         let entry = item(title, action, "", [])
+        wearChord(entry, for: keyAction)
+        return entry
+    }
+
+    /// Puts whatever chord the shortcut set binds the action to on the item, or takes the old
+    /// one off when the binding is gone.
+    private func wearChord(_ entry: NSMenuItem, for keyAction: KeyAction) {
+        entry.keyEquivalent = ""
+        entry.keyEquivalentModifierMask = []
         guard let chord = hub.boundChord(for: keyAction),
             let key = Self.keyEquivalent(chord.keyval)
-        else { return entry }
+        else { return }
         var modifiers: NSEvent.ModifierFlags = []
         if chord.control { modifiers.insert(.control) }
         if chord.alt { modifiers.insert(.option) }
         if chord.shift { modifiers.insert(.shift) }
         entry.keyEquivalent = key
         entry.keyEquivalentModifierMask = modifiers
-        return entry
+    }
+
+    /// The menu bar is built once, so a shortcuts reload re-spells the View menu's pane verbs
+    /// and chords in place rather than leaving the old keys on them.
+    private func refreshPaneChords() {
+        let fresh = paneMenuItems()
+        for (old, replacement) in zip(paneMenuHolders, fresh) {
+            let submenu = replacement.submenu
+            replacement.submenu = nil
+            old.submenu = submenu
+        }
+        if let keepLiveItem { wearChord(keepLiveItem, for: .pinSplit) }
+        if let pauseItem { wearChord(pauseItem, for: .parkSplit) }
+    }
+
+    private func paneMenuItems() -> [NSMenuItem] {
+        PaneMenu.items(
+            keys: { [hub] in hub.shortcutKeys(for: $0) }, verb: #selector(paneVerb(_:)),
+            arrangement: #selector(paneArrangement(_:)), target: self)
     }
 
     private static func keyEquivalent(_ keyval: UInt32) -> String? {
@@ -311,17 +344,19 @@ final class MainMenu: NSObject {
                 [.command, .option]))
         menu.addItem(item(Localized.text("Swap Split"), #selector(exchangeSplit), ""))
         menu.addItem(item(Localized.text("Even Out Splits"), #selector(equalizeSplits), ""))
-        for holder in PaneMenu.items(
-            keys: { [hub] in hub.shortcutKeys(for: $0) }, verb: #selector(paneVerb(_:)),
-            arrangement: #selector(paneArrangement(_:)), target: self)
-        {
+        paneMenuHolders = paneMenuItems()
+        for holder in paneMenuHolders {
             menu.addItem(holder)
         }
         menu.addItem(item(Localized.text("Next Pane"), #selector(nextPane), "]", [.command, .option]))
         menu.addItem(
             item(Localized.text("Previous Pane"), #selector(previousPane), "[", [.command, .option]))
-        menu.addItem(bound(Localized.text("Keep Live"), #selector(keepPaneLive), .pinSplit))
-        menu.addItem(bound(Localized.text("Pause Pane"), #selector(pausePane), .parkSplit))
+        let keepLive = bound(Localized.text("Keep Live"), #selector(keepPaneLive), .pinSplit)
+        let pause = bound(Localized.text("Pause Pane"), #selector(pausePane), .parkSplit)
+        keepLiveItem = keepLive
+        pauseItem = pause
+        menu.addItem(keepLive)
+        menu.addItem(pause)
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Zoom In"), #selector(zoomIn), "+"))
         let unshifted = item(Localized.text("Zoom In"), #selector(zoomIn), "=")
@@ -531,7 +566,10 @@ final class MainMenu: NSObject {
     @objc private func fork() { run(.forkSelected) }
     @objc private func copySessionID() { run(.copySessionID) }
     @objc private func copyProjectPath() { run(.copyProjectPath) }
-    @objc private func deleteChat() { run(.deleteSelected) }
+    @objc private func deleteChat() {
+        if hub.window?.isVisible != true { hub.showWindow(nil) }
+        hub.deleteOpenChat()
+    }
     @objc private func toggleMarked() { run(.toggleMarked) }
     @objc private func markAll() { run(.toggleMarkAll) }
     @objc private func toggleSidebar() { run(.toggleSidebar) }
@@ -675,9 +713,23 @@ extension MainMenu: NSMenuItemValidation {
             #selector(send), #selector(stop), #selector(toggleSaved), #selector(toggleArchived),
             #selector(toggleUnread), #selector(rename), #selector(fork),
             #selector(copySessionID), #selector(copyProjectPath), #selector(deleteChat),
-            #selector(toggleMarked), #selector(find),
+            #selector(find),
         ]
+        if menuItem.action == #selector(toggleSidebar) {
+            menuItem.state = hub.sidebarShown ? .on : .off
+        }
+        #if !TAILSCODE_MAS
+            if menuItem.action == #selector(toggleTerminal) {
+                menuItem.state = hub.terminalShown ? .on : .off
+            }
+        #endif
+        if menuItem.action == #selector(toggleArchiveView) {
+            menuItem.state = hub.sidebar.showingArchive ? .on : .off
+        }
         guard let action = menuItem.action, chatVerbs.contains(action) else { return true }
+        if action == #selector(deleteChat), NSApp.keyWindow?.firstResponder is NSText {
+            return false
+        }
         if action == #selector(deleteChat), marked > 0 {
             menuItem.title = BulkChatCopy.button(.delete, count: marked) + "…"
             return true
@@ -685,6 +737,9 @@ extension MainMenu: NSMenuItemValidation {
         guard let entry = hub.currentEntry else {
             restTitle(menuItem)
             return false
+        }
+        if action == #selector(stop) {
+            return hub.transcript.currentState?.status == .running
         }
         switch Tag(rawValue: menuItem.tag) {
         case .save:
