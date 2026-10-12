@@ -707,6 +707,8 @@ struct TranscriptRow: Hashable {
         let row = PromptRow(messageID: messageID, text: nil, context: context)
         view.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(view)
+        row.setContentHuggingPriority(view.contentHuggingPriority(for: .horizontal), for: .horizontal)
+        row.flowWidth = view.flowWidth
         NSLayoutConstraint.activate([
             view.leadingAnchor.constraint(equalTo: row.leadingAnchor),
             view.trailingAnchor.constraint(equalTo: row.trailingAnchor),
