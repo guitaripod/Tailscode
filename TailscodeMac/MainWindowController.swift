@@ -1101,6 +1101,10 @@ final class MainWindowController: NSWindowController {
         proWindow?.present()
     }
 
+    func selectSettingsPage(named name: String) {
+        preferencesWindow?.select(pageNamed: name)
+    }
+
     func presentPreferences(typeSize: Bool = false, page: Int? = nil) {
         if preferencesWindow == nil {
             preferencesWindow = PreferencesWindow(
@@ -1114,6 +1118,15 @@ final class MainWindowController: NSWindowController {
                 onReloadShortcuts: { [weak self] in
                     self?.reloadShortcuts()
                 })
+            preferencesWindow?.actions = PreferencesWindow.Actions(
+                manageServers: { [weak self] in self?.presentServers() },
+                openUpdates: { [weak self] in self?.presentUpdates() },
+                openPro: { [weak self] in self?.presentPro() },
+                showCheatsheet: { [weak self] in self?.presentCheatsheet() },
+                isSidebarShown: { [weak self] in self?.sidebarShown ?? true },
+                setSidebarShown: { [weak self] shown in self?.setPane(.sidebar, shown: shown) },
+                isTerminalShown: { [weak self] in self?.terminalShown ?? false },
+                setTerminalShown: { [weak self] shown in self?.setPane(.terminal, shown: shown) })
         }
         if typeSize {
             preferencesWindow?.presentTypeSize()
@@ -2131,6 +2144,17 @@ final class MainWindowController: NSWindowController {
     /// shut collapses the item without asking this method, and a toggle that trusted the flag
     /// would answer the next press by doing nothing. Hiding the pane that holds the keyboard hands
     /// the keyboard to the transcript, because a region that is gone cannot receive a chord.
+    /// A pane put where Settings says it should be, which is a toggle only when it is not there.
+    private func setPane(_ pane: ClosablePane, shown: Bool) {
+        let isShown: Bool
+        switch pane {
+        case .sidebar: isShown = sidebarShown
+        case .terminal: isShown = terminalShown
+        case .files: return
+        }
+        if isShown != shown { togglePane(pane) }
+    }
+
     private func togglePane(_ pane: ClosablePane) {
         let item: NSSplitViewItem?
         switch pane {

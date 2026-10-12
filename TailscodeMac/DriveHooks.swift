@@ -154,6 +154,8 @@
                 say(
                     main?.splitPanes.drivePaneDrop(target: target, u: u, v: v, source: source)
                         ?? "PDROP no window")
+            case "settingspage":
+                main?.selectSettingsPage(named: argument)
             case "sopen":
                 main?.openSurface(named: argument.isEmpty ? "studio" : "studio:\(argument)")
             case "skey":

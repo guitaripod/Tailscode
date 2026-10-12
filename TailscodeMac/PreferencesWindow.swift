@@ -1,5 +1,8 @@
 import AppKit
+import CodingAgentKit
+import CodingAgentKitApple
 import TailscodeCore
+import UserNotifications
 
 /// The settings window: every knob the Mac app has, live — nothing here needs an OK, because the
 /// only honest way to pick a behavior is to watch it change. The keys are the same
@@ -19,6 +22,24 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     private let summonState = NSTextField(wrappingLabelWithString: "")
     private var summonRecorder: Any?
     private var hapticStop = -1
+    /// What Settings asks the window it belongs to, because the servers, the updates, the pro
+    /// unlock, the cheatsheet and the panes are the window's own and Settings only points at them.
+    struct Actions {
+        var manageServers: @MainActor () -> Void = {}
+        var openUpdates: @MainActor () -> Void = {}
+        var openPro: @MainActor () -> Void = {}
+        var showCheatsheet: @MainActor () -> Void = {}
+        var isSidebarShown: @MainActor () -> Bool = { true }
+        var setSidebarShown: @MainActor (Bool) -> Void = { _ in }
+        var isTerminalShown: @MainActor () -> Bool = { false }
+        var setTerminalShown: @MainActor (Bool) -> Void = { _ in }
+    }
+
+    var actions = Actions()
+    private let permissionState = NSTextField(wrappingLabelWithString: "")
+    private let permissionButton = NSButton(title: "", target: nil, action: nil)
+    private let cacheState = NSTextField(wrappingLabelWithString: "")
+    private let cacheButton = NSButton(title: "", target: nil, action: nil)
     private weak var typeSection: TypeSettingsView?
     private var tabs: NSTabViewController?
     private let watchAccounts = NSStackView()
@@ -45,11 +66,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         window.title = Localized.text("Settings")
         window.isReleasedWhenClosed = false
         window.toolbarStyle = .preference
-        window.contentMinSize = NSSize(width: 560, height: 420)
+        window.contentMinSize = NSSize(width: 620, height: 440)
         super.init(window: window)
         window.delegate = self
         window.center()
-        window.setFrameAutosaveName("TailscodeSettingsPanes")
+        window.setFrameAutosaveName("TailscodeSettingsPanes2")
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         #if !TAILSCODE_MAS
@@ -74,9 +95,9 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// The size the window opens at the first time: wide enough for six toolbar pages and tall
+    /// The size the window opens at the first time: wide enough for seven toolbar pages and tall
     /// enough that most pages are read without scrolling.
-    private static let openSize = NSSize(width: 600, height: 640)
+    private static let openSize = NSSize(width: 660, height: 680)
 
     /// Every row reads its value from a store as it is built, and this window is kept for the life
     /// of the app — so the pages are made at each presentation rather than once. A demo world
@@ -91,6 +112,13 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     /// `keyboard` or `advanced` — for a launch argument that wants to look at one.
     static func page(named name: String) -> Int? {
         Pane.allCases.firstIndex { String(describing: $0) == name }
+    }
+
+    /// Switches the open window to a page the way a click on its toolbar does, for a check that
+    /// wants to see what a person sees after the first click rather than at presentation.
+    func select(pageNamed name: String) {
+        guard let index = Self.page(named: name) else { return }
+        tabs?.selectedTabViewItemIndex = index
     }
 
     /// Opens on the type controls, for a menu item that is about nothing else: they are a section
@@ -115,7 +143,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         window.contentViewController = controller
         if wasShown {
             window.setFrame(frame, display: true)
-        } else if !window.setFrameUsingName("TailscodeSettingsPanes") {
+        } else if !window.setFrameUsingName("TailscodeSettingsPanes2") {
             window.setContentSize(Self.openSize)
             window.center()
         }
@@ -174,6 +202,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     /// One page of Settings: a name and a symbol for the toolbar, and what it holds.
     private enum Pane: CaseIterable {
+        case general
         case appearance
         case conversation
         case notifications
@@ -183,6 +212,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
         var title: String {
             switch self {
+            case .general: return Localized.text("General")
             case .appearance: return Localized.text("Appearance")
             case .conversation: return Localized.text("Conversation")
             case .notifications: return Localized.text("Notifications")
@@ -194,6 +224,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
         var symbol: String {
             switch self {
+            case .general: return "gearshape"
             case .appearance: return "paintbrush"
             case .conversation: return "text.bubble"
             case .notifications: return "bell"
@@ -213,7 +244,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         tabs.tabStyle = .toolbar
         for pane in Pane.allCases {
             let controller = NSViewController()
-            controller.view = content(of: pane)
+            controller.view = held(content(of: pane))
             controller.title = pane.title
             let item = NSTabViewItem(viewController: controller)
             item.label = pane.title
@@ -224,8 +255,27 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         return tabs
     }
 
+    /// A page is a scroll view that lays itself out by constraints, and a tab controller sizes a
+    /// page by its frame — which a view that opts out of autoresizing never gets, so every page
+    /// but the one open at presentation came up with no size and showed nothing. The page stands
+    /// in a plain view the controller can size, pinned to all four edges of it.
+    private func held(_ page: NSView) -> NSView {
+        let container = NSView(frame: NSRect(origin: .zero, size: Self.openSize))
+        container.autoresizingMask = [.width, .height]
+        page.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(page)
+        NSLayoutConstraint.activate([
+            page.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            page.topAnchor.constraint(equalTo: container.topAnchor),
+            page.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        return container
+    }
+
     private func content(of pane: Pane) -> NSView {
         switch pane {
+        case .general: return generalPane()
         case .appearance: return appearancePane()
         case .conversation: return conversationPane()
         case .notifications: return notificationsPane()
@@ -256,7 +306,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         return MacDialogs.scrollColumn(holding: column)
     }
 
-    private func appearancePane() -> NSView {
+    private func generalPane() -> NSView {
         let column = newColumn()
         if ServerDirectory.shared.isDemoMode {
             column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Demo")))
@@ -271,6 +321,77 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             gap(column)
         }
 
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Servers")))
+        for row in serverRows() { column.addArrangedSubview(row) }
+        let manage = NSButton(
+            title: Localized.text("Manage…"), target: self, action: #selector(manageServers))
+        column.addArrangedSubview(
+            buttonRow(
+                title: Localized.text("Your machines"),
+                subtitle: Localized.text(
+                    "Add a machine, change an address or a password, or remove one"),
+                button: manage))
+
+        gap(column)
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("About")))
+        column.addArrangedSubview(
+            infoRow(title: Localized.text("Version"), detail: Self.versionLine))
+        let updates = NSButton(
+            title: Localized.text("Open"), target: self, action: #selector(openUpdates))
+        column.addArrangedSubview(
+            buttonRow(
+                title: Localized.text("Update Center"),
+                subtitle: Localized.text(
+                    "This app and every server it talks to: what each runs and what it could run"),
+                button: updates))
+        #if TAILSCODE_MAS
+            let pro = NSButton(
+                title: Localized.text("Tailscode Pro…"), target: self, action: #selector(openPro))
+            column.addArrangedSubview(
+                buttonRow(
+                    title: Localized.text("Tailscode Pro"),
+                    subtitle: MacProStore.shared.isPro
+                        ? Localized.text("Unlocked — thank you")
+                        : Localized.text("Unlimited servers, and delegation to cheaper models"),
+                    button: pro))
+        #endif
+        return scrolled(column)
+    }
+
+    private static var versionLine: String {
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return build.map { "\(MacCLI.version) (\($0))" } ?? MacCLI.version
+    }
+
+    /// One row per machine the app talks to, saying when it last answered — a name and an address
+    /// alone cannot tell a machine that is up from one that has been silent since yesterday.
+    private func serverRows() -> [NSView] {
+        let profiles = ServerDirectory.shared.profiles
+        guard !profiles.isEmpty else {
+            return [
+                indented(
+                    MacDialogs.detailLabel(
+                        Localized.text("No servers yet. Add the machine your agents run on."),
+                        wraps: true), by: 0)
+            ]
+        }
+        return profiles.map { profile in
+            infoRow(
+                title: ServerLabel.display(profile),
+                detail: "\(ServerLabel.address(profile)) · \(serverState(profile))")
+        }
+    }
+
+    private func serverState(_ profile: ConnectionProfile) -> String {
+        guard !profile.id.hasPrefix(DemoWorld.profilePrefix) else { return Localized.text("Demo") }
+        guard let heard = ServerDirectory.shared.lastHeard[ServerLabel.display(profile)] else {
+            return Localized.text("Not heard from yet")
+        }
+        return Localized.text("Answered %@ ago", SessionRowModel.age(of: heard))
+    }
+
+    private func appearancePane() -> NSView {
+        let column = newColumn()
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Appearance")))
         column.addArrangedSubview(
             popUpRow(
@@ -297,6 +418,23 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         let type = TypeSettingsView()
         typeSection = type
         column.addArrangedSubview(type)
+
+        gap(column)
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Layout")))
+        column.addArrangedSubview(
+            switchRow(
+                title: Localized.text("Chat list"),
+                subtitle: Localized.text(
+                    "The conversations beside the one you are in; drag its edge to size it, and the size is remembered"),
+                value: actions.isSidebarShown(), action: #selector(sidebarShownChanged)))
+        #if !TAILSCODE_MAS
+            column.addArrangedSubview(
+                switchRow(
+                    title: Localized.text("Terminal"),
+                    subtitle: Localized.text(
+                        "A shell under the conversation, in the project the chat is working in"),
+                    value: actions.isTerminalShown(), action: #selector(terminalShownChanged)))
+        #endif
         return scrolled(column)
     }
 
@@ -357,6 +495,14 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     private func notificationsPane() -> NSView {
         let column = newColumn()
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Notifications")))
+        permissionButton.title = Localized.text("Open System Settings…")
+        permissionButton.target = self
+        permissionButton.action = #selector(openNotificationSettings)
+        column.addArrangedSubview(
+            chordRow(
+                title: Localized.text("Allowed by macOS"), button: permissionButton,
+                detail: permissionState, monospaced: false))
+        renderNotificationPermission()
         column.addArrangedSubview(
             switchRow(
                 title: Localized.text("A turn finishes"),
@@ -432,8 +578,14 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     private func keyboardPane() -> NSView {
         let column = newColumn()
-        gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Keyboard")))
+        let cheatsheet = NSButton(
+            title: Localized.text("Show"), target: self, action: #selector(showCheatsheet))
+        column.addArrangedSubview(
+            buttonRow(
+                title: Localized.text("Shortcut cheatsheet"),
+                subtitle: Localized.text("Every shortcut, as it is bound right now"),
+                button: cheatsheet))
         let edit = NSButton(
             title: Localized.text("Edit"), target: self, action: #selector(editShortcuts))
         column.addArrangedSubview(
@@ -468,7 +620,6 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     private func advancedPane() -> NSView {
         let column = newColumn()
-        gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Diagnostics")))
         let copyFlight = NSButton(
             title: Localized.text("Copy"), target: self, action: #selector(copyDiagnostics))
@@ -476,6 +627,24 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             buttonRow(
                 title: Localized.text("Copy diagnostics"), subtitle: FlightRing.defaultURL().path,
                 button: copyFlight))
+        let reveal = NSButton(
+            title: Localized.text("Show in Finder"), target: self, action: #selector(revealLogs))
+        column.addArrangedSubview(
+            buttonRow(
+                title: Localized.text("Logs"),
+                subtitle: Localized.text("The flight recorder and the app's own log, for a bug report"),
+                button: reveal))
+
+        gap(column)
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Storage")))
+        cacheButton.title = Localized.text("Clear")
+        cacheButton.target = self
+        cacheButton.action = #selector(clearPictureCache)
+        column.addArrangedSubview(
+            chordRow(
+                title: Localized.text("Cached pictures"), button: cacheButton, detail: cacheState,
+                monospaced: false))
+        renderCacheState()
 
         gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Alpha")))
@@ -500,6 +669,64 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     @objc private func presenceOrbChanged(_ sender: NSButton) {
         PresenceOrbSetting.setEnabled(sender.state == .on)
+    }
+
+    @objc private func manageServers() { actions.manageServers() }
+    @objc private func openUpdates() { actions.openUpdates() }
+    @objc private func openPro() { actions.openPro() }
+    @objc private func showCheatsheet() { actions.showCheatsheet() }
+
+    @objc private func sidebarShownChanged(_ sender: NSButton) {
+        actions.setSidebarShown(sender.state == .on)
+    }
+
+    @objc private func terminalShownChanged(_ sender: NSButton) {
+        actions.setTerminalShown(sender.state == .on)
+    }
+
+    /// Whether the system will let a notice be raised at all, said where the switches that ask for
+    /// notices are: three switches that all read "on" over a permission that is off look like a
+    /// fault in the app rather than a decision in System Settings.
+    private func renderNotificationPermission() {
+        Task { [weak self] in
+            let status = await UNUserNotificationCenter.current().notificationSettings()
+                .authorizationStatus
+            let words: String
+            switch status {
+            case .authorized, .provisional, .ephemeral:
+                words = Localized.text("Allowed — banners and sounds are on")
+            case .denied:
+                words = Localized.text(
+                    "Turned off in System Settings — nothing can be raised until it is on")
+            default:
+                words = Localized.text("Not asked yet — the Test button below asks")
+            }
+            self?.permissionState.stringValue = words
+        }
+    }
+
+    @objc private func openNotificationSettings() {
+        guard
+            let url = URL(
+                string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+        else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func revealLogs() {
+        NSWorkspace.shared.activateFileViewerSelecting([FlightRing.defaultURL()])
+    }
+
+    private func renderCacheState() {
+        let size = ByteCountFormatter.string(
+            fromByteCount: Int64(ImageDisk.bytesUsed()), countStyle: .file)
+        cacheState.stringValue = Localized.text("%@ kept so chats open faster", size)
+        cacheButton.isEnabled = ImageDisk.bytesUsed() > 0
+    }
+
+    @objc private func clearPictureCache() {
+        ImageDisk.clear()
+        renderCacheState()
     }
 
     @objc private func leaveDemo() {
@@ -891,7 +1118,9 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     /// The chord row, whose detail line is the only place this app can say what the machine did
     /// with the key — a global shortcut that was refused looks exactly like one that works from
     /// everywhere inside the app.
-    private func chordRow(title: String, button: NSButton, detail: NSTextField) -> NSView {
+    private func chordRow(
+        title: String, button: NSButton, detail: NSTextField, monospaced: Bool = true
+    ) -> NSView {
         let label = NSTextField(labelWithString: title)
         label.font = MacTheme.Ramp.font(.panelLabel)
         button.bezelStyle = .rounded
@@ -901,7 +1130,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         let row = NSStackView(views: [label, filler, button])
         row.orientation = .horizontal
         row.spacing = MacTheme.Spacing.s
-        detail.font = MacTheme.Ramp.font(.rowDetail)
+        detail.font = MacTheme.Ramp.font(monospaced ? .rowDetail : .panelFootnote)
         detail.textColor = MacTheme.Color.secondaryLabel
         detail.lineBreakMode = .byWordWrapping
         detail.maximumNumberOfLines = 0
@@ -975,6 +1204,19 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         if let summonRecorder { NSEvent.removeMonitor(summonRecorder) }
         summonRecorder = nil
         renderSummon()
+    }
+
+    /// A fact with nothing to press: its name, and what it says beneath.
+    private func infoRow(title: String, detail: String) -> NSView {
+        let label = NSTextField(labelWithString: title)
+        label.font = MacTheme.Ramp.font(.panelLabel)
+        let text = MacDialogs.detailLabel(detail, wraps: true)
+        let column = NSStackView(views: [label, text])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        text.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        return column
     }
 
     private func buttonRow(title: String, subtitle: String, button: NSButton) -> NSView {
