@@ -394,7 +394,7 @@ enum ToolRowView {
                     Localized.text("… %@ more lines", "\(lines.count - shown.count)"),
                     font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
-        return GroundView(around: block, cornerRadius: 8, fill: MacTheme.Color.codeBackground)
+        return GroundView(around: block, cornerRadius: CGFloat(ChatChrome.Radius.control), fill: MacTheme.Color.codeBackground)
     }
 
     /// The row's mark: still for work that is over, turning for work still out on the machine —
@@ -585,7 +585,7 @@ enum SubagentRowView {
             body.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
             body.translatesAutoresizingMaskIntoConstraints = false
             let card = GroundView(
-                around: body, cornerRadius: MacTheme.Radius.control,
+                around: body, cornerRadius: CGFloat(ChatChrome.Radius.card),
                 fill: MacTheme.Color.subagentBackground)
             guard let context else { return RowKit.inset(card, leading: 26) }
             if let rows = context.subagentRows[call.id] {
@@ -646,5 +646,73 @@ enum SubagentRowView {
             let label = header.arrangedSubviews.dropFirst(3).first as? NSTextField
         else { return "" }
         return label.stringValue
+    }
+}
+
+
+/// A fan-out too wide to read card by card, behind one row: the count in the name's voice, how
+/// many are still working in the quiet one, and the cards themselves inside when it is opened. The
+/// agents are counted by `SubagentPresence`, so a finished fan-out never claims to be working
+/// because a sidecar's record says so.
+enum SubagentGroupView {
+    @MainActor
+    static func live(in fanout: SubagentFanout, context: TranscriptContext) -> Int {
+        fanout.members.count { member in
+            guard let agent = context.agentFacts[member.call.id] else {
+                return member.call.status == .running
+            }
+            return SubagentPresence(agents: [agent], hold: AgentHold(member.call)).hasLive
+        }
+    }
+
+    static func title(total: Int) -> String { Localized.text("%lld agents", total) }
+
+    static func detail(live: Int, expanded: Bool) -> String {
+        if expanded { return Localized.text("tap to collapse") }
+        return live > 0
+            ? Localized.text("%lld working · tap to see them all", live)
+            : Localized.text("tap to see them all")
+    }
+
+    @MainActor
+    static func make(_ fanout: SubagentFanout, key: String, context: TranscriptContext) -> NSView {
+        let working = live(in: fanout, context: context)
+        let header = NSStackView()
+        header.orientation = .horizontal
+        header.alignment = .firstBaseline
+        header.spacing = MacTheme.Spacing.s
+        let expanded = context.isExpanded(key)
+        header.addArrangedSubview(
+            ToolRowView.glyphLabel(working > 0 ? .running : .completed, in: context))
+        let name = title(total: fanout.members.count)
+        let word = RowKit.label(
+            "\(ToolRowView.disclosureGlyph(expanded)) \(name)",
+            font: MacTheme.Ramp.font(.toolName), color: MacTheme.Color.label)
+        header.addArrangedSubview(word)
+        let words = ToolRowView.detailLabel(detail(live: working, expanded: expanded))
+        header.addArrangedSubview(words)
+
+        let toggle = context.onToggle
+        let reveal = context.revealRow
+        return DisclosureRow(
+            header: header, expanded: expanded,
+            onToggle: { open, row in
+                word.stringValue = "\(ToolRowView.disclosureGlyph(open)) \(name)"
+                words.stringValue = detail(live: working, expanded: open)
+                toggle?(key, open)
+                if open { reveal?(row) }
+            }
+        ) { [weak context] in
+            let body = FillingStack()
+            body.spacing = MacTheme.Spacing.xs
+            body.translatesAutoresizingMaskIntoConstraints = false
+            guard let context else { return body }
+            for member in fanout.members {
+                body.addArrangedSubview(
+                    TranscriptRow(key: member.key, kind: .subagent(member.call))
+                        .makeView(context: context))
+            }
+            return RowKit.inset(body, leading: 14)
+        }
     }
 }

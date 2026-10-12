@@ -78,7 +78,7 @@ enum ParityManifest {
         case .answerlessTurn: return .implemented("answerless")
         case .interruptedTurn: return .implemented("interruptedTurn")
         case .authBanner: return .implemented("authBanner")
-        case .followBottom: return .implemented("jumpButton")
+        case .followBottom: return .implemented("jumpChip")
         case .transcriptFind: return .implemented("FindBar")
         case .userEcho: return .implemented("PendingSendRowView")
         case .freshCanvas: return .implemented("riseFreshCanvas")

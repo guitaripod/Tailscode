@@ -7,8 +7,11 @@ import TailscodeCore
 /// states of the conversation, not messages in it — content in the canvas, never glass.
 @MainActor
 enum PendingCards {
+    /// - Parameter keys: the key each answer is on in the live shortcut set, by the registry's id, so
+    ///   a button names the key the person bound and not the one the app shipped with.
     static func permission(
-        _ request: PermissionRequest, respond: @escaping (PermissionDecision) -> Void
+        _ request: PermissionRequest, keys: (String) -> String? = { _ in nil },
+        respond: @escaping (PermissionDecision) -> Void
     ) -> NSView {
         let card = cardColumn()
 
@@ -20,10 +23,11 @@ enum PendingCards {
         heading.addArrangedSubview(
             RowKit.label("⏸", font: MacTheme.Ramp.font(.code), color: MacTheme.Color.warning))
         let what = request.title ?? request.toolName ?? Localized.text("a tool")
-        heading.addArrangedSubview(
-            RowKit.wrapping(
-                Localized.text("Allow %@?", what), font: MacTheme.Ramp.font(.cardTitle),
-                color: MacTheme.Color.label))
+        let title = RowKit.wrapping(
+            Localized.text("Allow %@?", what), font: MacTheme.Ramp.font(.cardTitle),
+            color: MacTheme.Color.label)
+        title.setAccessibilityRole(Self.heading)
+        heading.addArrangedSubview(title)
         card.addArrangedSubview(heading)
 
         if let tool = request.toolName, request.title != nil, tool != request.title {
@@ -32,13 +36,19 @@ enum PendingCards {
                     tool, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel))
         }
 
-        let once = RowKit.ActionButton(title: Localized.text("Allow once · y")) { respond(.once) }
+        let once = RowKit.ActionButton(
+            title: Self.hinted(Localized.text("Allow once"), key: keys("approve.once"))
+        ) { respond(.once) }
         once.bezelStyle = .rounded
         once.keyEquivalent = ""
         once.bezelColor = MacTheme.Color.accent
-        let always = RowKit.ActionButton(title: Localized.text("Always · a")) { respond(.always) }
+        let always = RowKit.ActionButton(
+            title: Self.hinted(Localized.text("Always allow"), key: keys("approve.always"))
+        ) { respond(.always) }
         always.bezelStyle = .rounded
-        let deny = RowKit.ActionButton(title: Localized.text("Deny · n")) { respond(.reject) }
+        let deny = RowKit.ActionButton(
+            title: Self.hinted(Localized.text("Deny"), key: keys("approve.deny"))
+        ) { respond(.reject) }
         deny.bezelStyle = .rounded
         deny.hasDestructiveAction = true
         for button in [once, always, deny] { button.font = MacTheme.Ramp.font(.option) }
@@ -47,7 +57,26 @@ enum PendingCards {
         buttons.orientation = .horizontal
         buttons.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(buttons)
-        return grounded(card)
+        let spoken = "\(ActivityKind.needsApproval.spoken). \(Localized.text("Allow %@?", what))"
+        return Self.group(grounded(card), spoken: spoken)
+    }
+
+    /// A button's own words and, after them, the key it is on — or the words alone when the
+    /// answer has no key.
+    private static func hinted(_ title: String, key: String?) -> String {
+        guard let key, !key.isEmpty else { return title }
+        return "\(title) · \(key)"
+    }
+
+    private static let heading = NSAccessibility.Role(rawValue: "AXHeading")
+
+    /// A card is one stop for a screen reader that says what the turn is waiting for before it
+    /// says what is on the card.
+    private static func group(_ card: NSView, spoken: String) -> NSView {
+        card.setAccessibilityElement(true)
+        card.setAccessibilityRole(.group)
+        card.setAccessibilityLabel(spoken)
+        return card
     }
 
     /// One question item at a time, which keeps the single-select fast path a single click. The
@@ -76,9 +105,10 @@ enum PendingCards {
                         item.header.uppercased(), font: MacTheme.Ramp.font(.panelFootnote),
                         color: MacTheme.Color.tertiaryLabel))
             }
-            section.addArrangedSubview(
-                RowKit.wrapping(
-                    item.question, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label))
+            let asked = RowKit.wrapping(
+                item.question, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)
+            asked.setAccessibilityRole(Self.heading)
+            section.addArrangedSubview(asked)
 
             let single = !item.multiple && request.questions.count == 1
             for option in item.options {
@@ -127,7 +157,9 @@ enum PendingCards {
             card.addArrangedSubview(row)
         }
         card.retainedCollector = collector
-        return grounded(card)
+        let spoken = ([ActivityKind.needsAnswer.spoken] + request.questions.map(\.question))
+            .joined(separator: ". ")
+        return Self.group(grounded(card), spoken: spoken)
     }
 
     /// The minutes-long summarize as a card docked where the turn would be: the symbol says work,

@@ -33,6 +33,9 @@ final class TranscriptContext {
     /// spinner and elapsed reading in one frame agrees.
     var workflowNow: Date = Date()
     var onToggle: ((String, Bool) -> Void)?
+    /// The words of the answer a row belongs to, onto the pasteboard — what the hover capsule's
+    /// Copy does, reachable from the row's accessibility actions.
+    var copyAnswer: ((String) -> Void)?
     /// Called with a just-opened disclosure row: the transcript scrolls the minimum needed to
     /// show the opened body, never past the point where the clicked header would leave the top.
     var revealRow: ((NSView) -> Void)?
@@ -90,6 +93,34 @@ final class TranscriptContext {
     func isExpanded(_ key: String) -> Bool { expanded.reads(key) }
 }
 
+/// The agents one message spawned, when there are more than a transcript reads card by card. Each
+/// member keeps the key its own row would have had, so what a reader opened inside it is still
+/// open after the fan-out is grouped, and a group is the same row whether it is open or not.
+struct SubagentFanout: Hashable {
+    struct Member: Hashable {
+        let key: String
+        let call: ToolCall
+    }
+
+    let id: String
+    let members: [Member]
+
+    /// Beyond this many siblings the agents collapse behind one row, on every client.
+    static let inlineLimit = 3
+}
+
+extension TranscriptRow.Kind {
+    /// The calls this row spawned an agent for, which is what a fact about an agent finds its row
+    /// by: one for a card, all of them for a group.
+    var spawnedCalls: [ToolCall] {
+        switch self {
+        case .subagent(let call): return [call]
+        case .subagentGroup(let fanout): return fanout.members.map(\.call)
+        default: return []
+        }
+    }
+}
+
 extension TranscriptRow {
     /// Whether this row draws a call the record still says is running — the rows whose marks have
     /// to be redrawn the moment the turn ends, because nothing about their value changes when it
@@ -98,6 +129,8 @@ extension TranscriptRow {
         switch kind {
         case .tool(let call), .subagent(let call), .workflow(let call):
             return call.status == .running
+        case .subagentGroup(let fanout):
+            return fanout.members.contains { $0.call.status == .running }
         case .run(let steps):
             return steps.contains {
                 if case .tool(_, let call) = $0 { return call.status == .running }
@@ -224,6 +257,9 @@ struct TranscriptRow: Hashable {
         case tool(ToolCall)
         case run([ActivityStep])
         case subagent(ToolCall)
+        /// More agents than a transcript reads card by card, spawned by one message: they stand
+        /// behind one disclosure row at the place the first of them was spawned.
+        case subagentGroup(SubagentFanout)
         case workflow(ToolCall)
         case file(FileReference, mine: Bool, messageID: String)
         /// A board of design alternatives the agent wrote, standing where the manifest that made
@@ -232,6 +268,9 @@ struct TranscriptRow: Hashable {
         case taskBoard(TaskBoard)
         case compaction(Compaction)
         case answerless(AnswerlessTurn)
+        /// A turn the server ended with an error: the card stands after the turn's own rows, quoting
+        /// what the server said and offering the same words again.
+        case failedTurn(FailedTurn)
         /// What the answer above it took, drawn only where the reader asked for it.
         case responseStats(ResponseStats)
         /// Written, not sent: a prompt waiting behind the turn that is running.
@@ -412,9 +451,13 @@ struct TranscriptRow: Hashable {
             }
         }
         closeRun(trailing: true)
+        rows = Self.gatheringAgents(rows, messageID: message.id)
         if let answerless = AnswerlessTurnReading.read(message, prompt: prompt) {
             rows.append(
                 TranscriptRow(key: "\(message.id):answerless", kind: .answerless(answerless)))
+        }
+        if let failed = FailedTurnReading.read(message, prompt: prompt) {
+            rows.append(TranscriptRow(key: "\(message.id):failed", kind: .failedTurn(failed)))
         }
         if ResponseStatsSetting.isEnabled, !rows.isEmpty,
             let stats = ResponseStats(turn: message, promptedAt: prompt?.createdAt)
@@ -422,6 +465,32 @@ struct TranscriptRow: Hashable {
             rows.append(TranscriptRow(key: "\(message.id):stats", kind: .responseStats(stats)))
         }
         return (rows, trailingRail)
+    }
+
+    /// A message's agents behind one row when there are more of them than the limit, standing where
+    /// the first was spawned; the rows between them keep their places.
+    static func gatheringAgents(_ rows: [TranscriptRow], messageID: String) -> [TranscriptRow] {
+        let members = rows.compactMap { row -> SubagentFanout.Member? in
+            guard case .subagent(let call) = row.kind else { return nil }
+            return SubagentFanout.Member(key: row.key, call: call)
+        }
+        guard members.count > SubagentFanout.inlineLimit else { return rows }
+        let id = "agents:\(messageID)"
+        var gathered: [TranscriptRow] = []
+        var placed = false
+        for row in rows {
+            guard case .subagent = row.kind else {
+                gathered.append(row)
+                continue
+            }
+            if !placed {
+                gathered.append(
+                    TranscriptRow(
+                        key: id, kind: .subagentGroup(SubagentFanout(id: id, members: members))))
+                placed = true
+            }
+        }
+        return gathered
     }
 
     /// The prose between two pieces of furniture, gathered as a message is folded: where its last
@@ -566,6 +635,8 @@ struct TranscriptRow: Hashable {
             return draft.reading
         case .tool(let call), .subagent(let call), .workflow(let call):
             return Self.searchText(for: call)
+        case .subagentGroup(let fanout):
+            return fanout.members.map { Self.searchText(for: $0.call) }.joined(separator: " ")
         case .run(let steps):
             return steps.map { step -> String in
                 switch step {
@@ -584,6 +655,8 @@ struct TranscriptRow: Hashable {
             return "\(reading.title) \(reading.detail)"
         case .answerless(let turn):
             return "\(turn.title) \(turn.detail)"
+        case .failedTurn(let turn):
+            return "\(turn.title) \(turn.detail) \(turn.reason)"
         case .responseStats(let stats):
             return stats.spoken
         case .queuedSend(let send, _, _):
@@ -618,7 +691,16 @@ struct TranscriptRow: Hashable {
                 "⌧ " + Localized.text("interrupted"), font: MacTheme.Ramp.font(.interruption),
                 color: MacTheme.Color.tertiaryLabel)
         case .agentProse(_, let rendered):
-            return RowKit.attributedLabel(rendered)
+            let label = RowKit.attributedLabel(rendered)
+            let rowKey = key
+            (label as? RowKit.ProseLabel)?.verbs = { [weak context] in
+                [
+                    RowKit.verb(Localized.text("Copy")) {
+                        context?.copyAnswer?(rowKey)
+                    }
+                ]
+            }
+            return label
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body, key: key, context: context)
         case .linkRail(let urls):
@@ -637,6 +719,8 @@ struct TranscriptRow: Hashable {
             return WorkflowCardView.make(call, key: key, context: context)
         case .subagent(let call):
             return SubagentRowView.make(call, key: key, context: context)
+        case .subagentGroup(let fanout):
+            return SubagentGroupView.make(fanout, key: key, context: context)
         case .file(let reference, let mine, let messageID):
             let view = ImageRowView.make(reference, mine: mine, key: key, context: context)
             guard mine else { return view }
@@ -649,6 +733,8 @@ struct TranscriptRow: Hashable {
             return Self.seam(compaction, key: key, context: context)
         case .answerless(let turn):
             return Self.answerless(turn, context: context)
+        case .failedTurn(let turn):
+            return Self.failedTurn(turn, context: context)
         case .responseStats(let stats):
             return Self.responseStats(stats)
         case .queuedSend(let send, let position, let total):
@@ -666,7 +752,7 @@ struct TranscriptRow: Hashable {
         case .revertPending:
             return Self.revertPending()
         case .turnBreak:
-            return RowKit.hairline(verticalPadding: MacTheme.Spacing.m)
+            return RowKit.hairline(verticalPadding: ChatLayout.turnBreakPadding)
         }
     }
 
@@ -681,6 +767,19 @@ struct TranscriptRow: Hashable {
             MacMarkdown.plainWithLinks(
                 text, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label))
         let row = PromptRow(messageID: messageID, text: text, context: context)
+        (label as? RowKit.ProseLabel)?.verbs = { [weak context] in
+            var verbs = [
+                RowKit.verb(Localized.text("Copy")) {
+                    RowKit.copyToClipboard(text)
+                    context?.toast?(Localized.text("Copied"))
+                }
+            ]
+            if context?.offersUndo?(messageID) == true {
+                verbs.append(
+                    RowKit.verb(RevertReading.actionTitle) { context?.confirmUndo?(messageID) })
+            }
+            return verbs
+        }
         row.addSubview(rule)
         row.addSubview(label)
         NSLayoutConstraint.activate([
@@ -850,14 +949,16 @@ struct TranscriptRow: Hashable {
         column.alignment = .leading
         column.spacing = 2
         column.translatesAutoresizingMaskIntoConstraints = false
-        column.addArrangedSubview(
-            RowKit.wrapping(
-                "\(SendQueueReading.glyph) \(SendQueueReading.rowTitle(send))",
-                font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.secondaryLabel))
+        let title = RowKit.wrapping(
+            "", font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.secondaryLabel)
+        title.attributedStringValue = RowKit.symbolText(
+            SendQueueReading.symbol, SendQueueReading.rowTitle(send),
+            font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.secondaryLabel)
+        column.addArrangedSubview(title)
         column.addArrangedSubview(
             RowKit.label(
                 SendQueueReading.hint, font: MacTheme.Ramp.font(.hint),
-                color: MacTheme.Color.tertiaryLabel))
+                color: MacTheme.Color.secondaryLabel))
         column.setAccessibilityElement(true)
         column.setAccessibilityRole(.group)
         column.setAccessibilityLabel(SendQueueReading.spoken(send, position: position, of: total))
@@ -967,6 +1068,27 @@ struct TranscriptRow: Hashable {
         card.setAccessibilityElement(true)
         card.setAccessibilityRole(.group)
         card.setAccessibilityLabel(turn.spoken)
+        guard turn.offersRemedy else { return card }
+        let askAgain = context.askAgain
+        let words = turn.prompt
+        card.addArrangedSubview(RowKit.linkButton(turn.action) { askAgain?(words) })
+        return card
+    }
+
+    /// A turn that stopped with an error. The server's own words are quoted in the code role rather
+    /// than set as prose, because a failure that reads like an answer is skimmed past, and the one
+    /// action sends the question that started the turn again.
+    @MainActor
+    private static func failedTurn(_ turn: FailedTurn, context: TranscriptContext) -> NSView {
+        let card = RowKit.card(
+            symbol: FailedTurn.symbol, title: turn.title, detail: turn.detail,
+            tint: FailedTurn.tone.color)
+        card.setAccessibilityElement(true)
+        card.setAccessibilityRole(.group)
+        card.setAccessibilityLabel(turn.spoken)
+        card.addArrangedSubview(
+            RowKit.wrapping(
+                turn.reason, font: MacTheme.Ramp.font(.code), color: MacTheme.Color.secondaryLabel))
         guard turn.offersRemedy else { return card }
         let askAgain = context.askAgain
         let words = turn.prompt
@@ -1297,6 +1419,10 @@ enum RowKit {
     final class ProseLabel: NSTextField {
         /// Set while a repaint changes colours and nothing else.
         var holdsMeasure = false
+        /// What a message offers a hand resting on it — Copy, Undo — for a reader who has no hand
+        /// to rest: asked for when the row is read to them, so an undo that stopped being possible
+        /// is not still on the list.
+        var verbs: (() -> [NSAccessibilityCustomAction])?
         private var linkFrames: (width: CGFloat, links: [(rect: NSRect, target: URL?)])?
         /// The link a press landed on, opened only if the release lands on it too, so a press
         /// dragged away is taken back.
@@ -1321,6 +1447,10 @@ enum RowKit {
         override func resetCursorRects() {
             super.resetCursorRects()
             for link in links() { addCursorRect(link.rect, cursor: .pointingHand) }
+        }
+
+        override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+            verbs?() ?? super.accessibilityCustomActions()
         }
 
         /// The link drawn under a point in this label's own coordinates, if there is one.
@@ -1727,6 +1857,31 @@ enum RowKit {
         toggle.font = MacTheme.Ramp.font(.codeAction)
         column.addArrangedSubview(toggle)
         return column
+    }
+
+    /// A line that begins with an SF Symbol drawn at the line's own size and ink, where it used to
+    /// begin with an emoji the system would have painted in colours of its own.
+    static func symbolText(
+        _ symbol: String, _ text: String, font: NSFont, color: NSColor
+    ) -> NSAttributedString {
+        let line = NSMutableAttributedString()
+        let attachment = NSTextAttachment()
+        let configuration = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
+        attachment.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration.applying(.init(paletteColors: [color])))
+        line.append(NSAttributedString(attachment: attachment))
+        line.append(NSAttributedString(string: " " + text))
+        line.addAttributes(
+            [.font: font, .foregroundColor: color], range: NSRange(location: 0, length: line.length))
+        return line
+    }
+
+    /// One of a message's verbs as VoiceOver lists it.
+    static func verb(_ title: String, run: @escaping () -> Void) -> NSAccessibilityCustomAction {
+        NSAccessibilityCustomAction(name: title) {
+            run()
+            return true
+        }
     }
 
     static func copyToClipboard(_ text: String) {

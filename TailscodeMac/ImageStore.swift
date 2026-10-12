@@ -173,8 +173,12 @@ enum ImageRowView {
             ?? "file"
         let isImage = (reference.mime ?? "").hasPrefix("image/")
         guard isImage, !(context.isImageRefused?(key) ?? false) else {
-            return RowKit.label(
-                "📎 \(name)", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
+            let caption = RowKit.label(
+                "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
+            caption.attributedStringValue = RowKit.symbolText(
+                "paperclip", name, font: MacTheme.Ramp.font(.panelFootnote),
+                color: MacTheme.Color.secondaryLabel)
+            return caption
         }
 
         if let entry = ImageStore.shared.entry(forKey: key) {
@@ -184,7 +188,7 @@ enum ImageRowView {
             let imageView = PictureView(image: entry.image)
             imageView.imageScaling = .scaleProportionallyUpOrDown
             imageView.wantsLayer = true
-            imageView.layer?.cornerRadius = 6
+            imageView.layer?.cornerRadius = CGFloat(ChatChrome.Radius.control)
             imageView.layer?.masksToBounds = true
             imageView.translatesAutoresizingMaskIntoConstraints = false
             imageView.setContentHuggingPriority(.required, for: .horizontal)
@@ -198,7 +202,7 @@ enum ImageRowView {
             imageView.onPress = { open?(key, name) }
             HoverPlate.attach(
                 to: imageView, placement: .behind(NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)),
-                radius: 9)
+                radius: CGFloat(ChatChrome.Radius.control))
             imageView.setAccessibilityRole(.button)
             imageView.setAccessibilityLabel(Localized.text("Open %@", name))
             imageView.toolTip = name
@@ -206,11 +210,11 @@ enum ImageRowView {
             return imageView
         }
         let size = PictureThumb.placeholder(maxHeight: maxHeight)
-        let frame = GroundView(cornerRadius: 6, fill: MacTheme.Color.canvasRaised)
+        let frame = GroundView(cornerRadius: CGFloat(ChatChrome.Radius.control), fill: MacTheme.Color.canvasRaised)
         frame.translatesAutoresizingMaskIntoConstraints = false
         frame.setContentHuggingPriority(.required, for: .horizontal)
         let label = RowKit.label(
-            Localized.text("🖼 %@ — loading…", name), font: MacTheme.Ramp.font(.panelFootnote),
+            Localized.text("%@ — loading…", name), font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.tertiaryLabel)
         frame.addSubview(label)
         NSLayoutConstraint.activate([

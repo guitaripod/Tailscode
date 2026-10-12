@@ -99,7 +99,8 @@ final class ToastPresenter {
             label.topAnchor.constraint(equalTo: padded.topAnchor, constant: 8),
             label.bottomAnchor.constraint(equalTo: padded.bottomAnchor, constant: -8),
         ])
-        let glass = MacTheme.glass(around: padded, cornerRadius: 18)
+        padded.layoutSubtreeIfNeeded()
+        let glass = MacTheme.glass(around: padded, cornerRadius: padded.fittingSize.height / 2)
         host.addSubview(glass)
         announce(text, from: host)
         NSLayoutConstraint.activate([
@@ -109,10 +110,12 @@ final class ToastPresenter {
                 lessThanOrEqualTo: host.widthAnchor, constant: -2 * MacTheme.Spacing.xl),
         ])
 
-        glass.alphaValue = 0
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            glass.animator().alphaValue = 1
+        if MotionBudget.animationAllowed {
+            glass.alphaValue = 0
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                glass.animator().alphaValue = 1
+            }
         }
         generations += 1
         showing = Capsule(

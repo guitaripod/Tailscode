@@ -66,6 +66,7 @@ final class PromptEditor: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         placeholderLabel.stringValue = placeholder
         build()
+        textView.setAccessibilityLabel(placeholder)
         NotificationCenter.default.addObserver(
             self, selector: #selector(themeChanged), name: MacTheme.Chrome.didRepaint, object: nil)
         refreshMode()
@@ -168,7 +169,10 @@ final class PromptEditor: NSView {
 
     var placeholder: String {
         get { placeholderLabel.stringValue }
-        set { placeholderLabel.stringValue = newValue }
+        set {
+            placeholderLabel.stringValue = newValue
+            textView.setAccessibilityLabel(newValue)
+        }
     }
 
     var text: String { textView.string }

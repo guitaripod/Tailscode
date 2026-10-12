@@ -14,6 +14,10 @@ final class StatusBandView: NSView {
     /// around an empty band rather than floating a blank sliver.
     private(set) var hasContent = false
 
+    /// The band is one chip tall and every control in it is as tall as the band, so the whole strip
+    /// answers a press rather than the thirteen points its words occupy.
+    fileprivate static let height = CGFloat(ChatChrome.chip(on: .pointer).height)
+
     private let stack = NSStackView()
     private let noticeLabel = NSTextField(labelWithString: "")
     private var facts = StatusFacts()
@@ -30,7 +34,7 @@ final class StatusBandView: NSView {
         stack.alignment = .centerY
         stack.spacing = MacTheme.Spacing.m
         stack.edgeInsets = NSEdgeInsets(
-            top: 5, left: MacTheme.Spacing.m, bottom: 5, right: MacTheme.Spacing.m)
+            top: 0, left: MacTheme.Spacing.m, bottom: 0, right: MacTheme.Spacing.m)
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.setClippingResistancePriority(.defaultLow, for: .horizontal)
         addSubview(stack)
@@ -39,6 +43,7 @@ final class StatusBandView: NSView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.height),
         ])
 
         noticeLabel.font = MacTheme.Ramp.font(.segment)
@@ -148,8 +153,22 @@ final class StatusBandView: NSView {
 
     private func update(_ view: NSView, segment: StatusFacts.Segment) {
         write(segment.text, to: view, css: segment.css, parts: segment.parts)
+        name(view, for: segment)
         ring(segment, on: view)
         animate(segment)
+    }
+
+    /// What a screen reader is told, set from the segment's words and never from the drawn title: a
+    /// sweeping segment rewrites that title with a new glyph every frame, and a name that changed
+    /// sixty times a second would be read as sixty.
+    private func name(_ view: NSView, for segment: StatusFacts.Segment) {
+        let spoken = Self.spoken(segment)
+        if view.accessibilityLabel() != spoken { view.setAccessibilityLabel(spoken) }
+    }
+
+    private static func spoken(_ segment: StatusFacts.Segment) -> String {
+        let text = segment.icon == nil ? segment.text : String(segment.text.dropFirst())
+        return text.trimmingCharacters(in: .whitespaces)
     }
 
     /// A segment about how full something is wears a ring filled that far, in its own ink, drawn
@@ -213,6 +232,7 @@ final class StatusBandView: NSView {
                 color: Self.color(for: segment.css))
             if let parts = segment.parts { label.attributedStringValue = Self.tinted(parts) }
             label.setContentCompressionResistancePriority(.init(700), for: .horizontal)
+            name(label, for: segment)
             return label
         case .act:
             let id = segment.id
@@ -225,6 +245,9 @@ final class StatusBandView: NSView {
             button.attributedTitle =
                 segment.parts.map(Self.tinted) ?? Self.title(segment.text, css: segment.css)
             ring(segment, on: button)
+            button.setAccessibilityRole(.button)
+            button.setAccessibilityHelp(Localized.text("Opens details"))
+            name(button, for: segment)
             return button
         case .menu:
             let id = segment.id
@@ -251,6 +274,9 @@ final class StatusBandView: NSView {
                     positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
             }
             button.attributedTitle = Self.title(segment.text, css: segment.css)
+            button.setAccessibilityRole(.menuButton)
+            button.setAccessibilityHelp(Localized.text("Opens a list"))
+            name(button, for: segment)
             return button
         }
     }
@@ -276,6 +302,10 @@ private final class BandButton: NSButton {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: super.intrinsicContentSize.width, height: StatusBandView.height)
+    }
 
     @objc private func fire() {
         onClick?()

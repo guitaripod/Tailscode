@@ -45,15 +45,20 @@ final class TranscriptColumn: NSView {
         NSSize(width: NSView.noIntrinsicMetric, height: contentHeight)
     }
 
-    func addArrangedSubview(_ row: NSView, spacing: ChatRowSpacing? = nil) {
-        insertArrangedSubview(row, at: arrangedSubviews.count, spacing: spacing)
+    func addArrangedSubview(_ row: NSView, spacing: ChatRowSpacing? = nil, measured: Bool = false) {
+        insertArrangedSubview(row, at: arrangedSubviews.count, spacing: spacing, measured: measured)
     }
 
-    func insertArrangedSubview(_ row: NSView, at index: Int, spacing: ChatRowSpacing? = nil) {
+    /// - Parameter measured: the row is prose, so its host is never wider than the reading measure
+    ///   and the row inside wraps there; every other row is as wide as the column.
+    func insertArrangedSubview(
+        _ row: NSView, at index: Int, spacing: ChatRowSpacing? = nil, measured: Bool = false
+    ) {
         if row.superview != nil { row.removeFromSuperview() }
         let host = RowHost(row: row, width: max(bounds.width, row.flowWidth ?? 0))
         host.column = self
         host.spacing = spacing
+        host.capsMeasure = measured
         hosts[ObjectIdentifier(row)] = host
         arrangedSubviews.insert(row, at: min(max(0, index), arrangedSubviews.count))
         addSubview(host)
@@ -94,6 +99,7 @@ final class TranscriptColumn: NSView {
         defer { placing = false }
         let width = bounds.width
         let scale = window?.backingScaleFactor ?? 2
+        let measure = min(width, ProseMeasure.current)
         var y: CGFloat = 0
         var previous: RowHost?
         var line = PictureLine()
@@ -122,7 +128,7 @@ final class TranscriptColumn: NSView {
                 line = PictureLine(
                     top: y, cursor: natural + CGFloat(metrics.imageStripGap), height: height)
             } else {
-                frame = NSRect(x: 0, y: y, width: width, height: height)
+                frame = NSRect(x: 0, y: y, width: host.capsMeasure ? measure : width, height: height)
             }
             if host.frame != frame { host.frame = frame }
             y += height
@@ -159,6 +165,7 @@ private final class RowHost: NSView {
     let row: NSView
     weak var column: TranscriptColumn?
     var spacing: ChatRowSpacing?
+    var capsMeasure = false
     /// A stack view takes a hidden row out of the layout and puts it back when it shows again, so
     /// the column has to hear about both.
     private var visibility: NSKeyValueObservation?

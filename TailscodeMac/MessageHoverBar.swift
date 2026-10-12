@@ -179,10 +179,28 @@ final class MessageHoverBar: NSResponder {
             capsule.alphaValue = 1
             return
         }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
-            capsule.animator().alphaValue = 1
+        Self.fade(capsule, to: 1, duration: 0.12)
+    }
+
+    /// The capsule's one motion. A reader who has asked for less of it, or a window shedding load,
+    /// gets the end state at once.
+    private static func fade(
+        _ view: NSView, to alpha: CGFloat, duration: TimeInterval,
+        completion: (@MainActor () -> Void)? = nil
+    ) {
+        guard MotionBudget.animationAllowed else {
+            view.alphaValue = alpha
+            completion?()
+            return
         }
+        NSAnimationContext.runAnimationGroup(
+            { context in
+                context.duration = duration
+                view.animator().alphaValue = alpha
+            },
+            completionHandler: {
+                MainActor.assumeIsolated { completion?() }
+            })
     }
 
     private func verbs(for target: Target, offer: VerbSet) -> [NSView] {
@@ -241,17 +259,10 @@ final class MessageHoverBar: NSResponder {
             guard let self else { return }
             self.hideWork = nil
             self.shown = nil
-            NSAnimationContext.runAnimationGroup(
-                { context in
-                    context.duration = 0.15
-                    self.capsule.animator().alphaValue = 0
-                },
-                completionHandler: { [weak self] in
-                    MainActor.assumeIsolated {
-                        guard let self, self.shown == nil else { return }
-                        self.capsule.isHidden = true
-                    }
-                })
+            Self.fade(self.capsule, to: 0, duration: 0.15) { [weak self] in
+                guard let self, self.shown == nil else { return }
+                self.capsule.isHidden = true
+            }
         }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
@@ -341,10 +352,7 @@ final class MessageHoverBar: NSResponder {
             codeTag.alphaValue = 1
             return
         }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
-            codeTag.animator().alphaValue = 1
-        }
+        Self.fade(codeTag, to: 1, duration: 0.12)
     }
 
     private func dismissCode() {
@@ -360,17 +368,10 @@ final class MessageHoverBar: NSResponder {
             guard let self else { return }
             self.codeHideWork = nil
             self.codeShown = nil
-            NSAnimationContext.runAnimationGroup(
-                { context in
-                    context.duration = 0.15
-                    self.codeTag.animator().alphaValue = 0
-                },
-                completionHandler: { [weak self] in
-                    MainActor.assumeIsolated {
-                        guard let self, self.codeShown == nil else { return }
-                        self.codeTag.isHidden = true
-                    }
-                })
+            Self.fade(self.codeTag, to: 0, duration: 0.15) { [weak self] in
+                guard let self, self.codeShown == nil else { return }
+                self.codeTag.isHidden = true
+            }
         }
         codeHideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)

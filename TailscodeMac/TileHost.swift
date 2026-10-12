@@ -27,6 +27,7 @@ final class TileHost: NSViewController, PaneTiling {
     private let strip = OverflowStripView(frame: .zero)
     private let dropHighlight = PaneDropHighlightView(frame: .zero)
     private(set) var placement: PanePlacement?
+    private var lastVisible = -1
 
     var makePane: (() -> TranscriptViewController)?
     /// Who every pane this host builds answers to, when no `makePane` was handed over.
@@ -638,6 +639,12 @@ final class TileHost: NSViewController, PaneTiling {
             lastHidden = placement.hidden
             scheduleReconcile()
         }
+        if placement.frames.count != lastVisible {
+            lastVisible = placement.frames.count
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated { self?.applyFocusStyling() }
+            }
+        }
     }
 
     private func placeDividers(_ placement: PanePlacement) {
@@ -1130,6 +1137,7 @@ final class TileHost: NSViewController, PaneTiling {
     /// itself: its pin and which other pane shows the same chat.
     func applyFocusStyling() {
         let several = layout.paneCount > 1
+        let visible = min(placement?.frames.count ?? layout.paneCount, layout.paneCount) > 1
         let order = layout.paneIDs
         var showing: [String: [PaneID]] = [:]
         for id in order {
@@ -1141,7 +1149,7 @@ final class TileHost: NSViewController, PaneTiling {
             let focused = id == layout.focusedPane
             pane.setFocusedPane(focused)
             shell.setFocusRing(focused: focused, shown: several)
-            pane.setIdentityVisible(several)
+            pane.setIdentityVisible(visible)
             var other: Int?
             if let entry = pane.currentEntry,
                 let twins = showing[SessionPinStore.key(entry.profileID, entry.session.id)],

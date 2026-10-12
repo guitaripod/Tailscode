@@ -13,6 +13,7 @@ final class MainMenu: NSObject {
 
     private var paneMenuHolders: [NSMenuItem] = []
     private var keepLiveItem: NSMenuItem?
+    private var conversationChordItems: [(NSMenuItem, KeyAction)] = []
     private var pauseItem: NSMenuItem?
 
     init(hub: MainWindowController) {
@@ -175,6 +176,13 @@ final class MainMenu: NSObject {
         menu.addItem(item(Localized.text("Send"), #selector(send), "\r"))
         menu.addItem(item(Localized.text("Stop Turn"), #selector(stop), "."))
         menu.addItem(.separator())
+        conversationChordItems = [
+            (bound(Localized.text("Previous Prompt"), #selector(previousPrompt), .previousPrompt), .previousPrompt),
+            (bound(Localized.text("Next Prompt"), #selector(nextPrompt), .nextPrompt), .nextPrompt),
+            (bound(Localized.text("Copy Last Answer"), #selector(copyLastAnswer), .copyLastAnswer), .copyLastAnswer),
+        ]
+        for (entry, _) in conversationChordItems { menu.addItem(entry) }
+        menu.addItem(.separator())
         menu.addItem(tagged(.save, Localized.text("Save"), #selector(toggleSaved), "d"))
         menu.addItem(tagged(.archive, Localized.text("Archive"), #selector(toggleArchived), "e"))
         menu.addItem(
@@ -277,6 +285,7 @@ final class MainMenu: NSObject {
             replacement.submenu = nil
             old.submenu = submenu
         }
+        for (entry, action) in conversationChordItems { wearChord(entry, for: action) }
         if let keepLiveItem { wearChord(keepLiveItem, for: .pinSplit) }
         if let pauseItem { wearChord(pauseItem, for: .parkSplit) }
     }
@@ -561,6 +570,9 @@ final class MainMenu: NSObject {
     @objc private func find() { run(.findInConversation) }
     @objc private func send() { run(.send) }
     @objc private func stop() { hub.transcript.stopTurn() }
+    @objc private func previousPrompt() { run(.previousPrompt) }
+    @objc private func nextPrompt() { run(.nextPrompt) }
+    @objc private func copyLastAnswer() { run(.copyLastAnswer) }
     @objc private func toggleSaved() { run(.toggleSaved) }
     @objc private func toggleArchived() { run(.archiveSelected) }
     @objc private func toggleUnread() { run(.toggleUnreadSelected) }

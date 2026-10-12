@@ -105,6 +105,7 @@ enum ChatChecks {
         try strips(expect)
         try timing(expect)
         try column(expect)
+        try chrome(expect)
         try railViews(expect)
         return checks
     }
@@ -142,6 +143,10 @@ enum ChatChecks {
     private static func sampleKinds() -> [(String, TranscriptRow.Kind, ChatRowSpacing)] {
         let call = ToolCall(id: "t", name: "Read", status: .completed)
         let picture = FileReference(path: "/a.png", mime: "image/png", filename: "a.png")
+        let failure = FailedTurnReading.read(
+            ChatMessage(
+                id: "a", role: .assistant, agentType: .claudeCode, parts: [],
+                createdAt: Date(timeIntervalSince1970: 1), error: "overloaded"), prompt: nil)!
         return [
             ("prompt", .userText("hi", messageID: "u"), .row(.prompt)),
             ("agent prose", .agentProse(text: "x", rendered: NSAttributedString(string: "x")), .row(.prose)),
@@ -153,7 +158,10 @@ enum ChatChecks {
             ("note", .interruption, .row(.furniture)),
             ("agent picture", .file(picture, mine: false, messageID: "m"), .row(.picture)),
             ("sent picture", .file(picture, mine: true, messageID: "m"), .row(.prompt)),
-            ("subagent", .subagent(call), .row(.prose)),
+            ("subagent", .subagent(call), .row(.furniture)),
+            ("agent group", .subagentGroup(SubagentFanout(id: "g", members: [])), .row(.furniture)),
+            ("workflow", .workflow(call), .row(.code)),
+            ("failed turn", .failedTurn(failure), .row(.code)),
             ("turn break", .turnBreak, .turnBreak),
         ]
     }
@@ -175,6 +183,16 @@ enum ChatChecks {
         try expect(
             gap(prose, .turnBreak, compact) + gap(.turnBreak, .row(.prompt), compact) == 16,
             "the turn break splits the turn gap around its rule")
+        let rule = RowKit.hairline(verticalPadding: ChatLayout.turnBreakPadding)
+        stage(rule)
+        rule.layoutSubtreeIfNeeded()
+        try expect(
+            abs(rule.fittingSize.height - ChatLayout.turnBreakRowHeight) < 0.5,
+            "the turn break's own row is \(rule.fittingSize.height) tall, not \(ChatLayout.turnBreakRowHeight)")
+        try expect(
+            gap(prose, .turnBreak, compact) + gap(.turnBreak, .row(.prompt), compact)
+                + rule.fittingSize.height <= 22,
+            "a turn costs the table's gap and its rule — about twenty — not forty")
         try expect(gap(tool, prose, comfortable) == 12, "comfortable keeps the pointer's own 12")
         try expect(
             gap(.row(.prompt), .row(.prose), compact) == 8,
@@ -368,6 +386,192 @@ enum ChatChecks {
         try expect(hover.open == "b", "resting on another rail moves the plate to it")
         hover.openNow("c")
         try expect(hover.open == "c" && hover.deadline == nil, "a press or a key opens at once")
+    }
+
+    /// The claims of the chat-screen redesign that a screenshot cannot make: the failed turn has a
+    /// card and a way to send it again, the idle band says nothing, Stop is in one place, prose
+    /// stops at its measure while code keeps the pane, the jump control reads Core, and an agent
+    /// count is the turn's witness rather than the server's record.
+    private static func chrome(_ expect: (Bool, String) throws -> Void) throws {
+        let asked = message("u", .user, [MessagePart(id: "p", kind: .text("Run the suite"))])
+        var failed = message("a", .assistant, [MessagePart(id: "t", kind: .text("Starting"))])
+        failed.error = "The model provider returned 529: overloaded."
+        let rows = TranscriptRow.rows(for: [asked, failed])
+        let card = rows.first {
+            if case .failedTurn = $0.kind { return true }
+            return false
+        }
+        try expect(card != nil, "an errored message draws a failed-turn row")
+        try expect(
+            rows.last.map { if case .failedTurn = $0.kind { true } else { false } } == true,
+            "the failed card stands after the turn's own rows")
+        let context = TranscriptContext()
+        var resent = ""
+        context.askAgain = { resent = $0 }
+        if let card {
+            let view = card.makeView(context: context)
+            stage(view)
+            try expect(
+                view.accessibilityLabel()?.contains("overloaded") == true,
+                "the card is spoken with the server's own words")
+            try expect(
+                view.accessibilityRole() == .group, "the card is one group for a screen reader")
+            let links = allViews(in: view).compactMap { $0 as? NSButton }
+            try expect(
+                links.contains { $0.title == FailedTurnReading.read(failed, prompt: asked)?.action },
+                "the card offers Try again")
+            links.first { $0.title == Localized.text("Try again") }?.performClick(nil)
+            try expect(resent == "Run the suite", "Try again sends the words that started the turn")
+        }
+        failed.error = nil
+        try expect(
+            !TranscriptRow.rows(for: [asked, failed]).contains {
+                if case .failedTurn = $0.kind { return true }
+                return false
+            }, "a turn with no error draws no failed card")
+
+        let idle = StatusFacts.from(
+            state: ConversationState(
+                messages: [asked], status: .idle, connection: .live, hasLoadedTranscript: true),
+            agents: [], usage: nil, attachments: 0)
+        let band = StatusBandView()
+        band.render(facts: idle, notice: nil)
+        try expect(!band.hasContent, "an idle band with nothing to say is not drawn")
+        try expect(
+            !idle.segments.contains { $0.id == "phase" }, "idle has no phase segment, ready or not")
+        let running = StatusFacts.from(
+            state: ConversationState(
+                messages: [asked], status: .running, connection: .live, hasLoadedTranscript: true),
+            agents: [], usage: nil, attachments: 0, queued: 2)
+        try expect(
+            running.segments.allSatisfy { $0.action != .stop }, "the band carries no Stop")
+        try expect(
+            running.segments.contains { $0.id == "queued" }, "a queue of two is on the band")
+
+        let pills = PillsRow()
+        pills.setStopShown(true)
+        stage(pills)
+        pills.frame = NSRect(x: 0, y: 0, width: 900, height: 24)
+        pills.layoutSubtreeIfNeeded()
+        let stops = allViews(in: pills).filter {
+            guard let chip = $0 as? SymbolChip else { return false }
+            return chip.symbol == "stop.fill" && !chip.isHidden
+        }
+        try expect(stops.count == 1, "\(stops.count) Stop controls in the pills row")
+        let heights = allViews(in: pills).compactMap { $0 as? ChipButton }.filter { !$0.isHidden }
+            .map(\.frame.height)
+        try expect(
+            !heights.isEmpty && heights.allSatisfy { abs($0 - heights[0]) < 0.5 },
+            "every chip in the row is one height: \(heights)")
+        try expect(
+            heights.allSatisfy { $0 >= CGFloat(ChatChrome.chip(on: .pointer).height) },
+            "no chip is under the table's \(ChatChrome.chip(on: .pointer).height)")
+
+        let measure = ProseMeasure.current
+        let wide = TranscriptColumn()
+        wide.metrics = compact
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 2000, height: 400))
+        stage(root)
+        root.addSubview(wide)
+        NSLayoutConstraint.activate([
+            wide.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            wide.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            wide.topAnchor.constraint(equalTo: root.topAnchor),
+        ])
+        let prose = RowKit.attributedLabel(
+            NSAttributedString(string: String(repeating: "word ", count: 600)))
+        let code = NSView()
+        code.translatesAutoresizingMaskIntoConstraints = false
+        code.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        wide.addArrangedSubview(prose, spacing: .row(.prose), measured: true)
+        wide.addArrangedSubview(code, spacing: .row(.code))
+        root.layoutSubtreeIfNeeded()
+        root.layoutSubtreeIfNeeded()
+        try expect(
+            measure > 400 && measure < 1200,
+            "the measure of seventy-six characters is \(measure) points")
+        try expect(
+            prose.superview!.frame.width <= measure + 0.5,
+            "prose is \(prose.superview!.frame.width) wide in a 2000 pane, past \(measure)")
+        try expect(code.superview!.frame.width == 2000, "code keeps the whole pane")
+        let narrow = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
+        let small = TranscriptColumn()
+        stage(narrow)
+        narrow.addSubview(small)
+        NSLayoutConstraint.activate([
+            small.leadingAnchor.constraint(equalTo: narrow.leadingAnchor),
+            small.trailingAnchor.constraint(equalTo: narrow.trailingAnchor),
+            small.topAnchor.constraint(equalTo: narrow.topAnchor),
+        ])
+        let short = RowKit.attributedLabel(NSAttributedString(string: "short"))
+        small.addArrangedSubview(short, spacing: .row(.prose), measured: true)
+        narrow.layoutSubtreeIfNeeded()
+        try expect(short.superview!.frame.width == 300, "a pane under the measure is not narrowed")
+
+        let reading = JumpReading.read(rowsNow: 12, rowsAtDeparture: 5, needsYou: false)
+        try expect(reading.label == Localized.text("%d new", 7), "seven rows arrived while away")
+        try expect(
+            JumpReading.read(rowsNow: 12, rowsAtDeparture: 5, needsYou: true).tone == .attention,
+            "what needs the reader outranks news")
+        let controller = TranscriptViewController()
+        _ = controller.view
+        controller.followsBottom = false
+        controller.refreshJumpReading()
+        try expect(
+            controller.jumpControl.accessibilityLabel() == JumpReading.read(rowsNow: 0, rowsAtDeparture: nil, needsYou: false).spoken,
+            "the jump control is spoken from Core's reading")
+        try expect(
+            controller.jumpControl.frame.height == 0
+                || controller.jumpControl.frame.height >= CGFloat(ChatChrome.chip(on: .pointer).height),
+            "the jump control is a chip")
+
+        func fan(_ count: Int) -> [TranscriptRow] {
+            let parts = (1...count).map {
+                MessagePart(
+                    id: "s\($0)",
+                    kind: .tool(ToolCall(id: "c\($0)", name: "Task", status: .completed)))
+            }
+            return TranscriptRow.rows(for: message("f\(count)", .assistant, parts))
+        }
+        let three = fan(3)
+        try expect(
+            three.count == 3 && three.allSatisfy { if case .subagent = $0.kind { true } else { false } },
+            "three agents stay three cards")
+        let five = fan(5)
+        try expect(five.count == 1, "five agents collapse behind one row (\(five.count))")
+        if let group = five.first {
+            let view = group.makeView(context: context)
+            stage(view)
+            try expect(
+                view.accessibilityLabel()?.contains(Localized.text("%lld agents", 5)) == true,
+                "the group is named by its count")
+            try expect(
+                group.spacing == .row(.furniture), "the group sits as furniture, not as prose")
+            try expect(
+                group.kind.spawnedCalls.count == 5, "a fact about any agent still finds its row")
+        }
+
+        let now = Date()
+        let agents = [
+            SubagentSummary(id: "a", title: "a", updatedAt: now, isActive: true),
+            SubagentSummary(id: "b", title: "b", updatedAt: now, isActive: true),
+        ]
+        let settled = StatusFacts.from(
+            state: ConversationState(
+                messages: [asked], status: .idle, connection: .live, hasLoadedTranscript: true),
+            agents: agents, usage: nil, attachments: 0)
+        try expect(
+            settled.activeAgents == 0,
+            "agents a server still calls active are not out under a turn that is over (\(settled.activeAgents))")
+        let out = StatusFacts.from(
+            state: ConversationState(
+                messages: [asked], status: .running, connection: .live, hasLoadedTranscript: true),
+            agents: agents, usage: nil, attachments: 0)
+        try expect(out.activeAgents == 2, "both agents are out inside an open turn")
+    }
+
+    private static func allViews(in view: NSView) -> [NSView] {
+        [view] + view.subviews.flatMap { allViews(in: $0) }
     }
 
     private static func column(_ expect: (Bool, String) throws -> Void) throws {

@@ -41,31 +41,27 @@ final class PillsRow: NSView {
     /// go of in a narrow pane, since the doors are also in the menu bar with keys of their own. The
     /// image lane is here exactly when a machine that can paint is known, and the row is redrawn
     /// whenever either store says that answer changed.
-    private let laneControl = NSSegmentedControl(
-        labels: PillsRow.offeredLanes.map(\.word), trackingMode: .momentary, target: nil,
-        action: nil)
+    private let laneControl = SegmentedChip()
     private var shownLanes = PillsRow.offeredLanes
     private var laneObservers: [NSObjectProtocol] = []
     private let vimBadge = NSTextField(labelWithString: "")
-    private let vimBadgeWrap = NSView()
+    private let vimBadgeWrap = CapsuleView()
     private let destinationLabel = DestinationLabel()
     private let dialPill = DialPill()
     private let commandPill: MenuPill
     private let attachButton: MenuPill
-    private let stopButton: RowKit.ActionButton
+    private let stopButton: SymbolChip
 
     init() {
-        commandPill = MenuPill(title: "/")
-        attachButton = MenuPill(title: "")
-        stopButton = RowKit.ActionButton(title: "") {}
+        commandPill = MenuPill(text: "/")
+        attachButton = MenuPill(symbol: "paperclip")
+        stopButton = SymbolChip()
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
         vimBadge.textColor = MacTheme.Color.onGlass
         vimBadge.translatesAutoresizingMaskIntoConstraints = false
         vimBadge.setContentCompressionResistancePriority(.required, for: .horizontal)
-        vimBadgeWrap.wantsLayer = true
-        vimBadgeWrap.layer?.cornerRadius = 5
         vimBadgeWrap.translatesAutoresizingMaskIntoConstraints = false
         vimBadgeWrap.addSubview(vimBadge)
         NSLayoutConstraint.activate([
@@ -88,33 +84,25 @@ final class PillsRow: NSView {
         commandPill.toolTip = Localized.text("Slash commands")
 
         attachButton.rows = { [weak self] in self?.attachRows?() ?? [] }
-        attachButton.image = NSImage(
-            systemSymbolName: "paperclip",
-            accessibilityDescription: Localized.text("Attach files"))
+        attachButton.setAccessibilityLabel(Localized.text("Attach files"))
         attachButton.toolTip = Localized.text("Attach files or a pasted image, up to 8 MB each")
 
-        stopButton.bezelStyle = .rounded
-        stopButton.controlSize = .small
-        stopButton.image = NSImage(
-            systemSymbolName: "stop.fill",
-            accessibilityDescription: Localized.text("Stop the running turn"))
+        stopButton.symbol = "stop.fill"
+        stopButton.glyphTone = .danger
+        stopButton.text = Localized.text("Stop")
+        stopButton.setAccessibilityLabel(Localized.text("Stop the running turn"))
         stopButton.toolTip = Localized.text("Stop the running turn")
         stopButton.isHidden = true
         stopButton.target = self
         stopButton.action = #selector(stopTapped)
-        stopButton.translatesAutoresizingMaskIntoConstraints = false
 
         dialPill.setContentCompressionResistancePriority(.init(450), for: .horizontal)
         commandPill.setContentCompressionResistancePriority(.init(450), for: .horizontal)
-        commandPill.cell?.lineBreakMode = .byTruncatingTail
         attachButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         stopButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        laneControl.controlSize = .small
-        laneControl.target = self
-        laneControl.action = #selector(laneTapped)
+        laneControl.onSelect = { [weak self] index in self?.laneTapped(index) }
         laneControl.setContentCompressionResistancePriority(.required, for: .horizontal)
-        laneControl.translatesAutoresizingMaskIntoConstraints = false
         refreshLanes()
         for name in [ForgeStore.didChange, ImageGenStore.didChange] {
             laneObservers.append(
@@ -134,6 +122,9 @@ final class PillsRow: NSView {
         row.spacing = MacTheme.Spacing.s
         row.translatesAutoresizingMaskIntoConstraints = false
         row.setClippingResistancePriority(.init(400), for: .horizontal)
+        row.heightAnchor.constraint(
+            greaterThanOrEqualToConstant: CGFloat(ChatChrome.chip(on: .pointer).height)
+        ).isActive = true
         row.setVisibilityPriority(.init(700), for: laneControl)
         row.setVisibilityPriority(.init(720), for: commandPill)
         row.setVisibilityPriority(.init(750), for: destinationLabel)
@@ -162,11 +153,9 @@ final class PillsRow: NSView {
     func restyle() {
         vimBadge.font = MacTheme.Ramp.font(.badge)
         destinationLabel.font = MacTheme.Ramp.font(.panelFootnote)
-        for pill in [commandPill, attachButton] {
-            pill.font = MacTheme.Ramp.font(.panelFootnote)
-        }
+        laneControl.restyle()
+        for chip in [commandPill, attachButton, stopButton] { chip.restyle() }
         dialPill.restyle()
-        stopButton.contentTintColor = MacTheme.Color.danger
     }
 
     @objc private func themeChanged() {
@@ -186,20 +175,15 @@ final class PillsRow: NSView {
         let lanes = PillsRow.offeredLanes
         shownLanes = lanes
         let door = ImageGenDoor.current()
-        laneControl.segmentCount = lanes.count
-        for (index, lane) in lanes.enumerated() {
-            laneControl.setLabel(lane.word, forSegment: index)
-            laneControl.setToolTip(
-                lane == .image ? (door.line ?? lane.spoken) : lane.spoken, forSegment: index)
-        }
-        laneControl.selectedSegment = -1
-        laneControl.invalidateIntrinsicContentSize()
+        laneControl.set(
+            words: lanes.map(\.word),
+            tips: lanes.map { $0 == .image ? (door.line ?? $0.spoken) : $0.spoken })
     }
 
-    @objc private func laneTapped() {
+    private func laneTapped(_ index: Int) {
         let lanes = shownLanes
-        guard lanes.indices.contains(laneControl.selectedSegment) else { return }
-        onLane?(lanes[laneControl.selectedSegment])
+        guard lanes.indices.contains(index) else { return }
+        onLane?(lanes[index])
     }
 
     /// Alongside the badge the caret itself says which mode this is, so the badge carries the
@@ -332,7 +316,7 @@ final class DestinationLabel: NSTextField {
 /// because which machine and how hard are one decision and the second half of it should not
 /// need a menu.
 @MainActor
-final class DialPill: NSButton {
+final class DialPill: ChipButton {
     var onPress: (() -> Void)?
     var onStep: ((Int) -> Void)?
     /// What the pill is for, said under what it is wearing. The face leads the tooltip because a
@@ -363,14 +347,9 @@ final class DialPill: NSButton {
     private static let shimmerStep: TimeInterval = 0.09
 
     init() {
-        super.init(frame: .zero)
-        title = ""
-        bezelStyle = .rounded
-        controlSize = .small
+        super.init(kind: .control)
         target = self
         action = #selector(pressed)
-        translatesAutoresizingMaskIntoConstraints = false
-        setAccessibilityRole(.button)
 
         for label in [dot, modelLabel, separator] {
             label.lineBreakMode = .byTruncatingTail
@@ -383,14 +362,7 @@ final class DialPill: NSButton {
         content.spacing = 4
         content.setViews([dot, modelLabel, separator, effortWord, meter], in: .center)
         content.setCustomSpacing(0, after: effortWord)
-        content.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(content)
-        NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9),
-            content.trailingAnchor.constraint(
-                equalTo: trailingAnchor, constant: -(9 - EffortMeterView.glowInset)),
-            content.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
+        install(content: content, trailing: padding - EffortMeterView.glowInset)
         NotificationCenter.default.addObserver(
             self, selector: #selector(motionPreferenceChanged),
             name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
@@ -399,18 +371,6 @@ final class DialPill: NSButton {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
-
-    override var intrinsicContentSize: NSSize {
-        let inner = content.fittingSize
-        return NSSize(
-            width: inner.width + 18 - EffortMeterView.glowInset,
-            height: super.intrinsicContentSize.height)
-    }
-
-    /// The labels inside are ornament: a press anywhere on the pill is a press on the pill.
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        bounds.contains(convert(point, from: superview)) ? self : nil
-    }
 
     /// A clock that ticks for a pill nobody can see is a clock for nothing: the shimmer follows
     /// the window in and out, and in and out of sight — a window in the Dock, closed away or
@@ -432,9 +392,9 @@ final class DialPill: NSButton {
     }
 
     func restyle() {
-        let font = MacTheme.Ramp.font(.panelFootnote)
+        let font = MacTheme.Ramp.font(ChatChrome.chipRole)
         for label in [dot, modelLabel, separator] { label.font = font }
-        effortWord.pointSize = MacTheme.Ramp.font(.pill).pointSize
+        effortWord.font = font
         separator.textColor = MacTheme.Color.tertiaryLabel
         if let face { setFace(face, modelTint: modelTint) }
     }
@@ -458,21 +418,20 @@ final class DialPill: NSButton {
         effortWord.slot(face.slotWords.isEmpty ? [word] : face.slotWords)
         if face.isPower {
             shimmerPhase = 0
-            effortWord.text = DialPill.rainbow(word, pointSize: effortWord.pointSize)
+            effortWord.text = DialPill.rainbow(word, font: effortWord.font)
             meter.set(lit: face.heat, tint: nil, rainbow: true, cold: false, glow: 6)
         } else if face.isServer {
             effortWord.text = NSAttributedString(
                 string: word,
-                attributes: EffortHeat.attributes(
-                    EffortHeat.Style(weight: .regular, glow: 0), pointSize: effortWord.pointSize,
-                    colour: MacTheme.Color.tertiaryLabel))
+                attributes: [
+                    .font: effortWord.font, .foregroundColor: MacTheme.Color.tertiaryLabel,
+                ])
             meter.set(lit: 0, tint: nil, rainbow: false, cold: true, glow: 0)
         } else {
             let tint = MacTheme.Color.modelEffort(word) ?? MacTheme.Color.secondaryLabel
             effortWord.text = NSAttributedString(
                 string: word,
-                attributes: EffortHeat.attributes(
-                    word, pointSize: effortWord.pointSize, colour: MacTheme.Color.label))
+                attributes: [.font: effortWord.font, .foregroundColor: MacTheme.Color.label])
             meter.set(
                 lit: face.heat, tint: tint, rainbow: false, cold: false,
                 glow: EffortHeat.style(word).glow, ember: face.isEmber)
@@ -490,6 +449,22 @@ final class DialPill: NSButton {
     /// Ultracode is a power, not a level, so its word takes no heat: it is set letter by letter
     /// from the shared rainbow, the same stops the aura travels, shifted by `phase` stops so the
     /// rainbow can move along the word without one glyph moving.
+    static func rainbow(_ word: String, font: NSFont, phase: Int = 0) -> NSAttributedString {
+        let text = NSMutableAttributedString()
+        let count = word.count
+        for (index, letter) in word.enumerated() {
+            text.append(
+                NSAttributedString(
+                    string: String(letter),
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: MacTheme.Color.modelRainbowLetter(
+                            ((index + phase) % count + count) % count, of: count),
+                    ]))
+        }
+        return text
+    }
+
     static func rainbow(_ word: String, pointSize: CGFloat, phase: Int = 0) -> NSAttributedString {
         let text = NSMutableAttributedString()
         let count = word.count
@@ -533,7 +508,7 @@ final class DialPill: NSButton {
         shimmer = nil
         if let face, face.isPower, let word = face.effortWord, shimmerPhase != 0 {
             shimmerPhase = 0
-            effortWord.text = DialPill.rainbow(word, pointSize: effortWord.pointSize)
+            effortWord.text = DialPill.rainbow(word, font: effortWord.font)
         }
     }
 
@@ -547,7 +522,7 @@ final class DialPill: NSButton {
         let phase = Int(Date.timeIntervalSinceReferenceDate / DialPill.shimmerStep) % word.count
         guard phase != shimmerPhase else { return }
         shimmerPhase = phase
-        effortWord.text = DialPill.rainbow(word, pointSize: effortWord.pointSize, phase: phase)
+        effortWord.text = DialPill.rainbow(word, font: effortWord.font, phase: phase)
     }
 
     @objc private func motionPreferenceChanged() {
@@ -640,9 +615,9 @@ final class EffortWordView: NSView {
         didSet { needsDisplay = true }
     }
 
-    var pointSize: CGFloat = 11 {
+    var font: NSFont = MacTheme.Ramp.font(ChatChrome.chipRole) {
         didSet {
-            guard pointSize != oldValue else { return }
+            guard font != oldValue else { return }
             measured = nil
             invalidateIntrinsicContentSize()
         }
@@ -675,11 +650,9 @@ final class EffortWordView: NSView {
     }
 
     private func measure() -> NSSize {
-        let attributes = EffortHeat.attributes(
-            EffortHeat.widest, pointSize: pointSize, colour: MacTheme.Color.label)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
         let sizes = words.map { NSAttributedString(string: $0, attributes: attributes).size() }
-        let font = attributes[.font] as? NSFont
-        let lineHeight = font.map { $0.ascender - $0.descender + $0.leading } ?? pointSize * 1.3
+        let lineHeight = font.ascender - font.descender + font.leading
         let size = NSSize(
             width: sizes.map(\.width).max() ?? 0,
             height: max(lineHeight, sizes.map(\.height).max() ?? 0))
@@ -796,21 +769,19 @@ final class EffortMeterView: NSView {
     }
 }
 
-/// A pill that pops a menu built fresh on every click, so the rows always describe the session
-/// as it is now rather than as it was when the pill was made.
+/// A chip that pops a menu built fresh on every click, so the rows always describe the session
+/// as it is now rather than as it was when the chip was made.
 @MainActor
-final class MenuPill: NSButton {
+final class MenuPill: SymbolChip {
     var rows: (() -> [PillsRow.MenuRow])?
 
-    init(title: String) {
-        super.init(frame: .zero)
-        self.title = title
-        bezelStyle = .rounded
-        controlSize = .small
-        font = MacTheme.Ramp.font(.panelFootnote)
+    init(text: String = "", symbol: String? = nil) {
+        super.init(kind: .control)
+        self.symbol = symbol
+        self.text = text
+        setAccessibilityLabel(text.isEmpty ? nil : text)
         target = self
         action = #selector(popUp)
-        translatesAutoresizingMaskIntoConstraints = false
     }
 
     @available(*, unavailable)

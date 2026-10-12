@@ -142,6 +142,8 @@ final class ComposerView: NSView {
         configureLayout()
         wirePills()
         registerForDraggedTypes([.fileURL, .png, .tiff])
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(editor.placeholder)
         updateVimUI()
     }
 
@@ -436,6 +438,8 @@ final class ComposerView: NSView {
         sendButton.target = self
         sendButton.action = #selector(sendTapped)
         sendButton.translatesAutoresizingMaskIntoConstraints = false
+        sendButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        editor.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
 
     private func configureLayout() {

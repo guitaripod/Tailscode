@@ -58,7 +58,9 @@ final class FindBar: NSView {
             right: MacTheme.Spacing.m)
         row.translatesAutoresizingMaskIntoConstraints = false
 
-        let glass = MacTheme.glass(around: row, cornerRadius: 18)
+        let glass = MacTheme.glass(
+            around: row, cornerRadius: row.fittingSize.height / 2)
+        capsule = glass
         addSubview(glass)
         NSLayoutConstraint.activate([
             glass.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -70,6 +72,15 @@ final class FindBar: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    private var capsule: NSGlassEffectView?
+
+    override func layout() {
+        super.layout()
+        if let capsule, capsule.cornerRadius != bounds.height / 2, bounds.height > 0 {
+            capsule.cornerRadius = bounds.height / 2
+        }
+    }
 
     /// The bar is built once and floats over a transcript that rebuilds every row at each step of
     /// the type scale, so without this it would keep the type — and the field width the placeholder

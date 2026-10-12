@@ -687,6 +687,12 @@ final class MainWindowController: NSWindowController {
             transcript.scrollToTop()
         case .scrollBottom:
             transcript.scrollToBottom()
+        case .previousPrompt:
+            transcript.scrollToPrompt(-1)
+        case .nextPrompt:
+            transcript.scrollToPrompt(1)
+        case .copyLastAnswer:
+            transcript.copyLastAnswer()
         case .findInConversation:
             transcript.setFindShown(true)
         case .allowOnce:
@@ -978,6 +984,22 @@ final class MainWindowController: NSWindowController {
             presentStudio(lane: .video)
             StudioWindowController.shared.video.openSetup()
         #if DEBUG
+            case "split":
+                let spec = parts.count > 1 ? parts[1].split(separator: ",").map(String.init) : []
+                let count = Int(spec.first ?? "") ?? 2
+                let chats = ["demo-c1", "demo-c2", "demo-c4", "demo-c5"]
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    for index in 1..<max(count, 2) {
+                        guard let self else { return }
+                        let id = chats[(index - 1) % chats.count]
+                        if let entry = self.sidebar.entries.first(where: { $0.session.id == id }) {
+                            self.openInNewSplit(entry)
+                        }
+                        try? await Task.sleep(for: .milliseconds(900))
+                    }
+                    if spec.contains("zoom") { self?.splitPanes.zoomActive() }
+                }
             case "stage":
                 let spec = parts.count > 1 ? parts[1].split(separator: ",").map(String.init) : []
                 guard let path = spec.first else { break }

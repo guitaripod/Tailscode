@@ -5,6 +5,39 @@ extension TranscriptRow {
     var spacing: ChatRowSpacing { ChatLayout.spacing(of: kind) }
 }
 
+extension TranscriptRow {
+    /// Whether the row is prose a person reads line by line, and so stops at the reading measure
+    /// rather than at the width of the pane. Code, tables, tools and cards are not read that way
+    /// and keep the pane.
+    var capsMeasure: Bool {
+        switch kind {
+        case .agentProse, .reasoning: return true
+        default: return false
+        }
+    }
+}
+
+/// How wide a line of an answer may be: seventy-six characters of the answer's own font, which is
+/// where a line stops being read as a line and starts being searched. A wide pane or a zoomed one
+/// would otherwise set a paragraph fifteen hundred points across.
+@MainActor
+enum ProseMeasure {
+    static let characters: CGFloat = 76
+    private static let sample = "the quick brown fox jumps over the lazy dog and keeps running home "
+    private static var remembered: (size: CGFloat, width: CGFloat)?
+
+    static func width(font: NSFont) -> CGFloat {
+        if let remembered, remembered.size == font.pointSize { return remembered.width }
+        let each = (sample as NSString).size(withAttributes: [.font: font]).width
+            / CGFloat(sample.count)
+        let width = (characters * each).rounded(.up)
+        remembered = (font.pointSize, width)
+        return width
+    }
+
+    static var current: CGFloat { width(font: MacTheme.Ramp.font(.answer)) }
+}
+
 extension NSView {
     private static var flowWidthKey: UInt8 = 0
 
@@ -36,25 +69,36 @@ enum ChatLayout {
         ChatMetrics.metrics(for: ChatDensitySetting.current, input: .pointer)
     }
 
-    /// The class a row kind is spaced as. Block-weight rows that are not prose or code — cards,
-    /// boards, a failure's statement — are spaced as prose, because they are something to read and
-    /// not a line to glance past; only the one-line furniture sits close to its neighbours.
+    /// Half of the air a turn break's rule has above and below it inside its own row. The rule is
+    /// the only thing in that row, so a turn costs the table's turn gap plus the row's own height
+    /// and the two together are what the other desktops spend.
+    static let turnBreakPadding: CGFloat = 2
+
+    /// How tall the turn break's own row is: its hairline and the padding either side of it.
+    static var turnBreakRowHeight: CGFloat { turnBreakPadding * 2 + 1 }
+
+    /// The class a row kind is spaced as, the way the Linux client maps the same rows: a one-line
+    /// thing — a tool, a thought, an agent that was out — sits close to its neighbours as furniture,
+    /// and the cards that are blocks in their own right, which ask something of the reader or hold a
+    /// picture of work, take the code block's gap so a flat line beside one is not set as tightly as
+    /// two lines beside each other.
     static func spacing(of kind: TranscriptRow.Kind) -> ChatRowSpacing {
         switch kind {
         case .userText, .pendingSend, .queuedSend:
             return .row(.prompt)
         case .file(_, let mine, _):
             return .row(mine ? .prompt : .picture)
-        case .agentProse, .table, .tableDraft, .subagent, .workflow, .designBoard, .taskBoard,
-            .answerless, .interruptedTurn, .providerRetry, .revertBanner:
+        case .agentProse:
             return .row(.prose)
-        case .codeBlock:
+        case .codeBlock, .table, .tableDraft, .workflow, .designBoard, .taskBoard, .answerless,
+            .failedTurn, .interruptedTurn, .providerRetry, .revertBanner:
             return .row(.code)
         case .linkRail:
             return .row(.rail)
         case .compaction:
             return .row(.seam)
-        case .interruption, .reasoning, .tool, .run, .responseStats, .note, .revertPending:
+        case .interruption, .reasoning, .tool, .run, .subagent, .subagentGroup, .responseStats, .note,
+            .revertPending:
             return .row(.furniture)
         case .turnBreak:
             return .turnBreak
