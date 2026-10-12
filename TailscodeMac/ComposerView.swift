@@ -150,6 +150,7 @@ final class ComposerView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    var promptEditor: PromptEditor { editor }
     var editorHasFocus: Bool { editor.hasFocus }
     var editorIsComposing: Bool { editor.isComposing }
 
@@ -430,6 +431,7 @@ final class ComposerView: NSView {
     private func configureEditor() {
         editor.onPaste = { [weak self] in self?.takeClipboard() ?? false }
         editor.onChanged = { [weak self] in self?.editorContentChanged() }
+        editor.onModeChanged = { [weak self] in self?.updateVimUI() }
 
         sendButton.title = Localized.text("Send")
         sendButton.bezelStyle = .rounded

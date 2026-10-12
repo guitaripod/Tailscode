@@ -105,6 +105,9 @@ enum ChatChecks {
         try strips(expect)
         try timing(expect)
         try column(expect)
+        try quietLines(expect)
+        try promptFocus(expect)
+        try replacedRows(expect)
         try chrome(expect)
         try railViews(expect)
         return checks
@@ -642,6 +645,126 @@ enum ChatChecks {
         try expect(
             line.superview!.frame.minY == 52,
             "choosing comfortable re-lays the column and gives the pointer's 12 back: \(line.superview!.frame.minY)")
+    }
+
+    private static func quietLines(_ expect: (Bool, String) throws -> Void) throws {
+        let column = TranscriptColumn()
+        column.metrics = compact
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 400))
+        stage(root)
+        root.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            column.topAnchor.constraint(equalTo: root.topAnchor),
+        ])
+        let words = [
+            "Background command finished: go test ./internal/auth/...",
+            "Switched from Sonnet 5 to GPT-5.1 Codex at high effort",
+        ]
+        let rows = words.map {
+            SeamLineView(
+                symbol: "checkmark.circle", text: $0, tint: .secondaryLabelColor, spoken: $0,
+                onPress: nil)
+        }
+        for row in rows { column.addArrangedSubview(row, spacing: .row(.furniture)) }
+        root.layoutSubtreeIfNeeded()
+        root.layoutSubtreeIfNeeded()
+        let hosts = rows.map { $0.superview! }
+        try expect(
+            hosts[0].frame.maxY <= hosts[1].frame.minY,
+            "two note rows at 320 wide do not overlap: \(hosts.map(\.frame))")
+        for row in rows {
+            let outside = row.subviews.filter { !row.bounds.insetBy(dx: -0.5, dy: -0.5).contains($0.frame) }
+            try expect(
+                outside.isEmpty && row.frame.height > CGFloat(compact.seamRowHeight),
+                "a note's words stay inside its row, which grows to hold a second line: \(row.frame.height) tall")
+        }
+    }
+
+    private static func replacedRows(_ expect: (Bool, String) throws -> Void) throws {
+        func line() -> NSView {
+            let view = NSView()
+            view.translatesAutoresizingMaskIntoConstraints = false
+            view.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            return view
+        }
+        let column = TranscriptColumn()
+        column.metrics = compact
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 600))
+        stage(root)
+        root.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            column.topAnchor.constraint(equalTo: root.topAnchor),
+        ])
+        var rows = (0..<8).map { _ in line() }
+        for row in rows { column.addArrangedSubview(row, spacing: .row(.furniture)) }
+        root.layoutSubtreeIfNeeded()
+        root.layoutSubtreeIfNeeded()
+        let before = column.frame.height
+        var heights: [CGFloat] = []
+        column.postsFrameChangedNotifications = true
+        let watch = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: column, queue: nil
+        ) { _ in MainActor.assumeIsolated { heights.append(column.frame.height) } }
+        defer { NotificationCenter.default.removeObserver(watch) }
+        for round in 0..<4 {
+            let at = rows.count - 1 - round
+            let standing = rows[at].superview?.frame.height
+            rows[at].removeFromSuperview()
+            let fresh = line()
+            column.insertArrangedSubview(fresh, at: at, spacing: .row(.furniture), standingIn: standing)
+            rows[at] = fresh
+            root.layoutSubtreeIfNeeded()
+            root.layoutSubtreeIfNeeded()
+        }
+        try expect(
+            heights.allSatisfy { $0 >= before - 0.5 } && abs(column.frame.height - before) < 0.5,
+            "a row replaced by its next version never shortens the page, so a reader at the bottom is not moved: \(before) then \(heights)")
+        let hosts = rows.compactMap { $0.superview?.frame }
+        let overlapping = zip(hosts, hosts.dropFirst()).filter { $0.maxY > $1.minY + 0.5 }
+        try expect(overlapping.isEmpty, "no two rows stand on each other after the replacements: \(hosts)")
+    }
+
+    private static func promptFocus(_ expect: (Bool, String) throws -> Void) throws {
+        let composer = ComposerView()
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 240))
+        stage(root)
+        root.addSubview(composer)
+        NSLayoutConstraint.activate([
+            composer.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            composer.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+            composer.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
+        ])
+        root.layoutSubtreeIfNeeded()
+        root.layoutSubtreeIfNeeded()
+        let editor = composer.promptEditor
+        let field = editor.fieldView
+        let frame = field.convert(field.bounds, to: root)
+        var misses: [String] = []
+        var y = frame.minY + 1
+        while y < frame.maxY - 1 {
+            var x = frame.minX + 1
+            while x < frame.maxX - 1 {
+                let hit = root.hitTest(root.convert(NSPoint(x: x, y: y), to: root.superview))
+                if !(hit === editor.focusTarget || hit?.isDescendant(of: editor.focusTarget) == true) {
+                    misses.append("(\(Int(x - frame.minX)),\(Int(y - frame.minY))) \(hit.map { String(describing: type(of: $0)) } ?? "nil")")
+                }
+                x += 5
+            }
+            y += 3
+        }
+        editor.vim.reset(to: "", cursor: 0, mode: .normal)
+        try expect(editor.vim.mode == .normal, "the vim box can be left in normal mode, where it draws no caret")
+        editor.pointerFocused(vimEnabled: true)
+        try expect(
+            editor.vim.mode == .insert,
+            "a press that takes the keyboard for the vim box leaves it typing, with a caret")
+        try expect(
+            misses.isEmpty,
+            "every point of the visible prompt box lands on the text view: \(misses.count) of them do not, first \(misses.prefix(4)) in a box \(frame.size)")
     }
 
     private final class Asked: @unchecked Sendable {

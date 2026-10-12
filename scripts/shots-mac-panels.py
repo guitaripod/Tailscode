@@ -293,6 +293,7 @@ def shoot(app, master, locale, display):
         "TAILSCODE_LIVE_WINDOW": master.get("window", CHAT_WINDOW),
         "TAILSCODE_DEMO_ONLY": "1",
     })
+    environment.update(master.get("env", {}))
     if master.get("surface"):
         environment["TAILSCODE_LIVE_SURFACE"] = master["surface"]
     if master.get("hide_main"):

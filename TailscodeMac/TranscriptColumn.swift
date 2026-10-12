@@ -49,13 +49,18 @@ final class TranscriptColumn: NSView {
         insertArrangedSubview(row, at: arrangedSubviews.count, spacing: spacing)
     }
 
+    /// - Parameter standingIn: the height of the row this one replaces, held for it until it has
+    ///   resolved its own. A row that was just built has no height, and a page that shrinks by a
+    ///   row for the length of a layout pass clamps the scroll origin of whoever is following the
+    ///   bottom, a move nothing puts back before the next frame is drawn.
     func insertArrangedSubview(
-        _ row: NSView, at index: Int, spacing: ChatRowSpacing? = nil
+        _ row: NSView, at index: Int, spacing: ChatRowSpacing? = nil, standingIn: CGFloat? = nil
     ) {
         if row.superview != nil { row.removeFromSuperview() }
         let host = RowHost(row: row, width: max(bounds.width, row.flowWidth ?? 0))
         host.column = self
         host.spacing = spacing
+        host.heldHeight = standingIn
         hosts[ObjectIdentifier(row)] = host
         arrangedSubviews.insert(row, at: min(max(0, index), arrangedSubviews.count))
         addSubview(host)
@@ -103,7 +108,8 @@ final class TranscriptColumn: NSView {
             guard let host = hosts[ObjectIdentifier(row)] else { continue }
             host.isHidden = row.isHidden
             guard !row.isHidden else { continue }
-            let height = (row.frame.height * scale).rounded(.up) / scale
+            let resolved = row.frame.height > 0 ? row.frame.height : host.heldHeight ?? 0
+            let height = (resolved * scale).rounded(.up) / scale
             let isPicture = host.spacing == .row(.picture) && metrics != nil
             if isPicture, previous?.spacing == .row(.picture), let metrics {
                 let natural = rowWidth(of: row)
@@ -161,6 +167,7 @@ private final class RowHost: NSView {
     let row: NSView
     weak var column: TranscriptColumn?
     var spacing: ChatRowSpacing?
+    var heldHeight: CGFloat?
     /// A stack view takes a hidden row out of the layout and puts it back when it shows again, so
     /// the column has to hear about both.
     private var visibility: NSKeyValueObservation?
@@ -197,6 +204,7 @@ private final class RowHost: NSView {
     nonisolated override var isFlipped: Bool { true }
 
     @objc private func rowFrameChanged() {
+        heldHeight = nil
         column?.rowResized()
     }
 

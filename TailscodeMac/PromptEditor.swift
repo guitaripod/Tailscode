@@ -20,10 +20,12 @@ final class PromptEditor: NSView {
     /// Whether the box took the pasteboard for itself. Words are handed back to AppKit rather
     /// than re-implemented, which is what keeps undo, selection and the system's own behaviour.
     var onPaste: (() -> Bool)?
+    /// The mode the engine is in changed without a key: a press in the box meant typing.
+    var onModeChanged: (() -> Void)?
 
     private let textView = PastingTextView()
     private let scrollView = NSScrollView()
-    private let fieldContainer = NSView()
+    private let fieldContainer = FocusingField()
     private let placeholderLabel = NSTextField(labelWithString: "")
     private var fieldHeight: NSLayoutConstraint?
     private var isMeasuring = false
@@ -87,6 +89,7 @@ final class PromptEditor: NSView {
         textView.allowsUndo = true
         textView.delegate = self
         textView.onPaste = { [weak self] in self?.onPaste?() ?? false }
+        textView.onPointerFocus = { [weak self] in self?.pointerFocused() }
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
@@ -111,6 +114,7 @@ final class PromptEditor: NSView {
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
         applyRamp()
 
+        fieldContainer.target = textView
         fieldContainer.wantsLayer = true
         fieldContainer.layer?.cornerRadius = MacTheme.Radius.control
         fieldContainer.layer?.borderWidth = 1
@@ -194,8 +198,21 @@ final class PromptEditor: NSView {
     /// box for anything it draws beside it.
     var fieldView: NSView { fieldContainer }
 
+    var focusTarget: NSView { textView }
+
     func focus() {
         window?.makeFirstResponder(textView)
+    }
+
+    /// A press that took the keyboard for the box is a person who means to type: in the vim
+    /// composer's normal or visual mode the caret is drawn clear, so the box looked focused and
+    /// showed nothing, and stayed that way until the chat was left and entered again — which resets
+    /// the mode. Focus the keyboard gave without a press, by Tab or a chord, keeps the mode it had.
+    func pointerFocused(vimEnabled: Bool = PromptEditor.vimPreferred) {
+        guard vimEnabled, vim.mode != .insert else { return }
+        vim.reset(to: textView.string, cursor: cursor, mode: .insert)
+        refreshMode()
+        onModeChanged?()
     }
 
     func setText(_ text: String, caretAtEnd: Bool) {
@@ -379,12 +396,34 @@ extension PromptEditor: NSTextViewDelegate {
     }
 }
 
+/// The visible box of the prompt, every point of which is the text view's. The words sit inside a
+/// scroll view that can be a point or two shorter than the box, a placeholder label is drawn over
+/// the field, and a press on either used to land on something that takes no keyboard — the box
+/// looked clicked and showed no caret until the chat was left and entered again. A scroller keeps
+/// its own presses, so a long draft can still be scrolled by hand.
+@MainActor
+final class FocusingField: NSView {
+    weak var target: NSView?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        return hit is NSScroller ? hit : target ?? hit
+    }
+}
+
 /// A text view whose paste is asked about first. AppKit routes ⌘V and the Edit menu's Paste to
 /// `paste(_:)`, so one override covers both, and the composer answers whether it took the
 /// clipboard for itself — a paste that was words is handed straight back to AppKit rather than
 /// re-implemented, which is what keeps undo, selection and the system's own behaviour intact.
 final class PastingTextView: NSTextView {
     var onPaste: (() -> Bool)?
+    var onPointerFocus: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let took = super.becomeFirstResponder()
+        if took, NSApp.currentEvent?.type == .leftMouseDown { onPointerFocus?() }
+        return took
+    }
 
     override func paste(_ sender: Any?) {
         guard onPaste?() != true else { return }

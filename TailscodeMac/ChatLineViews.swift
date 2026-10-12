@@ -6,6 +6,10 @@ import TailscodeCore
 /// restart and an undo in flight all wear, at the table's height, because none of them is something
 /// anybody said and each says its whole fact in a line.
 ///
+/// Its words wrap rather than being cut when the pane is narrower than they are, and the row is as
+/// tall as they need at the width the column has and the size the type is set to: the height in
+/// the metrics table is a minimum, never the height.
+///
 /// A line with a reader behind it is pressable the way a disclosure is: a plate under the pointer,
 /// a click that acts on release, Space or Return once Full Keyboard Access puts it in the Tab loop.
 @MainActor
@@ -28,10 +32,10 @@ final class SeamLineView: NSView, KeyboardPressable {
         icon.contentTintColor = tint
         icon.setContentHuggingPriority(.required, for: .horizontal)
         icon.setAccessibilityElement(false)
-        let label = RowKit.label(text, font: MacTheme.Ramp.font(.seamLabel), color: tint)
+        let label = FittedWrapLabel()
         label.attributedStringValue = NSAttributedString(
-            string: text, attributes: MacTheme.Ramp.attributes(.seamLabel, color: tint))
-        label.lineBreakMode = .byTruncatingTail
+            string: text,
+            attributes: MacTheme.Ramp.attributes(.seamLabel, color: tint, alignment: .center))
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         middle.setViews([icon, label], in: .leading)
         if onPress != nil {
@@ -52,10 +56,15 @@ final class SeamLineView: NSView, KeyboardPressable {
         }
         addSubview(middle)
         let rest: CGFloat = 32
+        let breathing: CGFloat = 2 * MacTheme.UIScale.factor
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: CGFloat(ChatLayout.metrics.seamRowHeight)),
+            heightAnchor.constraint(
+                greaterThanOrEqualToConstant: CGFloat(ChatLayout.metrics.seamRowHeight)
+                    * MacTheme.UIScale.factor),
             middle.centerXAnchor.constraint(equalTo: centerXAnchor),
             middle.centerYAnchor.constraint(equalTo: centerYAnchor),
+            middle.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: breathing),
+            middle.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -breathing),
             middle.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: rest),
             middle.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -rest),
             leadingRule.leadingAnchor.constraint(equalTo: leadingAnchor),

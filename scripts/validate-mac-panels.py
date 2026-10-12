@@ -100,6 +100,8 @@ BANNED = [
     (r"helsinki|uusimaa|espoo", "a place name"),
     (r"gmail|@guitaripod|guitaripod@", "an email address"),
     (r"metal hud", "a status item of the machine"),
+    (r"drag to record|select a window|record a part of the screen", "the system's screen-recording overlay"),
+    (r"notification centre|notification center|do not disturb", "a system banner"),
 ]
 
 

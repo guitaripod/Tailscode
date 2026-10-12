@@ -228,6 +228,8 @@
                 main?.driveSplit(Int(argument) ?? 5, as: .mainStack)
             case "tile":
                 main?.driveTile(argument)
+            case "advance":
+                main?.transcript.driveAdvance(every: Int(argument) ?? 600)
             case "tiles":
                 say(main?.driveTilesReport() ?? "TILES no window")
             case "restore":
