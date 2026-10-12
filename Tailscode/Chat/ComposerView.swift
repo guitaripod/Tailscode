@@ -81,7 +81,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private var stackedConstraints: [NSLayoutConstraint] = []
     private var accessoryConstraints: [NSLayoutConstraint] = []
     private lazy var stackedTextBottom = textView.bottomAnchor.constraint(
-        equalTo: bar.bottomAnchor, constant: -(Self.accessoryRowHeight + 10))
+        equalTo: bar.bottomAnchor, constant: -(accessoryRowHeight + 10))
     private var accessoryToAttach: NSLayoutConstraint?
     private var accessoryToBar: NSLayoutConstraint?
     private let heatLine = CAGradientLayer()
@@ -235,6 +235,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             sendButton.heightAnchor.constraint(equalToConstant: 34),
 
             placeholder.leadingAnchor.constraint(equalTo: textView.leadingAnchor, constant: 2),
+            placeholder.trailingAnchor.constraint(lessThanOrEqualTo: textView.trailingAnchor),
             placeholderCenter,
 
             enhanceBadge.widthAnchor.constraint(equalToConstant: 16),
@@ -258,22 +259,25 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         }
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
             (view: ComposerView, _) in
-            view.stackedTextBottom.constant = -(Self.accessoryRowHeight + 10)
+            view.stackedTextBottom.constant = -(view.accessoryRowHeight + 10)
         }
 
         updateSendButton()
     }
 
-    /// The row of controls under the words grows with the reader's type size, so the pill in it
-    /// is never clipped by a box that was measured for the default one.
-    private static var accessoryRowHeight: CGFloat {
-        max(36, ceil(UIFontMetrics(forTextStyle: .body).scaledValue(for: 36)))
+    /// The row of controls under the words is as tall as the controls in it, which grow with the
+    /// reader's type size, so the pill is never clipped by a box that was measured for the default
+    /// one and the box is never taller than what it holds.
+    private var accessoryRowHeight: CGFloat {
+        let held = accessory?.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize).height ?? 0
+        return max(36, ceil(held + 6))
     }
 
     private func installAccessory() {
         guard let accessory else { return }
         accessory.translatesAutoresizingMaskIntoConstraints = false
         addSubview(accessory)
+        stackedTextBottom.constant = -(accessoryRowHeight + 10)
         accessoryToAttach = accessory.leadingAnchor.constraint(
             equalTo: attachButton.trailingAnchor, constant: Theme.Spacing.xs)
         accessoryToBar = accessory.leadingAnchor.constraint(

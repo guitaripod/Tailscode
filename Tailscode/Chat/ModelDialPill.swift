@@ -140,7 +140,10 @@ final class ModelDialPill: UIView {
         effortLabel.adjustsFontForContentSizeCategory = true
         effortLabel.textAlignment = .left
         effortLabel.isAccessibilityElement = false
+        effortLabel.lineBreakMode = .byTruncatingTail
+        effortLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         slotWidth = effortLabel.widthAnchor.constraint(equalToConstant: 0)
+        slotWidth.priority = .defaultHigh
         slotWidth.isActive = true
 
         let chevron = UIImageView(
@@ -180,6 +183,8 @@ final class ModelDialPill: UIView {
                 && abs(velocity.x) > abs(velocity.y)
         }
 
+        modelButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        effortZone.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         row.axis = .horizontal
         row.alignment = .fill
         row.spacing = 0

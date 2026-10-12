@@ -62,14 +62,14 @@ final class ChatChip: UIControl {
         }
     }
 
-    /// The most the words may take before they truncate, for a chip whose text is a sentence.
-    var maximumTextWidth: CGFloat? {
-        didSet {
-            labelCeiling.isActive = false
-            guard let maximumTextWidth else { return }
-            labelCeiling = label.widthAnchor.constraint(lessThanOrEqualToConstant: maximumTextWidth)
-            labelCeiling.isActive = true
-        }
+    /// The most of `reference`'s width the words may take before they truncate, for a chip whose
+    /// text is a sentence: a share of the room there is rather than a number of points, so a wide
+    /// window gives it more and a narrow one less.
+    func limitText(toShareOf reference: UIView, share: CGFloat) {
+        labelCeiling.isActive = false
+        labelCeiling = label.widthAnchor.constraint(
+            lessThanOrEqualTo: reference.widthAnchor, multiplier: share)
+        labelCeiling.isActive = true
     }
 
     var textColor: UIColor {
@@ -214,6 +214,9 @@ final class ChatFactsRow: UIView {
     private let scroll = FactsScrollView()
     private let stack = UIStackView()
     private let chips: [ChatChip]
+    private weak var bleedHost: UIView?
+    private var scrollLeading = NSLayoutConstraint()
+    private var scrollTrailing = NSLayoutConstraint()
 
     init(chips: [ChatChip]) {
         self.chips = chips
@@ -233,11 +236,12 @@ final class ChatFactsRow: UIView {
         }
         scroll.addSubview(stack)
         addSubview(scroll)
+        scrollLeading = scroll.leadingAnchor.constraint(equalTo: leadingAnchor)
+        scrollTrailing = scroll.trailingAnchor.constraint(equalTo: trailingAnchor)
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: topAnchor),
             scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
-            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollLeading, scrollTrailing,
             stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
@@ -251,15 +255,41 @@ final class ChatFactsRow: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// Lets the chips scroll edge to edge: the scroll view takes the whole width of `host` and the
+    /// room between the row and each edge becomes content inset, so the first chip rests where the
+    /// row starts and a scrolled chip leaves at the screen's edge rather than being cut off in the
+    /// middle of the page.
+    func bleed(to host: UIView) {
+        bleedHost = host
+        scrollLeading.isActive = false
+        scrollTrailing.isActive = false
+        scrollLeading = scroll.leadingAnchor.constraint(equalTo: host.leadingAnchor)
+        scrollTrailing = scroll.trailingAnchor.constraint(equalTo: host.trailingAnchor)
+        NSLayoutConstraint.activate([scrollLeading, scrollTrailing])
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let host = bleedHost, bounds.width > 0 else { return }
+        let left = max(0, convert(CGPoint.zero, to: host).x - host.bounds.minX)
+        let right = max(0, host.bounds.width - left - bounds.width)
+        let inset = scroll.contentInset
+        guard abs(inset.left - left) > 0.5 || abs(inset.right - right) > 0.5 else { return }
+        let atStart = scroll.contentOffset.x <= -inset.left + 0.5
+        scroll.contentInset = UIEdgeInsets(top: 0, left: left, bottom: 0, right: right)
+        if atStart { scroll.contentOffset.x = -left }
+    }
+
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        TouchSlop.area(of: bounds).contains(point)
+        TouchSlop.area(of: scroll.frame).contains(point)
     }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard !isHidden, alpha > 0.01, isUserInteractionEnabled,
             self.point(inside: point, with: event)
         else { return nil }
-        let inner = bounds.contains(point) ? point : TouchSlop.clamped(point, in: bounds)
+        let inner = scroll.frame.contains(point) ? point : TouchSlop.clamped(point, in: scroll.frame)
         return scroll.hitTest(convert(inner, to: scroll), with: event)
     }
 

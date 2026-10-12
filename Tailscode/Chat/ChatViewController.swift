@@ -641,6 +641,9 @@ final class ChatViewController: UIViewController {
         let chromeGap = factsRow.isHidden ? 0 : CGFloat(ChatChrome.transcriptToChrome)
         let composerInset =
             max(0, transcriptEnd - composerTop - collectionView.safeAreaInsets.bottom) + chromeGap
+        emptyState.bottomClearance =
+            composerAccessories.bounds.height > 0
+            ? max(0, composer.frame.minY - composerAccessories.frame.minY) + chromeGap : 0
         let bannerInset: CGFloat = banner.isHidden ? 0 : banner.bounds.height
         let available =
             min(composerTop, transcriptEnd) - collectionView.safeAreaInsets.top - bannerInset
@@ -1145,6 +1148,7 @@ final class ChatViewController: UIViewController {
         factsRow.widthAnchor.constraint(equalTo: composerAccessories.widthAnchor).isActive = true
         view.addSubview(factsScrim)
         view.addSubview(composerAccessories)
+        factsRow.bleed(to: view)
         NSLayoutConstraint.activate([
             factsScrim.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             factsScrim.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -1310,7 +1314,7 @@ final class ChatViewController: UIViewController {
     private func configureGoalChip() {
         guard viewModel.supportsGoals else { return }
         goalChip.setSymbol("target", tone: .attention)
-        goalChip.maximumTextWidth = 220
+        goalChip.limitText(toShareOf: factsRow, share: 0.6)
         goalChip.accessibilityHint = String(localized: "Shows the goal the agent is working toward.")
         goalChip.addAction(
             UIAction { [weak self] _ in self?.presentGoalDetail() }, for: .touchUpInside)
@@ -1694,7 +1698,10 @@ final class ChatViewController: UIViewController {
     }
 
     override var title: String? {
-        didSet { navTitleLabel.text = title }
+        didSet {
+            navTitleLabel.text = title
+            refreshNavAccessibility()
+        }
     }
 
     /// The header holds the conversation's name for the whole of a turn, with the one status line
@@ -1726,6 +1733,7 @@ final class ChatViewController: UIViewController {
         navTitleStack.isAccessibilityElement = true
         navTitleStack.accessibilityTraits = .header
         navigationItem.titleView = navTitleStack
+        refreshNavAccessibility()
     }
 
     private func refreshNavAccessibility() {
@@ -6721,8 +6729,9 @@ extension ChatViewController: KeyActionHost {
     private func jumpToPrompt(by direction: Int) {
         let inset = collectionView.adjustedContentInset
         let top = collectionView.contentOffset.y + inset.top
+        let snapshot = dataSource.snapshot()
         let anchors: [CGFloat] = promptRowIDs.compactMap { id in
-            guard let index = dataSource.snapshot().indexOfItem(id),
+            guard let index = snapshot.indexOfItem(id),
                 let frame = collectionView.layoutAttributesForItem(
                     at: IndexPath(item: index, section: 0))?.frame
             else { return nil }

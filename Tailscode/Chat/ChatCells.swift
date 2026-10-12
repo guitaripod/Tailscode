@@ -77,6 +77,38 @@ extension MessageSegment {
     }
 }
 
+/// A rule drawn as the width of whatever line holds it. It asks the layout for the line's width
+/// each time the line is laid out, so a window that changes width or a type size that changes the
+/// line height never leaves it short or wrapped.
+final class HairlineAttachment: NSTextAttachment {
+    private let height: CGFloat = 1
+    private let lift: CGFloat
+
+    init(font: UIFont) {
+        lift = (font.capHeight - height) / 2
+        super.init(data: nil, ofType: nil)
+        image = Self.solid
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    private static let solid: UIImage = {
+        let size = CGSize(width: 2, height: 2)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }.withRenderingMode(.alwaysTemplate)
+    }()
+
+    override func attachmentBounds(
+        for textContainer: NSTextContainer?, proposedLineFragment lineFrag: CGRect,
+        glyphPosition position: CGPoint, characterIndex charIndex: Int
+    ) -> CGRect {
+        let padding = (textContainer?.lineFragmentPadding ?? 0) * 2
+        return CGRect(x: 0, y: lift, width: max(0, lineFrag.width - padding), height: height)
+    }
+}
+
 final class TextBubbleCell: UICollectionViewCell {
     static let reuseID = "TextBubbleCell"
     weak var linkDelegate: TextBubbleCellDelegate?
@@ -380,6 +412,7 @@ final class TextBubbleCell: UICollectionViewCell {
                 .paragraphStyle, value: Self.prose(),
                 range: NSRange(location: 0, length: mutable.length))
             var edits: [(range: NSRange, replacement: String)] = []
+            var ruleLocations = Set<Int>()
             mutable.mutableString.enumerateSubstrings(
                 in: NSRange(location: 0, length: mutable.length),
                 options: .byLines
@@ -396,9 +429,8 @@ final class TextBubbleCell: UICollectionViewCell {
                 let trimmedStart = line.drop { $0 == " " }
                 let indentDepth = line.count - trimmedStart.count
                 if Self.isHorizontalRule(line) {
-                    mutable.addAttribute(
-                        .foregroundColor, value: Theme.Color.tertiaryLabel, range: substringRange)
-                    edits.append((substringRange, Self.ruleLine))
+                    ruleLocations.insert(substringRange.location)
+                    edits.append((substringRange, ""))
                 } else if trimmedStart.hasPrefix("- ") || trimmedStart.hasPrefix("* ") {
                     let paragraph = Self.prose()
                     paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6
@@ -438,7 +470,11 @@ final class TextBubbleCell: UICollectionViewCell {
                 }
             }
             for edit in edits.sorted(by: { $0.range.location > $1.range.location }) {
-                mutable.replaceCharacters(in: edit.range, with: edit.replacement)
+                if ruleLocations.contains(edit.range.location) {
+                    mutable.replaceCharacters(in: edit.range, with: Self.rule(font: base))
+                } else {
+                    mutable.replaceCharacters(in: edit.range, with: edit.replacement)
+                }
             }
             linkFilePaths(in: mutable)
             result = mutable
@@ -452,7 +488,13 @@ final class TextBubbleCell: UICollectionViewCell {
         return result
     }
 
-    private static let ruleLine = String(repeating: "\u{2500}", count: 24)
+    /// The line a rule becomes: one attachment that is as wide as the line it stands on, so it is a
+    /// full-width hairline in the separator colour at any width or type size.
+    private static func rule(font: UIFont) -> NSAttributedString {
+        NSAttributedString(
+            attachment: HairlineAttachment(font: font),
+            attributes: [.foregroundColor: Theme.Color.separator, .paragraphStyle: prose()])
+    }
 
     /// A line of three or more dashes on its own, which is how a model draws a rule between
     /// sections.
@@ -554,6 +596,7 @@ final class PermissionCell: UICollectionViewCell {
     private let allowButton = UIButton(type: .system)
     private let alwaysButton = UIButton(type: .system)
     private let denyButton = UIButton(type: .system)
+    private let decisionButtons = UIStackView()
     private var onDecision: ((PermissionDecision) -> Void)?
     private var barTop: NSLayoutConstraint!
 
@@ -594,11 +637,14 @@ final class PermissionCell: UICollectionViewCell {
         alwaysButton.addTarget(self, action: #selector(alwaysTapped), for: .touchUpInside)
         denyButton.addTarget(self, action: #selector(denyTapped), for: .touchUpInside)
 
-        let buttons = UIStackView(arrangedSubviews: [allowButton, alwaysButton, denyButton])
-        buttons.axis = .horizontal
+        let buttons = decisionButtons
+        [allowButton, alwaysButton, denyButton].forEach(buttons.addArrangedSubview)
         buttons.spacing = Theme.Spacing.s
-        buttons.distribution = .fillEqually
         buttons.translatesAutoresizingMaskIntoConstraints = false
+        arrangeDecisionButtons()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (cell: PermissionCell, _) in cell.arrangeDecisionButtons()
+        }
 
         contentView.addSubview(iconView)
         contentView.addSubview(titleLabel)
@@ -635,6 +681,14 @@ final class PermissionCell: UICollectionViewCell {
 
     var gapAbove: CGFloat = 0 {
         didSet { barTop.constant = gapAbove }
+    }
+
+    /// Three decisions side by side while each has the width for its words, one under another when
+    /// the reader's type is large enough that a word would be broken to fit.
+    private func arrangeDecisionButtons() {
+        let stacked = traitCollection.preferredContentSizeCategory >= .extraExtraLarge
+        decisionButtons.axis = stacked ? .vertical : .horizontal
+        decisionButtons.distribution = stacked ? .fill : .fillEqually
     }
 
     private func configureButton(_ button: UIButton, title: String, tint: UIColor, filled: Bool) {

@@ -209,9 +209,30 @@ enum ChatRowBuilder {
                 Self.dockable(pendingUnattached), groupID: "session", messageID: "agents",
                 role: .assistant,
                 expandedGroups: agents.expandedGroups))
+        #if DEBUG
+            rows.append(contentsOf: Self.stagedRuleRows())
+        #endif
         let fused = fuseActivity(rows)
         return dockPictures(dockRails(fused, turnOpen: turnOpen, memo: memo))
     }
+
+    #if DEBUG
+        /// `TAILSCODE_DEBUG_RULE=1` ends the transcript with a paragraph, a markdown rule and
+        /// another paragraph, so the rule can be photographed at any width and type size without
+        /// putting one in the demo world.
+        static func stagedRuleRows() -> [ChatRow] {
+            guard ProcessInfo.processInfo.environment["TAILSCODE_DEBUG_RULE"] != nil else {
+                return []
+            }
+            let words =
+                "Above the rule.\n\n---\n\nBelow the rule, a sentence long enough to wrap at any "
+                + "width, so the line can be judged against the words it divides."
+            return [
+                ChatRow(
+                    id: "debug:rule", messageID: "debug:rule", role: .assistant, content: .text(words))
+            ]
+        }
+    #endif
 
     /// Whether a row is part of the flow of an answer, which is what a link rail's run is made
     /// of: prose and the blocks set in it. A tool, a picture, a seam or another speaker ends the

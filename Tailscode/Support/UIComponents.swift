@@ -299,6 +299,19 @@ final class BannerView: UIView {
 final class ChatEmptyStateView: UIView {
     var onSuggestion: ((String) -> Void)?
 
+    private let scroll = UIScrollView()
+    private var contentHeights: [NSLayoutConstraint] = []
+
+    /// How much of the bottom edge the chat's own chrome covers, so the starters are centred in
+    /// what can be seen and a large type size can scroll the last one clear of the facts row.
+    var bottomClearance: CGFloat = 0 {
+        didSet {
+            guard abs(bottomClearance - oldValue) > 0.5 else { return }
+            scroll.contentInset.bottom = bottomClearance
+            contentHeights.forEach { $0.constant = -bottomClearance }
+        }
+    }
+
     init() {
         super.init(frame: .zero)
         let image = UIImageView(
@@ -313,6 +326,8 @@ final class ChatEmptyStateView: UIView {
         titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 0
+        titleLabel.adjustsFontForContentSizeCategory = true
 
         let stack = UIStackView(arrangedSubviews: [image, titleLabel])
         stack.axis = .vertical
@@ -328,8 +343,11 @@ final class ChatEmptyStateView: UIView {
             config.title = suggestion.title
             config.imagePadding = Theme.Spacing.s
             config.baseForegroundColor = Theme.Color.label
+            let metrics = UIFontMetrics(forTextStyle: .body)
+            let vertical = metrics.scaledValue(for: 10)
+            let horizontal = metrics.scaledValue(for: 14)
             config.contentInsets = NSDirectionalEdgeInsets(
-                top: 10, leading: 14, bottom: 10, trailing: 14)
+                top: vertical, leading: horizontal, bottom: vertical, trailing: horizontal)
             let button = UIButton(configuration: config)
             button.heightAnchor.constraint(greaterThanOrEqualToConstant: TouchSlop.hit).isActive = true
             button.addAction(
@@ -341,17 +359,53 @@ final class ChatEmptyStateView: UIView {
             stack.setCustomSpacing(Theme.Spacing.s, after: button)
         }
 
+        arrange(stack)
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (view: ChatEmptyStateView, _) in view.arrange(stack)
+        }
+        scroll.alwaysBounceVertical = false
+        scroll.showsVerticalScrollIndicator = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
         stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        scroll.addSubview(stack)
+        addSubview(scroll)
+        let content = scroll.contentLayoutGuide
+        let frame = scroll.frameLayoutGuide
+        let floor = content.heightAnchor.constraint(greaterThanOrEqualTo: frame.heightAnchor)
+        let settled = content.heightAnchor.constraint(equalTo: frame.heightAnchor)
+        settled.priority = .defaultLow
+        contentHeights = [floor, settled]
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -Theme.Spacing.xl),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: Theme.Spacing.xl),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Theme.Spacing.xl),
+            floor,
+            settled,
+            scroll.topAnchor.constraint(equalTo: topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.widthAnchor.constraint(equalTo: frame.widthAnchor),
+            stack.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: Theme.Spacing.xl),
+            stack.bottomAnchor.constraint(
+                lessThanOrEqualTo: content.bottomAnchor, constant: -Theme.Spacing.xl),
+            content.heightAnchor.constraint(
+                greaterThanOrEqualTo: stack.heightAnchor, constant: 2 * Theme.Spacing.xl),
+            stack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: content.centerYAnchor, constant: -Theme.Spacing.xl)
+                .withPriority(.defaultHigh),
+            stack.leadingAnchor.constraint(
+                greaterThanOrEqualTo: content.leadingAnchor, constant: Theme.Spacing.xl),
+            stack.trailingAnchor.constraint(
+                lessThanOrEqualTo: content.trailingAnchor, constant: -Theme.Spacing.xl),
         ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Starters are centred while their words fit on a line each, and take the full width once the
+    /// reader's type is large enough that a centred capsule would wrap a title into a circle.
+    private func arrange(_ stack: UIStackView) {
+        stack.alignment =
+            traitCollection.preferredContentSizeCategory.isAccessibilityCategory ? .fill : .center
+    }
 }
 
 final class ToastView: UIView {
