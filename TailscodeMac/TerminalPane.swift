@@ -82,6 +82,31 @@ import TailscodeCore
             applyPaneColours()
         }
 
+        /// The shell's size is a setting of its own, and what it already printed is part of the
+        /// answer: every run of the log is re-set at the new size and keeps the weight it had, so
+        /// the echoed commands stay heavier than the output beneath them.
+        func applyTypeScale() {
+            let body = MacTheme.Ramp.font(.code, in: .terminal)
+            output.font = body
+            field.font = body
+            notice.font = MacTheme.Ramp.font(.panelFootnote)
+            guard let storage = output.textStorage else { return }
+            storage.beginEditing()
+            storage.enumerateAttribute(
+                .font, in: NSRange(location: 0, length: storage.length)
+            ) { value, range, _ in
+                guard let old = value as? NSFont else { return }
+                let traits = old.fontDescriptor.object(forKey: .traits) as? [NSFontDescriptor.TraitKey: Any]
+                let weight = (traits?[.weight] as? CGFloat) ?? NSFont.Weight.regular.rawValue
+                storage.addAttribute(
+                    .font,
+                    value: NSFont.monospacedSystemFont(
+                        ofSize: body.pointSize, weight: NSFont.Weight(rawValue: weight)),
+                    range: range)
+            }
+            storage.endEditing()
+        }
+
         /// The pane's ground is a `CGColor`, which is the light it was resolved under rather than a
         /// colour that answers again — so a system that crossed into dark, or a palette that moved,
         /// would otherwise leave a pale slab under a dark transcript until the app was relaunched.
@@ -129,7 +154,7 @@ import TailscodeCore
             output.isEditable = false
             output.isRichText = false
             output.drawsBackground = false
-            output.font = MacTheme.Ramp.font(.code)
+            output.font = MacTheme.Ramp.font(.code, in: .terminal)
             output.textContainerInset = NSSize(width: MacTheme.Spacing.s, height: MacTheme.Spacing.xs)
             output.autoresizingMask = [.width]
             output.isVerticallyResizable = true
@@ -141,7 +166,7 @@ import TailscodeCore
         }
 
         private func configureField() {
-            field.font = MacTheme.Ramp.font(.code)
+            field.font = MacTheme.Ramp.font(.code, in: .terminal)
             field.placeholderString = Localized.text("Run a command…")
             field.target = self
             field.action = #selector(runFromField)
@@ -255,7 +280,7 @@ import TailscodeCore
         /// two mono sizes alternating down a log break the one column the eye is following.
         private func appendLine(_ text: String, color: NSColor, emphasized: Bool = false) {
             guard let storage = output.textStorage else { return }
-            let body = MacTheme.Ramp.font(.code)
+            let body = MacTheme.Ramp.font(.code, in: .terminal)
             let font =
                 emphasized
                 ? NSFont.monospacedSystemFont(ofSize: body.pointSize, weight: .semibold)

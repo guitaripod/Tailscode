@@ -365,6 +365,7 @@ final class MainMenu: NSObject {
         menu.addItem(unshifted)
         menu.addItem(item(Localized.text("Zoom Out"), #selector(zoomOut), "-"))
         menu.addItem(item(Localized.text("Actual Size"), #selector(zoomReset), "0"))
+        menu.addItem(item(Localized.text("Type Size…"), #selector(typeSize), ""))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("The month in numbers"), #selector(monthInNumbers), ""))
         menu.addItem(.separator())
@@ -553,6 +554,7 @@ final class MainMenu: NSObject {
     @objc private func reportIssue() { NSWorkspace.shared.open(Link.issue) }
     @objc private func privacy() { NSWorkspace.shared.open(Link.privacy) }
     @objc private func settings() { hub.presentPreferences() }
+    @objc private func typeSize() { hub.presentPreferences(typeSize: true) }
     @objc private func pro() { hub.presentPro() }
     @objc private func software() { hub.presentUpdates() }
     @objc private func newChat() { run(.newChat) }

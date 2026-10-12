@@ -270,8 +270,15 @@ enum MacTheme {
         }
 
         static func font(_ role: TypeRole) -> NSFont {
+            font(role, in: TypeArea(axis: Typography.spec(role).axis))
+        }
+
+        /// A role set at the size of an area that is not its own axis's: the shell under the
+        /// conversation is monospace like the code above it and is sized by nothing but itself.
+        static func font(_ role: TypeRole, in area: TypeArea) -> NSFont {
             let spec = Typography.spec(role)
-            let size = CGFloat(spec.size(base: base(spec.axis), scale: Double(UIScale.factor)))
+            let size = CGFloat(
+                spec.size(base: base(spec.axis), scale: Double(UIScale.factor(for: area))))
             let weight = weight(spec.weight)
             let face: NSFont =
                 switch spec.family {
@@ -332,13 +339,23 @@ enum MacTheme {
     enum UIScale {
         private static let key = "tailscode.uiScale"
 
-        static var factor: CGFloat {
+        /// The window zoom ⌘+ ⌘− ⌘0 turn: one multiple for everything in the window, stacked on
+        /// the size each area has been given in Settings.
+        static var zoom: CGFloat {
             let stored = UserDefaults.standard.double(forKey: key)
             return stored == 0 ? 1.0 : CGFloat(stored)
         }
 
+        /// What anything sized by "a point" — a symbol, a row's padding, a pill — is multiplied by:
+        /// the zoom and the chrome area, because those are the things that are not words you read.
+        static var factor: CGFloat { factor(for: .chrome) }
+
+        static func factor(for area: TypeArea) -> CGFloat {
+            zoom * CGFloat(TypeScaleStore.scale(area))
+        }
+
         static func step(_ delta: Double) {
-            let next = min(2.0, max(0.6, ((Double(factor) + delta) * 10).rounded() / 10))
+            let next = min(2.0, max(0.6, ((Double(zoom) + delta) * 10).rounded() / 10))
             UserDefaults.standard.set(next, forKey: key)
         }
 

@@ -4,8 +4,9 @@ import TailscodeCore
 /// The settings window: every knob the Mac app has, live — nothing here needs an OK, because the
 /// only honest way to pick a behavior is to watch it change. The keys are the same
 /// `tailscode.*` defaults the Linux desktop and the phone read, so a preference is a fact about
-/// the person, not about the toolkit. Type size has no row here — ⌘± owns it — but the theme does:
-/// it is the one preference whose result is the window you are picking it in.
+/// the person, not about the toolkit. The theme is the one preference whose result is the window
+/// you are picking it in; type size is the other, so it is shown with a preview of the lines it
+/// moves, and ⌘± zooms the whole window on top of it.
 @MainActor
 final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     private let onComposerChanged: @MainActor () -> Void
@@ -18,6 +19,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     private let summonState = NSTextField(wrappingLabelWithString: "")
     private var summonRecorder: Any?
     private var hapticStop = -1
+    private weak var typeSection: TypeSettingsView?
     private let watchAccounts = NSStackView()
     private let deepseekRow = NSStackView()
     private let ollamaRow = NSStackView()
@@ -77,6 +79,15 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     func present() {
         window?.contentView = makeContent()
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Opens on the type controls, for a menu item that is about nothing else: the window is long
+    /// and the one thing wanted would otherwise be somewhere below the fold.
+    func presentTypeSize() {
+        present()
+        window?.contentView?.layoutSubtreeIfNeeded()
+        guard let typeSection else { return }
+        typeSection.scrollToVisible(typeSection.bounds)
     }
 
     /// The theme is the second axis, and it is the one AppKit has no trait for: a colour already
@@ -171,6 +182,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 options: ChatDensity.allCases.map(\.title),
                 selected: ChatDensity.allCases.firstIndex(of: ChatDensitySetting.current) ?? 0,
                 action: #selector(chatDensityChanged)))
+
+        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        let type = TypeSettingsView()
+        typeSection = type
+        column.addArrangedSubview(type)
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Prompt box")))

@@ -33,6 +33,7 @@ final class MainWindowController: NSWindowController {
     private var dividerSavingEnabled = false
     private var shortcuts = ShortcutSet.load()
     var onShortcutsReloaded: (() -> Void)?
+    private var typeScaleWork: DispatchWorkItem?
     private var pendingChords: [KeyChord] = []
     private var focused: Pane = .chats
     /// What each restored pane was showing, until the cached listing carries the session and the
@@ -116,6 +117,11 @@ final class MainWindowController: NSWindowController {
             forName: MacUpdateWatch.didChange, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateMark?.render() }
+        }
+        NotificationCenter.default.addObserver(
+            forName: TypeScaleStore.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.typeScaleChanged() }
         }
         if !shortcuts.issues.isEmpty {
             setNotice(
@@ -878,7 +884,20 @@ final class MainWindowController: NSWindowController {
     private func applyUIScale() {
         splitPanes.eachPane { $0.applyUIScale() }
         sidebar.applyUIScale()
+        #if !TAILSCODE_MAS
+            terminalPane.applyTypeScale()
+        #endif
         applyPaneThickness()
+    }
+
+    /// A slider dragged through forty sizes asks for forty redraws of every conversation, and each
+    /// one rebuilds every row. The preview in Settings answers every notch; the window answers
+    /// when the hand has paused.
+    private func typeScaleChanged() {
+        typeScaleWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.applyUIScale() }
+        typeScaleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
     /// A theme change is a restyle of everything, and AppKit has no trait to invalidate for it: a
@@ -906,6 +925,7 @@ final class MainWindowController: NSWindowController {
         case "servers": presentServers()
         case "updates": presentUpdates()
         case "preferences", "prefs": presentPreferences()
+        case "typesize", "type": presentPreferences(typeSize: true)
         case "analytics": presentAnalytics()
         case "usage", "quotas": presentUsageWindow()
         case "newchat": presentNewChat(browsing: parts.count > 1 && parts[1] == "browse")
@@ -978,7 +998,7 @@ final class MainWindowController: NSWindowController {
         default:
             FileHandle.standardError.write(
                 Data(
-                    ("unknown surface \(name) — servers, updates, preferences, analytics, newchat[:browse], "
+                    ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
                         + "forge[:state], studio[:state[+viewer]], viewer[:state], draw, renderer, delegate\n").utf8))
         }
@@ -1080,7 +1100,7 @@ final class MainWindowController: NSWindowController {
         proWindow?.present()
     }
 
-    func presentPreferences() {
+    func presentPreferences(typeSize: Bool = false) {
         if preferencesWindow == nil {
             preferencesWindow = PreferencesWindow(
                 onComposerChanged: { [weak self] in
@@ -1094,7 +1114,11 @@ final class MainWindowController: NSWindowController {
                     self?.reloadShortcuts()
                 })
         }
-        preferencesWindow?.present()
+        if typeSize {
+            preferencesWindow?.presentTypeSize()
+        } else {
+            preferencesWindow?.present()
+        }
     }
 
     /// A pane with nothing in it asks which server, then what on it — the question the chat list

@@ -154,7 +154,11 @@ enum ParityManifest {
         case .chatDragToPane: return .implemented("acceptChatDrops")
         case .clickToActivate: return .implemented("onPressCapture")
         case .pointerFeedback: return .implemented("MessageHoverBar")
-        case .uiScale: return .implemented("UIScale")
+        case .uiScale:
+            return .partial(
+                "UIScale",
+                missing:
+                    "the four per-area sizes exist as spin rows, but there is no preview, no preset, no per-area reset and no stored-size wording from Core's TypeArea/TypePreset yet")
         case .typeRamp: return .implemented("TypeCSS")
         case .themePicker: return .implemented("MatrixTheme")
         case .settingsSurface: return .implemented("Preferences")

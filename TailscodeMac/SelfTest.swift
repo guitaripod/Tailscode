@@ -471,6 +471,14 @@ enum SelfTest {
         }
 
         do {
+            try checkTypeAreas()
+            report("type areas: each area sizes only its own lines")
+        } catch {
+            report("type areas: \(error)")
+            failures += 1
+        }
+
+        do {
             try checkToastWidth()
             report("toasts: a sentence is given the width it takes")
         } catch {
@@ -3766,6 +3774,38 @@ enum SelfTest {
             seen[probeSession] = nil
             defaults.set(seen, forKey: "tailscode.seen.sessions")
         }
+    }
+
+    /// Type size is per area: making the prose bigger moves the prompts and answers and nothing
+    /// else, the terminal is sized by nothing but itself, and a size put back to normal is the size
+    /// the window started at. The person's own sizes are restored when the check is done.
+    private static func checkTypeAreas() throws {
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("type case failed: \(label)") }
+        }
+        let kept = TypeScaleStore.current()
+        defer { TypeScaleStore.set(kept) }
+        TypeScaleStore.set(TypeScale())
+        let answer = MacTheme.Ramp.font(.answer).pointSize
+        let row = MacTheme.Ramp.font(.rowTitle).pointSize
+        let code = MacTheme.Ramp.font(.code).pointSize
+        let shell = MacTheme.Ramp.font(.code, in: .terminal).pointSize
+        try expect(shell == code, "an untouched terminal is sized like the code above it")
+
+        TypeScaleStore.set(.prose, to: 1.5)
+        let grown = MacTheme.Ramp.font(.answer).pointSize
+        try expect(abs(grown - answer * 1.5) < 0.01, "prose at 150% is \(grown)pt, not \(answer * 1.5)pt")
+        try expect(MacTheme.Ramp.font(.rowTitle).pointSize == row, "the chat list moved with the prose")
+        try expect(MacTheme.Ramp.font(.code).pointSize == code, "code moved with the prose")
+
+        TypeScaleStore.set(.terminal, to: 2.0)
+        try expect(
+            abs(MacTheme.Ramp.font(.code, in: .terminal).pointSize - shell * 2) < 0.01,
+            "the terminal did not follow its own size")
+        try expect(MacTheme.Ramp.font(.code).pointSize == code, "code moved with the terminal")
+
+        TypeScaleStore.set(TypeScale())
+        try expect(MacTheme.Ramp.font(.answer).pointSize == answer, "normal is not where it began")
     }
 
     /// A toast is a sentence in a capsule, not a pill: the width it asks for must be the width of
