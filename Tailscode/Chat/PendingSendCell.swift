@@ -131,6 +131,7 @@ final class PendingSendCell: UICollectionViewCell {
         plan = nil
         shownPhase = nil
         onResize = nil
+        accessibilityCustomActions = nil
     }
 
     override func didMoveToWindow() {
@@ -157,7 +158,31 @@ final class PendingSendCell: UICollectionViewCell {
         paintCaption()
         isAccessibilityElement = true
         accessibilityTraits = failed && plan == nil ? .staticText : .updatesFrequently
+        accessibilityCustomActions = recoveryActions(for: send, plan: plan)
         startClockIfNeeded()
+    }
+
+    /// The row's buttons as VoiceOver actions. The row reads as one element so its state is heard
+    /// whole, which hides the buttons inside it, so what can be done about a send that did not go
+    /// is handed to the rotor.
+    private func recoveryActions(
+        for send: PendingSend, plan: ResumePlan?
+    ) -> [UIAccessibilityCustomAction] {
+        let id = send.id
+        guard plan == nil else {
+            return ResumeReading.acts.map { act in
+                UIAccessibilityCustomAction(name: ResumeReading.title(act)) { [weak self] _ in
+                    self?.delegate?.pendingSend(id, resume: act)
+                    return true
+                }
+            }
+        }
+        return send.acts.map { act in
+            UIAccessibilityCustomAction(name: PendingSendReading.title(act)) { [weak self] _ in
+                self?.delegate?.pendingSend(id, act: act)
+                return true
+            }
+        }
     }
 
     /// The bubble's alpha is the state. Faint on the wire, full when the server has it — and the
@@ -214,6 +239,8 @@ final class PendingSendCell: UICollectionViewCell {
                         self?.delegate?.pendingSend(id, resume: act)
                     })
                 button.accessibilityLabel = ResumeReading.title(act)
+                button.heightAnchor.constraint(greaterThanOrEqualToConstant: TouchSlop.hit)
+                    .isActive = true
                 acts.addArrangedSubview(button)
             }
             return
@@ -243,6 +270,8 @@ final class PendingSendCell: UICollectionViewCell {
                     self?.delegate?.pendingSend(id, act: act)
                 })
             button.accessibilityLabel = PendingSendReading.title(act)
+            button.heightAnchor.constraint(greaterThanOrEqualToConstant: TouchSlop.hit)
+                .isActive = true
             acts.addArrangedSubview(button)
         }
     }

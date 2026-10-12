@@ -116,22 +116,30 @@ final class ChatViewController: UIViewController {
     private var lastHapticPermissionID: String?
     private var lastHapticFailure: String?
     private let navStatusLabel = UILabel()
+    private let navTitleLabel = UILabel()
+    private let navStatusRow = UIStackView()
     private var lastNotifiedPermissionID: String?
     private let fab = UIButton(type: .system)
-    private let agentsChip = UIButton(type: .system)
-    private let goalChip = UIButton(type: .system)
-    private let contextChip = UIButton(type: .system)
+    private var rowsAtDeparture: Int?
+    private let agentsChip = ChatChip(kind: .live)
+    private let backgroundChip = ChatChip(kind: .live)
+    private let goalChip = ChatChip(kind: .live)
+    private let contextChip = ChatChip(kind: .fact)
     /// What the whole conversation has cost, beside its size — the two facts a long chat is
     /// judged by. Tapping opens the account behind the number.
-    private let spendChip = UIButton(type: .system)
+    private let spendChip = ChatChip(kind: .fact)
     /// The server's own account when it keeps one, else what the transcript says — kept apart so a
     /// poll that came back with nothing cannot erase a good reading, which is what left the chart
     /// on the one device the session was started from.
     private var spendReading = SpendReading()
     /// The branch the work is landing on, and how far the tree has drifted from it. Tapping opens
     /// the repository — read-only, because this app never commits on anyone's behalf.
-    private let gitChip = UIButton(type: .system)
+    private let gitChip = ChatChip(kind: .fact)
     private var git: GitState?
+    private lazy var factsRow = ChatFactsRow(chips: [
+        agentsChip, backgroundChip, goalChip, contextChip, spendChip, gitChip,
+    ])
+    private let factsScrim = FadeScrimView(fade: CGFloat(ChatChrome.transcriptToChrome))
     private let findBar = UIView()
     private let findField = UISearchTextField()
     private let findCountLabel = UILabel()
@@ -144,7 +152,7 @@ final class ChatViewController: UIViewController {
     private let composerAccessories = AccessoryStack()
     private var streamingActivityID: String?
     private var expandedAgentGroups: Set<String> = []
-    private let navTitleContainer = UIView()
+    private let navTitleStack = UIStackView()
     /// What the turn is doing, in the same symbol and the same motion the desks use — a terminal
     /// while a shell runs, a raised hand while it waits on you. A bare spinner said only that
     /// something was happening, which is the one thing the reader could already see.
@@ -261,6 +269,7 @@ final class ChatViewController: UIViewController {
         configureContextChip()
         configureSpendChip()
         configureGitChip()
+        configureBackgroundChip()
         configureFindBar()
         configureNavTitleView()
         configureDataSource()
@@ -469,58 +478,16 @@ final class ChatViewController: UIViewController {
     }
 
     private var announcedIdentity = false
-    private var identityOverlay: UIView?
 
     /// A chat says which conversation it is when it arrives, once, because the failure a wrong
-    /// open has is being quiet about it: a title already sitting in the chrome reads as wallpaper.
-    /// Reduced motion keeps the message and drops the movement.
+    /// open has is being quiet about it. The title is always in the header now, so the arrival is
+    /// told to a screen reader, and a press on the chat already open blinks the title once.
+    /// Reduced motion keeps the announcement and drops the movement.
     func announceIdentity() {
-        identityOverlay?.removeFromSuperview()
-        let pill = UIView()
-        pill.backgroundColor = Theme.Color.label.withAlphaComponent(0.92)
-        pill.layer.cornerRadius = Theme.Radius.card
-        pill.clipsToBounds = true
-        let label = UILabel()
-        label.text = viewModel.displayTitle
-        label.font = Theme.Ramp.font(.paneIdentity)
-        label.textColor = Theme.Color.background
-        label.lineBreakMode = .byTruncatingTail
-        pill.addSubview(label)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: pill.topAnchor, constant: 8),
-            label.bottomAnchor.constraint(equalTo: pill.bottomAnchor, constant: -8),
-            label.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 16),
-            label.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -16),
-        ])
-        pill.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(pill)
-        NSLayoutConstraint.activate([
-            pill.topAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.m),
-            pill.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            pill.widthAnchor.constraint(
-                lessThanOrEqualTo: view.widthAnchor, constant: -2 * Theme.Spacing.l),
-        ])
-        identityOverlay = pill
-        if UIAccessibility.isReduceMotionEnabled {
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(1.6))
-                self?.identityOverlay?.removeFromSuperview()
-                self?.identityOverlay = nil
-            }
-            return
-        }
-        pill.alpha = 0
-        UIView.animate(withDuration: 0.18) { pill.alpha = 1 }
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1.6))
-            guard let self, let pill = self.identityOverlay else { return }
-            UIView.animate(withDuration: 0.25, animations: { pill.alpha = 0 }) { _ in
-                pill.removeFromSuperview()
-            }
-            self.identityOverlay = nil
-        }
+        UIAccessibility.post(notification: .announcement, argument: navDisplayTitle)
+        guard !UIAccessibility.isReduceMotionEnabled, isViewLoaded, view.window != nil else { return }
+        navTitleLabel.alpha = 0.3
+        UIView.animate(withDuration: 0.35) { self.navTitleLabel.alpha = 1 }
     }
 
     override var canBecomeFirstResponder: Bool { true }
@@ -671,8 +638,9 @@ final class ChatViewController: UIViewController {
             ? min(composer.frame.minY, composerAccessories.frame.minY)
             : composer.frame.minY
         let transcriptEnd = collectionView.frame.maxY
-        let composerInset = max(
-            0, transcriptEnd - composerTop - collectionView.safeAreaInsets.bottom)
+        let chromeGap = factsRow.isHidden ? 0 : CGFloat(ChatChrome.transcriptToChrome)
+        let composerInset =
+            max(0, transcriptEnd - composerTop - collectionView.safeAreaInsets.bottom) + chromeGap
         let bannerInset: CGFloat = banner.isHidden ? 0 : banner.bounds.height
         let available =
             min(composerTop, transcriptEnd) - collectionView.safeAreaInsets.top - bannerInset
@@ -1076,6 +1044,7 @@ final class ChatViewController: UIViewController {
         collectionView.contentInsetAdjustmentBehavior = .automatic
         collectionView.delegate = self
         collectionView.scrollsToTop = true
+        if #available(iOS 26.0, *) { collectionView.topEdgeEffect.style = .hard }
         let dismissTap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         dismissTap.cancelsTouchesInView = false
         dismissTap.delegate = self
@@ -1132,6 +1101,8 @@ final class ChatViewController: UIViewController {
             ProviderRetryCell.self, forCellWithReuseIdentifier: ProviderRetryCell.reuseID)
         collectionView.register(
             RevertBannerCell.self, forCellWithReuseIdentifier: RevertBannerCell.reuseID)
+        collectionView.register(
+            FailedTurnCell.self, forCellWithReuseIdentifier: FailedTurnCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -1162,30 +1133,26 @@ final class ChatViewController: UIViewController {
         attachmentStrip.axis = .horizontal
         attachmentStrip.spacing = Theme.Spacing.s
         attachmentStrip.isHidden = true
-        agentsChip.isHidden = true
-        agentsChip.translatesAutoresizingMaskIntoConstraints = false
-        goalChip.isHidden = true
-        goalChip.translatesAutoresizingMaskIntoConstraints = false
+        factsRow.translatesAutoresizingMaskIntoConstraints = false
+        factsScrim.translatesAutoresizingMaskIntoConstraints = false
+        factsScrim.isHidden = true
         composerAccessories.axis = .vertical
         composerAccessories.spacing = Theme.Spacing.xs
         composerAccessories.alignment = .leading
         composerAccessories.translatesAutoresizingMaskIntoConstraints = false
         composerAccessories.addArrangedSubview(attachmentStrip)
-        composerAccessories.addArrangedSubview(goalChip)
-        composerAccessories.addArrangedSubview(agentsChip)
-        contextChip.isHidden = true
-        contextChip.translatesAutoresizingMaskIntoConstraints = false
-        spendChip.isHidden = true
-        spendChip.translatesAutoresizingMaskIntoConstraints = false
-        gitChip.isHidden = true
-        gitChip.translatesAutoresizingMaskIntoConstraints = false
-        let chips = UIStackView(arrangedSubviews: [contextChip, spendChip, gitChip])
-        chips.axis = .horizontal
-        chips.spacing = Theme.Spacing.xs
-        chips.alignment = .center
-        composerAccessories.addArrangedSubview(chips)
-        chips.widthAnchor.constraint(lessThanOrEqualTo: composerAccessories.widthAnchor).isActive = true
+        composerAccessories.addArrangedSubview(factsRow)
+        factsRow.widthAnchor.constraint(equalTo: composerAccessories.widthAnchor).isActive = true
+        view.addSubview(factsScrim)
         view.addSubview(composerAccessories)
+        NSLayoutConstraint.activate([
+            factsScrim.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            factsScrim.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            factsScrim.topAnchor.constraint(
+                equalTo: factsRow.topAnchor, constant: -CGFloat(ChatChrome.transcriptToChrome)),
+            factsScrim.bottomAnchor.constraint(
+                equalTo: composer.topAnchor, constant: Theme.Spacing.xs),
+        ])
 
         transcriptBottom = collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         NSLayoutConstraint.activate([
@@ -1238,14 +1205,14 @@ final class ChatViewController: UIViewController {
                     composerAccessories.leadingAnchor.constraint(
                         equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
                     composerAccessories.trailingAnchor.constraint(
-                        lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor,
+                        equalTo: view.safeAreaLayoutGuide.trailingAnchor,
                         constant: -Theme.Spacing.l),
                 ],
                 regular: [
                     composerAccessories.leadingAnchor.constraint(
                         equalTo: view.readableContentGuide.leadingAnchor, constant: Theme.Spacing.l),
                     composerAccessories.trailingAnchor.constraint(
-                        lessThanOrEqualTo: view.readableContentGuide.trailingAnchor,
+                        equalTo: view.readableContentGuide.trailingAnchor,
                         constant: -Theme.Spacing.l),
                 ]))
 
@@ -1274,20 +1241,12 @@ final class ChatViewController: UIViewController {
         ])
     }
 
-    /// A quiet chip above the composer while subagents are working — a session
-    /// deep in fan-out work can leave the main transcript still for minutes,
-    /// which otherwise reads as "nothing is happening".
+    /// A chip above the composer while subagents are out — a session deep in fan-out work can
+    /// leave the main transcript still for minutes, which otherwise reads as "nothing is
+    /// happening". It counts only agents that are out now: under a turn that is over, none is.
     private func configureAgentsChip() {
         guard viewModel.supportsSubagents else { return }
-        var config = UIButton.Configuration.gray()
-        config.cornerStyle = .capsule
-        config.buttonSize = .small
-        config.image = UIImage(
-            systemName: "circle.fill",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 8))
-        config.imagePadding = 6
-        config.baseForegroundColor = Theme.Color.success
-        agentsChip.configuration = config
+        agentsChip.setLive(.openWork)
         agentsChip.addAction(
             UIAction { [weak self] _ in
                 guard let self else { return }
@@ -1304,28 +1263,54 @@ final class ChatViewController: UIViewController {
 
     private func refreshAgentsChip() {
         let live = viewModel.liveSubagentCount
+        defer { factsRow.refresh(); syncFactsScrim() }
         guard live > 0 else {
             agentsChip.isHidden = true
             return
         }
-        agentsChip.configuration?.title = String(localized: "\(live) agents working")
+        let words = String(localized: "\(live) agents working")
+        agentsChip.text = words
+        agentsChip.accessibilityLabel = words
+        agentsChip.accessibilityHint = String(localized: "Opens the list of agents.")
         agentsChip.isHidden = false
+    }
+
+    private func syncFactsScrim() {
+        factsScrim.isHidden = !factsRow.hasContent
+    }
+
+    private func configureBackgroundChip() {
+        backgroundChip.addAction(
+            UIAction { [weak self] _ in self?.presentBackgroundWork() }, for: .touchUpInside)
+    }
+
+    /// Work the machine carries between turns, shown while the conversation is in that state and
+    /// not otherwise. It breathes like any work in flight, and stands still under reduced motion.
+    private func updateBackgroundChip(for facts: StatusFacts) {
+        defer { factsRow.refresh(); syncFactsScrim() }
+        guard case .background(let tasks) = facts.phase else {
+            backgroundChip.isHidden = true
+            return
+        }
+        let kind = ActivityKind.inBackground(tasks: tasks)
+        backgroundChip.setLive(kind.icon)
+        backgroundChip.text = kind.title
+        backgroundChip.accessibilityLabel = kind.spoken
+        backgroundChip.accessibilityHint = String(localized: "Opens the agents and background work.")
+        backgroundChip.isHidden = false
+    }
+
+    private func presentBackgroundWork() {
+        Theme.Haptics.tap()
+        let agents = viewModel.trackedSubagents
+        guard !agents.isEmpty else { return }
+        presentSubagents(agents)
     }
 
     private func configureGoalChip() {
         guard viewModel.supportsGoals else { return }
-        var config = UIButton.Configuration.tinted()
-        config.cornerStyle = .capsule
-        config.buttonSize = .small
-        config.image = UIImage(
-            systemName: "target",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
-        config.imagePadding = 6
-        config.baseForegroundColor = Theme.Color.warning
-        config.baseBackgroundColor = Theme.Color.warning
-        config.titleLineBreakMode = .byTruncatingTail
-        goalChip.configuration = config
-        goalChip.titleLabel?.lineBreakMode = .byTruncatingTail
+        goalChip.setSymbol("target", tone: .attention)
+        goalChip.maximumTextWidth = 220
         goalChip.accessibilityHint = String(localized: "Shows the goal the agent is working toward.")
         goalChip.addAction(
             UIAction { [weak self] _ in self?.presentGoalDetail() }, for: .touchUpInside)
@@ -1338,8 +1323,8 @@ final class ChatViewController: UIViewController {
         let previous = lastRenderedGoal
         lastRenderedGoal = state.goal
         if let active = state.activeGoal {
-            if goalChip.configuration?.title != active.condition {
-                goalChip.configuration?.title = active.condition
+            if goalChip.text != active.condition {
+                goalChip.text = active.condition
                 goalChip.accessibilityLabel = String(
                     localized: "Working toward: \(active.condition)")
             }
@@ -1347,6 +1332,8 @@ final class ChatViewController: UIViewController {
         } else {
             goalChip.isHidden = true
         }
+        factsRow.refresh()
+        syncFactsScrim()
         guard let settled = state.goal, settled.isMet, previous?.isActive == true,
             previous?.condition == settled.condition
         else { return }
@@ -1651,47 +1638,99 @@ final class ChatViewController: UIViewController {
     }
 
     private func configureFAB() {
-        fab.configuration = fabConfiguration()
-        fab.accessibilityLabel = String(localized: "Scroll to bottom")
+        fab.configuration = fabConfiguration(reading: JumpReading.read(
+            rowsNow: 0, rowsAtDeparture: nil, needsYou: false))
+        fab.accessibilityLabel = JumpReading.read(
+            rowsNow: 0, rowsAtDeparture: nil, needsYou: false).spoken
         fab.translatesAutoresizingMaskIntoConstraints = false
         fab.isHidden = true
         fab.addTarget(self, action: #selector(fabTapped), for: .touchUpInside)
         view.addSubview(fab)
         NSLayoutConstraint.activate([
             fab.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
-            fab.bottomAnchor.constraint(equalTo: composer.topAnchor, constant: -Theme.Spacing.m),
+            fab.bottomAnchor.constraint(
+                equalTo: composerAccessories.topAnchor, constant: -Self.fabClearance),
             fab.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
-            fab.heightAnchor.constraint(equalToConstant: 44),
+            fab.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
         ])
     }
 
-    private func fabConfiguration() -> UIButton.Configuration {
+    /// How far the jump control stands above the facts row, or the composer when the row has
+    /// nothing to say, so it never covers a chip.
+    private static let fabClearance: CGFloat = 10
+
+    private func fabConfiguration(reading: JumpReading) -> UIButton.Configuration {
         var config = Theme.Glass.buttonConfiguration()
         config.cornerStyle = .capsule
-        config.image = UIImage(
+        let glyph = UIImage(
             systemName: "chevron.down",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold))
+        config.image = reading.tone == .quiet
+            ? glyph : glyph?.withTintColor(reading.tone.color, renderingMode: .alwaysOriginal)
         config.baseForegroundColor = Theme.Color.label
+        if let label = reading.label {
+            var title = AttributedString(label)
+            title.font = Theme.Ramp.font(ChatChrome.chipRole)
+            config.attributedTitle = title
+            config.imagePadding = CGFloat(ChatChrome.chip(on: .touch).iconGap)
+            config.contentInsets = NSDirectionalEdgeInsets(
+                top: 0, leading: Theme.Spacing.m, bottom: 0, trailing: Theme.Spacing.m)
+        }
         return config
     }
 
+    private var shownJump: JumpReading?
+
+    /// What the jump control says: a bare arrow when the reader is simply up the page, and a
+    /// capsule with words when something waits at the end or rows arrived while they were away.
+    private func refreshJumpReading() {
+        let reading = JumpReading.read(
+            rowsNow: orderedIDs.count, rowsAtDeparture: rowsAtDeparture,
+            needsYou: pendingPermission != nil || pendingQuestion != nil)
+        guard reading != shownJump else { return }
+        shownJump = reading
+        fab.configuration = fabConfiguration(reading: reading)
+        fab.accessibilityLabel = reading.spoken
+    }
+
+    override var title: String? {
+        didSet { navTitleLabel.text = title }
+    }
+
+    /// The header holds the conversation's name for the whole of a turn, with the one status line
+    /// under it: what is happening is a second line, never a replacement for the name.
     private func configureNavTitleView() {
+        navTitleLabel.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: .systemFont(ofSize: 17, weight: .semibold))
+        navTitleLabel.adjustsFontForContentSizeCategory = true
+        navTitleLabel.textColor = Theme.Color.label
+        navTitleLabel.textAlignment = .center
+        navTitleLabel.lineBreakMode = .byTruncatingTail
+        navTitleLabel.text = title
+        navTitleLabel.isAccessibilityElement = false
         navStatusLabel.font = Theme.Ramp.font(.panelDetail)
+        navStatusLabel.adjustsFontForContentSizeCategory = true
         navStatusLabel.textColor = Theme.Color.secondaryLabel
-        navStatusLabel.adjustsFontSizeToFitWidth = true
-        navStatusLabel.minimumScaleFactor = 0.8
-        let stack = UIStackView(arrangedSubviews: [navBadge, navStatusLabel])
-        stack.axis = .horizontal
-        stack.spacing = Theme.Spacing.s
-        stack.alignment = .center
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        navTitleContainer.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: navTitleContainer.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: navTitleContainer.centerYAnchor),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: navTitleContainer.leadingAnchor),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: navTitleContainer.trailingAnchor),
-        ])
+        navStatusLabel.lineBreakMode = .byTruncatingTail
+        navStatusRow.addArrangedSubview(navBadge)
+        navStatusRow.addArrangedSubview(navStatusLabel)
+        navStatusRow.axis = .horizontal
+        navStatusRow.spacing = Theme.Spacing.xs
+        navStatusRow.alignment = .center
+        navStatusRow.isHidden = true
+        navTitleStack.addArrangedSubview(navTitleLabel)
+        navTitleStack.addArrangedSubview(navStatusRow)
+        navTitleStack.axis = .vertical
+        navTitleStack.alignment = .center
+        navTitleStack.spacing = 0
+        navTitleStack.isAccessibilityElement = true
+        navTitleStack.accessibilityTraits = .header
+        navigationItem.titleView = navTitleStack
+    }
+
+    private func refreshNavAccessibility() {
+        navTitleStack.accessibilityLabel = navTitleLabel.text
+        navTitleStack.accessibilityValue = navStatusRow.isHidden ? nil : navStatusLabel.text
     }
 
     /// A conversation on screen when the app comes back is a conversation being looked at, which
@@ -1757,13 +1796,27 @@ final class ChatViewController: UIViewController {
                 withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
             let held = self.viewModel.queueHold != nil
                 && self.viewModel.queued.first?.id == message.id
-            cell.configure(
+            let position = (self.viewModel.queued.firstIndex { $0.id == message.id } ?? 0) + 1
+            let edit = UIAccessibilityCustomAction(name: String(localized: "Edit")) {
+                [weak self] _ in
+                self?.editQueued(message)
+                return true
+            }
+            let remove = UIAccessibilityCustomAction(name: String(localized: "Remove from queue")) {
+                [weak self] _ in
+                Theme.Haptics.warning()
+                _ = self?.viewModel.removeQueued(id: message.id)
+                return true
+            }
+            cell.configureQueued(
                 text: SendQueueReading.rowLine(message, held: held),
-                role: .user, reasoning: false)
-            cell.contentView.alpha = self.editingQueued == message.id ? 0.28 : 0.5
-            cell.accessibilityHint = held
-                ? SendQueueReading.heldHint(reason: self.viewModel.queueHold)
-                : SendQueueReading.hint
+                editing: self.editingQueued == message.id,
+                spoken: SendQueueReading.spoken(
+                    message, position: position, of: self.viewModel.queued.count),
+                hint: held
+                    ? SendQueueReading.heldHint(reason: self.viewModel.queueHold)
+                    : SendQueueReading.hint,
+                actions: [edit, remove])
             return cell
         }
         if id == "thinking" {
@@ -1974,10 +2027,10 @@ final class ChatViewController: UIViewController {
             cell.onLoaded = { [weak self] in self?.remeasureRow(row.id) }
             cell.configure(file: file, role: row.role, backend: self.viewModel.backend)
             return cell
-        case .error(let text):
+        case .failed(let turn):
             let cell = collectionView.dequeueReusableCell(
-                withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
-            cell.configureError(text)
+                withReuseIdentifier: FailedTurnCell.reuseID, for: indexPath) as! FailedTurnCell
+            cell.configure(turn) { [weak self] in self?.retryFailed(turn) }
             return cell
         case .answerless(let turn):
             let cell = collectionView.dequeueReusableCell(
@@ -2564,9 +2617,12 @@ final class ChatViewController: UIViewController {
             }
         }
         ids.append(contentsOf: pendingIDs)
+        for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
         revertBanner = RevertReading.read(state.revert, setAside: state.revertedMessages)
         fillComposerAfterRevert(state)
         if revertBanner != nil { ids.append(Self.revertRowID) }
+        interrupted = interruptedCard(state)
+        if interrupted != nil { ids.append(Self.interruptedRowID) }
         let lastContentRole: MessageRole? =
             viewModel.pendingSends.isEmpty
             ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
@@ -2584,11 +2640,8 @@ final class ChatViewController: UIViewController {
         {
             ids.append("thinking")
         }
-        interrupted = interruptedCard(state)
         if let pendingQuestion { ids.append("question:\(pendingQuestion.id)") }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
-        for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
-        if interrupted != nil { ids.append(Self.interruptedRowID) }
         Self.logPendingPhantom(state: state, viewModel: viewModel)
         var seenIDs = Set<String>()
         let uniqueIDs = ids.filter { seenIDs.insert($0).inserted }
@@ -2759,8 +2812,12 @@ final class ChatViewController: UIViewController {
         if wasRunning && state.status != .running {
             if state.messages.last?.isAnswerless == true {
                 Theme.Haptics.warning()
+            } else if let last = state.messages.last, FailedTurnReading.read(last, prompt: nil) != nil {
+                lastHapticFailure = state.lastFailure?.message ?? lastHapticFailure
+                Theme.Haptics.error()
             } else {
                 Theme.Haptics.received()
+                announceTurnEnd()
                 ReviewPromptCoordinator.shared.turnCompleted()
                 SupporterInvitation.recordSuccessfulTurn()
                 NotificationManager.offerAfterFirstTurn(from: self)
@@ -2776,6 +2833,7 @@ final class ChatViewController: UIViewController {
         if let permission = pendingPermission, permission.id != lastHapticPermissionID {
             lastHapticPermissionID = permission.id
             Theme.Haptics.needsYou()
+            announce(ActivityKind.needsApproval.spoken)
         }
         if let permission = pendingPermission, permission.id != lastNotifiedPermissionID,
             claimsNeedsYouBanner()
@@ -2792,6 +2850,7 @@ final class ChatViewController: UIViewController {
         if let question = pendingQuestion, question.id != lastNotifiedQuestionID {
             lastNotifiedQuestionID = question.id
             Theme.Haptics.needsYou()
+            announce(ActivityKind.needsAnswer.spoken)
         }
         if let question = pendingQuestion, question.id != lastBannerQuestionID, claimsNeedsYouBanner() {
             lastBannerQuestionID = question.id
@@ -2810,6 +2869,18 @@ final class ChatViewController: UIViewController {
             lastFindRowCount = orderedIDs.count
             runFind(retarget: false)
         }
+    }
+
+    /// Told to a screen reader once per event, and only while this conversation is the one in
+    /// front of the person: a turn ending in a chat nobody is looking at is a notification's job.
+    private func announce(_ words: String) {
+        guard viewIfLoaded?.window != nil, UIApplication.shared.applicationState == .active
+        else { return }
+        UIAccessibility.post(notification: .announcement, argument: words)
+    }
+
+    private func announceTurnEnd() {
+        announce(Localized.text("Your agent finished."))
     }
 
     /// Distinguishes "history is still on its way" from "genuinely empty":
@@ -2867,6 +2938,7 @@ final class ChatViewController: UIViewController {
     /// thinking indicator rises in just behind it — the bubble should feel
     /// like it physically leaves the input field.
     private func animateSendEntrance(bubbleIDs: [String], includeThinking: Bool) {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
         let snapshot = dataSource.snapshot()
         var targets: [(cell: UICollectionViewCell, delay: TimeInterval, rise: CGFloat)] = []
         for id in bubbleIDs {
@@ -2898,9 +2970,8 @@ final class ChatViewController: UIViewController {
         }
     }
 
-    /// The cut-off turn's card, docked at the very end of the transcript — below anything still
-    /// open, because it is an account of what already happened and must not push a live question
-    /// off screen.
+    /// The cut-off turn's card, docked with the other cards about the turn — above a question or
+    /// an approval, because what blocks the turn belongs nearest the composer.
     ///
     /// It is the server's record wearing a press this device is still waiting on an answer to. The
     /// press is dropped the moment the server's own account says anything, which is what stops a
@@ -2982,21 +3053,18 @@ final class ChatViewController: UIViewController {
         if viewModel.isSignedOut {
             banner.show(
                 String(localized: "Claude is signed out on this machine — tap to sign in"),
-                color: Theme.Color.warning, symbol: "person.badge.key")
+                color: Theme.Color.warning, symbol: "person.badge.key",
+                hint: String(localized: "Opens sign-in."))
             return
         }
         switch state.connection {
         case .reconnecting:
-            if Date() > suppressBannerUntil {
-                banner.show(
-                    String(localized: "Reconnecting…"), color: Theme.Color.warning,
-                    symbol: "wifi.exclamationmark")
-            }
+            banner.hide()
         case .offline:
             if Date() > suppressBannerUntil {
                 banner.show(
                     String(localized: "Offline — tap to retry"), color: Theme.Color.danger,
-                    symbol: "wifi.slash")
+                    symbol: "wifi.slash", hint: String(localized: "Dismisses this and tries again."))
             }
         case .connecting, .live:
             if applyQuotaExhaustion(for: state) { return }
@@ -3005,7 +3073,8 @@ final class ChatViewController: UIViewController {
             {
                 banner.show(
                     failure.message, color: Theme.Color.danger,
-                    symbol: "exclamationmark.triangle.fill")
+                    symbol: "exclamationmark.triangle.fill",
+                    hint: String(localized: "Dismisses this and tries again."))
                 if lastHapticFailure != failure.message {
                     lastHapticFailure = failure.message
                     Theme.Haptics.error()
@@ -3027,7 +3096,7 @@ final class ChatViewController: UIViewController {
         if let waiting = viewModel.soonestResume {
             banner.show(
                 ResumeReading.short(waiting), color: Theme.Color.warning,
-                symbol: ResumeReading.symbol)
+                symbol: ResumeReading.symbol, hint: String(localized: "Dismisses this and tries again."))
             return true
         }
         let quotas = QuotaSurface.relevantQuotas(
@@ -3053,7 +3122,8 @@ final class ChatViewController: UIViewController {
         guard let exhaustion else { return false }
         banner.show(
             QuotaSurface.bannerBody(exhaustion), color: Theme.Color.danger,
-            symbol: "gauge.with.dots.needle.100percent")
+            symbol: "gauge.with.dots.needle.100percent",
+            hint: String(localized: "Dismisses this and tries again."))
         let key = "\(exhaustion.provider)|\(exhaustion.window)|\(exhaustion.source)"
         if lastHapticFailure != key {
             lastHapticFailure = key
@@ -3072,7 +3142,19 @@ final class ChatViewController: UIViewController {
 
     private func syncFAB() {
         let show = !isNearBottom() && orderedIDs.count > 1
+        if show {
+            if rowsAtDeparture == nil { rowsAtDeparture = orderedIDs.count }
+        } else {
+            rowsAtDeparture = nil
+        }
+        refreshJumpReading()
         guard fab.isHidden == show else { return }
+        if UIAccessibility.isReduceMotionEnabled {
+            fab.isHidden = !show
+            fab.alpha = 1
+            fab.transform = .identity
+            return
+        }
         if show {
             fab.isHidden = false
             fab.alpha = 0
@@ -3127,10 +3209,18 @@ final class ChatViewController: UIViewController {
         }
         updateContextChip()
         updateSpendChip()
-        let facts = StatusFacts.from(
+        var facts = StatusFacts.from(
             state: state, agents: viewModel.trackedSubagents,
             usage: nil, attachments: pendingAttachments.count, context: contextFill,
             queued: viewModel.queued.count)
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_DEMO_AGENTS"] == "background" {
+                facts.phase = .background(tasks: 2)
+                facts.activity = .inBackground(tasks: 2)
+            }
+        #endif
+        updateBackgroundChip(for: facts)
+        refreshAgentsChip()
         var text: String?
         var color = Theme.Color.secondaryLabel
         switch facts.phase {
@@ -3161,7 +3251,9 @@ final class ChatViewController: UIViewController {
         }
         guard let text else {
             navBadge.activity = nil
-            navigationItem.titleView = nil
+            navStatusRow.isHidden = true
+            navStatusLabel.text = nil
+            refreshNavAccessibility()
             turnStartedAt = nil
             elapsedTicker?.cancel()
             elapsedTicker = nil
@@ -3176,10 +3268,7 @@ final class ChatViewController: UIViewController {
                 }
             }
         }
-        if navigationItem.titleView == nil {
-            navTitleContainer.frame = CGRect(x: 0, y: 0, width: 190, height: 30)
-            navigationItem.titleView = navTitleContainer
-        }
+        navStatusRow.isHidden = false
         navBadge.activity = facts.activity
         if lastStatusPhaseText != text {
             lastStatusPhaseText = text
@@ -3211,20 +3300,12 @@ final class ChatViewController: UIViewController {
     private func setNavStatusText(_ text: String) {
         guard navStatusLabel.text != text else { return }
         navStatusLabel.text = text
+        refreshNavAccessibility()
     }
 
     /// How full the model's window is, always visible above the composer once the transcript can
     /// say — the same share, count and ring the desktop bands wear, one tap from the whole window.
     private func configureContextChip() {
-        var config = UIButton.Configuration.gray()
-        config.cornerStyle = .capsule
-        config.buttonSize = .small
-        config.imagePadding = 6
-        config.baseForegroundColor = Theme.Color.secondaryLabel
-        config.titleLineBreakMode = .byTruncatingTail
-        contextChip.configuration = config
-        contextChip.titleLabel?.numberOfLines = 1
-        contextChip.setContentCompressionResistancePriority(.required, for: .horizontal)
         contextChip.accessibilityHint = String(localized: "Opens the context window.")
         contextChip.addAction(
             UIAction { [weak self] _ in self?.presentContextWindow() }, for: .touchUpInside)
@@ -3234,18 +3315,7 @@ final class ChatViewController: UIViewController {
     /// what each turn cost, where the money went between fresh tokens and cache, which model spent
     /// it — because a number with no story behind it is a number nobody trusts.
     private func configureSpendChip() {
-        var config = UIButton.Configuration.gray()
-        config.cornerStyle = .capsule
-        config.buttonSize = .small
-        config.image = UIImage(
-            systemName: "creditcard",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
-        config.imagePadding = 6
-        config.baseForegroundColor = Theme.Color.secondaryLabel
-        config.titleLineBreakMode = .byTruncatingTail
-        spendChip.configuration = config
-        spendChip.titleLabel?.numberOfLines = 1
-        spendChip.setContentCompressionResistancePriority(.required, for: .horizontal)
+        spendChip.setSymbol("creditcard")
         spendChip.accessibilityHint = String(
             localized: "What this conversation has cost. Opens the breakdown.")
         spendChip.addAction(
@@ -3256,18 +3326,7 @@ final class ChatViewController: UIViewController {
     /// repository — the working tree, what each file's change is, the commits behind it — and
     /// offers nothing that writes: this app reads a repository, it does not operate one.
     private func configureGitChip() {
-        var config = UIButton.Configuration.gray()
-        config.cornerStyle = .capsule
-        config.buttonSize = .small
-        config.image = UIImage(
-            systemName: "arrow.trianglehead.branch",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
-        config.imagePadding = 6
-        config.baseForegroundColor = Theme.Color.secondaryLabel
-        config.titleLineBreakMode = .byTruncatingTail
-        gitChip.configuration = config
-        gitChip.titleLabel?.numberOfLines = 1
-        gitChip.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        gitChip.setSymbol("arrow.trianglehead.branch")
         gitChip.accessibilityHint = String(
             localized: "The repository this conversation is working in. Opens its state.")
         gitChip.addAction(
@@ -3275,12 +3334,13 @@ final class ChatViewController: UIViewController {
     }
 
     private func updateGitChip() {
+        defer { factsRow.refresh(); syncFactsScrim() }
         guard let git, git.isRepository else {
             gitChip.isHidden = true
             return
         }
-        gitChip.configuration?.attributedTitle = AttributedString(GitInk.line(git.badgeParts))
-        gitChip.configuration?.baseForegroundColor = Theme.Color.secondaryLabel
+        let line = git.badgeParts.map(\.text).joined(separator: " ")
+        gitChip.text = line
         gitChip.accessibilityLabel = git.spokenBadge
         gitChip.isHidden = false
     }
@@ -3326,6 +3386,7 @@ final class ChatViewController: UIViewController {
     /// every token of an answer, and writing a button's configuration — which UIKit answers with a
     /// full update and a layout pass — to say the same words again is a cost per token for nothing.
     private func updateSpendChip() {
+        defer { factsRow.refresh(); syncFactsScrim() }
         guard let spend = spendReading.value, !spend.isEmpty else {
             spendChip.isHidden = true
             shownSpendBadge = nil
@@ -3334,7 +3395,11 @@ final class ChatViewController: UIViewController {
         spendChip.isHidden = false
         guard shownSpendBadge != spend.badge else { return }
         shownSpendBadge = spend.badge
-        spendChip.configuration?.title = spend.badge
+        spendChip.text = spend.badge
+        spendChip.accessibilityLabel =
+            spend.estimated
+            ? String(localized: "Spent \(spend.badge), an estimate")
+            : String(localized: "Spent \(spend.badge)")
     }
 
     private func presentSpend() {
@@ -3364,6 +3429,7 @@ final class ChatViewController: UIViewController {
     private var shownContextFill: ContextFill?
 
     private func updateContextChip() {
+        defer { factsRow.refresh(); syncFactsScrim() }
         guard let contextFill else {
             contextChip.isHidden = true
             shownContextFill = nil
@@ -3378,13 +3444,13 @@ final class ChatViewController: UIViewController {
         case .attention: ink = Theme.Color.warning
         case .danger: ink = Theme.Color.danger
         }
-        contextChip.configuration?.title = contextFill.badge
-        contextChip.configuration?.baseForegroundColor = ink
-        contextChip.configuration?.image = contextFill.fraction.map {
-            ContextRing.image(fraction: $0, ink: ink, diameter: 12, stroke: 2)
-        } ?? UIImage(
-            systemName: "cylinder.split.1x2",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
+        contextChip.text = contextFill.badge
+        if let fraction = contextFill.fraction {
+            contextChip.setImage(
+                ContextRing.image(fraction: fraction, ink: ink, diameter: 12, stroke: 2))
+        } else {
+            contextChip.setSymbol("cylinder.split.1x2")
+        }
         contextChip.accessibilityLabel = contextFill.accessibilityLabel
     }
 
@@ -3712,7 +3778,13 @@ final class ChatViewController: UIViewController {
         return ChatSpacing.gap(
             from: previous.map(rowClass(ofID:)), to: rowClass(ofID: id),
             sameSend: previous.map { sharesSend($0, id) } ?? false,
-            metrics: Theme.Chat.metrics)
+            metrics: Theme.Chat.metrics,
+            previousIsStamp: previous.map(isStamp(_:)) ?? false, nextIsStamp: isStamp(id))
+    }
+
+    private func isStamp(_ id: String) -> Bool {
+        if case .timestamp = rowsByID[id]?.content { return true }
+        return false
     }
 
     private func gaps(for order: [String]) -> [String: CGFloat] {
@@ -3943,7 +4015,7 @@ final class ChatViewController: UIViewController {
             }
             let agents = self.viewModel.trackedSubagents
             guard !agents.isEmpty else { return completion([]) }
-            let live = agents.count(where: \.isActive)
+            let live = self.viewModel.subagentPresence.liveCount
             let title =
                 live > 0
                 ? String(localized: "Agents (\(agents.count) · \(live) live)")
@@ -4432,7 +4504,8 @@ final class ChatViewController: UIViewController {
 
     private func presentSubagents(_ agents: [SubagentSummary]) {
         let list = SubagentListViewController(
-            backend: viewModel.backend, parentSessionID: viewModel.session.id, agents: agents)
+            backend: viewModel.backend, parentSessionID: viewModel.session.id, agents: agents,
+            hold: { [weak self] in self?.viewModel.agentHold ?? .over(at: nil) })
         list.onSelect = { [weak self] agentID in
             self?.revealSubagent(id: agentID)
         }
@@ -4988,7 +5061,9 @@ final class ChatViewController: UIViewController {
             case .designBoard(let sighting):
                 let reading = DesignCardReading.make(sighting: sighting, board: nil)
                 body = "_\(reading.title) — \(reading.detail)_"
-            case .responseStats, .timestamp, .error:
+            case .failed(let turn):
+                body = "_\(turn.title) — \(turn.reason)_"
+            case .responseStats, .timestamp:
                 continue
             case .linkRail:
                 continue
@@ -5470,7 +5545,7 @@ final class ChatViewController: UIViewController {
             agentID: agent.id,
             title: agent.title,
             agentType: agent.agentType,
-            isActive: agent.isActive,
+            isActive: SubagentPresence(agents: [agent], hold: hold(at: toolUseID)).hasLive,
             isCompleted: agent.isCompleted,
             updatedAt: agent.updatedAt,
             expanded: viewModel.isSubagentExpanded(agent.id),
@@ -5670,6 +5745,12 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
     /// transcript, so they are deliberately not carried over — which is also the remedy when a
     /// picture is what the turn choked on.
     private func askAgain(_ turn: AnswerlessTurn) {
+        guard turn.offersRemedy, !viewModel.isBusy else { return }
+        sendDraft(turn.prompt)
+    }
+
+    /// The same words again after a turn that stopped with an error, through the ordinary send.
+    private func retryFailed(_ turn: FailedTurn) {
         guard turn.offersRemedy, !viewModel.isBusy else { return }
         sendDraft(turn.prompt)
     }
@@ -6239,7 +6320,9 @@ extension ChatViewController: UICollectionViewDelegate {
             return run.addresses.joined(separator: "\n")
         case .pictures(let files):
             return files.compactMap { $0.filename ?? $0.mime }.joined(separator: "\n")
-        case .timestamp, .error, .note:
+        case .failed(let turn):
+            return turn.reason
+        case .timestamp, .note:
             return nil
         }
     }
@@ -6551,6 +6634,12 @@ extension ChatViewController: KeyActionHost {
                 CGPoint(x: 0, y: -collectionView.adjustedContentInset.top), animated: true)
         case .scrollBottom:
             scrollToBottom(animated: true)
+        case .previousPrompt:
+            jumpToPrompt(by: -1)
+        case .nextPrompt:
+            jumpToPrompt(by: 1)
+        case .copyLastAnswer:
+            return copyLastAnswer()
         case .findInConversation:
             openFind()
         case .insert:
@@ -6613,6 +6702,53 @@ extension ChatViewController: KeyActionHost {
         default:
             return false
         }
+        return true
+    }
+
+    /// The rows that are a person's own words, in order: where the previous-prompt and
+    /// next-prompt keys stop.
+    private var promptRowIDs: [String] {
+        orderedIDs.filter { id in
+            guard let row = rowsByID[id], row.role == .user, case .text = row.content else {
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Scrolls so the previous or next prompt of the person sits at the top of the page, one
+    /// motion (none under reduced motion), and stays put at either end.
+    private func jumpToPrompt(by direction: Int) {
+        let inset = collectionView.adjustedContentInset
+        let top = collectionView.contentOffset.y + inset.top
+        let anchors: [CGFloat] = promptRowIDs.compactMap { id in
+            guard let index = dataSource.snapshot().indexOfItem(id),
+                let frame = collectionView.layoutAttributesForItem(
+                    at: IndexPath(item: index, section: 0))?.frame
+            else { return nil }
+            return frame.minY + (appliedGaps[id] ?? 0) - Theme.Spacing.s
+        }
+        let target = direction < 0
+            ? anchors.last { $0 < top - 2 } : anchors.first { $0 > top + 2 }
+        guard let target else { return }
+        let minY = -inset.top
+        let maxY = max(
+            minY, collectionView.contentSize.height - collectionView.bounds.height + inset.bottom)
+        let offset = min(maxY, max(minY, target - inset.top))
+        userScrolledUp = true
+        collectionView.setContentOffset(
+            CGPoint(x: 0, y: offset), animated: !UIAccessibility.isReduceMotionEnabled)
+    }
+
+    /// The last thing the agent said, on the pasteboard, said aloud and shown for a moment.
+    private func copyLastAnswer() -> Bool {
+        guard let answer = viewModel.state.messages.last(where: { $0.role == .assistant })?.text,
+            !answer.isEmpty
+        else { return false }
+        UIPasteboard.general.string = answer
+        Theme.Haptics.selection()
+        presentToast(String(localized: "Copied"))
+        announce(String(localized: "Copied"))
         return true
     }
 
@@ -6705,7 +6841,7 @@ extension ChatViewController {
 
     private func adaptToBook(_ fold: FoldReading?) {
         guard keepToPageBeforeFold(fold), let fold else {
-            navTitleContainer.transform = .identity
+            navTitleStack.transform = .identity
             return
         }
         centerStatusOnPage(ending: fold.frame.minX)
@@ -6714,12 +6850,12 @@ extension ChatViewController {
     /// The status the bar centres over the whole window is moved to the middle of the page the
     /// transcript is on, so it neither lands on the fold nor runs under the second page.
     private func centerStatusOnPage(ending edge: CGFloat) {
-        guard navTitleContainer.window != nil else { return }
-        let resting = navTitleContainer.transform.tx
-        let current = view.convert(navTitleContainer.bounds, from: navTitleContainer).midX
+        guard navTitleStack.window != nil else { return }
+        let resting = navTitleStack.transform.tx
+        let current = view.convert(navTitleStack.bounds, from: navTitleStack).midX
         let wanted = edge / 2 - (current - resting)
         guard abs(wanted - resting) > 0.5 else { return }
-        navTitleContainer.transform = CGAffineTransform(translationX: wanted, y: 0)
+        navTitleStack.transform = CGAffineTransform(translationX: wanted, y: 0)
     }
 
     /// What the second page shows when a conversation opens beside it: the repository's state

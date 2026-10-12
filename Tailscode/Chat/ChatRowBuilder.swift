@@ -186,10 +186,10 @@ enum ChatRowBuilder {
                 }
             }
             flushActivity()
-            if let error = message.error, !error.isEmpty, message.role == .assistant {
+            if let failed = FailedTurnReading.read(message, prompt: lastPrompt) {
                 rows.append(ChatRow(
                     id: "\(message.id):error", messageID: message.id, role: message.role,
-                    content: .error(error)))
+                    content: .failed(failed)))
             }
             if let answerless = AnswerlessTurnReading.read(message, prompt: lastPrompt) {
                 rows.append(ChatRow(
@@ -206,7 +206,8 @@ enum ChatRowBuilder {
         }
         rows.append(
             contentsOf: Self.agentRows(
-                pendingUnattached, groupID: "session", messageID: "agents", role: .assistant,
+                Self.dockable(pendingUnattached), groupID: "session", messageID: "agents",
+                role: .assistant,
                 expandedGroups: agents.expandedGroups))
         let fused = fuseActivity(rows)
         return dockPictures(dockRails(fused, turnOpen: turnOpen, memo: memo))
@@ -365,6 +366,13 @@ enum ChatRowBuilder {
     }
 
     static let inlineAgentLimit = 3
+
+    /// The cards that may ask for room under the last message: only an agent that is out now. A
+    /// card's `isActive` is already read against the work that holds it, so a finished agent with
+    /// no spawning call in the loaded transcript waits behind the list instead of docking.
+    static func dockable(_ cards: [SubagentCard]) -> [SubagentCard] {
+        cards.filter(\.isActive)
+    }
 
 
 

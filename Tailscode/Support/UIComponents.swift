@@ -1,3 +1,4 @@
+import TailscodeCore
 import UIKit
 
 final class PrimaryButton: UIButton {
@@ -187,10 +188,13 @@ final class BannerView: UIView {
     private let icon = UIImageView()
     private let label = UILabel()
     private var visible = false
+    private var announced: String?
 
     init() {
         super.init(frame: .zero)
         isHidden = true
+        isAccessibilityElement = true
+        accessibilityTraits = .button
 
         glass.translatesAutoresizingMaskIntoConstraints = false
         glass.layer.cornerRadius = Theme.Radius.card
@@ -206,7 +210,7 @@ final class BannerView: UIView {
         label.font = Theme.Ramp.font(.panelDetail)
         label.adjustsFontForContentSizeCategory = true
         label.textAlignment = .left
-        label.numberOfLines = 2
+        label.numberOfLines = 3
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
 
@@ -230,8 +234,19 @@ final class BannerView: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ text: String, color: UIColor, symbol: String = "wifi.exclamationmark") {
+    /// - Parameter hint: what a press on the banner does, spoken after the words, because the
+    ///   banner is a button and a screen reader cannot see that.
+    func show(
+        _ text: String, color: UIColor, symbol: String = "wifi.exclamationmark",
+        hint: String? = nil
+    ) {
         label.text = text
+        accessibilityLabel = text
+        accessibilityHint = hint
+        if announced != text {
+            announced = text
+            UIAccessibility.post(notification: .announcement, argument: text)
+        }
         label.textColor = color
         icon.image = UIImage(
             systemName: symbol,
@@ -241,6 +256,11 @@ final class BannerView: UIView {
         guard !visible else { return }
         visible = true
         isHidden = false
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            alpha = 1
+            transform = .identity
+            return
+        }
         alpha = 0
         transform = CGAffineTransform(translationX: 0, y: -12)
         UIView.animate(
@@ -254,6 +274,13 @@ final class BannerView: UIView {
     func hide() {
         guard visible else { return }
         visible = false
+        announced = nil
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            alpha = 0
+            isHidden = true
+            transform = .identity
+            return
+        }
         UIView.animate(
             withDuration: 0.2,
             animations: {
@@ -272,25 +299,6 @@ final class BannerView: UIView {
 final class ChatEmptyStateView: UIView {
     var onSuggestion: ((String) -> Void)?
 
-    private static let suggestions: [(symbol: String, title: String, prompt: String)] = [
-        (
-            "checkmark.diamond", String(localized: "Fix the failing tests"),
-            String(localized: "Run the test suite, find the failures, and fix them.")
-        ),
-        (
-            "sparkle.magnifyingglass", String(localized: "Review recent changes"),
-            String(localized: "Review the latest commits and point out anything risky.")
-        ),
-        (
-            "ladybug", String(localized: "Hunt a bug"),
-            String(localized: "Look through the codebase for likely bugs and fix the most severe one.")
-        ),
-        (
-            "text.badge.plus", String(localized: "Add test coverage"),
-            String(localized: "Find the least-tested important module and write tests for it.")
-        ),
-    ]
-
     init() {
         super.init(frame: .zero)
         let image = UIImageView(
@@ -301,7 +309,7 @@ final class ChatEmptyStateView: UIView {
         image.contentMode = .scaleAspectFit
 
         let titleLabel = UILabel()
-        titleLabel.text = String(localized: "What should your agent do?")
+        titleLabel.text = ChatSuggestion.headline
         titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.textAlignment = .center
@@ -312,7 +320,7 @@ final class ChatEmptyStateView: UIView {
         stack.spacing = Theme.Spacing.m
         stack.setCustomSpacing(Theme.Spacing.xl, after: titleLabel)
 
-        for suggestion in Self.suggestions {
+        for suggestion in ChatSuggestion.all {
             var config = Theme.Glass.buttonConfiguration()
             config.image = UIImage(
                 systemName: suggestion.symbol,
@@ -323,6 +331,7 @@ final class ChatEmptyStateView: UIView {
             config.contentInsets = NSDirectionalEdgeInsets(
                 top: 10, leading: 14, bottom: 10, trailing: 14)
             let button = UIButton(configuration: config)
+            button.heightAnchor.constraint(greaterThanOrEqualToConstant: TouchSlop.hit).isActive = true
             button.addAction(
                 UIAction { [weak self] _ in
                     Theme.Haptics.selection()

@@ -19,7 +19,7 @@ enum ChatSpacing {
     static let edgeMargin = Theme.Spacing.xs
 
     /// What a drawn row is, for the purpose of the space around it. Cards that keep a plate —
-    /// tables, subagent and workflow cards, boards, errors, the answerless turn — take the code
+    /// tables, subagent and workflow cards, boards, a failed turn, the answerless turn — take the code
     /// gap, because the metrics give a block that air and a flat line next to a plate needs more
     /// than two points.
     static func rowClass(of row: ChatRow) -> ChatRowClass {
@@ -28,7 +28,7 @@ enum ChatSpacing {
             return row.role == .user ? .prompt : .prose
         case .file:
             return row.role == .user ? .prompt : .furniture
-        case .code, .table, .tableDraft, .subagent, .workflow, .taskBoard, .designBoard, .error,
+        case .code, .table, .tableDraft, .subagent, .workflow, .taskBoard, .designBoard, .failed,
             .answerless:
             return .code
         case .activity, .subagentGroup, .timestamp, .responseStats:
@@ -44,11 +44,15 @@ enum ChatSpacing {
 
     /// The air above a row whose predecessor is `previous`. A picture a person sent sits close to
     /// the words it was sent with, so a prompt's own pictures take the strip gap rather than the
-    /// turn gap the pair would otherwise earn.
+    /// turn gap the pair would otherwise earn. A time stamp is the header of the turn after it: a
+    /// turn's gap above, and the nearly-touching gap of two flat lines below.
     static func gap(
-        from previous: ChatRowClass?, to next: ChatRowClass, sameSend: Bool, metrics: ChatMetrics
+        from previous: ChatRowClass?, to next: ChatRowClass, sameSend: Bool, metrics: ChatMetrics,
+        previousIsStamp: Bool = false, nextIsStamp: Bool = false
     ) -> CGFloat {
         guard previous != nil else { return edgeMargin }
+        if nextIsStamp { return CGFloat(metrics.turnGap) }
+        if previousIsStamp { return CGFloat(metrics.furnitureGap) }
         if sameSend, previous == .picture || next == .picture {
             return CGFloat(metrics.pictureStripGap)
         }
@@ -98,6 +102,56 @@ enum ChatSpacing {
             expect(gap(.prose, .code) == 6 && gap(.code, .prose) == 6, "code is 6 either way")
             expect(gap(.prose, .prompt) == 16, "a prompt starts a turn, 16 above it")
             expect(gap(.prompt, .prose) == 8, "a prompt is the heading of its answer, 8 below it")
+            expect(
+                Self.gap(from: .prose, to: .furniture, sameSend: false, metrics: compact, nextIsStamp: true) == 16
+                    && Self.gap(
+                        from: .furniture, to: .prompt, sameSend: false, metrics: compact,
+                        previousIsStamp: true) == 2,
+                "a stamp heads the next turn: 16 above, 2 below")
+            let tired = SubagentCard(
+                agentID: "a", title: "t", agentType: nil, isActive: false, isCompleted: true,
+                updatedAt: Date(), expanded: false, isLoading: false, steps: [], report: nil)
+            expect(
+                ChatRowBuilder.dockable([tired]).isEmpty
+                    && ChatRowBuilder.dockable([tired, SubagentCard(
+                        agentID: "b", title: "t", agentType: nil, isActive: true,
+                        isCompleted: false, updatedAt: Date(), expanded: false, isLoading: false,
+                        steps: [], report: nil)]).count == 1,
+                "only an agent that is out may dock under the last message")
+            let claimedActive = SubagentSummary(
+                id: "s", title: "t", updatedAt: Date(), isActive: true)
+            let finishedAgent = SubagentSummary(
+                id: "f", title: "t", updatedAt: Date(), isCompleted: true)
+            let overTurn = SubagentPresence(agents: [claimedActive, finishedAgent], hold: .over(at: nil))
+            let openTurn = SubagentPresence(agents: [claimedActive, finishedAgent], hold: .going)
+            expect(overTurn.liveCount == 0, "under a turn that is over, no agent is out")
+            expect(
+                openTurn.liveCount == 1 && openTurn.dockable(among: [claimedActive, finishedAgent]).count == 1,
+                "under an open turn only the active unfinished agent is out and dockable")
+            func card(_ id: String, active: Bool, done: Bool) -> SubagentCard {
+                SubagentCard(
+                    agentID: id, title: id, agentType: nil, isActive: active, isCompleted: done,
+                    updatedAt: Date(), expanded: false, isLoading: false, steps: [], report: nil)
+            }
+            let docked = ChatRowBuilder.makeRows(
+                from: [],
+                agents: ChatViewController.SubagentPlacement(
+                    unattached: [card("done", active: false, done: true), card("live", active: true, done: false)]))
+            expect(
+                docked.map(\.id) == ["agent:live"],
+                "the docked rows are the live agent only, got \(docked.map(\.id))")
+            let onlyFinished = ChatRowBuilder.makeRows(
+                from: [],
+                agents: ChatViewController.SubagentPlacement(
+                    unattached: [card("done", active: false, done: true)]))
+            expect(onlyFinished.isEmpty, "a finished unattached agent docks nothing")
+            expect(
+                JumpReading.read(rowsNow: 40, rowsAtDeparture: 30, needsYou: false).label == "10 new"
+                    && JumpReading.read(rowsNow: 40, rowsAtDeparture: 30, needsYou: true).label
+                        == "Needs you"
+                    && JumpReading.read(rowsNow: 30, rowsAtDeparture: 30, needsYou: false).label == nil
+                    && JumpReading.read(rowsNow: 40, rowsAtDeparture: nil, needsYou: false).label == nil,
+                "the jump control says needs-you first, then how many rows arrived, else nothing")
             expect(gap(.picture, .picture) == 8, "a strip's gutter is 8")
             expect(gap(.prompt, .picture, sameSend: true) == 6, "a prompt's own picture is close")
             expect(gap(.prompt, .picture) == 8, "a picture after a prompt of another send is its answer")
@@ -138,6 +192,7 @@ extension SubagentCardCell: RowGapCell {}
 extension TaskBoardCell: RowGapCell {}
 extension WorkflowCardCell: RowGapCell {}
 extension AnswerlessTurnCell: RowGapCell {}
+extension FailedTurnCell: RowGapCell {}
 extension InterruptedTurnCell: RowGapCell {}
 extension ProviderRetryCell: RowGapCell {}
 extension RevertBannerCell: RowGapCell {}

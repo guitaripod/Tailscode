@@ -31,7 +31,7 @@ struct ChatRow: Hashable {
         case file(FileReference)
         case image(FileReference)
         case timestamp(String)
-        case error(String)
+        case failed(FailedTurn)
         case answerless(AnswerlessTurn)
         /// What the server wrote for the reader rather than the model: a quiet line, never a
         /// message, standing between the turns it separates.
@@ -158,6 +158,12 @@ final class TextBubbleCell: UICollectionViewCell {
         contentView.layer.removeAllAnimations()
         contentView.alpha = 1
         contentView.transform = .identity
+        bubble.layer.borderWidth = 0
+        isAccessibilityElement = false
+        accessibilityLabel = nil
+        accessibilityHint = nil
+        accessibilityTraits = []
+        accessibilityCustomActions = nil
         textView.textAlignment = .natural
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
@@ -178,28 +184,27 @@ final class TextBubbleCell: UICollectionViewCell {
         textInsetTrailing.constant = -inner
     }
 
-    func configureError(_ text: String) {
-        padText(Theme.Spacing.s)
-        applyHorizontalInsets(outer: Theme.Spacing.l, inner: Theme.Spacing.m)
-        timestampLeading?.isActive = false
-        timestampTrailing?.isActive = false
-        maxWidth.isActive = true
-        leadingPin.isActive = true
-        trailingPin.isActive = false
-        textView.textAlignment = .natural
-        bubble.backgroundColor = Theme.Color.danger.withAlphaComponent(0.08)
-        textView.font = Theme.Ramp.font(.cardBody)
-        textView.textColor = Theme.Color.danger
-        let attachment = NSTextAttachment(
-            image: UIImage(
-                systemName: "exclamationmark.triangle.fill",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))!
-                .withTintColor(Theme.Color.danger))
-        let string = NSMutableAttributedString(attachment: attachment)
-        string.append(NSAttributedString(
-            string: "  \(text)",
-            attributes: Theme.Ramp.attributes(.cardBody, color: Theme.Color.danger)))
-        textView.attributedText = string
+    /// A message waiting for its turn: the words in a lighter ink on a plain plate with an outline,
+    /// so it reads as not sent without being dimmed below legibility. The row is one element that
+    /// says where it stands in the queue and offers the two things that can be done to it.
+    func configureQueued(
+        text: String, editing: Bool, spoken: String, hint: String,
+        actions: [UIAccessibilityCustomAction]
+    ) {
+        configure(text: text, role: .user, reasoning: false)
+        let ink = editing ? Theme.Color.tertiaryLabel : Theme.Color.secondaryLabel
+        bubble.backgroundColor = Theme.Color.secondaryBackground
+        bubble.layer.borderWidth = 1
+        bubble.layer.borderColor = Theme.Color.separator.resolvedColor(with: traitCollection).cgColor
+        textView.textColor = ink
+        textView.attributedText = NSAttributedString(
+            string: text, attributes: Theme.Ramp.attributes(.prompt, color: ink))
+        textView.linkTextAttributes = [.foregroundColor: ink]
+        isAccessibilityElement = true
+        accessibilityLabel = spoken
+        accessibilityHint = hint
+        accessibilityTraits = .button
+        accessibilityCustomActions = actions
     }
 
     func configure(
@@ -359,8 +364,15 @@ final class TextBubbleCell: UICollectionViewCell {
                     attr[run.range].font = Theme.Ramp.font(.code)
                     attr[run.range].backgroundColor = Theme.Color.reasoningBackground
                 }
+                var traits: UIFontDescriptor.SymbolicTraits = []
+                if run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
+                    traits.insert(.traitBold)
+                }
                 if run.inlinePresentationIntent?.contains(.emphasized) == true {
-                    attr[run.range].font = base.withTraits(.traitBold)
+                    traits.insert(.traitItalic)
+                }
+                if !traits.isEmpty, run.inlinePresentationIntent?.contains(.code) != true {
+                    attr[run.range].font = base.withTraits(traits)
                 }
             }
             let mutable = NSMutableAttributedString(attr)
@@ -383,7 +395,11 @@ final class TextBubbleCell: UICollectionViewCell {
                 }
                 let trimmedStart = line.drop { $0 == " " }
                 let indentDepth = line.count - trimmedStart.count
-                if trimmedStart.hasPrefix("- ") || trimmedStart.hasPrefix("* ") {
+                if Self.isHorizontalRule(line) {
+                    mutable.addAttribute(
+                        .foregroundColor, value: Theme.Color.tertiaryLabel, range: substringRange)
+                    edits.append((substringRange, Self.ruleLine))
+                } else if trimmedStart.hasPrefix("- ") || trimmedStart.hasPrefix("* ") {
                     let paragraph = Self.prose()
                     paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6
                     paragraph.headIndent = CGFloat(indentDepth) * 6 + 14
@@ -434,6 +450,15 @@ final class TextBubbleCell: UICollectionViewCell {
         }
         renderCache.setObject(result, forKey: key)
         return result
+    }
+
+    private static let ruleLine = String(repeating: "\u{2500}", count: 24)
+
+    /// A line of three or more dashes on its own, which is how a model draws a rule between
+    /// sections.
+    private static func isHorizontalRule(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.count >= 3 && trimmed.allSatisfy { $0 == "-" }
     }
 
     /// Every paragraph in an answer starts from the ramp's leading, so an indented list item is not
@@ -602,7 +627,7 @@ final class PermissionCell: UICollectionViewCell {
             buttons.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.m),
             buttons.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.m),
             buttons.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -Theme.Spacing.m),
-            buttons.heightAnchor.constraint(equalToConstant: 40),
+            buttons.heightAnchor.constraint(greaterThanOrEqualToConstant: TouchSlop.hit),
         ])
     }
 
@@ -1635,7 +1660,7 @@ final class QuestionCell: UICollectionViewCell {
     private var optionButtons: [String: UIButton] = [:]
     private var answerFields: [Int: AnswerField] = [:]
     private let submitButton = PrimaryButton(title: String(localized: "Answer"))
-    private let skipButton = UIButton(type: .system)
+    private let skipButton = SlopButton(type: .system)
     private var glassTop: NSLayoutConstraint!
 
     override init(frame: CGRect) {
@@ -1788,6 +1813,7 @@ final class QuestionCell: UICollectionViewCell {
                 self?.optionTapped(questionIndex: questionIndex, optionIndex: optionIndex, multiple: multiple)
             }, for: .touchUpInside)
         optionButtons["\(questionIndex):\(optionIndex)"] = button
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: TouchSlop.hit).isActive = true
         style(button, as: option, selected: selected, multiple: multiple)
         return button
     }
@@ -1825,6 +1851,7 @@ final class QuestionCell: UICollectionViewCell {
         config.baseForegroundColor = Theme.Color.label
         button.configuration = config
         button.tintColor = selected ? Theme.Color.accent : Theme.Color.tertiaryLabel
+        button.accessibilityTraits = selected ? [.button, .selected] : .button
     }
 
     /// The answer nobody listed. Every ask takes one — the reply travels back as an ordinary

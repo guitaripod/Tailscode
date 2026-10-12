@@ -42,8 +42,8 @@ enum ChatFind {
             return reference.filename ?? reference.path ?? ""
         case .timestamp:
             return ""
-        case .error(let message):
-            return message
+        case .failed(let turn):
+            return "\(turn.title) \(turn.reason)"
         case .answerless(let turn):
             return "\(turn.title) \(turn.detail)"
         case .responseStats(let stats):

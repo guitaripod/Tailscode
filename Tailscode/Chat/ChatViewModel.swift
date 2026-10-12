@@ -265,7 +265,17 @@ final class ChatViewModel {
     var onSubagentsChange: (() -> Void)?
     private var subagentTask: Task<Void, Never>?
 
-    var liveSubagentCount: Int { trackedSubagents.count(where: \.isActive) }
+    /// The turn that holds the agents: while it is open an agent the server calls active may be
+    /// out, and once it is over none is, whatever the record goes on claiming.
+    var agentHold: AgentHold { isBusy ? .going : .over(at: nil) }
+
+    var subagentPresence: SubagentPresence {
+        SubagentPresence(
+            agents: trackedSubagents, hold: agentHold,
+            since: state.messages.last(where: { $0.role == .user })?.createdAt)
+    }
+
+    var liveSubagentCount: Int { subagentPresence.liveCount }
 
     /// Subagents belong to this conversation, so the chat owns their polling for
     /// as long as it is on screen. The cadence follows the work: quick while an
@@ -306,13 +316,53 @@ final class ChatViewModel {
     }
 
     private func refreshSubagents() async {
-        let fresh = await subagents()
+        var fresh = await subagents()
+        #if DEBUG
+            if let staged = Self.stagedAgents() { fresh = staged }
+        #endif
         let changed = fresh != trackedSubagents
         trackedSubagents = fresh
-        let stale = fresh.filter { expandedSubagents.contains($0.id) && $0.isActive }.map(\.id)
+        let stale = fresh.filter { expandedSubagents.contains($0.id) && $0.isActive && !$0.isCompleted }
+            .map(\.id)
         for agentID in stale { await loadSubagentTranscript(agentID) }
         if changed || !stale.isEmpty { onSubagentsChange?() }
     }
+
+    #if DEBUG
+        /// `TAILSCODE_DEMO_AGENTS=live|finished` stands in for a server's agent list so the agents
+        /// chip and the docked rows can be photographed: `live` has two agents out, `finished` has
+        /// one that is done and one the record still calls active, which a turn that is over must
+        /// not believe. `TAILSCODE_DEMO_AGENTS=background` lists none and puts the status in the
+        /// between-turns state instead (see the chat's status update).
+        static func stagedAgents() -> [SubagentSummary]? {
+            let now = Date()
+            switch ProcessInfo.processInfo.environment["TAILSCODE_DEMO_AGENTS"] {
+            case "live":
+                return [
+                    SubagentSummary(
+                        id: "demo-live-1", title: "Audit the retry paths", agentType: "Explore",
+                        updatedAt: now, isActive: true, startedAt: now.addingTimeInterval(-40)),
+                    SubagentSummary(
+                        id: "demo-live-2", title: "Run the reconnect suite",
+                        agentType: "general-purpose", updatedAt: now, isActive: true,
+                        startedAt: now.addingTimeInterval(-25)),
+                ]
+            case "finished":
+                return [
+                    SubagentSummary(
+                        id: "demo-done-1", title: "Survey the test targets", agentType: "Explore",
+                        updatedAt: now.addingTimeInterval(-3_000), isCompleted: true,
+                        startedAt: now.addingTimeInterval(-3_100)),
+                    SubagentSummary(
+                        id: "demo-stale-2", title: "Index the fixtures", agentType: "Explore",
+                        updatedAt: now.addingTimeInterval(-60), isActive: true,
+                        startedAt: now.addingTimeInterval(-300)),
+                ]
+            default:
+                return nil
+            }
+        }
+    #endif
 
     private func loadSubagentTranscript(_ agentID: String) async {
         let messages = try? await backend.subagentMessages(

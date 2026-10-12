@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 /// An index of the subagents a session has spawned, for when there are too many
@@ -16,13 +17,22 @@ final class SubagentListViewController: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<Section, String>!
     private var refreshTask: Task<Void, Never>?
     var onSelect: ((String) -> Void)?
+    private let hold: () -> AgentHold
 
-    init(backend: any CodingAgentBackend, parentSessionID: String, agents: [SubagentSummary]) {
+    /// - Parameter hold: how the turn holds the agents right now, asked again at every poll,
+    ///   because an agent is out only while the turn that holds it is.
+    init(
+        backend: any CodingAgentBackend, parentSessionID: String, agents: [SubagentSummary],
+        hold: @escaping () -> AgentHold
+    ) {
         self.backend = backend
         self.parentSessionID = parentSessionID
         self.agents = agents
+        self.hold = hold
         super.init(nibName: nil, bundle: nil)
     }
+
+    private var presence: SubagentPresence { SubagentPresence(agents: agents, hold: hold()) }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
@@ -65,7 +75,10 @@ final class SubagentListViewController: UIViewController {
     private func configureDataSource() {
         let cell = UICollectionView.CellRegistration<UICollectionViewListCell, String> {
             [weak self] cell, _, agentID in
-            guard let agent = self?.agents.first(where: { $0.id == agentID }) else { return }
+            guard let self, let agent = self.agents.first(where: { $0.id == agentID }) else {
+                return
+            }
+            let live = self.presence.isLive(agent)
             var content = UIListContentConfiguration.subtitleCell()
             content.text = agent.title
             content.textProperties.font = Theme.Ramp.font(.answer)
@@ -77,7 +90,7 @@ final class SubagentListViewController: UIViewController {
                         localized:
                             "finished \(agent.updatedAt.formatted(.relative(presentation: .named)))"
                     ))
-            } else if agent.isActive {
+            } else if live {
                 parts.append(String(localized: "working"))
             } else {
                 parts.append(
@@ -90,7 +103,7 @@ final class SubagentListViewController: UIViewController {
             content.secondaryText = parts.joined(separator: " · ")
             content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
             content.secondaryTextProperties.color =
-                agent.isActive ? Theme.Color.success : Theme.Color.tertiaryLabel
+                live ? Theme.Color.success : Theme.Color.secondaryLabel
             content.textToSecondaryTextVerticalPadding = 2
             if agent.isCompleted {
                 content.image = UIImage(systemName: "checkmark.circle.fill")
@@ -100,7 +113,7 @@ final class SubagentListViewController: UIViewController {
             } else {
                 content.image = UIImage(systemName: "circle.fill")
                 content.imageProperties.tintColor =
-                    agent.isActive ? Theme.Color.success : Theme.Color.separator
+                    live ? Theme.Color.success : Theme.Color.separator
                 content.imageProperties.maximumSize = CGSize(width: 10, height: 10)
                 content.imageProperties.reservedLayoutSize = CGSize(width: 16, height: 16)
             }
@@ -123,10 +136,7 @@ final class SubagentListViewController: UIViewController {
     /// flips isActive reconfigures the row in place instead of animating a
     /// delete+insert every 5 seconds.
     private func applySnapshot() {
-        agents.sort {
-            if $0.isActive != $1.isActive { return $0.isActive }
-            return $0.updatedAt > $1.updatedAt
-        }
+        agents = presence.ordered
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
         snapshot.appendSections([.main])
         snapshot.appendItems(agents.map(\.id), toSection: .main)

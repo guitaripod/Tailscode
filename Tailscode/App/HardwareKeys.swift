@@ -99,13 +99,22 @@ final class KeyBridge {
     /// so the insert context rides key commands. Plain printable keys are deliberately
     /// excluded: they must keep typing; what remains is the deliberate chords plus Escape.
     func insertKeyCommands(action: Selector) -> [UIKeyCommand] {
-        (shortcuts.actions[.insert] ?? [:]).keys.compactMap { token in
+        (shortcuts.actions[.insert] ?? [:]).compactMap { token, keyAction in
             guard !token.contains(",") else { return nil }
-            return Self.keyCommand(forToken: token, action: action)
+            return Self.keyCommand(
+                forToken: token, action: action, title: Self.title(of: keyAction))
         }
     }
 
-    static func keyCommand(forToken token: String, action: Selector) -> UIKeyCommand? {
+    /// What the registry calls an action, so the overlay shown while ⌘ is held lists the verb and
+    /// not an empty row.
+    static func title(of action: KeyAction) -> String {
+        ShortcutRegistry.all.first { $0.action == action }?.title ?? ""
+    }
+
+    static func keyCommand(
+        forToken token: String, action: Selector, title: String = ""
+    ) -> UIKeyCommand? {
         guard let chord = chord(forToken: token) else { return nil }
         var flags: UIKeyModifierFlags = []
         if chord.control { flags.insert(.control) }
@@ -128,7 +137,7 @@ final class KeyBridge {
         }
         if flags.isEmpty, input != UIKeyCommand.inputEscape { return nil }
         let command = UIKeyCommand(
-            title: "", action: action, input: input, modifierFlags: flags, propertyList: token)
+            title: title, action: action, input: input, modifierFlags: flags, propertyList: token)
         command.wantsPriorityOverSystemBehavior = true
         return command
     }

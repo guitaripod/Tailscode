@@ -73,17 +73,38 @@ final class ModelDialPill: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    private let metrics = ChatChrome.chip(on: .touch)
+
+    private func paintFrame() {
+        backgroundColor = ChatChip.fillColor(share: ChatChrome.fill(.control).inkShare)
+        layer.borderColor = Theme.Color.separator.resolvedColor(with: traitCollection).cgColor
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        TouchSlop.area(of: bounds).contains(point)
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard !isHidden, alpha > 0.01, isUserInteractionEnabled, self.point(inside: point, with: event)
+        else { return nil }
+        return super.hitTest(
+            bounds.contains(point) ? point : TouchSlop.clamped(point, in: bounds), with: event)
+    }
+
     private func build() {
-        backgroundColor = UIColor.label.withAlphaComponent(0.06)
-        layer.cornerRadius = 17
         layer.cornerCurve = .continuous
         layer.borderWidth = 1
-        layer.borderColor = UIColor.label.withAlphaComponent(0.1).cgColor
-        clipsToBounds = true
+        paintFrame()
 
         var config = UIButton.Configuration.plain()
-        config.imagePadding = 7
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 11)
+        config.imagePadding = CGFloat(metrics.iconGap)
+        config.contentInsets = NSDirectionalEdgeInsets(
+            top: 0, leading: CGFloat(metrics.padding), bottom: 0, trailing: 8)
         config.baseForegroundColor = Theme.Color.label
         config.titleLineBreakMode = .byTruncatingMiddle
         modelButton.configuration = config
@@ -95,12 +116,26 @@ final class ModelDialPill: UIView {
             swipe.direction = direction
             modelButton.addGestureRecognizer(swipe)
         }
+        modelButton.accessibilityCustomActions = [
+            UIAccessibilityCustomAction(name: String(localized: "Previous preset")) {
+                [weak self] _ in
+                guard let self, self.isEnabled else { return false }
+                self.onCycle?(-1)
+                return true
+            },
+            UIAccessibilityCustomAction(name: String(localized: "Next preset")) {
+                [weak self] _ in
+                guard let self, self.isEnabled else { return false }
+                self.onCycle?(1)
+                return true
+            },
+        ]
 
-        divider.backgroundColor = UIColor.label.withAlphaComponent(0.1)
+        divider.backgroundColor = Theme.Color.separator
         divider.translatesAutoresizingMaskIntoConstraints = false
         divider.widthAnchor.constraint(equalToConstant: 1).isActive = true
 
-        effortLabel.font = Theme.Ramp.font(.rowTitle)
+        effortLabel.font = Theme.Ramp.font(ChatChrome.chipRole)
         effortLabel.textColor = Theme.Color.label
         effortLabel.adjustsFontForContentSizeCategory = true
         effortLabel.textAlignment = .left
@@ -111,19 +146,21 @@ final class ModelDialPill: UIView {
         let chevron = UIImageView(
             image: UIImage(
                 systemName: "chevron.up.chevron.down",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .semibold)))
+                withConfiguration: UIImage.SymbolConfiguration(
+                    pointSize: CGFloat(metrics.iconSize) - 2, weight: .semibold)))
         chevron.tintColor = Theme.Color.tertiaryLabel
         chevron.setContentHuggingPriority(.required, for: .horizontal)
         let effort = UIStackView(arrangedSubviews: [effortLabel, meter, chevron])
         effort.axis = .horizontal
         effort.alignment = .center
-        effort.spacing = 7
+        effort.spacing = CGFloat(metrics.iconGap)
         effort.isUserInteractionEnabled = false
         effort.translatesAutoresizingMaskIntoConstraints = false
         effortZone.addSubview(effort)
         NSLayoutConstraint.activate([
-            effort.leadingAnchor.constraint(equalTo: effortZone.leadingAnchor, constant: 11),
-            effort.trailingAnchor.constraint(equalTo: effortZone.trailingAnchor, constant: -12),
+            effort.leadingAnchor.constraint(equalTo: effortZone.leadingAnchor, constant: 8),
+            effort.trailingAnchor.constraint(
+                equalTo: effortZone.trailingAnchor, constant: -CGFloat(metrics.padding)),
             effort.topAnchor.constraint(equalTo: effortZone.topAnchor),
             effort.bottomAnchor.constraint(equalTo: effortZone.bottomAnchor),
         ])
@@ -154,12 +191,11 @@ final class ModelDialPill: UIView {
             row.bottomAnchor.constraint(equalTo: bottomAnchor),
             row.leadingAnchor.constraint(equalTo: leadingAnchor),
             row.trailingAnchor.constraint(equalTo: trailingAnchor),
-            heightAnchor.constraint(equalToConstant: 34),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: CGFloat(metrics.height)),
         ])
         registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
             (view: ModelDialPill, _) in
-            view.backgroundColor = UIColor.label.withAlphaComponent(0.06)
-            view.layer.borderColor = UIColor.label.withAlphaComponent(0.1).cgColor
+            view.paintFrame()
             view.render()
         }
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
@@ -179,7 +215,7 @@ final class ModelDialPill: UIView {
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .semibold))?
             .withTintColor(Theme.Color.tertiaryLabel, renderingMode: .alwaysOriginal)
         var title = AttributedString(content.modelWord)
-        title.font = Theme.Ramp.font(.rowTitleStrong)
+        title.font = Theme.Ramp.font(ChatChrome.chipRole)
         config.attributedTitle = title
         modelButton.configuration = config
         modelButton.isUserInteractionEnabled = content.choosesModel

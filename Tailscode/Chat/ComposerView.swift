@@ -25,8 +25,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private let bar = Theme.Glass.view(interactive: false)
     private let textView = PastingTextView()
     private let placeholder = UILabel()
-    private let sendButton = UIButton(type: .system)
-    private let attachButton = UIButton(type: .system)
+    private let sendButton = SlopButton(type: .system)
+    private let attachButton = SlopButton(type: .system)
     private let enhanceBadge = UIImageView()
     private var heightConstraint: NSLayoutConstraint!
     private var isBusy = false
@@ -69,7 +69,10 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// is the wrong sentence in front of a question.
     var placeholderText: String {
         get { placeholder.text ?? "" }
-        set { placeholder.text = newValue }
+        set {
+            placeholder.text = newValue
+            textView.accessibilityLabel = newValue
+        }
     }
 
     private var textViewLeadingToAttach: NSLayoutConstraint?
@@ -77,6 +80,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private var lineConstraints: [NSLayoutConstraint] = []
     private var stackedConstraints: [NSLayoutConstraint] = []
     private var accessoryConstraints: [NSLayoutConstraint] = []
+    private lazy var stackedTextBottom = textView.bottomAnchor.constraint(
+        equalTo: bar.bottomAnchor, constant: -(Self.accessoryRowHeight + 10))
     private var accessoryToAttach: NSLayoutConstraint?
     private var accessoryToBar: NSLayoutConstraint?
     private let heatLine = CAGradientLayer()
@@ -138,6 +143,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.translatesAutoresizingMaskIntoConstraints = false
 
         placeholder.text = String(localized: "Message your agent…")
+        textView.accessibilityLabel = placeholder.text
+        placeholder.isAccessibilityElement = false
         placeholder.font = Theme.Ramp.font(.answer)
         placeholder.textColor = Theme.Color.tertiaryLabel
         placeholder.translatesAutoresizingMaskIntoConstraints = false
@@ -197,7 +204,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         stackedConstraints = [
             textView.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.l),
             textView.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.l),
-            textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -(Self.accessoryRow + 10)),
+            stackedTextBottom,
             placeholder.topAnchor.constraint(equalTo: textView.topAnchor, constant: 1),
         ]
 
@@ -249,11 +256,19 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: ComposerView, _) in
             view.enhanceBadge.layer.borderColor = Theme.Color.background.cgColor
         }
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (view: ComposerView, _) in
+            view.stackedTextBottom.constant = -(Self.accessoryRowHeight + 10)
+        }
 
         updateSendButton()
     }
 
-    private static let accessoryRow: CGFloat = 36
+    /// The row of controls under the words grows with the reader's type size, so the pill in it
+    /// is never clipped by a box that was measured for the default one.
+    private static var accessoryRowHeight: CGFloat {
+        max(36, ceil(UIFontMetrics(forTextStyle: .body).scaledValue(for: 36)))
+    }
 
     private func installAccessory() {
         guard let accessory else { return }
@@ -336,7 +351,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     func setBusy(_ busy: Bool) {
         guard isBusy != busy else { return }
         isBusy = busy
-        placeholder.text =
+        placeholderText =
             busy ? String(localized: "Queue a message…") : String(localized: "Message your agent…")
         UIView.transition(with: sendButton, duration: 0.2, options: .transitionCrossDissolve) {
             self.updateSendButton()
@@ -447,7 +462,10 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         guard enhanceBadge.alpha != target else { return }
         sendButton.accessibilityHint =
             visible ? String(localized: "Hold to enhance your prompt") : nil
-        if visible {
+        if UIAccessibility.isReduceMotionEnabled {
+            enhanceBadge.transform = .identity
+            enhanceBadge.alpha = target
+        } else if visible {
             enhanceBadge.transform = CGAffineTransform(scaleX: 0.4, y: 0.4)
             UIView.animate(
                 withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.5
