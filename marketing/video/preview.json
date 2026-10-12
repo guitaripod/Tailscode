@@ -1,43 +1,105 @@
 {
-  "start": 1.3,
-  "duration": 29.4,
+  "size": "886x1920",
+  "dissolve": 0.3,
+  "chord": "gmaj",
+  "segments": [
+    {
+      "clip": "A11.mov",
+      "t0": 10.7,
+      "dur": 1.5
+    },
+    {
+      "clip": "A11.mov",
+      "t0": 12.9,
+      "dur": 2.5,
+      "cut": true
+    },
+    {
+      "clip": "A11.mov",
+      "t0": 15.2,
+      "dur": 1.6,
+      "cut": true
+    },
+    {
+      "clip": "A11.mov",
+      "t0": 20.7,
+      "dur": 3.0,
+      "cut": true
+    },
+    {
+      "clip": "B2.mov",
+      "t0": 6.2,
+      "dur": 6.0
+    },
+    {
+      "clip": "C2.mov",
+      "t0": 3.4,
+      "dur": 5.0
+    },
+    {
+      "clip": "D1.mov",
+      "t0": 9.0,
+      "dur": 1.3
+    },
+    {
+      "clip": "D1.mov",
+      "t0": 11.4,
+      "dur": 2.4,
+      "cut": true
+    },
+    {
+      "clip": "E1.mov",
+      "t0": 7.2,
+      "dur": 2.6
+    },
+    {
+      "clip": "F1.mov",
+      "t0": 3.0,
+      "dur": 5.0
+    }
+  ],
   "captions": [
     {
-      "text": "Every machine, one board",
-      "accent": "#546BFF",
-      "start": 0.4,
+      "text": "Pocket it.\nGet pinged.",
+      "highlight": "Get pinged.",
+      "start": 0.0,
       "end": 4.2
     },
     {
-      "text": "Send a task in one sentence",
-      "accent": "#A855F7",
-      "start": 4.8,
-      "end": 8.0
+      "text": "Approve the\nrisky command",
+      "highlight": "risky command",
+      "start": 4.2,
+      "end": 8.5
     },
     {
-      "text": "Watch it work, live",
-      "accent": "#30D158",
-      "start": 8.6,
-      "end": 14.2,
-      "top": 420
+      "text": "When it asks,\nyou answer",
+      "highlight": "you answer",
+      "start": 8.5,
+      "end": 13.9
     },
     {
-      "text": "Set how hard it thinks",
-      "accent": "#A855F7",
-      "start": 15.0,
-      "end": 17.4
+      "text": "Every machine,\none board",
+      "highlight": "one board",
+      "start": 13.9,
+      "end": 18.6
     },
     {
-      "text": "Approve it from anywhere",
-      "accent": "#FFB020",
-      "start": 18.4,
-      "end": 22.6
+      "text": "Read the\ndiff first",
+      "highlight": "diff",
+      "start": 18.6,
+      "end": 22.0
     },
     {
-      "text": "Know your limits",
-      "accent": "#FF7A29",
-      "start": 25.0,
-      "end": 29.0
+      "text": "See what\nit costs",
+      "highlight": "costs",
+      "start": 22.0,
+      "end": 24.3
+    },
+    {
+      "text": "Nothing leaves\nyour tailnet",
+      "highlight": "your tailnet",
+      "start": 24.3,
+      "end": 29.2
     }
   ]
 }
