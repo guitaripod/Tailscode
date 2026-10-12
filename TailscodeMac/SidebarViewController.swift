@@ -316,14 +316,18 @@ final class SidebarViewController: NSViewController {
     /// it, so what this list holds about the conversation is written whether or not a pane has to
     /// change — an unread mark that clears only by opening something else and coming back reads
     /// as broken. `alreadyShowing` spares the pane's half of the work, and nothing else.
-    func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
+    /// `reveal` scrolls the list to the row. A person who asked for a chat — a click, a key, a
+    /// notification — wants to see where it is; a window that is merely coming back to the chat it
+    /// had is not asking, and a list that opens already scrolled past its pins, its missed news
+    /// and its live chats reads as broken before anything has been touched.
+    func open(_ entry: SessionEntry, freshlyCreated: Bool = false, reveal: Bool = true) {
         let alreadyShowing =
             focusedSessionID.map { $0() == entry.session.id } ?? (selectedID == entry.session.id)
         selectedID = entry.session.id
         SessionSeenStore.markSeen(entry.session.id)
         MacNotifier.clearNotices(sessionID: entry.session.id)
         render()
-        scrollSelectionIntoView()
+        if reveal { scrollSelectionIntoView() }
         guard !alreadyShowing else { return }
         self.freshlyCreated = freshlyCreated ? entry : nil
         guard
@@ -674,7 +678,7 @@ final class SidebarViewController: NSViewController {
         guard selectedID == nil, !entries.isEmpty else { return }
         let remembered = UserDefaults.standard.string(forKey: "tailscode.lastSession")
             .flatMap { id in entries.first { $0.session.id == id } }
-        open(remembered ?? entries[0])
+        open(remembered ?? entries[0], reveal: false)
     }
 
     /// Rebuilding the whole table is what the 10-second refresh would do whether or not anything
