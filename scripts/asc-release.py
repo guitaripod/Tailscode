@@ -29,6 +29,8 @@ Usage: python3 scripts/asc-release.py <marketing-version> <build-number>
        python3 scripts/asc-release.py 1.39 137 --manual-release   # hold it for a hand
        python3 scripts/asc-release.py 1.45 150 --replace          # swap the build under a version in review
 """
+from __future__ import annotations
+
 import json
 import os
 import sys

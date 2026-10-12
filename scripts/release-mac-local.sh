@@ -126,7 +126,7 @@ PKG=$(find "$OUT/export" -maxdepth 1 -name '*.pkg' | head -1)
 [ -n "$PKG" ] || { echo "no pkg exported" >&2; exit 1; }
 EXPANDED=$OUT/expanded
 rm -rf "$EXPANDED"
-pkgutil --expand-full "$PKG" "$EXPANDED"
+/usr/sbin/pkgutil --expand-full "$PKG" "$EXPANDED"
 INFO=$(find "$EXPANDED" -path '*.app/Contents/Info.plist' | head -1)
 BINARY=$(dirname "$INFO")/MacOS/$(plutil -extract CFBundleExecutable raw "$INFO")
 echo "version  $(plutil -extract CFBundleShortVersionString raw "$INFO")"
@@ -137,5 +137,5 @@ xcrun vtool -show-build "$BINARY" | grep -E "platform|sdk" | head -3
 echo "artifact $PKG"
 
 if [ "$UPLOAD" = 1 ]; then
-  asc builds upload --app "$APP_ID" --pkg "$PKG" --wait
+  asc builds upload --app "$APP_ID" --pkg "$PKG" --version "$MARKETING" --build-number "$BUILD" --wait
 fi
