@@ -54,7 +54,9 @@ enum MatrixTheme {
     /// from the same table, since they depend on which rows are neighbours.
     static func css(for palette: Palette, density: ChatDensity = Preferences.chatDensity) -> String {
         let metrics = ChatMetrics.metrics(for: density, input: .pointer)
-        let transcriptPadding = density == .compact ? "8px 18px" : "18px 26px"
+        let inset = chatInset(density)
+        let transcriptPadding = density == .compact ? "8px \(inset)px" : "18px \(inset)px"
+        let bandInset = inset - 6
         let codePadding = density == .compact ? "6px 12px" : "8px 12px"
         let flat = Int(metrics.activityRowHeight)
         let railHeight = Int(metrics.railRowHeight)
@@ -73,6 +75,18 @@ enum MatrixTheme {
         let danger = palette.danger
         let info = palette.info
         let special = palette.special
+        let chipMetrics = ChatChrome.chip(on: .pointer)
+        let factFill = Contrast.blend(canvas, text, ChatChrome.fill(.fact).inkShare) ?? canvasRaised
+        let controlFill =
+            Contrast.blend(canvas, text, ChatChrome.fill(.control).inkShare) ?? canvasRaised
+        let dimInk = quietInk(for: palette)
+        let chipPadding = Int(chipMetrics.padding)
+        let chipGap = Int(chipMetrics.iconGap)
+        let chipIcon = Int(chipMetrics.iconSize)
+        let chipHeight = Int(chipMetrics.height)
+        let decisiveHeight = chipHeight + 4
+        let chipHeightEm = String(format: "%.3fem", Double(chipHeight - 2) / chipEmPixels)
+        let decisiveHeightEm = String(format: "%.3fem", Double(decisiveHeight - 2) / chipEmPixels)
 
         return """
         :root {
@@ -201,6 +215,7 @@ enum MatrixTheme {
         .glyph-pending { color: \(textDim); }
         .glyph-ok { color: \(accent); }
         .glyph-warn { color: \(warn); }
+        .glyph-info { color: \(info); }
         .section-title { \(t(.metricLabel)) color: \(textDim); }
         .fact-good .subtitle { color: alpha(\(accent), 0.85); opacity: 1; }
         .fact-warn .subtitle { color: \(warn); opacity: 1; }
@@ -265,28 +280,33 @@ enum MatrixTheme {
         .status-line {
             color: \(accentDim);
             \(t(.statusLine))
-            padding: 4px 26px;
+            padding: 4px \(inset)px;
             background-color: \(canvasRaised);
             border-top: 1px solid \(rule);
         }
         .status-band {
             background-color: \(canvasRaised);
             border-top: 1px solid \(rule);
-            padding: 3px 22px;
+            padding: 3px \(bandInset)px;
         }
         .seg, .seg > button, .seg button {
             \(t(.segment))
-            min-height: 0;
-            padding: 1px 6px;
+            min-height: \(chipHeight)px;
+            padding: 0 6px;
             border: none;
             border-radius: 3px;
             background: none;
             background-color: transparent;
             box-shadow: none;
-            outline: none;
+            outline: 2px solid transparent;
+            outline-offset: -2px;
             text-shadow: none;
         }
         .seg:hover, .seg button:hover { background-color: \(canvas); }
+        .seg:focus-visible, .seg > button:focus-visible, button.seg:focus-visible {
+            outline: 2px solid \(accent);
+            outline-offset: -2px;
+        }
         .seg arrow { -gtk-icon-size: 10px; opacity: 0.5; }
         .seg-idle { color: \(textDim); }
         .seg-dim { color: \(textDim); }
@@ -307,7 +327,11 @@ enum MatrixTheme {
             color: \(text);
             \(t(.composer))
         }
-        .composer-placeholder { color: \(textDim); \(t(.composer)) opacity: 0.55; }
+        .composer-placeholder { color: \(dimInk); \(t(.composer)) }
+        .composer-row { padding: 0 \(inset)px; }
+        .attachments-row { padding: 0 \(inset)px; }
+        .help-overlay { padding: 0 \(inset)px; }
+        .pending-strip { color: \(dimInk); \(t(.hint)) }
         .composer-normal { border-color: \(accent); }
         .composer-visual { border-color: \(info); }
         .vim-badge {
@@ -756,6 +780,8 @@ enum MatrixTheme {
         .card {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);
+            border-radius: \(Int(ChatChrome.Radius.card))px;
+            box-shadow: none;
             padding: 12px 16px;
         }
         .card-permission { border-left: 2px solid \(warn); }
@@ -764,16 +790,12 @@ enum MatrixTheme {
         .card-title.pending-text-failed { color: \(danger); }
         .update-link { padding: 2px 0; min-height: 0; min-width: 0; }
         .update-heading { \(t(.sectionLabel)) opacity: 0.5; padding: 6px 0 0 0; }
-        .answer-option {
-            \(t(.option))
-            color: \(info);
-            background-color: transparent;
-            border: 1px solid \(rule);
-            border-radius: 0;
-            padding: 3px 10px;
+        button.answer-option, button.answer-option:hover { font-weight: 500; }
+        button.answer-option.answer-selected, button.answer-option.answer-selected:hover {
+            border-color: \(accent);
+            background-color: alpha(\(accent), 0.12);
+            box-shadow: inset 0 0 0 1px \(accent);
         }
-        .answer-option:hover { border-color: \(info); }
-        .answer-selected { border-color: \(accent); color: \(accent); }
 
         .command-line:hover { background-color: alpha(\(info), 0.10); border-radius: 4px; }
         .completion-selected { background-color: alpha(\(accent), 0.16); border-radius: 6px; }
@@ -799,6 +821,14 @@ enum MatrixTheme {
         .card-compaction { border-left: 2px solid \(special); }
         .card-compaction-failed { border-left: 2px solid \(danger); }
         .card-answerless { border-left: 2px solid \(warn); }
+        .card-failed { border-left: 2px solid \(danger); }
+        .failed-reason {
+            \(t(.toolDetail))
+            color: \(text);
+            background-color: \(palette.codeBg);
+            border-left: 2px solid \(rule);
+            padding: 6px 10px;
+        }
         .link-rail {
             min-height: \(railHeight)px;
             padding: 0 8px 0 2px;
@@ -841,13 +871,17 @@ enum MatrixTheme {
         .picture-strip { padding: 0; }
         .picture-strip flowboxchild { padding: 0; }
         .picture-thumb { padding: 0; min-height: 0; min-width: 0; border-radius: 0; }
-        .response-stats { opacity: 0.62; }
-        .queued-row { opacity: 0.55; padding: 2px 0; border-radius: 4px; }
-        .queued-row:hover { opacity: 0.85; background-color: alpha(\(accent), 0.07); }
-        .queued-rule { background-color: \(textDim); }
-        .queued-hint { color: \(textDim); \(t(.hint)) }
-        .response-stat-glyph { color: \(textDim); \(t(.responseStat)) }
-        .response-stat-value { color: \(textDim); \(t(.responseStat)) }
+        .queued-row { padding: 2px 0; border-radius: 4px; }
+        .queued-row .prompt-text { color: \(dimInk); }
+        .queued-row:hover { background-color: alpha(\(accent), 0.07); }
+        .prompt-rule.queued-rule {
+            background-color: transparent;
+            background-image: repeating-linear-gradient(
+                to bottom, \(dimInk) 0px, \(dimInk) 4px, transparent 4px, transparent 8px);
+        }
+        .queued-hint { color: \(dimInk); \(t(.hint)) }
+        .response-stat-glyph { color: \(dimInk); \(t(.responseStat)) }
+        .response-stat-value { color: \(dimInk); \(t(.responseStat)) }
         .card-interrupted { border-left: 2px solid \(warn); }
         .card-retry { border-left: 2px solid \(warn); }
         .card-revert { border-left: 2px solid \(warn); }
@@ -934,48 +968,112 @@ enum MatrixTheme {
         .task-board-head { \(t(.sectionLabel)) color: \(palette.accent); }
         .task-board-item { \(t(.panelLabel)) }
 
-        .goal-line { color: \(special); \(t(.chip)) padding: 2px 26px; }
+        .goal-line { color: \(special); \(t(.chip)) padding: 2px \(inset)px; }
         .banner-auth {
-            color: \(palette.onAccent);
-            background-color: \(warn);
-            \(t(.banner))
-            padding: 4px 12px;
-        }
-        .pill-row { padding: 0px 22px 6px 22px; }
-        .pill-row.pill-row-place { padding-bottom: 2px; }
-        .pill-row button {
-            \(t(.chip))
-            min-height: 0;
-            padding: 1px 8px;
             background-color: \(canvasRaised);
-            border: 1px solid \(rule);
-            border-radius: 0;
-            color: \(textDim);
+            border-bottom: 2px solid \(warn);
+            padding: 6px \(inset)px;
         }
-        .pill-row button:hover { border-color: \(accent); color: \(text); }
+        .banner-auth-text { color: \(text); \(t(.banner)) }
+        .pill-row { padding: 0px \(inset)px 6px \(inset)px; }
+        .pill-row.pill-row-place { padding-bottom: 2px; }
+        button.chip-ctl, menubutton.chip-ctl > button {
+            \(t(.chip))
+            min-height: \(chipHeightEm);
+            min-width: 0;
+            padding: 0 \(chipPadding)px;
+            background-image: none;
+            background-color: \(controlFill);
+            border: 1px solid \(rule);
+            border-radius: 999px;
+            color: \(text);
+            box-shadow: none;
+            text-shadow: none;
+            outline: 2px solid transparent;
+            outline-offset: 1px;
+        }
+        button.chip-ctl:hover, menubutton.chip-ctl > button:hover {
+            border-color: \(accent);
+            background-color: \(factFill);
+        }
+        button.chip-ctl:focus-visible, menubutton.chip-ctl > button:focus-visible {
+            outline: 2px solid \(accent);
+            outline-offset: 1px;
+        }
+        button.chip-ctl:disabled, menubutton.chip-ctl:disabled > button { color: \(dimInk); }
+        button.chip-ctl > box, menubutton.chip-ctl > button > box { min-height: 0; }
+        button.chip-ctl.chip-on, menubutton.chip-ctl.chip-on > button {
+            color: \(palette.onAccent);
+            background-color: \(accent);
+            border-color: \(accent);
+        }
+        button.chip-ctl.chip-on:hover, menubutton.chip-ctl.chip-on:hover > button {
+            background-color: \(accentDim);
+            border-color: \(accentDim);
+        }
+        .chip-glyph { font-size: \(chipIcon)px; }
+        .chip-gap { margin-left: \(chipGap)px; }
+        .chip-tone-live { color: \(accent); }
+        .chip-tone-attention { color: \(warn); }
+        .chip-tone-danger { color: \(danger); }
+        .chip-tone-quiet { color: \(dimInk); }
+        button.chip-ctl.chip-on .chip-glyph { color: \(palette.onAccent); }
         .pill-row arrow { -gtk-icon-size: 8px; opacity: 0.4; }
-        .pill-row button.send-pill { color: \(accentDim); border-color: \(accentDim); }
-        .pill-row button.send-pill:hover { color: \(accent); border-color: \(accent); }
-        .pill-row button.stop-pill { color: \(danger); border-color: \(danger); }
-        .pill-row button.stop-pill:hover { color: \(palette.onAccent); background-color: \(danger); }
         popover contents { background-color: \(canvasRaised); border: 1px solid \(rule); }
 
-        .pill-row menubutton.dial-pill > button {
-            padding: 1px 9px 1px 8px;
-            color: \(text);
-            border-color: alpha(\(textDim), 0.45);
-        }
-        .pill-row menubutton.dial-pill > button:hover { border-color: \(accent); }
+        .pill-row menubutton.dial-pill > button { padding: 0 \(chipPadding)px; }
         .pill-row menubutton.dial-pill > button arrow { margin-left: 2px; }
         .pill-row menubutton.dial-pill.dial-pill-power > button {
             background-image: \(rainbowWash(0.16));
             border-color: alpha(\(text), 0.3);
         }
+        .lane-row button.chip-ctl { margin-left: 2px; }
+        button.btn-primary, button.btn-quiet, button.btn-danger {
+            \(t(.chip))
+            min-height: \(decisiveHeightEm);
+            min-width: 0;
+            padding: 0 \(chipPadding + 4)px;
+            background-image: none;
+            border: 1px solid transparent;
+            border-radius: 999px;
+            box-shadow: none;
+            text-shadow: none;
+            font-weight: 600;
+            outline: 2px solid transparent;
+            outline-offset: 1px;
+        }
+        button.btn-primary { color: \(palette.onAccent); background-color: \(accent); }
+        button.btn-primary:hover { background-color: \(accentDim); }
+        button.btn-quiet {
+            color: \(text);
+            background-color: \(controlFill);
+            border-color: \(rule);
+        }
+        button.btn-quiet:hover { border-color: \(accent); background-color: \(factFill); }
+        button.btn-danger {
+            color: \(danger);
+            background-color: alpha(\(danger), 0.12);
+            border-color: alpha(\(danger), 0.45);
+        }
+        button.btn-danger:hover { background-color: alpha(\(danger), 0.22); }
+        button.btn-primary:focus-visible, button.btn-quiet:focus-visible,
+        button.btn-danger:focus-visible {
+            outline: 2px solid \(accent);
+            outline-offset: 1px;
+        }
+        button.btn-primary:disabled, button.btn-quiet:disabled, button.btn-danger:disabled {
+            color: \(dimInk);
+            background-color: \(controlFill);
+            border-color: \(rule);
+        }
+        .card button.btn-primary:disabled, .card button.btn-primary:disabled label { opacity: 1; }
+        button.btn-quiet .btn-hint, button.btn-danger .btn-hint { font-weight: 400; color: \(dimInk); }
+        button.btn-primary .btn-hint { font-weight: 400; color: \(palette.onAccent); opacity: 0.8; }
         .dial-dot { \(t(.hint)) color: \(textDim); }
         .dial-model { \(t(.chip)) color: \(text); }
         .dial-sep { color: \(textDim); opacity: 0.5; }
-        .dial-effort { \(t(.chip)) font-weight: 700; color: \(textDim); }
-        .dial-effort.dial-effort-server { font-weight: 400; opacity: 0.7; }
+        .dial-effort { \(t(.chip)) font-weight: 700; color: \(text); }
+        .dial-effort.dial-effort-server { font-weight: 400; color: \(dimInk); }
         .dial-effort.effort-low { font-weight: 400; }
         .dial-effort.effort-medium { font-weight: 600; }
         .dial-effort.effort-high { font-weight: 700; }
@@ -1093,15 +1191,9 @@ enum MatrixTheme {
             color: \(info);
         }
         .chip:hover { border-color: \(danger); color: \(danger); }
-        .jump-pill {
-            \(t(.statusLine))
-            padding: 4px 14px;
-            border-radius: 14px;
-            color: \(palette.onAccent);
-            background-color: \(accent);
-            border: none;
-        }
-        .jump-pill:hover { background-color: \(accentDim); }
+        .empty-chat { padding: 24px 0; }
+        .empty-headline { \(t(.headline)) color: \(text); }
+        .answer-option-mark { font-size: \(chipIcon)px; color: \(accent); }
         .hover-bar {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);
@@ -1142,7 +1234,7 @@ enum MatrixTheme {
         .find-bar {
             background-color: \(canvasRaised);
             border-bottom: 1px solid \(rule);
-            padding: 2px 4px;
+            padding: 2px \(inset)px;
         }
         .chat-pane { border: 1px solid transparent; }
         .video-pane { background-color: #000000; }
@@ -1742,22 +1834,6 @@ enum MatrixTheme {
             border: none;
             padding: 0;
         }
-        .lane-pill {
-            \(t(.hint))
-            min-height: 0;
-            min-width: 0;
-            padding: 1px 9px;
-            border-radius: 999px;
-            color: \(textDim);
-            background-image: none;
-            box-shadow: none;
-        }
-        .lane-pill:hover { background-color: alpha(\(text), 0.10); }
-        .lane-pill-on {
-            color: \(palette.onAccent);
-            background-color: \(accent);
-        }
-        .lane-pill-on:hover { background-color: \(accentDim); }
         .forge-pane { background-color: \(canvas); }
         .forge-call {
             \(t(.control))
@@ -1785,7 +1861,7 @@ enum MatrixTheme {
             padding: 16px;
         }
         .forge-stage-glyph { color: \(textDim); \(t(.paneHeadline)) font-size: 280%; }
-        .forge-stage-caption { color: \(textDim); \(t(.hint)); }
+        .forge-stage-caption { color: \(textDim); \(t(.hint)) }
         .forge-affordance { color: \(textDim); \(t(.hint)) opacity: 0.7; }
         .forge-row-spent { opacity: 0.5; }
         .forge-prompt {
@@ -1856,7 +1932,7 @@ enum MatrixTheme {
             background-color: \(canvasRaised);
             border-bottom: 1px solid \(rule);
             \(t(.paneIdentity))
-            padding: 2px 10px;
+            padding: 2px \(inset)px;
         }
         .pane-focused .pane-identity { color: \(accent); }
         .drop-zone {
@@ -2114,6 +2190,30 @@ enum MatrixTheme {
     /// the same fact the phone and the Mac draw: text colour on a wash of itself for the list
     /// chips, and the same hue on the composer's bordered pills, which need the heavier selector
     /// to outrank `.pill-row button`.
+    static func chatInset(_ density: ChatDensity = Preferences.chatDensity) -> Int {
+        density == .compact ? 18 : 26
+    }
+
+    /// Pixels in one `em` of the chip's own type at normal size, which is how a 24-pixel chip
+    /// becomes a height that grows with the type slider rather than a number that ignores it. The
+    /// border is outside the content height the stylesheet states, so it is taken off first.
+    static let chipEmPixels = 11.5
+
+    /// The dim register as ink that clears AA against the lightest fill a chip or a row wears, so
+    /// a waiting row or a placeholder is read from a colour that was computed rather than from an
+    /// opacity that was hoped for. The palette's own dim ink is held to the lower, graphical bar.
+    static func quietInk(for palette: Palette) -> String {
+        let fill =
+            Contrast.blend(
+                palette.canvas, palette.text, ChatChrome.fill(.fact).inkShare) ?? palette.canvas
+        let against = [palette.canvas, palette.canvasRaised, fill]
+        var ink = palette.textDim
+        for background in against {
+            ink = Contrast.adjusted(ink, on: background, ratio: Contrast.readable) ?? ink
+        }
+        return ink
+    }
+
     private static func modelTintCSS(for palette: Palette) -> String {
         var lines: [String] = []
         var pairs: [(cls: String, hex: String)] = ModelTint.Family.allCases.map {
@@ -2130,21 +2230,7 @@ enum MatrixTheme {
         }
         for pair in pairs {
             lines.append(".dial-dot.\(pair.cls), .dial-row-dot.\(pair.cls) { color: \(pair.hex); }")
-            lines.append(
-                ".pill-row menubutton.\(pair.cls) > button { color: \(pair.hex); "
-                    + "border-color: alpha(\(pair.hex), 0.55); }")
-            lines.append(
-                ".pill-row menubutton.\(pair.cls) > button:hover "
-                    + "{ background-color: alpha(\(pair.hex), 0.12); }")
         }
-        lines.append(
-            ".pill-row menubutton.effort-ultracode > button { "
-                + "background-image: \(rainbowWash(0.22)); background-color: transparent; "
-                + "border-color: alpha(\(palette.text), 0.3); color: \(palette.text); "
-                + "font-weight: 700; }")
-        lines.append(
-            ".pill-row menubutton.effort-ultracode > button:hover "
-                + "{ background-image: \(rainbowWash(0.34)); }")
         return lines.joined(separator: "\n        ")
     }
 
@@ -2155,7 +2241,6 @@ enum MatrixTheme {
         var lines: [String] = []
         for tier in ModelTint.effortTiers {
             guard let hex = ModelTint.effortHex(tier, in: palette) else { continue }
-            lines.append(".dial-effort.effort-\(tier) { color: \(hex); }")
             lines.append(
                 ".dial-bar-lit.effort-\(tier) { background-color: \(hex); "
                     + "box-shadow: 0 0 \(tierGlow(tier))px alpha(\(hex), 0.7); }")

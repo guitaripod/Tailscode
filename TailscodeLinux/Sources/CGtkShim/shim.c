@@ -925,6 +925,94 @@ void tailscode_make_file_drag_source(
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(source));
 }
 
+static void tailscode_css_note(
+    GtkCssProvider *provider, GtkCssSection *section, GError *error, gpointer data) {
+    (void)provider;
+    GString *log = data;
+    const GtkCssLocation *start = gtk_css_section_get_start_location(section);
+    g_string_append_printf(
+        log, "%u:%u %s\n", start ? start->lines + 1 : 0, start ? start->line_chars + 1 : 0,
+        error ? error->message : "?");
+}
+
+char *tailscode_css_problems(const char *css) {
+    GtkCssProvider *provider = gtk_css_provider_new();
+    GString *log = g_string_new(NULL);
+    g_signal_connect(provider, "parsing-error", G_CALLBACK(tailscode_css_note), log);
+    gtk_css_provider_load_from_string(provider, css);
+    g_object_unref(provider);
+    return g_string_free(log, log->len == 0);
+}
+
+void tailscode_emit_clicked(GtkWidget *button) {
+    g_signal_emit_by_name(button, "clicked");
+}
+
+gboolean tailscode_accessible_has_label(GtkWidget *widget, const char *expected) {
+    GtkAccessible *accessible = GTK_ACCESSIBLE(widget);
+    if (!gtk_test_accessible_has_property(accessible, GTK_ACCESSIBLE_PROPERTY_LABEL)) return FALSE;
+    char *problem =
+        gtk_test_accessible_check_property(accessible, GTK_ACCESSIBLE_PROPERTY_LABEL, expected);
+    gboolean matches = problem == NULL;
+    g_free(problem);
+    return matches;
+}
+
+gboolean tailscode_accessible_state_is(GtkWidget *widget, int which, int value) {
+    GtkAccessible *accessible = GTK_ACCESSIBLE(widget);
+    GtkAccessibleState state = which == 0   ? GTK_ACCESSIBLE_STATE_EXPANDED
+                               : which == 1 ? GTK_ACCESSIBLE_STATE_PRESSED
+                                            : GTK_ACCESSIBLE_STATE_CHECKED;
+    if (!gtk_test_accessible_has_state(accessible, state)) return FALSE;
+    char *problem = which == 0 ? gtk_test_accessible_check_state(accessible, state, value != 0)
+                               : gtk_test_accessible_check_state(
+                                     accessible, state,
+                                     value ? GTK_ACCESSIBLE_TRISTATE_TRUE
+                                           : GTK_ACCESSIBLE_TRISTATE_FALSE);
+    gboolean matches = problem == NULL;
+    g_free(problem);
+    return matches;
+}
+
+void tailscode_set_accessible_expanded(GtkWidget *widget, gboolean expanded) {
+    gtk_accessible_update_state(
+        GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_STATE_EXPANDED, expanded, -1);
+}
+
+void tailscode_set_accessible_pressed(GtkWidget *widget, gboolean pressed) {
+    gtk_accessible_update_state(
+        GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_STATE_PRESSED,
+        pressed ? GTK_ACCESSIBLE_TRISTATE_TRUE : GTK_ACCESSIBLE_TRISTATE_FALSE, -1);
+}
+
+void tailscode_set_accessible_checked(GtkWidget *widget, gboolean checked) {
+    gtk_accessible_update_state(
+        GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_STATE_CHECKED,
+        checked ? GTK_ACCESSIBLE_TRISTATE_TRUE : GTK_ACCESSIBLE_TRISTATE_FALSE, -1);
+}
+
+gboolean tailscode_can_announce(void) {
+#if GTK_CHECK_VERSION(4, 14, 0)
+    return gtk_check_version(4, 14, 0) == NULL;
+#else
+    return FALSE;
+#endif
+}
+
+void tailscode_accessible_announce(GtkWidget *widget, const char *message, gboolean assertive) {
+#if GTK_CHECK_VERSION(4, 14, 0)
+    if (!message || !*message || gtk_check_version(4, 14, 0) != NULL) return;
+    gtk_accessible_announce(
+        GTK_ACCESSIBLE(widget), message,
+        assertive ? GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_HIGH
+                  : GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_MEDIUM);
+#else
+    (void)widget;
+    (void)message;
+    (void)assertive;
+#endif
+}
+
 void tailscode_set_accessible_hidden(GtkWidget *widget, gboolean hidden) {
     gtk_accessible_update_state(
         GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_STATE_HIDDEN, hidden, -1);

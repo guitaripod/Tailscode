@@ -355,7 +355,8 @@ enum SubagentRowView {
     {
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         gtk_box_append(ptr(header), ToolRowView.mark(call.status, in: context))
-        gtk_box_append(ptr(header), Gtk.label("▸ agent", css: "tool-name", selectable: false))
+        gtk_box_append(
+            ptr(header), Gtk.label(Localized.text("agent"), css: "tool-name", selectable: false))
         let title = call.summary.title ?? call.title ?? call.name
         let label = Gtk.label(
             String(title.replacingOccurrences(of: "\n", with: " ").prefix(140)),
@@ -369,7 +370,8 @@ enum SubagentRowView {
                     StatusFacts.liveDetail(live, at: context.liveNow, under: AgentHold(call)),
                     css: "agent-live", selectable: false))
         } else if call.status == .completed {
-            gtk_box_append(ptr(header), Gtk.label("done", css: "glyph-done", selectable: false))
+            gtk_box_append(
+                ptr(header), Gtk.label(Localized.text("done"), css: "glyph-done", selectable: false))
         }
 
         let toggle = context.onToggle
@@ -394,6 +396,13 @@ enum SubagentRowView {
                             Localized.text("No transcript for this agent."), css: "dim",
                             selectable: false))
                 }
+                if rows.count > 160 {
+                    gtk_box_append(
+                        ptr(body),
+                        Gtk.label(
+                            Localized.text("… %@ earlier rows", "\(rows.count - 160)"),
+                            css: "dim", selectable: false))
+                }
                 for row in rows.suffix(160) {
                     gtk_box_append(ptr(body), row.makeWidget(context: context))
                 }
@@ -403,6 +412,53 @@ enum SubagentRowView {
                     Gtk.label(
                         Localized.text("Loading transcript…"), css: "dim", selectable: false))
                 if context.isExpanded(key) { context.requestSubagent?(call) }
+            }
+            return body
+        }
+    }
+
+    /// A fan-out too wide to read card by card, as one line: how many agents, how many are out
+    /// now. The cards are behind it, each exactly as it would be drawn on its own.
+    static func makeGroup(
+        _ members: [TranscriptRow.AgentMember], key: String, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let working = members.count { member in
+            guard let live = context.agentFacts[member.call.id] else { return false }
+            return SubagentPresence(agents: [live], hold: AgentHold(member.call)).hasLive
+        }
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(
+            ptr(header),
+            Gtk.label(
+                working > 0 ? ActivityKind.working.icon.glyph : "⏺",
+                css: working > 0 ? "glyph-running" : "glyph-done", selectable: false))
+        gtk_box_append(
+            ptr(header),
+            Gtk.label(
+                Localized.text("%lld agents", members.count), css: "tool-name", selectable: false))
+        if working > 0 {
+            gtk_box_append(
+                ptr(header),
+                Gtk.label(
+                    Localized.text("%lld working", working), css: "agent-live", selectable: false))
+        }
+        let toggle = context.onToggle
+        let reveal = context.revealRow
+        let request = context.requestSubagent
+        return Gtk.disclosure(
+            header: header, expanded: context.isExpanded(key),
+            onToggle: { open, bits in
+                toggle?(key, open)
+                if open { reveal?(bits) }
+            }
+        ) {
+            let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+            Gtk.margins(body, leading: 16)
+            for member in members {
+                gtk_box_append(ptr(body), make(member.call, key: member.key, context: context))
+                if context.isExpanded(member.key), context.subagentRows[member.call.id] == nil {
+                    request?(member.call)
+                }
             }
             return body
         }

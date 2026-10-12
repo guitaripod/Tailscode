@@ -697,7 +697,7 @@ final class SplitHost: @unchecked Sendable {
     }
 
     private func applyIdentityStrips() {
-        let several = layout.paneCount > 1
+        let several = layout.paneCount > 1 && layout.zoomedPane == nil
         for pane in panes.values {
             pane.setIdentityVisible(several)
         }

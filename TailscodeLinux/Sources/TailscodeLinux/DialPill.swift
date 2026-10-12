@@ -63,6 +63,7 @@ final class DialPill: @unchecked Sendable {
     func render(_ face: DialFace, modelTint: String?) {
         gtk_widget_set_tooltip_text(
             button, face.spoken + " · " + Localized.text("wheel to step the level"))
+        tailscode_set_accessible_label(button, face.spoken)
         Self.swapClass(on: dot, among: Self.modelTintClasses, chosen: modelTint)
         gtk_label_set_text(op(modelLabel), face.modelWord)
         Gtk.fitWrap(modelLabel, to: face.modelWord, ceiling: 40)

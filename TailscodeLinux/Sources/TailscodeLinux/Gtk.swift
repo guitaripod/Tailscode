@@ -673,6 +673,16 @@ enum Gtk {
         gtk_box_new(orientation, spacing)!
     }
 
+    /// A box that is a group to assistive technology and has a name: a card, which is one thing
+    /// said in several labels, and which a plain box would leave as an unnamed pile of them.
+    static func groupBox(
+        _ orientation: GtkOrientation, spacing: Int32, spoken: String
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let box = tailscode_box_new_with_role(orientation, spacing, GTK_ACCESSIBLE_ROLE_GROUP)!
+        tailscode_set_accessible_label(box, spoken)
+        return box
+    }
+
     static func margins(_ widget: UnsafeMutablePointer<GtkWidget>, _ all: Int32) {
         margins(widget, top: all, bottom: all, leading: all, trailing: all)
     }
@@ -807,6 +817,8 @@ enum Gtk {
         gtk_box_append(ptr(row), header)
         gtk_button_set_child(ptr(button), row)
         gtk_box_append(ptr(column), button)
+        tailscode_set_accessible_label(button, spokenText(of: header))
+        tailscode_set_accessible_expanded(button, expanded ? 1 : 0)
         let slot = Slot()
         if expanded {
             let body = makeBody()
@@ -815,9 +827,16 @@ enum Gtk {
         }
         let columnBits = UInt(bitPattern: column)
         let chevronBits = UInt(bitPattern: chevron)
+        let buttonBits = UInt(bitPattern: button)
+        let headerBits = UInt(bitPattern: header)
         @Sendable func mark(_ open: Bool) {
             guard let raw = UnsafeMutableRawPointer(bitPattern: chevronBits) else { return }
             gtk_label_set_text(op(raw), open ? Self.chevronOpen : Self.chevronShut)
+            guard let buttonRaw = UnsafeMutableRawPointer(bitPattern: buttonBits),
+                let headerRaw = UnsafeMutableRawPointer(bitPattern: headerBits)
+            else { return }
+            tailscode_set_accessible_expanded(ptr(buttonRaw), open ? 1 : 0)
+            tailscode_set_accessible_label(ptr(buttonRaw), spokenText(of: ptr(headerRaw)))
         }
         connect(UnsafeMutableRawPointer(button), "clicked") {
             if slot.bits == 0 {
@@ -837,6 +856,22 @@ enum Gtk {
             onToggle(!showing, columnBits)
         }
         return column
+    }
+
+    /// The words a widget shows, joined — what a control built around a glyph and a few labels
+    /// should be called by a screen reader, since the glyph is not its name.
+    static func spokenText(of widget: UnsafeMutablePointer<GtkWidget>) -> String {
+        if tailscode_is_label(widget) != 0 {
+            return gtk_label_get_text(op(widget)).map { String(cString: $0) } ?? ""
+        }
+        var parts: [String] = []
+        var child = gtk_widget_get_first_child(widget)
+        while let current = child {
+            let text = spokenText(of: current)
+            if !text.isEmpty { parts.append(text) }
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return parts.joined(separator: " ")
     }
 
     /// A row that opens says so, and says which way it is. Both glyphs are one cell wide, because a

@@ -3726,6 +3726,9 @@ final class MainWindow: @unchecked Sendable {
         case .halfPageUp: activePane.scroll(byPages: -0.5)
         case .scrollTop: activePane.scroll(toEnd: false)
         case .scrollBottom: activePane.scroll(toEnd: true)
+        case .previousPrompt: activePane.jumpPrompt(by: -1)
+        case .nextPrompt: activePane.jumpPrompt(by: 1)
+        case .copyLastAnswer: activePane.copyLastAnswer()
         case .insert:
             focus(.transcript)
             activePane.focusComposer()
@@ -3734,7 +3737,8 @@ final class MainWindow: @unchecked Sendable {
             let pane = activePane
             if pane.findShown { pane.setFindShown(false) }
             pane.dismissCompletion()
-            gtk_widget_grab_focus(sidebarList)
+            focused = .transcript
+            pane.leaveComposer()
             pane.setHelp(false)
         case .search: gtk_widget_grab_focus(searchEntry)
         case .send: activePane.sendFromComposer()

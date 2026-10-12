@@ -184,6 +184,35 @@ void tailscode_set_text_scale(double scale);
 /// Swift directly.
 void tailscode_set_accessible_label(GtkWidget *widget, const char *label);
 
+/// A press delivered the way a click is, at once — `gtk_widget_activate` waits out the button's
+/// pressed flash first — for a harness that has to read what the press did.
+void tailscode_emit_clicked(GtkWidget *button);
+
+/// What assistive technology would be told, for a harness: whether the widget's accessible name is
+/// exactly `expected`, and whether its expanded (0), pressed (1) or checked (2) state is `value`.
+gboolean tailscode_accessible_has_label(GtkWidget *widget, const char *expected);
+gboolean tailscode_accessible_state_is(GtkWidget *widget, int which, int value);
+
+/// Every complaint GTK's own parser makes about a stylesheet — errors and warnings both, one
+/// "line:column message" per line — as a string to `g_free`, or NULL when the sheet parses clean.
+char *tailscode_css_problems(const char *css);
+
+/// The state a disclosure, a toggle and a choice announce besides their name. Each call is
+/// variadic in GTK, so Swift cannot make it.
+void tailscode_set_accessible_expanded(GtkWidget *widget, gboolean expanded);
+void tailscode_set_accessible_pressed(GtkWidget *widget, gboolean pressed);
+void tailscode_set_accessible_checked(GtkWidget *widget, gboolean checked);
+
+/// Whether the toolkit this was built and is running against can speak a sentence to a screen
+/// reader unprompted (`gtk_accessible_announce`, GTK 4.14), and the call itself: a no-op where it
+/// cannot. A turn that ends and a question that arrives are announced through it.
+gboolean tailscode_can_announce(void);
+void tailscode_accessible_announce(GtkWidget *widget, const char *message, gboolean assertive);
+
+/// Makes a reveal label that holds only list items wrap under its words: the label hangs by the
+/// width of `marker` set in its own font. NULL puts the ordinary indent back.
+void tailscode_label_set_hanging_marker(GtkWidget *label, const char *marker);
+
 /// Takes a widget out of the accessibility tree, or puts it back. A picture that is only the
 /// machine's sketch of another picture says nothing a screen reader should read twice.
 void tailscode_set_accessible_hidden(GtkWidget *widget, gboolean hidden);

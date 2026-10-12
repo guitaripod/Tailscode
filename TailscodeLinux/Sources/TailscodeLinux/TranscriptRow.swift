@@ -259,6 +259,8 @@ extension TranscriptRow {
         switch kind {
         case .tool(let call), .subagent(let call), .workflow(let call):
             return call.status == .running
+        case .subagentGroup(let members):
+            return members.contains { $0.call.status == .running }
         case .run(let steps):
             return steps.contains {
                 if case .tool(_, let call) = $0 { return call.status == .running }
@@ -304,6 +306,11 @@ struct TranscriptRow: Hashable {
         case taskBoard(TaskBoard)
         case compaction(Compaction)
         case answerless(AnswerlessTurn)
+        /// A turn that stopped with an error: what happened, the server's own words quoted, and the
+        /// one action that asks again. Inline after the turn's own rows.
+        case failed(FailedTurn)
+        /// Too many sibling agents to read card by card: one line, and the cards behind it.
+        case subagentGroup([AgentMember])
         /// What the answer above it took, drawn only where the reader asked for it.
         case responseStats(ResponseStats)
         /// Written, not sent: a prompt waiting behind the turn that is running.
@@ -322,6 +329,15 @@ struct TranscriptRow: Hashable {
         case revertBanner(RevertBanner, restoring: Bool)
         case turnBreak
     }
+
+    /// One agent inside a group: the key its card is opened under, and the call that spawned it.
+    struct AgentMember: Hashable {
+        let key: String
+        let call: ToolCall
+    }
+
+    /// More siblings than this from one turn collapse behind a single row.
+    static let inlineAgentLimit = 3
 
     /// One picture of a strip: the row key its pixels are cached under, and what to fetch.
     struct StripPicture: Hashable {
@@ -402,15 +418,21 @@ struct TranscriptRow: Hashable {
                     switch segment {
                     case .prose(let prose):
                         let palette = MatrixTheme.palette
-                        rows.append(
-                            TranscriptRow(
-                                key: "\(key):s\(index)",
-                                kind: .agentProse(
-                                    text: prose,
-                                    markup: PangoMarkdown.render(
-                                        prose, dim: palette.textDim, code: palette.info,
-                                        accent: palette.accent, cache: cacheMarkup))))
-                        run.add(prose, at: rows.count - 1)
+                        for (offset, chunk) in PangoMarkdown.chunks(prose).enumerated() {
+                            let chunkKey =
+                                offset == 0 && !chunk.isList
+                                ? "\(key):s\(index)"
+                                : "\(key):s\(index).\(chunk.isList ? "l" : "p")\(offset)"
+                            rows.append(
+                                TranscriptRow(
+                                    key: chunkKey,
+                                    kind: .agentProse(
+                                        text: chunk.text,
+                                        markup: PangoMarkdown.render(
+                                            chunk.text, dim: palette.textDim, code: palette.info,
+                                            accent: palette.accent, cache: cacheMarkup))))
+                            run.add(chunk.text, at: rows.count - 1)
+                        }
                     case .code(let language, let body):
                         rows.append(
                             TranscriptRow(
@@ -464,9 +486,13 @@ struct TranscriptRow: Hashable {
             }
         }
         run.close(into: &rows, messageID: message.id, followedByFurniture: false, open: !sealed)
+        rows = groupAgents(in: rows, messageID: message.id)
         if let answerless = AnswerlessTurnReading.read(message, prompt: prompt) {
             rows.append(
                 TranscriptRow(key: "\(message.id):answerless", kind: .answerless(answerless)))
+        }
+        if let failed = FailedTurnReading.read(message, prompt: prompt) {
+            rows.append(TranscriptRow(key: "\(message.id):failed", kind: .failed(failed)))
         }
         if Preferences.responseStats, !rows.isEmpty,
             let stats = ResponseStats(turn: message, promptedAt: prompt?.createdAt)
@@ -475,6 +501,29 @@ struct TranscriptRow: Hashable {
                 TranscriptRow(key: "\(message.id):stats", kind: .responseStats(stats)))
         }
         return rows
+    }
+
+    /// A turn that spawns a crowd of agents draws one row for the crowd. The rows stay where the
+    /// first of them was, in the turn they belong to, and the cards are one open away.
+    static func groupAgents(in rows: [TranscriptRow], messageID: String) -> [TranscriptRow] {
+        let members = rows.compactMap { row -> AgentMember? in
+            guard case .subagent(let call) = row.kind else { return nil }
+            return AgentMember(key: row.key, call: call)
+        }
+        guard members.count > inlineAgentLimit else { return rows }
+        var grouped: [TranscriptRow] = []
+        var placed = false
+        for row in rows {
+            guard case .subagent = row.kind else {
+                grouped.append(row)
+                continue
+            }
+            guard !placed else { continue }
+            placed = true
+            grouped.append(
+                TranscriptRow(key: "agents:\(messageID)", kind: .subagentGroup(members)))
+        }
+        return grouped
     }
 
     /// The consecutive prose of one message between two pieces of furniture, from which the rail
@@ -747,6 +796,10 @@ struct TranscriptRow: Hashable {
             return compaction.summary ?? ""
         case .answerless(let turn):
             return "\(turn.title) \(turn.detail)"
+        case .failed(let turn):
+            return "\(turn.title) \(turn.detail) \(turn.reason)"
+        case .subagentGroup(let members):
+            return members.map { Self.searchText(for: $0.call) }.joined(separator: " ")
         case .responseStats(let stats):
             return stats.spoken
         case .queuedSend(let send, _, _):
@@ -784,8 +837,12 @@ struct TranscriptRow: Hashable {
                 "⌧ " + Localized.text("interrupted"), css: "interruption", selectable: false)
             gtk_widget_set_halign(label, GTK_ALIGN_START)
             return label
-        case .agentProse(_, let markup):
-            return Gtk.markupLabel(markup, css: "agent-text")
+        case .agentProse(let text, let markup):
+            let label = Gtk.markupLabel(markup, css: "agent-text")
+            if let marker = PangoMarkdown.hangingMarker(for: text) {
+                tailscode_label_set_hanging_marker(label, marker)
+            }
+            return label
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body, key: key, context: context)
         case .linkRail(let urls):
@@ -816,6 +873,10 @@ struct TranscriptRow: Hashable {
             return Self.seam(compaction, key: key, context: context)
         case .answerless(let turn):
             return Self.answerless(turn, context: context)
+        case .failed(let turn):
+            return Self.failedTurn(turn, context: context)
+        case .subagentGroup(let members):
+            return SubagentRowView.makeGroup(members, key: key, context: context)
         case .responseStats(let stats):
             return Self.responseStats(stats)
         case .queuedSend(let send, let position, let total):
@@ -1036,7 +1097,7 @@ struct TranscriptRow: Hashable {
     }
 
     static func thoughtHeader(_ text: String) -> String {
-        Localized.text("Thought · %@ words", "\(text.split(separator: " ").count)")
+        Localized.text("Thought · %@ words", "\(text.split(whereSeparator: \.isWhitespace).count)")
     }
 
     /// A thought growing under its own disclosure, written into the widget it already has. The
@@ -1213,6 +1274,8 @@ struct TranscriptRow: Hashable {
         gtk_button_set_child(ptr(button), row)
         gtk_widget_set_hexpand(button, 1)
         gtk_widget_set_tooltip_text(button, SendQueueReading.spoken(send, position: position, of: total))
+        tailscode_set_accessible_label(
+            button, SendQueueReading.spoken(send, position: position, of: total))
         let edit = context.editQueued
         let id = send.id
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { edit?(id) }
@@ -1240,7 +1303,10 @@ struct TranscriptRow: Hashable {
         _ send: PendingSend, plan: ResumePlan?, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
         let now = Date()
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        let row = Gtk.groupBox(
+            GTK_ORIENTATION_HORIZONTAL, spacing: 10,
+            spoken: plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
+                ?? PendingSendReading.spoken(send, now: now))
         let bubble = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
         Gtk.addClass(bubble, "pending-ink")
         gtk_widget_set_hexpand(bubble, 1)
@@ -1296,10 +1362,11 @@ struct TranscriptRow: Hashable {
         gtk_box_append(ptr(bubble), lines)
         gtk_box_append(ptr(row), bubble)
         applyInk(to: bubble, send: send, plan: plan)
-        gtk_widget_set_tooltip_text(
-            row,
+        let spokenNow =
             plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
-                ?? PendingSendReading.spoken(send, now: now))
+            ?? PendingSendReading.spoken(send, now: now)
+        gtk_widget_set_tooltip_text(row, spokenNow)
+        tailscode_set_accessible_label(row, spokenNow)
         g_object_set_data(ptr(row), pendingBubbleKey, UnsafeMutableRawPointer(bubble))
         g_object_set_data(ptr(row), pendingLinesKey, UnsafeMutableRawPointer(lines))
         let sendBox = Unmanaged.passRetained(PendingSendBox(send, plan: plan)).toOpaque()
@@ -1380,10 +1447,11 @@ struct TranscriptRow: Hashable {
                 gtk_label_set_text(op(words), caption)
             }
         }
-        gtk_widget_set_tooltip_text(
-            row,
+        let spokenNow =
             plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
-                ?? PendingSendReading.spoken(send, now: now))
+            ?? PendingSendReading.spoken(send, now: now)
+        gtk_widget_set_tooltip_text(row, spokenNow)
+        tailscode_set_accessible_label(row, spokenNow)
         return true
     }
 
@@ -1501,7 +1569,7 @@ struct TranscriptRow: Hashable {
     private static func answerless(
         _ turn: AnswerlessTurn, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        let card = Gtk.groupBox(GTK_ORIENTATION_VERTICAL, spacing: 6, spoken: turn.spoken)
         Gtk.addClass(card, "card")
         Gtk.addClass(card, "card-answerless")
 
@@ -1522,9 +1590,46 @@ struct TranscriptRow: Hashable {
         if turn.offersRemedy {
             let askAgain = context.askAgain
             let words = turn.prompt
-            let button = Gtk.button(turn.action, css: ["flat", "seam-read"]) {
-                askAgain?(words)
-            }
+            let button = ChatChips.plain(turn.action) { askAgain?(words) }
+            gtk_widget_set_halign(button, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), button)
+        }
+        return card
+    }
+
+    /// A turn that stopped with an error. It is the answerless card's relative — what happened, the
+    /// server's own words held in a quoted block and never reworded, and the one action that
+    /// sends the same words again — and it holds as still as every other settled state.
+    private static func failedTurn(
+        _ turn: FailedTurn, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.groupBox(GTK_ORIENTATION_VERTICAL, spacing: 6, spoken: turn.spoken)
+        Gtk.addClass(card, "card")
+        Gtk.addClass(card, "card-failed")
+
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(
+            ptr(heading),
+            Gtk.label(FailedTurn.glyph, css: FailedTurn.tone.glyphCSS, selectable: false))
+        let title = Gtk.label(turn.title, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(card), heading)
+
+        let detail = Gtk.label(turn.detail, css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), detail)
+
+        let reason = Gtk.label(turn.reason, css: "failed-reason", wrap: true)
+        gtk_widget_set_halign(reason, GTK_ALIGN_FILL)
+        gtk_widget_set_hexpand(reason, 1)
+        gtk_box_append(ptr(card), reason)
+
+        if turn.offersRemedy {
+            let askAgain = context.askAgain
+            let words = turn.prompt
+            let button = ChatChips.plain(turn.action) { askAgain?(words) }
             gtk_widget_set_halign(button, GTK_ALIGN_START)
             gtk_box_append(ptr(card), button)
         }
@@ -1542,7 +1647,7 @@ struct TranscriptRow: Hashable {
     private static func interruptedTurn(
         _ turn: InterruptedTurn, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        let card = Gtk.groupBox(GTK_ORIENTATION_VERTICAL, spacing: 6, spoken: turn.spoken)
         Gtk.addClass(card, "card")
         Gtk.addClass(card, "card-interrupted")
 
@@ -1621,7 +1726,7 @@ struct TranscriptRow: Hashable {
     /// button, stopping stays where it always is), so the only press this card ever offers is the
     /// remedy's own link, opened in the browser the way every other outside link on this desk is.
     private static func providerRetry(_ card: ProviderRetryCard) -> UnsafeMutablePointer<GtkWidget> {
-        let box = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        let box = Gtk.groupBox(GTK_ORIENTATION_VERTICAL, spacing: 6, spoken: card.spoken)
         Gtk.addClass(box, "card")
         Gtk.addClass(box, "card-retry")
 
@@ -1679,7 +1784,7 @@ struct TranscriptRow: Hashable {
     private static func revertBanner(
         _ banner: RevertBanner, restoring: Bool, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        let card = Gtk.groupBox(GTK_ORIENTATION_VERTICAL, spacing: 6, spoken: banner.spoken)
         Gtk.addClass(card, "card")
         Gtk.addClass(card, "card-revert")
 

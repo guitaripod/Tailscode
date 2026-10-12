@@ -8,18 +8,68 @@ import TailscodeCore
 /// at a prompt: an approval with its three answers on keys, and a question as a form. Both are
 /// states of the conversation, not messages in it.
 enum PendingCards {
+    /// The keys the three answers are on right now, read from the shortcut set the person has — a
+    /// hint for a chord they rebound to something else would be a lie printed on a button.
+    struct Hints: Sendable {
+        var once: String?
+        var always: String?
+        var deny: String?
+
+        init(once: String? = nil, always: String? = nil, deny: String? = nil) {
+            self.once = once
+            self.always = always
+            self.deny = deny
+        }
+
+        init(_ shortcuts: ShortcutSet) {
+            func first(_ id: String) -> String? {
+                shortcuts.effective[id]?.first.flatMap { $0.isEmpty ? nil : $0 }
+            }
+            self.init(
+                once: first("approve.once"), always: first("approve.always"),
+                deny: first("approve.deny"))
+        }
+    }
+
+    /// A decisive button: a word, and after it the key that does the same thing, quiet.
+    private static func decisive(
+        _ word: String, hint: String?, css: String, onClick: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, css)
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let label = Gtk.label(word, selectable: false)
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
+        gtk_box_append(ptr(row), label)
+        if let hint {
+            let key = Gtk.label("· " + hint, css: "btn-hint", selectable: false)
+            gtk_label_set_ellipsize(op(key), PANGO_ELLIPSIZE_NONE)
+            gtk_box_append(ptr(row), key)
+        }
+        gtk_button_set_child(ptr(button), row)
+        gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(button, word)
+        if let hint {
+            tailscode_set_accessible_description(button, Localized.text("Key: %@", hint))
+        }
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
+        return button
+    }
+
     static func permission(
-        _ request: PermissionRequest,
+        _ request: PermissionRequest, hints: Hints = Hints(),
         respond: @escaping @Sendable (PermissionDecision) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        let what = request.title ?? request.toolName ?? Localized.text("a tool")
+        let card = Gtk.groupBox(
+            GTK_ORIENTATION_VERTICAL, spacing: 8,
+            spoken: ActivityKind.needsApproval.spoken + ". " + Localized.text("Allow %@?", what))
         Gtk.addClass(card, "card")
         Gtk.addClass(card, "card-permission")
 
         let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         gtk_box_append(
             ptr(heading), Gtk.label("⏸", css: "glyph-running", selectable: false))
-        let what = request.title ?? request.toolName ?? Localized.text("a tool")
         let title = Gtk.label(
             Localized.text("Allow %@?", what), css: "card-title", wrap: true)
         gtk_widget_set_hexpand(title, 1)
@@ -33,15 +83,17 @@ enum PendingCards {
         let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         gtk_box_append(
             ptr(buttons),
-            Gtk.button(Localized.text("Allow once · y"), css: ["suggested-action"]) {
+            decisive(Localized.text("Allow once"), hint: hints.once, css: "btn-primary") {
                 respond(.once)
             })
         gtk_box_append(
             ptr(buttons),
-            Gtk.button(Localized.text("Always · a")) { respond(.always) })
+            decisive(Localized.text("Always"), hint: hints.always, css: "btn-quiet") {
+                respond(.always)
+            })
         gtk_box_append(
             ptr(buttons),
-            Gtk.button(Localized.text("Deny · n"), css: ["destructive-action"]) {
+            decisive(Localized.text("Deny"), hint: hints.deny, css: "btn-danger") {
                 respond(.reject)
             })
         gtk_box_append(ptr(card), buttons)
@@ -55,7 +107,10 @@ enum PendingCards {
         _ request: QuestionRequest, in entry: SessionEntry?,
         submit: @escaping @Sendable ([[String]]) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+        let card = Gtk.groupBox(
+            GTK_ORIENTATION_VERTICAL, spacing: 10,
+            spoken: ActivityKind.needsAnswer.spoken + ". "
+                + request.questions.map(\.question).joined(separator: " "))
         Gtk.addClass(card, "card")
         Gtk.addClass(card, "card-question")
 
@@ -73,19 +128,30 @@ enum PendingCards {
 
             let single = !item.multiple && request.questions.count == 1
             for option in item.options {
-                let row = Gtk.button(option.label, css: ["answer-option"]) {
+                let parts = ChatChips.control(
+                    glyph: "✓", word: option.label, tone: .live, label: option.label
+                ) {
                     if single {
                         collector.submitSingle(option.label)
                     } else {
                         collector.toggle(question: index, option: option.label)
                     }
                 }
+                let row = parts.button
+                Gtk.addClass(row, "answer-option")
+                if let mark = parts.parts.glyph {
+                    gtk_widget_set_opacity(mark, 0)
+                    Gtk.addClass(mark, "answer-option-mark")
+                }
                 gtk_widget_set_halign(row, GTK_ALIGN_START)
                 if !option.description.isEmpty {
                     gtk_widget_set_tooltip_text(row, option.description)
+                    tailscode_set_accessible_description(row, option.description)
                 }
+                if !single { tailscode_set_accessible_pressed(row, 0) }
                 gtk_box_append(ptr(section), row)
-                collector.register(question: index, option: option.label, widget: row)
+                collector.register(
+                    question: index, option: option.label, widget: row, mark: parts.parts.glyph)
             }
 
             if item.custom || item.options.isEmpty {
@@ -96,11 +162,14 @@ enum PendingCards {
                 let scope = collector.draftScope(question: index)
                 gtk_editable_set_text(op(entry), DraftStore.text(for: scope))
                 let entryBits = UInt(bitPattern: entry)
+                tailscode_set_accessible_label(entry, item.question)
                 Gtk.connect(UnsafeMutableRawPointer(entry), "changed") {
                     guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits),
                         let text = gtk_editable_get_text(op(raw))
                     else { return }
-                    DraftStore.record(String(cString: text), for: scope)
+                    let typed = String(cString: text)
+                    DraftStore.record(typed, for: scope)
+                    collector.typing(question: index, text: typed)
                 }
                 Gtk.connect(UnsafeMutableRawPointer(entry), "activate") {
                     guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits),
@@ -122,11 +191,13 @@ enum PendingCards {
 
         if request.questions.count > 1 || request.questions.contains(where: \.multiple) {
             let submitRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-            gtk_box_append(
-                ptr(submitRow),
-                Gtk.button(Localized.text("Answer"), css: ["suggested-action"]) {
-                    collector.submitAll()
-                })
+            let submit = Gtk.button(Localized.text("Answer"), css: ["btn-primary"]) {
+                collector.submitAll()
+            }
+            gtk_widget_set_valign(submit, GTK_ALIGN_CENTER)
+            tailscode_set_accessible_label(submit, Localized.text("Answer"))
+            collector.attachSubmit(submit)
+            gtk_box_append(ptr(submitRow), submit)
             gtk_box_append(ptr(card), submitRow)
         }
         return card
@@ -210,6 +281,8 @@ enum PendingCards {
         private var chosen: [Int: [String]] = [:]
         private var custom: [Int: String] = [:]
         private var options: [String: UInt] = [:]
+        private var marks: [String: UInt] = [:]
+        private var submitBits: UInt = 0
 
         init(
             request: QuestionRequest, profileID: String, sessionID: String,
@@ -229,8 +302,43 @@ enum PendingCards {
                 questionID: "\(request.id)#\(question)")
         }
 
-        func register(question: Int, option: String, widget: UnsafeMutablePointer<GtkWidget>) {
+        func register(
+            question: Int, option: String, widget: UnsafeMutablePointer<GtkWidget>,
+            mark: UnsafeMutablePointer<GtkWidget>?
+        ) {
             options["\(question):\(option)"] = UInt(bitPattern: widget)
+            if let mark { marks["\(question):\(option)"] = UInt(bitPattern: mark) }
+        }
+
+        /// The Answer button waits until there is an answer to give: an option picked or words
+        /// typed. A button that sends "(no answer)" on a bare press is a mistake with a label.
+        func attachSubmit(_ button: UnsafeMutablePointer<GtkWidget>) {
+            submitBits = UInt(bitPattern: button)
+            refreshSubmit()
+        }
+
+        private var hasAnswer: Bool {
+            chosen.values.contains { !$0.isEmpty }
+                || custom.values.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        }
+
+        private func refreshSubmit() {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: submitBits) else { return }
+            gtk_widget_set_sensitive(ptr(raw), hasAnswer ? 1 : 0)
+        }
+
+        /// Words typed into a question's own field count the moment they are typed, not only when
+        /// Enter is pressed; for a question that takes one answer they replace an option picked.
+        func typing(question: Int, text: String) {
+            let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            custom[question] = words.isEmpty ? nil : words
+            if !words.isEmpty, request.questions.indices.contains(question),
+                !request.questions[question].multiple, !(chosen[question] ?? []).isEmpty
+            {
+                chosen[question] = []
+                restyle(question)
+            }
+            refreshSubmit()
         }
 
         func submitSingle(_ answer: String) {
@@ -256,6 +364,7 @@ enum PendingCards {
             custom[question] = answer
             if !request.questions[question].multiple { chosen[question] = [] }
             restyle(question)
+            refreshSubmit()
         }
 
         func submitAll() {
@@ -284,12 +393,20 @@ enum PendingCards {
                     let raw = UnsafeMutableRawPointer(bitPattern: bits)
                 else { continue }
                 let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
-                if selected.contains(option.label) {
+                let on = selected.contains(option.label)
+                if on {
                     gtk_widget_add_css_class(widget, "answer-selected")
                 } else {
                     gtk_widget_remove_css_class(widget, "answer-selected")
                 }
+                tailscode_set_accessible_pressed(widget, on ? 1 : 0)
+                if let markBits = marks["\(question):\(option.label)"],
+                    let markRaw = UnsafeMutableRawPointer(bitPattern: markBits)
+                {
+                    gtk_widget_set_opacity(ptr(markRaw), on ? 1 : 0)
+                }
             }
+            refreshSubmit()
         }
     }
 }

@@ -42,6 +42,7 @@ final class ChatPane: @unchecked Sendable {
     private let authBanner = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     private let laneRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
     private let statusBand = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+    private var bandFrame: UnsafeMutablePointer<GtkWidget>?
     let bandState = StatusBand.State()
     private var agents: [SubagentSummary] = []
     private var workflowRuns: [WorkflowRun] = []
@@ -88,8 +89,12 @@ final class ChatPane: @unchecked Sendable {
     let editor = PromptEditor(
         css: "composer", placeholder: Localized.text("Message… (/ for commands)"))
     var entryView: UnsafeMutablePointer<GtkWidget> { editor.textView }
-    private let sendButton = gtk_button_new_with_label("Send")!
-    private let stopButton = gtk_button_new_with_label("⏹")!
+    private let sendButton = gtk_button_new()!
+    private let stopButton = gtk_button_new()!
+    private var sendWord: UnsafeMutablePointer<GtkWidget>?
+    private var attachAble = true
+    private var commandWidth: Int32 = 0
+    private var attachWidth: Int32 = 0
     private var dial: DialPill?
     private var stripRow: UnsafeMutablePointer<GtkWidget>?
     /// The mode badge and the machine and project, kept together so they move as one: beside the
@@ -111,8 +116,16 @@ final class ChatPane: @unchecked Sendable {
     private var pastedImageCount = 0
 
     private let jumpButton = gtk_button_new()!
+    private var jumpGlyph: UnsafeMutablePointer<GtkWidget>?
+    private var jumpWord: UnsafeMutablePointer<GtkWidget>?
+    private var rowsAtDeparture: Int?
     private(set) var followsBottom = true {
-        didSet { syncJumpPill() }
+        didSet {
+            if oldValue != followsBottom {
+                rowsAtDeparture = followsBottom ? nil : lastFullRows.count
+            }
+            syncJumpPill()
+        }
     }
     private var isAutoScrolling = false
     private var isFillingInChunks = false
@@ -168,6 +181,7 @@ final class ChatPane: @unchecked Sendable {
     private var canvasRising = false
     private var captionWakeGeneration = 0
     private var pendingSignature = "\u{0}"
+    private var announcedPending: Set<String> = []
     private var compactingElapsed: UnsafeMutablePointer<GtkWidget>?
     private var compactingStartedAt: Date?
 
@@ -393,11 +407,17 @@ final class ChatPane: @unchecked Sendable {
         let overlay = gtk_overlay_new()!
         gtk_overlay_set_child(op(overlay), scroller)
         gtk_widget_set_vexpand(overlay, 1)
-        gtk_button_set_label(ptr(jumpButton), "↓")
-        Gtk.addClass(jumpButton, "jump-pill")
+        let jump = ChatChips.content(glyph: "↓", word: "")
+        gtk_button_set_child(ptr(jumpButton), jump.box)
+        jumpGlyph = jump.glyph
+        jumpWord = jump.word
+        if let word = jump.word { gtk_widget_set_visible(word, 0) }
+        Gtk.addClass(jumpButton, "chip-ctl")
+        tailscode_set_accessible_label(jumpButton, JumpReading.read(
+            rowsNow: 0, rowsAtDeparture: nil, needsYou: false).spoken)
         gtk_widget_set_halign(jumpButton, GTK_ALIGN_END)
         gtk_widget_set_valign(jumpButton, GTK_ALIGN_END)
-        Gtk.margins(jumpButton, bottom: 14, trailing: 22)
+        Gtk.margins(jumpButton, bottom: 14, trailing: Int32(MatrixTheme.chatInset()))
         gtk_widget_set_visible(jumpButton, 0)
         Gtk.connect(UnsafeMutableRawPointer(jumpButton), "clicked") { [weak self] in
             self?.jumpToBottom()
@@ -436,13 +456,29 @@ final class ChatPane: @unchecked Sendable {
 
         gtk_widget_set_visible(helpOverlay, 0)
         Gtk.addClass(helpOverlay, "canvas")
-        Gtk.margins(helpOverlay, top: 8, bottom: 8, leading: 26, trailing: 26)
+        Gtk.addClass(helpOverlay, "help-overlay")
+        Gtk.margins(helpOverlay, top: 8, bottom: 8)
         gtk_box_append(ptr(root), helpOverlay)
 
         Gtk.addClass(statusBand, "status-band")
-        gtk_box_append(ptr(root), statusBand)
+        let bandFrame = gtk_overlay_new()!
+        self.bandFrame = bandFrame
+        gtk_widget_set_visible(bandFrame, 0)
+        gtk_overlay_set_child(op(bandFrame), statusBand)
+        let bandGauge = gtk_drawing_area_new()!
+        gtk_widget_set_can_target(bandGauge, 0)
+        gtk_widget_set_can_focus(bandGauge, 0)
+        gtk_overlay_add_overlay(op(bandFrame), bandGauge)
+        Gtk.onResize(bandGauge) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                StatusBand.fit(self.statusBand, state: self.bandState)
+            }
+        }
+        gtk_box_append(ptr(root), bandFrame)
         gtk_widget_set_visible(attachmentsBox, 0)
-        Gtk.margins(attachmentsBox, top: 4, leading: 26, trailing: 26)
+        Gtk.addClass(attachmentsBox, "attachments-row")
+        Gtk.margins(attachmentsBox, top: 4)
         gtk_box_append(ptr(root), attachmentsBox)
         gtk_box_append(ptr(root), makeComposer())
         gtk_box_append(ptr(root), makePillRow())
@@ -454,7 +490,10 @@ final class ChatPane: @unchecked Sendable {
     /// costs typing room all the time to serve clicks that almost never happen.
     private func makeComposer() -> UnsafeMutablePointer<GtkWidget> {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        Gtk.margins(row, top: 6, bottom: 2, leading: 26, trailing: 26)
+        Gtk.addClass(row, "composer-row")
+        Gtk.margins(row, top: 6, bottom: 2)
+        tailscode_set_accessible_label(
+            entryView, Localized.text("Message… (/ for commands)"))
 
         editor.onChanged = { [weak self] in
             self?.updateSlashCompletion()
@@ -490,11 +529,14 @@ final class ChatPane: @unchecked Sendable {
         Gtk.removeChildren(of: laneRow)
         let door = ImageGenDoor.current()
         for lane in QuickAskLane.offered(imaging: door.isOpen) {
-            let button = Gtk.button(lane.word.lowercased(), css: ["flat", "lane-pill"]) {
+            let button = Gtk.button(lane.word.lowercased(), css: ["chip-ctl"]) {
                 [weak self] in
                 Gtk.onMain { [weak self] in self?.enterLane(lane) }
             }
-            if lane == .chat { Gtk.addClass(button, "lane-pill-on") }
+            gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+            if lane == .chat { Gtk.addClass(button, "chip-on") }
+            tailscode_set_accessible_label(button, lane.word)
+            tailscode_set_accessible_pressed(button, lane == .chat ? 1 : 0)
             gtk_widget_set_tooltip_text(
                 button, lane == .image ? door.line ?? lane.spoken : lane.spoken)
             gtk_box_append(ptr(laneRow), button)
@@ -533,7 +575,7 @@ final class ChatPane: @unchecked Sendable {
     private func makeFindBar() -> UnsafeMutablePointer<GtkWidget> {
         Gtk.addClass(findBar, "find-bar")
         gtk_widget_set_visible(findBar, 0)
-        Gtk.margins(findBar, top: 4, bottom: 4, leading: 26, trailing: 26)
+        Gtk.margins(findBar, top: 4, bottom: 4)
 
         gtk_search_entry_set_placeholder_text(
             op(findEntry), Localized.text("Find in this conversation"))
@@ -582,9 +624,11 @@ final class ChatPane: @unchecked Sendable {
         gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(row), pill)
 
-        let palette = Gtk.menuButton("/") { [weak self] in
+        let palette = Gtk.menuButton("/", css: ["chip-ctl"]) { [weak self] in
             self?.commandRows() ?? []
         }
+        gtk_widget_set_valign(palette, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(palette, Localized.text("Commands"))
         commandButton = palette
         gtk_box_append(ptr(row), palette)
 
@@ -594,26 +638,35 @@ final class ChatPane: @unchecked Sendable {
 
         gtk_box_append(ptr(row), makeLaneRow())
 
-        let attach = Gtk.menuButton("📎") { [weak self] in
+        let attach = Gtk.menuButton("📎", css: ["chip-ctl"]) { [weak self] in
             self?.attachRows() ?? []
         }
+        gtk_widget_set_valign(attach, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(attach, Localized.text("Attach files"))
         attachButton = attach
         gtk_box_append(ptr(row), attach)
 
-        gtk_button_set_label(ptr(sendButton), Localized.text("⏎ send"))
-        /// A pill whose label decides how narrow the pane may be is a pill that clips the whole
-        /// transcript the moment Send becomes Queue: the longer word raised the pane's minimum
-        /// past what the window could give it, and every row in it spilled over the edge for as
-        /// long as a turn ran. The chrome shrinks before the conversation does.
+        let sendWords = [Localized.text("Send"), Localized.text("Queue")]
+        let send = ChatChips.content(
+            glyph: "⏎", word: sendWords[0].lowercased(), tone: .live,
+            wordChars: ChatChips.widest(sendWords))
+        sendWord = send.word
+        gtk_button_set_child(ptr(sendButton), send.box)
         gtk_button_set_can_shrink(ptr(sendButton), 1)
-        Gtk.addClass(sendButton, "send-pill")
+        Gtk.addClass(sendButton, "chip-ctl")
+        gtk_widget_set_valign(sendButton, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(sendButton, sendWords[0])
         Gtk.connect(UnsafeMutableRawPointer(sendButton), "clicked") { [weak self] in
             self?.sendFromComposer()
         }
         gtk_box_append(ptr(row), sendButton)
 
+        let stop = ChatChips.content(glyph: "■", word: Localized.text("Stop"), tone: .danger)
+        gtk_button_set_child(ptr(stopButton), stop.box)
         gtk_widget_set_visible(stopButton, 0)
-        Gtk.addClass(stopButton, "stop-pill")
+        Gtk.addClass(stopButton, "chip-ctl")
+        gtk_widget_set_valign(stopButton, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(stopButton, Localized.text("Stop the turn"))
         Gtk.connect(UnsafeMutableRawPointer(stopButton), "clicked") { [weak self] in
             self?.stopTurn()
         }
@@ -654,32 +707,63 @@ final class ChatPane: @unchecked Sendable {
         Gtk.onMain { [weak self] in self?.fitLanes() }
     }
 
-    /// Shows the lanes, and keeps the machine beside the pill, exactly when the strip fits its
-    /// width with every label whole.
+    /// What the strip gives up as it narrows, one step at a time and in this order: the lanes,
+    /// then the machine's line moving above the pill, then the command palette, then the paperclip.
+    /// The model pill, Send and Stop never go. Whatever is still shown is shown whole — a strip that
+    /// squeezes every part to an ellipsis says nothing.
+    private static let fitSteps: [(lanes: Bool, command: Bool, attach: Bool, inline: Bool)] = [
+        (true, true, true, true),
+        (false, true, true, true),
+        (false, true, true, false),
+        (false, false, true, false),
+        (false, false, false, false),
+    ]
+
     private func fitLanes() {
         guard let stripRow, let stripFrame else { return }
         let width = gtk_widget_get_width(stripFrame)
         guard width > 0 else { return }
         let lanesShown = gtk_widget_get_visible(laneRow) != 0
+        let commandShown = commandButton.map { gtk_widget_get_visible($0) != 0 } ?? false
+        let attachShown = attachButton.map { gtk_widget_get_visible($0) != 0 } ?? false
         let placeInline = gtk_widget_get_parent(placeBox) == stripRow
         if lanesShown { laneWidth = Self.naturalWidth(laneRow) }
+        if commandShown, let commandButton { commandWidth = Self.naturalWidth(commandButton) }
+        if attachShown, let attachButton { attachWidth = Self.naturalWidth(attachButton) }
         let place = Self.naturalWidth(placeBox) + 8
-        let core =
-            Self.naturalWidth(stripRow) - (lanesShown ? laneWidth + 8 : 0)
-            - (placeInline ? place : 0)
-        let showLanes = core + place + laneWidth + 8 <= width
-        let keepInline = showLanes || core + place <= width
-        if showLanes != lanesShown { gtk_widget_set_visible(laneRow, showLanes ? 1 : 0) }
-        guard keepInline != placeInline else { return }
+        let spacing: Int32 = 8
+        var core = Self.naturalWidth(stripRow)
+        if lanesShown { core -= laneWidth + spacing }
+        if commandShown { core -= commandWidth + spacing }
+        if attachShown { core -= attachWidth + spacing }
+        if placeInline { core -= place }
+        let chosen =
+            Self.fitSteps.first { step in
+                var needed = core
+                if step.lanes { needed += laneWidth + spacing }
+                if step.command { needed += commandWidth + spacing }
+                if step.attach && attachAble { needed += attachWidth + spacing }
+                if step.inline { needed += place }
+                return needed <= width
+            } ?? Self.fitSteps[Self.fitSteps.count - 1]
+        let showAttach = chosen.attach && attachAble
+        if chosen.lanes != lanesShown { gtk_widget_set_visible(laneRow, chosen.lanes ? 1 : 0) }
+        if let commandButton, chosen.command != commandShown {
+            gtk_widget_set_visible(commandButton, chosen.command ? 1 : 0)
+        }
+        if let attachButton, showAttach != attachShown {
+            gtk_widget_set_visible(attachButton, showAttach ? 1 : 0)
+        }
+        guard chosen.inline != placeInline else { return }
         _ = g_object_ref(UnsafeMutableRawPointer(placeBox))
         if let parent = gtk_widget_get_parent(placeBox) { gtk_box_remove(ptr(parent), placeBox) }
-        if keepInline {
+        if chosen.inline {
             gtk_box_prepend(ptr(stripRow), placeBox)
         } else {
             gtk_box_append(ptr(placeLine), placeBox)
         }
         g_object_unref(UnsafeMutableRawPointer(placeBox))
-        gtk_widget_set_visible(placeLine, keepInline ? 0 : 1)
+        gtk_widget_set_visible(placeLine, chosen.inline ? 0 : 1)
     }
 
     private static func naturalWidth(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
@@ -710,7 +794,7 @@ final class ChatPane: @unchecked Sendable {
             onOpenCatalog: { [weak self] in
                 Gtk.onMain { [weak self] in self?.openModelChooser() }
             })
-        let pill = DialPill(dial: popover) { [weak self] delta in
+        let pill = DialPill(css: ["chip-ctl"], dial: popover) { [weak self] delta in
             self?.stepEffort(by: delta)
         }
         dial = pill
@@ -1290,8 +1374,7 @@ final class ChatPane: @unchecked Sendable {
         let title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
-        let server = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
-        setIdentity("\(title) · \(server)", activity: identityActivity)
+        setIdentity(title, activity: identityActivity)
     }
 
     /// The pin and the twin the strip appends to the name, in that order.
@@ -1830,27 +1913,37 @@ final class ChatPane: @unchecked Sendable {
             return
         }
         let name = entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) } ?? "server"
-        let label = Gtk.label(
-            Localized.text("⚠ Claude is signed out on %@ — every turn will refuse until it signs in.", name),
-            css: "banner-auth", wrap: true, selectable: false)
-        gtk_widget_set_hexpand(label, 1)
-        gtk_box_append(ptr(authBanner), label)
         let rootBits = host?.windowWidget.map { UInt(bitPattern: $0) } ?? 0
-        gtk_box_append(
-            ptr(authBanner),
-            Gtk.button(Localized.text("Sign in")) { [weak self] in
-                let parent = UnsafeMutableRawPointer(bitPattern: rootBits).map {
-                    raw -> UnsafeMutablePointer<GtkWidget> in ptr(raw)
+        showAuthBanner(serverName: name) { [weak self] in
+            let parent = UnsafeMutableRawPointer(bitPattern: rootBits).map {
+                raw -> UnsafeMutablePointer<GtkWidget> in ptr(raw)
+            }
+            SignInDialog.present(
+                parent: parent, serverName: name, backend: backend
+            ) { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    gtk_widget_set_visible(self.authBanner, 0)
                 }
-                SignInDialog.present(
-                    parent: parent, serverName: name, backend: backend
-                ) { [weak self] in
-                    Gtk.onMain { [weak self] in
-                        guard let self else { return }
-                        gtk_widget_set_visible(self.authBanner, 0)
-                    }
-                }
-            })
+            }
+        }
+    }
+
+    /// The signed-out banner itself: what happened, and the one button that mends it.
+    func showAuthBanner(serverName: String, signIn: @escaping @Sendable () -> Void) {
+        Gtk.removeChildren(of: authBanner)
+        let label = Gtk.label(
+            Localized.text(
+                "⚠ Claude is signed out on %@ — every turn will refuse until it signs in.",
+                serverName),
+            css: "banner-auth-text", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(label, 1)
+        gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(authBanner), label)
+        let button = Gtk.button(Localized.text("Sign in"), css: ["btn-primary"]) { signIn() }
+        gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(button, Localized.text("Sign in"))
+        gtk_box_append(ptr(authBanner), button)
         gtk_widget_set_visible(authBanner, 1)
     }
 
@@ -1956,22 +2049,25 @@ final class ChatPane: @unchecked Sendable {
                 ptr(earlierButton),
                 Localized.text("… %@ earlier rows — show more", "\(hiddenCount)"))
         }
-        let placeholder: String? =
-            rows.isEmpty
-            ? (state.hasLoadedTranscript || sessionID == freshlyCreatedID
-                ? Localized.text("Nothing here yet. Say something.") : Localized.text("Loading…"))
-            : nil
-        if let placeholder {
+        if rows.isEmpty {
             cascade.release()
-            showPlaceholder(placeholder)
+            if state.hasLoadedTranscript || sessionID == freshlyCreatedID {
+                showStarters()
+            } else {
+                showPlaceholder(Localized.text("Loading…"))
+            }
         } else {
             applyRows(
                 pacedByCascade(windowed, running: state.status == .running), appended: appended)
             settleStreamedTail(in: windowed)
             paintCascade()
         }
-        if turnEnded { replaceRows(where: \.hasOpenWork) }
+        if turnEnded {
+            replaceRows(where: \.hasOpenWork)
+            announce(LiveActivityReading.settled(from: state).line)
+        }
         renderPendingCards(state)
+        syncJumpPill()
         refreshPills()
         updateStatus()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
@@ -2624,6 +2720,36 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
+    private static let startersKey = "starters"
+
+    /// A chat with nothing in it asks what it should do, and offers four ways to begin. A starter
+    /// fills the composer and sends nothing: the words are the person's to change.
+    func showStarters() {
+        chooser = nil
+        if placeholderShown, currentPlaceholder == Self.startersKey { return }
+        currentPlaceholder = Self.startersKey
+        Gtk.removeChildren(of: transcriptBox)
+        forgetRowWidgets()
+        placeholderShown = true
+        pendingReveal = false
+        gtk_widget_set_opacity(transcriptBox, 1)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        Gtk.addClass(column, "empty-chat")
+        gtk_box_append(
+            ptr(column), Gtk.label(ChatSuggestion.headline, css: "empty-headline", selectable: false))
+        for suggestion in ChatSuggestion.all {
+            let words = suggestion.prompt
+            let parts = ChatChips.control(
+                glyph: suggestion.glyph, word: suggestion.title, tone: .live, label: suggestion.title
+            ) { [weak self] in
+                Gtk.onMain { [weak self] in self?.addWordsToComposer(words, announcing: false) }
+            }
+            gtk_widget_set_halign(parts.button, GTK_ALIGN_START)
+            gtk_box_append(ptr(column), parts.button)
+        }
+        gtk_box_append(ptr(transcriptBox), column)
+    }
+
     func showPlaceholder(_ text: String) {
         chooser = nil
         if placeholderShown, currentPlaceholder == text { return }
@@ -2634,7 +2760,7 @@ final class ChatPane: @unchecked Sendable {
         pendingReveal = false
         gtk_widget_set_opacity(transcriptBox, 1)
         let label = Gtk.label(text, css: "dim", selectable: false)
-        Gtk.margins(label, top: 24, bottom: 24, leading: 4, trailing: 4)
+        Gtk.margins(label, top: 24, bottom: 24)
         gtk_box_append(ptr(transcriptBox), label)
     }
 
@@ -3268,13 +3394,16 @@ final class ChatPane: @unchecked Sendable {
             .joined(separator: "|") + "|" + compactionKey
         guard signature != pendingSignature else { return }
         pendingSignature = signature
+        announceArrivals(in: state)
         compactingElapsed = nil
         compactingStartedAt = nil
         Gtk.removeChildren(of: pendingBox)
         for permission in state.pendingPermissions {
             gtk_box_append(
                 ptr(pendingBox),
-                PendingCards.permission(permission) { [weak self] decision in
+                PendingCards.permission(
+                    permission, hints: host.map { PendingCards.Hints($0.shortcuts) } ?? .init()
+                ) { [weak self] decision in
                     self?.respond(to: permission, decision: decision)
                 })
         }
@@ -3298,6 +3427,21 @@ final class ChatPane: @unchecked Sendable {
                         self?.compactingElapsed = label
                     })
             }
+        }
+    }
+
+    /// An approval or a question is said once, the moment it first stands at the end of the
+    /// conversation, and again only for the next one.
+    private func announceArrivals(in state: ConversationState) {
+        let permissions = Set(state.pendingPermissions.map(\.id))
+        let questions = Set(state.pendingQuestions.map(\.id))
+        let fresh = permissions.union(questions).subtracting(announcedPending)
+        announcedPending = permissions.union(questions)
+        guard !fresh.isEmpty else { return }
+        if !fresh.isDisjoint(with: permissions) {
+            announce(ActivityKind.needsApproval.spoken)
+        } else {
+            announce(ActivityKind.needsAnswer.spoken)
         }
     }
 
@@ -3345,7 +3489,8 @@ final class ChatPane: @unchecked Sendable {
             state: state, agents: agents, usage: usage,
             attachments: attachments.count,
             context: contextFill?.rewindowed(model: activeModelID, catalog: models), quotas: quotas,
-            spend: spend, git: git, model: activeModelID, selection: activeSelection)
+            queued: queue.count, spend: spend, git: git, model: activeModelID,
+            selection: activeSelection)
         if identityActivity != facts.activity {
             identityActivity = facts.activity
             refreshIdentity()
@@ -3361,9 +3506,13 @@ final class ChatPane: @unchecked Sendable {
                 [weak self] action in
                 Gtk.onMain { [weak self] in self?.perform(bandAction: action) }
             }
+            let silent = facts.segments.isEmpty && (bandNotice?.isEmpty ?? true)
+            if let bandFrame { gtk_widget_set_visible(bandFrame, silent ? 0 : 1) }
+            StatusBand.fit(statusBand, state: bandState)
         }
-        gtk_button_set_label(
-            ptr(sendButton), running ? Localized.text("⏎ queue") : Localized.text("⏎ send"))
+        let sendName = running ? Localized.text("Queue") : Localized.text("Send")
+        if let sendWord { gtk_label_set_text(op(sendWord), sendName.lowercased()) }
+        tailscode_set_accessible_label(sendButton, sendName)
         if (gtk_widget_get_visible(stopButton) != 0) != running {
             gtk_widget_set_visible(stopButton, running ? 1 : 0)
             queueLaneFit()
@@ -3475,12 +3624,24 @@ final class ChatPane: @unchecked Sendable {
     /// transcript opened on arrival.
     private func scrollToAgent(_ id: String) {
         for (index, row) in renderedRows.enumerated() {
-            guard case .subagent(let call) = row.kind, call.id == id else { continue }
-            context.expanded.set(row.key, open: true)
-            replaceRows { $0.key == row.key }
-            fetchSubagent(call)
-            scrollToRow(at: index)
-            return
+            switch row.kind {
+            case .subagent(let call) where call.id == id:
+                context.expanded.set(row.key, open: true)
+                replaceRows { $0.key == row.key }
+                fetchSubagent(call)
+                scrollToRow(at: index)
+                return
+            case .subagentGroup(let members):
+                guard let member = members.first(where: { $0.call.id == id }) else { continue }
+                context.expanded.set(row.key, open: true)
+                context.expanded.set(member.key, open: true)
+                replaceRows { $0.key == row.key }
+                fetchSubagent(member.call)
+                scrollToRow(at: index)
+                return
+            default:
+                continue
+            }
         }
         scrollToNewestAgent()
     }
@@ -3503,7 +3664,11 @@ final class ChatPane: @unchecked Sendable {
 
     private func scrollToNewestAgent() {
         for (index, row) in renderedRows.enumerated().reversed() {
-            guard case .subagent = row.kind, index < rowWidgets.count,
+            switch row.kind {
+            case .subagent, .subagentGroup: break
+            default: continue
+            }
+            guard index < rowWidgets.count,
                 let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
             else { continue }
             let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
@@ -3563,8 +3728,12 @@ final class ChatPane: @unchecked Sendable {
         let stale = Set(changed + vanished)
         if !stale.isEmpty {
             replaceRows {
-                if case .subagent(let call) = $0.kind { return stale.contains(call.id) }
-                return false
+                switch $0.kind {
+                case .subagent(let call): return stale.contains(call.id)
+                case .subagentGroup(let members):
+                    return members.contains { stale.contains($0.call.id) }
+                default: return false
+                }
             }
         }
         refreshWorkflowRuns()
@@ -3707,9 +3876,9 @@ final class ChatPane: @unchecked Sendable {
         gtk_label_set_text(op(destinationLabel), destination)
         Gtk.fitWrap(destinationLabel, to: destination, ceiling: 60)
         renderDial(face)
-        if let attachButton {
-            gtk_widget_set_visible(attachButton, abilities.attachments ? 1 : 0)
-        }
+        attachAble = abilities.attachments
+        if !attachAble, let attachButton { gtk_widget_set_visible(attachButton, 0) }
+        queueLaneFit()
         dropUnsendableAttachments()
     }
 
@@ -4599,6 +4768,61 @@ final class ChatPane: @unchecked Sendable {
         adjust { _ in limit }
     }
 
+    /// The previous or next thing the person said, put at the top of the window: the transcript
+    /// read as a list of questions. It stops at the first and the last rather than wrapping, and
+    /// a window with nothing the person said in it does nothing.
+    func jumpPrompt(by direction: Int) {
+        guard let scroller = transcriptScroller, let canvas = canvasBox,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        let headroom = 8.0
+        var tops: [Double] = []
+        for (index, row) in renderedRows.enumerated() where index < rowWidgets.count {
+            switch row.kind {
+            case .userText, .pendingSend: break
+            default: continue
+            }
+            guard let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]) else { continue }
+            let offset = tailscode_widget_offset_y(ptr(raw), canvas)
+            if offset >= 0 { tops.append(max(0, offset - headroom)) }
+        }
+        guard !tops.isEmpty else { return }
+        let value = gtk_adjustment_get_value(adjustment)
+        let target =
+            direction < 0
+            ? (tops.last { $0 < value - 1 } ?? tops[0])
+            : (tops.first { $0 > value + 1 } ?? tops[tops.count - 1])
+        let ceiling = max(0, gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
+        followsBottom = false
+        gtk_adjustment_set_value(adjustment, min(target, ceiling))
+    }
+
+    /// The words of the newest answer, on the pasteboard, said in the same breath: what the hover
+    /// bar's Copy does for the message the pointer is over, from the keyboard.
+    @discardableResult
+    func copyLastAnswer() -> Bool {
+        guard
+            let message = lastState?.messages.last(where: {
+                $0.role == .assistant
+                    && !AgentMarkup.strip($0.text).trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty
+            })
+        else { return false }
+        let words = AgentMarkup.strip(message.text).trimmingCharacters(in: .whitespacesAndNewlines)
+        Gtk.copyToClipboard(words)
+        host?.toast(Localized.text("Copied the last answer"))
+        return true
+    }
+
+    /// Esc from the composer leaves the prompt box for this pane's own transcript — the keyboard
+    /// stays in the conversation it was in, with the scrolling keys live, instead of jumping to the
+    /// chat list across the window.
+    func leaveComposer() {
+        guard let scroller = transcriptScroller else { return }
+        gtk_widget_set_focusable(scroller, 1)
+        gtk_widget_grab_focus(scroller)
+    }
+
     private func adjust(_ transform: (Double) -> Double) {
         guard let scroller = transcriptScroller,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
@@ -4781,18 +5005,45 @@ final class ChatPane: @unchecked Sendable {
         guard !words.isEmpty else { return }
         let pending = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
         guard pending.isEmpty else {
-            setNotice(Localized.text("Send or clear what is in the composer first."))
+            addWordsToComposer(words)
             return
         }
         gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), words, -1)
         sendFromComposer()
     }
 
+    /// Words offered to a composer that is already being written in go after what is there, a
+    /// blank line between, and nothing is sent: half a message is the person's, and a retry must
+    /// never replace it or ride out with it.
+    private func addWordsToComposer(_ words: String, announcing: Bool = true) {
+        let existing = composerText()
+        let kept = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+        let joined: String
+        if kept.isEmpty {
+            joined = words
+        } else {
+            let tail = existing.reversed().prefix { $0 == "\n" }.count
+            joined = String(repeating: "\n", count: max(0, 2 - tail)) + words
+        }
+        editor.insertAtEnd(joined)
+        vim.reset(to: editor.text, cursor: editor.text.count, mode: .insert)
+        updateVimBadge()
+        focusComposer()
+        if announcing && !kept.isEmpty { setNotice(Localized.text("Added to the composer.")) }
+    }
+
     /// A prompt the app composed rather than the person typed — a design brief, a follow-up on an
     /// artboard — sent through the same composer for the same reasons: it is echoed, drafted and
     /// refused exactly like the words somebody types, and nothing half-written is thrown away.
     func sendComposed(_ words: String) {
-        askAgain(words)
+        guard !words.isEmpty else { return }
+        let pending = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard pending.isEmpty else {
+            setNotice(Localized.text("Send or clear what is in the composer first."))
+            return
+        }
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), words, -1)
+        sendFromComposer()
     }
 
     /// Whether a board could be read back at all. The brief is only worth spending a turn on where
@@ -5149,15 +5400,18 @@ final class ChatPane: @unchecked Sendable {
                 op(attachButton), attachments.isEmpty ? "📎" : "📎 \(attachments.count)")
         }
         for attachment in attachments {
-            let title = "\(attachment.name) · \(AttachmentIntake.sizeText(attachment.data.count))  ✕"
+            let title = "\(attachment.name) · \(AttachmentIntake.sizeText(attachment.data.count))"
             let id = attachment.id
-            gtk_box_append(
-                ptr(attachmentsBox),
-                Gtk.button(title, css: ["chip"]) { [weak self] in
-                    guard let self else { return }
-                    self.attachments.removeAll { $0.id == id }
-                    self.renderAttachments()
-                })
+            let chip = ChatChips.control(
+                glyph: "✕", word: title, tone: .quiet,
+                label: Localized.text("Remove %@", attachment.name)
+            ) { [weak self] in
+                guard let self else { return }
+                self.attachments.removeAll { $0.id == id }
+                self.renderAttachments()
+            }
+            gtk_widget_set_margin_end(chip.button, 6)
+            gtk_box_append(ptr(attachmentsBox), chip.button)
         }
     }
 
@@ -5171,6 +5425,29 @@ final class ChatPane: @unchecked Sendable {
     private func syncJumpPill() {
         let show = !followsBottom && canvasPromptKey == nil && !renderedRows.isEmpty
         gtk_widget_set_visible(jumpButton, show ? 1 : 0)
+        guard show else { return }
+        let waiting =
+            !(lastState?.pendingPermissions.isEmpty ?? true)
+            || !(lastState?.pendingQuestions.isEmpty ?? true)
+        let reading = JumpReading.read(
+            rowsNow: lastFullRows.count, rowsAtDeparture: rowsAtDeparture, needsYou: waiting)
+        if let jumpWord {
+            gtk_label_set_text(op(jumpWord), reading.label ?? "")
+            gtk_widget_set_visible(jumpWord, reading.label == nil ? 0 : 1)
+            if reading.label != nil { Gtk.addClass(jumpWord, "chip-gap") }
+        }
+        ChatChips.setTone(jumpGlyph, reading.tone)
+        tailscode_set_accessible_label(jumpButton, reading.spoken)
+    }
+
+    /// A sentence for a screen reader, spoken once and only for the pane the reader is working
+    /// in: a turn ending, an approval and a question are news nobody sees if they are not looking
+    /// at the screen. A toolkit older than the call has nothing to say it with, and says nothing.
+    private func announce(_ words: String) {
+        guard tailscode_can_announce() != 0, host?.activePane === self, !words.isEmpty else {
+            return
+        }
+        tailscode_accessible_announce(root, words, 0)
     }
 
     func setFindShown(_ shown: Bool) {
@@ -5419,8 +5696,12 @@ final class ChatPane: @unchecked Sendable {
                 guard let self, self.sessionID == sessionID else { return }
                 self.context.subagentRows[callID] = rows
                 self.replaceRows {
-                    if case .subagent(let spawned) = $0.kind { return spawned.id == callID }
-                    return false
+                    switch $0.kind {
+                    case .subagent(let spawned): return spawned.id == callID
+                    case .subagentGroup(let members):
+                        return members.contains { $0.call.id == callID }
+                    default: return false
+                    }
                 }
             }
         })

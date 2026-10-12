@@ -14,9 +14,9 @@ extension TranscriptRow {
         case .agentProse:
             return .prose
         case .codeBlock, .table, .tableDraft, .workflow, .designBoard, .taskBoard, .answerless,
-            .interruptedTurn, .providerRetry, .revertBanner:
+            .failed, .interruptedTurn, .providerRetry, .revertBanner:
             return .code
-        case .reasoning, .tool, .run, .subagent, .note, .responseStats:
+        case .reasoning, .tool, .run, .subagent, .subagentGroup, .note, .responseStats:
             return .furniture
         case .compaction:
             return .seam

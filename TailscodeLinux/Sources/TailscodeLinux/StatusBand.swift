@@ -68,6 +68,7 @@ enum StatusBand {
                 let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
                 update(widget, segment: segment)
                 fill(state.rings[segment.id], segment: segment)
+                tailscode_set_accessible_label(widget, spoken(segment, facts: facts))
                 previous = widget
                 continue
             }
@@ -77,6 +78,7 @@ enum StatusBand {
                 gtk_box_remove(ptr(box), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
             }
             let widget = make(segment, state: state, perform: perform)
+            tailscode_set_accessible_label(widget, spoken(segment, facts: facts))
             gtk_box_insert_child_after(ptr(box), widget, previous)
             state.widgets[segment.id] = UInt(bitPattern: widget)
             state.kinds[segment.id] = tag
@@ -100,6 +102,62 @@ enum StatusBand {
             gtk_label_set_text(op(label), notice ?? "")
             gtk_widget_set_visible(label, (notice?.isEmpty == false) ? 1 : 0)
             gtk_widget_set_tooltip_text(label, notice)
+        }
+    }
+
+    /// What a screen reader says for a segment: the state in words where Core has them, and the
+    /// agents counted out loud rather than read as the glyph and digits the band draws.
+    private static func spoken(_ segment: StatusFacts.Segment, facts: StatusFacts) -> String {
+        switch segment.id {
+        case "phase":
+            return facts.activity?.spoken ?? segment.text
+        case "queued":
+            return ActivityKind.queued(facts.queued).spoken
+        case "agents":
+            let working = facts.activeAgents
+            let finished = facts.finishedAgents
+            guard working > 0 else { return Localized.text("%@ agents finished", "\(finished)") }
+            let line = Localized.text("%@ agents working", "\(working)")
+            return finished > 0 ? line + ", " + Localized.text("%@ finished", "\(finished)") : line
+        default:
+            return segment.text
+        }
+    }
+
+    /// The segments in the order they are given up as the band narrows: the note first, then the
+    /// quietest facts, and last the state of the turn itself. A segment that does not fit is hidden
+    /// whole rather than shrunk to an ellipsis, so whatever remains reads in full.
+    private static let keepOrder = [
+        "phase", "queued", "agents", "context", "cost", "goal", "branch", "attach",
+    ]
+
+    static func fit(_ box: UnsafeMutablePointer<GtkWidget>, state: State) {
+        let width = gtk_widget_get_width(box)
+        guard width > 0 else { return }
+        var shown: [UnsafeMutablePointer<GtkWidget>] = []
+        for id in keepOrder {
+            guard let bits = state.widgets[id], let raw = UnsafeMutableRawPointer(bitPattern: bits)
+            else { continue }
+            let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            gtk_widget_set_visible(widget, 1)
+            shown.append(widget)
+        }
+        var noticeWidget: UnsafeMutablePointer<GtkWidget>?
+        if let raw = UnsafeMutableRawPointer(bitPattern: state.notice) {
+            let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            if let text = gtk_label_get_text(op(widget)), text.pointee != 0 {
+                noticeWidget = widget
+                gtk_widget_set_visible(widget, 1)
+            }
+        }
+        func natural() -> Int32 {
+            var natural: Int32 = 0
+            gtk_widget_measure(box, GTK_ORIENTATION_HORIZONTAL, -1, nil, &natural, nil, nil)
+            return natural
+        }
+        if let noticeWidget, natural() > width { gtk_widget_set_visible(noticeWidget, 0) }
+        while shown.count > 1, natural() > width, let last = shown.popLast() {
+            gtk_widget_set_visible(last, 0)
         }
     }
 

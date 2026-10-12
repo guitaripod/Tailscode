@@ -74,8 +74,7 @@ enum PangoMarkdown {
             let hashes = trimmed.prefix { $0 == "#" }.count
             if hashes <= 6, trimmed.dropFirst(hashes).first == " " {
                 let body = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
-                let size = hashes <= 1 ? "x-large" : hashes == 2 ? "large" : "medium"
-                return "<span size=\"\(size)\" weight=\"bold\">\(inline(body, code: code, accent: accent))</span>"
+                return heading(level: hashes, body: inline(body, code: code, accent: accent))
             }
         }
         if trimmed.hasPrefix("> ") {
@@ -101,6 +100,81 @@ enum PangoMarkdown {
                 "\(pad)<span foreground=\"\(accent)\">\(escape(number.trimmingCharacters(in: .whitespaces)))</span> \(inline(body, code: code, accent: accent))"
         }
         return inline(raw, code: code, accent: accent)
+    }
+
+    /// A heading is set from the type ramp rather than from a size of its own: the first two levels
+    /// in the headline's role, the rest in the panel title's, each as a share of what the answer
+    /// itself is set in. Because the share is of the label's own size, the slider that scales the
+    /// agent's replies scales its headings with it.
+    private static func heading(level: Int, body: String) -> String {
+        let spec = Typography.spec(level <= 2 ? .headline : .panelTitle)
+        let share = Int((spec.ratio / Typography.spec(.answer).ratio * 100).rounded())
+        return "<span size=\"\(share)%\" weight=\"\(spec.weight.rawValue)\">\(body)</span>"
+    }
+
+    /// A stretch of prose that is either list items or everything else. The agent's lists are drawn
+    /// as rows of their own so their items can wrap under their words, which one label cannot do
+    /// for part of its text.
+    struct Chunk: Equatable {
+        let text: String
+        let isList: Bool
+    }
+
+    static func chunks(_ prose: String) -> [Chunk] {
+        var result: [Chunk] = []
+        var lines: [String] = []
+        var inList: Bool?
+        func flush() {
+            while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
+                lines.removeFirst()
+            }
+            while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
+                lines.removeLast()
+            }
+            if !lines.isEmpty { result.append(Chunk(text: lines.joined(separator: "\n"), isList: inList == true)) }
+            lines = []
+        }
+        for raw in prose.components(separatedBy: "\n") {
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                lines.append(raw)
+                continue
+            }
+            let indent = raw.prefix { $0 == " " || $0 == "\t" }.count
+            let listy = isListLine(trimmed) || (inList == true && indent >= 2)
+            if let current = inList, current != listy { flush() }
+            inList = listy
+            lines.append(raw)
+        }
+        flush()
+        return result
+    }
+
+    private static func isListLine(_ trimmed: String) -> Bool {
+        bulletMarker(trimmed) != nil || numberedMarker(trimmed) != nil
+    }
+
+    /// What a list row's items open with, widest first, when the text is nothing but a list — the
+    /// width the label hangs its wrapped lines by. Nil for any other prose.
+    static func hangingMarker(for text: String) -> String? {
+        var widest: String?
+        for raw in text.components(separatedBy: "\n") {
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            let marker: String
+            if let bullet = bulletMarker(trimmed) {
+                let body = trimmed.dropFirst(bullet.count)
+                marker = taskBox(String(body)) != nil ? "☐ " : "• "
+            } else if let number = numberedMarker(trimmed) {
+                marker = number.trimmingCharacters(in: .whitespaces) + " "
+            } else if widest != nil, raw.prefix(while: { $0 == " " || $0 == "\t" }).count >= 2 {
+                continue
+            } else {
+                return nil
+            }
+            if marker.count > (widest?.count ?? 0) { widest = marker }
+        }
+        return widest
     }
 
     private static func bulletMarker(_ line: String) -> String? {

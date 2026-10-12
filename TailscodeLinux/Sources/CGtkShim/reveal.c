@@ -263,6 +263,9 @@ static TailscodeRevealState *tailscode_reveal_state(gpointer label) {
 }
 
 static void tailscode_reveal_label_snapshot(GtkWidget *widget, GtkSnapshot *snapshot);
+static void tailscode_reveal_label_measure(
+    GtkWidget *widget, GtkOrientation orientation, int for_size, int *minimum, int *natural,
+    int *minimum_baseline, int *natural_baseline);
 
 static void tailscode_reveal_label_class_init(gpointer klass, gpointer data) {
     (void)data;
@@ -270,6 +273,7 @@ static void tailscode_reveal_label_class_init(gpointer klass, gpointer data) {
     g_type_class_adjust_private_offset(klass, &tailscode_reveal_label_offset);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
     widget_class->snapshot = tailscode_reveal_label_snapshot;
+    widget_class->measure = tailscode_reveal_label_measure;
     gtk_widget_class_set_css_name(widget_class, "label");
     gtk_widget_class_set_accessible_role(widget_class, GTK_ACCESSIBLE_ROLE_LABEL);
 }
@@ -383,9 +387,43 @@ static int tailscode_reveal_clips(
     return count;
 }
 
+/// A list item wraps under its words rather than under its bullet. Pango has one indent per
+/// layout, so only a label that holds nothing but list items asks for it: the marker the items
+/// open with is measured in the label's own font and the layout hangs by that width. The layout is
+/// private to the label and is made again whenever its text or style changes, so the indent is
+/// restated before every measure and every draw rather than set once.
+static void tailscode_reveal_apply_hang(GtkWidget *widget) {
+    const char *marker = g_object_get_data(G_OBJECT(widget), "tailscode-hang-marker");
+    if (!marker || !*marker) return;
+    PangoLayout *layout = gtk_label_get_layout(GTK_LABEL(widget));
+    if (!layout) return;
+    PangoLayout *probe = pango_layout_new(pango_layout_get_context(layout));
+    pango_layout_set_text(probe, marker, -1);
+    int width = 0;
+    pango_layout_get_size(probe, &width, NULL);
+    g_object_unref(probe);
+    if (pango_layout_get_indent(layout) != -width) pango_layout_set_indent(layout, -width);
+}
+
+void tailscode_label_set_hanging_marker(GtkWidget *label, const char *marker) {
+    g_object_set_data_full(
+        G_OBJECT(label), "tailscode-hang-marker", marker ? g_strdup(marker) : NULL, g_free);
+    gtk_widget_queue_resize(label);
+}
+
+static void tailscode_reveal_label_measure(
+    GtkWidget *widget, GtkOrientation orientation, int for_size, int *minimum, int *natural,
+    int *minimum_baseline, int *natural_baseline) {
+    tailscode_reveal_apply_hang(widget);
+    GTK_WIDGET_CLASS(tailscode_reveal_label_parent_class)
+        ->measure(
+            widget, orientation, for_size, minimum, natural, minimum_baseline, natural_baseline);
+}
+
 static void tailscode_reveal_label_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     TailscodeRevealState *self = tailscode_reveal_state(widget);
     GtkWidgetClass *parent = GTK_WIDGET_CLASS(tailscode_reveal_label_parent_class);
+    tailscode_reveal_apply_hang(widget);
     PangoLayout *layout = self->active ? gtk_label_get_layout(GTK_LABEL(widget)) : NULL;
     if (!layout) {
         parent->snapshot(widget, snapshot);

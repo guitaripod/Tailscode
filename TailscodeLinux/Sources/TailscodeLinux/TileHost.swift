@@ -1128,6 +1128,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
     /// itself: its pin and which other pane shows the same chat.
     func applyFocusStyling() {
         let several = layout.paneCount > 1
+        let visibleCount = currentPlacement().map { $0.frames.count } ?? layout.paneCount
         let order = layout.paneIDs
         var showing: [String: [PaneID]] = [:]
         for id in order {
@@ -1139,7 +1140,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
             let focused = id == layout.focusedPane
             pane.setFocused(focused)
             shell.setFocusRing(focused: focused, shown: several)
-            pane.setIdentityVisible(several)
+            pane.setIdentityVisible(visibleCount > 1)
             var other: Int?
             if let entry = pane.entry,
                 let twins = showing[SessionPinStore.key(entry.profileID, entry.session.id)],
