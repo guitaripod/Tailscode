@@ -146,7 +146,7 @@ enum ChatSpacing {
                     unattached: [card("done", active: false, done: true)]))
             expect(onlyFinished.isEmpty, "a finished unattached agent docks nothing")
             expect(
-                JumpReading.read(rowsNow: 40, rowsAtDeparture: 30, needsYou: false).label == "10 new"
+                JumpReading.read(rowsNow: 40, rowsAtDeparture: 30, needsYou: false).label == Localized.text("New below")
                     && JumpReading.read(rowsNow: 40, rowsAtDeparture: 30, needsYou: true).label
                         == "Needs you"
                     && JumpReading.read(rowsNow: 30, rowsAtDeparture: 30, needsYou: false).label == nil

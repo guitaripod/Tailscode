@@ -390,7 +390,7 @@ enum ChatChecks {
 
     /// The claims of the chat-screen redesign that a screenshot cannot make: the failed turn has a
     /// card and a way to send it again, the idle band says nothing, Stop is in one place, prose
-    /// stops at its measure while code keeps the pane, the jump control reads Core, and an agent
+    /// the jump control reads Core, and an agent
     /// count is the turn's witness rather than the server's record.
     private static func chrome(_ expect: (Bool, String) throws -> Void) throws {
         let asked = message("u", .user, [MessagePart(id: "p", kind: .text("Run the suite"))])
@@ -467,49 +467,8 @@ enum ChatChecks {
             heights.allSatisfy { $0 >= CGFloat(ChatChrome.chip(on: .pointer).height) },
             "no chip is under the table's \(ChatChrome.chip(on: .pointer).height)")
 
-        let measure = ProseMeasure.current
-        let wide = TranscriptColumn()
-        wide.metrics = compact
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 2000, height: 400))
-        stage(root)
-        root.addSubview(wide)
-        NSLayoutConstraint.activate([
-            wide.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            wide.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            wide.topAnchor.constraint(equalTo: root.topAnchor),
-        ])
-        let prose = RowKit.attributedLabel(
-            NSAttributedString(string: String(repeating: "word ", count: 600)))
-        let code = NSView()
-        code.translatesAutoresizingMaskIntoConstraints = false
-        code.heightAnchor.constraint(equalToConstant: 30).isActive = true
-        wide.addArrangedSubview(prose, spacing: .row(.prose), measured: true)
-        wide.addArrangedSubview(code, spacing: .row(.code))
-        root.layoutSubtreeIfNeeded()
-        root.layoutSubtreeIfNeeded()
-        try expect(
-            measure > 400 && measure < 1200,
-            "the measure of seventy-six characters is \(measure) points")
-        try expect(
-            prose.superview!.frame.width <= measure + 0.5,
-            "prose is \(prose.superview!.frame.width) wide in a 2000 pane, past \(measure)")
-        try expect(code.superview!.frame.width == 2000, "code keeps the whole pane")
-        let narrow = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
-        let small = TranscriptColumn()
-        stage(narrow)
-        narrow.addSubview(small)
-        NSLayoutConstraint.activate([
-            small.leadingAnchor.constraint(equalTo: narrow.leadingAnchor),
-            small.trailingAnchor.constraint(equalTo: narrow.trailingAnchor),
-            small.topAnchor.constraint(equalTo: narrow.topAnchor),
-        ])
-        let short = RowKit.attributedLabel(NSAttributedString(string: "short"))
-        small.addArrangedSubview(short, spacing: .row(.prose), measured: true)
-        narrow.layoutSubtreeIfNeeded()
-        try expect(short.superview!.frame.width == 300, "a pane under the measure is not narrowed")
-
         let reading = JumpReading.read(rowsNow: 12, rowsAtDeparture: 5, needsYou: false)
-        try expect(reading.label == Localized.text("%d new", 7), "seven rows arrived while away")
+        try expect(reading.label == Localized.text("New below"), "rows that arrived while away say so without a count")
         try expect(
             JumpReading.read(rowsNow: 12, rowsAtDeparture: 5, needsYou: true).tone == .attention,
             "what needs the reader outranks news")

@@ -61,7 +61,7 @@ struct ChatReadingsTests {
     func jumpSaysWhatMatters() {
         #expect(JumpReading.read(rowsNow: 40, rowsAtDeparture: nil, needsYou: false).label == nil)
         #expect(JumpReading.read(rowsNow: 40, rowsAtDeparture: 40, needsYou: false).cause == .plain)
-        #expect(JumpReading.read(rowsNow: 43, rowsAtDeparture: 40, needsYou: false).cause == .news(3))
+        #expect(JumpReading.read(rowsNow: 43, rowsAtDeparture: 40, needsYou: false).cause == .news)
         let waiting = JumpReading.read(rowsNow: 43, rowsAtDeparture: 40, needsYou: true)
         #expect(waiting.cause == .needsYou)
         #expect(waiting.tone == .attention)

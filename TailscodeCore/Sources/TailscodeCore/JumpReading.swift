@@ -10,7 +10,7 @@ import Foundation
 public struct JumpReading: Sendable, Equatable {
     public enum Cause: Sendable, Equatable {
         case plain
-        case news(Int)
+        case news
         case needsYou
     }
 
@@ -22,7 +22,7 @@ public struct JumpReading: Sendable, Equatable {
     public var label: String? {
         switch cause {
         case .plain: return nil
-        case .news(let count): return Localized.text("%d new", count)
+        case .news: return Localized.text("New below")
         case .needsYou: return Localized.text("Needs you")
         }
     }
@@ -36,8 +36,7 @@ public struct JumpReading: Sendable, Equatable {
     public var spoken: String {
         switch cause {
         case .plain: return Localized.text("Jump to the newest")
-        case .news(let count):
-            return Localized.text("Jump to the newest, %d new", count)
+        case .news: return Localized.text("Jump to the newest, there is more below")
         case .needsYou: return Localized.text("Jump to what needs you")
         }
     }
@@ -52,6 +51,6 @@ public struct JumpReading: Sendable, Equatable {
         guard let rowsAtDeparture, rowsNow > rowsAtDeparture else {
             return JumpReading(cause: .plain)
         }
-        return JumpReading(cause: .news(rowsNow - rowsAtDeparture))
+        return JumpReading(cause: .news)
     }
 }

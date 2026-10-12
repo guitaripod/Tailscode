@@ -3831,7 +3831,7 @@ final class TranscriptViewController: NSViewController {
             let rowView = row.makeView(context: context)
             let at = min(index, rowViews.count)
             rowColumn.insertArrangedSubview(
-                rowView, at: at, spacing: row.spacing, measured: row.capsMeasure)
+                rowView, at: at, spacing: row.spacing)
             rowViews.insert(rowView, at: at)
             renderedRows.insert(row, at: at)
             let firstSight = enteredRows.insert(row.key).inserted
@@ -3905,7 +3905,7 @@ final class TranscriptViewController: NSViewController {
             for row in rows[from..<start] {
                 let rowView = row.makeView(context: context)
                 rowColumn.insertArrangedSubview(
-                    rowView, at: position, spacing: row.spacing, measured: row.capsMeasure)
+                    rowView, at: position, spacing: row.spacing)
                 inserted.append(rowView)
                 enteredRows.insert(row.key)
                 position += 1
@@ -3952,7 +3952,7 @@ final class TranscriptViewController: NSViewController {
         let entering = rowsAnnounceArrival
         for row in rows {
             let rowView = row.makeView(context: context)
-            rowColumn.addArrangedSubview(rowView, spacing: row.spacing, measured: row.capsMeasure)
+            rowColumn.addArrangedSubview(rowView, spacing: row.spacing)
             let firstSight = enteredRows.insert(row.key).inserted
             if entering, firstSight, row.key != cascade.key, row.announcesArrival {
                 CascadeEntrance.animate(rowView)
@@ -4180,8 +4180,7 @@ final class TranscriptViewController: NSViewController {
                 rowViews[index].removeFromSuperview()
                 let rowView = renderedRows[index].makeView(context: context)
                 rowColumn.insertArrangedSubview(
-                    rowView, at: index, spacing: renderedRows[index].spacing,
-                    measured: renderedRows[index].capsMeasure)
+                    rowView, at: index, spacing: renderedRows[index].spacing)
                 rowViews[index] = rowView
             }
         }

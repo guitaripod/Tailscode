@@ -5,39 +5,6 @@ extension TranscriptRow {
     var spacing: ChatRowSpacing { ChatLayout.spacing(of: kind) }
 }
 
-extension TranscriptRow {
-    /// Whether the row is prose a person reads line by line, and so stops at the reading measure
-    /// rather than at the width of the pane. Code, tables, tools and cards are not read that way
-    /// and keep the pane.
-    var capsMeasure: Bool {
-        switch kind {
-        case .agentProse, .reasoning: return true
-        default: return false
-        }
-    }
-}
-
-/// How wide a line of an answer may be: seventy-six characters of the answer's own font, which is
-/// where a line stops being read as a line and starts being searched. A wide pane or a zoomed one
-/// would otherwise set a paragraph fifteen hundred points across.
-@MainActor
-enum ProseMeasure {
-    static let characters: CGFloat = 76
-    private static let sample = "the quick brown fox jumps over the lazy dog and keeps running home "
-    private static var remembered: (size: CGFloat, width: CGFloat)?
-
-    static func width(font: NSFont) -> CGFloat {
-        if let remembered, remembered.size == font.pointSize { return remembered.width }
-        let each = (sample as NSString).size(withAttributes: [.font: font]).width
-            / CGFloat(sample.count)
-        let width = (characters * each).rounded(.up)
-        remembered = (font.pointSize, width)
-        return width
-    }
-
-    static var current: CGFloat { width(font: MacTheme.Ramp.font(.answer)) }
-}
-
 extension NSView {
     private static var flowWidthKey: UInt8 = 0
 

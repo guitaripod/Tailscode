@@ -9,9 +9,11 @@ picture.
 ## Principles
 
 1. **One fact, one place.** A state that is told in the nav, the band, a card and a button is
-   told four times. Each fact has one home: what is *happening* is the status line, what is
-   *waiting for you* is the dock, what is *true of the conversation* is the facts row, what you
-   can *choose* is the controls row.
+   told four times. A state is *named* once, in the status line, and *acted on* once, in the zone
+   that can act: the header says "Needs you", the dock holds the card, and neither is repeated
+   by a banner or the band. What is *happening* is the status line, what is *waiting for you* is
+   the dock, what is *true of the conversation* is the facts row, what you can *choose* is the
+   controls row.
 2. **A chip is a control or a reading, never both looks.** Facts are flat and quiet; controls
    are outlined; the live ones carry their meaning on a dot, never on a tinted capsule.
 3. **Stillness is how a settled chat reads.** An idle band says nothing; a finished agent is
@@ -20,6 +22,11 @@ picture.
    is out now may ask for room under the last message.
 5. **What blocks the turn is nearest the composer, and the jump control says so.**
 6. **Meaning never lives in a tint alone.** Glyph, word or shape carries it first.
+7. **Nothing fixes what a window or a setting can change.** A window is any width a person
+   drags it to, and type is any size they set. A height is a minimum that grows with the type;
+   a width is whatever the pane has — answers and cards fill it, with no reading measure and no
+   maximum line. Where room runs out the least important thing yields first (a band segment, a
+   lane, a hint), and what is live or blocks the turn never does.
 
 ## Anatomy, top to bottom
 
@@ -27,15 +34,16 @@ picture.
 |---|---|---|
 | Header | the conversation's title; under it the one status line (phase, tool, clock) | The title stays during a turn. Status is a second line, never a replacement. |
 | Notice | at most one banner | Priority: signed out → quota wall → offline → failed; reconnecting is status only. |
-| Transcript | rows | Prompt is the heavy voice; answer measure ≤ 76 characters on a wide pane; a turn costs the same gap on every client. |
+| Transcript | rows | Prompt is the heavy voice; answers fill the pane; a turn costs the same gap on every client. |
 | Dock | what the end of the transcript holds | Order, top to bottom: pending sends → queued → turn-state cards (revert, interrupted, retry, compaction, thinking) → needs-you (question, permission). |
-| Facts row | context, spend, branch, goal, agents out, background work, attachments | One row. Scrolls sideways before it wraps. Hidden when it has nothing to say. |
-| Composer | the field, send/stop | Send becomes Stop while a turn runs; there is no second Stop anywhere. |
+| Facts row | context, spend, branch, goal, agents out, background work, attachments | One row; what is live leads, so scrolling sideways never hides it. Hidden when it has nothing to say, and appearing or leaving never moves the transcript a reader is reading. |
+| Composer | the field, send/stop | Exactly one Stop control per client: on iOS the send button becomes it, on the desktops it is the button beside the composer (Send reads Queue meanwhile). The band never carries one. |
 | Controls | model + effort, lane, attach, commands | Same height and shape as a chip. |
 
 ## Chips (`ChatChrome`)
 
-- Height 30 pt (touch, hit area 44 by outsetting) / 24 (pointer). Capsule. Horizontal padding
+- Height 30 pt (touch, hit area 44 by outsetting) / 24 (pointer): a minimum — a chip grows with
+  the chrome type size and never clips. Capsule. Horizontal padding
   11 / 9, icon 12, icon gap 5, chip spacing 6. One type role: `chip`.
 - Radii: control 10, card 14, composer 20, sheet 24. Nothing else.
 - Fills are opaque (ink mixed into the canvas, 7 % facts and live, 4 % controls) — a translucent
@@ -70,8 +78,9 @@ all three clients.
 ## The jump control (`JumpReading`)
 
 An arrow when the reader is up the page; **Needs you** (attention tone) when a permission or a
-question waits at the end; **N new** when rows arrived while they were away. Same control, same
-words, three clients.
+question waits at the end; **New below** when anything arrived while they were away. No number:
+what arrives is counted in rows, a unit nobody reads in, and a streaming answer makes dozens.
+Same control, same words, three clients.
 
 ## The empty chat (`ChatSuggestion`)
 
