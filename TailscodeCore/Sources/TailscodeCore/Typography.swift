@@ -326,7 +326,7 @@ public enum Typography {
             return TypeSpec(
                 axis: .mono, family: .mono, ratio: 0.72, weight: .medium, tracking: 0.03)
         case .chip:
-            return TypeSpec(axis: .mono, family: .mono, ratio: 0.78, weight: .medium)
+            return TypeSpec(axis: .chrome, family: .mono, ratio: 0.78, weight: .medium)
         case .composer:
             return TypeSpec(axis: .prose, family: .canvas, ratio: 0.95, lineHeight: 1.05)
         case .banner:
