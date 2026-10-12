@@ -381,11 +381,18 @@ struct ConnectionPhaseTests {
             state: state, agents: [], usage: nil, attachments: 0)
     }
 
-    @Test("A live idle conversation is ready, and says nothing about connecting")
-    func liveReadsReady() {
-        let band = facts(state(.live, changedAgo: 300)).segments.first
-        #expect(band?.text.contains("ready") == true)
-        #expect(band?.css == "seg-idle")
+    @Test("A live idle conversation says nothing at all: stillness is how a settled chat reads")
+    func liveSaysNothing() {
+        #expect(facts(state(.live, changedAgo: 300)).segments.isEmpty)
+    }
+
+    @Test("A running turn is stopped from the stop button, never from the band that reads it")
+    func theBandDoesNotCarryStop() {
+        var running = facts(state(.live, changedAgo: 300))
+        running.phase = .working
+        let phase = running.segments.first
+        #expect(phase?.id == "phase")
+        if case .act = phase?.kind { Issue.record("the working phase is an action") }
     }
 
     @Test("A dial that has only just started shows no clock")

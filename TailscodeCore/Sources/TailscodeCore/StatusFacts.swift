@@ -81,8 +81,14 @@ public struct StatusFacts: Sendable {
     public var elapsed: TimeInterval?
     public var runningTool: String?
     public var agents: [SubagentSummary] = []
-    public var activeAgents: Int { agents.filter(\.isActive).count }
-    public var finishedAgents: Int { agents.filter(\.isCompleted).count }
+    /// When the prompt the reader is looking at went out, which is what separates the agents that
+    /// worked for this answer from the ones left over from earlier turns.
+    public var lastPromptAt: Date?
+    public var presence: SubagentPresence {
+        SubagentPresence(agents: agents, hold: agentHold, since: lastPromptAt)
+    }
+    public var activeAgents: Int { presence.liveCount }
+    public var finishedAgents: Int { presence.current.count - presence.liveCount }
     /// How full the model's window is, when the transcript can say. The band wears the share and
     /// the count, coloured by how close a compaction is, and clicking it opens the whole window.
     public var context: ContextFill?
@@ -212,6 +218,7 @@ public struct StatusFacts: Sendable {
         }
         facts.runningTool = Self.runningTool(in: state)
         facts.queued = queued
+        facts.lastPromptAt = state.messages.last(where: { $0.role == .user })?.createdAt
         facts.spend = spend
         facts.git = git
         facts.agents = agents
@@ -245,7 +252,7 @@ public struct StatusFacts: Sendable {
         case .background(let tasks): return .inBackground(tasks: tasks)
         case .stalled(let tasks): return .stalled(tasks: tasks)
         case .working:
-            let active = agents.filter(\.isActive).count
+            let active = SubagentPresence(agents: agents, hold: .going).liveCount
             guard let kind = ActivityKind.inFlight(in: state) else {
                 return active > 0 ? .delegating(active: active) : .working
             }
@@ -338,11 +345,11 @@ public struct StatusFacts: Sendable {
 
         switch phase {
         case .idle:
-            result.append(Segment(id: "phase", text: Localized.text("ready"), css: "seg-idle", kind: .plain))
+            break
         case .working:
             let kind = activity ?? runningTool.map { .usingTool(name: $0, kind: .other) } ?? .working
             result.append(
-                Self.phase(kind, elapsed: elapsed, kind: .act(.stop)))
+                Self.phase(kind, elapsed: elapsed, kind: .plain))
         case .compacting:
             result.append(Self.phase(.compacting, elapsed: elapsed, kind: .plain))
         case .background(let tasks):
@@ -376,7 +383,7 @@ public struct StatusFacts: Sendable {
             result.append(Self.phase(.queued(queued), kind: .plain, id: "queued"))
         }
 
-        if !agents.isEmpty {
+        if !presence.current.isEmpty {
             let done = StatusMark.done
             let text = activeAgents > 0
                 ? "▸ \(activeAgents)" + (finishedAgents > 0 ? " · \(finishedAgents)\(done)" : "")
@@ -445,7 +452,7 @@ public struct StatusFacts: Sendable {
                     ])))
         }
         if attachments > 0 {
-            result.append(Segment(id: "attach", text: "📎 \(attachments)", css: "seg-dim", kind: .plain))
+            result.append(Segment(id: "attach", text: Localized.text("%d attached", attachments), css: "seg-dim", kind: .plain))
         }
         return result
     }

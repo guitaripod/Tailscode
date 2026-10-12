@@ -294,6 +294,17 @@ public enum ShortcutRegistry {
             id: "scroll.bottom", title: Localized.text("Bottom of the conversation"),
             category: .conversation, action: .scrollBottom, contexts: [.normal], defaults: ["G"]),
         .init(
+            id: "prompt.previous", title: Localized.text("Previous prompt"),
+            category: .conversation, action: .previousPrompt, contexts: [.normal],
+            defaults: ["["]),
+        .init(
+            id: "prompt.next", title: Localized.text("Next prompt"), category: .conversation,
+            action: .nextPrompt, contexts: [.normal], defaults: ["]"]),
+        .init(
+            id: "answer.copy", title: Localized.text("Copy the last answer"),
+            category: .conversation, action: .copyLastAnswer, contexts: [.normal],
+            defaults: ["Y"]),
+        .init(
             id: "find.open", title: Localized.text("Find in the conversation"),
             category: .conversation, action: .findInConversation, contexts: [.normal, .insert],
             defaults: ["normal:f", "ctrl+f"]),
@@ -760,6 +771,9 @@ public enum KeyAction: Equatable, Sendable {
     case halfPageUp
     case scrollTop
     case scrollBottom
+    case previousPrompt
+    case nextPrompt
+    case copyLastAnswer
     case insert
     case leaveInsert
     case search

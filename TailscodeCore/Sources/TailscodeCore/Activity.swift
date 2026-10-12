@@ -469,7 +469,7 @@ public enum ActivityKind: Sendable, Equatable {
         case .stalled(let tasks): return Localized.text("%@ stuck", "\(tasks)")
         case .retrying(let attempt): return Localized.text("retry %@", "\(attempt)")
         case .compacting: return Localized.text("compacting")
-        case .needsApproval: return Localized.text("y / a / n")
+        case .needsApproval: return Localized.text("needs you")
         case .needsAnswer: return Localized.text("answer")
         case .queued(let count): return Localized.text("%@ queued", "\(count)")
         case .connecting: return Localized.text("connecting")
