@@ -114,3 +114,7 @@ A change is done when that prints `BUILD SUCCEEDED` and, for logic with selftest
 ssh macbook 'bash -l -c "TAILSCODE_HOST=<tailnet-ip>:4098 \
   ~/Dev/iOS/Tailscode/build-tsmac/Build/Products/Debug/TailscodeMac.app/Contents/MacOS/TailscodeMac --selftest"'
 ```
+
+## Capturing screenshots without touching the installed app
+
+A Debug build carries the same bundle id as `/Applications/Tailscode.app`, and the app finds its home through `getpwuid`, so setting `HOME` isolates nothing: a shot run writes the real preferences domain (window frames, the layout tree, `~/Library/Logs/Tailscode/launch.json`). Capture from a re-signed copy with its own bundle id (`com.guitaripod.tailscode.shots`) and `CFFIXED_USER_HOME` pointed at a scratch directory, never from the Debug product directly.
