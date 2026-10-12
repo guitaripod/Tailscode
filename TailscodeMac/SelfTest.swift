@@ -3776,8 +3776,8 @@ enum SelfTest {
         }
     }
 
-    /// Type size is per area: making the prose bigger moves the prompts and answers and nothing
-    /// else, the terminal is sized by nothing but itself, and a size put back to normal is the size
+    /// Type size is per area: making the agent's answers bigger moves the answers and nothing
+    /// else, what you type has a size of its own, the terminal is sized by nothing but itself, and a size put back to normal is the size
     /// the window started at. The person's own sizes are restored when the check is done.
     private static func checkTypeAreas() throws {
         func expect(_ condition: Bool, _ label: String) throws {
@@ -3792,11 +3792,31 @@ enum SelfTest {
         let shell = MacTheme.Ramp.font(.code, in: .terminal).pointSize
         try expect(shell == code, "an untouched terminal is sized like the code above it")
 
-        TypeScaleStore.set(.prose, to: 1.5)
+        let prompt = MacTheme.Ramp.font(.prompt).pointSize
+        TypeScaleStore.set(.answer, to: 1.5)
         let grown = MacTheme.Ramp.font(.answer).pointSize
-        try expect(abs(grown - answer * 1.5) < 0.01, "prose at 150% is \(grown)pt, not \(answer * 1.5)pt")
-        try expect(MacTheme.Ramp.font(.rowTitle).pointSize == row, "the chat list moved with the prose")
-        try expect(MacTheme.Ramp.font(.code).pointSize == code, "code moved with the prose")
+        try expect(abs(grown - answer * 1.5) < 0.01, "answers at 150% are \(grown)pt, not \(answer * 1.5)pt")
+        try expect(MacTheme.Ramp.font(.prompt).pointSize == prompt, "your messages moved with the agent's")
+        try expect(MacTheme.Ramp.font(.rowTitle).pointSize == row, "the chat list moved with the answers")
+        try expect(MacTheme.Ramp.font(.code).pointSize == code, "code moved with the answers")
+
+        func markdownSize() -> CGFloat {
+            MacMarkdown.invalidate()
+            let font = MacMarkdown.render("An answer.").attribute(.font, at: 0, effectiveRange: nil)
+            return (font as? NSFont)?.pointSize ?? 0
+        }
+        TypeScaleStore.set(.answer, to: 1.0)
+        let written = markdownSize()
+        TypeScaleStore.set(.answer, to: 1.5)
+        try expect(
+            abs(markdownSize() - written * 1.5) < 0.01,
+            "a written answer did not follow the agent-responses size")
+
+        TypeScaleStore.set(.prompt, to: 1.25)
+        try expect(
+            abs(MacTheme.Ramp.font(.prompt).pointSize - prompt * 1.25) < 0.01,
+            "your messages did not follow their own size")
+        try expect(abs(MacTheme.Ramp.font(.answer).pointSize - grown) < 0.01, "answers moved with your messages")
 
         TypeScaleStore.set(.terminal, to: 2.0)
         try expect(

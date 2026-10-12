@@ -20,6 +20,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     private var summonRecorder: Any?
     private var hapticStop = -1
     private weak var typeSection: TypeSettingsView?
+    private var tabs: NSTabViewController?
     private let watchAccounts = NSStackView()
     private let deepseekRow = NSStackView()
     private let ollamaRow = NSStackView()
@@ -39,15 +40,16 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         self.onTranscriptChanged = onTranscriptChanged
         self.onReloadShortcuts = onReloadShortcuts
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: Self.openSize.width, height: Self.openSize.height),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = Localized.text("Settings")
         window.isReleasedWhenClosed = false
-        window.contentMinSize = NSSize(width: 420, height: 320)
+        window.toolbarStyle = .preference
+        window.contentMinSize = NSSize(width: 560, height: 420)
         super.init(window: window)
         window.delegate = self
         window.center()
-        window.rememberFrame(as: "TailscodeSettings")
+        window.setFrameAutosaveName("TailscodeSettingsPanes")
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         #if !TAILSCODE_MAS
@@ -72,22 +74,51 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The size the window opens at the first time: wide enough for six toolbar pages and tall
+    /// enough that most pages are read without scrolling.
+    private static let openSize = NSSize(width: 600, height: 640)
+
     /// Every row reads its value from a store as it is built, and this window is kept for the life
-    /// of the app — so the content is made at each presentation rather than once. A demo world
+    /// of the app — so the pages are made at each presentation rather than once. A demo world
     /// left, a type scale stepped, a default written from somewhere else: all of it is true again
-    /// the next time the window is opened.
-    func present() {
-        window?.contentView = makeContent()
+    /// the next time the window is opened. The page that was open stays open.
+    func present(selecting pane: Int? = nil) {
+        install(selecting: pane)
         window?.makeKeyAndOrderFront(nil)
     }
 
-    /// Opens on the type controls, for a menu item that is about nothing else: the window is long
-    /// and the one thing wanted would otherwise be somewhere below the fold.
+    /// The page a name stands for — `appearance`, `conversation`, `notifications`, `accounts`,
+    /// `keyboard` or `advanced` — for a launch argument that wants to look at one.
+    static func page(named name: String) -> Int? {
+        Pane.allCases.firstIndex { String(describing: $0) == name }
+    }
+
+    /// Opens on the type controls, for a menu item that is about nothing else: they are a section
+    /// of the Appearance page, below the theme, and the one thing wanted would otherwise be a
+    /// page and a scroll away.
     func presentTypeSize() {
-        present()
+        present(selecting: Pane.allCases.firstIndex(of: .appearance))
         window?.contentView?.layoutSubtreeIfNeeded()
         guard let typeSection else { return }
         typeSection.scrollToVisible(typeSection.bounds)
+    }
+
+    /// Puts freshly made pages in the window without moving the window: replacing a window's
+    /// content controller resizes it to the controller's own size, which would undo whatever
+    /// shape the person gave Settings.
+    private func install(selecting pane: Int?) {
+        guard let window else { return }
+        let frame = window.frame
+        let wasShown = window.isVisible
+        let controller = makeTabs(selecting: pane ?? tabs?.selectedTabViewItemIndex ?? 0)
+        tabs = controller
+        window.contentViewController = controller
+        if wasShown {
+            window.setFrame(frame, display: true)
+        } else if !window.setFrameUsingName("TailscodeSettingsPanes") {
+            window.setContentSize(Self.openSize)
+            window.center()
+        }
     }
 
     /// The theme is the second axis, and it is the one AppKit has no trait for: a colour already
@@ -98,7 +129,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, let window = self.window, window.isVisible else { return }
-                window.contentView = self.makeContent()
+                self.install(selecting: nil)
             }
         }
     }
@@ -141,13 +172,92 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         return stored == 0 ? 400 : min(5000, max(50, stored))
     }
 
-    private func makeContent() -> NSView {
+    /// One page of Settings: a name and a symbol for the toolbar, and what it holds.
+    private enum Pane: CaseIterable {
+        case appearance
+        case conversation
+        case notifications
+        case accounts
+        case keyboard
+        case advanced
+
+        var title: String {
+            switch self {
+            case .appearance: return Localized.text("Appearance")
+            case .conversation: return Localized.text("Conversation")
+            case .notifications: return Localized.text("Notifications")
+            case .accounts: return Localized.text("Accounts")
+            case .keyboard: return Localized.text("Keyboard")
+            case .advanced: return Localized.text("Advanced")
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .appearance: return "paintbrush"
+            case .conversation: return "text.bubble"
+            case .notifications: return "bell"
+            case .accounts: return "person.crop.circle"
+            case .keyboard: return "keyboard"
+            case .advanced: return "gearshape.2"
+            }
+        }
+    }
+
+    /// Settings as the Mac does it: a toolbar of pages rather than one long scroll, each page a
+    /// few related sections, so a preference is found by what it is about and the page for it
+    /// is short enough to read through. The panes are made at each presentation, because every
+    /// row reads its value from a store as it is built.
+    private func makeTabs(selecting index: Int = 0) -> NSTabViewController {
+        let tabs = NSTabViewController()
+        tabs.tabStyle = .toolbar
+        for pane in Pane.allCases {
+            let controller = NSViewController()
+            controller.view = content(of: pane)
+            controller.title = pane.title
+            let item = NSTabViewItem(viewController: controller)
+            item.label = pane.title
+            item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)
+            tabs.addTabViewItem(item)
+        }
+        tabs.selectedTabViewItemIndex = min(max(0, index), Pane.allCases.count - 1)
+        return tabs
+    }
+
+    private func content(of pane: Pane) -> NSView {
+        switch pane {
+        case .appearance: return appearancePane()
+        case .conversation: return conversationPane()
+        case .notifications: return notificationsPane()
+        case .accounts: return accountsPane()
+        case .keyboard: return keyboardPane()
+        case .advanced: return advancedPane()
+        }
+    }
+
+    private func newColumn() -> NSStackView {
         let column = NSStackView()
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = MacTheme.Spacing.s
         column.edgeInsets = NSEdgeInsets(top: 20, left: 24, bottom: 20, right: 24)
+        return column
+    }
 
+    /// The breath between two sections, and none above the first.
+    private func gap(_ column: NSStackView) {
+        if !column.arrangedSubviews.isEmpty { column.addArrangedSubview(spacer(MacTheme.Spacing.m)) }
+    }
+
+    private func scrolled(_ column: NSStackView) -> NSView {
+        for view in column.arrangedSubviews where view is NSStackView {
+            view.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -48).isActive = true
+        }
+        return MacDialogs.scrollColumn(holding: column)
+    }
+
+    private func appearancePane() -> NSView {
+        let column = newColumn()
         if ServerDirectory.shared.isDemoMode {
             column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Demo")))
             let leave = NSButton(
@@ -158,7 +268,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                     subtitle: Localized.text(
                         "Scripted servers with no tailnet — leave to set up a real one"),
                     button: leave))
-            column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+            gap(column)
         }
 
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Appearance")))
@@ -183,12 +293,15 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 selected: ChatDensity.allCases.firstIndex(of: ChatDensitySetting.current) ?? 0,
                 action: #selector(chatDensityChanged)))
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        gap(column)
         let type = TypeSettingsView()
         typeSection = type
         column.addArrangedSubview(type)
+        return scrolled(column)
+    }
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+    private func conversationPane() -> NSView {
+        let column = newColumn()
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Prompt box")))
         column.addArrangedSubview(
             switchRow(
@@ -208,7 +321,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 value: composerLines, lower: 1, upper: 20, step: 1, valueLabel: linesLabel,
                 action: #selector(linesChanged)))
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Transcript")))
         column.addArrangedSubview(
             switchRow(
@@ -238,8 +351,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                     "Older rows wait behind one button — this keeps a huge chat fast"),
                 value: transcriptWindow, lower: 50, upper: 5000, step: 50,
                 valueLabel: windowLabel, action: #selector(windowChanged)))
+        return scrolled(column)
+    }
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+    private func notificationsPane() -> NSView {
+        let column = newColumn()
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Notifications")))
         column.addArrangedSubview(
             switchRow(
@@ -261,7 +377,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 subtitle: Localized.text("Sends one notification two seconds from now"),
                 button: test))
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Haptics")))
         column.addArrangedSubview(
             switchRow(
@@ -276,9 +392,13 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                     "Softer settings drop a cue's reinforcement before they drop the cue; drag to feel each stop"),
                 value: MacHaptics.strength, valueLabel: hapticLabel,
                 action: #selector(hapticStrengthChanged)))
+        return scrolled(column)
+    }
 
+    private func accountsPane() -> NSView {
+        let column = newColumn()
         #if !TAILSCODE_MAS
-            column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+            gap(column)
             column.addArrangedSubview(MacDialogs.sectionHeader(WatchAccounts.heading))
             column.addArrangedSubview(
                 indented(MacDialogs.detailLabel(WatchAccounts.description, wraps: true), by: 0))
@@ -289,7 +409,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             renderWatchAccounts()
         #endif
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Usage")))
         column.addArrangedSubview(
             indented(
@@ -307,23 +427,12 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         ollamaRow.spacing = MacTheme.Spacing.s
         column.addArrangedSubview(ollamaRow)
         renderOllama()
+        return scrolled(column)
+    }
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
-        column.addArrangedSubview(
-            MacDialogs.sectionHeader(Localized.text("Ask from anywhere")))
-        column.addArrangedSubview(
-            switchRow(
-                title: Localized.text("Summon with a chord"),
-                subtitle: Localized.text(
-                    "One chord, pressed in any app on this Mac, opens the question box"),
-                value: SummonSettings.isEnabled, action: #selector(summonEnabledChanged)))
-        summonButton.target = self
-        summonButton.action = #selector(recordSummonChord)
-        column.addArrangedSubview(
-            chordRow(title: Localized.text("Chord"), button: summonButton, detail: summonState))
-        renderSummon()
-
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+    private func keyboardPane() -> NSView {
+        let column = newColumn()
+        gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Keyboard")))
         let edit = NSButton(
             title: Localized.text("Edit"), target: self, action: #selector(editShortcuts))
@@ -340,7 +449,26 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                     "Unknown keys and conflicts are reported rather than guessed at"),
                 button: reload))
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        gap(column)
+        column.addArrangedSubview(
+            MacDialogs.sectionHeader(Localized.text("Ask from anywhere")))
+        column.addArrangedSubview(
+            switchRow(
+                title: Localized.text("Summon with a chord"),
+                subtitle: Localized.text(
+                    "One chord, pressed in any app on this Mac, opens the question box"),
+                value: SummonSettings.isEnabled, action: #selector(summonEnabledChanged)))
+        summonButton.target = self
+        summonButton.action = #selector(recordSummonChord)
+        column.addArrangedSubview(
+            chordRow(title: Localized.text("Chord"), button: summonButton, detail: summonState))
+        renderSummon()
+        return scrolled(column)
+    }
+
+    private func advancedPane() -> NSView {
+        let column = newColumn()
+        gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Diagnostics")))
         let copyFlight = NSButton(
             title: Localized.text("Copy"), target: self, action: #selector(copyDiagnostics))
@@ -349,7 +477,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 title: Localized.text("Copy diagnostics"), subtitle: FlightRing.defaultURL().path,
                 button: copyFlight))
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Alpha")))
         column.addArrangedSubview(
             switchRow(
@@ -357,12 +485,9 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 subtitle: Localized.text(
                     "A GPU-rendered creature at the foot of the chat list, breathing what every conversation is doing; may cost battery"),
                 value: PresenceOrbSetting.isEnabled, action: #selector(presenceOrbChanged)))
-
-        for view in column.arrangedSubviews where view is NSStackView {
-            view.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -48).isActive = true
-        }
-        return MacDialogs.scrollColumn(holding: column)
+        return scrolled(column)
     }
+
 
     /// The flight recorder's last quarter hour, decoded, on the pasteboard for a bug report. The
     /// ring holds counts and durations only, so there is nothing in it to redact.
@@ -472,7 +597,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         /// The two video accounts, drawn and redrawn in place. Signing in or out rewrites everything a
         /// row says while the window stands open, and the content is only made again at the next
         /// presentation — so the section empties and refills itself in place instead. The width
-        /// constraint `makeContent` applies runs exactly once, over the column's own children, and
+        /// constraint `scrolled(_:)` applies runs exactly once, over the column's own children, and
         /// never sees a row made later: each one is given the same constraint as it is made.
         private func renderWatchAccounts() {
             for view in watchAccounts.arrangedSubviews { view.removeFromSuperview() }

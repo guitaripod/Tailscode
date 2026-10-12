@@ -19,8 +19,8 @@ extension DeviceStores {
 
     @Test("A step is pinned at both ends, never wrapped")
     func stepsPin() {
-      let top = TypeScale([.prose: TypeScale.highest]).stepping(.prose, by: 3)
-      #expect(top[.prose] == TypeScale.highest)
+      let top = TypeScale([.answer: TypeScale.highest]).stepping(.answer, by: 3)
+      #expect(top[.answer] == TypeScale.highest)
       let bottom = TypeScale([.mono: TypeScale.lowest]).stepping(.mono, by: -3)
       #expect(bottom[.mono] == TypeScale.lowest)
       #expect(TypeScale().stepping(.chrome, by: 2).percent(.chrome) == 110)
@@ -28,7 +28,7 @@ extension DeviceStores {
 
     @Test("Two sets that say the same thing are equal however they were reached")
     func equalityIgnoresHowItWasReached() {
-      #expect(TypeScale([.prose: 1.0]) == TypeScale())
+      #expect(TypeScale([.answer: 1.0]) == TypeScale())
       #expect(TypeScale().setting(.mono, to: 1.2).setting(.mono, to: 1.0) == TypeScale())
       #expect(TypeScale().isStandard)
       #expect(!TypeScale().setting(.mono, to: 1.2).isStandard)
@@ -39,10 +39,11 @@ extension DeviceStores {
       for preset in TypePreset.allCases {
         #expect(TypeScale().applying(preset).preset == preset)
       }
-      #expect(TypeScale().applying(.reading)[.prose] == 1.3)
+      #expect(TypeScale().applying(.reading)[.answer] == 1.3)
+      #expect(TypeScale().applying(.reading)[.prompt] == 1.3)
       #expect(TypeScale().applying(.reading)[.chrome] == 1.0)
       #expect(TypeScale().applying(.code)[.terminal] == 1.2)
-      #expect(TypeScale().setting(.prose, to: 1.15).preset == nil)
+      #expect(TypeScale().setting(.answer, to: 1.15).preset == nil)
     }
 
     @Test("Every preset says something different, and the default is the only standard one")
@@ -51,21 +52,41 @@ extension DeviceStores {
       #expect(TypePreset.allCases.filter { $0.scale.isStandard } == [.standard])
     }
 
-    @Test("The three axes of the ramp are three areas")
-    func axesMapToAreas() {
-      #expect(TypeArea(axis: .chrome) == .chrome)
-      #expect(TypeArea(axis: .prose) == .prose)
-      #expect(TypeArea(axis: .mono) == .mono)
+    @Test("Every role is set in an area, and what you type is not what the agent writes")
+    func rolesMapToAreas() {
+      #expect(TypeArea(role: .prompt) == .prompt)
+      #expect(TypeArea(role: .composer) == .prompt)
+      #expect(TypeArea(role: .promptGlyph) == .prompt)
+      #expect(TypeArea(role: .answer) == .answer)
+      #expect(TypeArea(role: .thought) == .answer)
+      #expect(TypeArea(role: .code) == .mono)
+      #expect(TypeArea(role: .toolOutput) == .mono)
+      #expect(TypeArea(role: .rowTitle) == .chrome)
+      for role in TypeRole.allCases {
+        let area = TypeArea(role: role)
+        switch Typography.spec(role).axis {
+        case .chrome: #expect(area == .chrome)
+        case .mono: #expect(area == .mono)
+        case .prose: #expect(area == .prompt || area == .answer)
+        }
+      }
+    }
+
+    @Test("The agent's words keep the key the desktops already wrote for the transcript's prose")
+    func answerKeepsTheOldKey() {
+      #expect(TypeArea.answer.defaultsKey == "tailscode.scale.prose")
+      #expect(TypeArea.prompt.defaultsKey == "tailscode.scale.prompt")
+      #expect(Set(TypeArea.allCases.map(\.defaultsKey)).count == TypeArea.allCases.count)
     }
 
     @Test("Sizes persist under the keys Linux already writes, and a normal size leaves nothing behind")
     func storeRoundTrips() {
       fresh()
-      TypeScaleStore.set(.prose, to: 1.25)
+      TypeScaleStore.set(.answer, to: 1.25)
       #expect(UserDefaults.standard.double(forKey: "tailscode.scale.prose") == 1.25)
       TypeScaleStore.forget()
-      #expect(TypeScaleStore.current()[.prose] == 1.25)
-      TypeScaleStore.set(.prose, to: 1.0)
+      #expect(TypeScaleStore.current()[.answer] == 1.25)
+      TypeScaleStore.set(.answer, to: 1.0)
       #expect(UserDefaults.standard.object(forKey: "tailscode.scale.prose") == nil)
       fresh()
     }

@@ -924,7 +924,8 @@ final class MainWindowController: NSWindowController {
         switch parts.first ?? name {
         case "servers": presentServers()
         case "updates": presentUpdates()
-        case "preferences", "prefs": presentPreferences()
+        case "preferences", "prefs":
+            presentPreferences(page: parts.count > 1 ? PreferencesWindow.page(named: parts[1]) : nil)
         case "typesize", "type": presentPreferences(typeSize: true)
         case "analytics": presentAnalytics()
         case "usage", "quotas": presentUsageWindow()
@@ -1100,7 +1101,7 @@ final class MainWindowController: NSWindowController {
         proWindow?.present()
     }
 
-    func presentPreferences(typeSize: Bool = false) {
+    func presentPreferences(typeSize: Bool = false, page: Int? = nil) {
         if preferencesWindow == nil {
             preferencesWindow = PreferencesWindow(
                 onComposerChanged: { [weak self] in
@@ -1117,7 +1118,7 @@ final class MainWindowController: NSWindowController {
         if typeSize {
             preferencesWindow?.presentTypeSize()
         } else {
-            preferencesWindow?.present()
+            preferencesWindow?.present(selecting: page)
         }
     }
 

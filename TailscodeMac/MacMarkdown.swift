@@ -86,7 +86,7 @@ enum MacMarkdown {
 
     private static func block(_ raw: String) -> NSAttributedString {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
-        let unit = MacTheme.UIScale.factor(for: .prose)
+        let unit = MacTheme.UIScale.factor(for: .answer)
         let indent = raw.prefix { $0 == " " || $0 == "\t" }.count
 
         if trimmed == "---" || trimmed == "***" || trimmed == "___" {
@@ -153,7 +153,7 @@ enum MacMarkdown {
     /// rather than inherited from a margin nothing sets.
     private static func heading(_ line: NSAttributedString) -> NSAttributedString {
         let spaced = paragraph()
-        spaced.paragraphSpacingBefore = 6 * MacTheme.UIScale.factor(for: .prose)
+        spaced.paragraphSpacingBefore = 6 * MacTheme.UIScale.factor(for: .answer)
         let made = NSMutableAttributedString(attributedString: line)
         made.addAttribute(
             .paragraphStyle, value: spaced, range: NSRange(location: 0, length: made.length))
@@ -448,7 +448,7 @@ enum MacMarkdown {
     }
 
     private static func attributes(_ style: Style) -> [NSAttributedString.Key: Any] {
-        let size = style.size * MacTheme.UIScale.factor(for: style.mono ? .mono : .prose)
+        let size = style.size * MacTheme.UIScale.factor(for: style.mono ? .mono : .answer)
         let weight: NSFont.Weight =
             if style.bold, style.weight != .bold {
                 .semibold

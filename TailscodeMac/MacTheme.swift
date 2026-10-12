@@ -270,7 +270,7 @@ enum MacTheme {
         }
 
         static func font(_ role: TypeRole) -> NSFont {
-            font(role, in: TypeArea(axis: Typography.spec(role).axis))
+            font(role, in: TypeArea(role: role))
         }
 
         /// A role set at the size of an area that is not its own axis's: the shell under the

@@ -2,28 +2,41 @@ import Foundation
 
 /// A part of the window whose type a person can make bigger or smaller on its own.
 ///
-/// Type size is not one number: the reason to enlarge a transcript (reading) is not the reason to
-/// enlarge a sidebar (glancing), and code that rewraps is worse than code that stays put. The
-/// three axes of the type ramp are three areas, and the terminal under the conversation is a
-/// fourth because it is a shell's own font and answers to nothing else.
+/// Type size is not one number: the reason to enlarge what the agent writes (reading) is not the
+/// reason to enlarge a sidebar (glancing), what you typed is yours to size apart from what came
+/// back, and code that rewraps is worse than code that stays put. So the type ramp's three axes
+/// become five areas — the prose axis split into the two voices of a conversation — and the
+/// terminal under the conversation is its own because it is a shell's font and answers to nothing
+/// else.
 public enum TypeArea: String, CaseIterable, Sendable {
     case chrome
-    case prose
+    case prompt
+    case answer
     case mono
     case terminal
 
     public init(axis: TypeAxis) {
         switch axis {
         case .chrome: self = .chrome
-        case .prose: self = .prose
+        case .prose: self = .answer
         case .mono: self = .mono
+        }
+    }
+
+    /// The area a role is set in: what a person types is theirs, and everything else follows the
+    /// axis it was written on.
+    public init(role: TypeRole) {
+        switch role {
+        case .prompt, .promptGlyph, .composer: self = .prompt
+        default: self = TypeArea(axis: Typography.spec(role).axis)
         }
     }
 
     public var title: String {
         switch self {
         case .chrome: return Localized.text("Chat list and pills")
-        case .prose: return Localized.text("Transcript prose")
+        case .prompt: return Localized.text("Your messages")
+        case .answer: return Localized.text("Agent responses")
         case .mono: return Localized.text("Code and tools")
         case .terminal: return Localized.text("Terminal")
         }
@@ -32,15 +45,25 @@ public enum TypeArea: String, CaseIterable, Sendable {
     /// What the area sets, said by the things a person points at.
     public var detail: String {
         switch self {
-        case .chrome: return Localized.text("The chat list, pills, menus and every label around the conversation")
-        case .prose: return Localized.text("What you and the agent say: prompts and answers")
+        case .chrome:
+            return Localized.text("The chat list, pills, menus and every label around the conversation")
+        case .prompt: return Localized.text("What you type: your prompts and the prompt box")
+        case .answer:
+            return Localized.text("What the agent writes back: answers, thinking and tables")
         case .mono: return Localized.text("Code blocks, tool calls and their output")
         case .terminal: return Localized.text("The shell under the conversation")
         }
     }
 
-    /// The key every client reads and writes this area under.
-    public var defaultsKey: String { "tailscode.scale.\(rawValue)" }
+    /// The key every client reads and writes this area under. The agent's words keep the key
+    /// the desktops already wrote for the transcript's prose, so a size chosen before the prose
+    /// was split in two is still the size of the part it was chosen for.
+    public var defaultsKey: String {
+        switch self {
+        case .answer: return "tailscode.scale.prose"
+        default: return "tailscode.scale.\(rawValue)"
+        }
+    }
 }
 
 /// The size of every area, as a multiple of the normal size.
@@ -142,7 +165,7 @@ public enum TypePreset: String, CaseIterable, Sendable {
             return TypeScale(Dictionary(uniqueKeysWithValues: TypeArea.allCases.map { ($0, 1.1) }))
         case .large:
             return TypeScale(Dictionary(uniqueKeysWithValues: TypeArea.allCases.map { ($0, 1.3) }))
-        case .reading: return TypeScale([.prose: 1.3])
+        case .reading: return TypeScale([.prompt: 1.3, .answer: 1.3])
         case .code: return TypeScale([.mono: 1.2, .terminal: 1.2])
         }
     }

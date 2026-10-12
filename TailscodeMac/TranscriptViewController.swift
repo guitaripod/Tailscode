@@ -2993,11 +2993,13 @@ final class TranscriptViewController: NSViewController {
         keptOrder = []
         releaseFreshCanvas(animated: false)
         rowBuilder.invalidate()
+        MacMarkdown.invalidate()
         Self.codeMemo = nil
         sessionRows = [:]
         sessionRowOrder = []
         pendingSignature = "\u{0}"
         restyleOwnChrome()
+        composer.applyPreferences()
         guard let state = lastState else { return }
         tearDownAllRows()
         placeholderShown = true
