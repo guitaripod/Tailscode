@@ -214,5 +214,13 @@
       "subline": "Bez relay. Bez konta. Bez analityki. GPL-3.0.",
       "highlight": "twój tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "Wyślij. Schowaj.\nTelefon da znać.",
+    "highlight": "Telefon da znać."
+  },
+  "search": {
+    "headline": "Zatwierdzaj agentów\nz ekranu blokady",
+    "highlight": "z ekranu blokady"
+  }
 }

@@ -214,5 +214,13 @@
       "subline": "No relay. No account. No analytics. GPL-3.0.",
       "highlight": "your tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "Send. Pocket it.\nGet pinged.",
+    "highlight": "Get pinged."
+  },
+  "search": {
+    "headline": "Approve agents\nfrom your Lock Screen",
+    "highlight": "your Lock Screen"
+  }
 }

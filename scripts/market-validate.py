@@ -9,6 +9,10 @@ tree, a size under the store's limit, and that every panel sits on the contract'
   scripts/market-validate.py                 # everything
   scripts/market-validate.py iphone          # one device class
   scripts/market-validate.py --locale ja     # one locale
+  scripts/market-validate.py creative        # only the product page creative assets
+
+The product page creative assets (marketing/appstore/creative/<locale>/) are checked too: header
+3840x1646, search 3840x2560 and the 16:9 universal 5244x2950, PNG, no alpha.
 
 Exits 1 and lists every failure when anything is wrong.
 """
@@ -55,7 +59,7 @@ def distance(a, b):
     return max(abs(x - y) for x, y in zip(a, b))
 
 
-def check_image(path, device, failures):
+def check_image(path, expected, failures):
     label = os.path.relpath(path, PANELS)
     if os.path.getsize(path) >= MAX_BYTES:
         failures.append(f"{label}: {os.path.getsize(path)} bytes, over the 8 MB limit")
@@ -67,8 +71,8 @@ def check_image(path, device, failures):
         return
     if image.format != "PNG":
         failures.append(f"{label}: {image.format}, not PNG")
-    if image.size != SIZES[device]:
-        failures.append(f"{label}: {image.size[0]}x{image.size[1]}, expected {SIZES[device][0]}x{SIZES[device][1]}")
+    if image.size != expected:
+        failures.append(f"{label}: {image.size[0]}x{image.size[1]}, expected {expected[0]}x{expected[1]}")
     if has_alpha(image):
         failures.append(f"{label}: has an alpha channel")
     rgb = image.convert("RGB")
@@ -99,7 +103,34 @@ def check_folder(locale, device, failures, counted):
     if len(pngs) != PER_LOCALE:
         failures.append(f"{label}: {len(pngs)} manifest panels present, expected {PER_LOCALE}")
     for name in pngs:
-        check_image(os.path.join(path, name), device, failures)
+        check_image(os.path.join(path, name), SIZES[device], failures)
+        counted.append(1)
+
+
+CREATIVE = {"header-3840x1646.png": (3840, 1646), "search-3840x2560.png": (3840, 2560),
+            "universal-5244x2950.png": (5244, 2950)}
+
+
+def check_creative(locale, failures, counted):
+    """The product page creative assets of one locale: exactly the three files, each the size Apple's
+    creative-asset specification lists, PNG with no alpha, under the size limit, on the contract's ground."""
+    path = os.path.join(ROOT, "marketing/appstore/creative", locale)
+    label = f"creative/{locale}"
+    if not os.path.isdir(path):
+        failures.append(f"{label}: no assets at {os.path.relpath(path, ROOT)}")
+        return
+    present = sorted(os.listdir(path))
+    for name in CREATIVE:
+        if name not in present:
+            failures.append(f"{label}: missing {name}")
+    for name in present:
+        if name not in CREATIVE:
+            failures.append(f"{label}: stray {name}")
+    for name, size in CREATIVE.items():
+        if name not in present:
+            continue
+        file = os.path.join(path, name)
+        check_image(file, size, failures)
         counted.append(1)
 
 
@@ -126,7 +157,7 @@ def main():
         i = args.index("--locale")
         only_locale = args[i + 1]
         del args[i:i + 2]
-    devices = args or list(SIZES)
+    devices = [a for a in args if a in SIZES] or ([] if "creative" in args else list(SIZES))
     known = locales()
     failures, counted = [], []
     for device in devices:
@@ -139,6 +170,9 @@ def main():
                 path = os.path.join(root, locale, device)
                 if os.path.isdir(path) and locale not in wanted and locale in known:
                     check_folder(locale, device, failures, counted)
+    if not args or "creative" in args:
+        for locale in ([only_locale] if only_locale else known):
+            check_creative(locale, failures, counted)
     if not only_locale:
         stray_folders(devices, known, failures)
     print(f"checked {len(counted)} panels across {', '.join(devices)}")

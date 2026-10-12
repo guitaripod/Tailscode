@@ -214,5 +214,13 @@
       "subline": "Sin relay. Sin cuenta. Sin analíticas. GPL-3.0.",
       "highlight": "tu tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "Envía. Guárdalo.\nRecibe el aviso.",
+    "highlight": "Recibe el aviso."
+  },
+  "search": {
+    "headline": "Aprueba agentes\ndesde la pantalla bloqueada",
+    "highlight": "pantalla bloqueada"
+  }
 }

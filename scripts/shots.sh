@@ -70,6 +70,9 @@ LANGUAGE_ARGS="$(language_args "$LOCALE")"
 # The language and region the whole simulator speaks for a store locale. The launch arguments above
 # only reach the app; the status bar's clock, the Lock Screen's date and every system string follow
 # the device's own region, which on this machine is Finland's and writes the time as 9.41.
+# Korean and Traditional Chinese are set to a 24-hour clock: measured here, the Lock Screen clock
+# ignored the status-bar time override under their default 12-hour region ("오전", "上午") and showed
+# the real time, and followed it as soon as the same region was switched to hours=h23.
 system_language() {
   case "$1" in
     en-US) echo "en en_US" ;;
@@ -79,10 +82,10 @@ system_language() {
     it) echo "it it_IT" ;;
     pt-BR) echo "pt-BR pt_BR" ;;
     ja) echo "ja ja_JP" ;;
-    ko) echo "ko ko_KR" ;;
+    ko) echo "ko ko_KR@hours=h23" ;;
     pl) echo "pl pl_PL" ;;
     zh-Hans) echo "zh-Hans zh_CN" ;;
-    zh-Hant) echo "zh-Hant zh_TW" ;;
+    zh-Hant) echo "zh-Hant zh_TW@hours=h23" ;;
   esac
 }
 
@@ -183,6 +186,15 @@ if [ -n "${IPAD:-}" ]; then
   )
 fi
 
+# The status bar's own 9:41 and full bars. The Lock Screen's clock follows the same override, which a
+# locale switch's restart can drop, so the lock shot sets it again before it locks.
+override_status_bar() {
+  xcrun simctl status_bar "$1" override \
+    --time "2023-10-13T06:41:00.000Z" --dataNetwork wifi --wifiMode active --wifiBars 3 \
+    --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 \
+    >/dev/null 2>&1 || true
+}
+
 boot_device() {
   local id
   id=$(xcrun simctl list devices | awk -F'[()]' -v n="$DEVICE_NAME" '$0 ~ "    "n" \\(" {print $2; exit}')
@@ -198,10 +210,7 @@ boot_device() {
   xcrun simctl ui "$id" appearance "${TAILSCODE_SHOT_APPEARANCE:-dark}" >/dev/null 2>&1 || true
   xcrun simctl spawn "$id" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true >/dev/null 2>&1 || true
   xcrun simctl ui "$id" content_size "${TAILSCODE_SHOT_CONTENT_SIZE:-large}" >/dev/null 2>&1 || true
-  xcrun simctl status_bar "$id" override \
-    --time "2023-10-13T06:41:00.000Z" --dataNetwork wifi --wifiMode active --wifiBars 3 \
-    --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 \
-    >/dev/null 2>&1 || true
+  override_status_bar "$id"
   echo "$id"
 }
 
@@ -313,6 +322,8 @@ capture_lock() {
   fi
   env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
   sleep 4
+  override_status_bar "$device"
+  sleep 2
   local attempt
   for attempt in 1 2 3 4; do
     hub_mine "$DEVICE_NAME"

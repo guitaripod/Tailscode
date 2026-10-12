@@ -214,5 +214,13 @@
       "subline": "无中继、无账号、无分析、GPL-3.0。",
       "highlight": "你的 tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "发完就揣兜里\n做完它会通知",
+    "highlight": "做完它会通知"
+  },
+  "search": {
+    "headline": "在锁定屏幕上\n审批智能体",
+    "highlight": "锁定屏幕"
+  }
 }

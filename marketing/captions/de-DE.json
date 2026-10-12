@@ -214,5 +214,13 @@
       "subline": "Kein Relay. Kein Konto. Keine Analytik. GPL-3.0.",
       "highlight": "dein Tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "Senden. Weglegen.\nPing bekommen.",
+    "highlight": "Ping bekommen."
+  },
+  "search": {
+    "headline": "Agenten freigeben\nvom Sperrbildschirm",
+    "highlight": "Sperrbildschirm"
+  }
 }

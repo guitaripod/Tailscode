@@ -214,5 +214,13 @@
       "subline": "Nessun relay. Nessun account. Nessuna analitica. GPL-3.0.",
       "highlight": "tuo tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "Invia. In tasca.\nPoi ti avvisa.",
+    "highlight": "Poi ti avvisa."
+  },
+  "search": {
+    "headline": "Approva gli agenti\ndalla Schermata di blocco",
+    "highlight": "Schermata di blocco"
+  }
 }

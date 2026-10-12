@@ -214,5 +214,13 @@
       "subline": "Sem relay. Sem conta. Sem analytics. GPL-3.0.",
       "highlight": "sua tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "Envie e guarde.\nReceba o aviso.",
+    "highlight": "Receba o aviso."
+  },
+  "search": {
+    "headline": "Aprove agentes\npela Tela de Bloqueio",
+    "highlight": "Tela de Bloqueio"
+  }
 }

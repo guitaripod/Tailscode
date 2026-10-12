@@ -214,5 +214,13 @@
       "subline": "無中繼、無帳號、無分析、GPL-3.0。",
       "highlight": "你的 tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "發完就收進口袋\n做完它會通知",
+    "highlight": "做完它會通知"
+  },
+  "search": {
+    "headline": "在鎖定畫面上\n核准智慧體",
+    "highlight": "鎖定畫面"
+  }
 }

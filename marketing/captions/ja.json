@@ -214,5 +214,13 @@
       "subline": "中継なし。アカウントなし。解析なし。GPL-3.0。",
       "highlight": "一歩も出ない"
     }
-  ]
+  ],
+  "header": {
+    "headline": "送って、しまう。\n終わりは通知で。",
+    "highlight": "終わりは通知で。"
+  },
+  "search": {
+    "headline": "ロック画面から\nエージェントを承認",
+    "highlight": "ロック画面から"
+  }
 }

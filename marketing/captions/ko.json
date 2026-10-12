@@ -214,5 +214,13 @@
       "subline": "릴레이 없음. 계정 없음. 분석 없음. GPL-3.0.",
       "highlight": "tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "보내고 넣어 두면\n알림이 와요",
+    "highlight": "알림이 와요"
+  },
+  "search": {
+    "headline": "잠금 화면에서\n에이전트를 승인해요",
+    "highlight": "잠금 화면에서"
+  }
 }

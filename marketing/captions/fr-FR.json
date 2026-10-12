@@ -214,5 +214,13 @@
       "subline": "Sans relais. Sans compte. Sans analytique. GPL-3.0.",
       "highlight": "votre tailnet"
     }
-  ]
+  ],
+  "header": {
+    "headline": "Envoyez. Rangez.\nSoyez prévenu.",
+    "highlight": "Soyez prévenu."
+  },
+  "search": {
+    "headline": "Approuvez vos agents\ndepuis l'écran verrouillé",
+    "highlight": "l'écran verrouillé"
+  }
 }
