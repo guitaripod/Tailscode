@@ -52,8 +52,8 @@ FEATURES = [
 ]
 
 SCREENSHOTS = [
-    ("desktop/linux-columns@1920.png", "Two conversations side by side, with the file tree"),
-    ("desktop/linux-grid@1920.png", "A grid of panes: chats, a terminal and the git surface"),
+    ("desktop/linux-columns@1920.png", "Three conversations side by side, every chat in the sidebar"),
+    ("desktop/linux-grid@1920.png", "A grid of four panes, an edit waiting for approval in one"),
 ]
 
 

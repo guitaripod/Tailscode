@@ -61,11 +61,11 @@
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/guitaripod/Tailscode/master/marketing/desktop/linux-columns@1920.png</image>
-      <caption>Two conversations side by side, with the file tree</caption>
+      <caption>Three conversations side by side, every chat in the sidebar</caption>
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/guitaripod/Tailscode/master/marketing/desktop/linux-grid@1920.png</image>
-      <caption>A grid of panes: chats, a terminal and the git surface</caption>
+      <caption>A grid of four panes, an edit waiting for approval in one</caption>
     </screenshot>
   </screenshots>
   <releases>
