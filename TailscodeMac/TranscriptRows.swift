@@ -1071,7 +1071,7 @@ struct TranscriptRow: Hashable {
         guard turn.offersRemedy else { return card }
         let askAgain = context.askAgain
         let words = turn.prompt
-        card.addArrangedSubview(RowKit.linkButton(turn.action) { askAgain?(words) })
+        card.addArrangedSubview(RowKit.remedyButton(turn.action) { askAgain?(words) })
         return card
     }
 
@@ -1092,7 +1092,7 @@ struct TranscriptRow: Hashable {
         guard turn.offersRemedy else { return card }
         let askAgain = context.askAgain
         let words = turn.prompt
-        card.addArrangedSubview(RowKit.linkButton(turn.action) { askAgain?(words) })
+        card.addArrangedSubview(RowKit.remedyButton(turn.action) { askAgain?(words) })
         return card
     }
 
@@ -1652,6 +1652,16 @@ enum RowKit {
         button.contentTintColor = enabled ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel
         button.font = MacTheme.Ramp.font(.panelFootnote)
         button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
+    /// The one action a card that ends a turn badly offers. A link is as tall as its words, which is
+    /// a smaller target than a pointer is owed, so this stands at least as tall as a chip.
+    static func remedyButton(_ title: String, action: @escaping () -> Void) -> NSButton {
+        let button = linkButton(title, action: action)
+        let line = button.font.map { ceil($0.ascender - $0.descender + $0.leading) } ?? 0
+        let least = max(CGFloat(ChatChrome.chip(on: .pointer).height), line + 8)
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: least).isActive = true
         return button
     }
 

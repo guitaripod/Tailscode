@@ -31,6 +31,9 @@ final class MainWindowController: NSWindowController {
     private var sidebarItem: NSSplitViewItem?
     private var terminalItem: NSSplitViewItem?
     private var dividerSavingEnabled = false
+    /// Posted once the live shortcut set has been re-read, for what is drawn with a key's name on it.
+    static let shortcutsDidReload = Notification.Name("tailscode.mac.shortcutsDidReload")
+
     private var shortcuts = ShortcutSet.load()
     var onShortcutsReloaded: (() -> Void)?
     private var typeScaleWork: DispatchWorkItem?
@@ -584,6 +587,7 @@ final class MainWindowController: NSWindowController {
         shortcuts = ShortcutSet.load()
         pendingChords = []
         onShortcutsReloaded?()
+        NotificationCenter.default.post(name: Self.shortcutsDidReload, object: nil)
         if let cheatsheet, cheatsheet.isVisible {
             cheatsheet.close()
             presentCheatsheet()

@@ -668,10 +668,10 @@ enum SubagentGroupView {
     static func title(total: Int) -> String { Localized.text("%lld agents", total) }
 
     static func detail(live: Int, expanded: Bool) -> String {
-        if expanded { return Localized.text("tap to collapse") }
+        if expanded { return Localized.text("click to collapse") }
         return live > 0
-            ? Localized.text("%lld working · tap to see them all", live)
-            : Localized.text("tap to see them all")
+            ? Localized.text("%lld working · click to see them all", live)
+            : Localized.text("click to see them all")
     }
 
     @MainActor
@@ -694,11 +694,12 @@ enum SubagentGroupView {
 
         let toggle = context.onToggle
         let reveal = context.revealRow
-        return DisclosureRow(
+        let row = DisclosureRow(
             header: header, expanded: expanded,
             onToggle: { open, row in
                 word.stringValue = "\(ToolRowView.disclosureGlyph(open)) \(name)"
                 words.stringValue = detail(live: working, expanded: open)
+                row.setAccessibilityLabel(spoken(name: name, live: working, expanded: open))
                 toggle?(key, open)
                 if open { reveal?(row) }
             }
@@ -714,5 +715,13 @@ enum SubagentGroupView {
             }
             return RowKit.inset(body, leading: 14)
         }
+        row.setAccessibilityLabel(spoken(name: name, live: working, expanded: expanded))
+        return row
+    }
+
+    /// What a screen reader says for the row: the count and what a press does now, without the
+    /// disclosure glyph the header draws, and said again whenever the row opens or closes.
+    static func spoken(name: String, live: Int, expanded: Bool) -> String {
+        "\(name), \(detail(live: live, expanded: expanded))"
     }
 }

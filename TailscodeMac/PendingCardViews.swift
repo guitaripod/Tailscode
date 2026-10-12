@@ -36,29 +36,39 @@ enum PendingCards {
                     tool, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel))
         }
 
-        let once = RowKit.ActionButton(
-            title: Self.hinted(Localized.text("Allow once"), key: keys("approve.once"))
+        let once = Self.answerChip(
+            Self.hinted(Localized.text("Allow once"), key: keys("approve.once")), accented: true
         ) { respond(.once) }
-        once.bezelStyle = .rounded
-        once.keyEquivalent = ""
-        once.bezelColor = MacTheme.Color.accent
-        let always = RowKit.ActionButton(
-            title: Self.hinted(Localized.text("Always allow"), key: keys("approve.always"))
+        let always = Self.answerChip(
+            Self.hinted(Localized.text("Always allow"), key: keys("approve.always"))
         ) { respond(.always) }
-        always.bezelStyle = .rounded
-        let deny = RowKit.ActionButton(
-            title: Self.hinted(Localized.text("Deny"), key: keys("approve.deny"))
+        let deny = Self.answerChip(
+            Self.hinted(Localized.text("Deny"), key: keys("approve.deny"))
         ) { respond(.reject) }
-        deny.bezelStyle = .rounded
-        deny.hasDestructiveAction = true
-        for button in [once, always, deny] { button.font = MacTheme.Ramp.font(.option) }
 
-        let buttons = NSStackView(views: [once, always, deny, RowKit.spacer()])
-        buttons.orientation = .horizontal
-        buttons.spacing = MacTheme.Spacing.s
+        let buttons = StarterFlow()
+        buttons.centered = false
+        buttons.set([once, always, deny])
         card.addArrangedSubview(buttons)
+        let width = buttons.widthAnchor.constraint(
+            equalTo: card.widthAnchor, constant: -(card.edgeInsets.left + card.edgeInsets.right))
+        width.priority = .init(900)
+        width.isActive = true
         let spoken = "\(ActivityKind.needsApproval.spoken). \(Localized.text("Allow %@?", what))"
         return Self.group(grounded(card), spoken: spoken)
+    }
+
+    /// One of the answers a card asks for, as a chip: it is as tall as its words need at any type
+    /// size, and the flow it stands in breaks to a second line before it clips a word.
+    private static func answerChip(
+        _ title: String, accented: Bool = false, run: @escaping () -> Void
+    ) -> NSView {
+        let chip = SymbolChip()
+        chip.accented = accented
+        chip.text = title
+        chip.setAccessibilityLabel(title)
+        chip.onTap = run
+        return chip
     }
 
     /// A button's own words and, after them, the key it is on — or the words alone when the

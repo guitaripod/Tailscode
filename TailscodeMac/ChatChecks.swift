@@ -389,9 +389,9 @@ enum ChatChecks {
     }
 
     /// The claims of the chat-screen redesign that a screenshot cannot make: the failed turn has a
-    /// card and a way to send it again, the idle band says nothing, Stop is in one place, prose
-    /// the jump control reads Core, and an agent
-    /// count is the turn's witness rather than the server's record.
+    /// card and a way to send it again, the idle band says nothing, Stop is in one place, every chip
+    /// is one height, the jump control reads Core, a fan-out collapses, an answer chip wraps rather
+    /// than clips, and an agent count is the turn's witness rather than the server's record.
     private static func chrome(_ expect: (Bool, String) throws -> Void) throws {
         let asked = message("u", .user, [MessagePart(id: "p", kind: .text("Run the suite"))])
         var failed = message("a", .assistant, [MessagePart(id: "t", kind: .text("Starting"))])
@@ -483,6 +483,59 @@ enum ChatChecks {
             controller.jumpControl.frame.height == 0
                 || controller.jumpControl.frame.height >= CGFloat(ChatChrome.chip(on: .pointer).height),
             "the jump control is a chip")
+
+        let flow = StarterFlow()
+        flow.centered = false
+        let answers = (1...3).map { index -> SymbolChip in
+            let chip = SymbolChip()
+            chip.text = "Answer number \(index)"
+            chip.accented = index == 1
+            return chip
+        }
+        flow.set(answers)
+        stage(flow)
+        func lines(at width: CGFloat) -> Int {
+            flow.frame = NSRect(x: 0, y: 0, width: width, height: 0)
+            flow.layout()
+            return Set(answers.map { $0.frame.minY }).count
+        }
+        try expect(lines(at: 900) == 1, "three answers share a line when the card has room")
+        try expect(lines(at: 200) > 1, "and break onto more lines instead of clipping a word")
+        try expect(
+            answers.allSatisfy { $0.frame.height >= CGFloat(ChatChrome.chip(on: .pointer).height) },
+            "an answer chip is at least the table's height")
+
+        let held = TranscriptViewController()
+        let heldWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 600), styleMask: [.titled],
+            backing: .buffered, defer: true)
+        heldWindow.contentView = held.view
+        windows.append(heldWindow)
+        let answered = message("b", .assistant, [MessagePart(id: "t", kind: .text("Done"))])
+        let quiet = ConversationState(
+            messages: [asked, answered], status: .idle, connection: .live, hasLoadedTranscript: true)
+        held.show(state: quiet)
+        held.view.layoutSubtreeIfNeeded()
+        held.followsBottom = false
+        held.show(state: quiet)
+        let grown = message("b", .assistant, [MessagePart(id: "t", kind: .text("Done. Next"))])
+        held.show(
+            state: ConversationState(
+                messages: [asked, grown], status: .running,
+                pendingPermissions: [PermissionRequest(id: "p1", sessionID: "s", toolName: "Edit")],
+                connection: .live, hasLoadedTranscript: true))
+        try expect(
+            held.jumpControl.text == Localized.text("Needs you"),
+            "a permission that arrives while the reader is up the page says so on the jump chip (\(held.jumpControl.text))")
+        held.show(
+            state: ConversationState(
+                messages: [asked, answered], status: .running, connection: .live,
+                hasLoadedTranscript: true))
+        try expect(
+            held.jumpControl.text != Localized.text("Needs you"),
+            "and stops saying it once nothing waits")
+        heldWindow.contentView = nil
+        windows.removeAll { $0 === heldWindow }
 
         func fan(_ count: Int) -> [TranscriptRow] {
             let parts = (1...count).map {

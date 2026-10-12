@@ -19,6 +19,15 @@ final class CapsuleView: NSView {
     }
 }
 
+/// The scale a chip's glyphs and bars are drawn at: the one its words are set at, so an icon never
+/// outgrows the line beside it when the chat list and the code areas are given different sizes.
+@MainActor
+enum ChipScale {
+    static var factor: CGFloat {
+        MacTheme.UIScale.factor(for: TypeArea(role: ChatChrome.chipRole))
+    }
+}
+
 /// What a chip's ground is made of, in one place so a chip and a segmented chip cannot disagree:
 /// the theme's ink mixed into its canvas at the share `ChatChrome` names, an outline for a control,
 /// and a radius of half the height.
@@ -49,6 +58,18 @@ class ChipButton: NSButton {
     let metrics = ChatChrome.chip(on: .pointer)
 
     private var installed: NSView?
+
+    /// A decisive chip: filled with the theme's accent and its words in the ink that sits on it,
+    /// where every other chip is the canvas with a little ink mixed in.
+    var accented = false {
+        didSet {
+            guard accented != oldValue else { return }
+            needsDisplay = true
+            accentChanged()
+        }
+    }
+
+    func accentChanged() {}
 
     init(kind: ChatChrome.Kind = .control) {
         self.kind = kind
@@ -123,6 +144,9 @@ class ChipButton: NSButton {
         guard let layer else { return }
         effectiveAppearance.performAsCurrentDrawingAppearance {
             ChipGround.paint(layer, kind: kind, height: bounds.height)
+            guard accented else { return }
+            layer.backgroundColor = MacTheme.Color.accent.cgColor
+            layer.borderWidth = 0
         }
     }
 
@@ -139,6 +163,7 @@ class ChipButton: NSButton {
     @objc private func themeChanged() {
         needsDisplay = true
         invalidateIntrinsicContentSize()
+        accentChanged()
     }
 
     override var focusRingMaskBounds: NSRect { bounds }
@@ -219,7 +244,7 @@ class SymbolChip: ChipButton {
     /// the edge by the padding a word needs.
     private func fit() {
         let side = label.isHidden
-            ? max(0, (height - CGFloat(metrics.iconSize) * MacTheme.UIScale.factor) / 2)
+            ? max(0, (height - CGFloat(metrics.iconSize) * ChipScale.factor) / 2)
             : padding
         setInsets(leading: side, trailing: side)
     }
@@ -228,10 +253,12 @@ class SymbolChip: ChipButton {
     /// changes what the role is worth.
     func restyle() {
         label.font = MacTheme.Ramp.font(ChatChrome.chipRole)
-        label.textColor = MacTheme.Color.label
+        label.textColor = accented ? MacTheme.Color.onAccent : MacTheme.Color.label
         redrawIcon()
         fit()
     }
+
+    override func accentChanged() { restyle() }
 
     private func redrawIcon() {
         guard let symbol else {
@@ -242,10 +269,11 @@ class SymbolChip: ChipButton {
         }
         icon.isHidden = false
         let configuration = NSImage.SymbolConfiguration(
-            pointSize: CGFloat(metrics.iconSize) * MacTheme.UIScale.factor, weight: .medium)
+            pointSize: CGFloat(metrics.iconSize) * ChipScale.factor, weight: .medium)
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)
-        icon.contentTintColor = tone.map(\.color) ?? MacTheme.Color.secondaryLabel
+        icon.contentTintColor =
+            accented ? MacTheme.Color.onAccent : (tone.map(\.color) ?? MacTheme.Color.secondaryLabel)
         fit()
     }
 }
@@ -374,6 +402,13 @@ private final class SegmentButton: NSButton {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    override var focusRingMaskBounds: NSRect { bounds }
+
+    override func drawFocusRingMask() {
+        NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2)
+            .fill()
+    }
+
     func restyle(padding: CGFloat) {
         self.padding = padding
         attributedTitle = NSAttributedString(
@@ -399,6 +434,8 @@ private final class SegmentButton: NSButton {
 /// laid out rather than asking for an intrinsic one.
 @MainActor
 final class StarterFlow: NSView {
+    /// Whether each line is centred in the width it has or starts at its leading edge.
+    var centered = true
     private var chips: [NSView] = []
     private let spacing = CGFloat(ChatChrome.chip(on: .pointer).spacing)
     private lazy var tall = heightAnchor.constraint(equalToConstant: 0)
@@ -428,7 +465,11 @@ final class StarterFlow: NSView {
     }
 
     private func place() -> CGFloat {
-        let sizes = chips.map { $0.fittingSize }
+        let room = bounds.width
+        let sizes = chips.map { chip -> NSSize in
+            let natural = chip.fittingSize
+            return room > 0 ? NSSize(width: min(natural.width, room), height: natural.height) : natural
+        }
         var lines: [[Int]] = [[]]
         var used: CGFloat = 0
         for index in sizes.indices {
@@ -446,7 +487,7 @@ final class StarterFlow: NSView {
         for line in lines where !line.isEmpty {
             let total = line.reduce(CGFloat(0)) { $0 + sizes[$1].width }
                 + spacing * CGFloat(line.count - 1)
-            var x = max(0, (bounds.width - total) / 2)
+            var x = centered ? max(0, (bounds.width - total) / 2) : 0
             let rowHeight = line.map { sizes[$0].height }.max() ?? 0
             for index in line {
                 chips[index].frame = NSRect(

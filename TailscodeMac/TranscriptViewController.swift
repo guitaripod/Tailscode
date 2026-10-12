@@ -82,11 +82,6 @@ final class TranscriptViewController: NSViewController {
     /// area is a content inset, so the transcript scrolls under the glass bar; with a strip it is
     /// the strip's foot, so no line of the conversation ever runs under the pane's name.
     private var scrollTop: NSLayoutConstraint!
-    private lazy var starterWidth: NSLayoutConstraint = {
-        let width = starters.widthAnchor.constraint(equalToConstant: 520)
-        width.priority = .init(740)
-        return width
-    }()
     /// What a slot took off the screen when it claimed the pane, so putting a conversation back
     /// shows exactly what was showing. Half this chrome owns its own visibility — an empty
     /// completion popover, a find bar nobody opened — and unhiding it wholesale reveals it.
@@ -373,7 +368,7 @@ final class TranscriptViewController: NSViewController {
             starters.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             starters.widthAnchor.constraint(
                 lessThanOrEqualTo: container.widthAnchor, constant: -MacTheme.Spacing.xl * 2),
-            starterWidth,
+            fillWidth(of: starters, in: container),
 
             chooserView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             chooserView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
@@ -1515,6 +1510,9 @@ final class TranscriptViewController: NSViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(chatDensityChanged), name: ChatDensitySetting.didChange,
             object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(shortcutsReloaded), name: MainWindowController.shortcutsDidReload,
+            object: nil)
 
         pendingStack.spacing = MacTheme.Spacing.s
         pendingStack.translatesAutoresizingMaskIntoConstraints = false
@@ -1662,6 +1660,12 @@ final class TranscriptViewController: NSViewController {
 
     /// The control, for a harness that proves what it says.
     var jumpControl: SymbolChip { jumpChip }
+
+    /// A state drawn as though the conversation had just emitted it, for a harness that has no
+    /// server to emit one.
+    func show(state: ConversationState) {
+        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+    }
 
     func refreshJumpReading() { applyJumpReading() }
 
@@ -2786,9 +2790,17 @@ final class TranscriptViewController: NSViewController {
         NSAccessibility.post(
             element: NSApp as Any, notification: .announcementRequested,
             userInfo: [
-                .announcement: text,
+                .announcement: announcement(saying: text),
                 .priority: NSAccessibilityPriorityLevel.high.rawValue,
             ])
+    }
+
+    /// With several panes on screen the words alone do not say whose they are, so the chat's title
+    /// leads them; a lone pane has nothing to tell apart and says the words.
+    private func announcement(saying text: String) -> String {
+        guard identityStrip?.isHidden == false else { return text }
+        let title = identityLabel.stringValue
+        return title.isEmpty ? text : "\(title). \(text)"
     }
 
     private static func toolStatuses(_ rows: [TranscriptRow]) -> [String: ToolStatus] {
@@ -3242,6 +3254,15 @@ final class TranscriptViewController: NSViewController {
     private func dismissChooser() {
         chooser = nil
         chooserView.isHidden = true
+    }
+
+    /// A flow of chips is as wide as the pane lets it be, so a wide window holds the starters on a
+    /// line or two and a narrow one breaks them, rather than a width chosen once for every window.
+    private func fillWidth(of view: NSView, in container: NSView) -> NSLayoutConstraint {
+        let width = view.widthAnchor.constraint(
+            equalTo: container.widthAnchor, constant: -MacTheme.Spacing.xl * 2)
+        width.priority = .init(740)
+        return width
     }
 
     private func hideEmptyState() {
@@ -4357,6 +4378,7 @@ final class TranscriptViewController: NSViewController {
                     })
             }
         }
+        syncJumpPill()
         if followsBottom { schedulePinCorrector() }
     }
 
@@ -4427,6 +4449,14 @@ final class TranscriptViewController: NSViewController {
             self.context.subagentRows[callID] = rows
             self.replaceRows { $0.kind.spawnedCalls.contains { $0.id == callID } }
         }
+    }
+
+    /// The keys a card's buttons name are read when the card is made, so a rebinding made while one
+    /// is up draws it again from the live set rather than leaving the old keys on it.
+    @objc private func shortcutsReloaded() {
+        guard let state = lastState else { return }
+        pendingSignature = "\u{0}"
+        renderPendingCards(state)
     }
 
     /// Following is a decision, not a measurement: the intent is held here and re-applied

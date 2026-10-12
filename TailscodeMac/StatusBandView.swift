@@ -16,7 +16,14 @@ final class StatusBandView: NSView {
 
     /// The band is one chip tall and every control in it is as tall as the band, so the whole strip
     /// answers a press rather than the thirteen points its words occupy.
-    fileprivate static let height = CGFloat(ChatChrome.chip(on: .pointer).height)
+    fileprivate static var height: CGFloat {
+        let font = MacTheme.Ramp.font(.segment)
+        let line = ceil(font.ascender - font.descender + font.leading + 8)
+        return max(CGFloat(ChatChrome.chip(on: .pointer).height), line)
+    }
+
+    private lazy var minimumHeight = stack.heightAnchor.constraint(
+        greaterThanOrEqualToConstant: Self.height)
 
     private let stack = NSStackView()
     private let noticeLabel = NSTextField(labelWithString: "")
@@ -43,7 +50,7 @@ final class StatusBandView: NSView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.height),
+            minimumHeight,
         ])
 
         noticeLabel.font = MacTheme.Ramp.font(.segment)
@@ -110,6 +117,7 @@ final class StatusBandView: NSView {
 
         noticeLabel.font = MacTheme.Ramp.font(.segment)
         noticeLabel.textColor = MacTheme.Color.onGlassSecondary
+        minimumHeight.constant = Self.height
         noticeLabel.stringValue = notice ?? ""
         noticeLabel.isHidden = notice?.isEmpty != false
         hasContent = !segments.isEmpty || notice?.isEmpty == false

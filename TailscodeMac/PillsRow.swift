@@ -82,6 +82,7 @@ final class PillsRow: NSView {
             "The model the next prompt runs on and how hard it thinks — scroll to step the effort")
         commandPill.rows = { [weak self] in self?.commandRows?() ?? [] }
         commandPill.toolTip = Localized.text("Slash commands")
+        commandPill.setAccessibilityLabel(Localized.text("Slash commands"))
 
         attachButton.rows = { [weak self] in self?.attachRows?() ?? [] }
         attachButton.setAccessibilityLabel(Localized.text("Attach files"))
@@ -701,7 +702,7 @@ final class EffortMeterView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {
-        let scale = MacTheme.UIScale.factor
+        let scale = ChipScale.factor
         let bars = CGFloat(EffortMeter.bars)
         return NSSize(
             width: (bars * barWidth + (bars - 1) * gap) * scale + Self.glowInset * 2,
@@ -726,7 +727,7 @@ final class EffortMeterView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let scale = MacTheme.UIScale.factor
+        let scale = ChipScale.factor
         let width = barWidth * scale
         let step = (barWidth + gap) * scale
         let floor = Self.verticalInset
