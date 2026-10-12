@@ -22,6 +22,9 @@ final class MacReviewPrompt {
     /// Every activation re-checks the pure policy: a success recorded while the app was not the
     /// active one still gets asked about once someone is here to see the sheet.
     func appDidBecomeActive() {
+        #if DEBUG
+            guard !LiveShot.holdsBack("review prompt") else { return }
+        #endif
         guard ReviewPromptPolicy.isDue() else { return }
         scheduleAsk()
     }

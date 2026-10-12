@@ -29,13 +29,19 @@ enum MacCLI {
           TailscodeMac --version
         """
 
-    static let knownOptions: Set<String> = [
-        "--selftest", "--connect", "--password", "--name", "--opencode", "--omp", "--demo",
-        "--shot", "--shot-delay", "--shot-size", "--shot-scale", "--shot-chrome", "--tree",
-        "--tree-constraints", "--open",
-        "--bench", "--bench-tiles", "--legacy", "--canvas", "--counts", "--flight", "--version",
-        "--help", "-h",
-    ]
+    static let knownOptions: Set<String> = {
+        var options: Set<String> = [
+            "--selftest", "--connect", "--password", "--name", "--opencode", "--omp", "--demo",
+            "--shot", "--shot-delay", "--shot-size", "--shot-scale", "--shot-chrome", "--tree",
+            "--tree-constraints", "--open",
+            "--bench", "--bench-tiles", "--legacy", "--canvas", "--counts", "--flight", "--version",
+            "--help", "-h",
+        ]
+        #if DEBUG
+            options.insert("--shot-live")
+        #endif
+        return options
+    }()
 
     /// Whether an argument is a flag this CLI was never taught. A single dash and a capital —
     /// `-AppleLanguages (de)`, `-NSDocumentRevisionsDebugMode YES` — is a default for AppKit's own

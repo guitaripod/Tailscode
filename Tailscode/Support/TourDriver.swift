@@ -1,4 +1,5 @@
 #if DEBUG
+    import TailscodeCore
     import UIKit
 
     /// A touch-free walkthrough of the demo world, so the launch film is a scripted
@@ -38,6 +39,27 @@
             let driver = TourDriver(window: window)
             running = driver
             Task { await driver.preview() }
+        }
+
+        /// Opens the Live Activity the preview's first seconds are filmed from. The card is the
+        /// app's real one, started and written through `AppActivityController` for the demo's
+        /// approval chat; the script that films it locks the simulator, then drops a file into
+        /// `TAILSCODE_CUE_DIR` when the card should ask, so the Lock Screen is a recording of one
+        /// real card ticking and then asking, with no server behind it. A card can only be started
+        /// while the app is in front, so it is started before the lock and only written after it.
+        /// Every card an earlier take left standing is taken down first.
+        static func startLockWalk(in window: UIWindow) {
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.lockWalk() }
+        }
+
+        /// The board across both machines, moved the way the preview's camera moves it: the projects
+        /// rail slid to the second machine's folders and the list eased down, with nothing typed.
+        static func startBoardWalk(in window: UIWindow) {
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.boardWalk() }
         }
 
         /// Walks the composer through every state `/` can put it in, holding each one long enough
@@ -400,6 +422,55 @@
             await hold(0.4)
             await popToHome(hold: 1.0)
             AppLogger.ui.info("cardwalk: away from \(session)")
+        }
+
+        private func boardWalk() async {
+            home?.tourResetBoard(seenAge: 300_000)
+            await hold(1.8)
+            await glideX(home?.tourProjectsRail, by: 170, duration: 1.4)
+            await hold(0.5)
+            await glide(home?.tourScrollView, by: 330, duration: 1.8)
+            await hold(2.0)
+            AppLogger.ui.info("boardwalk: settled")
+        }
+
+        private func lockWalk() async {
+            let environment = ProcessInfo.processInfo.environment
+            let session = environment["TAILSCODE_LOCK_SESSION"] ?? "demo-c3"
+            let title = "Dark mode for the settings screen"
+            let begun = Date()
+            let task = UIApplication.shared.beginBackgroundTask(withName: "lockwalk")
+            await hold(1.2)
+            AppActivityController.shared.withdrawAll()
+            await hold(0.8)
+            AppActivityController.shared.start(
+                sessionID: session, sessionTitle: title, serverName: "studio")
+            await hold(3.0)
+            AppActivityController.shared.update(
+                sessionID: session,
+                reading: LiveActivityReading(
+                    detail: .tool, tool: "Read", toolCount: 6, startedAt: begun),
+                title: title)
+            AppLogger.ui.info("lockwalk: working for \(session)")
+            await awaitCue("approval")
+            AppActivityController.shared.update(
+                sessionID: session,
+                reading: LiveActivityReading(
+                    detail: .approval, tool: "Edit", toolCount: 7, startedAt: begun),
+                title: title)
+            AppLogger.ui.info("lockwalk: asking for \(session)")
+            await awaitCue("end")
+            UIApplication.shared.endBackgroundTask(task)
+        }
+
+        /// Waits for the filming script to drop `name` into `TAILSCODE_CUE_DIR`, polling because
+        /// a backgrounded simulator app has no other way to hear from the host.
+        private func awaitCue(_ name: String) async {
+            guard let directory = ProcessInfo.processInfo.environment["TAILSCODE_CUE_DIR"] else { return }
+            let path = (directory as NSString).appendingPathComponent(name)
+            while !FileManager.default.fileExists(atPath: path) {
+                try? await Task.sleep(for: .milliseconds(80))
+            }
         }
 
         private func revertWalk() async {

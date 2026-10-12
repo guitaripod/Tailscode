@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 """The framed, vertical cut of the preview, for the landing page and social: 1080x1920.
 
-Same take, same score, same beats as `scripts/preview-video.py`, but where the store's preview is the
-bare screen (a store preview that is not the app is a rejection), this one is the phone: the `frames`
-CLI puts the recording in its real bezel, and each beat has the panel treatment — its own colour
-behind it and its headline, with one phrase lit — so a cut of the video and a store panel are
-recognisably one campaign.
+Where the store's preview is the bare screen (a store preview that is not the app is a rejection),
+this one is the phone: the `frames` CLI puts the store cut in its real bezel on the campaign's ink
+ground, and each beat has the panel treatment — a claim of six words or fewer, one phrase lit in the
+amber — so a cut of the video and a store panel read as one campaign. It is never uploaded to the
+store.
 
-  scripts/promo-video.py <clean-take.mp4> [out.mp4]
+  scripts/promo-video.py --rec <folder of .mov takes> [--store <store-cut.mp4>] [--out out.mp4]
 
-`<clean-take.mp4>` is the take trimmed to the preview's start and length with no captions on it.
+The picture is the preview's own cut re-rendered at the phone's native 1320x2868 (the `frames` CLI picks
+the bezel from the screen's size) and framed; the sound is the store cut's. The claims and when they
+show are in marketing/video/preview.json.
 """
+import argparse
 import importlib.util
 import json
 import os
 import subprocess
 import sys
+import shutil
 import tempfile
 
 import AppKit
@@ -23,82 +27,95 @@ from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FFMPEG = "/opt/homebrew/bin/ffmpeg"
+FFPROBE = "/opt/homebrew/bin/ffprobe"
 W, H = 1080, 1920
+INK = (11, 13, 17)
+AMBER = (255, 181, 71)
+HEADLINE = (250, 244, 235)
+PHONE_HEIGHT = 1510
+PHONE_TOP = 392
+CROSSFADE = 0.3
 
 spec = importlib.util.spec_from_file_location("compose", os.path.join(ROOT, "scripts/market-compose.py"))
 compose = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(compose)
 
-BEATS = [
-    ("Every machine,\none board", "one board", "#546BFF", 0.0, 4.6),
-    ("Send a task in\none sentence", "one sentence", "#A855F7", 4.6, 8.4),
-    ("Watch it\nwork, live", "work, live", "#30D158", 8.4, 14.6),
-    ("Set how hard\nit thinks", "how hard", "#A855F7", 14.6, 17.8),
-    ("Approve it from\nanywhere", "anywhere", "#FFB020", 17.8, 23.2),
-    ("Know your limits\nbefore you hit them", "before you hit them", "#FF7A29", 23.2, 29.4),
-]
+
+def ground_png(path):
+    """The one ground the whole cut sits on: ink, with the amber pooled faintly where the claim is and
+    a lifted patch behind the phone so its bezel has something to be seen against."""
+    canvas = Image.new("RGB", (W, H), INK)
+    compose.glow(canvas, (round(W * 0.1), -240), 800, 15, AMBER)
+    compose.glow(canvas, (round(W * 0.5), round(H * 0.66)), 820, 22, (40, 48, 70))
+    canvas.save(path)
 
 
-def headline_png(text, highlight, accent, path):
+def headline_png(text, highlight, path):
+    """One claim as a transparent full-frame PNG: warm white, with the lit phrase in amber."""
     image = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    lit = compose.mix(accent, (255, 255, 255), 0.30)
-    block = compose.fitted(text, 108, AppKit.NSFontWeightBold, compose.HEADLINE_INK, W - 160, "left", 0.98, 2,
+    lit = AMBER
+    block = compose.fitted(text, 104, AppKit.NSFontWeightBold, HEADLINE, W - 160, "left", 0.98, 2,
                            highlight, lit, kern=-1.8, floor=64)
-    image.paste(block, (80, 120), block)
+    image.paste(block, (80, 96), block)
     image.save(path)
 
 
-def main():
-    clean = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, "marketing/video/tailscode-promo-1080x1920.mp4")
-    with open(os.path.join(ROOT, "marketing/video/preview.json")) as f:
-        length = json.load(f)["duration"]
-    work = tempfile.mkdtemp(prefix="tailscode-promo-")
-    score = os.path.join(work, "score.wav")
-    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/preview-score.py"), score, str(length)], check=True)
-    framed_dir = os.path.join(work, "framed")
-    os.makedirs(framed_dir)
-    subprocess.run(["frames", "video", clean, "--color", "Silver", "--background", "transparent",
-                    "--codec", "prores", "--alpha", "--strip-audio", "-o", framed_dir], check=True)
-    framed = os.path.join(framed_dir, sorted(os.listdir(framed_dir))[0])
+def duration(path):
+    out = subprocess.run([FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                         capture_output=True, text=True, check=True)
+    return float(out.stdout.strip())
 
-    inputs, filters = [], []
+
+def frame_phone(clean, work):
+    environment = dict(os.environ, PATH="/opt/homebrew/bin:" + os.environ.get("PATH", ""))
+    folder = os.path.join(work, "framed")
+    os.makedirs(folder)
+    subprocess.run(["frames", "video", clean, "--color", "Silver", "--background", "transparent",
+                    "--codec", "prores", "--alpha", "--strip-audio", "-o", folder], check=True, env=environment)
+    return os.path.join(folder, sorted(os.listdir(folder))[0])
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rec", required=True)
+    parser.add_argument("--store", default=os.path.join(ROOT, "marketing/video/tailscode-preview-886x1920.mp4"))
+    parser.add_argument("--out", default=os.path.join(ROOT, "marketing/video/tailscode-promo-1080x1920.mp4"))
+    args = parser.parse_args()
+    clean, out = args.store, args.out
+    with open(os.path.join(ROOT, "marketing/video/preview.json")) as f:
+        claims = json.load(f)["captions"]
+    length = duration(clean)
+    work = tempfile.mkdtemp(prefix="tailscode-promo-")
+    native = os.path.join(work, "native.mp4")
+    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/preview-video.py"), "--rec", args.rec, "--out", native,
+                    "--poster", "", "--size", "1320x2868", "--silent"], check=True)
+    framed = frame_phone(native, work)
+
+    ground = os.path.join(work, "ground.png")
+    ground_png(ground)
+    inputs = ["-loop", "1", "-t", f"{length:.3f}", "-i", ground]
+    filters = ["[0:v]format=rgba[base]"]
     last = "base"
-    filters.append(f"color=c=0x0a0b10:s={W}x{H}:r=30:d={length}[base]")
-    index = 0
-    for number, (text, highlight, accent_hex, start, end) in enumerate(BEATS):
-        accent = compose.hexc(accent_hex)
-        ground = compose.backdrop(W, H, accent).convert("RGB")
-        ground_path = os.path.join(work, f"ground{number}.png")
-        ground.save(ground_path)
-        inputs += ["-loop", "1", "-t", str(length), "-i", ground_path]
-        fade = f"fade=t=in:st={start}:d=0.7:alpha=1" if number else "null"
-        filters.append(f"[{index}:v]format=rgba,{fade}[g{number}]")
-        filters.append(f"[{last}][g{number}]overlay=0:0:eof_action=pass:format=auto[b{number}]")
-        last = f"b{number}"
-        index += 1
-    for number, (text, highlight, accent_hex, start, end) in enumerate(BEATS):
+    for number, claim in enumerate(claims, start=1):
         path = os.path.join(work, f"head{number}.png")
-        headline_png(text, highlight, compose.hexc(accent_hex), path)
-        inputs += ["-loop", "1", "-t", str(length), "-i", path]
-        fade_in = f"fade=t=in:st={start + 0.1}:d=0.4:alpha=1"
-        fade_out = f",fade=t=out:st={end - 0.4}:d=0.4:alpha=1" if number < len(BEATS) - 1 else ""
-        filters.append(f"[{index}:v]format=rgba,{fade_in}{fade_out}[h{number}]")
+        headline_png(claim["text"], claim.get("highlight"), path)
+        inputs += ["-loop", "1", "-t", f"{length:.3f}", "-i", path]
+        start, end = claim["start"], claim["end"]
+        fade_out = f",fade=t=out:st={end - CROSSFADE:.2f}:d={CROSSFADE}:alpha=1" if end < length - 0.05 else ""
+        fade_in = f"fade=t=in:st={start:.2f}:d={CROSSFADE}:alpha=1" if start > 0.05 else "null"
+        filters.append(f"[{number}:v]format=rgba,{fade_in}{fade_out}[h{number}]")
         filters.append(f"[{last}][h{number}]overlay=0:0:eof_action=pass:format=auto[t{number}]")
         last = f"t{number}"
-        index += 1
-    inputs += ["-i", framed]
-    device = index
-    index += 1
-    filters.append(f"[{device}:v]scale=-1:1500:flags=lanczos,format=rgba[phone]")
-    filters.append(f"[{last}][phone]overlay=(W-w)/2:380:eof_action=pass:format=auto,fade=t=out:st={length - 0.6}:d=0.6[v]")
-    inputs += ["-i", score]
-    filters.append(f"[{index}:a]loudnorm=I=-16:TP=-1.5:LRA=9,afade=t=out:st={length - 1.2}:d=1.2,aresample=48000[a]")
+    inputs += ["-i", framed, "-i", clean]
+    device, sound = len(claims) + 1, len(claims) + 2
+    filters.append(f"[{device}:v]scale=-1:{PHONE_HEIGHT}:flags=lanczos,format=rgba[phone]")
+    filters.append(f"[{last}][phone]overlay=(W-w)/2:{PHONE_TOP}:eof_action=pass:format=auto,format=yuv420p[v]")
     command = [FFMPEG, "-y", "-v", "error", *inputs, "-filter_complex", ";".join(filters),
-               "-map", "[v]", "-map", "[a]", "-t", str(length),
-               "-c:v", "libx264", "-profile:v", "high", "-crf", "18", "-preset", "slow", "-r", "30",
-               "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "256k", "-ac", "2", "-movflags", "+faststart", out]
+               "-map", "[v]", "-map", f"{sound}:a", "-t", f"{length:.3f}",
+               "-c:v", "libx264", "-profile:v", "high", "-crf", "17", "-preset", "slow", "-r", "30",
+               "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", out]
     subprocess.run(command, check=True)
+    shutil.rmtree(work, ignore_errors=True)
     print(out)
 
 

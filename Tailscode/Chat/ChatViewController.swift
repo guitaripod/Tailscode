@@ -421,6 +421,11 @@ final class ChatViewController: UIViewController {
                     try? await Task.sleep(for: .seconds(3))
                     guard let self else { return }
                     self.presentGit()
+                    if ProcessInfo.processInfo.environment["TAILSCODE_GIT_LARGE"] != nil {
+                        let sheet = (self.presentedViewController as? UINavigationController)?
+                            .sheetPresentationController
+                        sheet?.animateChanges { sheet?.selectedDetentIdentifier = .large }
+                    }
                     guard hook == "diff" || hook == "commit" else { return }
                     try? await Task.sleep(for: .seconds(2))
                     let beside = self.workspace?.inspector.navigation.viewControllers.first

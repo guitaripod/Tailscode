@@ -68,6 +68,9 @@ final class MacUpdateWatch {
     /// than believing the last thing this process wrote down before it quit.
     func start() {
         guard !started else { return }
+        #if DEBUG
+            guard !LiveShot.holdsBack("update checks") else { return }
+        #endif
         started = true
         relays = [UpdateLedger.didChange, UpdateDriver.didChange].map { name in
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in

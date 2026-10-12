@@ -44,6 +44,15 @@ struct TailnetStatusMac: Sendable {
     static let downloadPage = "https://tailscale.com/download/mac"
 
     static func read() -> TailnetStatusMac {
+        #if DEBUG
+            if CommandLine.arguments.contains("--shot-live") {
+                let staged = "100.101.102.103"
+                return TailnetStatusMac(
+                    address: staged,
+                    reading: TailscaleReading.read(
+                        found: true, sandboxed: false, backendState: "Running", address: staged))
+            }
+        #endif
         let onInterface = localAddress()
         let answer = runTailscale()
         guard let data = answer.output,

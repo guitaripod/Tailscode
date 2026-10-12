@@ -108,6 +108,13 @@ final class AppCoordinator: NSObject {
             if CommandLine.arguments.contains("--preview-tour") {
                 TourDriver.startPreview(in: window)
             }
+            LockScreenShot.startIfAsked()
+            if CommandLine.arguments.contains("--lockwalk") {
+                TourDriver.startLockWalk(in: window)
+            }
+            if CommandLine.arguments.contains("--boardwalk") {
+                TourDriver.startBoardWalk(in: window)
+            }
             if CommandLine.arguments.contains("--slashwalk") {
                 TourDriver.startSlashWalk(in: window)
             }

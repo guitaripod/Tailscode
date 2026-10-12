@@ -906,6 +906,9 @@ final class QuickAskPanel: NSPanel {
     private static func detectClipboard()
         -> (holding: QuickAskClipboardHolding, fingerprint: String)?
     {
+        #if DEBUG
+            if CommandLine.arguments.contains("--shot-live") { return nil }
+        #endif
         let pasteboard = NSPasteboard.general
         let types = pasteboard.types ?? []
         let holding: QuickAskClipboardHolding

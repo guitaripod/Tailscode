@@ -13,3 +13,7 @@ LAUNCH.md
 __pycache__/
 TailscodeMac/Info.plist
 .asc/
+
+marketing/appstore/l10n/
+marketing/appstore/mac-masters/*/
+!marketing/appstore/mac-masters/en-US/

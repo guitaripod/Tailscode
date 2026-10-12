@@ -1,91 +1,128 @@
 #!/usr/bin/env python3
-"""Cut the App Store app preview from a screen take of the app's own `--preview-tour`.
+"""Cut the App Store app preview from plain simulator recordings of the app.
 
-`scripts/film-capture.sh` records the thirty-second scripted tour off a dedicated simulator
-(`TOUR_ARG=--preview-tour`). This trims it to the first frame of the app, scales it to the store's
-886x1920 portrait size at 30 fps, lays a few words over each beat — set in the system face, on a
-dark capsule, near the top where nothing the viewer needs to read is — scores it with
-`scripts/preview-score.py` and writes an H.264/AAC file the store accepts: at most thirty seconds, an
-audio track (the store requires one), faststart.
+A store preview is the app and nothing else: no frame, no caption, no overlay, no hand. This joins
+the takes named in marketing/video/preview.json into one 886x1920, 30 fps, H.264 file of at most
+thirty seconds, with an original quiet bed under it (written from sine tones, so nobody owns it),
+and writes the poster frame beside it. Segments that belong to different takes dissolve into each
+other for `dissolve` seconds; a segment marked `"cut": true` joins the one before it without a
+dissolve, for two moments of one continuous take.
 
-The captions and the cut points are in marketing/video/preview.json, because they are written against
-one specific take and move when the take does.
+  scripts/preview-video.py --rec <folder of .mov takes> [--out out.mp4] [--poster poster.png]
 
-  scripts/preview-video.py <take.mov> [out.mp4]
+A simulator recording only writes a frame when the screen changes, so a still stretch has no frames
+to seek to; each take is therefore made constant-rate first and the segment trimmed from that.
+
+The cut points are in marketing/video/preview.json, because they are written against one specific
+set of takes and move when the takes do.
 """
-import importlib.util
+import argparse
 import json
 import os
 import subprocess
 import sys
-import tempfile
-
-from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FFMPEG = "/opt/homebrew/bin/ffmpeg"
 CONFIG = os.path.join(ROOT, "marketing/video/preview.json")
-W, H = 886, 1920
+STORE_LIMIT = 30.0
+CHORDS = {
+    "am": (110, 164.81, 196, 261.63),
+    "cmaj": (130.81, 196, 261.63, 329.63),
+    "dm": (146.83, 220, 261.63, 329.63),
+    "fmaj": (87.31, 130.81, 174.61, 220),
+    "em": (82.41, 123.47, 164.81, 246.94),
+    "gmaj": (98, 146.83, 196, 246.94),
+}
+GAINS = (0.5, 0.35, 0.3, 0.2)
+TREMOLO = (0.2, 0.2, 0.13, 0.1)
 
-spec = importlib.util.spec_from_file_location("compose", os.path.join(ROOT, "scripts/market-compose.py"))
-compose = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(compose)
-import AppKit  # noqa: E402
+
+def arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rec", required=True)
+    parser.add_argument("--out", default=os.path.join(ROOT, "marketing/video/tailscode-preview-886x1920.mp4"))
+    parser.add_argument("--poster", default=os.path.join(ROOT, "marketing/video/tailscode-preview-poster.png"))
+    parser.add_argument("--size", help="output size instead of the one in the config, e.g. 1320x2868")
+    parser.add_argument("--silent", action="store_true", help="write the picture alone, with no sound bed")
+    return parser.parse_args()
 
 
-def caption_image(text, accent, path, top=250):
-    """One caption as a transparent full-frame PNG: the words on a dark capsule with a hairline in the
-    beat's colour, centred, near the top."""
-    words = compose.render_text(text, 52, AppKit.NSFontWeightBold, (255, 255, 255), 760, "center", 1.0)
-    box = words.getbbox()
-    words = words.crop(box)
-    pad_x, pad_y = 46, 26
-    width, height = words.width + pad_x * 2, words.height + pad_y * 2
-    pill = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(pill)
-    draw.rounded_rectangle([0, 0, width - 1, height - 1], radius=height // 2, fill=(12, 14, 22, 232))
-    draw.rounded_rectangle([0, 0, width - 1, height - 1], radius=height // 2,
-                           outline=compose.mix(accent, (255, 255, 255), 0.25) + (210,), width=3)
-    pill.paste(words, (pad_x, pad_y), words)
-    frame = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    frame.paste(pill, ((W - width) // 2, top), pill)
-    frame.save(path)
+def timeline(segments, dissolve):
+    """The output second each segment starts at and the total length, given how they overlap."""
+    starts, cursor = [], 0.0
+    for index, segment in enumerate(segments):
+        length = segment["dur"] / segment.get("speed", 1.0)
+        if index and not segment.get("cut"):
+            cursor -= dissolve
+        starts.append(cursor)
+        cursor += length
+    return starts, cursor
+
+
+def video_graph(segments, size, dissolve):
+    width, height = size.split("x")
+    filters = []
+    for index, segment in enumerate(segments):
+        speed = segment.get("speed", 1.0)
+        filters.append(
+            f"[{index}:v]fps=30,trim=start={segment['t0']}:duration={segment['dur']},"
+            f"setpts=(PTS-STARTPTS)/{speed},scale={width}:{height}:flags=lanczos,format=yuv420p,setsar=1[v{index}]")
+    label, elapsed = "v0", segments[0]["dur"] / segments[0].get("speed", 1.0)
+    for index in range(1, len(segments)):
+        segment = segments[index]
+        length = segment["dur"] / segment.get("speed", 1.0)
+        if segment.get("cut"):
+            filters.append(f"[{label}][v{index}]concat=n=2:v=1:a=0,fps=30,settb=1/30[x{index}]")
+            elapsed += length
+        else:
+            filters.append(
+                f"[{label}][v{index}]xfade=transition=fade:duration={dissolve}:offset={elapsed - dissolve:.3f}"
+                f"[x{index}]")
+            elapsed += length - dissolve
+        label = f"x{index}"
+    return filters, label
+
+
+def bed_graph(first_input, chord, total):
+    parts = [f"[{first_input + k}:a]volume={GAINS[k]},tremolo=f={TREMOLO[k]}:d=0.45[a{k}]" for k in range(4)]
+    chain = (
+        "[a0][a1][a2][a3]amix=inputs=4:normalize=0,lowpass=f=900,aecho=0.8:0.7:420|700:0.35|0.25,"
+        "pan=stereo|c0=c0|c1=c0,volume=3.2,alimiter=limit=0.8:level=disabled,"
+        f"afade=t=in:d=1.5,afade=t=out:st={total - 2:.2f}:d=2[aout]")
+    return parts + [chain], CHORDS[chord]
 
 
 def main():
-    take = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, "marketing/video/tailscode-preview-886x1920.mp4")
+    args = arguments()
     with open(CONFIG) as f:
         config = json.load(f)
-    start, length = config["start"], config["duration"]
-    score = os.path.join(tempfile.gettempdir(), "tailscode-score.wav")
-    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/preview-score.py"), score, str(length)], check=True)
-
-    work = tempfile.mkdtemp(prefix="tailscode-preview-")
-    inputs = ["-ss", str(start), "-t", str(length), "-i", take]
-    filters = [f"[0:v]setpts=PTS-STARTPTS,scale={W}:{H}:flags=lanczos,fps=30,format=yuv420p[base]"]
-    last = "base"
-    for index, cap in enumerate(config["captions"], start=1):
-        png = os.path.join(work, f"cap{index}.png")
-        caption_image(cap["text"], compose.hexc(cap["accent"]), png, cap.get("top", 250))
-        inputs += ["-loop", "1", "-t", str(length), "-i", png]
-        a, b = cap["start"], cap["end"]
-        filters.append(
-            f"[{index}:v]format=rgba,fade=t=in:st={a}:d=0.3:alpha=1,fade=t=out:st={b - 0.3}:d=0.3:alpha=1[c{index}]")
-        filters.append(f"[{last}][c{index}]overlay=0:0:eof_action=pass:format=auto[o{index}]")
-        last = f"o{index}"
-    filters.append(f"[{last}]fade=t=out:st={length - 0.6}:d=0.6[v]")
-    audio_index = len(config["captions"]) + 1
-    inputs += ["-i", score]
-    filters.append(
-        f"[{audio_index}:a]loudnorm=I=-16:TP=-1.5:LRA=9,afade=t=out:st={length - 1.2}:d=1.2,aresample=48000[a]")
-    command = [FFMPEG, "-y", "-v", "error", *inputs, "-filter_complex", ";".join(filters),
-               "-map", "[v]", "-map", "[a]", "-t", str(length),
-               "-c:v", "libx264", "-profile:v", "high", "-level", "4.2", "-crf", "17", "-preset", "slow",
-               "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "256k", "-ac", "2",
-               "-movflags", "+faststart", out]
+    segments = config["segments"]
+    size = args.size or config.get("size", "886x1920")
+    dissolve = config.get("dissolve", 0.3)
+    starts, total = timeline(segments, dissolve)
+    if total > STORE_LIMIT:
+        sys.exit(f"preview-video.py: {total:.2f}s is over the {STORE_LIMIT:.0f}s App Store limit")
+    command = [FFMPEG, "-v", "error", "-y"]
+    for segment in segments:
+        command += ["-i", os.path.join(args.rec, segment["clip"])]
+    filters, label = video_graph(segments, size, dissolve)
+    if args.silent:
+        command += ["-filter_complex", ";".join(filters), "-map", f"[{label}]", "-an"]
+    else:
+        audio_filters, tones = bed_graph(len(segments), config.get("chord", "gmaj"), total)
+        for frequency in tones:
+            command += ["-f", "lavfi", "-t", f"{total:.3f}", "-i", f"sine=frequency={frequency}:sample_rate=48000"]
+        command += ["-filter_complex", ";".join(filters + audio_filters), "-map", f"[{label}]", "-map", "[aout]",
+                    "-c:a", "aac", "-b:a", "256k", "-ar", "48000"]
+    command += ["-t", f"{total:.3f}", "-r", "30", "-c:v", "libx264", "-profile:v", "high", "-level", "5.1" if args.silent else "4.2",
+                "-crf", "15", "-preset", "slow", "-pix_fmt", "yuv420p", "-movflags", "+faststart", args.out]
     subprocess.run(command, check=True)
-    print(out)
+    if args.poster:
+        subprocess.run([FFMPEG, "-v", "error", "-y", "-i", args.out, "-frames:v", "1", args.poster], check=True)
+    print(f"{args.out} ({total:.2f}s)")
+    for segment, start in zip(segments, starts):
+        print(f"  {start:6.2f}  {segment['clip']} @{segment['t0']} for {segment['dur']}")
 
 
 if __name__ == "__main__":

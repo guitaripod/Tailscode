@@ -30,6 +30,9 @@ final class MacGameCenter: NSObject {
 
     func start() {
         guard !started else { return }
+        #if DEBUG
+            guard !LiveShot.holdsBack("Game Center") else { return }
+        #endif
         started = true
         GKLocalPlayer.local.authenticateHandler = { viewController, error in
             Task { @MainActor in

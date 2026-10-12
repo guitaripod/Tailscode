@@ -29,6 +29,9 @@ final class MacSummon {
     private init() {}
 
     func start(onSummon: @escaping @MainActor () -> Void) {
+        #if DEBUG
+            guard !LiveShot.holdsBack("global hot key") else { return }
+        #endif
         summon = onSummon
         installHandler()
         refresh()

@@ -1,77 +1,218 @@
 {
   "iphone": [
     {
-      "master": "01-live",
-      "slug": "01-agents-in-your-pocket",
-      "headline": "코딩 에이전트,\n이제 주머니 속에",
-      "subline": "Claude Code·opencode·Oh My Pi, 폰에서",
-      "highlight": "주머니 속에"
+      "master": "lock",
+      "slug": "01-lock-screen",
+      "headline": "보내고 넣어 두면\n알림이 와요",
+      "subline": "코딩 에이전트가 잠금 화면에서 라이브로, 내 tailnet 위에서.",
+      "highlight": "알림이 와요"
     },
     {
       "master": "03-approval",
-      "slug": "02-approve-anywhere",
-      "headline": "명령 승인,\n어디서든",
+      "slug": "02-approve",
+      "headline": "위험한 명령은\n내가 승인해요",
       "subline": "한 번만 허용, 항상, 거부 — 에이전트가 기다리는 동안.",
-      "highlight": "어디서든"
-    },
-    {
-      "master": "02-dial",
-      "slug": "03-model-and-effort",
-      "headline": "모델을 고르고,\n생각의 깊이도 정하세요",
-      "subline": "모델 버튼 한 번 탭 — 고정한 즐겨찾기는 스와이프 한 번.",
-      "highlight": "생각의 깊이도"
-    },
-    {
-      "master": "07-home-ultra",
-      "slug": "04-one-board",
-      "headline": "모든 머신,\n보드 하나에",
-      "subline": "라이브 턴, 프로젝트, 안읽음 — 이미 정리됨.",
-      "highlight": "보드 하나에"
-    },
-    {
-      "master": "04-question",
-      "slug": "05-it-asks",
-      "headline": "질문이 오면,\n카드로 물어봐요",
-      "subline": "질문은 카드로 도착해요. 탭 한 번이면 답할 수 있어요.",
-      "highlight": "물어봐요"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "06-hand-off",
-      "headline": "반복 작업은\n더 저렴한 모델에게",
-      "subline": "먼저 저렴한 모델, 검증기가 판정 — 통과해야 적용.",
-      "highlight": "반복 작업"
-    },
-    {
-      "master": "08-usage",
-      "slug": "07-know-your-limits",
-      "headline": "한도에 닿기 전에\n미리 확인하세요",
-      "subline": "모든 구간을 리셋 시각과 함께, 내 머신에서 읽어와요.",
-      "highlight": "닿기 전에"
-    },
-    {
-      "master": "widgets",
-      "slug": "08-widgets",
-      "headline": "홈 화면에서\n할당량을 한눈에",
-      "subline": "제공자 색 그대로 — 잠금 화면에서도 볼 수 있어요.",
-      "highlight": "홈 화면"
-    },
-    {
-      "master": "14-analytics",
-      "slug": "09-what-it-costs",
-      "headline": "턴마다 비용을\n한눈에 보세요",
-      "subline": "날짜, 모델, 프로젝트별 지출 — 모든 머신을 합산해서.",
-      "highlight": "비용"
+      "highlight": "위험한 명령"
     },
     {
       "master": "welcome",
-      "slug": "10-private",
-      "headline": "내 tailnet 밖으로\n아무것도 나가지 않아요",
-      "subline": "계정 없음. 텔레메트리 없음. 오픈 소스.",
+      "slug": "03-private",
+      "headline": "내 tailnet 밖으로\n나가는 건 없어요",
+      "subline": "릴레이 없음. 계정 없음. 분석 없음. 오픈 소스, GPL-3.0.",
       "highlight": "tailnet"
+    },
+    {
+      "master": "07-home",
+      "slug": "04-one-board",
+      "headline": "모든 머신,\n보드 하나에",
+      "subline": "라이브 턴 먼저, 프로젝트별로, 모든 서버를 한 곳에.",
+      "highlight": "보드 하나에"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "모든 diff를\n폰에서 읽어요",
+      "subline": "브랜치, 스테이지됨, 변경됨: 실제 패치를, 그 파일을 가진 머신에서.",
+      "highlight": "모든 diff를"
+    },
+    {
+      "master": "04-question",
+      "slug": "06-it-asks",
+      "headline": "에이전트가 물으면\n내가 답해요",
+      "subline": "질문은 카드로 도착해요. 탭 한 번으로 답하세요.",
+      "highlight": "내가 답해요"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-what-it-costs",
+      "headline": "비용이 얼마인지\n바로 확인하세요",
+      "subline": "모든 턴에 가격을, 매달 합계를 모든 머신에 걸쳐.",
+      "highlight": "비용"
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-limits",
+      "headline": "한도의 벽에\n닿기 전에",
+      "subline": "제공자별 가장 빠듯한 구간과 리셋 시각을 홈 화면에서도.",
+      "highlight": "닿기 전에"
+    },
+    {
+      "master": "02-dial",
+      "slug": "09-model-and-effort",
+      "headline": "모델 선택,\n추론 강도까지",
+      "subline": "버튼 하나에 둘 다. 조합을 고정하고 스와이프로 전환.",
+      "highlight": "추론 강도까지"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "10-hand-off",
+      "headline": "반복 작업은\n맡겨 두세요",
+      "subline": "더 저렴한 모델이 먼저 시도하고, 검증기가 판정합니다. 베타.",
+      "highlight": "반복 작업"
     }
   ],
-  "ipad_headline_swap": {
-    "폰에서": "iPad에서"
-  }
+  "ipad": [
+    {
+      "master": "01-live",
+      "slug": "01-one-workspace",
+      "headline": "작업 공간 하나,\n모든 에이전트",
+      "subline": "모든 머신과 모든 대화를 대화 화면 옆에.",
+      "highlight": "모든 에이전트"
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve",
+      "headline": "목록을 보면서\n바로 승인",
+      "subline": "턴 도중에도 자리를 잃지 않고 허용하거나 거부.",
+      "highlight": "바로 승인"
+    },
+    {
+      "master": "02-work",
+      "slug": "03-agent-fanout",
+      "headline": "여러 에이전트를\n한눈에",
+      "subline": "서브에이전트는 자신을 만든 턴 안에 도킹됩니다.",
+      "highlight": "한눈에"
+    },
+    {
+      "master": "05-subagents",
+      "slug": "04-real-output",
+      "headline": "진짜 출력이\n바로 거기에",
+      "subline": "어느 에이전트의 작업이든 일어난 자리에서 엽니다.",
+      "highlight": "바로 거기에"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "diff를 먼저\n읽으세요",
+      "subline": "브랜치, 스테이지됨, 변경됨: 머신의 실제 패치.",
+      "highlight": "diff"
+    },
+    {
+      "master": "08-usage",
+      "slug": "06-limits",
+      "headline": "모든 할당량을\n벽에 닿기 전에",
+      "subline": "가장 빠듯한 구간과 리셋 시각을 내 머신에서 읽어와요.",
+      "highlight": "벽에 닿기 전에"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-the-month",
+      "headline": "한 달을\n숫자로",
+      "subline": "날짜, 모델, 프로젝트별 지출 — 모든 머신을 합산해서.",
+      "highlight": "숫자로"
+    },
+    {
+      "master": "welcome",
+      "slug": "08-private",
+      "headline": "내 tailnet 밖으로\n나가는 건 없어요",
+      "subline": "릴레이 없음. 계정 없음. 분석 없음. 오픈 소스.",
+      "highlight": "tailnet"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "09-hand-it-down",
+      "headline": "싼 모델부터\n단계별로",
+      "subline": "더 저렴한 모델이 먼저 시도하고, 검증기가 판정합니다. 베타.",
+      "highlight": "단계별로"
+    },
+    {
+      "master": "whole",
+      "slug": "10-whole-screen",
+      "headline": "화면 전체가\n하나의 작업 공간",
+      "subline": "대화 목록, 대화, 도구를 나란히.",
+      "highlight": "하나의 작업 공간"
+    }
+  ],
+  "mac": [
+    {
+      "master": "01-conversation",
+      "slug": "01-native",
+      "headline": "Mac을 위한\n네이티브 앱",
+      "subline": "Claude Code, opencode, Oh My Pi를 진짜 창에서.",
+      "highlight": "네이티브"
+    },
+    {
+      "master": "02-split",
+      "slug": "02-two-machines",
+      "headline": "머신 두 대를\n나란히",
+      "subline": "창을 나누고 구획마다 다른 서버를 연결하세요.",
+      "highlight": "나란히"
+    },
+    {
+      "master": "03-git",
+      "slug": "03-repo",
+      "headline": "저장소는 읽기만,\n건드리지 않아요",
+      "subline": "브랜치, 스테이지, 실제 diff를 그 파일을 가진 머신에서.",
+      "highlight": "건드리지 않아요"
+    },
+    {
+      "master": "04-quickask",
+      "slug": "04-one-chord",
+      "headline": "단축키 하나로\n어디서든",
+      "subline": "에이전트가 일하는 동안 어떤 앱 위에서든 질문 상자를 엽니다.",
+      "highlight": "단축키 하나로"
+    },
+    {
+      "master": "05-spend",
+      "slug": "05-priced",
+      "headline": "대화 전체에\n가격표를",
+      "subline": "돈이 어디로 갔는지: 답변, 캐시, 새 입력.",
+      "highlight": "가격표를"
+    },
+    {
+      "master": "06-analytics",
+      "slug": "06-the-month",
+      "headline": "한 달을\n숫자로",
+      "subline": "모든 대화록에 가격을, 모든 서버를 합산해서.",
+      "highlight": "숫자로"
+    },
+    {
+      "master": "07-approval",
+      "slug": "07-approve",
+      "headline": "앱을 바꾸지 않고\n바로 승인",
+      "subline": "한 번만 허용, 항상, 거부를 채팅 안에서.",
+      "highlight": "앱을 바꾸지 않고"
+    },
+    {
+      "master": "08-keyboard",
+      "slug": "08-keyboard",
+      "headline": "키보드가\n먼저",
+      "subline": "구획, 대화, 모델을 위한 단축키. vim 모드 입력창.",
+      "highlight": "키보드가"
+    },
+    {
+      "master": "09-type",
+      "slug": "09-type-size",
+      "headline": "창의 모든 부분\n글자 크기 조절",
+      "subline": "대화 목록, 내 프롬프트, 에이전트의 답변, 코드.",
+      "highlight": "모든 부분"
+    },
+    {
+      "master": "10-private",
+      "slug": "10-private",
+      "headline": "내 tailnet 밖으로\n나가는 건 없어요",
+      "subline": "릴레이 없음. 계정 없음. 분석 없음. GPL-3.0.",
+      "highlight": "tailnet"
+    }
+  ]
 }

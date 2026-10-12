@@ -577,11 +577,33 @@ final class ServersWindow: NSWindowController {
                 component: component, title: profile.name, installed: .unknown,
                 verdict: .unverified(.neverChecked), product: UpdateProduct.name(for: profile.backend))
         let snapshot = MacUpdateWatch.shared.snapshot
+        #if DEBUG
+            if remembered == nil, let settled = Self.stagedCurrent(profile) {
+                card.apply(UpdateCard(settled, acknowledged: false, busy: false))
+                return
+            }
+        #endif
         card.apply(
             UpdateCard(
                 reading, acknowledged: UpdateLedger.isAcknowledged(reading),
                 busy: remembered == nil || snapshot.isBusy(component)))
     }
+
+    #if DEBUG
+        /// A picture of this window is taken with the update checks held back, so a machine nobody has
+        /// asked would draw a spinner that never resolves; the picture shows the settled answer instead.
+        private static func stagedCurrent(_ profile: ConnectionProfile) -> UpdateReading? {
+            guard CommandLine.arguments.contains("--shot-live") else { return nil }
+            let version = profile.backend == .openCode ? "0.9.4" : "1.2.0"
+            return UpdateReading(
+                component: .server(profileID: profile.id), title: profile.name,
+                installed: VersionFact(text: version, provenance: .serverReported),
+                verdict: .current(
+                    checkedAt: Date(),
+                    against: VersionFact(text: version, provenance: .gitHubRelease)),
+                product: UpdateProduct.name(for: profile.backend))
+        }
+    #endif
 
     /// Which account this server's Claude answers as — or the warning that it answers as nobody,
     /// with the one button that fixes it from here.

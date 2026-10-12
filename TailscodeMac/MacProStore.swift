@@ -47,6 +47,9 @@ final class MacProStore {
 
     func start() {
         guard sellsPro else { return }
+        #if DEBUG
+            guard !LiveShot.holdsBack("StoreKit") else { return }
+        #endif
         updatesTask = Task { [weak self] in
             for await update in Transaction.updates {
                 if case .verified(let transaction) = update {

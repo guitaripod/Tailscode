@@ -1,107 +1,26 @@
 {
-  "01-agents-in-your-pocket": {
-    "accent": "#546BFF",
-    "device": {
-      "width": 1230
-    },
-    "callouts": []
+  "iphone": {
+    "01-lock-screen": {"crop": 0.14, "fade": 20, "device_width": 1276},
+    "02-approve": {"crop": 0.07, "fade": 26, "device_width": 1300},
+    "03-private": {"crop": 0.185, "device_width": 1500},
+    "04-one-board": {"crop": 0.07, "fade": 26, "device_width": 1300},
+    "05-read-the-diff": {"crop": 0.07, "fade": 26, "device_width": 1300},
+    "06-it-asks": {"crop": 0.07, "fade": 26, "device_width": 1300},
+    "07-what-it-costs": {"crop": 0.07, "fade": 26, "device_width": 1300},
+    "08-limits": {"crop": 0.07, "fade": 26, "device_width": 1300},
+    "09-model-and-effort": {"crop": 0.07, "fade": 26, "device_width": 1300},
+    "10-hand-off": {"crop": 0.07, "fade": 26, "device_width": 1300}
   },
-  "02-approve-anywhere": {
-    "accent": "#FFB020",
-    "device": {
-      "width": 1200
-    },
-    "callouts": []
-  },
-  "03-model-and-effort": {
-    "accent": "#A855F7",
-    "device": {},
-    "callouts": []
-  },
-  "04-one-board": {
-    "accent": "#30D158",
-    "device": {},
-    "callouts": []
-  },
-  "05-it-asks": {
-    "accent": "#32C8E6",
-    "device": {
-      "width": 1200
-    },
-    "callouts": []
-  },
-  "06-hand-off": {
-    "accent": "#FF5FA2",
-    "device": {
-      "width": 1200
-    },
-    "callouts": []
-  },
-  "07-know-your-limits": {
-    "accent": "#FF7A29",
-    "device": {
-      "width": 1200
-    },
-    "callouts": [
-      {
-        "box": [
-          0.035,
-          0.17,
-          0.72,
-          0.31
-        ],
-        "scale": 1.24,
-        "at": [
-          0.5,
-          0.481
-        ]
-      }
-    ]
-  },
-  "08-widgets": {
-    "accent": "#6E78FF",
-    "kind": "widgets"
-  },
-  "09-what-it-costs": {
-    "accent": "#3DDC97",
-    "device": {
-      "width": 1200
-    },
-    "callouts": [
-      {
-        "box": [
-          0.035,
-          0.235,
-          0.66,
-          0.329
-        ],
-        "scale": 1.45,
-        "at": [
-          0.5,
-          0.497
-        ]
-      }
-    ]
-  },
-  "10-private": {
-    "accent": "#8C98FF",
-    "device": {
-      "width": 1200
-    },
-    "callouts": [
-      {
-        "box": [
-          0.03,
-          0.425,
-          0.97,
-          0.605
-        ],
-        "scale": 0.95,
-        "at": [
-          0.5,
-          0.64
-        ]
-      }
-    ]
+  "ipad": {
+    "01-one-workspace": {"scale": 1.15, "at": [0.0, 0.0]},
+    "02-approve": {"scale": 1.85, "at": [0.46, 0.535]},
+    "03-agent-fanout": {"scale": 1.85, "at": [0.46, 0.125]},
+    "04-real-output": {"scale": 1.85, "at": [0.46, 0.285]},
+    "05-read-the-diff": {"scale": 2.0, "at": [0.1, 0.46]},
+    "06-limits": {"scale": 1.85, "at": [0.47, 0.05]},
+    "07-the-month": {"scale": 1.85, "at": [0.47, 0.13]},
+    "08-private": {"scale": 1.22, "at": [0.09, 0.085]},
+    "09-hand-it-down": {"scale": 1.85, "at": [0.47, 0.065]},
+    "10-whole-screen": {"scale": 1.1, "at": [0.045, 0.0]}
   }
 }

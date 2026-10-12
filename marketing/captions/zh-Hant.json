@@ -1,77 +1,218 @@
 {
   "iphone": [
     {
-      "master": "01-live",
-      "slug": "01-agents-in-your-pocket",
-      "headline": "你的編碼智慧體\n裝進口袋裡",
-      "subline": "Claude Code、opencode、Oh My Pi 在手機上",
-      "highlight": "口袋裡"
+      "master": "lock",
+      "slug": "01-lock-screen",
+      "headline": "發完就收進口袋\n做完它會通知",
+      "subline": "你的編碼智慧體，即時顯示在鎖定畫面上，走你自己的 tailnet。",
+      "highlight": "做完它會通知"
     },
     {
       "master": "03-approval",
-      "slug": "02-approve-anywhere",
-      "headline": "智慧體等待時\n隨時隨地核准",
-      "subline": "允許一次、一律允許或拒絕——智慧體等待時即可決定。",
-      "highlight": "隨時隨地"
-    },
-    {
-      "master": "02-dial",
-      "slug": "03-model-and-effort",
-      "headline": "選好模型\n定好思考強度",
-      "subline": "點一下模型與強度列——釘選的收藏一滑即達。",
-      "highlight": "思考強度"
-    },
-    {
-      "master": "07-home-ultra",
-      "slug": "04-one-board",
-      "headline": "每台機器\n一塊面板",
-      "subline": "即時輪次、專案、未讀——早已分類好。",
-      "highlight": "一塊面板"
-    },
-    {
-      "master": "04-question",
-      "slug": "05-it-asks",
-      "headline": "需要你時\n它會開口問",
-      "subline": "問題會以卡片出現——輕點一下即可回答。",
-      "highlight": "開口問"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "06-hand-off",
-      "headline": "例行工作\n交給更便宜的模型",
-      "subline": "較便宜的模型先試，驗證器裁決。通過之前不會套用任何變更。",
-      "highlight": "例行工作"
-    },
-    {
-      "master": "08-usage",
-      "slug": "07-know-your-limits",
-      "headline": "撞上之前\n先知道上限",
-      "subline": "每個視窗都有自己的重置時鐘，從你的機器讀取。",
-      "highlight": "撞上之前"
-    },
-    {
-      "master": "widgets",
-      "slug": "08-widgets",
-      "headline": "配額就在\n主畫面上",
-      "subline": "每家供應商各有顏色，鎖定畫面也能看。",
-      "highlight": "主畫面"
-    },
-    {
-      "master": "14-analytics",
-      "slug": "09-what-it-costs",
-      "headline": "逐輪看清\n花費多少",
-      "subline": "依日期、模型與專案查看花費，合併所有機器。",
-      "highlight": "花費多少"
+      "slug": "02-approve",
+      "headline": "高風險指令\n隨手核准",
+      "subline": "允許一次、一律允許或拒絕——智慧體還在等你的時候。",
+      "highlight": "高風險指令"
     },
     {
       "master": "welcome",
-      "slug": "10-private",
-      "headline": "沒有任何內容\n離開你的 tailnet",
-      "subline": "無需帳號、無遙測、開放原始碼。",
-      "highlight": "tailnet"
+      "slug": "03-private",
+      "headline": "資料絕不離開\n你的 tailnet",
+      "subline": "無中繼、無帳號、無分析、開放原始碼，GPL-3.0。",
+      "highlight": "你的 tailnet"
+    },
+    {
+      "master": "07-home",
+      "slug": "04-one-board",
+      "headline": "每台機器\n一塊面板",
+      "subline": "即時進行的輪次優先，依專案分組，橫跨你所有的伺服器。",
+      "highlight": "一塊面板"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "每處 diff\n在手機上讀",
+      "subline": "分支、已暫存、已修改——來自程式碼所在機器的真實差異。",
+      "highlight": "每處 diff"
+    },
+    {
+      "master": "04-question",
+      "slug": "06-it-asks",
+      "headline": "它一發問\n輕點就答",
+      "subline": "問題會以卡片送達，輕點一下就能回答。",
+      "highlight": "輕點就答"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-what-it-costs",
+      "headline": "花多少\n一目了然",
+      "subline": "每一輪都有價格，每月跨機器彙總。",
+      "highlight": "一目了然"
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-limits",
+      "headline": "額度見底前\n就先知道",
+      "subline": "每家供應商最緊的區間與重置時間，主畫面上也看得到。",
+      "highlight": "額度見底前"
+    },
+    {
+      "master": "02-dial",
+      "slug": "09-model-and-effort",
+      "headline": "選好模型\n再定思考強度",
+      "subline": "一個膠囊按鈕包辦兩件事。釘選常用組合，左右滑動切換。",
+      "highlight": "再定思考強度"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "10-hand-off",
+      "headline": "例行工作\n交給便宜的模型",
+      "subline": "較便宜的模型先試，驗證器裁決。測試版。",
+      "highlight": "例行工作"
     }
   ],
-  "ipad_headline_swap": {
-    "在手機上": "在iPad上"
-  }
+  "ipad": [
+    {
+      "master": "01-live",
+      "slug": "01-one-workspace",
+      "headline": "一個工作區\n容納所有智慧體",
+      "subline": "每台機器、每個聊天，就在對話旁邊。",
+      "highlight": "所有智慧體"
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve",
+      "headline": "看著列表\n就能核准",
+      "subline": "對話進行中允許或拒絕，不會弄丟你的位置。",
+      "highlight": "看著列表"
+    },
+    {
+      "master": "02-work",
+      "slug": "03-agent-fanout",
+      "headline": "並行的子智慧體\n一眼看全",
+      "subline": "子智慧體停靠在產生它們的那一輪裡。",
+      "highlight": "一眼看全"
+    },
+    {
+      "master": "05-subagents",
+      "slug": "04-real-output",
+      "headline": "真實輸出\n就在原地",
+      "subline": "在智慧體工作的地方，直接打開它的成果。",
+      "highlight": "就在原地"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "先讀 diff\n再做決定",
+      "subline": "分支、已暫存、已修改——來自該機器的真實差異。",
+      "highlight": "先讀 diff"
+    },
+    {
+      "master": "08-usage",
+      "slug": "06-limits",
+      "headline": "每項配額\n見底前先知道",
+      "subline": "最緊的區間與重置時間，直接從你的機器讀取。",
+      "highlight": "見底前先知道"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-the-month",
+      "headline": "這個月\n用數字說話",
+      "subline": "依日期、模型與專案查看花費，合併所有機器。",
+      "highlight": "用數字說話"
+    },
+    {
+      "master": "welcome",
+      "slug": "08-private",
+      "headline": "資料絕不離開\n你的 tailnet",
+      "subline": "無中繼、無帳號、無分析、開放原始碼。",
+      "highlight": "你的 tailnet"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "09-hand-it-down",
+      "headline": "從最便宜的\n模型試起",
+      "subline": "較便宜的模型先試，驗證器裁決。測試版。",
+      "highlight": "最便宜"
+    },
+    {
+      "master": "whole",
+      "slug": "10-whole-screen",
+      "headline": "整個螢幕\n就是工作區",
+      "subline": "聊天、對話與工具，並排呈現。",
+      "highlight": "工作區"
+    }
+  ],
+  "mac": [
+    {
+      "master": "01-conversation",
+      "slug": "01-native",
+      "headline": "為 Mac\n原生打造",
+      "subline": "Claude Code、opencode 與 Oh My Pi，盡在一扇真正的視窗裡。",
+      "highlight": "原生打造"
+    },
+    {
+      "master": "02-split",
+      "slug": "02-two-machines",
+      "headline": "兩台機器\n並排工作",
+      "subline": "分割視窗，讓每個窗格指向不同的伺服器。",
+      "highlight": "並排工作"
+    },
+    {
+      "master": "03-git",
+      "slug": "03-repo",
+      "headline": "看得到儲存庫\n絕不去動它",
+      "subline": "分支、已暫存與真實的 diff，來自擁有它們的那台機器。",
+      "highlight": "絕不去動它"
+    },
+    {
+      "master": "04-quickask",
+      "slug": "04-one-chord",
+      "headline": "一組快速鍵\n隨處呼出",
+      "subline": "代理工作時，在任何 App 之上叫出提問框。",
+      "highlight": "一組快速鍵"
+    },
+    {
+      "master": "05-spend",
+      "slug": "05-priced",
+      "headline": "整段對話的\n花費一清二楚",
+      "subline": "錢花到哪了：回答、快取、新輸入。",
+      "highlight": "整段對話"
+    },
+    {
+      "master": "06-analytics",
+      "slug": "06-the-month",
+      "headline": "這個月\n用數字說話",
+      "subline": "每份對話紀錄都計價，合併所有伺服器。",
+      "highlight": "用數字說話"
+    },
+    {
+      "master": "07-approval",
+      "slug": "07-approve",
+      "headline": "不用切換 App\n就能核准",
+      "subline": "允許一次、一律允許或拒絕，就在聊天裡完成。",
+      "highlight": "不用切換 App"
+    },
+    {
+      "master": "08-keyboard",
+      "slug": "08-keyboard",
+      "headline": "鍵盤\n優先",
+      "subline": "窗格、聊天、模型都有快速鍵，還有 vim 模式的輸入框。",
+      "highlight": "鍵盤"
+    },
+    {
+      "master": "09-type",
+      "slug": "09-type-size",
+      "headline": "視窗每個部分\n字級各自調",
+      "subline": "聊天列表、你的提示、代理的回答、程式碼。",
+      "highlight": "字級各自調"
+    },
+    {
+      "master": "10-private",
+      "slug": "10-private",
+      "headline": "資料絕不離開\n你的 tailnet",
+      "subline": "無中繼、無帳號、無分析、GPL-3.0。",
+      "highlight": "你的 tailnet"
+    }
+  ]
 }

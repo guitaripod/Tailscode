@@ -1,149 +1,218 @@
 {
   "iphone": [
     {
-      "master": "01-live",
-      "slug": "01-agents-in-your-pocket",
-      "headline": "Your coding agents,\nin your pocket",
-      "subline": "Claude Code, opencode and Oh My Pi — live on your phone.",
-      "highlight": "pocket"
+      "master": "lock",
+      "slug": "01-lock-screen",
+      "headline": "Send. Pocket it.\nGet pinged.",
+      "subline": "Your coding agents, live on the Lock Screen, over your own tailnet.",
+      "highlight": "Get pinged."
     },
     {
       "master": "03-approval",
-      "slug": "02-approve-anywhere",
-      "headline": "Approve it from\nanywhere",
-      "subline": "Allow once, always or deny — while the agent waits.",
-      "highlight": "anywhere"
-    },
-    {
-      "master": "02-dial",
-      "slug": "03-model-and-effort",
-      "headline": "Pick the model.\nSet how hard it thinks.",
-      "subline": "One tap on the pill — your pinned favourites one swipe away.",
-      "highlight": "how hard it thinks"
-    },
-    {
-      "master": "07-home-ultra",
-      "slug": "04-one-board",
-      "headline": "Every machine,\none board",
-      "subline": "Live turns, projects and unread — already triaged.",
-      "highlight": "one board"
-    },
-    {
-      "master": "04-question",
-      "slug": "05-it-asks",
-      "headline": "When it needs you,\nit asks",
-      "subline": "A question arrives as a card. Answer with a tap.",
-      "highlight": "it asks"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "06-hand-off",
-      "headline": "Hand off the\nroutine work",
-      "subline": "A cheaper model tries first and a verifier decides. Nothing lands until it passes.",
-      "highlight": "routine work"
-    },
-    {
-      "master": "08-usage",
-      "slug": "07-know-your-limits",
-      "headline": "Know your limits\nbefore you hit them",
-      "subline": "Every window with its reset clock, read from your machines.",
-      "highlight": "before you hit them"
-    },
-    {
-      "master": "widgets",
-      "slug": "08-widgets",
-      "headline": "Your quotas on\nthe Home Screen",
-      "subline": "In each provider’s colour — and on the Lock Screen too.",
-      "highlight": "Home Screen"
-    },
-    {
-      "master": "14-analytics",
-      "slug": "09-what-it-costs",
-      "headline": "See what it costs,\nturn by turn",
-      "subline": "Spend by day, model and project, merged across every machine.",
-      "highlight": "costs"
+      "slug": "02-approve",
+      "headline": "Approve the\nrisky command",
+      "subline": "Allow once, always or deny, while the agent waits.",
+      "highlight": "risky command"
     },
     {
       "master": "welcome",
-      "slug": "10-private",
+      "slug": "03-private",
       "headline": "Nothing leaves\nyour tailnet",
-      "subline": "No account. No telemetry. Open source.",
-      "highlight": "tailnet"
+      "subline": "No relay. No account. No analytics. Open source, GPL-3.0.",
+      "highlight": "your tailnet"
+    },
+    {
+      "master": "07-home",
+      "slug": "04-one-board",
+      "headline": "Every machine,\none board",
+      "subline": "Live turns first, grouped by project, across all your servers.",
+      "highlight": "one board"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "Read every diff\nfrom your phone",
+      "subline": "Branch, staged, changed: the real patch, from the machine that owns it.",
+      "highlight": "every diff"
+    },
+    {
+      "master": "04-question",
+      "slug": "06-it-asks",
+      "headline": "When it asks,\nyou answer",
+      "subline": "A question arrives as a card. Answer with a tap.",
+      "highlight": "you answer"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-what-it-costs",
+      "headline": "See what\nit costs",
+      "subline": "Every turn priced, every month totalled across your machines.",
+      "highlight": "costs"
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-limits",
+      "headline": "Limits before\nthe wall",
+      "subline": "Each provider's tightest window and reset clock, on your Home Screen too.",
+      "highlight": "the wall"
+    },
+    {
+      "master": "02-dial",
+      "slug": "09-model-and-effort",
+      "headline": "Pick the model.\nSet the effort.",
+      "subline": "One pill carries both. Pin pairs and swipe between them.",
+      "highlight": "Set the effort."
+    },
+    {
+      "master": "15-delegate",
+      "slug": "10-hand-off",
+      "headline": "Hand off the\nroutine work",
+      "subline": "A cheaper model tries first, a verifier decides. Beta.",
+      "highlight": "Hand off"
     }
   ],
-  "ipad_headline_swap": {
-    "on your phone": "on your iPad"
-  },
   "ipad": [
     {
       "master": "01-live",
       "slug": "01-one-workspace",
-      "headline": "Your coding agents,\none workspace",
-      "subline": "Every machine and every chat beside the conversation, over your own tailnet.",
-      "highlight": "one workspace"
+      "headline": "One workspace,\nevery agent",
+      "subline": "Every machine and every chat beside the conversation.",
+      "highlight": "every agent"
     },
     {
       "master": "03-approval",
-      "slug": "02-approve-anywhere",
-      "headline": "Approve it from\nanywhere",
-      "subline": "Allow once, always or deny — mid-turn, with the list still in view.",
-      "highlight": "anywhere"
-    },
-    {
-      "master": "04-question",
-      "slug": "03-it-asks",
-      "headline": "When it needs you,\nit asks",
-      "subline": "The chat that is waiting says so in the list. Answer with a tap.",
-      "highlight": "it asks"
+      "slug": "02-approve",
+      "headline": "Approve with the\nlist in view",
+      "subline": "Allow or deny mid-turn without losing your place.",
+      "highlight": "list in view"
     },
     {
       "master": "02-work",
-      "slug": "04-agent-fanout",
-      "headline": "A fan-out of agents,\nat a glance",
-      "subline": "Subagents and their plan dock inside the turn that spawned them.",
+      "slug": "03-agent-fanout",
+      "headline": "A fan-out,\nat a glance",
+      "subline": "Subagents dock inside the turn that spawned them.",
       "highlight": "at a glance"
     },
     {
       "master": "05-subagents",
-      "slug": "05-real-output",
-      "headline": "Every command,\nwith its real output",
-      "subline": "Open any agent's work right where it happened.",
-      "highlight": "real output"
+      "slug": "04-real-output",
+      "headline": "Real output,\nright there",
+      "subline": "Open any agent's work where it happened.",
+      "highlight": "right there"
     },
     {
       "master": "13-diff",
-      "slug": "06-read-the-diff",
-      "headline": "Read the diff\nbefore you trust it",
-      "subline": "Branch, staged, changed — the real patch, straight from the machine.",
-      "highlight": "before you trust it"
+      "slug": "05-read-the-diff",
+      "headline": "Read the diff\nfirst",
+      "subline": "Branch, staged, changed: the real patch from the machine.",
+      "highlight": "diff"
     },
     {
       "master": "08-usage",
-      "slug": "07-before-the-wall",
+      "slug": "06-limits",
       "headline": "Every quota,\nbefore the wall",
-      "subline": "Each provider's tightest window and its reset clock, read from your machines.",
+      "subline": "Tightest window and reset clock, read from your machines.",
       "highlight": "before the wall"
     },
     {
       "master": "14-analytics",
-      "slug": "08-what-it-costs",
-      "headline": "See what it costs,\nturn by turn",
-      "subline": "Spend by day, model and project, merged across every machine.",
-      "highlight": "costs"
+      "slug": "07-the-month",
+      "headline": "The month\nin numbers",
+      "subline": "Spend by day, model and project, merged across machines.",
+      "highlight": "in numbers"
+    },
+    {
+      "master": "welcome",
+      "slug": "08-private",
+      "headline": "Nothing leaves\nyour tailnet",
+      "subline": "No relay. No account. No analytics. Open source.",
+      "highlight": "your tailnet"
     },
     {
       "master": "15-delegate",
       "slug": "09-hand-it-down",
       "headline": "Hand it down\nthe ladder",
-      "subline": "A cheaper model tries first, a verifier judges, you approve the climb.",
+      "subline": "A cheaper model tries first, a verifier decides. Beta.",
       "highlight": "the ladder"
     },
     {
-      "master": "11-focus",
+      "master": "whole",
       "slug": "10-whole-screen",
-      "headline": "Or give it\nthe whole screen",
-      "subline": "Hide the columns with one tap — compaction reads as a seam, not a mystery.",
-      "highlight": "whole screen"
+      "headline": "The whole screen,\none workspace",
+      "subline": "Chats, conversation and tools, side by side.",
+      "highlight": "one workspace"
+    }
+  ],
+  "mac": [
+    {
+      "master": "01-conversation",
+      "slug": "01-native",
+      "headline": "Native\non the Mac",
+      "subline": "Claude Code, opencode and Oh My Pi in a real window.",
+      "highlight": "Native"
+    },
+    {
+      "master": "02-split",
+      "slug": "02-two-machines",
+      "headline": "Two machines,\nside by side",
+      "subline": "Split the window and point each pane at a different server.",
+      "highlight": "side by side"
+    },
+    {
+      "master": "03-git",
+      "slug": "03-repo",
+      "headline": "The repo, read.\nNever operated.",
+      "subline": "Branch, staged and the real diffs, from the machine that owns them.",
+      "highlight": "Never operated."
+    },
+    {
+      "master": "04-quickask",
+      "slug": "04-one-chord",
+      "headline": "One chord\nfrom anywhere",
+      "subline": "Summon the question box over any app while the agent works.",
+      "highlight": "One chord"
+    },
+    {
+      "master": "05-spend",
+      "slug": "05-priced",
+      "headline": "A price on the\nwhole conversation",
+      "subline": "Where the money went: answer, cache, fresh input.",
+      "highlight": "whole conversation"
+    },
+    {
+      "master": "06-analytics",
+      "slug": "06-the-month",
+      "headline": "The month\nin numbers",
+      "subline": "Every transcript priced, merged across every server.",
+      "highlight": "in numbers"
+    },
+    {
+      "master": "07-approval",
+      "slug": "07-approve",
+      "headline": "Approve without\nswitching apps",
+      "subline": "Allow once, always or deny in the chat itself.",
+      "highlight": "without switching apps"
+    },
+    {
+      "master": "08-keyboard",
+      "slug": "08-keyboard",
+      "headline": "Keyboard\nfirst",
+      "subline": "Chords for panes, chats and models. A vim-mode composer.",
+      "highlight": "Keyboard"
+    },
+    {
+      "master": "09-type",
+      "slug": "09-type-size",
+      "headline": "Size every part\nof the window",
+      "subline": "Chat list, your prompts, the agent's answers, code.",
+      "highlight": "every part"
+    },
+    {
+      "master": "10-private",
+      "slug": "10-private",
+      "headline": "Nothing leaves\nyour tailnet",
+      "subline": "No relay. No account. No analytics. GPL-3.0.",
+      "highlight": "your tailnet"
     }
   ]
 }

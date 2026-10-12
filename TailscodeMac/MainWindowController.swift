@@ -891,6 +891,29 @@ final class MainWindowController: NSWindowController {
         gitPopover = popover
     }
 
+    #if DEBUG
+        /// The first staged file's diff, opened beside the popover instead of replacing it — the two
+        /// facts a picture of the repository wants together, which a press can only show one at a time.
+        private func presentDemoDiff(for pane: TranscriptViewController) {
+            guard let backend = pane.gitBackend, let entry = pane.currentEntry else { return }
+            let directory = entry.session.directory
+            let sessionID = entry.session.id
+            let path = "Sources/Pulse/Socket/Reconnect.swift"
+            let window = GitDiffWindowController(
+                title: "Reconnect.swift", subtitle: "Sources/Pulse/Socket · staged",
+                load: {
+                    try? await backend.gitPatch(
+                        directory: directory, sessionID: sessionID, path: path, staged: true)?
+                        .patch
+                })
+            gitDiffWindows.append(window)
+            window.onClose = { [weak self, weak window] in
+                self?.gitDiffWindows.removeAll { $0 === window }
+            }
+            window.present()
+        }
+    #endif
+
     private func applyUIScale() {
         splitPanes.eachPane { $0.applyUIScale() }
         sidebar.applyUIScale()
@@ -960,7 +983,16 @@ final class MainWindowController: NSWindowController {
                 transcript.composer.openDemoModelDial(popover: detail != "pill")
             }
         case "spend": presentSpend(for: transcript)
-        case "git": presentGit(for: transcript)
+        case "git":
+            #if DEBUG
+                if parts.count > 1, parts[1] == "diff" {
+                    presentDemoDiff(for: transcript)
+                } else {
+                    presentGit(for: transcript)
+                }
+            #else
+                presentGit(for: transcript)
+            #endif
         case "forge", "video":
             if parts.count > 1 { StudioVideoDemo.apply(parts[1]) }
             presentStudio(lane: .video)
@@ -990,8 +1022,9 @@ final class MainWindowController: NSWindowController {
         #if DEBUG
             case "split":
                 let spec = parts.count > 1 ? parts[1].split(separator: ",").map(String.init) : []
-                let count = Int(spec.first ?? "") ?? 2
-                let chats = ["demo-c1", "demo-c2", "demo-c4", "demo-c5"]
+                let named = spec.filter { $0 != "zoom" && Int($0) == nil }
+                let count = Int(spec.first ?? "") ?? named.count + 1
+                let chats = named.isEmpty ? ["demo-c1", "demo-c2", "demo-c4", "demo-c5"] : named
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
                     for index in 1..<max(count, 2) {

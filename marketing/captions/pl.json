@@ -1,0 +1,218 @@
+{
+  "iphone": [
+    {
+      "master": "lock",
+      "slug": "01-lock-screen",
+      "headline": "Wyślij. Schowaj.\nTelefon da znać.",
+      "subline": "Twoi agenci kodowania na żywo na ekranie blokady, przez własny tailnet.",
+      "highlight": "Telefon da znać."
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve",
+      "headline": "Zatwierdź to,\nco ryzykowne",
+      "subline": "Zezwól raz, zawsze albo odmów, gdy agent czeka.",
+      "highlight": "co ryzykowne"
+    },
+    {
+      "master": "welcome",
+      "slug": "03-private",
+      "headline": "Nic nie wychodzi\npoza twój tailnet",
+      "subline": "Bez relay. Bez konta. Bez analityki. Open source, GPL-3.0.",
+      "highlight": "twój tailnet"
+    },
+    {
+      "master": "07-home",
+      "slug": "04-one-board",
+      "headline": "Każdy komputer,\njedna tablica",
+      "subline": "Tury na żywo na górze, według projektu, ze wszystkich serwerów.",
+      "highlight": "jedna tablica"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "Czytaj każdy diff\nw telefonie",
+      "subline": "Gałąź, zaindeksowane, zmienione: prawdziwy patch z komputera, na którym powstał.",
+      "highlight": "każdy diff"
+    },
+    {
+      "master": "04-question",
+      "slug": "06-it-asks",
+      "headline": "Gdy pyta,\nodpowiadasz ty",
+      "subline": "Pytanie przychodzi jako karta. Odpowiedz jednym stuknięciem.",
+      "highlight": "odpowiadasz ty"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-what-it-costs",
+      "headline": "Zobacz, ile\nto kosztuje",
+      "subline": "Każda tura z ceną, każdy miesiąc zsumowany ze wszystkich komputerów.",
+      "highlight": "kosztuje"
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-limits",
+      "headline": "Limity na oku,\nzanim zablokują",
+      "subline": "Najciaśniejsze okno każdego dostawcy i zegar resetu, także na ekranie początkowym.",
+      "highlight": "zanim zablokują"
+    },
+    {
+      "master": "02-dial",
+      "slug": "09-model-and-effort",
+      "headline": "Wybierz model.\nUstaw wysiłek.",
+      "subline": "Jeden przycisk niesie oba. Przypnij pary i przesuwaj między nimi.",
+      "highlight": "Ustaw wysiłek."
+    },
+    {
+      "master": "15-delegate",
+      "slug": "10-hand-off",
+      "headline": "Zleć rutynę\ntańszym modelom",
+      "subline": "Najpierw próbuje tańszy model, a decyduje weryfikator. Beta.",
+      "highlight": "tańszym modelom"
+    }
+  ],
+  "ipad": [
+    {
+      "master": "01-live",
+      "slug": "01-one-workspace",
+      "headline": "Jedna przestrzeń,\nwszyscy agenci",
+      "subline": "Każdy komputer i każdy czat obok rozmowy.",
+      "highlight": "wszyscy agenci"
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve",
+      "headline": "Zatwierdzaj, nie\nzamykając listy",
+      "subline": "Zezwól lub odmów w trakcie tury, nie tracąc miejsca.",
+      "highlight": "zamykając listy"
+    },
+    {
+      "master": "02-work",
+      "slug": "03-agent-fanout",
+      "headline": "Rój agentów\nod razu widać",
+      "subline": "Subagenci dokują wewnątrz tury, która ich uruchomiła.",
+      "highlight": "od razu widać"
+    },
+    {
+      "master": "05-subagents",
+      "slug": "04-real-output",
+      "headline": "Prawdziwe wyjście,\ntuż obok",
+      "subline": "Otwórz pracę każdego agenta tam, gdzie się odbyła.",
+      "highlight": "tuż obok"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "Najpierw\nprzeczytaj diff",
+      "subline": "Gałąź, zaindeksowane, zmienione: prawdziwy patch z komputera.",
+      "highlight": "diff"
+    },
+    {
+      "master": "08-usage",
+      "slug": "06-limits",
+      "headline": "Każdy limit,\nzanim zablokuje",
+      "subline": "Najciaśniejsze okno i zegar resetu, odczytane z twoich komputerów.",
+      "highlight": "zanim zablokuje"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-the-month",
+      "headline": "Miesiąc\nw liczbach",
+      "subline": "Wydatki według dnia, modelu i projektu, scalone z wielu komputerów.",
+      "highlight": "w liczbach"
+    },
+    {
+      "master": "welcome",
+      "slug": "08-private",
+      "headline": "Nic nie wychodzi\npoza twój tailnet",
+      "subline": "Bez relay. Bez konta. Bez analityki. Open source.",
+      "highlight": "twój tailnet"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "09-hand-it-down",
+      "headline": "Przekaż to\nw dół drabiny",
+      "subline": "Najpierw próbuje tańszy model, a decyduje weryfikator. Beta.",
+      "highlight": "w dół drabiny"
+    },
+    {
+      "master": "whole",
+      "slug": "10-whole-screen",
+      "headline": "Cały ekran,\njedna przestrzeń",
+      "subline": "Czaty, rozmowa i narzędzia obok siebie.",
+      "highlight": "jedna przestrzeń"
+    }
+  ],
+  "mac": [
+    {
+      "master": "01-conversation",
+      "slug": "01-native",
+      "headline": "Natywnie\nna Macu",
+      "subline": "Claude Code, opencode i Oh My Pi w prawdziwym oknie.",
+      "highlight": "Natywnie"
+    },
+    {
+      "master": "02-split",
+      "slug": "02-two-machines",
+      "headline": "Dwa komputery,\nobok siebie",
+      "subline": "Podziel okno i skieruj każdy panel na inny serwer.",
+      "highlight": "obok siebie"
+    },
+    {
+      "master": "03-git",
+      "slug": "03-repo",
+      "headline": "Repo: czytasz,\nnie ruszasz",
+      "subline": "Gałąź, zaindeksowane i prawdziwe diffy z komputera, który je ma.",
+      "highlight": "nie ruszasz"
+    },
+    {
+      "master": "04-quickask",
+      "slug": "04-one-chord",
+      "headline": "Jeden skrót\nz każdego miejsca",
+      "subline": "Przywołaj okno pytania nad dowolną aplikacją, gdy agent pracuje.",
+      "highlight": "Jeden skrót"
+    },
+    {
+      "master": "05-spend",
+      "slug": "05-priced",
+      "headline": "Wycena\ncałej rozmowy",
+      "subline": "Dokąd poszły pieniądze: odpowiedź, cache, świeże wejście.",
+      "highlight": "całej rozmowy"
+    },
+    {
+      "master": "06-analytics",
+      "slug": "06-the-month",
+      "headline": "Miesiąc\nw liczbach",
+      "subline": "Każda transkrypcja z ceną, scalona ze wszystkich serwerów.",
+      "highlight": "w liczbach"
+    },
+    {
+      "master": "07-approval",
+      "slug": "07-approve",
+      "headline": "Zatwierdzaj bez\nzmiany aplikacji",
+      "subline": "Zezwól raz, zawsze albo odmów w samej rozmowie.",
+      "highlight": "zmiany aplikacji"
+    },
+    {
+      "master": "08-keyboard",
+      "slug": "08-keyboard",
+      "headline": "Klawiatura\nprzede wszystkim",
+      "subline": "Skróty do paneli, rozmów i modeli. Edytor w trybie vim.",
+      "highlight": "Klawiatura"
+    },
+    {
+      "master": "09-type",
+      "slug": "09-type-size",
+      "headline": "Każda część okna\nw swoim rozmiarze",
+      "subline": "Lista rozmów, twoje prompty, odpowiedzi agenta, kod.",
+      "highlight": "swoim rozmiarze"
+    },
+    {
+      "master": "10-private",
+      "slug": "10-private",
+      "headline": "Nic nie wychodzi\npoza twój tailnet",
+      "subline": "Bez relay. Bez konta. Bez analityki. GPL-3.0.",
+      "highlight": "twój tailnet"
+    }
+  ]
+}

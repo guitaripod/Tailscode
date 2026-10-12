@@ -1,77 +1,218 @@
 {
   "iphone": [
     {
-      "master": "01-live",
-      "slug": "01-agents-in-your-pocket",
-      "headline": "AIエージェントを\nポケットに",
-      "subline": "Claude Code・opencode・Oh My Piをライブで",
-      "highlight": "ポケット"
+      "master": "lock",
+      "slug": "01-lock-screen",
+      "headline": "送って、しまう。\n終わりは通知で。",
+      "subline": "コーディングエージェントの様子を、自分の tailnet 経由でロック画面にライブ表示。",
+      "highlight": "終わりは通知で。"
     },
     {
       "master": "03-approval",
-      "slug": "02-approve-anywhere",
-      "headline": "どこからでも\n承認できる",
-      "subline": "1回だけ許可・常に許可・拒否——待っている間に。",
-      "highlight": "どこからでも"
-    },
-    {
-      "master": "02-dial",
-      "slug": "03-model-and-effort",
-      "headline": "モデルを選び、\n思考の強度を決める",
-      "subline": "モデル名を一度タップ——ピン留めのお気に入りはスワイプで。",
-      "highlight": "強度を決める"
-    },
-    {
-      "master": "07-home-ultra",
-      "slug": "04-one-board",
-      "headline": "すべての端末、\nひとつのボードに",
-      "subline": "ライブなターン、プロジェクト、未読——もう仕分け済み。",
-      "highlight": "ボード"
-    },
-    {
-      "master": "04-question",
-      "slug": "05-it-asks",
-      "headline": "必要なときは、\nエージェントが聞く",
-      "subline": "質問はカードで届く。タップひとつで答えられる。",
-      "highlight": "聞く"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "06-hand-off",
-      "headline": "定型作業は\n安価なモデルへ",
-      "subline": "安価なモデルが先に試し、検証役が判定。合格するまで何も適用されない。",
-      "highlight": "定型作業"
-    },
-    {
-      "master": "08-usage",
-      "slug": "07-know-your-limits",
-      "headline": "上限に達する前に\n限界を把握",
-      "subline": "各ウィンドウとリセット時刻を、あなたのマシンから読み取り。",
-      "highlight": "達する前に"
-    },
-    {
-      "master": "widgets",
-      "slug": "08-widgets",
-      "headline": "あなたの利用枠を\nホーム画面に",
-      "subline": "各プロバイダーの色で表示、ロック画面にも。",
-      "highlight": "ホーム画面"
-    },
-    {
-      "master": "14-analytics",
-      "slug": "09-what-it-costs",
-      "headline": "1ターンごとの\n費用がわかる",
-      "subline": "日別・モデル別・プロジェクト別の支出、全マシンを合算。",
-      "highlight": "費用がわかる"
+      "slug": "02-approve",
+      "headline": "危険なコマンドは\nその場で承認",
+      "subline": "1回だけ許可、常に許可、拒否——エージェントが待っている間に。",
+      "highlight": "その場で承認"
     },
     {
       "master": "welcome",
-      "slug": "10-private",
+      "slug": "03-private",
       "headline": "tailnetから\n一歩も出ない",
-      "subline": "アカウント不要。テレメトリなし。オープンソース。",
+      "subline": "中継なし。アカウントなし。解析なし。オープンソース、GPL-3.0。",
       "highlight": "一歩も出ない"
+    },
+    {
+      "master": "07-home",
+      "slug": "04-one-board",
+      "headline": "すべてのマシン、\nひとつのボードに",
+      "subline": "実行中のターンを先頭に、プロジェクト別に。すべてのサーバーをまたいで。",
+      "highlight": "ひとつのボード"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "diffは全部\nスマホで読める",
+      "subline": "ブランチ、ステージ済み、変更済み——本物のパッチを、リポジトリのあるマシンから。",
+      "highlight": "diffは全部"
+    },
+    {
+      "master": "04-question",
+      "slug": "06-it-asks",
+      "headline": "聞かれたら、\nタップで答える",
+      "subline": "質問はカードで届きます。タップひとつで答えられます。",
+      "highlight": "タップで答える"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-what-it-costs",
+      "headline": "かかった費用が、\nひと目でわかる",
+      "subline": "ターンごとの価格、毎月の合計——すべてのマシンをまたいで。",
+      "highlight": "かかった費用"
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-limits",
+      "headline": "壁にぶつかる前に\n上限がわかる",
+      "subline": "各プロバイダーの最も厳しい枠とリセット時刻を、ホーム画面にも。",
+      "highlight": "壁にぶつかる前に"
+    },
+    {
+      "master": "02-dial",
+      "slug": "09-model-and-effort",
+      "headline": "モデルを選ぶ。\n強度を決める。",
+      "subline": "ひとつのピルで両方。ペアをピン留めして、スワイプで切り替え。",
+      "highlight": "強度を決める。"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "10-hand-off",
+      "headline": "定型作業は\n安価なモデルへ",
+      "subline": "まず安価なモデルが試し、検証役が判定します。ベータ版。",
+      "highlight": "安価なモデル"
     }
   ],
-  "ipad_headline_swap": {
-    "スマホから": "iPadから"
-  }
+  "ipad": [
+    {
+      "master": "01-live",
+      "slug": "01-one-workspace",
+      "headline": "ワークスペースに\n全エージェント",
+      "subline": "すべてのマシンとチャットが、会話のすぐ横に。",
+      "highlight": "全エージェント"
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve",
+      "headline": "リストを見ながら\n承認できる",
+      "subline": "ターンの途中でも、いまの位置を見失わずに許可・拒否。",
+      "highlight": "リストを見ながら"
+    },
+    {
+      "master": "02-work",
+      "slug": "03-agent-fanout",
+      "headline": "並列作業も\nひと目で把握",
+      "subline": "サブエージェントは、生成したターンの中に収まります。",
+      "highlight": "ひと目で把握"
+    },
+    {
+      "master": "05-subagents",
+      "slug": "04-real-output",
+      "headline": "実際の出力を\nその場で開く",
+      "subline": "どのエージェントの作業も、起きた場所でそのまま開けます。",
+      "highlight": "その場で"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "まず diff を\n読んでから",
+      "subline": "ブランチ、ステージ済み、変更済み——本物のパッチを、マシンから直接。",
+      "highlight": "diff"
+    },
+    {
+      "master": "08-usage",
+      "slug": "06-limits",
+      "headline": "どの上限も、\n壁の手前で",
+      "subline": "最も厳しい枠とリセット時刻を、あなたのマシンから読み取ります。",
+      "highlight": "壁の手前で"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-the-month",
+      "headline": "ひと月を、\n数字で見る",
+      "subline": "日別・モデル別・プロジェクト別の支出を、全マシン分まとめて。",
+      "highlight": "数字で見る"
+    },
+    {
+      "master": "welcome",
+      "slug": "08-private",
+      "headline": "tailnetから\n一歩も出ない",
+      "subline": "中継なし。アカウントなし。解析なし。オープンソース。",
+      "highlight": "一歩も出ない"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "09-hand-it-down",
+      "headline": "安い順に\n試していく",
+      "subline": "まず安価なモデルが試し、検証役が判定します。ベータ版。",
+      "highlight": "安い順に"
+    },
+    {
+      "master": "whole",
+      "slug": "10-whole-screen",
+      "headline": "画面まるごと、\nワークスペース",
+      "subline": "チャット、会話、ツールを、横並びで。",
+      "highlight": "ワークスペース"
+    }
+  ],
+  "mac": [
+    {
+      "master": "01-conversation",
+      "slug": "01-native",
+      "headline": "本物の\nMacネイティブ",
+      "subline": "Claude Code、opencode、Oh My Pi を、本物のウインドウで。",
+      "highlight": "Macネイティブ"
+    },
+    {
+      "master": "02-split",
+      "slug": "02-two-machines",
+      "headline": "2台のマシンを\n横並びで",
+      "subline": "ウインドウを分割して、ペインごとに別のサーバーを指定。",
+      "highlight": "横並びで"
+    },
+    {
+      "master": "03-git",
+      "slug": "03-repo",
+      "headline": "リポジトリは読む。\n操作はしない。",
+      "subline": "ブランチ、ステージ済み、本物の差分を、リポジトリのあるマシンから。",
+      "highlight": "操作はしない。"
+    },
+    {
+      "master": "04-quickask",
+      "slug": "04-one-chord",
+      "headline": "ショートカット一つ\nどこからでも呼べる",
+      "subline": "エージェントの作業中も、どのアプリの上にも質問欄を呼び出せます。",
+      "highlight": "ショートカット一つ"
+    },
+    {
+      "master": "05-spend",
+      "slug": "05-priced",
+      "headline": "会話全体の\n費用がわかる",
+      "subline": "お金の行き先：回答、キャッシュ、新規入力。",
+      "highlight": "会話全体"
+    },
+    {
+      "master": "06-analytics",
+      "slug": "06-the-month",
+      "headline": "ひと月を、\n数字で見る",
+      "subline": "すべての会話ログに価格を付け、全サーバーを横断して合算。",
+      "highlight": "数字で見る"
+    },
+    {
+      "master": "07-approval",
+      "slug": "07-approve",
+      "headline": "アプリを切り替えず\n承認できる",
+      "subline": "1回だけ許可、常に許可、拒否——チャットの中で完結。",
+      "highlight": "アプリを切り替えず"
+    },
+    {
+      "master": "08-keyboard",
+      "slug": "08-keyboard",
+      "headline": "キーボード\nファースト",
+      "subline": "ペイン、チャット、モデルをキーボードで。Vim モードの入力欄つき。",
+      "highlight": "キーボード"
+    },
+    {
+      "master": "09-type",
+      "slug": "09-type-size",
+      "headline": "文字サイズは\n場所ごとに",
+      "subline": "チャットリスト、あなたのプロンプト、エージェントの返答、コード。",
+      "highlight": "場所ごとに"
+    },
+    {
+      "master": "10-private",
+      "slug": "10-private",
+      "headline": "tailnetから\n一歩も出ない",
+      "subline": "中継なし。アカウントなし。解析なし。GPL-3.0。",
+      "highlight": "一歩も出ない"
+    }
+  ]
 }

@@ -52,3 +52,15 @@ Canonical copy lives in docs/asc-listing-l10n.json and docs/asc-listing-l10n-mac
 ## Shipping
 
 A store listing can only change on an editable version: iOS 1.75 is live and Mac 1.75 is in review, and neither carries the redesign, so the new panels, preview and copy ship with iOS 1.76 and the next Mac build. Until then everything here is built and verified locally; nothing is uploaded, no version is created, and the landing page is committed but not pushed.
+
+## Mac panels as built (13 October)
+
+The ten Mac panels per locale are made by two scripts, neither of which touches the installed app:
+
+- `scripts/shots-mac-panels.py [--locale L] [--no-build] [names…]` builds the **store** target (`TailscodeMacStore`, Debug, because the `--shot-live` verb is DEBUG-only), copies it under the bundle id `com.guitaripod.tailscode.panels` re-signed with the store's sandbox entitlements, holds a **virtual 2x display** open (1280×832 points, a 13-inch MacBook Air at its native scale) and launches the app once per master in `--demo`. The app puts its windows on that display over a wallpaper window of its own and the window server's picture of the display is read back from inside the process (a process may always read its own windows: no screen-recording right, nothing on anybody's desktop). Liquid Glass is therefore real compositing sampling an in-code, single-hue blue-grey wallpaper. Masters land in `marketing/appstore/mac-masters/<locale>/` at 2560×1664 with the window server's menu bar scrubbed.
+- `scripts/market-compose-mac.py [--locale L | --all] [--contact PATH]` draws a menu bar from the app's own menu titles in the panel's language, frames the screen with `frames -d "MacBook Air M5 13" -c Silver`, sets the claim (≤2 lines in the heaviest system weight, one lit phrase, one subline, measured against the safe column and the laptop) and writes `marketing/appstore/panels/mac/<slug>.png` (en-US) and `panels/l10n/<locale>/mac/<slug>.png`. Per-panel crops are the `FOCUS` table.
+- `scripts/validate-mac-panels.py [--privacy]` checks ten files per locale named by the caption book's slugs, 2880×1800 RGB without alpha, caption fit, and with `--privacy` reads every master and panel back with tesseract for the machine owner's names, paths, addresses, banners and menu-bar text.
+
+Launch guards (DEBUG, under `--shot-live` only; each launch must log `LIVESHOT held back …` for all five or the master is not kept): Game Center authentication, StoreKit, update checks, the global quick-ask hot key, and app activation (windows are reported key rather than taking the keyboard from whoever is typing). The quick-ask card's clipboard read is held back too, and the tailnet address shown on Servers is staged as `100.101.102.103`.
+
+The masters must be re-shot when the chat or any of these surfaces is redrawn; the set is only as true as the demo world (`DemoWorld.swift`).

@@ -2,43 +2,46 @@
 """Compose the App Store marketing panels from the raw screenshot masters.
 
 A raw screenshot shows a surface; a store panel has to *sell* it at thumbnail
-size, where the first three images are the whole pitch. So every panel burns
-its claim into the picture — a headline of at most two lines with one phrase lit
-in the panel's colour, a quieter subline — and the screenshot itself, framed in
-its real bezel and large enough to read, with the one moment worth the thumbnail
-pulled out of it and enlarged beside it.
+size, where the first three images are the whole pitch. Every panel therefore
+burns one claim into the picture and sets the screenshot, framed in its real
+bezel, large enough to read under it. The contract is docs/marketing-2026-10.md:
 
-Each panel has its own colour (marketing/captions/layout.json, by slug), so the
-ten read as a rhythm down the store's carousel rather than one panel ten times;
-that file also says how large the device is, how much of it bleeds off the
-bottom, and which callouts to cut from the master. Nothing in it is language, so
-every locale shares it; the words live in marketing/captions/<locale>.json.
+  - one flat ink ground (#0B0D11) for the whole set, with at most a faint lift of
+    light behind the device; no colour wash, no per-panel hue
+  - one accent (#FFB547), used for the lit phrase of the headline and for the
+    set's one motif, a hairline that runs edge to edge through a node at every
+    panel's margin, so the panels join into one tailnet down the carousel
+  - a warm-white headline in the heaviest system weight, two lines at most, one
+    size for the whole set of a locale, and a grey subline under it
+  - the device bleeds off the bottom edge, so the useful part of the UI is large
 
-The iPhone and iPad captions live in marketing/captions/<locale>.json, one file
-per store locale, so the same panel is told in every language the listing
-carries; the Mac set is en-US only and its captions stay in this file. The iPad
-is photographed in landscape as the workspace it is, so a locale may carry an
-`ipad` manifest of its own; one that does not retells the iPhone's.
+The words live in marketing/captions/<locale>.json (iphone and ipad here, each a list
+of panels; the Mac set has its own composer, scripts/market-compose-mac.py), and
+everything about a panel that is not language lives in marketing/captions/layout.json
+by slug. Text is drawn through AppKit so every
+script the listing speaks falls back to the right system face on its own, and
+every size is fitted by measuring, never by cutting words: `--check-fit` renders
+the captions of every locale and fails on overflow, clipping, a collision with
+the device, or a set whose headline has fallen below the legible floor.
 
 Masters:  marketing/appstore/iphone/*.png (1320x2868) and marketing/appstore/ipad/*.png (2752x2064) for
-          en-US; marketing/appstore/l10n/<locale>/iphone/*.png for every other locale;
-          Resources/Screenshots/mac/*.png (2880x1800)
-Panels:   marketing/appstore/panels/{iphone,ipad,mac}/*.png for en-US,
+          en-US; marketing/appstore/l10n/<locale>/{iphone,ipad}/*.png for every other locale
+Panels:   marketing/appstore/panels/{iphone,ipad}/*.png for en-US,
           marketing/appstore/panels/l10n/<locale>/{iphone,ipad}/*.png otherwise
 
-Panel filenames become the landing page's fallback labels, so they are the
-story slugs, numbered in store order.
+Panel filenames are the story slugs, numbered in store order.
 
   scripts/market-compose.py                    # everything, every locale that has masters
   scripts/market-compose.py iphone             # one platform, every locale
   scripts/market-compose.py iphone --locale ja # one platform, one locale
+  scripts/market-compose.py --check-fit        # measure every caption of every locale, compose nothing
 """
-import colorsys
 import hashlib
 import io
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -51,34 +54,42 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IPHONE_IN = os.path.join(ROOT, "marketing/appstore/iphone")
 IPAD_IN = os.path.join(ROOT, "marketing/appstore/ipad")
 L10N_IN = os.path.join(ROOT, "marketing/appstore/l10n")
-MAC_IN = os.path.join(ROOT, "Resources/Screenshots/mac")
 CAPTIONS = os.path.join(ROOT, "marketing/captions")
 LAYOUT = os.path.join(CAPTIONS, "layout.json")
-WIDGET_TILES = os.path.join(ROOT, "marketing/appstore/widgets")
 OUT = os.path.join(ROOT, "marketing/appstore/panels")
 
 FRAME_COLOR = "Silver"
 FRAME_CACHE = os.path.join(tempfile.gettempdir(), "tailscode-frames")
 
-ACCENT = (84, 107, 255)
-CANVAS_TOP = (13, 15, 21)
-CANVAS_BOTTOM = (6, 7, 11)
-HEADLINE_INK = (252, 253, 255)
-SUBLINE_INK = (196, 203, 219)
-BORDER = (255, 255, 255, 30)
+GROUND = (11, 13, 17)
+ACCENT = (255, 181, 71)
+HEADLINE_INK = (245, 242, 234)
+SUBLINE_INK = (168, 174, 184)
+CLEAR = 28
 
-MAC = [
-    ("01-conversation", "01-native-on-mac", "Your coding agents,\nnative on the Mac", "A real window for Claude Code, opencode and Oh My Pi on your own machines — over your tailnet, no browser tab, no relay.", "native on the Mac"),
-    ("02-split", "02-two-machines", "Two machines,\nside by side", "Split the window and point the new pane at any server's conversations.", "side by side"),
-    ("03-git", "03-repo-truth", "The repo, read —\nnever operated", "Branch, staged, changed, and the real diffs, from the machine that owns them.", "never operated"),
-    ("04-analytics", "04-month-in-numbers", "The month\nin numbers", "Every transcript priced turn by turn, merged across every server.", "in numbers"),
-    ("05-spend", "05-priced-turns", "A price on the\nwhole conversation", "Where the money went: answers, cache, fresh input — turn by turn.", "whole conversation"),
-    ("06-quickask", "06-one-chord-away", "One chord\nfrom anywhere", "Summon the question box over any app; the agent is already working.", "from anywhere"),
-]
+HEADLINE_WEIGHT = AppKit.NSFontWeightHeavy
+SUBLINE_WEIGHT = AppKit.NSFontWeightMedium
+CAP_RATIO = 0.7046
+HEADLINE_KERN = -0.6
+HEADLINE_LEADING = 0.99
+SUBLINE_LEADING = 1.16
 
+PHONE = {
+    "size": (1320, 2868), "margin": 88, "motif_y": 80, "head_y": 136, "cap_share": 0.085,
+    "floor_share": 0.060, "sub_size": 54, "sub_floor": 42, "gap": 28, "device_top": 700,
+    "device_width": 1276, "align": "left",
+}
+IPAD_SCREEN = (2752, 2064)
+IPAD_ORIGIN = (124, 118)
+
+PAD = {
+    "size": (2752, 2064), "margin": 150, "motif_y": 80, "head_y": 132, "cap_share": 0.046,
+    "floor_share": 0.034, "sub_size": 60, "sub_floor": 46, "gap": 28, "device_top": 650,
+    "device_width": 2060, "align": "center",
+}
 
 def locales():
-    return sorted(f[:-5] for f in os.listdir(CAPTIONS) if f.endswith(".json"))
+    return sorted(f[:-5] for f in os.listdir(CAPTIONS) if f.endswith(".json") and f != "layout.json")
 
 
 def captions(locale):
@@ -93,23 +104,8 @@ def manifest(entries):
     return [dict(p) for p in entries]
 
 
-def ipad_manifest(book):
-    """The iPad's own panels where the locale wrote them, else the iPhone's retold for the iPad."""
-    if "ipad" in book:
-        return manifest(book["ipad"])
-    swap = book.get("ipad_headline_swap", {})
-    return [dict(p, headline=swap_all(p["headline"], swap)) for p in book["iphone"]]
-
-
-def swap_all(text, swap):
-    for src, dst in swap.items():
-        text = text.replace(src, dst)
-    return text
-
-
 def layout():
-    """Everything about a panel that is not language: its colour, the size of the device, what is
-    cut from the master and enlarged beside it."""
+    """Everything about a panel that is not language: what it needs beyond the set's defaults."""
     with open(LAYOUT) as f:
         return json.load(f)
 
@@ -126,31 +122,21 @@ def panels_dir(locale, platform):
     return os.path.join(OUT, "l10n", locale, platform)
 
 
-def hexc(value):
-    value = value.lstrip("#")
-    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
-
-
-def mix(a, b, t):
-    return tuple(round(x + (y - x) * t) for x, y in zip(a, b))
-
-
-def shifted(rgb, degrees, lift=0.0):
-    """The same colour turned round the wheel — the second glow behind a device, which wants to be
-    near the panel's colour and not the same as it."""
-    h, l, sat = colorsys.rgb_to_hls(*(c / 255 for c in rgb))
-    r, g, b = colorsys.hls_to_rgb((h + degrees / 360) % 1, min(1, l + lift), sat)
-    return (round(r * 255), round(g * 255), round(b * 255))
-
-
 def utf16(text, upto):
     return len(text[:upto].encode("utf-16-le")) // 2
 
 
-def render_text(text, size, weight, rgb, max_width, align, line_height, highlight=None, lit=None, kern=0.0):
-    """Draws one block of text through AppKit so every script the listing speaks — Latin, kana,
-    hangul, han — falls back to the right system face on its own. `highlight` is a phrase of the text
-    to draw in `lit`. Returns an RGBA image the width of the column and exactly as tall as the text."""
+def phrase_span(text, phrase):
+    """Where the lit phrase sits in the headline, or None. The phrase is matched across a line break
+    as well as a space, because a translation may break the line inside the phrase it lights."""
+    if not phrase:
+        return None
+    pattern = r"\s+".join(re.escape(word) for word in phrase.split())
+    found = re.search(pattern, text)
+    return (found.start(), found.end()) if found else None
+
+
+def attributed(text, size, weight, rgb, align, line_height, highlight=None, lit=None, kern=0.0):
     font = AppKit.NSFont.systemFontOfSize_weight_(size, weight)
     paragraph = AppKit.NSMutableParagraphStyle.alloc().init()
     paragraph.setAlignment_(AppKit.NSTextAlignmentLeft if align == "left" else AppKit.NSTextAlignmentCenter)
@@ -166,11 +152,19 @@ def render_text(text, size, weight, rgb, max_width, align, line_height, highligh
         AppKit.NSKernAttributeName: kern,
     }
     string = Foundation.NSMutableAttributedString.alloc().initWithString_attributes_(text, attributes)
-    if highlight and lit and highlight in text:
-        start = text.index(highlight)
+    span = phrase_span(text, highlight) if lit else None
+    if span:
         string.addAttribute_value_range_(
             AppKit.NSForegroundColorAttributeName, color(lit),
-            (utf16(text, start), utf16(text, start + len(highlight)) - utf16(text, start)))
+            (utf16(text, span[0]), utf16(text, span[1]) - utf16(text, span[0])))
+    return string
+
+
+def render_text(text, size, weight, rgb, max_width, align, line_height, highlight=None, lit=None, kern=0.0):
+    """Draws one block of text through AppKit so every script the listing speaks — Latin, kana,
+    hangul, han — falls back to the right system face on its own. `highlight` is a phrase of the text
+    to draw in `lit`. Returns an RGBA image the width of the column and exactly as tall as the text."""
+    string = attributed(text, size, weight, rgb, align, line_height, highlight, lit, kern)
     bounds = string.boundingRectWithSize_options_context_(
         (max_width, 100000), AppKit.NSStringDrawingUsesLineFragmentOrigin, None)
     height = int(math.ceil(bounds.size.height)) + 6
@@ -186,24 +180,51 @@ def render_text(text, size, weight, rgb, max_width, align, line_height, highligh
     return Image.open(io.BytesIO(bytes(png))).convert("RGBA")
 
 
-def backdrop(width, height, accent):
-    """The panel's own ground: the canvas darkened toward the bottom, the panel's colour pooled at the
-    top where the claim sits, and a second, turned-round colour behind the device so the glass of the
-    bezel has something to be seen against. The glows are blurred at a fraction of the size, which is
-    indistinguishable and an order of magnitude faster."""
-    top = mix(CANVAS_TOP, accent, 0.20)
-    column = Image.new("RGB", (1, height))
-    for y in range(height):
-        t = y / max(1, height - 1)
-        stop = mix(top, CANVAS_BOTTOM, min(1, t / 0.62)) if t < 0.62 else CANVAS_BOTTOM
-        column.putpixel((0, y), stop)
-    canvas = column.resize((width, height)).convert("RGBA")
-    glow(canvas, (round(width * 0.12), -260), 1150, 70, accent)
-    glow(canvas, (round(width * 0.9), round(height * 0.58)), 950, 34, shifted(accent, 38, 0.04))
-    return canvas
+def line_widths(text, size, weight, kern, line_height=1.0):
+    """The natural width of every explicit line of `text`, which is what has to fit the column."""
+    widths = []
+    for line in text.split("\n"):
+        string = attributed(line or " ", size, weight, HEADLINE_INK, "left", line_height, kern=kern)
+        bounds = string.boundingRectWithSize_options_context_(
+            (100000, 100000), AppKit.NSStringDrawingUsesLineFragmentOrigin, None)
+        widths.append(bounds.size.width)
+    return widths
+
+
+def headline_size(texts, column, width, spec):
+    """One headline size for every panel of a set: the cap height the contract asks for, stepped down
+    only as far as the longest line of the longest panel needs to hold within the column. A set
+    whose type changed size from panel to panel would read as a mistake down the carousel."""
+    size = spec["cap_share"] * width / CAP_RATIO
+    while size > 20:
+        kern = HEADLINE_KERN * size / 100
+        widest = max(max(line_widths(t, size, HEADLINE_WEIGHT, kern)) for t in texts)
+        if widest <= column:
+            break
+        size *= 0.98
+    return round(size)
+
+
+def sub_fit(text, column, spec):
+    """The subline's size and rendered image: started large and stepped down until it holds in two
+    lines, never below the floor — past it the caller reports the overflow instead of hiding it."""
+    size = spec["sub_size"]
+    while True:
+        image = render_text(text, size, SUBLINE_WEIGHT, SUBLINE_INK, column, spec["align"], SUBLINE_LEADING)
+        lines = (image.height - 6) / (size * SUBLINE_LEADING * 1.19)
+        if lines <= 2.4 or size <= spec["sub_floor"]:
+            return size, image, lines
+        size = round(size * 0.96)
+
+
+def ink_box(image):
+    """The box the visible glyphs occupy in a rendered text image."""
+    return image.split()[3].point(lambda a: 255 if a > 24 else 0).getbbox()
 
 
 def glow(canvas, center, radius, alpha, color=ACCENT):
+    """A blurred disc of `color` laid on a canvas at `center`; the blur runs at a quarter of the size,
+    which is indistinguishable and an order of magnitude faster. The promo video's ground uses it."""
     scale = 4
     small = (canvas.width // scale, canvas.height // scale)
     layer = Image.new("L", small, 0)
@@ -212,26 +233,6 @@ def glow(canvas, center, radius, alpha, color=ACCENT):
     ImageDraw.Draw(layer).ellipse([cx - r, cy - r, cx + r, cy + r], fill=alpha)
     layer = layer.filter(ImageFilter.GaussianBlur(r / 2)).resize(canvas.size, Image.BILINEAR)
     canvas.paste(Image.new("RGB", canvas.size, color), (0, 0), layer)
-
-
-def rounded(shot, radius, scale_w):
-    ratio = scale_w / shot.width
-    shot = shot.resize((scale_w, round(shot.height * ratio)), Image.LANCZOS)
-    mask = Image.new("L", shot.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, shot.width - 1, shot.height - 1], radius=radius, fill=255)
-    framed = Image.new("RGBA", shot.size, (0, 0, 0, 0))
-    framed.paste(shot, (0, 0), mask)
-    ImageDraw.Draw(framed).rounded_rectangle(
-        [0, 0, shot.width - 1, shot.height - 1], radius=radius, outline=BORDER, width=2)
-    return framed
-
-
-def shadow_under(canvas, box, radius, blur=60, alpha=140):
-    layer = Image.new("L", canvas.size, 0)
-    ImageDraw.Draw(layer).rounded_rectangle(box, radius=radius, fill=alpha)
-    layer = layer.filter(ImageFilter.GaussianBlur(blur))
-    dark = Image.new("RGB", canvas.size, (0, 0, 0))
-    canvas.paste(dark, (0, 0), layer)
 
 
 def fitted(text, size, weight, ink, column, align, line_height, lines, highlight=None, lit=None, kern=0.0, floor=40):
@@ -244,20 +245,61 @@ def fitted(text, size, weight, ink, column, align, line_height, lines, highlight
         size = round(size * 0.95)
 
 
-def text_block(canvas, x, y, headline, subline, head_size, sub_size, spacing, align, width, accent,
-               highlight=None, right=96):
-    """Paints the headline (two lines at most, one phrase in the panel's colour) and the subline (two
-    at most) and returns the y where the block ends."""
-    column = width - x - right if align == "left" else width - 2 * right
-    lit = mix(accent, (255, 255, 255), 0.30)
-    head = fitted(headline, head_size, AppKit.NSFontWeightBold, HEADLINE_INK, column, align, 0.98, 2,
-                  highlight, lit, kern=-1.8, floor=70)
-    sub = fitted(subline, sub_size, AppKit.NSFontWeightMedium, SUBLINE_INK, column, align, 1.14, 2, floor=34)
-    left = x if align == "left" else right
-    canvas.paste(head, (left, y), head)
-    sub_y = y + head.height + spacing
-    canvas.paste(sub, (left, sub_y), sub)
-    return sub_y + sub.height
+def ground(width, height, lift_at=(0.5, 0.74), lift_radius=0.62, lift_alpha=15):
+    """The flat ink ground with a faint lift of light behind the device, which is what lets the
+    bezel's edge be seen against it. No colour: the lift is white."""
+    canvas = Image.new("RGBA", (width, height), GROUND + (255,))
+    scale = 4
+    layer = Image.new("L", (width // scale, height // scale), 0)
+    r = lift_radius * width / scale
+    cx, cy = lift_at[0] * width / scale, lift_at[1] * height / scale
+    ImageDraw.Draw(layer).ellipse([cx - r, cy - r, cx + r, cy + r], fill=lift_alpha)
+    layer = layer.filter(ImageFilter.GaussianBlur(r / 2.2)).resize(canvas.size, Image.BILINEAR)
+    canvas.paste(Image.new("RGB", canvas.size, (255, 255, 255)), (0, 0), layer)
+    return canvas
+
+
+def backdrop(width, height, accent=None):
+    """The set's ground, for a panel that does not choose its own lift."""
+    return ground(width, height)
+
+
+def motif(canvas, spec):
+    """The set's one device: a hairline of the accent that runs edge to edge at the top of every
+    panel and passes through a node at the margin, so ten panels side by side read as one line
+    through ten nodes — the tailnet the product is about. The node is a lit core in a soft ring."""
+    W = canvas.width
+    y, x = spec["motif_y"], spec["margin"] + 6
+    scale = 2
+    layer = Image.new("RGBA", (W * scale, 60 * scale), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    cy = 30 * scale
+    draw.line([(0, cy), (W * scale, cy)], fill=ACCENT + (120,), width=3 * scale)
+    draw.ellipse([(x - 20) * scale, cy - 20 * scale, (x + 20) * scale, cy + 20 * scale],
+                 fill=GROUND + (255,), outline=ACCENT + (170,), width=3 * scale)
+    draw.ellipse([(x - 8) * scale, cy - 8 * scale, (x + 8) * scale, cy + 8 * scale], fill=ACCENT + (255,))
+    layer = layer.resize((W, 60), Image.LANCZOS)
+    canvas.paste(layer, (0, y - 30), layer)
+
+
+def caption_block(canvas, spec, entry, head_size, lit=ACCENT):
+    """Paints the headline and the subline at the set's size and returns the y where the block ends
+    and every measurement a checker needs: ink boxes, line count, the room used."""
+    W = canvas.width
+    margin = spec["margin"]
+    column = W - 2 * margin
+    kern = HEADLINE_KERN * head_size / 100
+    head = render_text(entry["headline"], head_size, HEADLINE_WEIGHT, HEADLINE_INK, column, spec["align"],
+                       HEADLINE_LEADING, entry.get("highlight"), lit, kern)
+    sub_size, sub, sub_lines = sub_fit(entry["subline"], column, spec)
+    canvas.paste(head, (margin, spec["head_y"]), head)
+    sub_y = spec["head_y"] + head.height + spec["gap"]
+    canvas.paste(sub, (margin, sub_y), sub)
+    return {
+        "end": sub_y + sub.height, "head_box": ink_box(head), "sub_box": ink_box(sub), "column": column,
+        "head_size": head_size, "sub_size": sub_size, "sub_lines": sub_lines, "head_height": head.height,
+        "sub_y": sub_y,
+    }
 
 
 def framed(master, color=FRAME_COLOR):
@@ -276,7 +318,7 @@ def framed(master, color=FRAME_COLOR):
     return Image.open(out).convert("RGBA")
 
 
-def device_shadow(canvas, device, position, blur=70, alpha=170, drop=34):
+def device_shadow(canvas, device, position, blur=60, alpha=150, drop=30):
     """A shadow cast by the bezel's own outline, so the shape under the device is the device's."""
     layer = Image.new("L", canvas.size, 0)
     layer.paste(device.split()[3].point(lambda a: alpha if a > 200 else 0), (position[0], position[1] + drop))
@@ -284,154 +326,133 @@ def device_shadow(canvas, device, position, blur=70, alpha=170, drop=34):
     canvas.paste(Image.new("RGB", canvas.size, (0, 0, 0)), (0, 0), layer)
 
 
-def place_device(canvas, master, top, bottom_margin, width_limit, width=None):
+def place_device(canvas, master, top, bottom_margin, width_limit, width=None, x=None):
     """The framed device under the claim. With a `width` it is that wide and whatever does not fit
     bleeds off the bottom of the panel, which is what makes the screen large enough to read at
     thumbnail size; without one it is scaled whole into the room the claim leaves, nothing of the
-    screen cropped, so a composer or a pill at the foot is always in the picture. Returns the device
-    as placed and its top-left corner."""
+    screen cropped. Returns the device as placed, its top-left corner and the scale."""
     device = framed(master)
     if width:
         scale = width / device.width
     else:
         scale = min((canvas.height - top - bottom_margin) / device.height, width_limit / device.width)
     device = device.resize((round(device.width * scale), round(device.height * scale)), Image.LANCZOS)
-    x = (canvas.width - device.width) // 2
+    if x is None:
+        x = (canvas.width - device.width) // 2
     device_shadow(canvas, device, (x, top))
     canvas.paste(device.convert("RGB"), (x, top), device.split()[3])
     return device, (x, top), scale
 
 
-def callout(master_img, box, scale, accent, radius=46):
-    """A piece of the screen cut out at its own pixels and enlarged, in a rounded card with a
-    hairline: the one moment of the panel worth reading at thumbnail size, drawn bigger than the
-    device it came from so it reads as the point of the picture rather than a corner of it."""
-    w, h = master_img.size
-    cut = master_img.crop((round(box[0] * w), round(box[1] * h), round(box[2] * w), round(box[3] * h))).convert("RGB")
-    cut = cut.resize((round(cut.width * scale), round(cut.height * scale)), Image.LANCZOS)
-    mask = Image.new("L", cut.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, cut.width - 1, cut.height - 1], radius=radius, fill=255)
-    card = Image.new("RGBA", cut.size, (0, 0, 0, 0))
-    card.paste(cut, (0, 0), mask)
-    draw = ImageDraw.Draw(card)
-    draw.rounded_rectangle([0, 0, cut.width - 1, cut.height - 1], radius=radius,
-                           outline=mix(accent, (255, 255, 255), 0.35) + (150,), width=4)
-    return card
-
-
-def paste_card(canvas, card, center, accent):
-    """Sets a callout on the panel by its centre (as fractions of the panel), with a shadow under it
-    and a breath of the panel's colour around it."""
-    x = round(center[0] * canvas.width - card.width / 2)
-    y = round(center[1] * canvas.height - card.height / 2)
-    layer = Image.new("L", canvas.size, 0)
-    ImageDraw.Draw(layer).rounded_rectangle([x, y + 28, x + card.width, y + card.height + 28], radius=46, fill=190)
-    canvas.paste(Image.new("RGB", canvas.size, (0, 0, 0)), (0, 0), layer.filter(ImageFilter.GaussianBlur(46)))
-    halo = Image.new("L", canvas.size, 0)
-    ImageDraw.Draw(halo).rounded_rectangle([x - 10, y - 10, x + card.width + 10, y + card.height + 10], radius=56, fill=70)
-    canvas.paste(Image.new("RGB", canvas.size, accent), (0, 0), halo.filter(ImageFilter.GaussianBlur(34)))
-    canvas.paste(card.convert("RGB"), (x, y), card.split()[3])
-
-
-def compose_iphone(master, entry, spec, locale):
-    W, H = 1320, 2868
-    accent = hexc(spec["accent"])
-    canvas = backdrop(W, H, accent)
-    end = text_block(canvas, 96, 150, entry["headline"], entry["subline"], 128, 56, 34, "left", W, accent,
-                     entry.get("highlight"))
-    if spec.get("kind") == "widgets":
-        return compose_widgets(canvas, end, locale, accent).convert("RGB")
-    top = end + spec.get("gap", 64)
-    device_spec = spec.get("device", {})
-    device, (dx, dy), scale = place_device(
-        canvas, master, top, 40, W - 150, device_spec.get("width"))
+def masked(master, rects):
+    """The master with system chrome blanked out where `rects` (pixel boxes of the master) say, saved
+    beside the framing cache. The iPad's workspace shots draw no status bar; the first-run screen is
+    not part of that workspace, so the strip the system lays down its side is blanked to match."""
+    if not rects:
+        return master
     shot = Image.open(master).convert("RGB")
-    for item in spec.get("callouts", []):
-        card = callout(shot, item["box"], item["scale"], accent)
-        paste_card(canvas, card, item["at"], accent)
-    return canvas.convert("RGB")
-
-
-def compose_widgets(canvas, end, locale, accent):
-    """The Home Screen widgets, cut off the harness's key colour and set out the way a Home Screen
-    sets them — a medium, two smalls, a large — on the panel's own ground. There is no device: a
-    widget is a thing on a Home Screen and the family is the picture."""
-    folder = os.path.join(WIDGET_TILES, locale)
-    if not os.path.isdir(folder):
-        folder = os.path.join(WIDGET_TILES, "en-US")
-    tiles = {n: Image.open(os.path.join(folder, n + ".png")).convert("RGBA")
-             for n in ("large", "medium", "small-a", "small-b")}
-    W = canvas.width
-    gap = 44
-    rows = [("small-a", "small-b"), ("medium",), ("large",)]
-    natural = sum(max(tiles[n].height for n in row) for row in rows) + gap * (len(rows) - 1)
-    top = end + 90
-    scale = min(1.0, (canvas.height - top - 70) / natural)
-    sized = {n: t.resize((round(t.width * scale), round(t.height * scale)), Image.LANCZOS) for n, t in tiles.items()}
-    width = sized["large"].width
-    left = (W - width) // 2
-    y = top
-    for row in rows:
-        x = left
-        height = max(sized[n].height for n in row)
-        spare = width - sum(sized[n].width for n in row)
-        step = spare // max(1, len(row) - 1) if len(row) > 1 else 0
-        for n in row:
-            tile = sized[n]
-            layer = Image.new("L", canvas.size, 0)
-            layer.paste(tile.split()[3].point(lambda a: 150 if a > 200 else 0), (x, y + 24))
-            canvas.paste(Image.new("RGB", canvas.size, (0, 0, 0)), (0, 0), layer.filter(ImageFilter.GaussianBlur(40)))
-            canvas.paste(tile.convert("RGB"), (x, y), tile.split()[3])
-            x += tile.width + step
-        y += height + round(gap * scale)
-    return canvas
-
-
-def compose_ipad(master, entry, spec, locale):
-    """The landscape workspace, whole, in its own bezel: the claim centred above it and the device
-    scaled to the room the claim leaves, so no column of the three is cropped away."""
-    W, H = 2752, 2064
-    accent = hexc(spec["accent"])
-    canvas = backdrop(W, H, accent)
-    end = text_block(canvas, 0, 96, entry["headline"], entry["subline"], 150, 62, 30, "center", W, accent,
-                     entry.get("highlight"), right=140)
-    place_device(canvas, master, top=end + 60, bottom_margin=40, width_limit=W - 200)
-    return canvas.convert("RGB")
-
-
-def compose_mac(master, entry, spec, locale):
-    W, H = 2880, 1800
-    accent = hexc(spec["accent"])
-    canvas = backdrop(W, H, accent)
-    end = text_block(canvas, 0, 96, entry["headline"], entry["subline"], 124, 54, 28, "center", W, accent,
-                     entry.get("highlight"), right=140)
-    shot = rounded(Image.open(master).convert("RGB"), 28, 2560)
-    x = (W - shot.width) // 2
-    y = end + 88
-    shadow_under(canvas, [x + 10, y + 20, x + shot.width - 10, H], 28)
-    canvas.paste(shot.convert("RGB"), (x, y), shot.split()[3])
-    return canvas.convert("RGB").crop((0, 0, W, H))
-
-
-ACCENTS = ["#546BFF", "#FFB020", "#A855F7", "#30D158", "#32C8E6", "#FF5FA2", "#FF7A29", "#6E78FF", "#3DDC97", "#8C98FF"]
-
-
-def spec_for(specs, platform, index, slug):
-    """The layout of a panel: its own entry in layout.json where it has one, else the next colour
-    round the palette, so a panel added to a manifest is never unstyled."""
-    if slug in specs:
-        return specs[slug]
-    return {"accent": ACCENTS[index % len(ACCENTS)]}
-
-
-def emit(label, source_dir, folder, entries, compose, locale, specs, platform):
+    for box in rects:
+        ImageDraw.Draw(shot).rectangle(box, fill=(0, 0, 0))
+    with open(master, "rb") as f:
+        key = hashlib.sha1(f.read() + json.dumps(rects).encode()).hexdigest()[:16]
+    folder = os.path.join(FRAME_CACHE, "masked-" + key)
     os.makedirs(folder, exist_ok=True)
-    for index, entry in enumerate(entries):
-        spec = spec_for(specs, platform, index, entry["slug"])
+    path = os.path.join(folder, os.path.basename(master))
+    shot.save(path)
+    return path
+
+
+def cropped_top(canvas, base, clip_top, fade):
+    """Hides everything the device has put above `clip_top` by laying the bare ground back over it, and
+    softens the cut: the device rises out of the ground over `fade` pixels instead of ending on a
+    line. This is how a panel crops deeper than the device's own top — the status bar, the island and
+    whatever empty screen sits above the part that sells."""
+    canvas.paste(base.crop((0, 0, canvas.width, clip_top)), (0, 0))
+    if fade:
+        box = (0, clip_top, canvas.width, clip_top + fade)
+        mask = Image.linear_gradient("L").rotate(180).resize((canvas.width, fade))
+        canvas.paste(Image.composite(base.crop(box), canvas.crop(box), mask), box[:2])
+
+
+def compose_iphone(master, entry, spec, locale, head_size):
+    spec = {**PHONE, **spec}
+    W, H = spec["size"]
+    canvas = ground(W, H)
+    base = canvas.copy()
+    top = spec["device_top"]
+    crop = spec.get("crop", 0)
+    if crop:
+        device = framed(master)
+        scale = spec["device_width"] / device.width
+        top = round(spec["device_top"] - crop * device.height * scale)
+    place_device(canvas, master, top, 0, W, spec["device_width"])
+    if crop:
+        cropped_top(canvas, base, spec["device_top"], spec.get("fade", 60))
+    motif(canvas, spec)
+    caption_block(canvas, spec, entry, head_size)
+    return canvas.convert("RGB")
+
+
+def compose_ipad(master, entry, spec, locale, head_size):
+    """The iPad's panel. A panel with a `scale` and an `at` is cropped onto its proof object: the
+    master is enlarged `scale` canvas pixels per framed pixel and placed so the point `at` (fractions
+    of the screen) lands at the panel's left edge, just under the caption, with the device running
+    off both sides and the bottom. One without them shows the whole workspace in its bezel."""
+    spec = {**PAD, **spec}
+    W, H = spec["size"]
+    canvas = ground(W, H, lift_at=(0.5, 0.7), lift_radius=0.5)
+    base = canvas.copy()
+    path = masked(master, spec.get("mask"))
+    if "scale" in spec:
+        device = framed(path)
+        k = spec["scale"]
+        fx, fy = spec["at"]
+        x = round(-(IPAD_ORIGIN[0] + fx * IPAD_SCREEN[0]) * k)
+        top = round(spec["device_top"] - (IPAD_ORIGIN[1] + fy * IPAD_SCREEN[1]) * k)
+        place_device(canvas, path, top, 0, W, round(device.width * k), x)
+        cropped_top(canvas, base, spec["device_top"], spec.get("fade", 26))
+    else:
+        place_device(canvas, path, spec["device_top"], 0, W, spec["device_width"])
+    motif(canvas, spec)
+    caption_block(canvas, spec, entry, head_size)
+    return canvas.convert("RGB")
+
+
+COMPOSERS = {"iphone": (compose_iphone, PHONE), "ipad": (compose_ipad, PAD)}
+
+def spec_for(specs, platform, slug):
+    """The layout of a panel: its own entry in layout.json (by device, then slug) where it has one,
+    else the set's defaults."""
+    return specs.get(platform, {}).get(slug, {})
+
+
+def block_end(entry, size, base):
+    """Where the caption block of one panel ends when its headline is set at `size`."""
+    canvas = Image.new("RGBA", (base["size"][0], 700), GROUND + (255,))
+    return caption_block(canvas, base, entry, size)["end"]
+
+
+def set_size(entries, platform):
+    """The one headline size a locale's set of this platform is set in: the widest size at which every
+    line holds within the column and every caption ends clear of the device. A script whose line
+    height is taller than Latin's, or a language of long words, pays for it here, in the type size,
+    and never in words cut from the caption."""
+    base = PHONE if platform == "iphone" else PAD
+    column = base["size"][0] - 2 * base["margin"]
+    size = headline_size([e["headline"] for e in entries], column, base["size"][0], base)
+    while size > 40 and max(block_end(e, size, base) for e in entries) > base["device_top"] - CLEAR:
+        size = round(size * 0.98)
+    return size
+
+
+def emit(label, source_dir, folder, entries, compose, locale, specs, platform, head_size=None):
+    os.makedirs(folder, exist_ok=True)
+    for entry in entries:
+        spec = spec_for(specs, platform, entry["slug"])
         path = os.path.join(source_dir, entry["master"] + ".png")
-        if spec.get("kind") != "widgets" and not os.path.exists(path):
+        if not os.path.exists(path):
             sys.exit(f"missing master {path}")
-        panel = compose(path, entry, spec, locale)
+        panel = compose(path, entry, spec, locale, head_size) if head_size else compose(path, entry, spec, locale)
         out = os.path.join(folder, entry["slug"] + ".png")
         panel.save(out, optimize=True)
         print(f"  {label}/{entry['slug']}.png")
@@ -447,9 +468,62 @@ def emit_locale(locale, platform):
     if not os.path.isdir(source):
         print(f"  {locale}/{platform}: no masters at {source}, skipped")
         return
-    panels = manifest(book["iphone"]) if platform == "iphone" else ipad_manifest(book)
-    compose = compose_iphone if platform == "iphone" else compose_ipad
-    emit(f"{locale}/{platform}", source, panels_dir(locale, platform), panels, compose, locale, layout(), platform)
+    panels = manifest(book[platform])
+    compose = COMPOSERS[platform][0]
+    emit(f"{locale}/{platform}", source, panels_dir(locale, platform), panels, compose, locale, layout(), platform,
+         set_size(panels, platform))
+
+
+def fit_issues(locale, platform, entries):
+    """Every way this locale's captions fail to hold: a headline line wider than the column, glyphs
+    touching the column's edge once drawn, a headline below the legible floor, a subline that needs
+    more than two lines at its floor, and a caption block that reaches the device."""
+    base = PHONE if platform == "iphone" else PAD
+    W = base["size"][0]
+    spec = dict(base)
+    column = W - 2 * spec["margin"]
+    size = set_size(entries, platform)
+    issues = []
+    floor = spec["floor_share"] * W / CAP_RATIO
+    if size < floor:
+        issues.append(f"headline set at {size}px, below the legible floor of {round(floor)}px")
+    for entry in entries:
+        who = f"{locale}/{platform}/{entry['slug']}"
+        kern = HEADLINE_KERN * size / 100
+        for line, width in zip(entry["headline"].split("\n"), line_widths(entry["headline"], size, HEADLINE_WEIGHT, kern)):
+            if width > column:
+                issues.append(f"{who}: headline line {line!r} is {round(width)}px in a {column}px column")
+        if len(entry["headline"].split("\n")) > 2:
+            issues.append(f"{who}: headline runs to {len(entry['headline'].split(chr(10)))} lines")
+        if entry.get("highlight") and not phrase_span(entry["headline"], entry["highlight"]):
+            issues.append(f"{who}: lit phrase {entry['highlight']!r} is not in the headline")
+        canvas = Image.new("RGBA", (W, spec["size"][1]), GROUND + (255,))
+        block = caption_block(canvas, spec, entry, size)
+        left, _, right, _ = block["head_box"]
+        if left < 0 or right >= column - 1:
+            issues.append(f"{who}: headline glyphs touch the column edge ({left}..{right} of {column})")
+        if block["sub_lines"] > 2.4:
+            issues.append(f"{who}: subline needs {block['sub_lines']:.1f} lines at its {block['sub_size']}px floor")
+        room = spec["device_top"] if platform == "iphone" else None
+        if room and block["end"] > room - 24:
+            issues.append(f"{who}: caption ends at {block['end']}px, within {CLEAR}px of the device at {room}px")
+    return issues, size
+
+
+def check_fit(wanted_locales):
+    failures = 0
+    for locale in wanted_locales or locales():
+        book = captions(locale)
+        for platform in ("iphone", "ipad"):
+            issues, size = fit_issues(locale, platform, manifest(book[platform]))
+            base = PHONE if platform == "iphone" else PAD
+            cap = size * CAP_RATIO / base["size"][0] * 100
+            print(f"{locale:8} {platform:6} headline {size}px (cap {cap:.1f}% of width)  {'ok' if not issues else str(len(issues)) + ' issues'}")
+            for issue in issues:
+                print("    " + issue)
+            failures += len(issues)
+    if failures:
+        sys.exit(f"{failures} caption fit issues")
 
 
 def main():
@@ -459,14 +533,16 @@ def main():
         i = args.index("--locale")
         wanted_locales = [args[i + 1]]
         del args[i:i + 2]
-    wanted = args or ["iphone", "ipad", "mac"]
+    if "--check-fit" in args:
+        check_fit(wanted_locales)
+        return
+    if "mac" in args:
+        sys.exit("the Mac set is composed by scripts/market-compose-mac.py")
+    wanted = args or ["iphone", "ipad"]
     for platform in ("iphone", "ipad"):
         if platform in wanted:
             for locale in wanted_locales or locales():
                 emit_locale(locale, platform)
-    if "mac" in wanted:
-        entries = [dict(master=m, slug=slug, headline=h, subline=sub, highlight=hl) for m, slug, h, sub, hl in MAC]
-        emit("mac", MAC_IN, os.path.join(OUT, "mac"), entries, compose_mac, "en-US", layout(), "mac")
 
 
 if __name__ == "__main__":

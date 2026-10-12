@@ -10,6 +10,7 @@
 #   scripts/shots.sh 07-home 08-usage
 #   TAILSCODE_SHOT_LOCALE=de-DE scripts/shots.sh   # the app in German, to marketing/appstore/l10n/de-DE/iphone
 #   TAILSCODE_SHOT_SKIP_BUILD=1 scripts/shots.sh …  # reuse the app the last run built (a per-locale pass)
+#   scripts/shots.sh lock            # the real Lock Screen with the app's Live Activities (drives Device Hub)
 #
 # The Studio shots (studio-paint, studio-done, video-run, video-done) need real pictures:
 #   TAILSCODE_STUDIO_ART=<folder with lighthouse.png, cat-roof.png, ... and manifest.json> scripts/shots.sh studio-paint
@@ -57,6 +58,7 @@ language_args() {
     it) echo "-AppleLanguages (it) -AppleLocale it_IT" ;;
     pt-BR) echo "-AppleLanguages (pt-BR) -AppleLocale pt_BR" ;;
     ja) echo "-AppleLanguages (ja) -AppleLocale ja_JP" ;;
+    pl) echo "-AppleLanguages (pl) -AppleLocale pl_PL" ;;
     ko) echo "-AppleLanguages (ko) -AppleLocale ko_KR" ;;
     zh-Hans) echo "-AppleLanguages (zh-Hans) -AppleLocale zh_CN" ;;
     zh-Hant) echo "-AppleLanguages (zh-Hant) -AppleLocale zh_TW" ;;
@@ -65,6 +67,39 @@ language_args() {
 }
 LANGUAGE_ARGS="$(language_args "$LOCALE")"
 
+# The language and region the whole simulator speaks for a store locale. The launch arguments above
+# only reach the app; the status bar's clock, the Lock Screen's date and every system string follow
+# the device's own region, which on this machine is Finland's and writes the time as 9.41.
+system_language() {
+  case "$1" in
+    en-US) echo "en en_US" ;;
+    de-DE) echo "de de_DE" ;;
+    es-ES) echo "es es_ES" ;;
+    fr-FR) echo "fr fr_FR" ;;
+    it) echo "it it_IT" ;;
+    pt-BR) echo "pt-BR pt_BR" ;;
+    ja) echo "ja ja_JP" ;;
+    ko) echo "ko ko_KR" ;;
+    pl) echo "pl pl_PL" ;;
+    zh-Hans) echo "zh-Hans zh_CN" ;;
+    zh-Hant) echo "zh-Hant zh_TW" ;;
+  esac
+}
+
+# Switches the simulator to the locale's own language and region, restarting it when they differ.
+speak_locale() {
+  local id=$1 pair language region
+  pair=$(system_language "$LOCALE")
+  language=${pair% *}
+  region=${pair#* }
+  [ "$(xcrun simctl spawn "$id" defaults read -g AppleLocale 2>/dev/null)" = "$region" ] && return
+  xcrun simctl spawn "$id" defaults write -g AppleLanguages -array "$language"
+  xcrun simctl spawn "$id" defaults write -g AppleLocale -string "$region"
+  xcrun simctl shutdown "$id"
+  xcrun simctl boot "$id"
+  xcrun simctl bootstatus "$id" >/dev/null 2>&1 || true
+}
+
 # name | launch args | env (space separated KEY=VALUE) | seconds to settle
 # "welcome" and "setup" run against a fresh install with no demo backend: they are
 # the first screen and the setup checklist a first launch actually shows. The faked
@@ -72,8 +107,8 @@ LANGUAGE_ARGS="$(language_args "$LOCALE")"
 SHOTS=(
   "01-live|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_DIAL=level:max|14"
   "02-work|--demo|TAILSCODE_OPEN_SESSION=demo-c2|9"
-  "03-approval|--demo|TAILSCODE_OPEN_SESSION=demo-c3|12"
-  "04-question|--demo|TAILSCODE_OPEN_SESSION=demo-o2|11"
+  "03-approval|--demo|TAILSCODE_OPEN_SESSION=demo-c3 SHOT_CONTENT_SIZE=extra-extra-large|12"
+  "04-question|--demo|TAILSCODE_OPEN_SESSION=demo-o2 SHOT_CONTENT_SIZE=extra-extra-large|11"
   "05-subagents|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_AGENTS=first|11"
   "06-render|--demo|TAILSCODE_OPEN_SESSION=demo-o1|9"
   "07-home|--demo|TAILSCODE_HIDE_DEMO_BADGE=1|6"
@@ -81,11 +116,11 @@ SHOTS=(
   "widgets-store|--demo --widget-preview-store||6"
   "08-usage|--demo --usage||7"
   "09-chats|--demo|TAILSCODE_OPEN_CHATS=1|7"
-  "02-dial|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=rail:ultracode|14"
+  "02-dial|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh+pins+star:claude-haiku-4-5 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12|17"
   "10-models|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=1|9"
   "11-compaction|--demo|TAILSCODE_OPEN_SESSION=demo-c4|9"
   "12-git|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_OPEN_GIT=1|12"
-  "13-diff|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_OPEN_GIT=diff|14"
+  "13-diff|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_OPEN_GIT=diff TAILSCODE_GIT_LARGE=1|14"
   "14-analytics|--demo --analytics||9"
   "15-delegate|--demo|TAILSCODE_OPEN_DELEGATE=studio.tailnet-demo.ts.net|10"
   "pk-pill-auto|--demo|TAILSCODE_HIDE_DEMO_BADGE=1|6"
@@ -123,6 +158,7 @@ SHOTS=(
   "video-done|--demo|TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_VIDEO_STATE=done TAILSCODE_VIDEO_FRAME=1 TAILSCODE_FORGE_ART=$STUDIO_ART|14"
   "welcome||TAILSCODE_FAKE_TAILNET=up|5"
   "setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_FAKE_TAILNET=up|6"
+  "lock|--demo|TAILSCODE_LOCKSCREEN=1|0"
 )
 
 # The iPad is photographed as the workspace it is, in landscape: the device boots upright and
@@ -131,16 +167,17 @@ SHOTS=(
 # TAILSCODE_WORKSPACE_WALK presses the sidebar's rows on a clock.
 if [ -n "${IPAD:-}" ]; then
   SHOTS=(
-    "01-live|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1 TAILSCODE_DIAL=level:ultracode|16"
-    "03-approval|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c3|14"
+    "01-live|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1 TAILSCODE_DIAL=level:ultracode SHOT_CONTENT_SIZE=extra-extra-large|16"
+    "03-approval|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c3 SHOT_CONTENT_SIZE=extra-extra-large|14"
     "04-question|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-opencode/demo-o2|13"
-    "02-work|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2|11"
-    "05-subagents|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_OPEN_AGENTS=first|14"
-    "13-diff|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1 TAILSCODE_OPEN_GIT=diff|17"
-    "08-usage|--demo|TAILSCODE_WORKSPACE_WALK=5:usage|10"
-    "14-analytics|--demo|TAILSCODE_WORKSPACE_WALK=5:analytics|11"
-    "15-delegate|--demo|TAILSCODE_WORKSPACE_WALK=5:delegate=studio|12"
-    "11-focus|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c4,8:hide|13"
+    "02-work|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 SHOT_CONTENT_SIZE=extra-extra-large|11"
+    "05-subagents|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_OPEN_AGENTS=first SHOT_CONTENT_SIZE=extra-extra-large|14"
+    "13-diff|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1 TAILSCODE_OPEN_GIT=diff SHOT_CONTENT_SIZE=extra-extra-large|17"
+    "08-usage|--demo|TAILSCODE_WORKSPACE_WALK=5:usage SHOT_CONTENT_SIZE=extra-extra-large|10"
+    "14-analytics|--demo|TAILSCODE_WORKSPACE_WALK=5:analytics SHOT_CONTENT_SIZE=extra-extra-large|11"
+    "15-delegate|--demo|TAILSCODE_WORKSPACE_WALK=5:delegate=studio SHOT_CONTENT_SIZE=extra-extra-large|12"
+    "whole|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c4,8:hide SHOT_CONTENT_SIZE=extra-extra-large|13"
+    "welcome||TAILSCODE_FAKE_TAILNET=up SHOT_CONTENT_SIZE=accessibility-medium|8"
     "pv-demo|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=12|20"
     "pv-demo-m3|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=12 TAILSCODE_MODELS_MACHINE=2|22"
   )
@@ -157,11 +194,12 @@ boot_device() {
   fi
   xcrun simctl boot "$id" 2>/dev/null || true
   xcrun simctl bootstatus "$id" >/dev/null 2>&1 || true
+  speak_locale "$id" >&2
   xcrun simctl ui "$id" appearance "${TAILSCODE_SHOT_APPEARANCE:-dark}" >/dev/null 2>&1 || true
   xcrun simctl spawn "$id" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true >/dev/null 2>&1 || true
   xcrun simctl ui "$id" content_size "${TAILSCODE_SHOT_CONTENT_SIZE:-large}" >/dev/null 2>&1 || true
   xcrun simctl status_bar "$id" override \
-    --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
+    --time "2023-10-13T06:41:00.000Z" --dataNetwork wifi --wifiMode active --wifiBars 3 \
     --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 \
     >/dev/null 2>&1 || true
   echo "$id"
@@ -205,9 +243,104 @@ studio_mock() {
   sleep 2
 }
 
+
+HUB_APP="${TAILSCODE_DEVICEHUB:-$(dirname "$(xcode-select -p)")/Applications/DeviceHub.app}"
+
+hub_script() { osascript -e "tell application \"System Events\" to tell process \"DeviceHub\" to $1"; }
+
+hub_menu() { hub_script "click menu item \"$2\" of menu 1 of menu bar item \"$1\" of menu bar 1" >/dev/null; }
+
+# Opens Device Hub on the simulator named $1 and selects it in the list.
+hub_show() {
+  open "$HUB_APP"
+  until hub_script "get name of window 1" >/dev/null 2>&1; do sleep 1; done
+  osascript -e 'tell application "DeviceHub" to activate'
+  hub_select "$1"
+}
+
+hub_select() {
+  osascript <<APPLESCRIPT >/dev/null
+tell application "System Events" to tell process "DeviceHub"
+  set listing to outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of splitter group 1 of group 1 of window 1
+  repeat with entry in rows of listing
+    try
+      if (value of static text 1 of UI element 1 of entry) is "$1" then set selected of entry to true
+    end try
+  end repeat
+end tell
+APPLESCRIPT
+  sleep 2
+}
+
+# Device Hub's one window is shared with whatever else is driving a simulator on this machine, and
+# a Lock pressed while it shows someone else's device locks theirs: so every menu press first checks
+# that it is in front and whose phone it is showing, and takes the window back when it is not.
+hub_front() {
+  local tries=0
+  until [ "$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true')" = DeviceHub ]; do
+    tries=$((tries + 1))
+    [ "$tries" -le 20 ] || { echo "Device Hub cannot be brought to the front" >&2; exit 1; }
+    osascript -e 'tell application "DeviceHub" to activate'
+    sleep 0.5
+  done
+}
+
+hub_mine() {
+  hub_front
+  local tries=0
+  until [ "$(hub_script "get name of window 1" 2>/dev/null | cut -d' ' -f1)" = "$1" ]; do
+    tries=$((tries + 1))
+    [ "$tries" -le 8 ] || { echo "Device Hub keeps showing another simulator" >&2; exit 1; }
+    hub_select "$1"
+  done
+}
+
+lock_state() { xcrun simctl spawn "$1" notifyutil -g com.apple.springboard.lockstate | awk '{print $2}'; }
+
+# The Lock Screen master. The app, launched with TAILSCODE_LOCKSCREEN, starts three real Live
+# Activities through AppActivityController; this locks the simulator from Device Hub and photographs
+# the system's own Lock Screen, then unlocks so the next shot starts on a Home Screen.
+capture_lock() {
+  local device=$1 name=$2 args=$3 envs=$4
+  local prefixed=(SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
+  for pair in $envs; do prefixed+=("SIMCTL_CHILD_${pair}"); done
+  xcrun simctl terminate "$device" "$BUNDLE" >/dev/null 2>&1 || true
+  hub_show "$DEVICE_NAME"
+  if [ "$(lock_state "$device")" = 1 ]; then
+    hub_mine "$DEVICE_NAME"
+    hub_menu Controls Home
+    sleep 2
+  fi
+  env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
+  sleep 4
+  local attempt
+  for attempt in 1 2 3 4; do
+    hub_mine "$DEVICE_NAME"
+    hub_menu Controls Lock
+    sleep 6
+    [ "$(lock_state "$device")" = 1 ] && break
+    hub_select "$DEVICE_NAME"
+  done
+  [ "$(lock_state "$device")" = 1 ] || { echo "the simulator did not lock" >&2; exit 1; }
+  xcrun simctl io "$device" screenshot "$OUT/$name.png" >/dev/null 2>&1
+  local presses
+  for presses in 1 2 3; do
+    hub_mine "$DEVICE_NAME"
+    hub_menu Controls Home
+    sleep 3
+    [ "$(lock_state "$device")" = 0 ] && break
+  done
+  echo "  $name.png (locked: three Live Activities)"
+}
+
 capture() {
   local device=$1 name=$2 args=$3 envs=$4 delay=$5
   xcrun simctl terminate "$device" "$BUNDLE" >/dev/null 2>&1 || true
+  local size="${TAILSCODE_SHOT_CONTENT_SIZE:-large}"
+  for pair in $envs; do
+    case "$pair" in SHOT_CONTENT_SIZE=*) size=${pair#*=} ;; esac
+  done
+  xcrun simctl ui "$device" content_size "$size" >/dev/null 2>&1 || true
   local prefixed=(FOO=bar SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
   case "$name" in
     studio-paint | studio-done)
@@ -220,6 +353,7 @@ capture() {
   env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
   sleep "$delay"
   xcrun simctl io "$device" screenshot "$OUT/$name.png" >/dev/null 2>&1
+  xcrun simctl ui "$device" content_size "${TAILSCODE_SHOT_CONTENT_SIZE:-large}" >/dev/null 2>&1 || true
   [ -n "${IPAD:-}" ] && sips -r 270 "$OUT/$name.png" >/dev/null
   echo "  $name.png"
 }
@@ -236,6 +370,11 @@ for shot in "${SHOTS[@]}"; do
   if [ $# -gt 0 ] && [[ ! " $* " == *" $name "* ]]; then continue; fi
   if [ -n "${IPAD:-}" ]; then install_fresh "$DEVICE" "$APP"; fi
   case "$name" in welcome | setup | studio-* | video-*) install_fresh "$DEVICE" "$APP" ;; esac
+  if [ "$name" = lock ]; then
+    [ $# -gt 0 ] || continue
+    capture_lock "$DEVICE" "$name" "$args" "$envs"
+    continue
+  fi
   capture "$DEVICE" "$name" "$args" "$envs" "$delay"
 done
 

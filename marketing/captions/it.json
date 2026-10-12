@@ -1,77 +1,218 @@
 {
   "iphone": [
     {
-      "master": "01-live",
-      "slug": "01-agents-in-your-pocket",
-      "headline": "Gli agenti di codice,\nsempre in tasca",
-      "subline": "Claude Code, opencode e Oh My Pi — live sul tuo telefono.",
-      "highlight": "in tasca"
+      "master": "lock",
+      "slug": "01-lock-screen",
+      "headline": "Invia. In tasca.\nPoi ti avvisa.",
+      "subline": "I tuoi agenti di codice, live sulla Schermata di blocco, sul tuo tailnet.",
+      "highlight": "Poi ti avvisa."
     },
     {
       "master": "03-approval",
-      "slug": "02-approve-anywhere",
-      "headline": "Approva da\novunque",
-      "subline": "Consenti una volta, sempre o nega — mentre l'agente aspetta.",
-      "highlight": "ovunque"
-    },
-    {
-      "master": "02-dial",
-      "slug": "03-model-and-effort",
-      "headline": "Scegli il modello.\nRegola quanto ragiona.",
-      "subline": "Un tocco sul selettore — i preferiti fissati a uno swipe.",
-      "highlight": "quanto ragiona"
-    },
-    {
-      "master": "07-home-ultra",
-      "slug": "04-one-board",
-      "headline": "Ogni macchina,\nuna sola board",
-      "subline": "Turni live, progetti e non letti — già in ordine.",
-      "highlight": "una sola board"
-    },
-    {
-      "master": "04-question",
-      "slug": "05-it-asks",
-      "headline": "Se ha bisogno di te,\nchiede",
-      "subline": "Una domanda arriva come scheda. Rispondi con un tocco.",
-      "highlight": "chiede"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "06-hand-off",
-      "headline": "Affida il lavoro\ndi routine",
-      "subline": "Un modello economico prova per primo; un verificatore decide.",
-      "highlight": "di routine"
-    },
-    {
-      "master": "08-usage",
-      "slug": "07-know-your-limits",
-      "headline": "Conosci i limiti\nprima di esaurirli",
-      "subline": "Ogni finestra con il suo orologio di reset, letta dalle tue macchine.",
-      "highlight": "prima di esaurirli"
-    },
-    {
-      "master": "widgets",
-      "slug": "08-widgets",
-      "headline": "Le tue quote nella\nSchermata Home",
-      "subline": "Nel colore di ogni fornitore — e anche sulla Schermata di blocco.",
-      "highlight": "Schermata Home"
-    },
-    {
-      "master": "14-analytics",
-      "slug": "09-what-it-costs",
-      "headline": "Vedi quanto costa,\nturno per turno",
-      "subline": "Spesa per giorno, modello e progetto, unita su ogni macchina.",
-      "highlight": "quanto costa"
+      "slug": "02-approve",
+      "headline": "Approva il\ncomando rischioso",
+      "subline": "Consenti una volta, sempre o nega, mentre l'agente aspetta.",
+      "highlight": "comando rischioso"
     },
     {
       "master": "welcome",
-      "slug": "10-private",
+      "slug": "03-private",
       "headline": "Nulla esce dal\ntuo tailnet",
-      "subline": "Nessun account. Nessuna telemetria. Open source.",
-      "highlight": "tailnet"
+      "subline": "Nessun relay. Nessun account. Nessuna analitica. Open source, GPL-3.0.",
+      "highlight": "tuo tailnet"
+    },
+    {
+      "master": "07-home",
+      "slug": "04-one-board",
+      "headline": "Ogni macchina,\nuna sola board",
+      "subline": "Prima i turni live, per progetto, su tutti i tuoi server.",
+      "highlight": "una sola board"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "Leggi ogni diff\ndal telefono",
+      "subline": "Branch, staged, modificato: la vera patch, dalla macchina che la possiede.",
+      "highlight": "ogni diff"
+    },
+    {
+      "master": "04-question",
+      "slug": "06-it-asks",
+      "headline": "Se chiede,\ntu rispondi",
+      "subline": "Una domanda arriva come scheda. Rispondi con un tocco.",
+      "highlight": "tu rispondi"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-what-it-costs",
+      "headline": "Vedi quanto\ncosta ogni turno",
+      "subline": "Ogni turno prezzato, ogni mese sommato su tutte le tue macchine.",
+      "highlight": "costa ogni turno"
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-limits",
+      "headline": "Vedi i limiti\nprima del blocco",
+      "subline": "La finestra più stretta di ogni fornitore e il suo reset, anche nella Schermata Home.",
+      "highlight": "prima del blocco"
+    },
+    {
+      "master": "02-dial",
+      "slug": "09-model-and-effort",
+      "headline": "Scegli il modello.\nRegola lo sforzo.",
+      "subline": "Un solo selettore porta entrambi. Fissa le coppie e scorri tra loro.",
+      "highlight": "Regola lo sforzo."
+    },
+    {
+      "master": "15-delegate",
+      "slug": "10-hand-off",
+      "headline": "Affida il lavoro\ndi routine",
+      "subline": "Prima prova un modello più economico, poi decide un verificatore. Beta.",
+      "highlight": "di routine"
     }
   ],
-  "ipad_headline_swap": {
-    "dal tuo iPhone": "sul tuo iPad"
-  }
+  "ipad": [
+    {
+      "master": "01-live",
+      "slug": "01-one-workspace",
+      "headline": "Uno spazio,\ntutti gli agenti",
+      "subline": "Ogni macchina e ogni chat accanto alla conversazione.",
+      "highlight": "tutti gli agenti"
+    },
+    {
+      "master": "03-approval",
+      "slug": "02-approve",
+      "headline": "Approva con\nla lista in vista",
+      "subline": "Consenti o nega a metà turno senza perdere il punto.",
+      "highlight": "la lista in vista"
+    },
+    {
+      "master": "02-work",
+      "slug": "03-agent-fanout",
+      "headline": "Più agenti,\na colpo d'occhio",
+      "subline": "I subagenti si agganciano al turno che li ha lanciati.",
+      "highlight": "a colpo d'occhio"
+    },
+    {
+      "master": "05-subagents",
+      "slug": "04-real-output",
+      "headline": "Output reale,\nproprio lì",
+      "subline": "Apri il lavoro di qualsiasi agente dove è avvenuto.",
+      "highlight": "proprio lì"
+    },
+    {
+      "master": "13-diff",
+      "slug": "05-read-the-diff",
+      "headline": "Leggi prima\nil diff",
+      "subline": "Branch, staged, modificato: la vera patch dalla macchina.",
+      "highlight": "diff"
+    },
+    {
+      "master": "08-usage",
+      "slug": "06-limits",
+      "headline": "Ogni quota,\nprima del blocco",
+      "subline": "Finestra più stretta e orologio di reset, letti dalle tue macchine.",
+      "highlight": "prima del blocco"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "07-the-month",
+      "headline": "Il mese\nin numeri",
+      "subline": "Spesa per giorno, modello e progetto, unita su tutte le macchine.",
+      "highlight": "in numeri"
+    },
+    {
+      "master": "welcome",
+      "slug": "08-private",
+      "headline": "Nulla esce dal\ntuo tailnet",
+      "subline": "Nessun relay. Nessun account. Nessuna analitica. Open source.",
+      "highlight": "tuo tailnet"
+    },
+    {
+      "master": "15-delegate",
+      "slug": "09-hand-it-down",
+      "headline": "Affida alla scala\ndei modelli",
+      "subline": "Prima prova un modello più economico, poi decide un verificatore. Beta.",
+      "highlight": "scala dei modelli"
+    },
+    {
+      "master": "whole",
+      "slug": "10-whole-screen",
+      "headline": "Tutto lo schermo,\nuno spazio",
+      "subline": "Chat, conversazione e strumenti, fianco a fianco.",
+      "highlight": "uno spazio"
+    }
+  ],
+  "mac": [
+    {
+      "master": "01-conversation",
+      "slug": "01-native",
+      "headline": "Nativa\nsul Mac",
+      "subline": "Claude Code, opencode e Oh My Pi in una vera finestra.",
+      "highlight": "Nativa"
+    },
+    {
+      "master": "02-split",
+      "slug": "02-two-machines",
+      "headline": "Due macchine,\nfianco a fianco",
+      "subline": "Dividi la finestra e punta ogni riquadro a un server diverso.",
+      "highlight": "fianco a fianco"
+    },
+    {
+      "master": "03-git",
+      "slug": "03-repo",
+      "headline": "Il repo si legge,\nnon si tocca.",
+      "subline": "Branch, staged e diff reali, dalla macchina che li possiede.",
+      "highlight": "non si tocca."
+    },
+    {
+      "master": "04-quickask",
+      "slug": "04-one-chord",
+      "headline": "Una scorciatoia\nda ovunque",
+      "subline": "Apri la casella della domanda sopra qualsiasi app mentre l'agente lavora.",
+      "highlight": "Una scorciatoia"
+    },
+    {
+      "master": "05-spend",
+      "slug": "05-priced",
+      "headline": "Un prezzo su\ntutta la chat",
+      "subline": "Dove sono finiti i soldi: risposta, cache, input nuovo.",
+      "highlight": "tutta la chat"
+    },
+    {
+      "master": "06-analytics",
+      "slug": "06-the-month",
+      "headline": "Il mese\nin numeri",
+      "subline": "Ogni trascrizione prezzata, unita su ogni server.",
+      "highlight": "in numeri"
+    },
+    {
+      "master": "07-approval",
+      "slug": "07-approve",
+      "headline": "Approva senza\ncambiare app",
+      "subline": "Consenti una volta, sempre o nega nella chat stessa.",
+      "highlight": "senza cambiare app"
+    },
+    {
+      "master": "08-keyboard",
+      "slug": "08-keyboard",
+      "headline": "Prima la\ntastiera",
+      "subline": "Scorciatoie per riquadri, chat e modelli. Un campo di scrittura in modalità vim.",
+      "highlight": "tastiera"
+    },
+    {
+      "master": "09-type",
+      "slug": "09-type-size",
+      "headline": "Una dimensione\nper ogni parte",
+      "subline": "Elenco chat, i tuoi prompt, le risposte dell'agente, il codice.",
+      "highlight": "ogni parte"
+    },
+    {
+      "master": "10-private",
+      "slug": "10-private",
+      "headline": "Nulla esce dal\ntuo tailnet",
+      "subline": "Nessun relay. Nessun account. Nessuna analitica. GPL-3.0.",
+      "highlight": "tuo tailnet"
+    }
+  ]
 }

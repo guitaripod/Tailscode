@@ -1,5 +1,7 @@
 import AppKit
+import ImageIO
 import TailscodeCore
+import UniformTypeIdentifiers
 
 /// `TailscodeMac --shot <path> [--shot-delay <seconds>]` — the window, as a PNG, from a Mac
 /// nobody is sitting at.
@@ -264,3 +266,215 @@ enum MacShot {
         }
     }
 }
+
+#if DEBUG
+    /// `TailscodeMac --shot-live <path>` — the app's real compositing, photographed from inside.
+    ///
+    /// `--shot` draws a view tree into a bitmap, and a glass material is not part of a view tree: it is
+    /// the window server sampling what is behind the window, so offscreen it comes back flat. This verb
+    /// instead puts the windows on a real display, with a backdrop window of its own behind them, and
+    /// asks the window server for the picture of that display. A process may always read its own
+    /// windows, so no screen-recording right is involved — and because the display is a virtual one the
+    /// helper script holds open (`scripts/market-compose-mac.py`), nothing lands on anybody's desktop
+    /// and nothing of anybody's desktop can show through a material.
+    ///
+    /// - `TAILSCODE_LIVE_SCREEN` — the display's name (default `Tailscode Panels`)
+    /// - `TAILSCODE_LIVE_BACKDROP` — a PNG drawn behind everything, the whole display
+    /// - `TAILSCODE_LIVE_WINDOW` — `x,y,w,h` in points from the display's top left: where the chat
+    ///   window sits (default: centred at 1200×760)
+    /// - `TAILSCODE_LIVE_SURFACE` — the same, for any other window that opens (default: centred)
+    /// - `TAILSCODE_LIVE_HIDE_MAIN=1` — the chat window is put away just before the picture, which is how
+    ///   a panel that floats over other programs is shown over a backdrop that stands in for one
+    @MainActor
+    enum LiveShot {
+        static var path: String? {
+            let arguments = CommandLine.arguments
+            guard let index = arguments.firstIndex(of: "--shot-live"), index + 1 < arguments.count
+            else { return nil }
+            return arguments[index + 1]
+        }
+
+        /// Whether a launch that photographs itself keeps away from `service`: everything that signs in
+        /// to, or asks, an Apple service is the person's own account speaking, and a picture does not
+        /// need it. Says so on stdout each time it holds one back.
+        static func holdsBack(_ service: String) -> Bool {
+            guard path != nil else { return false }
+            print("LIVESHOT held back \(service)")
+            return true
+        }
+
+        private static let environment = ProcessInfo.processInfo.environment
+        private static var backdrop: NSWindow?
+        private static var placed = Set<ObjectIdentifier>()
+
+        static func prepare() {
+            guard path != nil else { return }
+            lendKeyAppearance()
+        }
+
+        static func install() {
+            guard let path else { return }
+            Task { @MainActor in
+                let deadline = ContinuousClock.now.advanced(by: MacShot.delay)
+                while ContinuousClock.now < deadline {
+                    arrange()
+                    try? await Task.sleep(for: .milliseconds(300))
+                }
+                arrange()
+                if environment["TAILSCODE_LIVE_HIDE_MAIN"] == "1" { main?.alphaValue = 0 }
+                try? await Task.sleep(for: .milliseconds(900))
+                capture(to: path)
+                exit(0)
+            }
+        }
+
+        private static var screen: NSScreen? {
+            let name = environment["TAILSCODE_LIVE_SCREEN"] ?? "Tailscode Panels"
+            return NSScreen.screens.first { $0.localizedName == name }
+        }
+
+        private static var main: NSWindow? {
+            NSApp.windows.first { $0.frameAutosaveName == "TailscodeMain" && $0.contentView != nil }
+        }
+
+        /// A window that was never given the keyboard draws its inactive face: grey traffic lights, a
+        /// dimmed title. Taking the keyboard would take it from whoever is typing, so the windows that
+        /// are put on the display are only *reported* as key and main, which is all their drawing asks.
+        private static func lendKeyAppearance() {
+            let pairs: [(AnyClass, Selector, Selector)] = [
+                (NSWindow.self, #selector(getter: NSWindow.isKeyWindow), #selector(NSWindow.liveShotIsKey)),
+                (NSWindow.self, #selector(getter: NSWindow.isMainWindow), #selector(NSWindow.liveShotIsMain)),
+                (NSApplication.self, #selector(getter: NSApplication.isActive),
+                    #selector(NSApplication.liveShotIsActive)),
+            ]
+            for (type, original, replacement) in pairs {
+                guard let a = class_getInstanceMethod(type, original),
+                    let b = class_getInstanceMethod(type, replacement)
+                else { continue }
+                method_exchangeImplementations(a, b)
+            }
+        }
+
+        static func lends(to window: NSWindow) -> Bool {
+            window !== backdrop && window.isVisible
+                && (window.styleMask.contains(.titled) || window is NSPanel)
+        }
+
+        private static func rect(_ key: String, on screen: NSScreen, fallback: CGSize) -> NSRect {
+            let parts = (environment[key] ?? "").split(separator: ",").compactMap { Double($0) }
+            let frame = screen.frame
+            guard parts.count == 4 else {
+                return NSRect(
+                    x: frame.midX - fallback.width / 2, y: frame.midY - fallback.height / 2,
+                    width: fallback.width, height: fallback.height)
+            }
+            return NSRect(
+                x: frame.minX + parts[0], y: frame.maxY - parts[1] - parts[3], width: parts[2],
+                height: parts[3])
+        }
+
+        private static func arrange() {
+            guard let screen else { return }
+            seatBackdrop(on: screen)
+            for window in NSApp.windows where window !== backdrop && window.isVisible {
+                (window as? NSPanel)?.hidesOnDeactivate = false
+                guard window.parent == nil, window.contentView != nil,
+                    window.styleMask.contains(.titled)
+                else { continue }
+                if window === main {
+                    place(
+                        window, in: rect("TAILSCODE_LIVE_WINDOW", on: screen,
+                            fallback: CGSize(width: 1200, height: 760)), key: true)
+                } else if window.screen != screen || environment["TAILSCODE_LIVE_SURFACE"] != nil {
+                    let fallback = window.frame.size
+                    place(
+                        window, in: rect("TAILSCODE_LIVE_SURFACE", on: screen, fallback: fallback),
+                        key: false)
+                }
+            }
+        }
+
+        private static func place(_ window: NSWindow, in frame: NSRect, key: Bool) {
+            if window.frame != frame { window.setFrame(frame, display: true) }
+            if placed.insert(ObjectIdentifier(window)).inserted {
+                if key { window.makeKeyAndOrderFront(nil) }
+                let redraw = NSSelectorFromString("_windowChangedKeyState")
+                if window.responds(to: redraw) { window.perform(redraw) }
+                window.contentView?.superview?.needsDisplay = true
+            }
+        }
+
+        private static func seatBackdrop(on screen: NSScreen) {
+            guard backdrop == nil else { return }
+            let window = NSWindow(
+                contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false,
+                screen: screen)
+            window.level = NSWindow.Level(rawValue: -1000)
+            window.isReleasedWhenClosed = false
+            window.ignoresMouseEvents = true
+            window.hasShadow = false
+            window.collectionBehavior = [.stationary, .ignoresCycle, .fullScreenAuxiliary]
+            let view = NSImageView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            view.imageScaling = .scaleAxesIndependently
+            if let file = environment["TAILSCODE_LIVE_BACKDROP"] {
+                view.image = NSImage(contentsOfFile: file)
+            }
+            window.contentView = view
+            window.setFrame(screen.frame, display: true)
+            window.orderFront(nil)
+            backdrop = window
+        }
+
+        private typealias WindowListImage = @convention(c) (CGRect, UInt32, UInt32, UInt32) ->
+            Unmanaged<CGImage>?
+
+        /// `CGWindowListCreateImage` is withdrawn from the SDK and still answers at run time; a process
+        /// is always allowed its own windows, which is the whole of what this reads.
+        private static func windowListImage(of bounds: CGRect) -> CGImage? {
+            guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage")
+            else { return nil }
+            let call = unsafeBitCast(symbol, to: WindowListImage.self)
+            let onScreenOnly: UInt32 = 1
+            let bestResolution: UInt32 = 1 << 3
+            return call(bounds, onScreenOnly, 0, bestResolution)?.takeRetainedValue()
+        }
+
+        private static func capture(to path: String) {
+            guard let screen,
+                let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
+                    as? NSNumber
+            else {
+                FileHandle.standardError.write(Data("LIVESHOT no such display\n".utf8))
+                return
+            }
+            let bounds = CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
+            guard let image = windowListImage(of: bounds),
+                let destination = CGImageDestinationCreateWithURL(
+                    URL(fileURLWithPath: path) as CFURL, UTType.png.identifier as CFString, 1, nil)
+            else {
+                FileHandle.standardError.write(Data("LIVESHOT could not read the display\n".utf8))
+                return
+            }
+            CGImageDestinationAddImage(destination, image, nil)
+            guard CGImageDestinationFinalize(destination) else {
+                FileHandle.standardError.write(Data("LIVESHOT could not encode\n".utf8))
+                return
+            }
+            print("LIVESHOT \(path) \(image.width)×\(image.height)")
+        }
+    }
+
+    extension NSWindow {
+        @objc fileprivate func liveShotIsKey() -> Bool {
+            LiveShot.lends(to: self) || liveShotIsKey()
+        }
+
+        @objc fileprivate func liveShotIsMain() -> Bool {
+            LiveShot.lends(to: self) || liveShotIsMain()
+        }
+    }
+
+    extension NSApplication {
+        @objc fileprivate func liveShotIsActive() -> Bool { true }
+    }
+#endif

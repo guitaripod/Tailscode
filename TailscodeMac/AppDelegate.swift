@@ -10,6 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menu: MainMenu?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+            LiveShot.prepare()
+        #endif
         AppLogger.lifecycle.info("launch: Tailscode \(MacCLI.version)")
         ReviewPromptPolicy.migrateIfNeeded()
         Self.typeWhatIsTyped()
@@ -43,12 +46,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         FirstRunWindow.presentIfNeeded { [weak controller] in
             Task { [weak controller] in await controller?.sidebar.refresh() }
         }
-        NSApp.activate(ignoringOtherApps: true)
+        #if DEBUG
+            if !LiveShot.holdsBack("activation") { NSApp.activate(ignoringOtherApps: true) }
+        #else
+            NSApp.activate(ignoringOtherApps: true)
+        #endif
         openRequestedSession()
         openRequestedSurface()
         MacShot.schedule()
         #if DEBUG
             DriveHooks.install(main: controller)
+            LiveShot.install()
         #endif
     }
 
@@ -97,13 +105,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Two seconds, which is when a listing exists on an idle machine; a debug launch may ask for
+    /// longer with `TAILSCODE_OPEN_DELAY` when the chat a surface belongs to is slower to arrive.
+    private var surfaceDelay: Double {
+        #if DEBUG
+            return Double(ProcessInfo.processInfo.environment["TAILSCODE_OPEN_DELAY"] ?? "") ?? 2
+        #else
+            return 2
+        #endif
+    }
+
     /// `--open <surface>` — the same hook one step further in: land on a named window once the
     /// listing behind it exists, so `--shot` and `--tree` can look at a sheet or a panel rather
     /// than only at the window a launch already draws.
     private func openRequestedSurface() {
         guard let surface = MacShot.surface else { return }
         Task { [weak main] in
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(surfaceDelay))
             main?.openSurface(named: surface)
         }
     }
