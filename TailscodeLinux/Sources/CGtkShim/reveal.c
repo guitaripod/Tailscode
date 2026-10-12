@@ -387,27 +387,53 @@ static int tailscode_reveal_clips(
     return count;
 }
 
+static int tailscode_hang_probes = 0;
+
+/// How many times a marker has been measured, for a harness that has to prove a frame does not.
+int tailscode_hang_probe_count(void) { return tailscode_hang_probes; }
+
+/// What the marker's width depends on besides the marker: the font the label's context reads, and
+/// the context's own change count. Neither allocates, and neither moves when only the width the
+/// label is measured at, or the colours it is painted in, change.
+static guint tailscode_hang_key(PangoContext *context) {
+    const PangoFontDescription *font = pango_context_get_font_description(context);
+    return (font ? pango_font_description_hash(font) : 0) * 31u +
+           pango_context_get_serial(context);
+}
+
 /// A list item wraps under its words rather than under its bullet. Pango has one indent per
 /// layout, so only a label that holds nothing but list items asks for it: the marker the items
-/// open with is measured in the label's own font and the layout hangs by that width. The layout is
-/// private to the label and is made again whenever its text or style changes, so the indent is
-/// restated before every measure and every draw rather than set once.
+/// open with is measured in the label's own font and the layout hangs by that width. The width is
+/// kept on the label against the font it was measured in, so a frame measures nothing; the layout
+/// is made again whenever the label's text changes, and its indent is restated each time.
 static void tailscode_reveal_apply_hang(GtkWidget *widget) {
     const char *marker = g_object_get_data(G_OBJECT(widget), "tailscode-hang-marker");
     if (!marker || !*marker) return;
     PangoLayout *layout = gtk_label_get_layout(GTK_LABEL(widget));
     if (!layout) return;
-    PangoLayout *probe = pango_layout_new(pango_layout_get_context(layout));
-    pango_layout_set_text(probe, marker, -1);
-    int width = 0;
-    pango_layout_get_size(probe, &width, NULL);
-    g_object_unref(probe);
+    PangoContext *context = pango_layout_get_context(layout);
+    guint key = tailscode_hang_key(context);
+    gpointer noted = g_object_get_data(G_OBJECT(widget), "tailscode-hang-width");
+    gpointer noted_key = g_object_get_data(G_OBJECT(widget), "tailscode-hang-key");
+    if (!noted || GPOINTER_TO_UINT(noted_key) != key + 1) {
+        PangoLayout *probe = pango_layout_new(context);
+        pango_layout_set_text(probe, marker, -1);
+        int measured = 0;
+        pango_layout_get_size(probe, &measured, NULL);
+        g_object_unref(probe);
+        tailscode_hang_probes++;
+        noted = GINT_TO_POINTER(measured + 1);
+        g_object_set_data(G_OBJECT(widget), "tailscode-hang-width", noted);
+        g_object_set_data(G_OBJECT(widget), "tailscode-hang-key", GUINT_TO_POINTER(key + 1));
+    }
+    int width = GPOINTER_TO_INT(noted) - 1;
     if (pango_layout_get_indent(layout) != -width) pango_layout_set_indent(layout, -width);
 }
 
 void tailscode_label_set_hanging_marker(GtkWidget *label, const char *marker) {
     g_object_set_data_full(
         G_OBJECT(label), "tailscode-hang-marker", marker ? g_strdup(marker) : NULL, g_free);
+    g_object_set_data(G_OBJECT(label), "tailscode-hang-width", NULL);
     gtk_widget_queue_resize(label);
 }
 

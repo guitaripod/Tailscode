@@ -85,6 +85,7 @@ enum MatrixTheme {
         let chipIcon = Int(chipMetrics.iconSize)
         let chipHeight = Int(chipMetrics.height)
         let decisiveHeight = chipHeight + 4
+        let chipIconEm = String(format: "%.3f", Double(chipIcon) / chipEmPixels)
         let chipHeightEm = String(format: "%.3fem", Double(chipHeight - 2) / chipEmPixels)
         let decisiveHeightEm = String(format: "%.3fem", Double(decisiveHeight - 2) / chipEmPixels)
 
@@ -291,7 +292,7 @@ enum MatrixTheme {
         }
         .seg, .seg > button, .seg button {
             \(t(.segment))
-            min-height: \(chipHeight)px;
+            min-height: \(chipHeightEm);
             padding: 0 6px;
             border: none;
             border-radius: 3px;
@@ -1011,7 +1012,7 @@ enum MatrixTheme {
             background-color: \(accentDim);
             border-color: \(accentDim);
         }
-        .chip-glyph { font-size: \(chipIcon)px; }
+        .chip-glyph { font-size: \(chipIconEm)em; }
         .chip-gap { margin-left: \(chipGap)px; }
         .chip-tone-live { color: \(accent); }
         .chip-tone-attention { color: \(warn); }
@@ -1192,8 +1193,9 @@ enum MatrixTheme {
         }
         .chip:hover { border-color: \(danger); color: \(danger); }
         .empty-chat { padding: 24px 0; }
+        .wrap-row flowboxchild { padding: 0; min-height: 0; min-width: 0; }
         .empty-headline { \(t(.headline)) color: \(text); }
-        .answer-option-mark { font-size: \(chipIcon)px; color: \(accent); }
+        .answer-option-mark { font-size: \(chipIconEm)em; color: \(accent); }
         .hover-bar {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);

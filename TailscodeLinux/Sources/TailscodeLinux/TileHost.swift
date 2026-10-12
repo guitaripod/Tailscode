@@ -1130,6 +1130,10 @@ final class TileHost: PaneTiling, @unchecked Sendable {
         let several = layout.paneCount > 1
         let visibleCount = currentPlacement().map { $0.frames.count } ?? layout.paneCount
         let order = layout.paneIDs
+        let shown = currentPlacement().map { Set($0.frames.keys) } ?? Set(order)
+        ChatPane.markSharedTitles(
+            visible: order.filter { shown.contains($0) }.compactMap { panes[$0] },
+            others: order.filter { !shown.contains($0) }.compactMap { panes[$0] })
         var showing: [String: [PaneID]] = [:]
         for id in order {
             guard let entry = panes[id]?.entry else { continue }

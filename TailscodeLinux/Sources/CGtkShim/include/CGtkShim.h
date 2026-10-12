@@ -213,6 +213,9 @@ void tailscode_accessible_announce(GtkWidget *widget, const char *message, gbool
 /// width of `marker` set in its own font. NULL puts the ordinary indent back.
 void tailscode_label_set_hanging_marker(GtkWidget *label, const char *marker);
 
+/// How many times any hanging marker has been measured since launch.
+int tailscode_hang_probe_count(void);
+
 /// Takes a widget out of the accessibility tree, or puts it back. A picture that is only the
 /// machine's sketch of another picture says nothing a screen reader should read twice.
 void tailscode_set_accessible_hidden(GtkWidget *widget, gboolean hidden);

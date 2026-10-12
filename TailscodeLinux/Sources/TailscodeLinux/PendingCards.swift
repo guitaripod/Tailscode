@@ -80,22 +80,17 @@ enum PendingCards {
             gtk_box_append(ptr(card), Gtk.label(tool, css: "tool-detail", selectable: false))
         }
 
-        let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(
-            ptr(buttons),
+        let buttons = Gtk.wrapRow([
             decisive(Localized.text("Allow once"), hint: hints.once, css: "btn-primary") {
                 respond(.once)
-            })
-        gtk_box_append(
-            ptr(buttons),
+            },
             decisive(Localized.text("Always"), hint: hints.always, css: "btn-quiet") {
                 respond(.always)
-            })
-        gtk_box_append(
-            ptr(buttons),
+            },
             decisive(Localized.text("Deny"), hint: hints.deny, css: "btn-danger") {
                 respond(.reject)
-            })
+            },
+        ])
         gtk_box_append(ptr(card), buttons)
         return card
     }
@@ -129,7 +124,7 @@ enum PendingCards {
             let single = !item.multiple && request.questions.count == 1
             for option in item.options {
                 let parts = ChatChips.control(
-                    glyph: "✓", word: option.label, tone: .live, label: option.label
+                    glyph: "✓", word: option.label, tone: .live, wraps: true, label: option.label
                 ) {
                     if single {
                         collector.submitSingle(option.label)
@@ -171,6 +166,7 @@ enum PendingCards {
                     DraftStore.record(typed, for: scope)
                     collector.typing(question: index, text: typed)
                 }
+                collector.typing(question: index, text: DraftStore.text(for: scope))
                 Gtk.connect(UnsafeMutableRawPointer(entry), "activate") {
                     guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits),
                         let text = gtk_editable_get_text(op(raw))

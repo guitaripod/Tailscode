@@ -33,7 +33,7 @@ picture.
 | Zone | Holds | Rule |
 |---|---|---|
 | Header | the conversation's title; under it the one status line (phase, tool, clock) | The title stays during a turn. Status is a second line, never a replacement. |
-| Notice | at most one banner | Priority: signed out → quota wall → offline → failed; reconnecting is status only. The desktops' slot is the signed-out banner; their offline and quota states read in the band, where the action to take is. |
+| Notice | at most one banner | Priority: signed out → offline → quota wall → failed; reconnecting is status only. The desktops' slot is the signed-out banner; their offline and quota states read in the band, where the action to take is. |
 | Transcript | rows | Prompt is the heavy voice; answers fill the pane; a turn costs the same gap on every client. |
 | Dock | what the end of the transcript holds | Order, top to bottom: pending sends → queued → turn-state cards (revert, interrupted, retry, compaction, thinking) → needs-you (question, permission). |
 | Facts row | context, spend, branch, goal, agents out, background work, attachments | One row; what is live leads, so scrolling sideways never hides it. Hidden when it has nothing to say, and appearing or leaving never moves the transcript a reader is reading. |

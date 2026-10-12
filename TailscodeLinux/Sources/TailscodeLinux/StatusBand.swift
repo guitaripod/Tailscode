@@ -131,8 +131,7 @@ enum StatusBand {
         "phase", "queued", "agents", "context", "cost", "goal", "branch", "attach",
     ]
 
-    static func fit(_ box: UnsafeMutablePointer<GtkWidget>, state: State) {
-        let width = gtk_widget_get_width(box)
+    static func fit(_ box: UnsafeMutablePointer<GtkWidget>, state: State, width: Int32) {
         guard width > 0 else { return }
         var shown: [UnsafeMutablePointer<GtkWidget>] = []
         for id in keepOrder {

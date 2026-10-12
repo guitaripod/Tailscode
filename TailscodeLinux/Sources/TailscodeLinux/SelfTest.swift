@@ -49,6 +49,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkListHang()
+            report("list hang: \(checks) claims hold — measured once per font, again only when the font changes")
+        } catch {
+            report("list hang: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkTable()
             report("table: \(checks) widths measure the height they draw")
             let arrival = try checkTableArrival()
@@ -2828,6 +2836,97 @@ public enum SelfTest {
             ChatPane.settleMarkup(for: linkRow)?.contains("<a href=\"") == true,
             "the markup a row settles with must keep the anchor GtkLabel turns into a link")
         return 12
+    }
+
+    /// A list that wraps under its words measures its marker once for each layout the label
+    /// makes. A frame that only paints, and a measure at any width, must not allocate a layout of
+    /// their own; a change of text or of type size must be measured again and hang by the new width.
+    private static func checkListHang() throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("list hang case failed: \(label)") }
+            checks += 1
+        }
+        let palette = MatrixTheme.palette
+        let items = "- one item long enough to wrap\n- another item"
+        let markup = PangoMarkdown.render(
+            items, dim: palette.textDim, code: palette.info, accent: palette.accent, cache: false)
+        guard let marker = PangoMarkdown.hangingMarker(for: items) else {
+            throw SelfTestFailure("a list of bullets must name the marker its lines hang by")
+        }
+        let label = Gtk.markupLabel(markup, css: "hang-probe")
+        tailscode_label_set_hanging_marker(label, marker)
+        func measure(_ width: Int32) {
+            var minimum: Int32 = 0
+            var natural: Int32 = 0
+            gtk_widget_measure(label, GTK_ORIENTATION_VERTICAL, width, &minimum, &natural, nil, nil)
+        }
+        func indent() -> Int32 {
+            pango_layout_get_indent(gtk_label_get_layout(op(label)))
+        }
+        func settle() {
+            for _ in 0..<20 {
+                while g_main_context_iteration(nil, 0) != 0 {}
+                g_usleep(10_000)
+            }
+        }
+        let start = tailscode_hang_probe_count()
+        for width in stride(from: 120 as Int32, to: 600, by: 8) { measure(width) }
+        try expect(
+            tailscode_hang_probe_count() - start == 1,
+            "sixty measures at sixty widths must measure the marker once, not once each")
+        let hung = indent()
+        try expect(hung < 0, "the layout must hang its wrapped lines by the marker's width")
+        for _ in 0..<200 { measure(300) }
+        try expect(
+            tailscode_hang_probe_count() - start == 1, "repeated measures must never measure again")
+
+        gtk_label_set_markup(op(label), markup + " and more words")
+        for width in stride(from: 120 as Int32, to: 600, by: 40) { measure(width) }
+        try expect(
+            tailscode_hang_probe_count() - start == 1,
+            "new text in the same font is hung by the width already measured")
+        try expect(indent() == hung, "the same marker in the same font hangs by the same width")
+
+        let painted = tailscode_hang_probe_count()
+        let painter = CascadePainter()
+        let live = Gtk.markupLabel("", css: "hang-probe-live")
+        tailscode_label_set_hanging_marker(live, marker)
+        painter.focus("row:hang", markup: markup, sealed: false, ultracode: false, clock: nil)
+        var frames = 0
+        var clock = 0.0
+        while painter.owes, frames < 600 {
+            clock += 1.0 / 120
+            painter.advance(to: clock)
+            _ = painter.paint(live)
+            measure(300)
+            var minimum: Int32 = 0
+            var natural: Int32 = 0
+            gtk_widget_measure(live, GTK_ORIENTATION_VERTICAL, 300, &minimum, &natural, nil, nil)
+            frames += 1
+        }
+        try expect(frames > 20, "the reveal must run for a few frames for this to prove anything")
+        try expect(
+            tailscode_hang_probe_count() - painted <= 2 + frames / 20,
+            "a reveal's frames must not measure the marker on every frame")
+        let window = gtk_window_new()!
+        gtk_window_set_child(ptr(window), label)
+        gtk_window_present(ptr(window))
+        settle()
+        let provider = gtk_css_provider_new()
+        gtk_css_provider_load_from_string(provider, ".hang-probe { font-size: 40px; }")
+        if let display = gdk_display_get_default() {
+            gtk_style_context_add_provider_for_display(
+                display, op(provider!), guint(GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 10))
+        }
+        settle()
+        for width in stride(from: 120 as Int32, to: 600, by: 40) { measure(width) }
+        defer { gtk_window_destroy(ptr(window)) }
+        try expect(
+            indent() < hung,
+            "a larger type size must hang by a wider marker, never by the width it had")
+        return checks
     }
 
     /// GtkLabel resolves `<a href>` itself and never hands it to Pango, so the check makes the

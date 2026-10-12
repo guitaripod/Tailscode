@@ -683,6 +683,40 @@ enum Gtk {
         return box
     }
 
+    /// A frame that asks for no width of its own. A row that gives parts up as it narrows has to be
+    /// told how narrow it is, and a box reports at least the sum of its children, so the window
+    /// grows to that and the row reads the growth as room; held in a frame that follows the content
+    /// only vertically, the width the row sees is the width the pane really has.
+    static func shrinkable(_ child: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget> {
+        let frame = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(frame), GTK_POLICY_EXTERNAL, GTK_POLICY_NEVER)
+        gtk_scrolled_window_set_propagate_natural_height(op(frame), 1)
+        gtk_widget_set_focusable(frame, 0)
+        gtk_scrolled_window_set_child(op(frame), child)
+        return frame
+    }
+
+    /// Buttons side by side that fold onto further lines when the pane is too narrow for one,
+    /// instead of asking the pane to be wider.
+    static func wrapRow(_ children: [UnsafeMutablePointer<GtkWidget>], spacing: Int32 = 8)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let flow = gtk_flow_box_new()!
+        gtk_flow_box_set_selection_mode(op(flow), GTK_SELECTION_NONE)
+        gtk_flow_box_set_homogeneous(op(flow), 0)
+        gtk_flow_box_set_max_children_per_line(op(flow), UInt32(max(1, children.count)))
+        gtk_flow_box_set_min_children_per_line(op(flow), 1)
+        gtk_flow_box_set_column_spacing(op(flow), UInt32(spacing))
+        gtk_flow_box_set_row_spacing(op(flow), 6)
+        gtk_widget_set_halign(flow, GTK_ALIGN_START)
+        addClass(flow, "wrap-row")
+        for child in children {
+            gtk_flow_box_append(op(flow), child)
+            if let wrapper = gtk_widget_get_parent(child) { gtk_widget_set_focusable(wrapper, 0) }
+        }
+        return flow
+    }
+
     static func margins(_ widget: UnsafeMutablePointer<GtkWidget>, _ all: Int32) {
         margins(widget, top: all, bottom: all, leading: all, trailing: all)
     }

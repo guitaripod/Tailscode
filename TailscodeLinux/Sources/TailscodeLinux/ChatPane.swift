@@ -92,6 +92,11 @@ final class ChatPane: @unchecked Sendable {
     private let sendButton = gtk_button_new()!
     private let stopButton = gtk_button_new()!
     private var sendWord: UnsafeMutablePointer<GtkWidget>?
+    private var stopWord: UnsafeMutablePointer<GtkWidget>?
+    private var compactOn = false
+    private var sendWordWidth: Int32 = 0
+    private var measuredScales: [Double] = []
+    private var stopWordWidth: Int32 = 0
     private var attachAble = true
     private var commandWidth: Int32 = 0
     private var attachWidth: Int32 = 0
@@ -182,6 +187,7 @@ final class ChatPane: @unchecked Sendable {
     private var captionWakeGeneration = 0
     private var pendingSignature = "\u{0}"
     private var announcedPending: Set<String> = []
+    private var turnSession: String?
     private var compactingElapsed: UnsafeMutablePointer<GtkWidget>?
     private var compactingStartedAt: Date?
 
@@ -464,7 +470,7 @@ final class ChatPane: @unchecked Sendable {
         let bandFrame = gtk_overlay_new()!
         self.bandFrame = bandFrame
         gtk_widget_set_visible(bandFrame, 0)
-        gtk_overlay_set_child(op(bandFrame), statusBand)
+        gtk_overlay_set_child(op(bandFrame), Gtk.shrinkable(statusBand))
         let bandGauge = gtk_drawing_area_new()!
         gtk_widget_set_can_target(bandGauge, 0)
         gtk_widget_set_can_focus(bandGauge, 0)
@@ -472,7 +478,9 @@ final class ChatPane: @unchecked Sendable {
         Gtk.onResize(bandGauge) { [weak self] in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                StatusBand.fit(self.statusBand, state: self.bandState)
+                StatusBand.fit(
+                    self.statusBand, state: self.bandState,
+                    width: self.bandFrame.map { gtk_widget_get_width($0) } ?? 0)
             }
         }
         gtk_box_append(ptr(root), bandFrame)
@@ -656,17 +664,20 @@ final class ChatPane: @unchecked Sendable {
         Gtk.addClass(sendButton, "chip-ctl")
         gtk_widget_set_valign(sendButton, GTK_ALIGN_CENTER)
         tailscode_set_accessible_label(sendButton, sendWords[0])
+        gtk_widget_set_tooltip_text(sendButton, sendWords[0])
         Gtk.connect(UnsafeMutableRawPointer(sendButton), "clicked") { [weak self] in
             self?.sendFromComposer()
         }
         gtk_box_append(ptr(row), sendButton)
 
         let stop = ChatChips.content(glyph: "■", word: Localized.text("Stop"), tone: .danger)
+        stopWord = stop.word
         gtk_button_set_child(ptr(stopButton), stop.box)
         gtk_widget_set_visible(stopButton, 0)
         Gtk.addClass(stopButton, "chip-ctl")
         gtk_widget_set_valign(stopButton, GTK_ALIGN_CENTER)
         tailscode_set_accessible_label(stopButton, Localized.text("Stop the turn"))
+        gtk_widget_set_tooltip_text(stopButton, Localized.text("Stop the turn"))
         Gtk.connect(UnsafeMutableRawPointer(stopButton), "clicked") { [weak self] in
             self?.stopTurn()
         }
@@ -687,7 +698,7 @@ final class ChatPane: @unchecked Sendable {
         gtk_widget_set_visible(placeLine, 0)
         gtk_box_append(ptr(column), placeLine)
         let overlay = gtk_overlay_new()!
-        gtk_overlay_set_child(op(overlay), row)
+        gtk_overlay_set_child(op(overlay), Gtk.shrinkable(row))
         let gauge = gtk_drawing_area_new()!
         gtk_widget_set_can_target(gauge, 0)
         gtk_widget_set_can_focus(gauge, 0)
@@ -711,13 +722,15 @@ final class ChatPane: @unchecked Sendable {
     /// then the machine's line moving above the pill, then the command palette, then the paperclip.
     /// The model pill, Send and Stop never go. Whatever is still shown is shown whole — a strip that
     /// squeezes every part to an ellipsis says nothing.
-    private static let fitSteps: [(lanes: Bool, command: Bool, attach: Bool, inline: Bool)] = [
-        (true, true, true, true),
-        (false, true, true, true),
-        (false, true, true, false),
-        (false, false, true, false),
-        (false, false, false, false),
-    ]
+    private static let fitSteps:
+        [(lanes: Bool, command: Bool, attach: Bool, inline: Bool, compact: Bool)] = [
+            (true, true, true, true, false),
+            (false, true, true, true, false),
+            (false, true, true, false, false),
+            (false, false, true, false, false),
+            (false, false, false, false, false),
+            (false, false, false, false, true),
+        ]
 
     private func fitLanes() {
         guard let stripRow, let stripFrame else { return }
@@ -727,6 +740,7 @@ final class ChatPane: @unchecked Sendable {
         let commandShown = commandButton.map { gtk_widget_get_visible($0) != 0 } ?? false
         let attachShown = attachButton.map { gtk_widget_get_visible($0) != 0 } ?? false
         let placeInline = gtk_widget_get_parent(placeBox) == stripRow
+        remeasureHiddenParts()
         if lanesShown { laneWidth = Self.naturalWidth(laneRow) }
         if commandShown, let commandButton { commandWidth = Self.naturalWidth(commandButton) }
         if attachShown, let attachButton { attachWidth = Self.naturalWidth(attachButton) }
@@ -737,6 +751,9 @@ final class ChatPane: @unchecked Sendable {
         if commandShown { core -= commandWidth + spacing }
         if attachShown { core -= attachWidth + spacing }
         if placeInline { core -= place }
+        if !compactOn { noteWordWidths() }
+        let compactSaving = wordWidths
+        if compactOn { core += compactSaving }
         let chosen =
             Self.fitSteps.first { step in
                 var needed = core
@@ -744,8 +761,15 @@ final class ChatPane: @unchecked Sendable {
                 if step.command { needed += commandWidth + spacing }
                 if step.attach && attachAble { needed += attachWidth + spacing }
                 if step.inline { needed += place }
+                if step.compact { needed -= compactSaving }
                 return needed <= width
             } ?? Self.fitSteps[Self.fitSteps.count - 1]
+        if chosen.compact != compactOn {
+            compactOn = chosen.compact
+            for word in [sendWord, stopWord] {
+                if let word { gtk_widget_set_visible(word, compactOn ? 0 : 1) }
+            }
+        }
         let showAttach = chosen.attach && attachAble
         if chosen.lanes != lanesShown { gtk_widget_set_visible(laneRow, chosen.lanes ? 1 : 0) }
         if let commandButton, chosen.command != commandShown {
@@ -764,6 +788,37 @@ final class ChatPane: @unchecked Sendable {
         }
         g_object_unref(UnsafeMutableRawPointer(placeBox))
         gtk_widget_set_visible(placeLine, chosen.inline ? 0 : 1)
+    }
+
+    /// The widths of the parts the strip has given up are remembered from when they were last on
+    /// screen, which is the wrong size once the type has been scaled since. A change of any type
+    /// area measures them again, each one shown for the length of the measure and put back.
+    private func remeasureHiddenParts() {
+        let scales = Preferences.Area.allCases.map { Preferences.scale($0) }
+        guard scales != measuredScales else { return }
+        measuredScales = scales
+        laneWidth = Self.naturalWidthWhileHidden(laneRow)
+        if let commandButton { commandWidth = Self.naturalWidthWhileHidden(commandButton) }
+        if let attachButton { attachWidth = Self.naturalWidthWhileHidden(attachButton) }
+        if let sendWord { sendWordWidth = Self.naturalWidthWhileHidden(sendWord) + 5 }
+        if let stopWord { stopWordWidth = Self.naturalWidthWhileHidden(stopWord) + 5 }
+    }
+
+    private static func naturalWidthWhileHidden(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
+        let hidden = gtk_widget_get_visible(widget) == 0
+        if hidden { gtk_widget_set_visible(widget, 1) }
+        let width = naturalWidth(widget)
+        if hidden { gtk_widget_set_visible(widget, 0) }
+        return width
+    }
+
+    private func noteWordWidths() {
+        if let sendWord { sendWordWidth = Self.naturalWidth(sendWord) + 5 }
+        if let stopWord { stopWordWidth = Self.naturalWidth(stopWord) + 5 }
+    }
+
+    private var wordWidths: Int32 {
+        sendWordWidth + (gtk_widget_get_visible(stopButton) != 0 ? stopWordWidth : 0)
     }
 
     private static func naturalWidth(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
@@ -1371,15 +1426,58 @@ final class ChatPane: @unchecked Sendable {
             setIdentity(Localized.text("No conversation"), activity: nil)
             return
         }
-        let title =
-            entry.session.hasPlaceholderTitle
-            ? Localized.text("New conversation") : entry.session.title
-        setIdentity(title, activity: identityActivity)
+        setIdentity(Self.title(of: entry), activity: identityActivity)
     }
+
+    private static func title(of entry: SessionEntry) -> String {
+        entry.session.hasPlaceholderTitle
+            ? Localized.text("New conversation") : entry.session.title
+    }
+
+    /// The name this pane's chat wears in its strip, for comparing with the panes beside it.
+    private var conversationTitle: String? {
+        guard page == nil, draw == nil, video == nil, let entry else { return nil }
+        return Self.title(of: entry)
+    }
+
+    /// Two panes on screen that carry the same title — the same task opened on two machines —
+    /// would be told apart by nothing, so each of them names its server; a pane whose title is
+    /// its own keeps the strip to the title. A second view of one and the same chat is told by
+    /// its twin note instead, and does not name a server.
+    static func markSharedTitles(visible: [ChatPane], others: [ChatPane]) {
+        var holders: [String: [ChatPane]] = [:]
+        for pane in visible {
+            if let title = pane.conversationTitle { holders[title, default: []].append(pane) }
+        }
+        for pane in visible {
+            guard let title = pane.conversationTitle, let entry = pane.entry else {
+                pane.setIdentityNamesServer(false)
+                continue
+            }
+            let mine = SessionPinStore.key(entry.profileID, entry.session.id)
+            let shared = (holders[title] ?? []).contains { other in
+                guard other !== pane, let theirs = other.entry else { return false }
+                return SessionPinStore.key(theirs.profileID, theirs.session.id) != mine
+            }
+            pane.setIdentityNamesServer(shared)
+        }
+        for pane in others { pane.setIdentityNamesServer(false) }
+    }
+
+    private func setIdentityNamesServer(_ names: Bool) {
+        guard names != identityNamesServer else { return }
+        identityNamesServer = names
+        refreshIdentity()
+    }
+
+    private var identityNamesServer = false
 
     /// The pin and the twin the strip appends to the name, in that order.
     private var identityExtras: String {
         var extras = ""
+        if identityNamesServer, let entry {
+            extras += " · " + ServerLabel.display(name: entry.profileName, backend: entry.backendType)
+        }
         if identityPinned { extras += " · ◆" }
         if let other = identityAlsoOpenIn {
             extras += " · " + Localized.text("also open in pane %@", "\(other)")
@@ -2035,6 +2133,8 @@ final class ChatPane: @unchecked Sendable {
         noteDoubledRows(rows)
         let turnOpen = state.status == .running
         let turnEnded = context.turnOpen && !turnOpen
+        let sameChat = turnSession == sessionID
+        turnSession = sessionID
         context.turnOpen = turnOpen
         refreshWorkflowRuns()
         if let sessionID { host?.rememberRows(rows, for: sessionID) }
@@ -2064,7 +2164,7 @@ final class ChatPane: @unchecked Sendable {
         }
         if turnEnded {
             replaceRows(where: \.hasOpenWork)
-            announce(LiveActivityReading.settled(from: state).line)
+            if sameChat { announce(LiveActivityReading.settled(from: state).line) }
         }
         renderPendingCards(state)
         syncJumpPill()
@@ -3433,14 +3533,14 @@ final class ChatPane: @unchecked Sendable {
     /// An approval or a question is said once, the moment it first stands at the end of the
     /// conversation, and again only for the next one.
     private func announceArrivals(in state: ConversationState) {
-        let permissions = Set(state.pendingPermissions.map(\.id))
-        let questions = Set(state.pendingQuestions.map(\.id))
-        let fresh = permissions.union(questions).subtracting(announcedPending)
-        announcedPending = permissions.union(questions)
-        guard !fresh.isEmpty else { return }
-        if !fresh.isDisjoint(with: permissions) {
+        let permissions = state.pendingPermissions.map(\.id)
+        let questions = state.pendingQuestions.map(\.id)
+        let known = announcedPending
+        announcedPending = Set(permissions).union(questions)
+        for id in permissions where !known.contains(id) {
             announce(ActivityKind.needsApproval.spoken)
-        } else {
+        }
+        for id in questions where !known.contains(id) {
             announce(ActivityKind.needsAnswer.spoken)
         }
     }
@@ -3508,11 +3608,13 @@ final class ChatPane: @unchecked Sendable {
             }
             let silent = facts.segments.isEmpty && (bandNotice?.isEmpty ?? true)
             if let bandFrame { gtk_widget_set_visible(bandFrame, silent ? 0 : 1) }
-            StatusBand.fit(statusBand, state: bandState)
+            StatusBand.fit(
+                statusBand, state: bandState, width: bandFrame.map { gtk_widget_get_width($0) } ?? 0)
         }
         let sendName = running ? Localized.text("Queue") : Localized.text("Send")
         if let sendWord { gtk_label_set_text(op(sendWord), sendName.lowercased()) }
         tailscode_set_accessible_label(sendButton, sendName)
+        gtk_widget_set_tooltip_text(sendButton, sendName)
         if (gtk_widget_get_visible(stopButton) != 0) != running {
             gtk_widget_set_visible(stopButton, running ? 1 : 0)
             queueLaneFit()
@@ -5796,6 +5898,7 @@ final class ChatPane: @unchecked Sendable {
         }
         windowLimit = max(windowLimit, Preferences.transcriptWindow)
         updateVimBadge()
+        queueLaneFit()
         tearDownAllRows()
         placeholderShown = true
         rebuildTranscriptRows()

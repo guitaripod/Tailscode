@@ -312,25 +312,25 @@ public enum Typography {
 
         case .statusLine:
             return TypeSpec(
-                axis: .mono, family: .mono, ratio: 0.82, weight: .medium, figures: .tabular)
+                axis: .chrome, family: .mono, ratio: 0.82, weight: .medium, figures: .tabular)
         case .segment:
             return TypeSpec(
-                axis: .mono, family: .mono, ratio: 0.78, weight: .medium, figures: .tabular)
+                axis: .chrome, family: .mono, ratio: 0.78, weight: .medium, figures: .tabular)
         case .pill:
             return TypeSpec(
                 axis: .chrome, family: .mono, ratio: 0.72, weight: .semibold, tracking: 0.03)
         case .badge:
             return TypeSpec(
-                axis: .mono, family: .mono, ratio: 0.72, weight: .bold, tracking: 0.03)
+                axis: .chrome, family: .mono, ratio: 0.72, weight: .bold, tracking: 0.03)
         case .paneIdentity:
             return TypeSpec(
-                axis: .mono, family: .mono, ratio: 0.72, weight: .medium, tracking: 0.03)
+                axis: .chrome, family: .mono, ratio: 0.72, weight: .medium, tracking: 0.03)
         case .chip:
             return TypeSpec(axis: .chrome, family: .mono, ratio: 0.78, weight: .medium)
         case .composer:
             return TypeSpec(axis: .prose, family: .canvas, ratio: 0.95, lineHeight: 1.05)
         case .banner:
-            return TypeSpec(axis: .mono, family: .mono, ratio: 0.85, weight: .medium)
+            return TypeSpec(axis: .chrome, family: .mono, ratio: 0.85, weight: .medium)
         case .note:
             return TypeSpec(axis: .chrome, family: .mono, ratio: 0.78)
 

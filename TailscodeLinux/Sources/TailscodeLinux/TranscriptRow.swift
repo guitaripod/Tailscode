@@ -1579,12 +1579,12 @@ struct TranscriptRow: Hashable {
             Gtk.label(AnswerlessTurn.glyph, css: AnswerlessTurn.tone.glyphCSS, selectable: false))
         let title = Gtk.label(turn.title, css: "card-title", wrap: true, selectable: false)
         gtk_widget_set_hexpand(title, 1)
-        gtk_widget_set_halign(title, GTK_ALIGN_START)
         gtk_box_append(ptr(heading), title)
         gtk_box_append(ptr(card), heading)
 
         let detail = Gtk.label(turn.detail, css: "tool-detail", wrap: true, selectable: false)
-        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_widget_set_halign(detail, GTK_ALIGN_FILL)
+        gtk_widget_set_hexpand(detail, 1)
         gtk_box_append(ptr(card), detail)
 
         if turn.offersRemedy {
@@ -1613,12 +1613,12 @@ struct TranscriptRow: Hashable {
             Gtk.label(FailedTurn.glyph, css: FailedTurn.tone.glyphCSS, selectable: false))
         let title = Gtk.label(turn.title, css: "card-title", wrap: true, selectable: false)
         gtk_widget_set_hexpand(title, 1)
-        gtk_widget_set_halign(title, GTK_ALIGN_START)
         gtk_box_append(ptr(heading), title)
         gtk_box_append(ptr(card), heading)
 
         let detail = Gtk.label(turn.detail, css: "tool-detail", wrap: true, selectable: false)
-        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_widget_set_halign(detail, GTK_ALIGN_FILL)
+        gtk_widget_set_hexpand(detail, 1)
         gtk_box_append(ptr(card), detail)
 
         let reason = Gtk.label(turn.reason, css: "failed-reason", wrap: true)
@@ -1657,7 +1657,6 @@ struct TranscriptRow: Hashable {
             Gtk.label(InterruptedTurn.glyph, css: InterruptedTurn.tone.glyphCSS, selectable: false))
         let title = Gtk.label(turn.title, css: "card-title", wrap: true, selectable: false)
         gtk_widget_set_hexpand(title, 1)
-        gtk_widget_set_halign(title, GTK_ALIGN_START)
         gtk_box_append(ptr(heading), title)
         gtk_box_append(ptr(card), heading)
 
@@ -1668,7 +1667,8 @@ struct TranscriptRow: Hashable {
         }
 
         let detail = Gtk.label(turn.detail, css: "tool-detail", wrap: true, selectable: false)
-        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_widget_set_halign(detail, GTK_ALIGN_FILL)
+        gtk_widget_set_hexpand(detail, 1)
         gtk_box_append(ptr(card), detail)
 
         for line in turn.progress {

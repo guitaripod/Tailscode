@@ -28,7 +28,8 @@ enum ChatChips {
     /// A glyph and a word in one row. `wordChars` fixes the word's width in characters, so a chip
     /// whose word flips between two lengths — send and queue — keeps the width it had.
     static func content(
-        glyph: String?, word: String?, tone: ActivityTone? = nil, wordChars: Int32? = nil
+        glyph: String?, word: String?, tone: ActivityTone? = nil, wordChars: Int32? = nil,
+        wraps: Bool = false
     ) -> Parts {
         let box = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         gtk_widget_set_valign(box, GTK_ALIGN_CENTER)
@@ -47,6 +48,10 @@ enum ChatChips {
             gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
             gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
             if glyph != nil { Gtk.addClass(label, "chip-gap") }
+            if wraps {
+                gtk_label_set_wrap(op(label), 1)
+                gtk_label_set_wrap_mode(op(label), PANGO_WRAP_WORD_CHAR)
+            }
             if let wordChars {
                 gtk_label_set_width_chars(op(label), wordChars)
                 gtk_label_set_xalign(op(label), 0.5)
@@ -65,9 +70,10 @@ enum ChatChips {
     /// A control: outlined, opaque, a chip's height.
     static func control(
         glyph: String?, word: String?, tone: ActivityTone? = nil, wordChars: Int32? = nil,
-        label spoken: String, onClick: @escaping @Sendable () -> Void
+        wraps: Bool = false, label spoken: String, onClick: @escaping @Sendable () -> Void
     ) -> (button: UnsafeMutablePointer<GtkWidget>, parts: Parts) {
-        let parts = content(glyph: glyph, word: word, tone: tone, wordChars: wordChars)
+        let parts = content(
+            glyph: glyph, word: word, tone: tone, wordChars: wordChars, wraps: wraps)
         let button = gtk_button_new()!
         Gtk.addClass(button, "chip-ctl")
         gtk_button_set_child(ptr(button), parts.box)

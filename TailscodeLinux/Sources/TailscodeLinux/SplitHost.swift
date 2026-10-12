@@ -698,6 +698,8 @@ final class SplitHost: @unchecked Sendable {
 
     private func applyIdentityStrips() {
         let several = layout.paneCount > 1 && layout.zoomedPane == nil
+        ChatPane.markSharedTitles(
+            visible: several ? Array(panes.values) : [], others: several ? [] : Array(panes.values))
         for pane in panes.values {
             pane.setIdentityVisible(several)
         }
