@@ -52,16 +52,34 @@ def wait_editable(marketing):
         f"{[(v['attributes']['platform'], v['attributes']['appStoreState']) for v in versions(marketing)]}")
 
 
+def check_pending_app_info(infos, book):
+    """No app info is editable when one is already waiting for review: it carries the name and
+    subtitle the next submission will bring, so the book is only compared with it, and a locale
+    that differs stops the push instead of shipping a listing that disagrees with its subtitle."""
+    pending = next((i for i in infos if i["attributes"].get("appStoreState") == "WAITING_FOR_REVIEW"), None)
+    if pending is None:
+        die("no editable app info — the subtitle is locked until a version is reopened")
+    held = {loc["attributes"]["locale"]: loc["attributes"]
+            for loc in asc.get(f"/v1/appInfos/{pending['id']}/appInfoLocalizations")["data"]}
+    differing = [locale for locale, entry in book.items()
+                 if held.get(locale, {}).get("subtitle") != entry["subtitle"]
+                 or (entry.get("name") and held.get(locale, {}).get("name") != entry["name"])]
+    if differing:
+        die(f"the app info waiting for review disagrees with the book for {', '.join(differing)}")
+    print(f"app info {pending['id'][:8]} is waiting for review and already says the book's name and subtitle")
+
+
 def push(books, marketing):
     book = books["IOS"]
     infos = asc.get(f"/v1/apps/{APP}/appInfos")["data"]
     info = next((i for i in infos if i["attributes"].get("appStoreState") in EDITABLE), None)
     if info is None:
-        die("no editable app info — the subtitle is locked until a version is reopened")
-    existing = {loc["attributes"]["locale"]: loc
-                for loc in asc.get(f"/v1/appInfos/{info['id']}/appInfoLocalizations")["data"]}
+        check_pending_app_info(infos, book)
     urls = json.load(open(os.path.join(ROOT, "docs/asc-metadata.json")))
-    for locale, entry in book.items():
+    existing = {} if info is None else {
+        loc["attributes"]["locale"]: loc
+        for loc in asc.get(f"/v1/appInfos/{info['id']}/appInfoLocalizations")["data"]}
+    for locale, entry in (book.items() if info is not None else ()):
         attrs = {"subtitle": entry["subtitle"], "privacyPolicyUrl": urls["privacyPolicyUrl"]}
         if entry.get("name"):
             attrs["name"] = entry["name"]
