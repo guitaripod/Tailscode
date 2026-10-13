@@ -1,6 +1,7 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarKit
 import TailscodeCore
 import UserNotifications
 
@@ -308,6 +309,8 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     private func generalPane() -> NSView {
         let column = newColumn()
+        addMidgarEntry(to: column)
+        gap(column)
         if ServerDirectory.shared.isDemoMode {
             column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Demo")))
             let leave = NSButton(
@@ -356,6 +359,17 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                     button: pro))
         #endif
         return scrolled(column)
+    }
+
+    /// The doorway into the Midgar portal: the first thing in the first page, as wide as the
+    /// page's other rows and a fixed 116 points tall.
+    private func addMidgarEntry(to column: NSStackView) {
+        let entry = MidgarEntryView()
+        column.addArrangedSubview(entry)
+        NSLayoutConstraint.activate([
+            entry.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -48),
+            entry.heightAnchor.constraint(equalToConstant: MidgarEntryView.preferredHeight),
+        ])
     }
 
     private static var versionLine: String {

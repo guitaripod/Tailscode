@@ -216,6 +216,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case delegateReview
     case delegateHandoff
     case rateAndShare
+    case midgarPortal
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -993,6 +994,10 @@ public enum CapabilityRegistry {
             id: .rateAndShare, area: "settings", title: "The store is one row away, on purpose",
             spec:
                 "The review prompt asks only when value just landed and carries no written word, so a person who wants to say something — or to hand the app to a colleague — needs a door they open themselves. Settings ▸ About carries two rows: Rate opens the store's own review form for this app, and Share hands the store listing to the platform's share sheet beside one sentence saying what the app is (AppStoreLinks), so the message is never a bare link. Neither row counts toward or resets the review policy: they are doors, not asks. A platform with no store has no such door and says so rather than showing a dead row."),
+        CapabilityDefinition(
+            id: .midgarPortal, area: "settings", title: "The other Midgar apps are one card away",
+            spec:
+                "Every Midgar app carries exactly one doorway into the portal, a full-screen honeycomb of the publisher\u{2019}s other apps, and it is the first thing in Settings: one card, 116 points tall, that opens the portal itself when it is tapped or clicked, with no row, header, footer or separator of its own. The card is MidgarKit\u{2019}s `MidgarEntryView`, and the app registers its own lowercased bundle identifier as a URL scheme and lists every Midgar scheme in `LSApplicationQueriesSchemes`, which is how the portal knows what is installed. A client that cannot link MidgarKit has no door and says so rather than showing a dead card."),
     ]
 
     public static func definition(for id: AppCapability) -> CapabilityDefinition {

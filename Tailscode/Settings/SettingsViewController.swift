@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarKit
 import SafariServices
 import TailscodeCore
 import UIKit
@@ -10,11 +11,12 @@ final class SettingsViewController: UIViewController {
     /// Sections double as deep-link targets, so anything that spots a broken
     /// setting can send the user straight at it: `tailscode://settings/notifications`.
     enum Section: String, CaseIterable {
-        case connections, software, tailnet, notifications, usage, chat, appearance, pro,
+        case midgar, connections, software, tailnet, notifications, usage, chat, appearance, pro,
             diagnostics, about
 
         var title: String {
             switch self {
+            case .midgar: return ""
             case .connections: return String(localized: "Connections")
             case .software: return String(localized: "Software")
             case .tailnet: return String(localized: "Tailnet")
@@ -167,6 +169,7 @@ final class SettingsViewController: UIViewController {
     }
 
     private enum Item: Hashable {
+        case midgar
         case connectionAlert
         case profile(ConnectionProfile)
         case addConnection
@@ -409,7 +412,9 @@ final class SettingsViewController: UIViewController {
             config.performsFirstActionWithFullSwipe = false
             return config
         }
-        let layout = UICollectionViewCompositionalLayout.readableList(using: config)
+        let layout = UICollectionViewCompositionalLayout.readableList(configurationForSection: { [weak self] index in
+            self?.isMidgarSection(at: index) == true ? Self.midgarListConfiguration : config
+        })
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .clear
@@ -420,6 +425,10 @@ final class SettingsViewController: UIViewController {
         let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> {
             [weak self] cell, _, item in
             self?.configure(cell, item)
+        }
+        let midgarCell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> {
+            cell, _, _ in
+            Self.embedMidgarEntry(in: cell)
         }
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
@@ -445,7 +454,8 @@ final class SettingsViewController: UIViewController {
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, item in
-            collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: item)
+            collectionView.dequeueConfiguredReusableCell(
+                using: item == .midgar ? midgarCell : cell, for: indexPath, item: item)
         }
         dataSource.supplementaryViewProvider = { collectionView, kind, indexPath in
             let registration =
@@ -453,6 +463,27 @@ final class SettingsViewController: UIViewController {
             return collectionView.dequeueConfiguredReusableSupplementary(
                 using: registration, for: indexPath)
         }
+    }
+
+    /// The doorway into the Midgar portal is a card, not a settings row: no header, no footer,
+    /// no separator, and a background that lets the card be the only thing drawn.
+    private static var midgarListConfiguration: UICollectionLayoutListConfiguration {
+        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        config.headerMode = .none
+        config.footerMode = .none
+        config.showsSeparators = false
+        return config
+    }
+
+    private func isMidgarSection(at index: Int) -> Bool {
+        dataSource?.snapshot().sectionIdentifiers[safe: index] == .midgar
+    }
+
+    /// Reconfiguring a cell runs this again, so the card is added only once.
+    private static func embedMidgarEntry(in cell: UICollectionViewListCell) {
+        cell.backgroundConfiguration = .clear()
+        guard !cell.contentView.subviews.contains(where: { $0 is MidgarEntryView }) else { return }
+        MidgarEntryView().embed(in: cell.contentView, verticalInset: 8)
     }
 
     /// Sections are appended conditionally, so a supplementary view's index is
@@ -493,7 +524,7 @@ final class SettingsViewController: UIViewController {
             )
         case .about:
             return "\(Self.copyright)\n" + String(localized: "Coding agents over Tailscale.")
-        case .chat, .appearance, .pro, .diagnostics:
+        case .midgar, .chat, .appearance, .pro, .diagnostics:
             return nil
         }
     }
@@ -502,6 +533,8 @@ final class SettingsViewController: UIViewController {
         var content = cell.defaultContentConfiguration()
         cell.accessories = []
         switch item {
+        case .midgar:
+            break
         case .connectionAlert:
             let tailnetDown = ServerHealthMonitor.verdict() == .tailnetDown
             content.text =
@@ -994,6 +1027,7 @@ final class SettingsViewController: UIViewController {
         let usageItems: [Item] = [.usage, .ollamaKey, .deepseekKey]
 
         return [
+            (.midgar, [.midgar]),
             (.connections, connectionItems),
             (.software, [.software]),
             (.tailnet, [.tailnetStatus, .tailnetToken, .tailnetScan]),
@@ -1090,6 +1124,8 @@ final class SettingsViewController: UIViewController {
 
     private func keywords(for item: Item) -> String {
         switch item {
+        case .midgar:
+            return String(localized: "midgar apps portal more apps", comment: "search keywords")
         case .connectionAlert:
             return String(localized: "unreachable tailscale offline servers", comment: "search keywords")
         case .profile(let profile):
@@ -1334,6 +1370,18 @@ extension SettingsViewController: UISearchResultsUpdating {
 }
 
 extension SettingsViewController: UICollectionViewDelegate {
+    func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath)
+        -> Bool
+    {
+        dataSource.itemIdentifier(for: indexPath) != .midgar
+    }
+
+    func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath)
+        -> Bool
+    {
+        dataSource.itemIdentifier(for: indexPath) != .midgar
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
@@ -1443,7 +1491,7 @@ extension SettingsViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(picker, animated: true)
         case .chatDensity:
             chooseDensity(from: indexPath)
-        case .toggle, .version, .tailnetScan:
+        case .midgar, .toggle, .version, .tailnetScan:
             break
         }
     }

@@ -316,6 +316,7 @@ enum ParityManifest {
         case .videoEstimate: return .implemented("expecting")
         case .reviewPrompt: return .implemented("MacReviewPrompt")
         case .rateAndShare: return .gap("the Help menu carries no Rate or Share item yet: MacReviewPrompt asks at the right moment, but a person who wants to write a review or hand the store listing to a colleague has no door of their own — two Help items, one opening the App Store review form and one handing the listing to NSSharingServicePicker, with the review item held back from the ad-hoc copy the store never sold")
+        case .midgarPortal: return .implemented("MidgarEntryView")
         }
     }
 }

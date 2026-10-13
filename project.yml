@@ -10,6 +10,9 @@ packages:
     path: ../../swift/CodingAgentKit
   TailscodeCore:
     path: TailscodeCore
+  MidgarKit:
+    url: https://github.com/guitaripod/MidgarKit
+    branch: portal-3.0
 targetTemplates:
   MacApp:
     type: application
@@ -34,6 +37,8 @@ targetTemplates:
         product: CodingAgentKitApple
       - package: TailscodeCore
         product: TailscodeCore
+      - package: MidgarKit
+        product: MidgarKit
     info:
       path: TailscodeMac/Info.plist
       properties:
@@ -46,7 +51,24 @@ targetTemplates:
         ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLName: com.guitaripod.tailscode
-            CFBundleURLSchemes: [tailscode]
+            CFBundleURLSchemes: [tailscode, com.guitaripod.tailscode]
+        LSApplicationQueriesSchemes:
+          - com.guitaripod.embr
+          - com.guitaripod.helia
+          - com.guitaripod.payday
+          - com.guitaripod.pixie
+          - com.guitaripod.psybeam
+          - com.guitaripod.tailscode
+          - com.marcusziade.aotd
+          - com.marcusziade.doublekick
+          - com.marcusziade.dreameater
+          - com.marcusziade.inventory
+          - com.marcusziade.knowtheflag
+          - com.marcusziade.psywave
+          - com.marcusziade.sforesight
+          - com.marcusziade.solarbeam
+          - com.midgarcorp.flaccy
+          - com.midgarcorp.flaccy.mac
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
@@ -84,6 +106,8 @@ targets:
         product: AgentTestSupport
       - package: TailscodeCore
         product: TailscodeCore
+      - package: MidgarKit
+        product: MidgarKit
       - target: TailscodeWidget
         embed: true
       - target: TailscodeNSE
@@ -107,7 +131,24 @@ targets:
         LSSupportsOpeningDocumentsInPlace: true
         CFBundleURLTypes:
           - CFBundleURLName: com.guitaripod.tailscode
-            CFBundleURLSchemes: [tailscode]
+            CFBundleURLSchemes: [tailscode, com.guitaripod.tailscode]
+        LSApplicationQueriesSchemes:
+          - com.guitaripod.embr
+          - com.guitaripod.helia
+          - com.guitaripod.payday
+          - com.guitaripod.pixie
+          - com.guitaripod.psybeam
+          - com.guitaripod.tailscode
+          - com.marcusziade.aotd
+          - com.marcusziade.doublekick
+          - com.marcusziade.dreameater
+          - com.marcusziade.inventory
+          - com.marcusziade.knowtheflag
+          - com.marcusziade.psywave
+          - com.marcusziade.sforesight
+          - com.marcusziade.solarbeam
+          - com.midgarcorp.flaccy
+          - com.midgarcorp.flaccy.mac
         NSSupportsLiveActivitiesFrequentUpdates: true
         UIApplicationShortcutItems:
           - UIApplicationShortcutItemType: com.guitaripod.tailscode.compose

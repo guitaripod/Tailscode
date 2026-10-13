@@ -46,9 +46,17 @@ extension UICollectionViewCompositionalLayout {
     static func readableList(
         using config: UICollectionLayoutListConfiguration
     ) -> UICollectionViewCompositionalLayout {
-        UICollectionViewCompositionalLayout { _, environment in
+        readableList { _ in config }
+    }
+
+    /// The same layout when a section needs a configuration of its own, such as a card that is
+    /// not a row.
+    static func readableList(
+        configurationForSection configuration: @escaping (Int) -> UICollectionLayoutListConfiguration
+    ) -> UICollectionViewCompositionalLayout {
+        UICollectionViewCompositionalLayout { index, environment in
             let section = NSCollectionLayoutSection.list(
-                using: config, layoutEnvironment: environment)
+                using: configuration(index), layoutEnvironment: environment)
             if environment.traitCollection.horizontalSizeClass == .regular {
                 section.contentInsetsReference = .readableContent
             }
