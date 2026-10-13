@@ -69,6 +69,26 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.76" date="2026-10-13">
+      <description>
+        <p>The chat is redrawn so every fact has one place, and a failed turn, an empty chat and keyboard navigation all have a proper face.</p>
+        <p>Changes:</p>
+        <ul>
+          <li>Model and effort, lane, attach and commands are one family of capsules; the lane in use keeps its accent, decisive buttons are palette buttons, and every row of controls starts on the transcript&#x27;s edge.</li>
+          <li>The status band hides its least important segments first when a pane is narrow or the text is large, and says nothing at all when the agent is idle.</li>
+          <li>A turn that failed is a card in the conversation with the server&#x27;s own words and Try again.</li>
+          <li>An empty chat offers four starters; picking one fills the composer without sending.</li>
+          <li>[ and ] jump between prompts and Y copies the last answer.</li>
+          <li>The jump control says Needs you when a question or approval waits out of sight, and New below when something arrived.</li>
+        </ul>
+        <p>Fixes:</p>
+        <ul>
+          <li>Cards wrap, and the chat strip yields in narrow panes and at large text sizes.</li>
+          <li>Panes with the same title are told apart in their identity strip.</li>
+          <li>Every control has a spoken name and state for screen readers.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.75" date="2026-10-11">
       <description>
         <p>A remote machine&#x27;s folders can be walked from the new-chat window, and a long answer no longer rewrites the saved conversation every few seconds as it streams.</p>

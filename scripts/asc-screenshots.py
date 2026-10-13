@@ -5,7 +5,8 @@ The composed panels live in marketing/appstore/panels: iphone/ and ipad/ are the
 en-US sets, l10n/<locale>/iphone/ the localized iPhone sets. Apple falls back to
 the primary locale for any set a locale does not carry, so the iPad is uploaded
 for en-US only and es-MX borrows the es-ES panels; en-GB and en-AU carry nothing
-and show the en-US set. The Mac set (panels/mac) goes on the MAC_OS version.
+and show the en-US set. The Mac set (panels/mac, and l10n/<locale>/mac for the other locales)
+goes on the MAC_OS version.
 
 Every localization is uploaded on its own through `asc screenshots upload
 --version-localization`, so one locale's timeout cannot take the rest down
@@ -51,8 +52,6 @@ def locales_on(version):
 
 def source_dir(locale, platform):
     """Where this locale's panels are for one platform, or None when it shows the primary set."""
-    if platform == "mac":
-        return os.path.join(PANELS, "mac") if locale == "en-US" else None
     locale = BORROWED.get(locale, locale)
     if locale == "en-US":
         return os.path.join(PANELS, platform)
