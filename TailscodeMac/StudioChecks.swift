@@ -30,6 +30,8 @@ enum StudioCheck {
         laneSwitch(expect)
         videoContinue(expect)
         videoLanding(expect)
+        videoLight(expect)
+        videoRing(expect)
         sheetKeys(expect)
         sheetMenu(expect)
         sheet(expect)
@@ -720,6 +722,100 @@ enum StudioCheck {
             },
             "while a render is out a tile offers no verb that would be refused")
         ForgeRunner.shared.stage(ForgeDemo.board("history"))
+    }
+
+    private final class LightWatcher {
+        var calls = 0
+    }
+
+    private static func videoLight(_ expect: (Bool, String) -> Void) {
+        let runner = ForgeRunner.shared
+        func light(_ name: String, arriving: Bool = false) -> ForgeLight {
+            runner.stage(ForgeDemo.board(name), clip: dummyClip, arriving: arriving)
+            return runner.light
+        }
+        expect(light("history") == .dark, "a shelf of old clips and nothing out leaves the button dark")
+        expect(light("waking") == .waking, "a render being filed with the machine is the wake")
+        expect(light("queued") == .waiting(ahead: 2), "and one behind two others says how many")
+        let running = light("running")
+        expect(running.isOut && running.motion.isAnimated, "a render under way is out and moves")
+        expect(light("collecting") == .saving, "a render with every step done is the file being written")
+        expect(light("done", arriving: true) == .landed, "a clip nobody has seen is lit")
+        runner.present(ForgeDemo.asset)
+        expect(runner.light == .dark, "and goes dark once it has been put in front of somebody")
+        expect(light("done") == .dark, "a clip staged as already shown never lights the button")
+        expect(light("failed") == .failed, "a failure nobody has read is lit")
+        runner.acknowledgeFailure()
+        expect(runner.light == .dark, "and goes dark once its card has been on the stage")
+        expect(light("failed") == .failed, "the next failure is news again")
+        expect(light("stopped") == .dark, "a stop was never news to the person who pressed it")
+
+        let watcher = LightWatcher()
+        runner.watch(watcher) {
+            watcher.calls += 1
+            runner.acknowledgeFailure()
+        }
+        runner.stage(ForgeDemo.board("failed"), clip: dummyClip)
+        expect(
+            watcher.calls == 1 && runner.light == .dark,
+            "a watcher that reads the failure is answered on the next turn, not before the first round of calls is over")
+        runner.unwatch(watcher)
+        runner.stage(ForgeDemo.board("history"))
+    }
+
+    private static func videoRing(_ expect: (Bool, String) -> Void) {
+        let size = CGSize(width: 44, height: 32)
+        var points: [CGPoint] = []
+        ForgeRingView.path(in: CGRect(origin: .zero, size: size)).applyWithBlock { element in
+            switch element.pointee.type {
+            case .moveToPoint, .addLineToPoint: points.append(element.pointee.points[0])
+            default: break
+            }
+        }
+        expect(
+            points.first == CGPoint(x: size.width / 2, y: size.height - ForgeRingView.lineWidth / 2)
+                && points.dropFirst().first.map({ $0.x > size.width / 2 && $0.y == points[0].y }) == true,
+            "the ring begins at the top centre and sets off to the right, which is clockwise as it is seen")
+
+        let wild = ForgeRingFrame.Stroke(start: -0.2, length: 1.6, intensity: 3)
+        let held = ForgeRingView.span(of: wild)
+        expect(held.start == 0 && held.end == 1, "a stroke past either end of the path is held to it")
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered,
+            defer: false)
+        let ring = ForgeRingView()
+        ring.frame = NSRect(origin: .zero, size: size)
+        window.contentView?.addSubview(ring)
+        ring.layoutSubtreeIfNeeded()
+        let faces: [ForgeLight] = [
+            .waking, .waiting(ahead: 2), .rendering(0.001), .rendering(0.5), .rendering(0.999),
+            .saving, .landed, .failed,
+        ]
+        var inside = true
+        var still = true
+        for face in faces {
+            ring.show(face)
+            for tick in 0..<120 {
+                ring.paint(at: Double(tick) * 0.0731)
+                for stroke in ring.drawnStrokes {
+                    if !(0...1).contains(stroke.start) || !(0...1).contains(stroke.end)
+                        || stroke.start > stroke.end || !(0...1).contains(stroke.alpha)
+                    {
+                        inside = false
+                    }
+                }
+                if !(0...1).contains(ring.trackAlpha) { inside = false }
+            }
+            let moves = face.motion.honoring(reduceMotion: !ActivityPulse.motionAllowed).isAnimated
+            if ring.isTicking != moves { still = false }
+        }
+        expect(inside, "no stroke handed to a layer, at any instant of any face, leaves the path's 0...1")
+        expect(still, "the display's clock runs for a face that moves and for no other")
+        ring.show(.dark)
+        ring.layoutSubtreeIfNeeded()
+        expect(!ring.isTicking, "a ring that went dark has no clock")
+        ring.removeFromSuperview()
     }
 
     private static func videoLanding(_ expect: (Bool, String) -> Void) {

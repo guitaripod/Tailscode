@@ -1733,15 +1733,13 @@ final class HomeViewController: UIViewController {
         updateCommandPalette(for: lane.needsRenderer ? "" : composerBar.currentText)
     }
 
-    /// A render is minutes long and happens on another machine, so the mark on the way in says
-    /// one thing only: that something is being made right now. It clears itself when the render
-    /// stops, which is why it needs no acknowledgement of its own. The video lane reads the same
-    /// snapshots: its chips restate the recipe, and the box follows a draft another surface edited.
+    /// A render is minutes long and happens on another machine, so the ring on the way in says
+    /// where it is, and keeps saying how it ended until the video surface has shown it. The video
+    /// lane reads the same snapshots: its chips restate the recipe, and the box follows a draft
+    /// another surface edited.
     @objc private func updateVideoMark() {
         videoButton.apply(
-            rendering: ForgeRunner.shared.isRendering,
-            configured: ForgeRunner.shared.endpoint != nil,
-            spoken: ForgeRunner.shared.board.job.subtitle)
+            light: ForgeRunner.shared.light, configured: ForgeRunner.shared.endpoint != nil)
         guard askLane == .video else { return }
         appliedComposerState = nil
         updateComposer()

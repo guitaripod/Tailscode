@@ -838,6 +838,7 @@ final class ForgePane: @unchecked Sendable {
             gtk_widget_set_visible(emptyColumn, 0)
             refreshBackdrop(asset: entries.first(where: \.isPlayable)?.asset, dim: 0.3)
             card = failureCard(why)
+            runner.acknowledgeFailure()
             tone = tone ?? .danger
             spoken = why
         } else if isPlaying {

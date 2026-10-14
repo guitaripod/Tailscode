@@ -200,6 +200,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case videoFirstFrame
     case videoSound
     case videoEstimate
+    case videoLight
     case autoResume
     case freshCanvas
     case chooserBriefing
@@ -986,6 +987,10 @@ public enum CapabilityRegistry {
             id: .videoEstimate, area: "composer", title: "A render says how long it should take",
             spec:
                 "A clip costs pixels times frames, and the card works through them at a rate that is the machine's and the model's rather than the clip's — so `ForgeClock` keeps one rate per model, seconds per megapixel-frame, moved halfway toward each finished render (measured from the machine's first frame about the job to its last, never from the queue or the wake), and prices the next recipe from it. It is kept on the device (`ForgeStore.clock`) and read back into the board (`ForgeBoard.learned`), so the second clip on a fresh install already has a figure. The figure is worn in two places and said as \u{201c}about\u{201d} in both: under the draft before anybody presses the button (`ForgeBoard.expectation`, in the render row's own subtitle) and beside the bar while it runs (`ForgeJob.remaining`: the estimate less the clock, and nothing at all once the render has outrun it, because a bar still moving over \u{201c}0 s left\u{201d} is a lie a person catches at once). Nothing is said on a model that has never been measured; a guess dressed as a fact is the one thing this vocabulary refuses."),
+        CapabilityDefinition(
+            id: .videoLight, area: "composer", title: "The video button shows where the render is",
+            spec:
+                "The way in to video says where the render is, as light round its own edge — and says it the same way on every desk, because the only person who watches it is somebody who is looking at something else. `ForgeLight` (Core) reads a job into seven faces: dark, waking, waiting behind other jobs on the shared machine, rendering with how far along, saving, a clip that landed that nobody has seen, and a render that broke that nobody has read about. Each wears the vocabulary the rest of the app speaks (`ForgeLight.tone`, `ForgeLight.motion`): a wake sweeps as a comet whose tail is the colour of waiting, painted work is a live arc that fills from the top, clockwise, with a light travelling along what has been done so a render between two steps still reads as alive, a queue holds still, saving breathes, and a clip that landed or a render that broke holds perfectly still and stays lit until the person has looked at it (the clip on a stage, the failure on a card), because an ending is news until it is read and stillness is how a reader tells a stopped render from a slow one. `ForgeRing` is the arithmetic, read from absolute time: strokes are fractions of the way round the control's edge from the top centre, never crossing it, and `ForgeRing.follow` eases the arc toward the machine's latest word because progress arrives in jumps and a ring that jumps with it reads as a fault. Reduced motion drops the comet, the travelling light and the breathing and keeps everything else. Words for a screen reader and the tooltip are `ForgeLight.spoken`, since a ring says nothing to somebody who cannot see it. A client decides only how the stroke is painted."),
         CapabilityDefinition(
             id: .autoResume, area: "chat", title: "A window that closed opens by itself",
             spec:

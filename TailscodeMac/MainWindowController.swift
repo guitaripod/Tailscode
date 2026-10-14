@@ -999,6 +999,8 @@ final class MainWindowController: NSWindowController {
             #if DEBUG
                 driveForge()
             #endif
+        case "forgering":
+            ForgeRunner.shared.stage(ForgeDemo.board(parts.count > 1 ? parts[1] : "running"), arriving: true)
         case "draw":
             transcript.showDraw(nil)
             splitPanes.persist()
@@ -1060,7 +1062,7 @@ final class MainWindowController: NSWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], studio[:state[+viewer]], viewer[:state], draw, renderer, delegate\n").utf8))
+                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], draw, renderer, delegate\n").utf8))
         }
     }
 

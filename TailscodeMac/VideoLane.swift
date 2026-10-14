@@ -120,9 +120,19 @@ final class VideoLane: StudioLane {
 
     private func emit(_ change: StudioLaneChange) {
         videoStage.apply(stageModel(), change: change)
+        noteFailureShown()
         videoDock.studioChanged(change)
         watchers = watchers.filter { $0.value.owner != nil }
         for watcher in watchers.values { watcher.notify(change) }
+    }
+
+    /// The card for a render that failed is on the stage, which is what reading it means: the
+    /// toolbar's light stays on until this, and a clip that cannot be played is not that failure.
+    private func noteFailureShown() {
+        guard videoStage.window != nil, StudioVideoSelection.isOutcome(board.job),
+            case .failed = state
+        else { return }
+        runner.acknowledgeFailure()
     }
 
     /// The forge moved. What a surface owes the change is decided by what moved: a sketch is one
@@ -212,7 +222,9 @@ final class VideoLane: StudioLane {
 
     private func windowChanged() {
         syncClock()
-        guard videoStage.window != nil, runner.unpresented != nil else { return }
+        guard videoStage.window != nil,
+            runner.unpresented != nil || StudioVideoSelection.isOutcome(board.job)
+        else { return }
         emit(.everything)
     }
 

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <math.h>
 
 /// How a Swift closure that a signal was holding is let go of.
 ///
@@ -1816,6 +1817,111 @@ void tailscode_ring_set(
     }
     ring->stroke = stroke;
     ring->track = track;
+    gtk_widget_queue_draw(area);
+}
+
+#define TAILSCODE_EDGE_STROKES 12
+
+typedef struct {
+    double ink[3];
+    double track;
+    double radius;
+    double width;
+    int count;
+    double starts[TAILSCODE_EDGE_STROKES];
+    double lengths[TAILSCODE_EDGE_STROKES];
+    double intensities[TAILSCODE_EDGE_STROKES];
+} TailscodeEdge;
+
+/// The control's edge as one closed path that begins at the top centre and runs clockwise, so a
+/// fraction of the perimeter is the same place on every desk and in every client.
+static void tailscode_edge_path(cairo_t *cr, double x, double y, double w, double h, double r) {
+    cairo_new_path(cr);
+    cairo_move_to(cr, x + w / 2.0, y);
+    cairo_line_to(cr, x + w - r, y);
+    cairo_arc(cr, x + w - r, y + r, r, -G_PI / 2, 0);
+    cairo_line_to(cr, x + w, y + h - r);
+    cairo_arc(cr, x + w - r, y + h - r, r, 0, G_PI / 2);
+    cairo_line_to(cr, x + r, y + h);
+    cairo_arc(cr, x + r, y + h - r, r, G_PI / 2, G_PI);
+    cairo_line_to(cr, x, y + r);
+    cairo_arc(cr, x + r, y + r, r, G_PI, 3 * G_PI / 2);
+    cairo_close_path(cr);
+}
+
+static void tailscode_edge_draw(
+    GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
+    TailscodeEdge *edge = raw;
+    double line = edge->width > 0 ? edge->width : 2.0;
+    double w = width - line;
+    double h = height - line;
+    if (w <= 0 || h <= 0) return;
+    double r = MIN(edge->radius, MIN(w, h) / 2.0);
+    double x = line / 2.0;
+    double y = line / 2.0;
+    double perimeter = 2 * (w - 2 * r) + 2 * (h - 2 * r) + 2 * G_PI * r;
+    cairo_set_line_width(cr, line);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    if (edge->track > 0) {
+        tailscode_edge_path(cr, x, y, w, h, r);
+        cairo_set_source_rgba(cr, edge->ink[0], edge->ink[1], edge->ink[2], edge->track);
+        cairo_stroke(cr);
+    }
+    for (int index = 0; index < edge->count; index++) {
+        double length = edge->lengths[index] * perimeter;
+        if (length <= 0) continue;
+        tailscode_edge_path(cr, x, y, w, h, r);
+        cairo_set_source_rgba(
+            cr, edge->ink[0], edge->ink[1], edge->ink[2], CLAMP(edge->intensities[index], 0.0, 1.0));
+        if (edge->lengths[index] >= 0.9995) {
+            cairo_set_dash(cr, NULL, 0, 0);
+        } else {
+            double dashes[2] = {length, perimeter * 2};
+            double period = dashes[0] + dashes[1];
+            cairo_set_dash(cr, dashes, 2, fmod(period - edge->starts[index] * perimeter, period));
+        }
+        cairo_stroke(cr);
+    }
+    cairo_set_dash(cr, NULL, 0, 0);
+}
+
+GtkWidget *tailscode_edge_new(void) {
+    GtkWidget *area = gtk_drawing_area_new();
+    TailscodeEdge *edge = g_new0(TailscodeEdge, 1);
+    edge->ink[0] = edge->ink[1] = edge->ink[2] = 0.5;
+    edge->radius = 7.0;
+    edge->width = 2.0;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-edge", edge, g_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_edge_draw, edge, NULL);
+    gtk_widget_set_can_target(area, FALSE);
+    gtk_widget_set_can_focus(area, FALSE);
+    return area;
+}
+
+void tailscode_edge_set(
+    GtkWidget *area, const double *rgb, double track, int count, const double *starts,
+    const double *lengths, const double *intensities, double radius, double width) {
+    if (!area) return;
+    TailscodeEdge *edge = g_object_get_data(G_OBJECT(area), "tailscode-edge");
+    if (!edge) return;
+    if (rgb) {
+        edge->ink[0] = rgb[0];
+        edge->ink[1] = rgb[1];
+        edge->ink[2] = rgb[2];
+    }
+    edge->track = track;
+    edge->radius = radius;
+    edge->width = width;
+    edge->count = 0;
+    if (starts && lengths && intensities) {
+        int n = count > TAILSCODE_EDGE_STROKES ? TAILSCODE_EDGE_STROKES : count;
+        for (int index = 0; index < n; index++) {
+            edge->starts[index] = starts[index];
+            edge->lengths[index] = lengths[index];
+            edge->intensities[index] = intensities[index];
+        }
+        edge->count = n;
+    }
     gtk_widget_queue_draw(area);
 }
 

@@ -3205,17 +3205,16 @@ enum SelfTest {
         try expect(
             mark.image != nil, "the toolbar's way in wears the symbol every client wears for it")
         try expect(
-            mark.toolTip == ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil),
+            mark.toolTip
+                == ForgeEntryPoint.tooltip(
+                    configured: ForgeRunner.shared.endpoint != nil, light: ForgeRunner.shared.light),
             "and promises what Core says it promises")
         try expect(
-            mark.accessibilityLabel() == ForgeEntryPoint.accessibilityLabel(rendering: false),
+            mark.accessibilityLabel() == ForgeEntryPoint.accessibilityLabel(light: ForgeRunner.shared.light),
             "reading out the same words a tooltip nobody hears would have said")
         try expect(
-            ForgeEntryPoint.activity(rendering: false) == nil,
-            "an idle control wears no badge, because a mark on nothing is decoration")
-        try expect(
-            ForgeEntryPoint.activity(rendering: true) == .working,
-            "and a render out wears the state that breathes")
+            !mark.subviews.contains { $0 is ActivityBadgeView },
+            "the control wears a ring of light and no badge beside it")
 
         let host = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 400),

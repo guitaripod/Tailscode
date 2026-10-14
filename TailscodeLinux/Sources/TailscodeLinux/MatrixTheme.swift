@@ -142,6 +142,8 @@ enum MatrixTheme {
         }
         headerbar button.flat { color: \(textDim); }
         headerbar button.flat:hover { color: \(text); background-color: alpha(\(accent), 0.12); }
+        .forge-ring { opacity: 1; transition: opacity 250ms ease-out; }
+        .forge-ring-off { opacity: 0; }
         paned > separator { background-color: \(rule); }
         .sidebar-pane { background-color: \(canvasRaised); }
         .sidebar-pane entry {

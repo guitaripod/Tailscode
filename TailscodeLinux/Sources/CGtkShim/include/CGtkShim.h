@@ -487,6 +487,15 @@ void tailscode_ring_set(
 /// area's real allocation, so a bar reads its fraction of whatever width the layout gave it — a
 /// fill sized against a nominal constant inside a track that expands reads short forever, and a
 /// full window reading as 95% is a wall drawn as nearly enough. The area never takes input.
+/// A transparent layer that draws light round the edge of the control under it: a faint track and
+/// up to twelve strokes, each a stretch of the perimeter given as fractions of the way round from
+/// the top centre, clockwise, with an ink worth `0...1`. Strokes never cross the top. The ink is one
+/// colour for the whole frame; the layer is never a target and never takes focus.
+GtkWidget *tailscode_edge_new(void);
+void tailscode_edge_set(
+    GtkWidget *area, const double *rgb, double track, int count, const double *starts,
+    const double *lengths, const double *intensities, double radius, double width);
+
 GtkWidget *tailscode_meter_new(void);
 
 /// One state: how far across the bar is filled (0–1), the fill's ink as RGB in 0–1, how bright

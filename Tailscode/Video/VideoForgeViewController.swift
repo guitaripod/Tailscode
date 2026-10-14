@@ -120,6 +120,7 @@ final class VideoForgeViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        acknowledgeFailureIfShown()
         #if DEBUG
             scrollForVerification()
         #endif
@@ -525,7 +526,16 @@ final class VideoForgeViewController: UIViewController {
         updateEnhance()
         updateChrome()
         runClock()
+        acknowledgeFailureIfShown()
         if landed, case .done = board.job.phase { announceLanding() }
+    }
+
+    /// The render broke and the card saying why is on the stage in front of the person, so the way
+    /// in to video can stop wearing it. A surface that is built but not yet on screen has shown
+    /// nobody anything, and a failure that belongs to a clip's file is not the render's.
+    private func acknowledgeFailureIfShown() {
+        guard jobFailed, stageEntry == nil, view.window != nil else { return }
+        runner.acknowledgeFailure()
     }
 
     private func renderStage() {

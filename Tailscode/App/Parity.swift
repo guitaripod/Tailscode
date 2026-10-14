@@ -211,6 +211,7 @@ enum ParityManifest {
         case .videoFirstFrame: return .implemented("startFromMenu")
         case .videoSound: return .implemented("hear")
         case .videoEstimate: return .implemented("expecting")
+        case .videoLight: return .implemented("ForgeRingView")
         }
     }
 }

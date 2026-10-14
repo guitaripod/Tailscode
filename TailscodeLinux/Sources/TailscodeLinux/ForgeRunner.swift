@@ -46,6 +46,10 @@ final class ForgeRunner: @unchecked Sendable, HelperHost {
     /// that is built afresh each time it is shown would otherwise play last night's clip, sound
     /// and all, every time it opened.
     private var presented: ForgeAsset?
+    /// The failure somebody has looked at, by the job's handle. A render that broke is lit on the
+    /// video button until its card has been on a stage, the same way a clip that landed is until it
+    /// has been presented.
+    private var acknowledgedFailure: String?
 
     private init() {
         board = ForgeBoard(
@@ -392,7 +396,38 @@ final class ForgeRunner: @unchecked Sendable, HelperHost {
     }
 
     func present(_ asset: ForgeAsset) {
+        guard presented != asset else { return }
         presented = asset
+        changedNext()
+    }
+
+    /// The failure on the board has been put in front of somebody.
+    func acknowledgeFailure() {
+        guard case .failed = board.job.phase, let handle = board.job.handle,
+            acknowledgedFailure != handle
+        else { return }
+        acknowledgedFailure = handle
+        changedNext()
+    }
+
+    /// Whether the person has looked at how the job on the board ended: the clip on a stage, the
+    /// failure on a card. A job still out has no ending to have seen.
+    private var outcomeSeen: Bool {
+        switch board.job.phase {
+        case .done: return unpresented == nil
+        case .failed: return board.job.handle == acknowledgedFailure
+        case .drafting, .submitting, .queued, .running, .cancelled: return false
+        }
+    }
+
+    /// What the video button says about the render: its light.
+    var light: ForgeLight { ForgeLight.read(job: board.job, seen: outcomeSeen) }
+
+    /// Tells the watchers on the next turn of the loop. Looking at an outcome happens inside a
+    /// surface that is itself a watcher, and calling it back from the middle of its own redraw is
+    /// how a redraw ends up drawing itself.
+    private func changedNext() {
+        Gtk.onMain { [weak self] in self?.changed() }
     }
 
     func forget(_ entry: ForgeEntry) {
@@ -421,6 +456,7 @@ extension ForgeRunner {
     func demonstrate(_ name: String) {
         quiet()
         presented = nil
+        acknowledgedFailure = nil
         let renderer = ForgeEndpoint(host: Self.demoHost, port: Self.demoPort)
         let recipe = ForgeRecipe(
             prompt: name == "unset" ? "" : Self.demoPrompt, negative: Self.demoAvoidance,

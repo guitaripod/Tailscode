@@ -33,6 +33,9 @@ final class ForgeRunner {
     /// that is built afresh each time it is shown would otherwise take last night's clip back onto
     /// its stage, sound and all, every time it opened.
     private var presented: ForgeAsset?
+    /// Whether the person has been shown why the last render broke. A failure is news until it is
+    /// read, so the way in to video keeps wearing it until the surface has put the card on screen.
+    private var acknowledgedFailure = false
     private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     /// The machine the render on the board was submitted to, held for as long as that render is the
     /// one being shown. The address is a setting somebody can change while a card is busy, and an
@@ -195,6 +198,10 @@ final class ForgeRunner {
             return
         }
         board.saw(job)
+        if case .failed = job.phase {
+        } else {
+            acknowledgedFailure = false
+        }
         if job.isFinished, ForgeStore.record(job, on: client.endpoint) != nil {
             if let clock = board.learn(from: job) { ForgeStore.remember(clock: clock) }
             board.filled(history: ForgeStore.history())
@@ -331,7 +338,27 @@ final class ForgeRunner {
     }
 
     func present(_ asset: ForgeAsset) {
+        guard presented != asset else { return }
         presented = asset
+        announceNextTurn()
+    }
+
+    /// The failure card is on screen, so the render's ending has been read.
+    func acknowledgeFailure() {
+        guard !acknowledgedFailure, case .failed = board.job.phase else { return }
+        acknowledgedFailure = true
+        announceNextTurn()
+    }
+
+    /// How the render's light reads now: what is out, and an ending only until it has been seen.
+    var light: ForgeLight { ForgeLight.read(job: board.job, seen: outcomeSeen) }
+
+    private var outcomeSeen: Bool {
+        switch board.job.phase {
+        case .done: return unpresented == nil
+        case .failed: return acknowledgedFailure
+        case .drafting, .submitting, .queued, .running, .cancelled: return true
+        }
     }
 
     // MARK: - The board
@@ -478,6 +505,12 @@ final class ForgeRunner {
     private func announce() {
         NotificationCenter.default.post(name: Self.didChange, object: nil)
     }
+
+    /// For a change made while an observer is being told of another one: the surface that is
+    /// redrawing must not be asked to redraw from inside itself.
+    private func announceNextTurn() {
+        Task { @MainActor [weak self] in self?.announce() }
+    }
 }
 
 #if DEBUG
@@ -487,6 +520,7 @@ final class ForgeRunner {
         func stage(_ state: String) {
             isStaged = true
             presented = nil
+            acknowledgedFailure = false
             let recipe = ForgeRecipe(
                 prompt: "a cat asleep on a warm tiled roof, late afternoon light",
                 negative: "blurry, jitter", width: 1280, height: 704, seconds: 5, fps: 24,

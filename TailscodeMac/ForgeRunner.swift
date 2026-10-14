@@ -23,6 +23,13 @@ final class ForgeRunner {
     /// to whichever surface is up when it lands or the first one to open after: a surface that is
     /// shown afresh would otherwise play last night's clip, sound and all, every time it opened.
     private var presented: ForgeAsset?
+    /// Whether the failure on the board has been put in front of somebody, the way `presented` is
+    /// for a clip. Dropped the moment the board holds anything but that failure, so the next one is
+    /// news again.
+    private var acknowledgedFailure = false
+    /// Whether the watchers are being called right now. A watcher that answers by changing what the
+    /// runner holds must not be answered before the first round of calls has finished.
+    private var notifying = false
 
     /// One client id for the life of the process. The POST and the websocket must carry the same
     /// one or the server delivers this render's frames to somebody else's socket and the job looks
@@ -95,7 +102,26 @@ final class ForgeRunner {
 
     private func changed() {
         forgetTheDeparted()
+        if !hasFailed { acknowledgedFailure = false }
+        let wasNotifying = notifying
+        notifying = true
+        defer { notifying = wasNotifying }
         for watcher in watchers.values { watcher.notify() }
+    }
+
+    /// Tells the watchers now, or on the next turn of the main actor when this is being asked from
+    /// inside one of their own callbacks, which would otherwise be called again before it returned.
+    private func announce() {
+        guard notifying else {
+            changed()
+            return
+        }
+        Task { [weak self] in self?.changed() }
+    }
+
+    private var hasFailed: Bool {
+        if case .failed = board.job.phase { return true }
+        return false
     }
 
     /// Owners that are gone, dropped before anybody is called — a backstop under every surface
@@ -419,7 +445,27 @@ final class ForgeRunner {
     }
 
     func present(_ asset: ForgeAsset) {
+        let before = light
         presented = asset
+        if light != before { announce() }
+    }
+
+    /// The failure on the board has been read: its card is on the stage. Only a failure that is on
+    /// the board can be, and it is read once.
+    func acknowledgeFailure() {
+        guard hasFailed, !acknowledgedFailure else { return }
+        acknowledgedFailure = true
+        announce()
+    }
+
+    /// What the way in to video says about the render: the job's face, dark once its ending has been
+    /// looked at.
+    var light: ForgeLight { ForgeLight.read(job: board.job, seen: outcomeSeen) }
+
+    /// Whether the person has looked at how the job ended — the clip on a stage, the failure on a
+    /// card.
+    private var outcomeSeen: Bool {
+        hasFailed ? acknowledgedFailure : unpresented == nil
     }
 
     /// The finished outcome of the last render, put away: a stopped, failed or landed job goes back
@@ -460,6 +506,7 @@ extension ForgeRunner {
         isStaged = true
         board = staged
         presented = arriving ? nil : staged.job.asset
+        acknowledgedFailure = false
         demoClip = clip
         missing = lost
         changed()

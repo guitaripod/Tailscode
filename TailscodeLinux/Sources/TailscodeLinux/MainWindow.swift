@@ -30,6 +30,7 @@ final class MainWindow: @unchecked Sendable {
     /// The first-class way into video, kept so its promise and its mark can be rewritten whenever
     /// a renderer is chosen or a render starts.
     private var videoButton: UnsafeMutablePointer<GtkWidget>?
+    private var videoRing: ForgeButtonRing?
     /// The standing mark. One line in the sidebar's foot, rendered from what this device already
     /// knew before any check of this launch has come back — and hidden outright when there is
     /// nothing standing, because a mark that is always lit stops being read.
@@ -754,6 +755,10 @@ final class MainWindow: @unchecked Sendable {
                     } else {
                         DelegateWindow.current?.openRun(id: argument)
                     }
+                case "fring":
+                    if !argument.isEmpty { ForgeRunner.shared.demonstrate(argument) }
+                    FileHandle.standardOutput.write(
+                        Data("RING \(self.videoRing?.reading ?? "-") \(ForgeRunner.shared.light)\n".utf8))
                 case "fstate":
                     StudioSheet.current?.demonstrate(argument)
                     FileHandle.standardOutput.write(
@@ -989,22 +994,23 @@ final class MainWindow: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.presentForge() }
         }
         videoButton = button
+        let ring = ForgeButtonRing(button: button)
+        videoRing = ring
         ForgeRunner.shared.watch(self) { [weak self] in
             Gtk.onMain { [weak self] in self?.refreshVideoButton() }
         }
         refreshVideoButton()
-        return button
+        return ring.widget
     }
 
     private func refreshVideoButton() {
         guard let videoButton else { return }
-        let rendering = ForgeRunner.shared.isRendering
+        let light = ForgeRunner.shared.light
         gtk_widget_set_tooltip_text(
             videoButton,
-            ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil))
-        tailscode_set_accessible_label(
-            videoButton, ForgeEntryPoint.accessibilityLabel(rendering: rendering))
-        ActivityPulse.apply(ForgeEntryPoint.activity(rendering: rendering)?.icon, to: videoButton)
+            ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil, light: light))
+        tailscode_set_accessible_label(videoButton, ForgeEntryPoint.accessibilityLabel(light: light))
+        videoRing?.apply(light)
     }
 
     private func makeSidebarPane() -> UnsafeMutablePointer<GtkWidget> {
@@ -4191,6 +4197,7 @@ final class MainWindow: @unchecked Sendable {
         terminal.setFontScale(Preferences.terminalScale)
         terminal.applyPalette(MatrixTheme.palette)
         orb.applyTheme()
+        videoRing?.retheme()
         splitHost.eachPane { $0.applyLayoutPreferences() }
         splitHost.applyRatios()
     }
