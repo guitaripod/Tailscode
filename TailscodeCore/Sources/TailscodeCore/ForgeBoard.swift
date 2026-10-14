@@ -373,11 +373,25 @@ public struct ForgeBoard: Sendable, Equatable {
     /// shape, from the same words — which the person edits into what happens next — and on a
     /// fresh seed, because the same seed would be asked to make the same clip again.
     public mutating func extend(_ entry: ForgeEntry) {
-        guard let asset = entry.asset else { return }
+        guard canContinue(entry), let asset = entry.asset else { return }
         revise(
             entry.recipe.with(frame: .clipEnd(asset))
                 .with(seed: ForgeRecipe.freshSeed(avoiding: entry.recipe.seed)))
         sizeChosen = false
+    }
+
+    /// Whether a kept clip can be continued from here. The next clip opens on the last frame of a
+    /// file the renderer reads off its own disk, so the clip has to be on the machine renders go
+    /// to: on another machine the same name is a different clip, or none.
+    public func canContinue(_ entry: ForgeEntry) -> Bool {
+        entry.isPlayable && entry.isOn(endpoint)
+    }
+
+    /// The kept clip the next render would open on the end of, when it is one this device still
+    /// has a receipt for. What the stage says while a continuation is waiting to be written.
+    public var continuing: ForgeEntry? {
+        guard case .clipEnd(let asset)? = recipe.frame else { return nil }
+        return history.first { $0.asset == asset }
     }
 
     /// The size a helper answered with: followed, but never counted as a choice by hand.
@@ -899,6 +913,25 @@ public enum ForgeWords {
     public static var extendTitle: String { Localized.text("Continue it") }
     public static var extendHint: String {
         Localized.text("Start the next clip where this one ended, with these words to edit")
+    }
+    /// The stage's card while a continuation waits to be written: which clip it opens on, said as
+    /// the first thing the person sees rather than as a chip they have to hover.
+    public static func continuingTitle(_ entry: ForgeEntry?) -> String {
+        guard let entry else { return Localized.text("Continuing a clip") }
+        return Localized.text("Continuing “%@”", entry.title)
+    }
+    public static var continuingBody: String {
+        Localized.text(
+            "The next clip opens on the last frame of this one. Change the words to say what happens next, then render"
+        )
+    }
+    public static var continuingFreshTitle: String { Localized.text("Start fresh instead") }
+    /// A line for the moment Continue it is pressed, wherever it was pressed from.
+    public static func continuingNotice(_ entry: ForgeEntry) -> String {
+        Localized.text("The next clip opens where “%@” ended — change the words, then render", entry.title)
+    }
+    public static func continueElsewhere(_ machine: String) -> String {
+        Localized.text("That clip is on %@, not on the machine rendering now", machine)
     }
     public static var animateTitle: String { Localized.text("Animate this") }
     public static var animateHint: String { Localized.text("Open the video forge with this picture as the first frame") }

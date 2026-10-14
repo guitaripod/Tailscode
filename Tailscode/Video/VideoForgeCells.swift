@@ -5,13 +5,29 @@ import UIKit
 /// A poster for a clip that lives on another machine: its first frame, read over the same `/view`
 /// road a player uses, small, and kept for the life of the process. A clip the renderer has since
 /// cleaned up has no first frame to give, which is an answer rather than an error — the tile wears
-/// the film glyph instead.
+/// the film glyph instead, and the answer is remembered for a minute so a stream of board updates
+/// does not ask the same dead file again every frame.
+///
+/// A poster is keyed by the machine and the render's own id: a renderer numbers its files for
+/// itself, so a cleaned output folder starts the counter over and a new clip would otherwise wear
+/// the old clip's picture.
 @MainActor
 enum ClipPosters {
     private static let held = NSCache<NSString, UIImage>()
     private static var loading: [String: Task<UIImage?, Never>] = [:]
+    private static var failed: [String: Date] = [:]
+    private static let retryAfter: TimeInterval = 60
+    private static let endSuffix = "#end"
 
     static func cached(_ key: String) -> UIImage? { held.object(forKey: key as NSString) }
+
+    /// Where a clip's pictures are kept: its machine and its id. Nothing without a machine to ask.
+    static func key(_ entry: ForgeEntry, fallback: ForgeEndpoint?) -> String? {
+        guard let endpoint = entry.endpoint ?? fallback else { return nil }
+        return "\(endpoint.host):\(endpoint.port)/\(entry.id)"
+    }
+
+    static func endKey(_ key: String) -> String { key + endSuffix }
 
     #if DEBUG
         static func hang(_ image: UIImage, key: String) {
@@ -20,19 +36,45 @@ enum ClipPosters {
     #endif
 
     static func poster(of url: URL, key: String) async -> UIImage? {
+        await frame(of: url, key: key, last: false)
+    }
+
+    /// The last frame of the clip, which is the picture a continuation opens on. Asked for only
+    /// when a continuation is waiting, and the poster stands in until it arrives.
+    static func endFrame(of url: URL, key: String) async -> UIImage? {
+        await frame(of: url, key: endKey(key), last: true)
+    }
+
+    private static func frame(of url: URL, key: String, last: Bool) async -> UIImage? {
         if let image = cached(key) { return image }
+        if let until = failed[key], until > Date() { return nil }
         if let running = loading[key] { return await running.value }
         let load = Task<UIImage?, Never> {
-            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            let asset = AVURLAsset(url: url)
+            let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: 240, height: 240)
-            guard let result = try? await generator.image(at: .zero) else { return nil }
+            var moment = CMTime.zero
+            if last {
+                guard let length = try? await asset.load(.duration), length.isNumeric,
+                    length.seconds > 0.2
+                else { return nil }
+                moment = CMTime(seconds: length.seconds - 0.1, preferredTimescale: 600)
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = .zero
+            }
+            guard let result = try? await generator.image(at: moment) else { return nil }
             return UIImage(cgImage: result.image)
         }
         loading[key] = load
         let image = await load.value
         loading[key] = nil
-        if let image { held.setObject(image, forKey: key as NSString) }
+        if let image {
+            held.setObject(image, forKey: key as NSString)
+            failed[key] = nil
+        } else {
+            failed[key] = Date().addingTimeInterval(retryAfter)
+        }
         return image
     }
 }
@@ -48,6 +90,7 @@ final class ForgeClipTileCell: UICollectionViewCell {
     private let length = UILabel()
     private let ring = UIView()
     private var token = UUID()
+    private var loading: Task<Void, Never>?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -77,6 +120,8 @@ final class ForgeClipTileCell: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         token = UUID()
+        loading?.cancel()
+        loading = nil
         poster.image = nil
     }
 
@@ -93,7 +138,7 @@ final class ForgeClipTileCell: UICollectionViewCell {
             x: bounds.width - width - 4, y: bounds.height - 18, width: width, height: 14)
     }
 
-    func apply(_ entry: ForgeEntry, endpoint: ForgeEndpoint?, onStage: Bool, gone: Bool) {
+    func apply(_ entry: ForgeEntry, fallback: ForgeEndpoint?, onStage: Bool, gone: Bool) {
         ring.isHidden = !onStage
         accessibilityTraits = onStage ? [.button, .selected] : [.button]
         accessibilityLabel = "\(entry.title), \(entry.failure ?? entry.recipe.summary)"
@@ -108,19 +153,19 @@ final class ForgeClipTileCell: UICollectionViewCell {
         glyph.tintColor = entry.isPlayable && !gone ? Theme.Color.tertiaryLabel : Theme.Color.danger
         glyph.isHidden = false
         poster.image = nil
-        guard entry.isPlayable, !gone, let asset = entry.asset, let endpoint,
-            let url = asset.url(on: endpoint)
+        guard entry.isPlayable, !gone, let asset = entry.asset, let endpoint = entry.endpoint ?? fallback,
+            let url = asset.url(on: endpoint), let key = ClipPosters.key(entry, fallback: fallback)
         else { return }
-        let key = "\(endpoint.host)/\(asset.annotatedName)"
         if let held = ClipPosters.cached(key) {
             poster.image = held
             glyph.isHidden = true
             return
         }
         let mine = token
-        Task { [weak self] in
+        loading?.cancel()
+        loading = Task { [weak self] in
             let image = await ClipPosters.poster(of: url, key: key)
-            guard let self, self.token == mine, let image else { return }
+            guard let self, !Task.isCancelled, self.token == mine, let image else { return }
             UIView.transition(with: self.poster, duration: 0.18, options: .transitionCrossDissolve) {
                 self.poster.image = image
             }

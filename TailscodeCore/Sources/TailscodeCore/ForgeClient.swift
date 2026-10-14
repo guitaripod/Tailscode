@@ -116,12 +116,12 @@ enum ForgeFetch {
 
     /// A call whose answer nobody reads — cancelling. It either landed or the render was already
     /// over, and neither is worth a sentence on a screen.
-    static func fire(_ url: URL?) async {
+    static func fire(_ url: URL?, body: [String: Any] = [:]) async {
         guard let url else { return }
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [String: Any]())
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         _ = try? await URLSession.shared.data(for: request)
     }
 
@@ -162,14 +162,18 @@ public struct ForgeClient: Sendable {
     public let endpoint: ForgeEndpoint
     public let clientID: String
 
-    /// How long the client keeps asking after the socket dies mid-render. The render is happening
-    /// on the other machine either way, and a dropped Wi-Fi is not a reason to lose a clip that is
-    /// two minutes from finishing.
+    /// How long the client keeps asking after the machine stops answering mid-render. The render
+    /// is happening on the other machine either way, and a dropped Wi-Fi is not a reason to lose a
+    /// clip that is two minutes from finishing. The clock runs from the last time the machine
+    /// *answered*: while it says the job is running or waiting, there is nothing to give up on.
     public static let salvageDeadline: TimeInterval = 600
     public static let salvageInterval = Duration.seconds(3)
     /// History files the output a moment after the last frame, so the first ask often misses.
-    public static let collectAttempts = 8
+    public static let collectAttempts = 25
     public static let collectInterval = Duration.milliseconds(400)
+    /// How often the machine is asked where the job stands while the socket is quiet, so a finish
+    /// frame the socket never delivered cannot leave a bar standing at the end for ever.
+    public static let watchInterval = Duration.seconds(15)
 
     public init(endpoint: ForgeEndpoint, clientID: String = UUID().uuidString) {
         self.endpoint = endpoint
@@ -196,23 +200,45 @@ public struct ForgeClient: Sendable {
             data, named: (path as NSString).lastPathComponent, to: endpoint)
     }
 
-    public func submit(_ graph: ForgeGraph) async throws -> String {
-        let body = try await ForgeFetch.json(
-            endpoint.url("/prompt"),
-            body: ["prompt": graph.payload, "client_id": clientID], host: endpoint.host,
+    /// Posts the graph under the id this device chose for it. A machine that takes a client's id
+    /// keeps the job under it from the first instant, which is what lets a render be found again
+    /// even when the answer to this post never arrived; one that ignores it answers with its own,
+    /// and that one is used.
+    public func submit(_ graph: ForgeGraph, promptID: String? = nil) async throws -> String {
+        var body: [String: Any] = ["prompt": graph.payload, "client_id": clientID]
+        if let promptID { body["prompt_id"] = promptID }
+        let answer = try await ForgeFetch.json(
+            endpoint.url("/prompt"), body: body, host: endpoint.host,
             timeout: ForgeFetch.coldTimeout)
-        if let complaint = ForgeFetch.complaint(in: body) {
+        if let complaint = ForgeFetch.complaint(in: answer) {
             throw ForgeFailure.rejected(endpoint.host, complaint)
         }
-        guard let promptID = body["prompt_id"] as? String, !promptID.isEmpty else {
+        guard let accepted = answer["prompt_id"] as? String, !accepted.isEmpty else {
             throw ForgeFailure.refused(
                 endpoint.host, Localized.text("%@ took the render but named no job", endpoint.host))
         }
-        return promptID
+        return accepted
     }
 
-    public func cancel() async {
-        await ForgeFetch.fire(endpoint.url("/interrupt"))
+    /// Stops one job, and only that job. The machine is shared — an image render, another desk's
+    /// clip — and `/interrupt` with no name stops whatever happens to be running, so a Stop on a
+    /// job still waiting its turn used to kill somebody else's render and leave this one queued.
+    /// The machine is asked where the job stands first: a running one is interrupted by name, a
+    /// waiting one is taken out of the queue, and one that is already over is left alone. The
+    /// answer is handed back because a job caught finishing has a clip, and that clip is worth
+    /// filing even though the person asked for it to stop.
+    @discardableResult
+    public func cancel(_ promptID: String) async -> ForgeStanding? {
+        guard let standing = try? await standing(of: promptID) else { return nil }
+        switch standing {
+        case .running:
+            await ForgeFetch.fire(endpoint.url("/interrupt"), body: ["prompt_id": promptID])
+        case .waiting:
+            await ForgeFetch.fire(endpoint.url("/queue"), body: ["delete": [promptID]])
+        case .finished, .failed, .stopped, .unknown:
+            break
+        }
+        return standing
     }
 
     /// Where to point a player, confirmed before it is pointed there. A kept clip is a receipt for
@@ -239,30 +265,55 @@ public struct ForgeClient: Sendable {
         return try await ForgeFetch.bytes(url, host: endpoint.host)
     }
 
-    /// The file a finished job left behind, or nothing if history does not have it yet. Nothing is
-    /// a normal answer for the first second after the last frame, which is why the caller retries.
-    public func collect(_ promptID: String) async throws -> ForgeAsset? {
-        let body = try await ForgeFetch.json(
-            endpoint.url("/history/\(promptID)"), host: endpoint.host, timeout: ForgeFetch.timeout)
-        guard let entry = body[promptID] as? [String: Any] else { return nil }
-        if let status = entry["status"] as? [String: Any],
-            let text = status["status_str"] as? String, text == "error"
-        {
-            throw ForgeFailure.renderFailed(endpoint.host, Self.reason(in: status))
+    /// Where a job stands on the machine, from the machine's own account: the history it files
+    /// once a job is over, and the queue while it is not. This is the one question that does not
+    /// need the socket, which is what makes a render survivable — a phone that locked its screen,
+    /// a desktop that was closed and reopened, an app that was reinstalled mid-clip.
+    public func standing(of promptID: String) async throws -> ForgeStanding {
+        let history = try await ForgeFetch.json(
+            endpoint.url("/history/\(promptID)"), host: endpoint.host,
+            timeout: ForgeFetch.timeout)
+        if let entry = history[promptID] as? [String: Any] {
+            return ForgeStanding.ending(of: entry, host: endpoint.host)
         }
-        guard let outputs = entry["outputs"] else { return nil }
-        return ForgeAsset.read(outputs: outputs)
+        let queue = try await ForgeFetch.json(
+            endpoint.url("/queue"), host: endpoint.host, timeout: ForgeFetch.timeout)
+        return ForgeStanding.place(of: promptID, in: queue)
     }
 
     /// One render, start to finish, as the states a screen draws. The last snapshot is always a
     /// terminal phase — done, failed or cancelled — so a client that renders every element and
     /// stops when the stream ends can never be left showing a bar that will not move.
     public func render(_ recipe: ForgeRecipe, expecting: TimeInterval? = nil) -> AsyncStream<ForgeJob> {
+        stream { continuation, held in
+            await drive(recipe, expecting: expecting, into: continuation, held: held)
+        }
+    }
+
+    /// A render the app lost track of — closed, killed or reinstalled while the machine carried
+    /// on — found again by the id it was filed under, and followed to its end exactly as a render
+    /// started here is. Nil only when the post never reached the machine and there is nothing to
+    /// report; every other outcome, including the machine having forgotten the job, is a stream
+    /// that ends on a terminal snapshot.
+    public func recover(_ pending: ForgePending, expecting: TimeInterval? = nil) async -> AsyncStream<ForgeJob>? {
+        let first = try? await standing(of: pending.promptID)
+        if !pending.confirmed, first == nil || first == .unknown {
+            ForgeStore.clearPending(pending.promptID)
+            return nil
+        }
+        return stream { continuation, held in
+            await reattach(pending, first: first, expecting: expecting, into: continuation, held: held)
+        }
+    }
+
+    private func stream(
+        _ body: @escaping @Sendable (AsyncStream<ForgeJob>.Continuation, HeldSocket) async -> Void
+    ) -> AsyncStream<ForgeJob> {
         let (stream, continuation) = AsyncStream<ForgeJob>.makeStream()
         let held = HeldSocket()
         let work = Task {
             await withTaskCancellationHandler {
-                await drive(recipe, expecting: expecting, into: continuation, held: held)
+                await body(continuation, held)
             } onCancel: {
                 held.close()
             }
@@ -299,15 +350,98 @@ public struct ForgeClient: Sendable {
         socket.resume()
         defer { held.close() }
 
+        let minted = UUID().uuidString.lowercased()
+        let intent = ForgePending(
+            promptID: minted, clientID: clientID, endpoint: endpoint, recipe: recipe,
+            startedAt: job.startedAt ?? Date(), nodes: graph.nodes.count)
+        ForgeStore.remember(pending: intent)
+        job.announce(minted)
+        continuation.yield(job)
+
         let promptID: String
         do {
-            promptID = try await submit(graph)
+            promptID = try await submit(graph, promptID: minted)
         } catch {
+            if !Self.mightHaveLanded(error) || Task.isCancelled { ForgeStore.clearPending(minted) }
+            if Task.isCancelled { retract(minted) }
             return end(&job, error, continuation)
         }
+        var taken = intent
+        taken.confirmed = true
+        ForgeStore.remember(
+            pending: ForgePending(
+                promptID: promptID, clientID: clientID, endpoint: endpoint, recipe: recipe,
+                startedAt: taken.startedAt, nodes: taken.nodes, confirmed: true))
         job.accepted(promptID: promptID, nodes: graph.nodes.count)
         continuation.yield(job)
 
+        await follow(&job, promptID: promptID, socket: socket, held: held, into: continuation)
+    }
+
+    /// Picks a render back up: the same job, the same socket id, the clock the person's wait
+    /// actually started on. The machine is asked where the job stands before anything is promised,
+    /// because the render may have finished, failed or been forgotten while nobody was looking.
+    private func reattach(
+        _ pending: ForgePending, first: ForgeStanding?, expecting: TimeInterval?,
+        into continuation: AsyncStream<ForgeJob>.Continuation, held: HeldSocket
+    ) async {
+        var job = ForgeJob(recipe: pending.recipe, expected: expecting)
+        job.submitting(at: pending.startedAt)
+        job.announce(pending.promptID)
+        job.recovered()
+        continuation.yield(job)
+        let promptID = pending.promptID
+
+        switch first {
+        case .finished(let asset)?:
+            job.delivered(asset)
+            continuation.yield(job)
+            continuation.finish()
+        case .failed(let reason)?:
+            ForgeStore.clearPending(promptID)
+            job.failed(reason)
+            continuation.yield(job)
+            continuation.finish()
+        case .stopped?:
+            ForgeStore.clearPending(promptID)
+            job.cancelled()
+            continuation.yield(job)
+            continuation.finish()
+        case .unknown?:
+            ForgeStore.clearPending(promptID)
+            job.failed(ForgeFailure.forgotten(endpoint.host).description)
+            continuation.yield(job)
+            continuation.finish()
+        case .running?, .waiting?:
+            if case .waiting(let ahead)? = first {
+                job.accepted(promptID: promptID, queued: ahead, nodes: pending.nodes, at: pending.startedAt)
+            } else {
+                job.accepted(promptID: promptID, nodes: pending.nodes, at: pending.startedAt)
+                job.saw(.started(promptID))
+            }
+            continuation.yield(job)
+            guard let url = endpoint.socketURL(clientID: pending.clientID) else {
+                return await conclude(&job, promptID: promptID, lost: true, into: continuation)
+            }
+            let socket = URLSession.shared.webSocketTask(with: url)
+            held.hold(socket)
+            socket.resume()
+            defer { held.close() }
+            await follow(&job, promptID: promptID, socket: socket, held: held, into: continuation)
+        case nil:
+            await conclude(&job, promptID: promptID, lost: true, into: continuation)
+        }
+    }
+
+    /// Listens to a render's socket until it says the job is over, then settles how it ended.
+    /// A watchdog asks the machine where the job stands while the socket is quiet and closes the
+    /// socket when the answer is "over", because a socket can go silent without ever failing — and
+    /// a client that trusts it alone waits for a frame that already went by.
+    private func follow(
+        _ job: inout ForgeJob, promptID: String, socket: URLSessionWebSocketTask,
+        held: HeldSocket, into continuation: AsyncStream<ForgeJob>.Continuation
+    ) async {
+        let watchdog = Task { await watch(promptID, held: held) }
         var lost = false
         var sketches = ImageGenPreviewAssembler()
         listening: while !Task.isCancelled {
@@ -333,6 +467,8 @@ public struct ForgeClient: Sendable {
             continuation.yield(job)
             switch event {
             case .failed, .interrupted:
+                watchdog.cancel()
+                ForgeStore.clearPending(promptID)
                 continuation.finish()
                 return
             case .finished, .succeeded:
@@ -341,47 +477,139 @@ public struct ForgeClient: Sendable {
                 continue
             }
         }
+        watchdog.cancel()
+        await conclude(&job, promptID: promptID, lost: lost, into: continuation)
+    }
 
+    /// The end of a render: cancelled, delivered, or failed in a sentence — and the one place the
+    /// pending record is let go of for any of the ways a render is over for good. A delivered clip
+    /// leaves it standing on purpose: filing the clip is what settles it, so a quit between the
+    /// last frame and the filing still finds the clip next time.
+    private func conclude(
+        _ job: inout ForgeJob, promptID: String, lost: Bool,
+        into continuation: AsyncStream<ForgeJob>.Continuation
+    ) async {
         if Task.isCancelled {
+            ForgeStore.clearPending(promptID)
             job.cancelled()
             continuation.yield(job)
             continuation.finish()
+            retract(promptID)
             return
         }
-
         do {
             let asset = try await (lost ? salvage(promptID) : gather(promptID))
             guard let asset else {
+                ForgeStore.clearPending(promptID)
                 return end(&job, ForgeFailure.noOutput(endpoint.host), continuation)
             }
             job.delivered(asset)
             continuation.yield(job)
             continuation.finish()
+        } catch is CancellationError {
+            ForgeStore.clearPending(promptID)
+            job.cancelled()
+            continuation.yield(job)
+            continuation.finish()
         } catch {
+            if (error as? ForgeFailure).map({ Self.isFinal($0) }) ?? true {
+                ForgeStore.clearPending(promptID)
+            }
             end(&job, error, continuation)
         }
     }
 
-    /// The file, asked for a few times in quick succession. History is written a moment after the
-    /// last frame goes out, so the first ask genuinely misses on a fast clip.
+    /// Asks the machine, off the render's own task, to drop a job this render was stopped for. The
+    /// render's task is already cancelled by then and a request made from it would be too.
+    private func retract(_ promptID: String) {
+        let client = self
+        Task.detached { await client.cancel(promptID) }
+    }
+
+    /// A post that failed to be answered may still have landed, and the render is then on the
+    /// machine with nobody to follow it. Only that kind of failure leaves the job on file.
+    private static func mightHaveLanded(_ error: Error) -> Bool {
+        guard let failure = error as? ForgeFailure else { return true }
+        if case .unreachable = failure { return true }
+        return false
+    }
+
+    /// Whether a failure means the job is over for good. Losing contact does not: the render goes
+    /// on, and the next look may find the clip.
+    private static func isFinal(_ failure: ForgeFailure) -> Bool {
+        if case .disconnected = failure { return false }
+        return true
+    }
+
+    private func watch(_ promptID: String, held: HeldSocket) async {
+        var absent = 0
+        while !Task.isCancelled {
+            try? await Task.sleep(for: Self.watchInterval)
+            guard !Task.isCancelled, let standing = try? await standing(of: promptID) else { continue }
+            switch standing {
+            case .running, .waiting:
+                absent = 0
+            case .unknown:
+                absent += 1
+                if absent >= 2 { return held.close() }
+            case .finished, .failed, .stopped:
+                return held.close()
+            }
+        }
+    }
+
+    /// The file, asked for until the machine says how the job ended. History is written a moment
+    /// after the last frame goes out, so the first ask genuinely misses on a fast clip — and one
+    /// that cannot be reached for a breath is asked again rather than turned into a failure.
     private func gather(_ promptID: String) async throws -> ForgeAsset? {
         for attempt in 0..<Self.collectAttempts {
             if attempt > 0 { try? await Task.sleep(for: Self.collectInterval) }
-            if let asset = try await collect(promptID) { return asset }
+            guard let standing = try? await standing(of: promptID) else { continue }
+            switch standing {
+            case .finished(let asset): return asset
+            case .failed(let reason): throw ForgeFailure.renderFailed(endpoint.host, reason)
+            case .stopped: throw CancellationError()
+            case .running, .waiting, .unknown: continue
+            }
         }
         return nil
     }
 
-    /// What happens when the socket dies while the card is still working. The render does not care
-    /// that this app stopped watching, so the job is followed by asking history instead — a phone
-    /// that locked its screen mid-render still gets its clip.
+    /// What happens when contact is lost while the card is still working. The render does not care
+    /// that this app stopped watching, so the job is followed by asking the machine instead — a
+    /// phone that locked its screen mid-render still gets its clip. The patience is for the
+    /// machine's silence, not for the render: a job the machine says is still running or queued
+    /// is waited for as long as it takes, and only a machine that stops answering, or one that
+    /// has no record of the job, ends the wait.
     private func salvage(_ promptID: String) async throws -> ForgeAsset? {
-        let deadline = Date().addingTimeInterval(Self.salvageDeadline)
-        while Date() < deadline, !Task.isCancelled {
-            if let asset = try await collect(promptID) { return asset }
+        var lastAnswer = Date()
+        var absent = 0
+        while !Task.isCancelled {
+            do {
+                switch try await standing(of: promptID) {
+                case .finished(let asset):
+                    return asset
+                case .failed(let reason):
+                    throw ForgeFailure.renderFailed(endpoint.host, reason)
+                case .stopped:
+                    throw CancellationError()
+                case .running, .waiting:
+                    lastAnswer = Date()
+                    absent = 0
+                case .unknown:
+                    lastAnswer = Date()
+                    absent += 1
+                    if absent >= 3 { throw ForgeFailure.forgotten(endpoint.host) }
+                }
+            } catch let failure as ForgeFailure {
+                guard case .unreachable = failure else { throw failure }
+                if Date().timeIntervalSince(lastAnswer) > Self.salvageDeadline {
+                    throw ForgeFailure.disconnected(endpoint.host)
+                }
+            }
             try? await Task.sleep(for: Self.salvageInterval)
         }
-        throw ForgeFailure.disconnected(endpoint.host)
+        throw CancellationError()
     }
 
     /// Every way out of a render is one sentence and one terminal snapshot. A foreign error never
@@ -389,7 +617,11 @@ public struct ForgeClient: Sendable {
     private func end(
         _ job: inout ForgeJob, _ error: Error, _ continuation: AsyncStream<ForgeJob>.Continuation
     ) {
-        job.failed(Self.reason(error, host: endpoint.host))
+        if Task.isCancelled || error is CancellationError {
+            job.cancelled()
+        } else {
+            job.failed(Self.reason(error, host: endpoint.host))
+        }
         continuation.yield(job)
         continuation.finish()
     }
@@ -399,7 +631,7 @@ public struct ForgeClient: Sendable {
         return ForgeFailure.unreachable(host).description
     }
 
-    private static func reason(in status: [String: Any]) -> String {
+    static func reason(in status: [String: Any]) -> String {
         let messages = status["messages"] as? [Any] ?? []
         for message in messages {
             guard let pair = message as? [Any], pair.count >= 2 else { continue }
@@ -407,6 +639,66 @@ public struct ForgeClient: Sendable {
             if let text = payload["exception_message"] as? String, !text.isEmpty { return text }
         }
         return Localized.text("The render failed and said nothing about why")
+    }
+}
+
+/// Where a job stands on the machine that was asked to make it. The machine files a finished job
+/// in its history the instant it ends, and until then the job is either the one running or one
+/// of those waiting, so these six are every answer there is.
+public enum ForgeStanding: Sendable, Equatable {
+    case finished(ForgeAsset)
+    case failed(String)
+    /// Interrupted or taken out of the queue, by this device or another.
+    case stopped
+    case running
+    /// How many jobs are in front of it, the running one included.
+    case waiting(ahead: Int)
+    /// In neither the history nor the queue: never heard of, or forgotten by a restart.
+    case unknown
+
+    /// A history entry read as an ending. Public because the shape is the server's — an interrupted
+    /// job is filed as an error with an interruption message beside it, and the difference
+    /// between a clip somebody stopped and one that broke is exactly what a client should pin.
+    public static func ending(of entry: [String: Any], host: String) -> ForgeStanding {
+        if let status = entry["status"] as? [String: Any],
+            status["status_str"] as? String == "error"
+        {
+            return interrupted(status)
+                ? .stopped : .failed(ForgeClient.reason(in: status))
+        }
+        if let outputs = entry["outputs"], let asset = ForgeAsset.read(outputs: outputs) {
+            return .finished(asset)
+        }
+        return .failed(ForgeFailure.noOutput(host).description)
+    }
+
+    /// A job's place in the queue the machine reported. The pending list is a heap in the
+    /// server, not a sorted list, so it is put in order before anybody is counted ahead.
+    public static func place(of promptID: String, in queue: [String: Any]) -> ForgeStanding {
+        func identity(_ item: Any) -> String? {
+            guard let fields = item as? [Any], fields.count > 1 else { return nil }
+            return fields[1] as? String
+        }
+        func number(_ item: Any) -> Double {
+            guard let first = (item as? [Any])?.first else { return 0 }
+            if let value = first as? Double { return value }
+            if let value = first as? Int { return Double(value) }
+            return (first as? NSNumber)?.doubleValue ?? 0
+        }
+        let running = queue["queue_running"] as? [Any] ?? []
+        if running.contains(where: { identity($0) == promptID }) { return .running }
+        let pending = (queue["queue_pending"] as? [Any] ?? []).sorted { number($0) < number($1) }
+        if let index = pending.firstIndex(where: { identity($0) == promptID }) {
+            return .waiting(ahead: running.count + index)
+        }
+        return .unknown
+    }
+
+    private static func interrupted(_ status: [String: Any]) -> Bool {
+        let messages = status["messages"] as? [Any] ?? []
+        return messages.contains { message in
+            (message as? [Any])?.first as? String == "execution_interrupted"
+        }
     }
 }
 

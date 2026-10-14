@@ -97,12 +97,28 @@ enum ClipAudio {
 /// full-screen gesture are all things it already has and none of them are worth rebuilding.
 @MainActor
 enum ClipTheatre {
-    static func present(_ url: URL, from presenter: UIViewController) {
+    /// `onDismiss` is told when the player has left the screen, so whatever was playing underneath
+    /// — muted, but a clip with sound doubles the moment two of them are heard — can go back to
+    /// what it was doing.
+    static func present(_ url: URL, from presenter: UIViewController, onDismiss: (() -> Void)? = nil) {
         ClipAudio.makeAudible()
-        let controller = AVPlayerViewController()
+        let controller = ClipTheatreController()
         let player = AVPlayer(url: url)
         controller.player = player
         controller.allowsPictureInPicturePlayback = true
-        presenter.present(controller, animated: true) { player.play() }
+        controller.onDismiss = onDismiss
+        presenter.frontmostPresented.present(controller, animated: true) { player.play() }
+    }
+}
+
+private final class ClipTheatreController: AVPlayerViewController {
+    var onDismiss: (() -> Void)?
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        guard isBeingDismissed else { return }
+        let finished = onDismiss
+        onDismiss = nil
+        finished?()
     }
 }

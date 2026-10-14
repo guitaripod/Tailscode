@@ -13,7 +13,8 @@ import TailscodeCore
 enum StudioVideoDemo {
     /// Puts a state on the runner: `--open forge:<state>` with `empty`, `drafting`, `start` (a first
     /// frame held), `waking`, `queued`, `running`, `collecting`, `done`, `failed`, `cancelled`,
-    /// `missing` (a clip the renderer lost, chosen on the stage), `rewrite` (the helper's caption on
+    /// `missing` (a clip the renderer lost, chosen on the stage), `continuing` (the newest clip held
+    /// dimmed behind the card that says the next one opens on its end), `rewrite` (the helper's caption on
     /// its card) or `unset` (no renderer), and anything else is the drafting state.
     static func apply(_ state: String) {
         let name = state.split(separator: ":").first.map(String.init) ?? state
@@ -21,6 +22,7 @@ enum StudioVideoDemo {
         var clip: URL?
         var lost: Set<String> = []
         var draft: ImageGenRewriteDraft?
+        var chosen: String?
         switch name {
         case "empty":
             board = ForgeDemo.board("empty")
@@ -49,9 +51,19 @@ enum StudioVideoDemo {
             let kept = [landed] + ForgeDemo.history(recipe)
             board.filled(history: environment("TAILSCODE_VIDEO_CLEAN") == nil ? kept : kept.filter { $0.asset != nil })
             clip = clipFile()
+            chosen = ForgeDemo.promptID
         case "missing":
             board = ForgeDemo.board("history")
-            if let newest = board.history.first(where: \.isPlayable) { lost = [newest.id] }
+            if let newest = board.history.first(where: \.isPlayable) {
+                lost = [newest.id]
+                chosen = newest.id
+            }
+        case "continuing":
+            board = ForgeDemo.board("history")
+            if let newest = board.history.first(where: \.isPlayable) {
+                board.extend(newest)
+                chosen = newest.id
+            }
         case "rewrite":
             board = ForgeDemo.board("history")
             board.describe("a lamp room flickers on as dusk falls")
@@ -70,7 +82,7 @@ enum StudioVideoDemo {
         seedPosters(for: board)
         ForgeRunner.shared.stage(board, clip: clip, lost: lost)
         let lane = StudioWindowController.shared.video
-        lane.stageForDemo(entryID: name == "done" ? ForgeDemo.promptID : lost.first)
+        lane.stageForDemo(entryID: chosen, continuing: name == "continuing")
         lane.brief.stage(draft: draft)
     }
 
@@ -85,7 +97,7 @@ enum StudioVideoDemo {
     private static func seedPosters(for board: ForgeBoard) {
         for (index, entry) in board.history.enumerated() {
             guard let asset = entry.asset else { continue }
-            let key = MacClipPosters.key(for: asset, host: ForgeDemo.host)
+            let key = MacClipPosters.key(for: entry, on: board.endpoint)
             if let named = pictureFor(entry: entry) {
                 MacClipPosters.seed(named, key: key)
                 continue

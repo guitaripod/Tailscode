@@ -23,10 +23,13 @@ enum StudioCheck {
         videoStage(expect)
         videoVerbs(expect)
         videoChips(expect)
+        clipNames(expect)
         startFrom(expect)
         progressLine(expect)
         videoChanges(expect)
         laneSwitch(expect)
+        videoContinue(expect)
+        videoLanding(expect)
         sheetKeys(expect)
         sheetMenu(expect)
         sheet(expect)
@@ -284,11 +287,32 @@ enum StudioCheck {
             StudioClipTime.badge(seconds: 5) == "0:05" && StudioClipTime.badge(seconds: 75) == "1:15"
                 && StudioClipTime.badge(seconds: 600) == "10:00" && StudioClipTime.badge(seconds: -3) == "0:00",
             "a clip's length is minutes and two-digit seconds")
+    }
+
+    private static func clipNames(_ expect: (Bool, String) -> Void) {
+        let first = entry("n", at: 1, asset: "forge_00007.mp4")
+        let rerolled = ForgeEntry(
+            id: "m", recipe: recipe().with(seed: 8), asset: ForgeAsset(filename: "forge_00008.mp4"))
         expect(
-            StudioClipName.fileName(for: entry("n", at: 1, asset: "forge_00007.mp4"))
-                == "a-cat-asleep-on-a-warm.mp4"
-                && StudioClipName.fileName(for: entry("m", at: 1)) == "a-cat-asleep-on-a-warm.mp4",
-            "a saved clip is named by its first six words and keeps the machine's extension")
+            first.fileName == "a-cat-asleep-on-a-warm-tiled-roof-7.mp4",
+            "a saved clip is named by its words and its seed and keeps the machine's extension")
+        expect(
+            first.fileName != rerolled.fileName,
+            "two takes of the same words are two names, so one never overwrites the other")
+        expect(
+            entry("k", at: 1).fileName.hasSuffix(".mp4"),
+            "a receipt with no file still has a name to offer")
+        let elsewhere = ForgeEndpoint(host: "elsewhere")
+        let there = ForgeEntry(
+            id: first.id, recipe: first.recipe, asset: first.asset, endpoint: elsewhere)
+        let arch = ForgeEndpoint(host: "arch")
+        expect(
+            MacClipPosters.key(for: first, on: arch) != MacClipPosters.key(for: there, on: arch)
+                && MacClipPosters.key(for: first, on: arch) != MacClipPosters.key(for: rerolled, on: arch),
+            "a poster is the clip of one machine's receipt, never of a file name two machines share")
+        expect(
+            MacClipPosters.key(for: first, on: arch) == MacClipPosters.key(for: first, on: arch),
+            "and the same receipt on the same machine is the same poster")
     }
 
     private static func job(_ steps: (inout ForgeJob) -> Void) -> ForgeJob {
@@ -571,6 +595,177 @@ enum StudioCheck {
         expect(
             StudioVideoReading(board: chosen, missing: []).change(from: reading, sketchMoved: false) == .everything,
             "a setting changing redraws the pills and the estimate")
+    }
+
+    private static let dummyClip = URL(fileURLWithPath: "/nonexistent/studio-check.mp4")
+
+    private static func elsewhereBoard(_ other: ForgeEndpoint) -> ForgeBoard {
+        var board = ForgeDemo.board("history")
+        let moved = board.history.map {
+            ForgeEntry(
+                id: $0.id, recipe: $0.recipe, asset: $0.asset, failure: $0.failure,
+                finishedAt: $0.finishedAt, endpoint: other)
+        }
+        board.filled(history: moved)
+        return board
+    }
+
+    private static func videoContinue(_ expect: (Bool, String) -> Void) {
+        var noted = StudioFailureLedger()
+        let start = Date(timeIntervalSince1970: 1000)
+        noted.note("a", sentence: "down", at: start)
+        expect(
+            noted.sentence(for: "a", at: start.addingTimeInterval(StudioFailureLedger.lifetime - 1)) == "down",
+            "a failure is believed for a while")
+        expect(
+            noted.sentence(for: "a", at: start.addingTimeInterval(StudioFailureLedger.lifetime + 1)) == nil
+                && !noted.holds("a", at: start.addingTimeInterval(StudioFailureLedger.lifetime + 1)),
+            "and then the machine is asked again")
+        noted.forget("a")
+        expect(!noted.holds("a", at: start), "or the moment somebody asks to check again")
+
+        let idle = ForgeJob(recipe: recipe())
+        func read(_ clip: StudioClipSource?, continuing: Bool = false, job: ForgeJob? = nil) -> StudioVideoState {
+            StudioVideoState.read(
+                job: job ?? idle, clip: clip, hasStart: true, hasWords: true, remedy: .retry,
+                continuing: continuing)
+        }
+        expect(
+            read(.playable, continuing: true) == .continuing && read(.playable) == .done,
+            "a clip being continued is held back from playing and a clip chosen is a clip to watch")
+        expect(
+            read(.unreachable("down")) == .failed("down", .wake),
+            "a clip that could not be located offers to check the machine again, not to render")
+        expect(
+            read(.unavailable("gone"), continuing: true) == .failed("gone", .reuse),
+            "and a clip that cannot be played is not continued from")
+        var busy = ForgeJob(recipe: recipe())
+        busy.submitting()
+        expect(
+            read(.playable, continuing: true, job: busy) == .waiting(busy.subtitle),
+            "a render out outranks the card")
+        expect(
+            StudioVideoVerbs.offered(state: .continuing, hasWords: true, playing: false, isHistory: true).isEmpty,
+            "the card is the only thing a continuation offers")
+        expect(
+            !StudioVideoVerbs.offered(
+                state: .done, hasWords: true, playing: false, isHistory: true, canContinue: false
+            ).contains { $0.id == "continue" },
+            "a clip on another machine is not offered Continue it")
+
+        let runnerBoard = ForgeDemo.board("history")
+        ForgeRunner.shared.stage(runnerBoard, clip: dummyClip)
+        let lane = VideoLane(runner: .shared)
+        guard let newest = runnerBoard.history.first(where: \.isPlayable),
+            let older = runnerBoard.history.last(where: \.isPlayable), let asset = newest.asset
+        else {
+            expect(false, "the demo shelf has clips")
+            return
+        }
+        lane.select(tile: newest.id)
+        expect(lane.offers(.editThis), "a clip on the stage that this machine holds can be continued")
+        var said: [String] = []
+        lane.onNotice = { said.append($0) }
+        lane.perform(.editThis)
+        expect(
+            ForgeRunner.shared.board.recipe.frame == .clipEnd(asset)
+                && ForgeRunner.shared.board.continuing?.id == newest.id,
+            "Continue it opens the next clip on the end of the clip on the stage")
+        expect(
+            lane.driveState.contains("state=continuing") && lane.selectedTile == newest.id,
+            "the stage says it is waiting for the next clip, with the continued clip still selected")
+        expect(
+            said == [ForgeWords.continuingNotice(newest)],
+            "and the press is answered in a line naming the clip")
+        lane.select(tile: older.id)
+        lane.select(tile: newest.id)
+        expect(
+            lane.driveState.contains("state=done"),
+            "a clip chosen from the shelf is there to be watched, even when the draft starts from it")
+
+        lane.select(tile: older.id)
+        let sideShelf = lane.shelf.first { $0.id == newest.id }
+        expect(sideShelf != nil, "the clip being continued is still on the shelf")
+        if let sideShelf {
+            lane.perform(.verb(StudioStageVerb(id: "continue", title: "", hint: "", symbol: "")), on: sideShelf)
+        }
+        expect(
+            lane.selectedTile == newest.id && lane.driveState.contains("state=continuing"),
+            "Continue it from a shelf tile puts that clip on the stage first")
+
+        let other = ForgeEndpoint(host: "elsewhere")
+        let away = elsewhereBoard(other)
+        ForgeRunner.shared.stage(away, clip: dummyClip)
+        lane.select(tile: newest.id)
+        expect(!lane.offers(.editThis), "a clip that lives on another machine cannot be continued from this one")
+        said = []
+        lane.perform(.editThis)
+        expect(
+            said == [ForgeWords.continueElsewhere(other.shortName)]
+                && ForgeRunner.shared.board.recipe.frame == nil,
+            "and says which machine has it instead of doing nothing")
+        let tile = lane.shelf.first { $0.id == newest.id }
+        let verbs = tile.map { lane.tileVerbs(for: $0) } ?? []
+        expect(
+            !verbs.contains { if case .verb(let verb) = $0 { return verb.id == "continue" } else { return false } },
+            "nor does its tile offer to")
+
+        ForgeRunner.shared.stage(ForgeDemo.board("running"), clip: dummyClip)
+        let running = lane.shelf.first { !$0.isJob && !$0.isMissing }
+        let whileRunning = running.map { lane.tileVerbs(for: $0) } ?? []
+        expect(
+            !whileRunning.contains {
+                if case .verb(let verb) = $0 { return verb.id == "continue" || verb.id == "again" }
+                return false
+            },
+            "while a render is out a tile offers no verb that would be refused")
+        ForgeRunner.shared.stage(ForgeDemo.board("history"))
+    }
+
+    private static func videoLanding(_ expect: (Bool, String) -> Void) {
+        var done = ForgeDemo.board("done")
+        let landed = ForgeEntry(id: ForgeDemo.promptID, recipe: done.recipe, asset: ForgeDemo.asset)
+        done.filled(history: [landed] + done.history)
+        expect(
+            StudioVideoRetake.needsNewSeed(job: done.job)
+                && !StudioVideoRetake.needsNewSeed(job: ForgeDemo.board("running").job)
+                && !StudioVideoRetake.needsNewSeed(job: ForgeDemo.board("history").job),
+            "the button that renders asks for another take of a clip that has landed, and of nothing else")
+        let twin = ForgeEntry(id: "someone-else", recipe: done.recipe, asset: ForgeDemo.asset)
+        expect(
+            StudioVideoSelection.landed(job: done.job, history: [twin, landed])?.id == landed.id
+                && StudioVideoSelection.landed(job: done.job, history: [twin]) == nil,
+            "the clip a render delivered is found by the machine's id for it, not by a file name")
+        expect(
+            StudioVideoSelection.shelfID(staged: "x", job: done.job) == "x"
+                && StudioVideoSelection.shelfID(staged: "x", job: ForgeDemo.board("running").job)
+                    == StudioShelfMerge.jobID
+                && StudioVideoSelection.shelfID(staged: "x", job: ForgeDemo.board("failed").job) == nil
+                && StudioVideoSelection.shelfID(staged: "x", job: ForgeDemo.board("stopped").job) == nil,
+            "the shelf marks the render while it is out and nothing while the stage shows how one ended")
+
+        ForgeRunner.shared.stage(ForgeDemo.board("history"), clip: dummyClip)
+        let lane = VideoLane(runner: .shared)
+        ForgeRunner.shared.stage(done, clip: dummyClip, arriving: true)
+        expect(
+            lane.selectedTile == ForgeDemo.promptID,
+            "a render that lands puts its own clip on the stage and on the shelf")
+        expect(
+            ForgeRunner.shared.unpresented == ForgeDemo.asset,
+            "and it has not been shown to anybody yet")
+        ForgeRunner.shared.present(ForgeDemo.asset)
+        expect(
+            ForgeRunner.shared.unpresented == nil,
+            "a clip is presented once, however often the Studio opens")
+        ForgeRunner.shared.stage(done, clip: dummyClip)
+        expect(
+            ForgeRunner.shared.unpresented == nil,
+            "a landed clip staged for a look is not played at whoever opens the window")
+        ForgeRunner.shared.stage(ForgeDemo.board("failed"), clip: dummyClip)
+        expect(lane.selectedTile == nil, "nothing is selected while the stage shows a render that failed")
+        ForgeRunner.shared.stage(ForgeDemo.board("running"), clip: dummyClip)
+        expect(lane.selectedTile == StudioShelfMerge.jobID, "the render is selected while it is out")
+        ForgeRunner.shared.stage(ForgeDemo.board("history"))
     }
 
     private static func sheetKeys(_ expect: (Bool, String) -> Void) {

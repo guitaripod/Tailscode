@@ -28,11 +28,16 @@ final class ForgeRunner {
     /// like it hung.
     private let clientID = UUID().uuidString
     private var renderTask: Task<Void, Never>?
+    /// The clip that landed and has already been put in front of somebody. A clip is presented
+    /// once, to whichever surface is up when it lands or the first one to open after: a surface
+    /// that is built afresh each time it is shown would otherwise take last night's clip back onto
+    /// its stage, sound and all, every time it opened.
+    private var presented: ForgeAsset?
+    private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     /// The machine the render on the board was submitted to, held for as long as that render is the
     /// one being shown. The address is a setting somebody can change while a card is busy, and an
     /// interrupt sent to whatever the board points at now stops a stranger's work while this render
-    /// carries on unwatched — so the client that submitted is the one that stops it, and the one the
-    /// file it made is asked for.
+    /// carries on unwatched — so the client that submitted is the one that stops it.
     private var renderClient: ForgeClient?
     /// Which render is the current one. A task that ends after another has begun must not fold a
     /// stale snapshot into the board, clear a handle it no longer owns, or file a receipt for a
@@ -63,6 +68,12 @@ final class ForgeRunner {
         if let endpoint = ForgeStore.endpoint() {
             board.point(at: endpoint, named: ForgeStore.label(for: endpoint))
         }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recover() }
+        }
+        Task { [weak self] in self?.recover() }
     }
 
     var endpoint: ForgeEndpoint? { board.endpoint }
@@ -133,27 +144,96 @@ final class ForgeRunner {
         renderTicket += 1
         let ticket = renderTicket
         let expecting = board.clock.estimate(recipe)
+        holdBackground()
         renderTask = Task { [weak self] in
             for await job in client.render(recipe, expecting: expecting) {
-                guard let self, self.renderTicket == ticket else { return }
-                self.board.saw(job)
-                self.announce()
+                guard let self else { return }
+                self.saw(job, from: ticket, on: client)
             }
             self?.settle(ticket)
         }
     }
 
-    /// Stops what is running, on the machine that is running it and on this device. The interrupt
-    /// goes to the render's own renderer rather than to whatever the setting names now, is fired
-    /// rather than awaited — it either landed or the render was already over — and the job is put
-    /// into its stopped state here so the surface says so even if the socket never answers again.
+    /// A render the app lost track of — it was closed, killed or reinstalled while the machine
+    /// carried on — picked up again by the id it was filed under. Whatever became of it while
+    /// nobody watched is told the way a render started here is: still running, finished and filed,
+    /// failed in the machine's own words, or forgotten by a restart of the machine. Asked at launch
+    /// and whenever the app comes forward with nothing out, because the answer can arrive while the
+    /// app is asleep and the next look is the first chance to hear it.
+    func recover() {
+        guard renderTask == nil, !isStaged, let pending = ForgeStore.pending() else { return }
+        let client = ForgeClient(endpoint: pending.endpoint, clientID: pending.clientID)
+        renderClient = client
+        renderTicket += 1
+        let ticket = renderTicket
+        let expecting = board.clock.estimate(pending.recipe)
+        AppLogger.ui.info(
+            "forge recovering render prompt=\(pending.promptID) confirmed=\(pending.confirmed)")
+        holdBackground()
+        renderTask = Task { [weak self] in
+            if let stream = await client.recover(pending, expecting: expecting) {
+                for await job in stream {
+                    guard let self else { return }
+                    self.saw(job, from: ticket, on: client)
+                }
+            }
+            self?.settle(ticket)
+        }
+    }
+
+    /// A snapshot, taken only from the render the board is showing. One from a render that was
+    /// stopped is dropped rather than drawn — it would put a machine's account of abandoned work
+    /// back over the terminal state the stop already wrote — except that a clip which did land is a
+    /// clip, and goes on the shelf without touching what the board says. A render that ended is
+    /// filed here, in the same breath as the board hears of it, so the shelf already holds the
+    /// clip by the time a surface asks which one just landed.
+    private func saw(_ job: ForgeJob, from ticket: Int, on client: ForgeClient) {
+        guard renderTicket == ticket else {
+            if job.asset != nil, let entry = ForgeEntry(job: job, endpoint: client.endpoint) {
+                fileLate(entry)
+            }
+            return
+        }
+        board.saw(job)
+        if job.isFinished, ForgeStore.record(job, on: client.endpoint) != nil {
+            if let clock = board.learn(from: job) { ForgeStore.remember(clock: clock) }
+            board.filled(history: ForgeStore.history())
+        }
+        announce()
+    }
+
+    /// A clip that landed after the person stopped waiting for it. It stays on the shelf and
+    /// nothing else moves: they asked for it to stop, and a clip taking the stage back would be the
+    /// machine answering a question that was withdrawn.
+    private func fileLate(_ entry: ForgeEntry) {
+        ForgeStore.record(entry)
+        board.filled(history: ForgeStore.history())
+        announce()
+    }
+
+    /// Stops what is running, on the machine that is running it and on this device.
+    ///
+    /// The stop goes to the render's own renderer rather than to whatever the setting names now,
+    /// and names the job: the machine is shared, and a job still waiting its turn has nothing
+    /// running to interrupt. A job caught in its last seconds answers with its clip, which is filed
+    /// rather than thrown away. The job is put into its stopped state here so the surface says so
+    /// even if the socket never answers again.
     func stop() {
         guard board.isBusy else { return }
-        let renderer = renderClient
-        Task { await renderer?.cancel() }
+        let handle = board.job.handle
+        let recipe = board.job.recipe
+        if let renderer = renderClient, let handle {
+            Task { [weak self] in
+                guard case .finished(let asset)? = await renderer.cancel(handle) else { return }
+                self?.fileLate(
+                    ForgeEntry(id: handle, recipe: recipe, asset: asset, endpoint: renderer.endpoint))
+            }
+        }
         renderTask?.cancel()
         renderTask = nil
         renderTicket += 1
+        releaseBackground()
+        ForgeStore.clearPending(handle)
         var job = board.job
         job.cancelled()
         board.saw(job)
@@ -161,60 +241,98 @@ final class ForgeRunner {
         announce()
     }
 
-    /// Files the receipt and says how it went. A cancelled job files nothing — `ForgeEntry` refuses
-    /// to make history out of a render nobody finished.
+    /// The stream is over: says how it went, and tells whoever is away when a clip landed.
     private func settle(_ ticket: Int) {
         guard renderTicket == ticket else { return }
         renderTask = nil
-        if let clock = board.learn(from: board.job) { ForgeStore.remember(clock: clock) }
-        if ForgeStore.record(board.job) != nil {
-            board.filled(history: ForgeStore.history())
-        }
+        releaseBackground()
         switch board.job.phase {
-        case .done: Theme.Haptics.received()
+        case .done:
+            Theme.Haptics.received()
+            notifyLanding(board.job)
         case .failed: Theme.Haptics.error()
         case .drafting, .submitting, .queued, .running, .cancelled: break
         }
         announce()
     }
 
+    /// A clip that lands while the app is behind something else is worth a line on the lock screen,
+    /// under the same switch as every other finished piece of work. Raised nowhere near the screen
+    /// that is already showing it: the notification manager stays silent for an app in front.
+    private func notifyLanding(_ job: ForgeJob) {
+        NotificationManager.notify(
+            kind: .turnComplete, title: StudioStageWords.clipLanded(words: nil),
+            body: job.recipe.prompt.ellipsized(to: 120),
+            identifier: "forge:\(job.handle ?? UUID().uuidString)")
+    }
+
+    /// Keeps the process alive for the little while the system allows after the app goes behind
+    /// something, so a render that finishes in that time is heard and filed rather than found later.
+    private func holdBackground() {
+        guard backgroundTask == .invalid else { return }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "ForgeRunner.watch") {
+            [weak self] in
+            MainActor.assumeIsolated { self?.releaseBackground() }
+        }
+    }
+
+    private func releaseBackground() {
+        guard backgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
+    }
+
     // MARK: - The files
+
+    /// Which machine to ask about a kept clip: the one that wrote it. A renderer numbers its own
+    /// files and the setting can be pointed somewhere else any time after, and the machine that
+    /// replaced it has either never heard of `forge_00007.mp4` or has a different clip by that
+    /// name. A receipt filed before machines were recorded is asked of the one in force now.
+    func client(for entry: ForgeEntry) -> ForgeClient? {
+        guard let endpoint = entry.endpoint ?? board.endpoint else { return nil }
+        return ForgeClient(endpoint: endpoint)
+    }
 
     /// Where to point a player, confirmed before it is pointed there. A clip whose file has been
     /// cleaned up off the renderer answers 404, and a video player reports that in words about
     /// nothing a person can act on — so the ask happens here and the row gets to say it is gone.
-    func locate(_ asset: ForgeAsset, entryID: String? = nil) async throws -> URL {
+    func locate(_ entry: ForgeEntry) async throws -> URL {
         #if DEBUG
             if let stagedClip { return stagedClip }
         #endif
-        guard let renderer = host(for: asset) else { throw ForgeFailure.unconfigured }
+        guard let asset = entry.asset, let renderer = client(for: entry) else {
+            throw ForgeFailure.unconfigured
+        }
         do {
             let url = try await renderer.locate(asset)
-            if let entryID, missingClips.remove(entryID) != nil { announce() }
+            if missingClips.remove(entry.id) != nil { announce() }
             return url
         } catch ForgeFailure.missingFile(let host) {
-            if let entryID, missingClips.insert(entryID).inserted { announce() }
+            if missingClips.insert(entry.id).inserted { announce() }
             throw ForgeFailure.missingFile(host)
         }
     }
 
-    /// The bytes the renderer wrote, for the places a URL is not enough — the photo library, a
-    /// share sheet. Never a re-encode of what a preview happened to decode.
-    func fetch(_ asset: ForgeAsset) async throws -> Data {
-        guard let renderer = host(for: asset) else { throw ForgeFailure.unconfigured }
-        return try await renderer.fetch(asset)
-    }
-
-    /// Which machine to ask for a file. A clip belongs to the machine that wrote it, so the one the
-    /// render on the board just delivered is asked of that render's own renderer even when the
-    /// setting has since been pointed somewhere else; everything else is asked of the machine in
-    /// force, which is where this device's history was made.
-    private func host(for asset: ForgeAsset) -> ForgeClient? {
-        guard board.job.asset == asset, let renderClient else { return client }
-        return renderClient
+    /// The file the renderer wrote, brought to this device for the places a URL is not enough —
+    /// the photo library, a share sheet. Never a re-encode of what a preview happened to decode.
+    func export(_ entry: ForgeEntry) async throws -> URL {
+        guard let asset = entry.asset, let renderer = client(for: entry) else {
+            throw ForgeFailure.unconfigured
+        }
+        return try await ClipExport.download(asset, named: entry.fileName, from: renderer.endpoint)
     }
 
     func isMissing(_ entry: ForgeEntry) -> Bool { missingClips.contains(entry.id) }
+
+    /// The clip that has landed and not yet been shown to anybody, if there is one.
+    var unpresented: ForgeAsset? {
+        guard let asset = board.job.asset, asset != presented else { return nil }
+        return asset
+    }
+
+    func present(_ asset: ForgeAsset) {
+        presented = asset
+    }
 
     // MARK: - The board
 
@@ -368,6 +486,7 @@ final class ForgeRunner {
         /// this surface has can be photographed on a simulator. `TAILSCODE_VIDEO_STATE` names one.
         func stage(_ state: String) {
             isStaged = true
+            presented = nil
             let recipe = ForgeRecipe(
                 prompt: "a cat asleep on a warm tiled roof, late afternoon light",
                 negative: "blurry, jitter", width: 1280, height: 704, seconds: 5, fps: 24,
@@ -461,14 +580,12 @@ final class ForgeRunner {
         /// Puts each staged clip's own picture where its poster would have been read from, because
         /// the renderer a staged board names is not there to be asked for a first frame.
         private func hangStagedPosters() {
-            guard ForgeStagedArt.isOn, let endpoint = board.endpoint else { return }
+            guard ForgeStagedArt.isOn else { return }
             for (entry, shelved) in zip(board.history, ForgeStagedArt.shelf) {
-                guard let asset = entry.asset, let name = shelved.art,
+                guard let key = ClipPosters.key(entry, fallback: board.endpoint), let name = shelved.art,
                     let art = ForgeStagedArt.image(named: name)
                 else { continue }
-                ClipPosters.hang(
-                    ForgeStagedArt.scaled(art, toWidth: 240),
-                    key: "\(endpoint.host)/\(asset.annotatedName)")
+                ClipPosters.hang(ForgeStagedArt.scaled(art, toWidth: 240), key: key)
             }
         }
 
@@ -522,6 +639,9 @@ final class ForgeRunner {
                         $0.accepted(promptID: "p")
                         $0.delivered(asset)
                     })
+                if let landed = ForgeEntry(job: self.board.job, endpoint: self.board.endpoint) {
+                    self.board.filled(history: [landed] + self.board.history)
+                }
                 self.announce()
             }
         }

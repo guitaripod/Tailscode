@@ -626,6 +626,123 @@ struct ForgeTests {
         #expect(ForgeStudio.chips == [.size, .seconds, .fps, .seed])
     }
 
+    @Test("Where a job stands is read from the machine's history and queue, not from the socket")
+    func standingIsReadFromTheMachine() {
+        let host = "arch"
+        let done: [String: Any] = [
+            "status": ["status_str": "success", "completed": true],
+            "outputs": ["save": ["images": [["filename": "a.mp4", "subfolder": "video", "type": "output"]]]],
+        ]
+        #expect(
+            ForgeStanding.ending(of: done, host: host)
+                == .finished(ForgeAsset(filename: "a.mp4", subfolder: "video")))
+        let broke: [String: Any] = [
+            "status": [
+                "status_str": "error",
+                "messages": [["execution_error", ["exception_message": "out of memory"]]],
+            ]
+        ]
+        #expect(ForgeStanding.ending(of: broke, host: host) == .failed("out of memory"))
+        let stopped: [String: Any] = [
+            "status": [
+                "status_str": "error",
+                "messages": [["execution_start", [:]], ["execution_interrupted", ["node_id": "7"]]],
+            ]
+        ]
+        #expect(
+            ForgeStanding.ending(of: stopped, host: host) == .stopped,
+            "a clip somebody stopped is not a clip that broke")
+        let empty: [String: Any] = ["status": ["status_str": "success"], "outputs": [:]]
+        #expect(
+            ForgeStanding.ending(of: empty, host: host) == .failed(ForgeFailure.noOutput(host).description))
+
+        let queue: [String: Any] = [
+            "queue_running": [[10, "running-id", [:], [:], ["save"]]],
+            "queue_pending": [[13, "third", [:], [:], []], [11, "first", [:], [:], []], [12, "second", [:], [:], []]],
+        ]
+        #expect(ForgeStanding.place(of: "running-id", in: queue) == .running)
+        #expect(
+            ForgeStanding.place(of: "first", in: queue) == .waiting(ahead: 1),
+            "the running job is in front of it")
+        #expect(
+            ForgeStanding.place(of: "third", in: queue) == .waiting(ahead: 3),
+            "the pending list is a heap on the server and is put in order before anyone is counted")
+        #expect(ForgeStanding.place(of: "nobody", in: queue) == .unknown)
+        #expect(ForgeStanding.place(of: "x", in: [:]) == .unknown)
+    }
+
+    @Test("A render has a name before the machine has been asked, and a recovered one is not timed")
+    func recoveredJobs() {
+        var job = ForgeJob(recipe: recipe)
+        job.submitting()
+        job.announce("minted")
+        #expect(job.handle == "minted", "a Stop during the post names the job it means")
+        #expect(job.promptID == nil, "but nothing is filed under a name the machine has not confirmed")
+        #expect(ForgeEntry(job: job) == nil)
+        job.accepted(promptID: "theirs", nodes: 28)
+        #expect(job.handle == "theirs", "a machine that kept its own id is believed")
+        job.draft()
+        #expect(job.handle == nil)
+
+        var lost = ForgeJob(recipe: recipe)
+        lost.submitting(at: Date().addingTimeInterval(-3 * 3600))
+        lost.accepted(promptID: "pid", nodes: 28)
+        lost.recovered()
+        #expect(lost.subtitle != ForgeJob(recipe: recipe).subtitle)
+        lost.delivered(ForgeAsset(filename: "a.mp4", subfolder: "video"))
+        #expect(lost.worked == nil, "the hours the app was closed are not hours of rendering")
+        var clock = ForgeClock()
+        var board = ForgeBoard(recipe: recipe)
+        board.learned(clock)
+        #expect(board.learn(from: lost) == nil)
+        clock = ForgeClock()
+        #expect(clock.estimate(recipe) == nil)
+    }
+
+    @Test("A clip is saved under the words that made it, not the machine's counter")
+    func savedClipsAreNamedByTheirWords() {
+        let asset = ForgeAsset(filename: "forge_00007_.mp4", subfolder: "video")
+        let named = ForgeEntry(
+            id: "a", recipe: ForgeRecipe(prompt: "A cat asleep, on a warm roof!\nSecond line", seed: 7), asset: asset)
+        #expect(named.fileName == "a-cat-asleep-on-a-warm-roof-second-line-7.mp4")
+        let blank = ForgeEntry(id: "b", recipe: ForgeRecipe(prompt: "  ?!  ", seed: 3), asset: asset)
+        #expect(blank.fileName == "clip-3.mp4")
+        let long = ForgeEntry(
+            id: "c", recipe: ForgeRecipe(prompt: String(repeating: "wandering ", count: 30), seed: 1),
+            asset: ForgeAsset(filename: "x.WEBM"))
+        #expect(long.fileName.hasSuffix("-1.webm"))
+        #expect(long.fileName.count <= 48 + "-1.webm".count)
+        #expect(!long.fileName.contains("--"))
+        let lantern = ForgeEntry(
+            id: "d", recipe: ForgeRecipe(prompt: "a paper lantern drifting down a quiet river at dusk", seed: 9), asset: asset)
+        #expect(lantern.fileName == "a-paper-lantern-drifting-down-a-quiet-river-at-9.mp4", "a name stops at a whole word")
+    }
+
+    @Test("A clip can only be continued on the machine that holds it")
+    func continuingNeedsTheSameMachine() {
+        let arch = ForgeEndpoint(host: "arch")
+        let studio = ForgeEndpoint(host: "studio")
+        let asset = ForgeAsset(filename: "forge_00007_.mp4", subfolder: "video")
+        let here = ForgeEntry(
+            id: "a", recipe: ForgeRecipe(prompt: "a cat asleep", seed: 3), asset: asset, endpoint: arch)
+        let there = ForgeEntry(
+            id: "b", recipe: ForgeRecipe(prompt: "a dog awake", seed: 4), asset: asset, endpoint: studio)
+        var board = ForgeBoard(endpoint: arch, history: [here, there])
+        #expect(board.canContinue(here))
+        #expect(!board.canContinue(there))
+        board.extend(there)
+        #expect(board.recipe.frame == nil, "the same name on another machine is not this clip")
+        #expect(board.continuing == nil)
+        board.extend(here)
+        #expect(board.recipe.frame == .clipEnd(asset))
+        #expect(board.continuing?.id == "a", "the stage can name the clip the next one opens on")
+        #expect(board.recipe.seed != 3, "and the seed is fresh")
+        board.start(from: nil)
+        #expect(board.continuing == nil)
+        let failed = ForgeEntry(id: "c", recipe: ForgeRecipe(prompt: "x"), asset: nil, failure: "no")
+        #expect(!board.canContinue(failed))
+    }
+
     @Test("The video brief asks for a caption and tells the helper what the words do not say")
     func videoBrief() {
         let plain = ForgeRewriteContext(recipe: recipe, sizeChosen: false)
@@ -1014,6 +1131,62 @@ extension DeviceStores {
             #expect(ForgeStore.endpoint() == nil, "forgetting the machine in use stops sending work to it")
             UserDefaults.standard.removeObject(forKey: ForgeStore.renderersKey)
             UserDefaults.standard.removeObject(forKey: ForgeStore.endpointKey)
+        }
+
+        @Test("A render that is out survives the app being gone, and filing its clip settles it")
+        func pendingRoundTrip() {
+            fresh()
+            UserDefaults.standard.removeObject(forKey: ForgeStore.pendingKey)
+            #expect(ForgeStore.pending() == nil)
+            let pending = ForgePending(
+                promptID: "pid", clientID: "client", endpoint: ForgeEndpoint(host: "arch"),
+                recipe: ForgeRecipe(prompt: "a cat"), startedAt: Date(), nodes: 28, confirmed: true)
+            ForgeStore.remember(pending: pending)
+            #expect(ForgeStore.pending() == pending)
+            ForgeStore.clearPending("another")
+            #expect(ForgeStore.pending() == pending, "a late call about a replaced render leaves the newer one")
+            ForgeStore.record(
+                ForgeEntry(
+                    id: "pid", recipe: pending.recipe, asset: nil, failure: "Lost contact"))
+            #expect(ForgeStore.pending() == pending, "a lost render is not a settled one")
+            ForgeStore.record(
+                ForgeEntry(
+                    id: "pid", recipe: pending.recipe,
+                    asset: ForgeAsset(filename: "a.mp4", subfolder: "video")))
+            #expect(ForgeStore.pending() == nil, "filing the clip is what settles the render")
+            fresh()
+        }
+
+        @Test("A render nobody is going to look for any more is let go")
+        func pendingExpires() {
+            fresh()
+            let old = ForgePending(
+                promptID: "pid", clientID: "client", endpoint: ForgeEndpoint(host: "arch"),
+                recipe: ForgeRecipe(prompt: "a cat"),
+                startedAt: Date().addingTimeInterval(-ForgeStore.pendingLifetime - 60), nodes: 28)
+            ForgeStore.remember(pending: old)
+            #expect(ForgeStore.pending() == nil)
+            #expect(ForgeStore.pending(now: old.startedAt.addingTimeInterval(60)) == nil, "and it stays let go")
+            fresh()
+        }
+
+        @Test("A receipt knows which machine wrote the file")
+        func entriesRememberTheirMachine() {
+            fresh()
+            var job = ForgeJob(recipe: ForgeRecipe(prompt: "a cat"))
+            job.submitting()
+            job.accepted(promptID: "pid")
+            job.delivered(ForgeAsset(filename: "a.mp4", subfolder: "video"))
+            let arch = ForgeEndpoint(host: "arch")
+            let studio = ForgeEndpoint(host: "studio")
+            let entry = ForgeStore.record(job, on: arch)
+            #expect(entry?.endpoint == arch)
+            #expect(ForgeStore.history().first?.endpoint == arch, "it is kept, not just returned")
+            #expect(entry?.isOn(arch) == true)
+            #expect(entry?.isOn(studio) == false, "the same name on another machine is another clip")
+            let old = ForgeEntry(id: "old", recipe: ForgeRecipe(), asset: nil)
+            #expect(old.isOn(studio), "a receipt from before machines were recorded is read as the current one")
+            fresh()
         }
 
         @Test("Only a job that actually stopped becomes history")

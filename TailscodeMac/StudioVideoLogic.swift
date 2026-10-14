@@ -9,16 +9,69 @@ enum StudioClipTime {
     }
 }
 
-/// A name to offer a save panel or a drag for a clip: its words made into a filename, so a folder of
-/// these reads as what they are, with the extension the machine wrote.
-enum StudioClipName {
-    static func fileName(for entry: ForgeEntry) -> String {
-        let ext = entry.asset.map { ($0.filename as NSString).pathExtension } ?? ""
-        let allowed = entry.recipe.prompt.lowercased().map { character -> Character in
-            character.isLetter || character.isNumber ? character : "-"
+/// What a stage remembers about a failure for a little while rather than for ever: a machine that
+/// did not answer a minute ago may answer now, and a failure held until the app quits turns one
+/// bad moment into a permanent state. Anything noted here is believed for `lifetime` and then
+/// asked about again.
+struct StudioFailureLedger {
+    static let lifetime: TimeInterval = 30
+
+    private var noted: [String: (sentence: String, at: Date)] = [:]
+
+    mutating func note(_ id: String, sentence: String = "", at moment: Date = Date()) {
+        noted = noted.filter { moment.timeIntervalSince($0.value.at) < Self.lifetime }
+        noted[id] = (sentence, moment)
+    }
+
+    func sentence(for id: String, at moment: Date = Date()) -> String? {
+        guard let found = noted[id], moment.timeIntervalSince(found.at) < Self.lifetime else { return nil }
+        return found.sentence
+    }
+
+    func holds(_ id: String, at moment: Date = Date()) -> Bool {
+        sentence(for: id, at: moment) != nil
+    }
+
+    mutating func forget(_ id: String? = nil) {
+        guard let id else {
+            noted = [:]
+            return
         }
-        let squashed = String(allowed).split(separator: "-").prefix(6).joined(separator: "-")
-        return "\(squashed.isEmpty ? "clip" : squashed).\(ext.isEmpty ? "mp4" : ext)"
+        noted[id] = nil
+    }
+}
+
+/// Which tile the shelf marks and which clip a landed render is, read once from the job so the
+/// shelf, the stage and the arrows can never disagree about them.
+enum StudioVideoSelection {
+    /// Whether the job on the board is an ending the stage is still showing as one: a render that
+    /// failed or was stopped speaks for the stage until something is chosen over it.
+    static func isOutcome(_ job: ForgeJob) -> Bool {
+        switch job.phase {
+        case .failed, .cancelled: return true
+        default: return false
+        }
+    }
+
+    /// The tile that is on the stage: the render while one is out, nothing while the stage is
+    /// showing how a render ended, and otherwise the clip that was put there.
+    static func shelfID(staged: String?, job: ForgeJob) -> String? {
+        if job.isBusy { return StudioShelfMerge.jobID }
+        return isOutcome(job) ? nil : staged
+    }
+
+    /// The receipt of the clip a render delivered, found by the machine's id for the job and not by
+    /// the file name, which two machines can both have used.
+    static func landed(job: ForgeJob, history: [ForgeEntry]) -> ForgeEntry? {
+        guard let asset = job.asset, let id = job.promptID else { return nil }
+        return history.first { $0.id == id && $0.asset == asset }
+    }
+}
+
+/// What the button that renders owes a clip that has just landed: another take, not the same one.
+enum StudioVideoRetake {
+    static func needsNewSeed(job: ForgeJob) -> Bool {
+        !job.isBusy && job.asset != nil
     }
 }
 
@@ -61,6 +114,7 @@ enum StudioClipShelf {
 enum StudioClipSource: Equatable, Sendable {
     case playable
     case unavailable(String)
+    case unreachable(String)
 }
 
 /// What the Video stage is saying, decided once from the job and what is held so the stage, the
@@ -73,6 +127,7 @@ enum StudioVideoState: Equatable, Sendable {
     case painting(String)
     case finishing(String)
     case done
+    case continuing
     case failed(String, StudioRemedy)
     case stopped
 
@@ -87,9 +142,11 @@ enum StudioVideoState: Equatable, Sendable {
 
     /// The job's phase, read as the table of states the design names. A render out outranks any clip
     /// held on the stage; once it ends, the clip that was chosen — or the one the render made — is
-    /// what the stage holds, and a clip that cannot be played says why in the failure tone.
+    /// what the stage holds, and a clip that cannot be played says why in the failure tone. A clip
+    /// being continued is held back from playing until the next one is written or let go of.
     static func read(
-        job: ForgeJob, clip: StudioClipSource?, hasStart: Bool, hasWords: Bool, remedy: StudioRemedy
+        job: ForgeJob, clip: StudioClipSource?, hasStart: Bool, hasWords: Bool, remedy: StudioRemedy,
+        continuing: Bool = false
     ) -> StudioVideoState {
         switch job.phase {
         case .submitting, .queued:
@@ -104,8 +161,9 @@ enum StudioVideoState: Equatable, Sendable {
             return .stopped
         case .drafting, .done:
             switch clip {
-            case .playable?: return .done
+            case .playable?: return continuing ? .continuing : .done
             case .unavailable(let sentence)?: return .failed(sentence, .reuse)
+            case .unreachable(let sentence)?: return .failed(sentence, .wake)
             case nil: return hasStart || hasWords ? .drafting : .empty
             }
         }
@@ -117,7 +175,7 @@ enum StudioVideoState: Equatable, Sendable {
 /// wants after one that was nearly right. While a render is out the capsule keeps its room.
 enum StudioVideoVerbs {
     static func offered(
-        state: StudioVideoState, hasWords: Bool, playing: Bool, isHistory: Bool
+        state: StudioVideoState, hasWords: Bool, playing: Bool, isHistory: Bool, canContinue: Bool = true
     ) -> [StudioStageVerb] {
         guard state.showsClip else { return [] }
         var verbs: [StudioStageVerb] = [
@@ -140,10 +198,12 @@ enum StudioVideoVerbs {
                 symbol: ImageGenAction.open.symbol),
         ]
         if hasWords { verbs.append(StudioStageVerb(ImageGenAction.again)) }
-        verbs.append(
-            StudioStageVerb(
-                id: "continue", title: ForgeWords.extendTitle, hint: ForgeWords.extendHint,
-                symbol: "forward.end.fill"))
+        if canContinue {
+            verbs.append(
+                StudioStageVerb(
+                    id: "continue", title: ForgeWords.extendTitle, hint: ForgeWords.extendHint,
+                    symbol: "forward.end.fill"))
+        }
         if isHistory { verbs.append(StudioStageVerb(ImageGenAction.discard)) }
         return verbs
     }

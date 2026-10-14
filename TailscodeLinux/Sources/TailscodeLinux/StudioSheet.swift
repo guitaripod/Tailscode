@@ -471,6 +471,8 @@ final class StudioSheet: @unchecked Sendable {
         case "fframe": pane.driveFrame(argument)
         case "fextend": pane.driveExtendNewest()
         case "fsound": pane.driveSound(argument)
+        case "fplay": pane.drivePlay(argument)
+        case "fverb": pane.driveVerb(argument)
         default: break
         }
     }

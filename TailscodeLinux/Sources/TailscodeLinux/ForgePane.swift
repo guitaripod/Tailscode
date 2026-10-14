@@ -30,9 +30,15 @@ final class ForgePane: @unchecked Sendable {
     /// through a black surface.
     private var loaded = false
     private var muted = false
-    /// The clip the pane opened by itself when it landed, so a snapshot that arrives twice does
-    /// not open it twice.
-    private var autoPlayed: ForgeAsset?
+    /// The clip the person asked for last, from the moment they asked. `playing` only becomes it
+    /// once the machine has confirmed the file is there, and the shelf, the stage and the verbs
+    /// answer the press at once rather than after a round trip.
+    private var chosen: ForgeAsset?
+    /// Bumped by everything that decides what the stage is on. An answer to an earlier question —
+    /// the machine confirming a file two clicks ago — arrives after the person has moved on, and
+    /// is only believed while its number is still the latest.
+    private var playTicket = 0
+    private var saving = false
 
     private let faces = gtk_stack_new()!
     private let emptyOverlay = gtk_overlay_new()!
@@ -78,7 +84,6 @@ final class ForgePane: @unchecked Sendable {
     private var working: String?
     private var typing = false
     private var fadeEnds: Date?
-    private var arrived: ForgeAsset?
     private var entries: [ForgeEntry] = []
 
     /// Told to the pane's owner whenever what this surface says about itself changes, so the modal's
@@ -229,7 +234,7 @@ final class ForgePane: @unchecked Sendable {
             Gtk.onMain {
                 guard let pane = pane.value, let entry = pane.entries.first(where: { $0.id == id })
                 else { return }
-                if let asset = entry.asset { pane.play(asset) } else { pane.runner.reuse(entry) }
+                if entry.asset != nil { pane.play(entry) } else { pane.runner.reuse(entry) }
             }
         }
         shelf.onMenu = { id, widget, x, y in
@@ -449,6 +454,10 @@ final class ForgePane: @unchecked Sendable {
             case .render, .cancel, .reroll, .back: break
             }
         }
+        if command == .render, !board.isBusy {
+            callPressed()
+            return true
+        }
         let (handled, action) = runner.handle(command)
         guard handled else { return false }
         guard let action else {
@@ -527,12 +536,13 @@ final class ForgePane: @unchecked Sendable {
         switch action {
         case .render(let recipe):
             reason = nil
-            autoPlayed = nil
+            releaseStage()
             runner.start(recipe)
         case .cancel:
             runner.stop()
         case .play(let asset):
-            play(asset)
+            guard let entry = entry(for: asset) else { return }
+            play(entry)
         case .edit(let field):
             edit(field)
         case .choose(let field):
@@ -590,7 +600,7 @@ final class ForgePane: @unchecked Sendable {
         rows.append(
             (ImageGenReferenceSource.clipboard.title, nil,
              { [weak self] in Gtk.onMain { [weak self] in self?.pasteFrame() } }))
-        for entry in board.history.filter(\.isPlayable).prefix(3) {
+        for entry in board.history.filter({ board.canContinue($0) }).prefix(3) {
             rows.append(
                 (ForgeWords.continueTitle(entry), ForgeWords.continueHint,
                  { [weak self] in
@@ -641,15 +651,28 @@ final class ForgePane: @unchecked Sendable {
         }
     }
 
-    /// A clip, asked for before it is opened. The file is on the other machine and `/view` answers
-    /// one that has been cleaned up with a 404 — which a player reports in its own words, none of
-    /// them about this machine — so Core is asked where the file is first and its sentence is what
-    /// a clip that is gone says.
-    private func play(_ asset: ForgeAsset) {
-        guard let client = runner.renderer(for: asset) else { return }
+    private func entry(for asset: ForgeAsset) -> ForgeEntry? {
+        entries.first { $0.asset == asset }
+    }
+
+    /// A clip, asked for before it is opened. The file is on the machine that wrote it and `/view`
+    /// answers one that has been cleaned up with a 404 — which a player reports in its own words,
+    /// none of them about this machine — so Core is asked where the file is first and its sentence
+    /// is what a clip that is gone says.
+    ///
+    /// The clip is the stage's from the moment it is asked for. The answer comes back later, and
+    /// if the person has chosen something else, started a render or gone back to the board in the
+    /// meantime, it is no longer the answer to anything.
+    private func play(_ entry: ForgeEntry) {
+        guard let asset = entry.asset, let client = runner.client(for: entry) else { return }
+        AppLog.write(.ui, "forge play entry=\(entry.id) file=\(asset.filename) machine=\(client.endpoint.host)")
         guard tailscode_mpv_available() != 0 else {
             return refuse(Localized.text("This build has no libmpv, so a slot cannot play"))
         }
+        if playing == asset, loaded, chosen == asset { return }
+        playTicket += 1
+        let ticket = playTicket
+        chosen = asset
         reason = nil
         working = Localized.text("Checking…")
         render()
@@ -657,10 +680,16 @@ final class ForgePane: @unchecked Sendable {
         openTask = Task { [weak self] in
             do {
                 let url = try await client.locate(asset)
-                Gtk.onMain { [weak self] in self?.open(asset, at: url) }
+                Gtk.onMain { [weak self] in
+                    guard let self, self.playTicket == ticket else { return }
+                    self.open(asset, at: url)
+                }
             } catch {
                 let sentence = ForgeClient.reason(error, host: client.endpoint.host)
-                Gtk.onMain { [weak self] in self?.refuse(sentence) }
+                Gtk.onMain { [weak self] in
+                    guard let self, self.playTicket == ticket else { return }
+                    self.refuse(sentence)
+                }
             }
         }
     }
@@ -674,6 +703,7 @@ final class ForgePane: @unchecked Sendable {
         }
         reason = nil
         playing = asset
+        chosen = asset
         loaded = false
         tailscode_mpv_play(player, url.absoluteString)
         render()
@@ -684,20 +714,37 @@ final class ForgePane: @unchecked Sendable {
     /// machine no longer has, mpv's for one it will not decode. The stage stays up underneath it,
     /// because a reason with nothing to press is a dead end.
     private func refuse(_ sentence: String) {
+        playTicket += 1
         working = nil
         playing = nil
+        chosen = nil
         loaded = false
         reason = sentence
+        if player != nil { drive(["stop"]) }
         render()
+    }
+
+    /// Takes the stage off whatever it was on, and every answer still on its way back with it. A
+    /// render starting, a clip about to be continued and a return to the board all begin here: the
+    /// player is stopped, not merely hidden, because a clip left running under the sketch of the
+    /// next one keeps its sound on and keeps the landed clip from ever being the one that plays.
+    private func releaseStage() {
+        playTicket += 1
+        openTask?.cancel()
+        openTask = nil
+        working = nil
+        chosen = nil
+        guard playing != nil else { return }
+        playing = nil
+        loaded = false
+        if player != nil { drive(["stop"]) }
     }
 
     /// Back to the stage with the clip stopped and the recipe that made it still in the boxes — the
     /// point of keeping a seed is that the next one is one edit away rather than a retype.
     private func showBoard() {
-        guard isPlaying else { return }
-        playing = nil
-        loaded = false
-        if player != nil { drive(["stop"]) }
+        guard isPlaying || chosen != nil else { return }
+        releaseStage()
         dropSketch()
         render()
         focusPrompt()
@@ -727,14 +774,14 @@ final class ForgePane: @unchecked Sendable {
         onChange?()
     }
 
-    /// A clip that just landed is opened by the pane itself, once: the stage is the room the
-    /// person was watching, and the last sketch crossing into the moving picture is the arrival.
+    /// A clip that just landed takes the stage, once: the stage is the room the person was
+    /// watching, and the last sketch crossing into the moving picture is the arrival. Nothing
+    /// already on the stage can keep it out — a render starting takes the stage off its clip, and
+    /// one landing while another clip is being watched is the clip that was waited for.
     private func openOnArrival() {
-        guard let asset = board.job.asset, asset != autoPlayed, !isPlaying, working == nil else {
-            return
-        }
-        autoPlayed = asset
-        play(asset)
+        guard let asset = runner.unpresented, let entry = entry(for: asset) else { return }
+        runner.present(asset)
+        play(entry)
     }
 
     /// The shape of the clip, decided before it renders: the recipe's own frame, so the sketch, the
@@ -789,7 +836,7 @@ final class ForgePane: @unchecked Sendable {
         } else if case .failed(let why) = job.phase, !isPlaying {
             showFace("empty")
             gtk_widget_set_visible(emptyColumn, 0)
-            refreshBackdrop(dim: 0.3)
+            refreshBackdrop(asset: entries.first(where: \.isPlayable)?.asset, dim: 0.3)
             card = failureCard(why)
             tone = tone ?? .danger
             spoken = why
@@ -805,6 +852,16 @@ final class ForgePane: @unchecked Sendable {
                 showVerbs = loaded
                 spoken = entry.title
             }
+        } else if let entry = continuation(), !isLocating {
+            showFace("empty")
+            gtk_widget_set_visible(emptyColumn, 0)
+            refreshBackdrop(asset: entry.asset, dim: 0.34)
+            card = continuationCard(entry)
+            if case .cancelled = job.phase, sentence == nil {
+                sentence = ImageGenWords.stoppedNotice
+                tone = .attention
+            }
+            spoken = ForgeWords.continuingTitle(entry)
         } else if let asset = job.asset, let entry = entries.first(where: { $0.asset == asset }) {
             showFace("picture")
             let key = ForgePosters.key(for: asset)
@@ -819,7 +876,7 @@ final class ForgePane: @unchecked Sendable {
         } else {
             showFace("empty")
             gtk_widget_set_visible(emptyColumn, 1)
-            refreshBackdrop(dim: 0.16)
+            refreshBackdrop(asset: entries.first(where: \.isPlayable)?.asset, dim: 0.16)
             if sentence == nil, case .cancelled = job.phase {
                 sentence = ImageGenWords.stoppedNotice
                 tone = .attention
@@ -893,9 +950,10 @@ final class ForgePane: @unchecked Sendable {
         if sketching { gtk_label_set_text(op(sketchBadge), ForgeWords.sketchCaption(board.job)) }
     }
 
-    /// The newest clip's poster, held dimmed behind everything the empty stage says.
-    private func refreshBackdrop(dim: Double) {
-        let key = entries.first(where: \.isPlayable)?.asset.map(ForgePosters.key(for:))
+    /// A clip's poster, held dimmed behind everything the empty stage says: the newest clip's by
+    /// default, and the clip a continuation opens on while one is waiting to be written.
+    private func refreshBackdrop(asset: ForgeAsset?, dim: Double) {
+        let key = asset.map(ForgePosters.key(for:))
         let bits = key.flatMap { posters.textures[$0] } ?? 0
         guard bits != 0, let key else {
             if backdropKey != nil {
@@ -916,25 +974,25 @@ final class ForgePane: @unchecked Sendable {
     }
 
     /// The finished clip's verbs: a copy somewhere of the person's own, and the next clip from
-    /// where this one ended. They hold their room while a render is out.
+    /// where this one ended. They hold their room while a render is out. Each verb acts on the
+    /// clip the stage is on when it is pressed — the stage looks the action up then, not when the
+    /// button was drawn.
     private func clipVerbs(for entry: ForgeEntry) -> [StudioVerb] {
-        guard let asset = entry.asset else { return [] }
+        guard entry.asset != nil else { return [] }
         let pane = Weak(self)
-        return [
+        var verbs = [
             StudioVerb(
                 id: "save", glyph: "↓", title: ImageGenAction.save.title,
                 hint: Localized.text("Write the clip somewhere of your own"),
-                perform: { pane.value?.save(asset) }),
-            StudioVerb(
-                id: "extend", glyph: "⏭", title: ForgeWords.extendTitle, hint: ForgeWords.extendHint,
-                isPrimary: true,
-                perform: {
-                    guard let pane = pane.value else { return }
-                    pane.showBoard()
-                    pane.runner.extend(entry)
-                    pane.focusPrompt()
-                }),
+                perform: { pane.value?.save(entry) })
         ]
+        if board.canContinue(entry) {
+            verbs.append(
+                StudioVerb(
+                    id: "extend", glyph: "⏭", title: ForgeWords.extendTitle, hint: ForgeWords.extendHint,
+                    isPrimary: true, perform: { pane.value?.continueFrom(entry) }))
+        }
+        return verbs
     }
 
     private func clipVerbs(reserved: Bool) -> [StudioVerb] {
@@ -944,10 +1002,51 @@ final class ForgePane: @unchecked Sendable {
         ]
     }
 
+    /// The next clip opens where this one ended. The stage lets go of the clip and says what it is
+    /// now waiting for — a card naming the clip, its poster behind it, the words in the box to be
+    /// changed into what happens next — so the press has an answer on screen rather than a slot
+    /// that changed beside the prompt.
+    private func continueFrom(_ entry: ForgeEntry) {
+        guard !board.isBusy else { return }
+        guard board.canContinue(entry) else {
+            reason = ForgeWords.continueElsewhere(entry.endpoint?.shortName ?? "")
+            render()
+            return
+        }
+        AppLog.write(.ui, "forge continue entry=\(entry.id) file=\(entry.asset?.filename ?? "-")")
+        releaseStage()
+        dropSketch()
+        reason = nil
+        runner.extend(entry)
+        render()
+        focusPrompt()
+    }
+
+    private var isLocating: Bool { chosen != nil && !isPlaying }
+
+    /// The clip the next render would open on the end of, while the stage has nothing else to say.
+    private func continuation() -> ForgeEntry? {
+        guard !board.isBusy, board.job.asset == nil, let entry = board.continuing else { return nil }
+        return entry
+    }
+
+    private func continuationCard(_ entry: ForgeEntry) -> UnsafeMutablePointer<GtkWidget> {
+        let pane = Weak(self)
+        return StudioFailureCard.make(
+            sentence: ForgeWords.continuingTitle(entry), note: ForgeWords.continuingBody, mark: "⏭",
+            remedies: [
+                (title: ForgeWords.continuingFreshTitle, primary: false,
+                 perform: { pane.value?.runner.start(from: nil) })
+            ])
+    }
+
     /// The clip's bytes, fetched from the machine that wrote them, into a file of the person's
-    /// choosing — never a re-encode of what the player showed.
-    private func save(_ asset: ForgeAsset) {
-        guard let client = runner.renderer(for: asset) else { return }
+    /// choosing — never a re-encode of what the player showed. The name offered says what the clip
+    /// is rather than where the machine happened to file it.
+    private func save(_ entry: ForgeEntry) {
+        guard !saving, let asset = entry.asset, let client = runner.client(for: entry) else { return }
+        AppLog.write(.ui, "forge save entry=\(entry.id) file=\(asset.filename) as=\(entry.fileName) machine=\(client.endpoint.host)")
+        saving = true
         working = Localized.text("Fetching…")
         render()
         Task { [weak self] in
@@ -955,9 +1054,10 @@ final class ForgePane: @unchecked Sendable {
                 let data = try await client.fetch(asset)
                 Gtk.onMain { [weak self] in
                     guard let self else { return }
+                    self.saving = false
                     self.working = nil
                     self.render()
-                    Gtk.saveFile(parent: self.hostWindow, suggestedName: asset.filename, data: data) { [weak self] path in
+                    Gtk.saveFile(parent: self.hostWindow, suggestedName: entry.fileName, data: data) { [weak self] path in
                         guard let path else { return }
                         Gtk.onMain { [weak self] in
                             self?.reason = nil
@@ -969,6 +1069,7 @@ final class ForgePane: @unchecked Sendable {
             } catch {
                 let sentence = ForgeClient.reason(error, host: client.endpoint.host)
                 Gtk.onMain { [weak self] in
+                    self?.saving = false
                     self?.working = nil
                     self?.reason = sentence
                     self?.render()
@@ -1025,7 +1126,7 @@ final class ForgePane: @unchecked Sendable {
         syncAvoid()
         syncSound()
         dock.setPlaceholder(board.prompt)
-        dock.setGo(title: board.renderCall, stopping: board.isBusy)
+        dock.setGo(title: goTitle, stopping: board.isBusy)
         dock.setLocked(board.isBusy)
         gtk_widget_set_tooltip_text(dock.go, board.expectation ?? board.job.hint)
         let about = board.expectation.map { line -> String in
@@ -1070,10 +1171,13 @@ final class ForgePane: @unchecked Sendable {
             bits = referenceTexture?.bits ?? 0
             glyph = nil
         case .kept: glyph = "▤"
-        case .clipEnd: glyph = "⏭"
+        case .clipEnd(let asset):
+            glyph = "⏭"
+            bits = posters.textures[ForgePosters.key(for: asset)] ?? 0
         }
         slotView.apply(
-            count: 1, bits: bits, glyph: glyph, tooltip: "\(frame.label) — \(frame.detail)")
+            count: 1, bits: bits, glyph: bits == 0 ? glyph : nil,
+            tooltip: "\(board.continuing?.title ?? frame.label) — \(frame.detail)")
     }
 
     private func releaseReferenceTexture() {
@@ -1129,8 +1233,8 @@ final class ForgePane: @unchecked Sendable {
                     words: StudioWords.shelfTileLabel(words: entry.title, facts: entry.detail),
                     tooltip: "\(ago) · \(entry.detail)"))
         }
-        let selected = playing.flatMap { asset in entries.first(where: { $0.asset == asset })?.id }
-            ?? board.job.asset.flatMap { asset in entries.first(where: { $0.asset == asset })?.id }
+        let selected = (chosen ?? playing ?? board.job.asset)
+            .flatMap { asset in entries.first(where: { $0.asset == asset })?.id }
         shelf.describe(
             heading: ForgeWords.recentTitle,
             count: entries.isEmpty ? nil : Localized.text("%@ kept", "\(entries.count)"),
@@ -1152,6 +1256,7 @@ final class ForgePane: @unchecked Sendable {
         }
         if let newest = entries.first(where: \.isPlayable)?.asset { keys.append(ForgePosters.key(for: newest)) }
         if let landed = board.job.asset { keys.append(ForgePosters.key(for: landed)) }
+        if let leading = board.continuing?.asset { keys.append(ForgePosters.key(for: leading)) }
         posters.want(keys)
     }
 
@@ -1162,20 +1267,15 @@ final class ForgePane: @unchecked Sendable {
         _ entry: ForgeEntry, on widget: UnsafeMutablePointer<GtkWidget>, x: Double, y: Double
     ) {
         var rows: [(String, String?, @Sendable () -> Void)] = []
-        if let asset = entry.asset {
+        if entry.asset != nil {
             rows.append(
                 (Localized.text("Play"), entry.detail,
-                 { [weak self] in Gtk.onMain { [weak self] in self?.play(asset) } }))
-            rows.append(
-                (ForgeWords.extendTitle, ForgeWords.extendHint,
-                 { [weak self] in
-                     Gtk.onMain { [weak self] in
-                         guard let self else { return }
-                         self.showBoard()
-                         self.runner.extend(entry)
-                         self.focusPrompt()
-                     }
-                 }))
+                 { [weak self] in Gtk.onMain { [weak self] in self?.play(entry) } }))
+            if board.canContinue(entry), !board.isBusy {
+                rows.append(
+                    (ForgeWords.extendTitle, ForgeWords.extendHint,
+                     { [weak self] in Gtk.onMain { [weak self] in self?.continueFrom(entry) } }))
+            }
         }
         rows.append(
             (Localized.text("Use it"), entry.recipe.summary,
@@ -1377,7 +1477,17 @@ final class ForgePane: @unchecked Sendable {
         }
     }
 
+    /// What the button under the words says. A clip that has landed is already on the stage, so
+    /// the button is never an offer to play it again — it is the offer to make another.
+    private var goTitle: String {
+        board.job.asset != nil ? Localized.text("Render") : board.renderCall
+    }
+
+    /// Render, or Stop while one is out. Pressed on the words of a clip that has just landed it
+    /// asks for another take of them: the same seed would be asked to make the same clip again,
+    /// and a few minutes of the other machine's card spent on a copy.
     private func callPressed() {
+        if board.job.asset != nil, !board.isBusy { runner.pick(.seed, id: "reroll") }
         guard let action = runner.begin() else { return }
         perform(action)
     }
@@ -1390,10 +1500,10 @@ extension ForgePane {
     /// verbs on the stage and the player left unopened, because a headless harness has no
     /// output for the player to draw on.
     func demonstrate(_ name: String) {
-        showBoard()
-        autoPlayed = nil
+        releaseStage()
+        dropSketch()
         runner.demonstrate(name)
-        if name == "done" { autoPlayed = board.job.asset }
+        if name == "done", let asset = board.job.asset { runner.present(asset) }
         syncPrompt()
         syncAvoid()
         syncSound()
@@ -1411,6 +1521,12 @@ extension ForgePane {
         guard let entry = board.history.first(where: \.isPlayable) else { return }
         runner.extend(entry)
     }
+    func drivePlay(_ index: String) {
+        let place = Int(index) ?? 0
+        guard entries.indices.contains(place) else { return }
+        play(entries[place])
+    }
+    func driveVerb(_ id: String) { shell.press(id) }
     func driveSound(_ words: String) {
         typing = true
         gtk_editable_set_text(op(soundEntry), words)

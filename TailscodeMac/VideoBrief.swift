@@ -19,6 +19,7 @@ final class VideoBrief: StudioBriefing {
     var noticeHandler: ((String) -> Void)?
     var onSetup: (() -> Void)?
     var onChange: ((Change) -> Void)?
+    var onRender: (() -> Void)?
 
     private(set) var draft: ImageGenRewriteDraft?
     private(set) var helperServers: [ImageGenHelperServer] = []
@@ -117,12 +118,14 @@ final class VideoBrief: StudioBriefing {
                     return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
                 })
         case .clipEnd(let asset):
+            let leading = board.continuing
+            let name = leading?.title ?? frame.label
             return StudioStartHold(
-                id: "clip:" + asset.annotatedName, name: frame.label, tooltip: frame.detail,
+                id: "clip:" + (leading?.id ?? asset.annotatedName), name: name,
+                tooltip: "\(name) — \(frame.detail)",
                 thumbnail: {
-                    guard let image = await MacClipPosters.poster(for: asset, via: runner) else {
-                        return nil
-                    }
+                    guard let leading, let image = await MacClipPosters.poster(for: leading, via: runner)
+                    else { return nil }
                     return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
                 })
         }
@@ -138,15 +141,20 @@ final class VideoBrief: StudioBriefing {
 
     /// One render of what the board holds. The board's own `begin` answers *play* once a clip has
     /// landed, which is right for a row and wrong for the button that renders: this asks for the
-    /// next clip from what is in the boxes, and says where to go when there is no machine to ask.
+    /// next clip from what is in the boxes, and says where to go when there is no machine to ask. A
+    /// clip that has just landed is on the stage already, so the button is an offer to make another
+    /// take of it: the same seed would be asked to make the same clip again.
     func submit(prompt: String) {
+        let another = StudioVideoRetake.needsNewSeed(job: board.job)
         runner.describe(prompt)
         guard runner.endpoint != nil else {
             onSetup?()
             return
         }
         guard board.recipe.isRenderable, !runner.isRendering else { return }
+        if another { runner.pick(.seed, id: "reroll") }
         MacHaptics.shared.play(.send)
+        onRender?()
         runner.start(board.recipe)
     }
 
@@ -305,7 +313,7 @@ final class VideoBrief: StudioBriefing {
         let from = ClosureMenuItem(title: ImageGenReferenceSource.library.title + "…") { gallery() }
         from.image = StudioTheme.symbol(ImageGenReferenceSource.library.symbol, size: 12)
         menu.addItem(from)
-        let clips = board.history.filter(\.isPlayable).prefix(3)
+        let clips = board.history.filter { board.canContinue($0) }.prefix(3)
         if !clips.isEmpty {
             menu.addItem(.separator())
             for entry in clips {
@@ -353,7 +361,11 @@ final class VideoBrief: StudioBriefing {
             guard let self else { return done(false) }
             switch picture {
             case .tile(let id)?:
-                guard let asset = self.board.history.first(where: { $0.id == id })?.asset else {
+                guard let entry = self.board.history.first(where: { $0.id == id }), let asset = entry.asset
+                else { return done(false) }
+                guard self.board.canContinue(entry) else {
+                    self.noticeHandler?(
+                        ForgeWords.continueElsewhere(entry.endpoint?.shortName ?? self.board.endpoint?.shortName ?? ""))
                     return done(false)
                 }
                 self.runner.start(from: .clipEnd(asset))

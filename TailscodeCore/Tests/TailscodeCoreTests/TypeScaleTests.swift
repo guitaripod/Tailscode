@@ -94,15 +94,15 @@ extension DeviceStores {
     @Test("A write that changes nothing says nothing")
     func quietWhenNothingMoved() {
       fresh()
-      var posted = 0
+      let posted = NotificationTally()
       let token = NotificationCenter.default.addObserver(
         forName: TypeScaleStore.didChange, object: nil, queue: nil
-      ) { _ in posted += 1 }
+      ) { _ in posted.bump() }
       TypeScaleStore.set(.mono, to: 1.0)
-      #expect(posted == 0)
+      #expect(posted.count == 0)
       TypeScaleStore.set(.mono, to: 1.2)
       TypeScaleStore.set(.mono, to: 1.2)
-      #expect(posted == 1)
+      #expect(posted.count == 1)
       NotificationCenter.default.removeObserver(token)
       fresh()
     }
@@ -111,4 +111,21 @@ extension DeviceStores {
 
 extension TypeScale {
   fileprivate var percentages: [Int] { TypeArea.allCases.map { percent($0) } }
+}
+
+private final class NotificationTally: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value = 0
+
+  var count: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return value
+  }
+
+  func bump() {
+    lock.lock()
+    value += 1
+    lock.unlock()
+  }
 }

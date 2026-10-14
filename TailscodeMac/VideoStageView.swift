@@ -28,6 +28,10 @@ struct VideoStageModel {
     var invitationTitle = ""
     var invitationBody = ""
     var landed: String?
+    var continuationTitle = ""
+    var continuationBody = ""
+    var continuationAction = ""
+    var arriving = false
 }
 
 /// The Video stage: the clip owns the window. An opaque canvas with a sixteen-point corner, the
@@ -42,7 +46,9 @@ struct VideoStageModel {
 /// ease-out or instantly under reduced motion, and a failure in the failure tone, perfectly still,
 /// with the one thing that fixes it. A finished clip plays in place, loops, and is muted unless it
 /// has sound; there is no player chrome, because the verbs capsule is the only floating control the
-/// picture carries.
+/// picture carries. A clip that has just landed is played by the stage itself, once, as a clip the
+/// person had chosen would be, and a clip about to be continued is held dimmed behind a card that
+/// says what the next one opens on.
 @MainActor
 final class VideoStageView: NSView, StudioStaging {
     var bottomReserve: CGFloat = StudioTheme.dockBase + StudioTheme.dockInset + 12 {
@@ -57,7 +63,8 @@ final class VideoStageView: NSView, StudioStaging {
     var onDrop: ((StudioDrop) -> Void)?
     var onOpen: (() -> Void)?
     var onSetup: (() -> Void)?
-    var onClipFailed: ((String) -> Void)?
+    var onClipFailed: ((String, String) -> Void)?
+    var onStartFresh: (() -> Void)?
     var onPlaybackChanged: (() -> Void)?
     var onWindowChange: (() -> Void)?
 
@@ -75,6 +82,7 @@ final class VideoStageView: NSView, StudioStaging {
     private let invitation = VideoInvitationView()
     private let status = StudioStatusView()
     private let failure = StudioFailureCard()
+    private let continuation = VideoContinuationCard()
     private let capsule = StudioVerbsCapsule()
     private let dropNote = StudioPill()
     private let playGlyph = VideoPlayGlyph()
@@ -86,7 +94,7 @@ final class VideoStageView: NSView, StudioStaging {
     private var dropping = false
 
     private var player: AVPlayer?
-    private var clipID: String?
+    private var clipHold: VideoClipHold?
     private var playerReady = false
     private var hasSound = false
     private var muted = false
@@ -123,15 +131,16 @@ final class VideoStageView: NSView, StudioStaging {
         dash.isHidden = true
         layer?.addSublayer(dash)
 
-        for view in [caption, clockDot, sketchPill, soundPill, invitation, status, failure, playGlyph, capsule, dropNote] as [NSView] {
+        for view in [caption, clockDot, sketchPill, soundPill, invitation, status, failure, continuation, playGlyph, capsule, dropNote] as [NSView] {
             addSubview(view)
         }
-        for view in [clockDot, sketchPill, soundPill, invitation, status, failure, playGlyph, dropNote] as [NSView] {
+        for view in [clockDot, sketchPill, soundPill, invitation, status, failure, continuation, playGlyph, dropNote] as [NSView] {
             view.isHidden = true
         }
 
         invitation.onSetup = { [weak self] in self?.onSetup?() }
         failure.onRemedy = { [weak self] remedy in self?.onRemedy?(remedy) }
+        continuation.onFresh = { [weak self] in self?.onStartFresh?() }
         capsule.onVerb = { [weak self] verb in self?.onVerb?(verb) }
         capsule.primaryID = StudioVideoVerbs.primaryID
         capsule.setAccessibilityLabel(Localized.text("Clip actions"))
@@ -274,6 +283,7 @@ final class VideoStageView: NSView, StudioStaging {
         switch state {
         case .empty: dim = StudioTheme.dimmed
         case .failed, .stopped: dim = 0.32
+        case .continuing: dim = 0.34
         case .waiting, .working, .painting: dim = 0.4
         case .drafting: dim = model.heldIsBackdrop ? StudioTheme.dimmed : 1
         case .finishing, .done: dim = 1
@@ -318,9 +328,18 @@ final class VideoStageView: NSView, StudioStaging {
         } else {
             failure.isHidden = true
         }
+        continuation.isHidden = state != .continuing
+        if state == .continuing {
+            continuation.show(
+                title: model.continuationTitle, body: model.continuationBody,
+                action: model.continuationAction)
+        }
 
         if state == .done {
-            if playerReady { revealPlayer(landing: landing) }
+            if playerReady {
+                revealPlayer(landing: landing)
+                startArrival()
+            }
         } else {
             pausePlayback()
             playerLayer.opacity = 0
@@ -489,6 +508,11 @@ final class VideoStageView: NSView, StudioStaging {
         failure.frame = NSRect(
             x: pictureRect.midX - failureSize.width / 2, y: pictureRect.midY - failureSize.height / 2,
             width: failureSize.width, height: failureSize.height)
+        let continuationSize = continuation.fitting(width: min(max(pictureRect.width - 48, 0), 520))
+        continuation.frame = NSRect(
+            x: pictureRect.midX - continuationSize.width / 2,
+            y: pictureRect.midY - continuationSize.height / 2, width: continuationSize.width,
+            height: continuationSize.height)
         playGlyph.frame = NSRect(
             x: pictureRect.midX - VideoPlayGlyph.side / 2, y: pictureRect.midY - VideoPlayGlyph.side / 2,
             width: VideoPlayGlyph.side, height: VideoPlayGlyph.side)
@@ -504,25 +528,25 @@ final class VideoStageView: NSView, StudioStaging {
 
     var spokenState: String { model.spoken }
 
+    /// The clip the player is on is the whole hold — which clip and where the machine says it is. A
+    /// clip located again at another address is another load, not the one already under way.
     private func loadClip(_ hold: VideoClipHold?) {
-        guard hold?.id != clipID else { return }
+        guard hold != clipHold else { return }
         loadTask?.cancel()
         tearDownPlayer()
-        clipID = hold?.id
+        clipHold = hold
         guard let hold else { return }
-        let url = hold.url
-        let id = hold.id
         loadTask = Task { [weak self] in
-            let asset = AVURLAsset(url: url)
+            let asset = AVURLAsset(url: hold.url)
             do {
                 let playable = try await asset.load(.isPlayable)
                 guard playable else { throw CocoaError(.fileReadCorruptFile) }
                 let audio = try await asset.loadTracks(withMediaType: .audio)
-                guard !Task.isCancelled, let self, self.clipID == id else { return }
+                guard !Task.isCancelled, let self, self.clipHold == hold else { return }
                 self.attach(asset, hasSound: !audio.isEmpty)
             } catch {
-                guard !Task.isCancelled, let self, self.clipID == id else { return }
-                self.onClipFailed?(error.localizedDescription)
+                guard !Task.isCancelled, let self, self.clipHold == hold else { return }
+                self.onClipFailed?(hold.id, error.localizedDescription)
             }
         }
     }
@@ -558,8 +582,23 @@ final class VideoStageView: NSView, StudioStaging {
         playerReady = true
         if model.state == .done {
             revealPlayer(landing: landingPending)
+            startArrival()
             updateGlyphs()
         }
+    }
+
+    /// A clip that has just landed plays on the stage the person was watching, once. The lane says
+    /// when a clip is arriving and stops saying it as soon as the stage reports the clip playing, so
+    /// a clip is never started twice and one the person paused stays paused. The change is reported
+    /// a beat later because this runs inside the model being applied, and the lane answers a
+    /// playback change by applying another.
+    private func startArrival() {
+        guard model.arriving, model.state == .done, !isPlaying, playerReady, window != nil, let player
+        else { return }
+        isPlaying = true
+        player.play()
+        updateGlyphs()
+        Task { [weak self] in self?.onPlaybackChanged?() }
     }
 
     /// The clip arrives under the sketch and the sketch lets go of it: one ease-out of 240 ms on the
@@ -786,6 +825,96 @@ final class VideoInvitationView: NSView {
     }
 
     @objc private func pressed() { onSetup?() }
+}
+
+/// What the stage says while a continuation waits to be written: which clip the next one opens on,
+/// as the first thing the person sees rather than a chip to hover, and the one way out of it. Like
+/// every settled state it holds perfectly still.
+@MainActor
+final class VideoContinuationCard: StudioRaisedView {
+    var onFresh: (() -> Void)?
+    private let icon = NSImageView()
+    private let title = StudioTheme.label(.rowTitleStrong, color: MacTheme.Color.label, lines: 3)
+    private let body = StudioTheme.label(.cardBody, color: MacTheme.Color.secondaryLabel, lines: 4)
+    private let button = NSButton(title: "", target: nil, action: nil)
+
+    private static let pad: CGFloat = 20
+    private static let iconSide: CGFloat = 26
+
+    init() {
+        super.init(radius: StudioTheme.stageRadius)
+        icon.image = StudioTheme.symbol("forward.end.fill", size: 18, weight: .semibold)
+        icon.imageScaling = .scaleProportionallyDown
+        addSubview(icon)
+        addSubview(title)
+        addSubview(body)
+        button.bezelStyle = .rounded
+        button.controlSize = .regular
+        button.target = self
+        button.action = #selector(pressed)
+        button.keyEquivalent = ""
+        addSubview(button)
+        restyle()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(themeChanged), name: MacTheme.Chrome.didRepaint, object: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    @objc private func themeChanged() { restyle() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        restyle()
+    }
+
+    private func restyle() {
+        icon.contentTintColor = MacTheme.Color.accent
+        title.font = MacTheme.Ramp.font(.rowTitleStrong)
+        body.font = MacTheme.Ramp.font(.cardBody)
+    }
+
+    func show(title words: String, body detail: String, action: String) {
+        title.stringValue = words
+        body.stringValue = detail
+        button.title = action
+        button.setAccessibilityLabel(action)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel([words, detail].joined(separator: ". "))
+        needsLayout = true
+    }
+
+    private func height(of field: NSTextField, width: CGFloat) -> CGFloat {
+        ceil(
+            field.attributedStringValue.boundingRect(
+                with: NSSize(width: width, height: 600), options: [.usesLineFragmentOrigin, .usesFontLeading]
+            ).height)
+    }
+
+    func fitting(width: CGFloat) -> NSSize {
+        let textWidth = max(120, width - 2 * Self.pad - Self.iconSide - 12)
+        let height = 2 * Self.pad + height(of: title, width: textWidth) + 6 + height(of: body, width: textWidth) + 14 + 28
+        return NSSize(width: min(width, 420), height: height)
+    }
+
+    override func layout() {
+        super.layout()
+        let textWidth = bounds.width - 2 * Self.pad - Self.iconSide - 12
+        let left = Self.pad + Self.iconSide + 12
+        let titleHeight = height(of: title, width: textWidth)
+        let bodyHeight = height(of: body, width: textWidth)
+        icon.frame = NSRect(x: Self.pad, y: Self.pad - 2, width: Self.iconSide, height: Self.iconSide)
+        title.frame = NSRect(x: left, y: Self.pad, width: textWidth, height: titleHeight)
+        body.frame = NSRect(x: left, y: Self.pad + titleHeight + 6, width: textWidth, height: bodyHeight)
+        let size = button.fittingSize
+        button.frame = NSRect(
+            x: left, y: Self.pad + titleHeight + 6 + bodyHeight + 14, width: size.width, height: 28)
+    }
+
+    @objc private func pressed() { onFresh?() }
 }
 
 /// The play control a finished clip rests behind: a disc of the scrim token, so it clears contrast

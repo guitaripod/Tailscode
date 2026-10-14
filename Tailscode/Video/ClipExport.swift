@@ -15,23 +15,44 @@ enum ClipExport {
     private static let folder = "shared-clips"
     private static let staleAfter: TimeInterval = 3600
 
-    static func stage(_ data: Data, as asset: ForgeAsset) -> URL? {
-        guard !data.isEmpty else { return nil }
+    /// Brings the renderer's file onto this device under the name given, straight to disk: a clip
+    /// is tens of megabytes, and holding all of it in memory for a share sheet is what a phone
+    /// under pressure kills the app for. The name is the clip's own words and seed, so two clips
+    /// the renderer filed under the same name on different days never overwrite each other here.
+    static func download(_ asset: ForgeAsset, named name: String, from endpoint: ForgeEndpoint)
+        async throws -> URL
+    {
+        guard let source = asset.url(on: endpoint) else {
+            throw ForgeFailure.unreachable(endpoint.host)
+        }
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(folder, isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         prune(directory)
-        let url = directory.appendingPathComponent(sanitized(asset.filename))
+        let request = URLRequest(url: source, timeoutInterval: 120)
+        let received: URL
+        let response: URLResponse
         do {
-            try data.write(to: url, options: .atomic)
-            return url
+            (received, response) = try await URLSession.shared.download(for: request)
         } catch {
-            AppLogger.ui.error("could not stage \(asset.filename): \(error)")
-            return nil
+            throw ForgeFailure.unreachable(endpoint.host)
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+        if status == 404 || status == 410 { throw ForgeFailure.missingFile(endpoint.host) }
+        guard status < 400 else { throw ForgeFailure.unreachable(endpoint.host) }
+        let staged = directory.appendingPathComponent(sanitized(name))
+        do {
+            try? FileManager.default.removeItem(at: staged)
+            try FileManager.default.moveItem(at: received, to: staged)
+            return staged
+        } catch {
+            AppLogger.ui.error("could not stage \(name): \(error)")
+            throw ForgeFailure.unreachable(endpoint.host)
         }
     }
 
     static func share(_ url: URL, from presenter: UIViewController, source: UIView?) {
+        let presenter = presenter.frontmostPresented
         let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         sheet.popoverPresentationController?.sourceView = source ?? presenter.view
         sheet.popoverPresentationController?.sourceRect =
@@ -56,5 +77,16 @@ enum ClipExport {
     private static func sanitized(_ name: String) -> String {
         let cleaned = name.map { $0 == "/" || $0 == ":" ? "_" : $0 }
         return String(String(cleaned).suffix(80))
+    }
+}
+
+extension UIViewController {
+    /// The controller a new sheet can actually be presented from. A controller that is already
+    /// presenting something — an alert, another sheet, the system player — refuses a second
+    /// presentation without a word, so the answer is whatever sits on top of the chain.
+    var frontmostPresented: UIViewController {
+        var top = self
+        while let next = top.presentedViewController, !next.isBeingDismissed { top = next }
+        return top
     }
 }

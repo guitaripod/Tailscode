@@ -149,13 +149,17 @@ public enum ForgeFailure: Error, CustomStringConvertible, Sendable, Equatable {
     /// different fact from unreachable: one is a reason to stop waiting, the other is a reason to
     /// wait a little longer.
     case missingFile(String)
+    /// A render this device asked for and the machine has no record of — not running, not queued,
+    /// not in its history. It was restarted, or its history cleared, before the clip was filed, and
+    /// that is a different fact from a render that failed.
+    case forgotten(String)
 
     public var host: String {
         switch self {
         case .unconfigured: return ""
         case .unreachable(let host), .rejected(let host, _), .refused(let host, _),
             .disconnected(let host), .noOutput(let host), .renderFailed(let host, _),
-            .missingFile(let host):
+            .missingFile(let host), .forgotten(let host):
             return host
         }
     }
@@ -178,6 +182,10 @@ public enum ForgeFailure: Error, CustomStringConvertible, Sendable, Equatable {
             return reason
         case .missingFile(let host):
             return Localized.text("%@ no longer has that clip", host)
+        case .forgotten(let host):
+            return Localized.text(
+                "%@ has no record of this render — it was probably restarted before the clip was saved",
+                host)
         }
     }
 }

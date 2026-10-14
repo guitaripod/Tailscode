@@ -56,8 +56,16 @@ final class VideoForgeViewController: UIViewController {
     private var stageClip: (asset: ForgeAsset, url: URL)?
     private var stageFailure: String?
     private var locating: Task<Void, Never>?
-    private var locatingAsset: ForgeAsset?
-    private var lastDelivered: ForgeAsset?
+    /// Bumped by everything that decides what the stage is on. An answer to an earlier question —
+    /// the renderer confirming a file two taps ago — arrives after the person has moved on, and is
+    /// only believed while its number is still the latest.
+    private var stageTicket = 0
+    private var peeking: Task<Void, Never>?
+    private var sharing = false
+    private var seedReused = false
+    private var framesAsked: Set<String> = []
+    private var stripStamp: String?
+    private var revealed: String?
     private var muted = true
     private var sketchFrame: ImageGenPreviewFrame?
     private var sketchImage: UIImage?
@@ -318,7 +326,7 @@ final class VideoForgeViewController: UIViewController {
                 let entry = self.board.history.first(where: { $0.id == id })
             else { return }
             cell.apply(
-                entry, endpoint: self.runner.endpoint, onStage: self.stageEntry?.id == id,
+                entry, fallback: self.runner.endpoint, onStage: self.stageEntry?.id == id,
                 gone: self.runner.isMissing(entry))
         }
         let note = UICollectionView.CellRegistration<ImageStripNoteCell, StripItem> {
@@ -403,6 +411,7 @@ final class VideoForgeViewController: UIViewController {
                 state.tone = .danger
                 state.sentence = failure
                 state.caption = entry.title
+                if !runner.isMissing(entry) { state.remedy = String(localized: "Try again") }
                 state.spoken = [failure, entry.title].joined(separator: ", ")
             } else {
                 state.face = .waiting
@@ -436,10 +445,45 @@ final class VideoForgeViewController: UIViewController {
                 state.emptyTitle = ForgeEntryPoint.tooltip(configured: false)
                 state.remedy = ForgeSetup.title
                 state.spoken = state.emptyTitle
+            } else if let entry = board.continuing {
+                state.emptyTitle = ForgeWords.continuingTitle(entry)
+                state.emptyBody = ForgeWords.continuingBody
+                state.remedy = ForgeWords.continuingFreshTitle
+                state.behind = picture(of: entry, endFrame: false)
+                state.spoken = [state.emptyTitle, state.emptyBody].compactMap { $0 }.joined(separator: ", ")
             }
-            state.behind = nil
         }
         return state
+    }
+
+    /// The picture of a clip that is already held, and one asked for when it is not: the first
+    /// frame, or the last when a continuation is about to open on it. Asked for once per clip per
+    /// screen, and the screen is redrawn only when something arrived, so a machine that cannot
+    /// give one is not asked again on every frame the socket sends.
+    private func picture(of entry: ForgeEntry, endFrame: Bool) -> UIImage? {
+        guard !runner.isMissing(entry), let asset = entry.asset,
+            let endpoint = entry.endpoint ?? runner.endpoint, let url = asset.url(on: endpoint),
+            let key = ClipPosters.key(entry, fallback: runner.endpoint)
+        else { return nil }
+        let wanted = endFrame ? ClipPosters.endKey(key) : key
+        if let held = ClipPosters.cached(wanted) { return held }
+        if framesAsked.insert(wanted).inserted {
+            Task { [weak self] in
+                let image =
+                    endFrame
+                    ? await ClipPosters.endFrame(of: url, key: key)
+                    : await ClipPosters.poster(of: url, key: key)
+                guard image != nil, let self else { return }
+                self.updateStartFrom()
+                self.renderStage()
+            }
+        }
+        return endFrame ? ClipPosters.cached(key) : nil
+    }
+
+    private var jobFailed: Bool {
+        if case .failed = board.job.phase { return true }
+        return false
     }
 
     private func failureRemedy() -> String {
@@ -451,6 +495,11 @@ final class VideoForgeViewController: UIViewController {
 
     private func remedyTapped() {
         guard runner.endpoint != nil else { return openRenderer() }
+        if let entry = stageEntry, stageFailure != nil { return showOnStage(entry) }
+        if board.continuing != nil, !runner.isRendering, !jobFailed {
+            Theme.Haptics.selection()
+            return runner.start(from: nil)
+        }
         if let reading = StudioMachineReading.forge(board), reading.cannotPaint {
             return openRenderer()
         }
@@ -508,57 +557,76 @@ final class VideoForgeViewController: UIViewController {
         }
     }
 
-    /// Which clip is on the stage: the one a render just delivered, until somebody puts another
-    /// there; nothing while a render is out, because the render is what the stage is for.
+    /// Which clip is on the stage: the one a render just delivered, the first time this screen
+    /// sees it, until somebody puts another there; nothing while a render is out, because the
+    /// render is what the stage is for. A clip is presented once however many times the screen is
+    /// opened, and one that landed while the screen was closed is presented the first time it shows.
     private func syncStage() {
         let job = board.job
         if job.isBusy {
-            if stageEntry != nil || stageClip != nil {
-                stageEntry = nil
-                stageClip = nil
-                stageFailure = nil
-                locating?.cancel()
-                locatingAsset = nil
-                lastDelivered = nil
-            }
+            if stageEntry != nil || stageClip != nil || locating != nil { releaseStage() }
             if case .submitting = job.phase, sketchImage != nil, sketchFrame == nil || job.sketch == nil {
                 sketchImage = nil
                 sketchFrame = nil
             }
-        } else if let asset = job.asset, asset != lastDelivered {
-            lastDelivered = asset
-            stageEntry = board.history.first(where: { $0.asset == asset }) ?? ForgeEntry(job: job)
-            stageClip = nil
-            stageFailure = nil
-        }
-        guard !job.isBusy, let entry = stageEntry, let asset = entry.asset else {
-            if stageEntry == nil { stageClip = nil }
             return
         }
-        guard stageClip?.asset != asset, locatingAsset != asset else {
-            if let clip = stageClip {
-                player.show(clip.url)
-                player.setMuted(muted)
-            }
-            return
-        }
+        guard let asset = runner.unpresented,
+            let entry = board.history.first(where: { $0.asset == asset })
+        else { return }
+        runner.present(asset)
+        putOnStage(entry)
+    }
+
+    /// Takes the stage off whatever it was on, and every answer still on its way back with it: the
+    /// player is cleared, not merely hidden, because a clip left running under the sketch of the
+    /// next one keeps its sound on.
+    private func releaseStage() {
+        stageTicket += 1
         locating?.cancel()
-        locatingAsset = asset
+        locating = nil
+        revealed = nil
+        stageEntry = nil
+        stageClip = nil
         stageFailure = nil
+        player.clear()
+    }
+
+    private func showOnStage(_ entry: ForgeEntry) {
+        putOnStage(entry)
+        renderStage()
+        updateVerbs()
+        applyStrip(animated: false)
+    }
+
+    /// A clip is the stage's from the moment it is asked for. The renderer is asked whether the
+    /// file is still there, and the answer is believed only while the clip it was asked about is
+    /// still the one on the stage.
+    private func putOnStage(_ entry: ForgeEntry) {
+        releaseStage()
+        stageEntry = entry
+        guard entry.isPlayable else { return }
+        let ticket = stageTicket
+        let runner = runner
         locating = Task { [weak self] in
-            guard let self else { return }
+            let located: Result<URL, Error>
             do {
-                let url = try await self.runner.locate(asset, entryID: entry.id)
-                guard !Task.isCancelled else { return }
+                located = .success(try await runner.locate(entry))
+            } catch {
+                located = .failure(error)
+            }
+            guard let self, !Task.isCancelled, self.stageTicket == ticket, let asset = entry.asset
+            else { return }
+            switch located {
+            case .success(let url):
                 self.stageClip = (asset, url)
                 self.player.show(url)
                 self.player.setMuted(self.muted)
-            } catch {
-                guard !Task.isCancelled else { return }
-                self.stageFailure = ForgeClient.reason(error, host: self.runner.endpoint?.host ?? "")
+            case .failure(let error):
+                let host = (entry.endpoint ?? self.runner.endpoint)?.host ?? ""
+                self.stageFailure = ForgeClient.reason(error, host: host)
             }
             self.locating = nil
-            self.locatingAsset = nil
             self.renderStage()
             self.updateVerbs()
             self.applyStrip(animated: false)
@@ -594,18 +662,20 @@ final class VideoForgeViewController: UIViewController {
         var offered: [StudioVerb] = [
             StudioVerb(
                 title: String(localized: "Play"), hint: nil, symbol: "play.fill"
-            ) { [weak self] in self?.openStageClip() }
-        ]
-        if let asset = entry.asset {
-            offered.append(
-                StudioVerb(
-                    title: String(localized: "Share"), hint: nil, symbol: "square.and.arrow.up"
-                ) { [weak self] in self?.share(asset) })
-        }
-        offered.append(
+            ) { [weak self] in self?.openStageClip() },
+            StudioVerb(
+                title: String(localized: "Share"), hint: nil, symbol: "square.and.arrow.up"
+            ) { [weak self] in
+                guard let entry = self?.stageEntry else { return }
+                self?.share(entry)
+            },
             StudioVerb(
                 title: ForgeWords.extendTitle, hint: ForgeWords.extendHint, symbol: "forward.end.fill"
-            ) { [weak self] in self?.continueIt(entry) })
+            ) { [weak self] in
+                guard let entry = self?.stageEntry else { return }
+                self?.continueIt(entry)
+            },
+        ]
         offered.append(
             StudioVerb(
                 title: muted ? String(localized: "Play sound") : String(localized: "Mute"), hint: nil,
@@ -615,11 +685,17 @@ final class VideoForgeViewController: UIViewController {
             UIAction(
                 title: String(localized: "Use these settings"),
                 image: UIImage(systemName: "arrow.uturn.backward")
-            ) { [weak self] _ in self?.reuse(entry) },
+            ) { [weak self] _ in
+                guard let entry = self?.stageEntry else { return }
+                self?.reuse(entry)
+            },
             UIAction(
                 title: String(localized: "Remove"), image: UIImage(systemName: "trash"),
                 attributes: .destructive
-            ) { [weak self] _ in self?.forget(entry) },
+            ) { [weak self] _ in
+                guard let entry = self?.stageEntry else { return }
+                self?.forget(entry)
+            },
         ]
         verbs.apply(verbs: offered, more: more, holding: false, waiting: nil)
     }
@@ -633,9 +709,37 @@ final class VideoForgeViewController: UIViewController {
         } else {
             snapshot.appendItems(board.history.map { .clip($0.id) })
         }
-        let refresh: [StripItem] = [.note] + board.history.map { .clip($0.id) }
+        var refresh: [StripItem] = [.job]
+        let stamp = stripFacts
+        if stamp != stripStamp {
+            stripStamp = stamp
+            refresh += [.note] + board.history.map { .clip($0.id) }
+        }
         snapshot.reconfigureItems(refresh.filter { snapshot.indexOfItem($0) != nil })
-        stripSource.apply(snapshot, animatingDifferences: animated && view.window != nil)
+        stripSource.apply(snapshot, animatingDifferences: animated && view.window != nil) {
+            [weak self] in self?.revealStageClip()
+        }
+    }
+
+    /// Everything a clip tile or the note draws from, in one string: a tile is reconfigured when
+    /// one of these changed and not on every frame the socket sends, because a reconfigure
+    /// restarts the tile's poster and a render sends a frame every moment.
+    private var stripFacts: String {
+        let clips = board.history.map(\.id).joined(separator: ",")
+        let gone = runner.missingClips.sorted().joined(separator: ",")
+        let machine = runner.endpoint.map { "\($0.host):\($0.port)" } ?? ""
+        return [stageEntry?.id ?? "", clips, gone, machine, historyNote ?? ""].joined(separator: "|")
+    }
+
+    /// The clip on the stage is the one selected on the shelf, and the shelf scrolls to it when it
+    /// first becomes the stage's — a clip that just landed is the newest, which can sit off the
+    /// screen's edge after a long wait.
+    private func revealStageClip() {
+        guard let id = stageEntry?.id, id != revealed,
+            let path = stripSource.indexPath(for: .clip(id))
+        else { return }
+        revealed = id
+        strip.scrollToItem(at: path, at: .centeredHorizontally, animated: view.window != nil)
     }
 
     /// The renderer in the bar, and the menu behind the circle beside it: the renderer's own
@@ -788,8 +892,9 @@ final class VideoForgeViewController: UIViewController {
         startFromRing.strokeColor = Theme.Color.separator.cgColor
     }
 
-    /// What the slot wears: the picture the clip opens on, the poster of the clip it continues, or
-    /// the invitation to choose one. One decision, three sources, and it says which.
+    /// What the slot wears: the picture the clip opens on, the last frame of the clip it continues
+    /// (its poster until that is read), or the invitation to choose one. One decision, three
+    /// sources, and it says which.
     private func startFromThumbnail(_ frame: ForgeFrame) -> UIImage? {
         switch frame {
         case .file(let path):
@@ -800,9 +905,9 @@ final class VideoForgeViewController: UIViewController {
             let library = ImageStudio.shared.library
             return library.items.first(where: { $0.annotatedName == name })
                 .flatMap { library.cachedThumbnail(of: $0) }
-        case .clipEnd(let asset):
-            guard let endpoint = runner.endpoint else { return nil }
-            return ClipPosters.cached("\(endpoint.host)/\(asset.annotatedName)")
+        case .clipEnd:
+            guard let entry = board.continuing else { return nil }
+            return picture(of: entry, endFrame: true)
         }
     }
 
@@ -837,7 +942,8 @@ final class VideoForgeViewController: UIViewController {
         startFrom.titleLabel?.minimumScaleFactor = 0.6
         startFrom.menu = startFromMenu()
         startFrom.accessibilityLabel = ForgeField.frame.label
-        startFrom.accessibilityValue = frame.map { "\($0.label), \($0.detail)" } ?? ForgeWords.frameUnset
+        startFrom.accessibilityValue =
+            frame.map { "\(board.continuing?.title ?? $0.label), \($0.detail)" } ?? ForgeWords.frameUnset
         startFrom.accessibilityHint = ForgeWords.frameHint
     }
 
@@ -848,7 +954,7 @@ final class VideoForgeViewController: UIViewController {
         var children: [UIMenuElement] = ImageChip.sourceActions(available: intake.available) {
             [weak self] source in self?.intake.present(source)
         }
-        let clips = board.history.filter(\.isPlayable).prefix(3).map { entry in
+        let clips = board.history.filter { board.canContinue($0) }.prefix(3).map { entry in
             UIAction(
                 title: ForgeWords.continueTitle(entry), subtitle: ForgeWords.continueHint,
                 image: UIImage(systemName: "film")
@@ -1038,19 +1144,24 @@ final class VideoForgeViewController: UIViewController {
     }
 
     /// One control, two meanings, and it says which it is: a render out is stopped from the same
-    /// place it was started. A renderer that was never set up gets the setup instead of a render.
+    /// place it was started. A renderer that was never set up gets the setup instead of a render,
+    /// and a clip waiting to be continued says that is what the press will do.
     private func updateRenderButton() {
         let rendering = runner.isRendering
-        let words = rendering
+        let continuing = !rendering && runner.endpoint != nil && board.continuing != nil
+        let words =
+            rendering
             ? ImageGenWords.stopTitle
-            : (runner.endpoint == nil ? ForgeSetup.title : Localized.text("Render"))
+            : (runner.endpoint == nil
+                ? ForgeSetup.title
+                : (continuing ? ForgeWords.extendTitle : Localized.text("Render")))
         var config = Theme.Glass.buttonConfiguration(prominent: true)
         config.cornerStyle = .large
         config.imagePlacement = .top
         config.imagePadding = 2
         config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4)
         config.image = UIImage(
-            systemName: rendering ? "stop.fill" : ForgeEntryPoint.symbol,
+            systemName: rendering ? "stop.fill" : (continuing ? "forward.end.fill" : ForgeEntryPoint.symbol),
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold))
         var title = AttributedString(words)
         title.font = Theme.Font.capped(.caption1, maximum: 14)
@@ -1075,8 +1186,16 @@ final class VideoForgeViewController: UIViewController {
             promptView.becomeFirstResponder()
             return
         }
-        if board.job.asset != nil || stageEntry?.isPlayable == true { runner.pick(.seed, id: "reroll") }
+        if repeatsKeptClip { runner.pick(.seed, id: "reroll") }
         startRender(board.recipe)
+    }
+
+    /// Whether pressing Render would ask for a clip the shelf already holds, word for word and
+    /// seed for seed: the same seed on the same words makes the same clip, a few minutes of the
+    /// machine's card spent on a copy. Never so for settings taken back on purpose — reusing a
+    /// clip's seed is how the same clip is asked for again.
+    private var repeatsKeptClip: Bool {
+        !seedReused && board.history.contains { $0.isPlayable && $0.recipe == board.recipe }
     }
 
     private func startRender(_ recipe: ForgeRecipe) {
@@ -1085,12 +1204,8 @@ final class VideoForgeViewController: UIViewController {
         sketchImage = nil
         sketchFrame = nil
         beforeEnhance = nil
-        stageEntry = nil
-        stageClip = nil
-        stageFailure = nil
-        locatingAsset = nil
-        lastDelivered = nil
-        player.clear()
+        seedReused = false
+        releaseStage()
         runner.render(recipe)
     }
 
@@ -1108,47 +1223,116 @@ final class VideoForgeViewController: UIViewController {
         updateVerbs()
     }
 
+    /// Opens the clip at the size of the phone. The inline loop is paused underneath for as long as
+    /// the system player is up and resumed when it leaves, so a clip that was unmuted is never
+    /// heard twice.
     private func openStageClip() {
         guard let clip = stageClip else { return }
         Theme.Haptics.tap()
-        ClipTheatre.present(clip.url, from: self)
+        player.setPlaying(false)
+        ClipTheatre.present(clip.url, from: self) { [weak self] in
+            guard let self, self.stageClip?.url == clip.url else { return }
+            self.player.setPlaying(true)
+        }
     }
 
-    private func share(_ asset: ForgeAsset) {
-        Task { [weak self] in
-            guard let self else { return }
+    /// Shows a kept clip while a render is out. The stage belongs to the render then, so the clip
+    /// opens in the system player over it and the render carries on underneath.
+    private func peek(_ entry: ForgeEntry) {
+        guard entry.isPlayable else {
+            if let failure = entry.failure { notice(failure) }
+            return
+        }
+        guard peeking == nil else { return }
+        let runner = runner
+        peeking = Task { [weak self] in
+            let located: Result<URL, Error>
             do {
-                let data = try await self.runner.fetch(asset)
-                guard let url = ClipExport.stage(data, as: asset) else { return }
-                ClipExport.share(url, from: self, source: self.verbs)
+                located = .success(try await runner.locate(entry))
             } catch {
-                self.notice(ForgeClient.reason(error, host: self.runner.endpoint?.host ?? ""))
+                located = .failure(error)
+            }
+            guard let self else { return }
+            self.peeking = nil
+            switch located {
+            case .success(let url):
+                guard self.view.window != nil else { return }
+                Theme.Haptics.tap()
+                ClipTheatre.present(url, from: self)
+            case .failure(let error):
+                Theme.Haptics.error()
+                self.notice(
+                    ForgeClient.reason(
+                        error, host: (entry.endpoint ?? runner.endpoint)?.host ?? ""))
+            }
+        }
+    }
+
+    private func share(_ entry: ForgeEntry) {
+        guard !sharing else { return }
+        sharing = true
+        notice(Localized.text("Fetching…"))
+        let runner = runner
+        Task { [weak self] in
+            let staged: Result<URL, Error>
+            do {
+                staged = .success(try await runner.export(entry))
+            } catch {
+                staged = .failure(error)
+            }
+            guard let self else { return }
+            self.sharing = false
+            switch staged {
+            case .success(let url):
+                guard self.view.window != nil else { return }
+                ClipExport.share(url, from: self, source: self.verbs)
+            case .failure(let error):
+                self.notice(
+                    ForgeClient.reason(
+                        error, host: (entry.endpoint ?? runner.endpoint)?.host ?? ""))
                 Theme.Haptics.error()
             }
         }
     }
 
-    /// Starts the next clip where this one ended: the same shape, the same words to edit into what
-    /// happens next, a fresh seed — and the keyboard, because the words are what changes.
+    /// Starts the next clip where this one ended, and says so: the keyboard is put away first so
+    /// the box can take the clip's words, the player is stopped, and the stage, the button and the
+    /// start-from slot all name the clip that is being continued. Then the box is focused, because
+    /// the words are what changes. A clip that is gone, or that lives on another machine than the
+    /// one rendering now, is said to be, rather than started from.
     private func continueIt(_ entry: ForgeEntry) {
+        guard !runner.isRendering else { return }
+        guard !runner.isMissing(entry), board.canContinue(entry) else {
+            Theme.Haptics.warning()
+            if runner.isMissing(entry) {
+                notice(ForgeFailure.missingFile((entry.endpoint ?? runner.endpoint)?.host ?? "").description)
+            } else {
+                notice(ForgeWords.continueElsewhere(entry.endpoint?.shortName ?? ""))
+            }
+            return
+        }
         Theme.Haptics.selection()
+        view.endEditing(true)
+        releaseStage()
+        beforeEnhance = nil
         runner.extend(entry)
+        setPrompt(board.recipe.prompt)
+        notice(ForgeWords.continuingNotice(entry))
         promptView.becomeFirstResponder()
     }
 
     private func reuse(_ entry: ForgeEntry) {
         Theme.Haptics.selection()
+        view.endEditing(true)
+        seedReused = true
+        beforeEnhance = nil
         runner.reuse(entry)
+        setPrompt(board.recipe.prompt)
     }
 
     private func forget(_ entry: ForgeEntry) {
         Theme.Haptics.warning()
-        if stageEntry?.id == entry.id {
-            stageEntry = nil
-            stageClip = nil
-            lastDelivered = nil
-            player.clear()
-        }
+        if stageEntry?.id == entry.id { releaseStage() }
         runner.forget(entry)
     }
 
@@ -1187,24 +1371,19 @@ final class VideoForgeViewController: UIViewController {
 extension VideoForgeViewController: UICollectionViewDelegate, UICollectionViewDelegateFlowLayout {
     /// Pressing a clip puts it on the stage, where it plays, and decides nothing about the next
     /// render: continuing it or using its settings is the verb's, pressed on purpose. A render that
-    /// made no clip says why instead.
+    /// made no clip says why instead. While a render is out the stage is the render's, so the clip
+    /// opens in the system player over it. Pressing the clip already on the stage does nothing —
+    /// it would ask the machine for the file again and restart a loop that is playing.
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard case .clip(let id) = stripSource.itemIdentifier(for: indexPath),
             let entry = board.history.first(where: { $0.id == id })
         else { return }
         Theme.Haptics.selection()
         view.endEditing(true)
-        guard !runner.isRendering else { return }
-        stageEntry = entry
-        stageClip = nil
-        stageFailure = nil
-        locatingAsset = nil
-        lastDelivered = board.job.asset
-        player.clear()
-        syncStage()
-        renderStage()
-        updateVerbs()
-        applyStrip(animated: false)
+        if runner.isRendering { return peek(entry) }
+        let settled = stageClip != nil || locating != nil || !entry.isPlayable
+        if stageEntry?.id == entry.id, settled { return }
+        showOnStage(entry)
     }
 
     func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath)
@@ -1235,17 +1414,19 @@ extension VideoForgeViewController: UICollectionViewDelegate, UICollectionViewDe
         return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
             [weak self] _ in
             var actions: [UIAction] = []
-            if let asset = entry.asset {
+            if entry.isPlayable {
                 actions.append(
                     UIAction(
                         title: String(localized: "Share"),
                         image: UIImage(systemName: "square.and.arrow.up")
-                    ) { _ in self?.share(asset) })
-                actions.append(
-                    UIAction(
-                        title: ForgeWords.extendTitle, subtitle: ForgeWords.extendHint,
-                        image: UIImage(systemName: "forward.end.fill")
-                    ) { _ in self?.continueIt(entry) })
+                    ) { _ in self?.share(entry) })
+                if self?.runner.isRendering == false {
+                    actions.append(
+                        UIAction(
+                            title: ForgeWords.extendTitle, subtitle: ForgeWords.extendHint,
+                            image: UIImage(systemName: "forward.end.fill")
+                        ) { _ in self?.continueIt(entry) })
+                }
             }
             actions.append(
                 UIAction(

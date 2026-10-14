@@ -1695,6 +1695,7 @@ enum MatrixTheme {
             min-height: 28px;
             font-weight: 700;
         }
+        .studio-card-mark-live { color: \(accent); background-color: alpha(\(accent), 0.16); }
         .studio-card-sentence { color: \(text); \(t(.panelDetail)) }
         .studio-rewrite { background-color: \(canvasRaised); box-shadow: 0 10px 28px alpha(#000000, 0.32); }
         .studio-dock {

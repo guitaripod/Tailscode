@@ -765,7 +765,7 @@ final class MainWindow: @unchecked Sendable {
                 case "fsum":
                     FileHandle.standardOutput.write(
                         Data("FORGE \(StudioSheet.current?.forgeSummary ?? "-")\n".utf8))
-                case "fenhance", "fuse", "fframe", "fextend", "fsound":
+                case "fenhance", "fuse", "fframe", "fextend", "fsound", "fplay", "fverb":
                     StudioSheet.current?.drive(verb, argument)
                     FileHandle.standardOutput.write(
                         Data("FORGE \(StudioSheet.current?.forgeSummary ?? "-")\n".utf8))

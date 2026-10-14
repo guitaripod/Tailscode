@@ -33,6 +33,7 @@ final class StudioStageShell: @unchecked Sendable {
     private var bars: [UnsafeMutablePointer<GtkWidget>] = []
     private let verbBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
     private var verbIDs: [String] = []
+    private var verbSignature: [String] = []
     private var verbButtons: [UnsafeMutablePointer<GtkWidget>] = []
     private var compact = false
     private var lastVerbs: [StudioVerb] = []
@@ -171,9 +172,17 @@ final class StudioStageShell: @unchecked Sendable {
     /// The capsule of verbs a finished piece of work offers. While there is nothing to act on —
     /// the render is still out — it keeps its room, invisible and untouchable, so the stage does
     /// not change shape when the picture lands.
+    ///
+    /// A button never holds the action it was built with. The same verbs — Save, Continue it — are
+    /// offered for every clip, so a stage that built its buttons once kept the first clip's actions
+    /// for ever and wrote, or continued, whichever clip had been on the stage first. The button
+    /// only remembers which verb it is, and the action is looked up in the verbs the stage holds
+    /// now, at the moment of the press.
     func setVerbs(_ verbs: [StudioVerb], visible: Bool) {
-        let ids = verbs.map(\.id)
-        if ids != verbIDs || compact != lastCompact {
+        let signature = verbs.map {
+            "\($0.id)|\($0.glyph)|\($0.title)|\($0.hint)|\($0.isDestructive)|\($0.isPrimary)"
+        }
+        if signature != verbSignature || compact != lastCompact {
             rebuildVerbs(verbs)
         }
         lastVerbs = verbs
@@ -196,23 +205,31 @@ final class StudioStageShell: @unchecked Sendable {
         verbButtons = []
         lastCompact = compact
         verbIDs = verbs.map(\.id)
+        verbSignature = verbs.map {
+            "\($0.id)|\($0.glyph)|\($0.title)|\($0.hint)|\($0.isDestructive)|\($0.isPrimary)"
+        }
         for verb in verbs {
             if verb.isDestructive {
                 let rule = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
                 Gtk.addClass(rule, "studio-verbs-rule")
                 gtk_box_append(ptr(verbBox), rule)
             }
-            let action = verb.perform
+            let id = verb.id
             let button = Gtk.button(
                 compact ? verb.glyph : "\(verb.glyph)  \(verb.title)",
                 css: ["flat", "studio-verb"] + (verb.isDestructive ? ["danger"] : [])
                     + (verb.isPrimary ? ["studio-verb-lead"] : [])
-            ) { Gtk.onMain { action() } }
+            ) { [weak self] in Gtk.onMain { [weak self] in self?.press(id) } }
             gtk_widget_set_tooltip_text(button, verb.hint)
             tailscode_set_accessible_label(button, verb.title)
             gtk_box_append(ptr(verbBox), button)
             verbButtons.append(button)
         }
+    }
+
+    /// Presses a verb as its button does, for the headless driver.
+    func press(_ id: String) {
+        lastVerbs.first(where: { $0.id == id })?.perform()
     }
 
     var verbSummary: String {
@@ -255,15 +272,19 @@ final class StudioStageShell: @unchecked Sendable {
 }
 
 /// The failure's card: one honest sentence in the failure tone, what was and was not sent, and
-/// the remedies that follow from it. Holds perfectly still — a settled state never moves.
+/// the remedies that follow from it. Holds perfectly still — a settled state never moves. With a
+/// `mark` of its own it is the card for a state that is waiting rather than wrong — a clip about
+/// to be continued — worn in the accent instead.
 enum StudioFailureCard {
     static func make(
-        sentence: String, note: String?, remedies: [(title: String, primary: Bool, perform: @Sendable () -> Void)]
+        sentence: String, note: String?, mark glyph: String? = nil,
+        remedies: [(title: String, primary: Bool, perform: @Sendable () -> Void)]
     ) -> UnsafeMutablePointer<GtkWidget> {
         let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         Gtk.addClass(card, "studio-card")
         let head = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-        let mark = Gtk.label("!", css: "studio-card-mark", selectable: false)
+        let mark = Gtk.label(glyph ?? "!", css: "studio-card-mark", selectable: false)
+        if glyph != nil { Gtk.addClass(mark, "studio-card-mark-live") }
         gtk_widget_set_valign(mark, GTK_ALIGN_START)
         gtk_box_append(ptr(head), mark)
         let words = Gtk.label(sentence, css: "studio-card-sentence", wrap: true, selectable: false)

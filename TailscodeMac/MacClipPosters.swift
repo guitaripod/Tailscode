@@ -19,8 +19,11 @@ enum MacClipPosters {
     /// The longest side a poster is decoded to: a tile is 88 points, a drag preview twice that.
     static let side: CGFloat = 320
 
-    static func key(for asset: ForgeAsset, host: String?) -> String {
-        "\(host ?? "-")/\(asset.annotatedName)"
+    /// A renderer numbers its own files, so a poster is the clip of one machine's receipt and not
+    /// of a file name: the machine that wrote it, the receipt and the file all go in the key.
+    static func key(for entry: ForgeEntry, on fallback: ForgeEndpoint?) -> String {
+        let machine = (entry.endpoint ?? fallback).map { "\($0.host):\($0.port)" } ?? "-"
+        return "\(machine)/\(entry.id)/\(entry.asset?.annotatedName ?? "-")"
     }
 
     static func cached(_ key: String) -> NSImage? { held.object(forKey: key as NSString) }
@@ -30,12 +33,13 @@ enum MacClipPosters {
         held.setObject(image, forKey: key as NSString, cost: Int(image.size.width * image.size.height * 4))
     }
 
-    /// The poster of a clip, asking the renderer where the file is first — a clip that is gone says
-    /// so through the runner, once, rather than the generator failing in words about nothing.
-    static func poster(for asset: ForgeAsset, entryID: String? = nil, via runner: ForgeRunner) async -> NSImage? {
-        let key = key(for: asset, host: runner.endpoint?.host)
+    /// The poster of a clip, asking the machine that wrote it where the file is first — a clip that
+    /// is gone says so through the runner, once, rather than the generator failing in words about
+    /// nothing.
+    static func poster(for entry: ForgeEntry, via runner: ForgeRunner) async -> NSImage? {
+        let key = key(for: entry, on: runner.endpoint)
         if let image = cached(key) { return image }
-        guard let url = try? await runner.locate(asset, entryID: entryID) else { return nil }
+        guard !runner.isMissing(entry), let url = try? await runner.locate(entry) else { return nil }
         return await poster(of: url, key: key)
     }
 

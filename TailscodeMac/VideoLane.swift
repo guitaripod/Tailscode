@@ -21,17 +21,21 @@ final class VideoLane: StudioLane {
     private var popover: NSPopover?
     private var reading: StudioVideoReading
     private var stageEntryID: String?
-    private var lastAsset: ForgeAsset?
+    private var continuedID: String?
+    private var landedID: String?
     private var located: [String: URL] = [:]
     private var asking: Set<String> = []
-    private var clipFailures: [String: String] = [:]
+    private var clipFailures = StudioFailureLedger()
+    private var locateFailures = StudioFailureLedger()
+    private var saving: Set<String> = []
+    private var epoch = 0
     private var sketchImage: CGImage?
     private var sketchFrame: ImageGenPreviewFrame?
     private var sketchTask: Task<Void, Never>?
     private var previews: [String: CGImage] = [:]
     private var previewOrder: [String] = []
     private var previewLoads: Set<String> = []
-    private var previewFailures: Set<String> = []
+    private var previewFailures = StudioFailureLedger()
     private var clock: Timer?
     private var wasBusy = false
 
@@ -55,12 +59,14 @@ final class VideoLane: StudioLane {
         videoStage.onDrop = { [weak self] drop in self?.drop(drop) }
         videoStage.onOpen = { [weak self] in self?.performOnStage("open") }
         videoStage.onSetup = { [weak self] in self?.openSetup() }
-        videoStage.onClipFailed = { [weak self] sentence in self?.clipFailed(sentence) }
-        videoStage.onPlaybackChanged = { [weak self] in self?.emit(.everything) }
-        videoStage.onWindowChange = { [weak self] in self?.syncClock() }
+        videoStage.onClipFailed = { [weak self] id, sentence in self?.clipFailed(id, sentence) }
+        videoStage.onStartFresh = { [weak self] in self?.startFresh() }
+        videoStage.onPlaybackChanged = { [weak self] in self?.playbackChanged() }
+        videoStage.onWindowChange = { [weak self] in self?.windowChanged() }
         videoDock.onNotice = { [weak self] line in self?.onNotice?(line) }
         videoDock.onOpenMachine = { [weak self] anchor in self?.presentMachine(from: anchor) }
         brief.onSetup = { [weak self] in self?.openSetup() }
+        brief.onRender = { [weak self] in self?.releaseStage() }
         brief.onChange = { [weak self] change in
             guard let self else { return }
             switch change {
@@ -96,20 +102,19 @@ final class VideoLane: StudioLane {
         runner.prepare()
         runner.probeIfUnchecked()
         if !runner.isDemo { brief.library.refresh() }
+        adoptLanded(board.job)
         syncSketch()
         syncClock()
         emit(.everything)
     }
 
     /// A state staged by hand: the clip chosen on the stage, if any, and nothing the machine said.
-    func stageForDemo(entryID: String?) {
+    func stageForDemo(entryID: String?, continuing: Bool = false) {
         stageEntryID = entryID
-        lastAsset = board.job.asset
+        continuedID = continuing ? entryID : nil
+        landedID = board.job.asset == nil ? nil : board.job.promptID
         syncSketch()
-        located = [:]
-        clipFailures = [:]
-        previewFailures = []
-        previews = [:]
+        machineChanged()
         emit(.everything)
     }
 
@@ -128,17 +133,17 @@ final class VideoLane: StudioLane {
         syncSketch()
         adoptLanded(job)
         let next = StudioVideoReading(board: board, missing: runner.missing)
-        if next.shape.endpoint != reading.shape.endpoint {
-            located = [:]
-            clipFailures = [:]
-            previewFailures = []
-        }
+        if next.shape.endpoint != reading.shape.endpoint { machineChanged() }
+        if board.continuing == nil { continuedID = nil }
         let change = next.change(from: reading, sketchMoved: false)
         reading = next
         let busy = job.isBusy
         let moved = busy != wasBusy
         wasBusy = busy
-        if moved { noteEnding(job) }
+        if moved {
+            if busy { releaseStage() }
+            noteEnding(job)
+        }
         if let change {
             emit(moved ? .everything : change)
         }
@@ -171,16 +176,63 @@ final class VideoLane: StudioLane {
         }
     }
 
-    /// A render that landed becomes the clip on stage, found by the file it made, because the
-    /// receipt's identity is the machine's prompt id and this surface only knows the asset.
+    /// A render that landed becomes the clip on stage, found by the machine's id for the job — two
+    /// machines can both have written `forge_00007.mp4` — and only once its receipt is on the
+    /// shelf: a landing that cannot find its clip is looked for again on the next change.
     private func adoptLanded(_ job: ForgeJob) {
-        guard let asset = job.asset else { return }
-        guard asset != lastAsset else { return }
-        lastAsset = asset
-        if let entry = history.first(where: { $0.asset == asset }) { stageEntryID = entry.id }
+        guard let id = job.promptID, id != landedID,
+            let entry = StudioVideoSelection.landed(job: job, history: history)
+        else { return }
+        landedID = id
+        stageEntryID = entry.id
+        continuedID = nil
+    }
+
+    /// Pressing Render takes the stage off whatever clip it was on, and stops it: a clip left running
+    /// under the next one's sketch keeps its sound on.
+    private func releaseStage() {
+        videoStage.pausePlayback()
+        stageEntryID = nil
+        continuedID = nil
+    }
+
+    /// The machine renders go to, or the machine a clip was found on, changed: everything learnt
+    /// about where a file is, and every answer still on its way back, belongs to the one left.
+    private func machineChanged() {
+        epoch += 1
+        located = [:]
+        asking = []
+        clipFailures.forget()
+        locateFailures.forget()
+        previewFailures.forget()
+        previews = [:]
+        previewOrder = []
+        previewLoads = []
+    }
+
+    private func windowChanged() {
+        syncClock()
+        guard videoStage.window != nil, runner.unpresented != nil else { return }
+        emit(.everything)
+    }
+
+    /// The stage started or stopped a clip. A landed clip that is playing has been put in front of
+    /// somebody, and is not put in front of them again the next time the Studio opens.
+    private func playbackChanged() {
+        if videoStage.isPlaying, let entry = exhibit, entry.id == board.job.promptID, let asset = entry.asset {
+            runner.present(asset)
+        }
+        emit(.everything)
+    }
+
+    private func startFresh() {
+        continuedID = nil
+        runner.start(from: nil)
+        videoDock.focusWords()
     }
 
     private func noteEnding(_ job: ForgeJob) {
+        guard videoStage.window != nil else { return }
         switch job.phase {
         case .done:
             MacHaptics.shared.play(.received)
@@ -224,8 +276,11 @@ final class VideoLane: StudioLane {
         guard entry.asset != nil else {
             return .unavailable(entry.failure ?? ForgeFailure.noOutput(host).description)
         }
-        if runner.isMissing(entry) { return .unavailable(ForgeFailure.missingFile(host).description) }
-        if let failure = clipFailures[entry.id] { return .unavailable(failure) }
+        if runner.isMissing(entry) {
+            return .unavailable(ForgeFailure.missingFile(entry.endpoint?.host ?? host).description)
+        }
+        if let failure = clipFailures.sentence(for: entry.id) { return .unavailable(failure) }
+        if let failure = locateFailures.sentence(for: entry.id) { return .unreachable(failure) }
         return .playable
     }
 
@@ -238,7 +293,19 @@ final class VideoLane: StudioLane {
     private var state: StudioVideoState {
         StudioVideoState.read(
             job: board.job, clip: clipSource(for: exhibit), hasStart: board.recipe.frame != nil,
-            hasWords: board.recipe.isRenderable, remedy: remedy())
+            hasWords: board.recipe.isRenderable, remedy: remedy(), continuing: continuation != nil)
+    }
+
+    /// The clip the stage is holding back from playing because the next one opens on its end: the
+    /// one Continue it was pressed on, for as long as the board still starts from it and nothing
+    /// else has been put on the stage over it. A clip chosen from the shelf is a clip to watch, even
+    /// when it is the one the draft starts from.
+    private var continuation: ForgeEntry? {
+        guard let id = continuedID, !board.isBusy, !StudioVideoSelection.isOutcome(board.job),
+            let entry = exhibit, entry.id == id, let leading = board.continuing,
+            leading.asset == entry.asset, leading.endpoint == entry.endpoint
+        else { return nil }
+        return entry
     }
 
     private func stageModel() -> VideoStageModel {
@@ -247,7 +314,7 @@ final class VideoLane: StudioLane {
         let state = self.state
         var model = VideoStageModel()
         model.state = state
-        if let entry, state == .done || isUnavailable(state), !job.isBusy, !isJobOutcome(job) {
+        if let entry, state == .done || isUnavailable(state), !job.isBusy, !StudioVideoSelection.isOutcome(job) {
             ensureLocated(entry)
         }
         model.clip = state == .done ? entry.flatMap { hold(for: $0) } : nil
@@ -259,7 +326,10 @@ final class VideoLane: StudioLane {
         let playing = videoStage.isPlaying && state == .done
         model.verbs = StudioVideoVerbs.offered(
             state: state, hasWords: entry?.recipe.isRenderable ?? false, playing: playing,
-            isHistory: entry != nil)
+            isHistory: entry != nil, canContinue: entry.map(board.canContinue) ?? false)
+        model.arriving =
+            state == .done && videoStage.window != nil && runner.unpresented != nil
+            && entry?.id == job.promptID
         let spent = job.spent()
         switch state {
         case .empty:
@@ -289,13 +359,19 @@ final class VideoLane: StudioLane {
         case .done:
             if let entry {
                 var parts = [entry.recipe.prompt.ellipsized(to: 60), entry.recipe.summary]
-                if job.asset == entry.asset, let spent { parts.append(spent) }
+                if job.promptID == entry.id, let spent { parts.append(spent) }
                 model.caption = parts.filter { !$0.isEmpty }.joined(separator: "  ·  ")
                 model.spoken = entry.title
                 model.landed = StudioStageWords.clipLanded(words: entry.recipe.prompt)
             }
+        case .continuing:
+            model.caption = board.recipe.frame?.detail ?? ""
+            model.spoken = ForgeWords.continuingTitle(entry)
+            model.continuationTitle = ForgeWords.continuingTitle(entry)
+            model.continuationBody = ForgeWords.continuingBody
+            model.continuationAction = ForgeWords.continuingFreshTitle
         case .failed(let reason, _):
-            let words = isJobOutcome(job) ? job.recipe.prompt : (entry?.recipe.prompt ?? "")
+            let words = StudioVideoSelection.isOutcome(job) ? job.recipe.prompt : (entry?.recipe.prompt ?? "")
             model.caption = words.ellipsized(to: 60)
             model.spoken = reason
         case .stopped:
@@ -310,16 +386,9 @@ final class VideoLane: StudioLane {
         return false
     }
 
-    private func isJobOutcome(_ job: ForgeJob) -> Bool {
-        switch job.phase {
-        case .failed, .cancelled: return true
-        default: return false
-        }
-    }
-
     private func size(for state: StudioVideoState, entry: ForgeEntry?) -> ForgeSize {
         let job = board.job
-        if job.isBusy || isJobOutcome(job) { return job.recipe.size }
+        if job.isBusy || StudioVideoSelection.isOutcome(job) { return job.recipe.size }
         switch state {
         case .done, .failed: return entry?.recipe.size ?? board.recipe.size
         default: return board.recipe.size
@@ -331,31 +400,46 @@ final class VideoLane: StudioLane {
         return VideoClipHold(id: entry.id, url: url)
     }
 
-    /// The renderer is asked where a clip is before a player is pointed at it, once: the file may
+    /// The machine is asked where a clip is before a player is pointed at it, once: the file may
     /// have been cleaned up, and a player reports that in words about nothing a person can act on.
+    /// The machine asked is the one that wrote the clip, and an answer that arrives after the machine
+    /// in force has changed is about a question nobody is asking any more.
     private func ensureLocated(_ entry: ForgeEntry) {
-        guard let asset = entry.asset, located[entry.id] == nil, clipFailures[entry.id] == nil,
-            !runner.isMissing(entry), !asking.contains(entry.id)
+        guard entry.asset != nil, located[entry.id] == nil, !clipFailures.holds(entry.id),
+            !locateFailures.holds(entry.id), !runner.isMissing(entry), !asking.contains(entry.id)
         else { return }
         asking.insert(entry.id)
-        let host = self.host
+        let born = epoch
+        let host = entry.endpoint?.host ?? self.host
         Task { [weak self] in
             guard let self else { return }
+            var url: URL?
+            var failure: String?
             do {
-                let url = try await self.runner.locate(asset, entryID: entry.id)
-                self.located[entry.id] = url
+                url = try await self.runner.locate(entry)
             } catch ForgeFailure.missingFile {
             } catch {
-                self.clipFailures[entry.id] = ForgeClient.reason(error, host: host)
+                failure = ForgeClient.reason(error, host: host)
             }
+            guard self.epoch == born else { return }
             self.asking.remove(entry.id)
+            if let url { self.located[entry.id] = url }
+            if let failure { self.locateFailures.note(entry.id, sentence: failure) }
             self.emit(.everything)
         }
     }
 
-    private func clipFailed(_ sentence: String) {
-        guard let entry = exhibit else { return }
-        clipFailures[entry.id] = sentence
+    /// The player could not play a clip, for the clip it was asked to play: by the time it says so
+    /// the stage may be on another. The address is let go of too, so the next try asks the machine
+    /// again rather than being pointed at the same dead one.
+    private func clipFailed(_ id: String, _ sentence: String) {
+        located[id] = nil
+        clipFailures.note(id, sentence: sentence)
+        if let entry = history.first(where: { $0.id == id }), let asset = entry.asset,
+            id == board.job.promptID
+        {
+            runner.present(asset)
+        }
         emit(.everything)
     }
 
@@ -364,10 +448,10 @@ final class VideoLane: StudioLane {
         case .drafting:
             if board.recipe.frame == nil { return newestPoster() }
             return startPreview()
-        case .done:
+        case .done, .continuing:
             return posterImage(of: entry)
         case .failed:
-            if let entry, board.job.phase != .cancelled, !isJobOutcome(board.job) {
+            if let entry, board.job.phase != .cancelled, !StudioVideoSelection.isOutcome(board.job) {
                 return posterImage(of: entry)
             }
             return startPreview() ?? newestPoster()
@@ -379,13 +463,13 @@ final class VideoLane: StudioLane {
     }
 
     private func posterImage(of entry: ForgeEntry?) -> CGImage? {
-        guard let entry, let asset = entry.asset else { return nil }
-        let key = MacClipPosters.key(for: asset, host: board.endpoint?.host)
+        guard let entry, entry.asset != nil else { return nil }
+        let key = MacClipPosters.key(for: entry, on: board.endpoint)
         if let image = MacClipPosters.cached(key) {
             return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
         }
         loadPreview(id: "poster:" + key) { [runner] in
-            await MacClipPosters.poster(for: asset, entryID: entry.id, via: runner)?
+            await MacClipPosters.poster(for: entry, via: runner)?
                 .cgImage(forProposedRect: nil, context: nil, hints: nil)
         }
         return nil
@@ -420,21 +504,22 @@ final class VideoLane: StudioLane {
                 return await Task.detached { MacImageStudio.stageBitmap(data) }.value
             }
             return nil
-        case .clipEnd(let asset):
-            return posterImage(of: history.first { $0.asset == asset })
+        case .clipEnd:
+            return posterImage(of: board.continuing)
         }
     }
 
     private func loadPreview(id: String, _ load: @escaping @MainActor () async -> CGImage?) {
-        guard previews[id] == nil, !previewFailures.contains(id), previewLoads.insert(id).inserted else {
+        guard previews[id] == nil, !previewFailures.holds(id), previewLoads.insert(id).inserted else {
             return
         }
+        let born = epoch
         Task { [weak self] in
             let image = await load()
-            guard let self else { return }
+            guard let self, self.epoch == born else { return }
             self.previewLoads.remove(id)
             guard let image else {
-                self.previewFailures.insert(id)
+                self.previewFailures.note(id)
                 return
             }
             if id.hasPrefix("file:") || id.hasPrefix("kept:") {
@@ -454,7 +539,7 @@ final class VideoLane: StudioLane {
     }
 
     var selectedTile: String? {
-        board.isBusy ? StudioShelfMerge.jobID : exhibit?.id
+        StudioVideoSelection.shelfID(staged: exhibit?.id, job: board.job)
     }
 
     var shelfTitle: String { Localized.text("Clips") }
@@ -509,7 +594,7 @@ final class VideoLane: StudioLane {
         case .enhance: return !busy && !brief.enhancing && hasWords
         case .again: return !busy && showing && entry?.recipe.isRenderable == true
         case .save, .open, .copy: return showing
-        case .editThis: return showing && entry?.isPlayable == true
+        case .editThis: return showing && !busy && entry.map(board.canContinue) == true
         case .previousTile, .nextTile: return shelf.contains { !$0.isJob }
         case .imageLane, .videoLane: return false
         }
@@ -533,35 +618,36 @@ final class VideoLane: StudioLane {
 
     private func walk(_ step: Int) {
         let items = shelf
-        let current = board.isBusy ? nil : exhibit?.id
+        let current = selectedTile == StudioShelfMerge.jobID ? nil : selectedTile
         guard let next = StudioShelfMerge.neighbour(of: current, step: step, in: items) else { return }
         select(tile: next)
     }
 
     func select(tile id: String) {
         guard id != StudioShelfMerge.jobID, history.contains(where: { $0.id == id }) else { return }
-        runner.settle()
+        if StudioVideoSelection.isOutcome(board.job) { runner.settle() }
         videoStage.pausePlayback()
         stageEntryID = id
+        continuedID = nil
         emit(.everything)
     }
 
     func tileThumbnail(_ item: StudioShelfItem) async -> NSImage? {
-        guard let entry = history.first(where: { $0.id == item.id }), let asset = entry.asset,
+        guard let entry = history.first(where: { $0.id == item.id }), entry.asset != nil,
             !runner.isMissing(entry)
         else { return nil }
-        return await MacClipPosters.poster(for: asset, entryID: entry.id, via: runner)
+        return await MacClipPosters.poster(for: entry, via: runner)
     }
 
     func tileFileName(_ item: StudioShelfItem) -> String {
-        history.first(where: { $0.id == item.id }).map(StudioClipName.fileName(for:)) ?? item.id
+        history.first(where: { $0.id == item.id })?.fileName ?? item.id
     }
 
     func tileFile(_ item: StudioShelfItem) async -> StudioDragFile? {
         guard let entry = history.first(where: { $0.id == item.id }), let data = await bytes(of: entry) else {
             return nil
         }
-        return StudioDragFile(name: StudioClipName.fileName(for: entry), data: data)
+        return StudioDragFile(name: entry.fileName, data: data)
     }
 
     func tileVerbs(for item: StudioShelfItem) -> [StudioTileVerb] {
@@ -572,8 +658,10 @@ final class VideoLane: StudioLane {
             ]
         }
         var verbs: [StudioTileVerb] = [.putOnStage]
+        let busy = board.isBusy
         for verb in StudioVideoVerbs.offered(
-            state: .done, hasWords: entry.recipe.isRenderable, playing: false, isHistory: true)
+            state: .done, hasWords: entry.recipe.isRenderable && !busy, playing: false, isHistory: true,
+            canContinue: board.canContinue(entry) && !busy)
         where verb.id != "play" {
             verbs.append(verb.id == "open" ? .open : .verb(verb))
         }
@@ -657,14 +745,23 @@ final class VideoLane: StudioLane {
         brief.submit(prompt: board.recipe.prompt)
     }
 
-    /// The next clip opens where this one ended: the last frame becomes Start from, the words come
-    /// back to be edited into what happens next, and the clip being continued stays on stage until
-    /// the next one lands.
+    /// The next clip opens where this one ended: the clip is put on the stage first, wherever Continue
+    /// it was pressed from, and the stage says what it is now waiting for — the clip's poster held
+    /// dimmed behind a card that names it — while the words come back to be edited into what happens
+    /// next and the caret goes to them. A clip on another machine cannot be continued from here, and
+    /// the line says which machine has it.
     private func continueFrom(_ entry: ForgeEntry) {
         guard entry.isPlayable, !board.isBusy else { return }
+        guard board.canContinue(entry) else {
+            onNotice?(ForgeWords.continueElsewhere(entry.endpoint?.shortName ?? host))
+            return
+        }
         videoStage.pausePlayback()
+        stageEntryID = entry.id
+        continuedID = entry.id
         runner.extend(entry)
         MacHaptics.shared.play(.selection)
+        onNotice?(ForgeWords.continuingNotice(entry))
         videoDock.take(brief: board.recipe.prompt)
     }
 
@@ -688,7 +785,7 @@ final class VideoLane: StudioLane {
     }
 
     private func bytes(of entry: ForgeEntry) async -> Data? {
-        guard let asset = entry.asset, let client = runner.renderer(for: asset) else { return nil }
+        guard let asset = entry.asset, let client = runner.client(for: entry) else { return nil }
         do {
             return try await client.fetch(asset)
         } catch {
@@ -703,20 +800,28 @@ final class VideoLane: StudioLane {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(
             "tailscode-clips", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let url = folder.appendingPathComponent("\(entry.id)-\(StudioClipName.fileName(for: entry))")
+        let url = folder.appendingPathComponent("\(entry.id)-\(entry.fileName)")
         if FileManager.default.fileExists(atPath: url.path) { return url }
         guard let data = await bytes(of: entry) else { return nil }
         return (try? data.write(to: url, options: .atomic)) == nil ? nil : url
     }
 
+    /// The clip's bytes from the machine that wrote them, into a file of the person's choosing. A
+    /// clip is minutes of video over a tailnet, so the press is answered at once with what is
+    /// happening, and a second press on the same clip while it is coming is not a second download.
     private func save(_ entry: ForgeEntry, report: (@MainActor (String) -> Void)? = nil) {
+        guard saving.insert(entry.id).inserted else { return }
+        let say: @MainActor (String) -> Void = { [weak self] line in
+            if let report { report(line) } else { self?.onNotice?(line) }
+        }
+        say(Localized.text("Fetching…"))
         Task { [weak self] in
-            guard let self, let data = await self.bytes(of: entry) else { return }
+            guard let self else { return }
+            let data = await self.bytes(of: entry)
+            self.saving.remove(entry.id)
+            guard let data else { return }
             StudioFiles.save(
-                data: data, name: StudioClipName.fileName(for: entry), window: self.videoStage.window
-            ) { [weak self] line in
-                if let report { report(line) } else { self?.onNotice?(line) }
-            }
+                data: data, name: entry.fileName, window: self.videoStage.window, report: say)
         }
     }
 
@@ -741,12 +846,12 @@ final class VideoLane: StudioLane {
     /// controls — the Studio's stage keeps its room, and a second look at a clip is not a reason to
     /// give up the first.
     private func open(_ entry: ForgeEntry) {
-        guard let asset = entry.asset else { return }
+        guard entry.asset != nil else { return }
         videoStage.pausePlayback()
         Task { [weak self] in
             guard let self else { return }
             do {
-                let url = try await self.runner.locate(asset, entryID: entry.id)
+                let url = try await self.runner.locate(entry)
                 MediaViewer.shared.play(
                     clip: url, title: entry.title, host: self.videoStage.window,
                     save: { [weak self] report in self?.save(entry, report: report) },
@@ -762,7 +867,10 @@ final class VideoLane: StudioLane {
         case .retry:
             brief.submit(prompt: board.recipe.prompt)
         case .wake:
+            clipFailures.forget()
+            locateFailures.forget()
             runner.probe()
+            emit(.everything)
         case .machine:
             if board.endpoint == nil { openSetup() } else { presentMachine(from: videoStage) }
         case .reuse:

@@ -98,6 +98,14 @@ public struct ForgeJob: Sendable, Equatable {
     public private(set) var recipe: ForgeRecipe
     public private(set) var phase: ForgeJobPhase
     public private(set) var promptID: String?
+    /// The id this device gave the render before the machine had answered, so a Stop pressed while
+    /// the graph is still on its way names the job it means. The machine's own id replaces it in
+    /// `promptID` once it replies, and on a server that ignores the one it was offered the two can
+    /// differ.
+    public private(set) var minted: String?
+    /// Whether this snapshot follows a render this process did not start — one found again on the
+    /// machine after the app was closed — whose clock includes the time nobody was watching.
+    public private(set) var isRecovered: Bool
     /// How many nodes the graph that was posted has. The server's census names only the nodes
     /// it has touched, so five loaders finished and nothing yet running would read as a render
     /// that is done; the bar is finished over the whole graph, never over what has been seen.
@@ -126,6 +134,8 @@ public struct ForgeJob: Sendable, Equatable {
         self.recipe = recipe
         phase = .drafting
         promptID = nil
+        minted = nil
+        isRecovered = false
         graphNodes = 0
         census = nil
         samplerStep = 0
@@ -149,6 +159,8 @@ public struct ForgeJob: Sendable, Equatable {
     public mutating func draft() {
         phase = .drafting
         promptID = nil
+        minted = nil
+        isRecovered = false
         census = nil
         samplerStep = 0
         samplerSteps = 0
@@ -170,6 +182,22 @@ public struct ForgeJob: Sendable, Equatable {
         startedAt = moment
         endedAt = nil
         reached = 0
+    }
+
+    /// The render has a name before the machine has been asked to make it, which is the only way a
+    /// Stop pressed during the upload or the post can reach the job it started.
+    public mutating func announce(_ id: String) {
+        minted = id
+    }
+
+    /// The job a Stop, a status check or a poll has to be about: the machine's id once it has
+    /// given one, the one this device minted until then.
+    public var handle: String? { promptID ?? minted }
+
+    /// Marks a render found again on the machine rather than started here, so what it cost is never
+    /// taught to the clock: the minutes the app was closed are not minutes of rendering.
+    public mutating func recovered() {
+        isRecovered = true
     }
 
     public mutating func accepted(
@@ -298,7 +326,8 @@ public struct ForgeJob: Sendable, Equatable {
             guard let expected else { return Localized.text("Ready to render") }
             return Localized.text("Ready to render") + " · " + ForgeClock.aboutLine(expected)
         case .submitting:
-            return Localized.text("Waking the renderer…")
+            return isRecovered
+                ? Localized.text("Finding your render…") : Localized.text("Waking the renderer…")
         case .queued(let ahead):
             return ahead > 0
                 ? Localized.text("%@ ahead in the queue", "\(ahead)")
@@ -386,7 +415,9 @@ public struct ForgeJob: Sendable, Equatable {
     /// How long the machine actually worked, for the clock to learn from: from the first frame
     /// the machine sent about this job to the last, and nothing when it never finished.
     public var worked: TimeInterval? {
-        guard case .done = phase, let endedAt, let since = ranAt ?? startedAt else { return nil }
+        guard case .done = phase, !isRecovered, let endedAt, let since = ranAt ?? startedAt else {
+            return nil
+        }
         let seconds = endedAt.timeIntervalSince(since)
         return seconds > 0 ? seconds : nil
     }
