@@ -528,6 +528,10 @@ extension SelfTest {
             gtk_widget_get_size_request(parts.widget, nil, &requested)
             try expect(requested == height, "\(count): the line is \(height) px before anything is fetched")
             try expect(
+                gtk_widget_compute_expand(parts.widget, GTK_ORIENTATION_VERTICAL) == 0
+                    && gtk_widget_get_valign(parts.widget) == GTK_ALIGN_START,
+                "\(count): the line never takes surplus height from the transcript")
+            try expect(
                 line.icons.count == min(3, count),
                 "\(count): \(min(3, count)) favicon seat(s)")
             if count == 1 {

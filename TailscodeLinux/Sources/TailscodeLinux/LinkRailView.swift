@@ -318,6 +318,8 @@ enum LinkRailView {
             direct ? GTK_ACCESSIBLE_ROLE_LINK : GTK_ACCESSIBLE_ROLE_BUTTON)!
         Gtk.addClass(widget, "link-rail")
         gtk_widget_set_halign(widget, GTK_ALIGN_START)
+        gtk_widget_set_valign(widget, GTK_ALIGN_START)
+        gtk_widget_set_vexpand(widget, 0)
         gtk_widget_set_size_request(widget, -1, Int32(ChatMetrics.metrics(for: Preferences.chatDensity, input: .pointer).railRowHeight))
         gtk_widget_set_focusable(widget, 1)
         gtk_widget_set_can_focus(widget, 1)
