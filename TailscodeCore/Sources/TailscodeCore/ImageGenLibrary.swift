@@ -252,7 +252,8 @@ public struct ComfyRecipe: Sendable, Equatable, Hashable, Codable {
 
     /// Walks a conditioning wire back to the words on it: through every node that merely wraps
     /// conditioning until one holds a `text` or `prompt` string. A node that hands back both
-    /// prompts is read by the slot the wire left, so the negative is not the positive again.
+    /// prompts is read by the slot the wire left, so the negative is not the positive again, and a
+    /// zeroed conditioning is the empty words it stands in for.
     /// Bounded, because a graph is a thing somebody drew and a cycle in it must not hang a gallery.
     private static func words(
         from start: (id: String, slot: Int),
@@ -265,8 +266,11 @@ public struct ComfyRecipe: Sendable, Equatable, Hashable, Codable {
             if slot == 1, let text = node.inputs["negative_prompt"] as? String { return text }
             if let text = node.inputs["text"] as? String { return text }
             if let text = node.inputs["prompt"] as? String { return text }
-            let next = ["conditioning", "positive", "clip_l", "t5xxl"].lazy
-                .compactMap { wire(node.inputs[$0]) }.first
+            if node.type == "ConditioningZeroOut" { return "" }
+            let inputs = slot == 1
+                ? ["negative", "conditioning", "positive", "clip_l", "t5xxl"]
+                : ["conditioning", "positive", "clip_l", "t5xxl"]
+            let next = inputs.lazy.compactMap { wire(node.inputs[$0]) }.first
             guard let next else { return nil }
             current = next.id
             slot = next.slot

@@ -108,7 +108,67 @@ struct ImageGenRecipeTests {
             ImageGenRecipe(
                 prompt: "a hat", engine: .fast, mode: .edit, seed: 2, references: ["ref.png"]))
         let editClasses = edit.values.compactMap { ($0 as? [String: Any])?["class_type"] as? String }
-        #expect(editClasses.contains("VAEEncode"))
+        #expect(editClasses.contains("ReferenceMultiLatent"))
+    }
+
+    @Test func theFastEngineRunsTheDistilledCheckpointForSixteenStepsAtGuidanceOne() throws {
+        let graph = ImageGenClient.graph(
+            ImageGenRecipe(prompt: "a fox", engine: .fast, seed: 6))
+        let unet = try #require((graph["70"] as? [String: Any])?["inputs"] as? [String: Any])
+        #expect(unet["unet_name"] as? String == "flux3_image_klein_sd_bf16.safetensors")
+        let clip = try #require((graph["71"] as? [String: Any])?["inputs"] as? [String: Any])
+        #expect(clip["type"] as? String == "flux3")
+        let sampler = try #require((graph["64"] as? [String: Any])?["inputs"] as? [String: Any])
+        #expect(sampler["steps"] as? Int == 16)
+        #expect(sampler["cfg"] as? Double == 1.0)
+        #expect(sampler["seed"] as? Int == 6)
+        let files = ImageGenEngine.fast.files.map(\.name)
+        #expect(files.contains("flux3_image_klein_sd_bf16.safetensors"))
+        #expect(files.contains("qwen3vl_4b_bf16.safetensors"))
+    }
+
+    @Test func everyWireInABuiltGraphLandsOnANodeThatExists() throws {
+        let pictures = ["a.png", "b.png", "c.png"]
+        for engine in ImageGenEngine.allCases {
+            for references in [[], pictures] {
+                let graph = ImageGenClient.graph(
+                    ImageGenRecipe(
+                        prompt: "a fox", engine: engine, mode: references.isEmpty ? .generate : .edit,
+                        seed: 1, references: references))
+                for (id, node) in graph {
+                    let inputs = (node as? [String: Any])?["inputs"] as? [String: Any] ?? [:]
+                    for (name, value) in inputs {
+                        guard let wire = value as? [Any], wire.count == 2,
+                            let target = wire[0] as? String
+                        else { continue }
+                        #expect(
+                            graph[target] != nil,
+                            "\(engine) \(references.count) refs: \(id).\(name) points at a missing node \(target)")
+                    }
+                }
+            }
+        }
+    }
+
+    @Test func theFastEngineEditsFromEveryReferenceInTheOrderTheWordsAddressThem() throws {
+        let graph = ImageGenClient.graph(
+            ImageGenRecipe(
+                prompt: "put the shirt from <image2> on the model in <image1>", engine: .fast,
+                mode: .edit, seed: 9, references: ["model.png", "shirt.png [output]"]))
+        let encode = try #require((graph["17"] as? [String: Any])?["inputs"] as? [String: Any])
+        #expect(encode["resolution"] as? String == "resize")
+        #expect(encode["resolution.megapixels"] as? Double == 1.0)
+        func picture(_ slot: String) throws -> String? {
+            let wire = try #require(encode[slot] as? [Any])
+            let id = try #require(wire[0] as? String)
+            let loader = try #require(graph[id] as? [String: Any])
+            return (loader["inputs"] as? [String: Any])?["image"] as? String
+        }
+        #expect(try picture("images.image0") == "model.png")
+        #expect(try picture("images.image1") == "shirt.png [output]")
+        let sampler = try #require((graph["64"] as? [String: Any])?["inputs"] as? [String: Any])
+        let latent = try #require(sampler["latent_image"] as? [Any])
+        #expect(latent[0] as? String == "17" && latent[1] as? Int == 2)
     }
 
     @Test func aHeldSeedRepeatsAndAReleasedOneRolls() {

@@ -164975,73 +164975,73 @@
         }
       }
     },
-    "FLUX.2 Klein · 4 steps · seconds, not a minute": {
+    "FLUX 3 Klein · 16 steps · seconds, not a minute": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4 Schritte · Sekunden, keine Minute"
+            "value": "FLUX 3 Klein · 16 Schritte · Sekunden, keine Minute"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4 steps · seconds, not a minute"
+            "value": "FLUX 3 Klein · 16 steps · seconds, not a minute"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4 pasos · segundos, no un minuto"
+            "value": "FLUX 3 Klein · 16 pasos · segundos, no un minuto"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4 étapes · des secondes, pas une minute"
+            "value": "FLUX 3 Klein · 16 étapes · des secondes, pas une minute"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4 passaggi · secondi, non un minuto"
+            "value": "FLUX 3 Klein · 16 passaggi · secondi, non un minuto"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4ステップ · 分ではなく秒"
+            "value": "FLUX 3 Klein · 16ステップ · 分ではなく秒"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4단계 · 1분이 아니라 몇 초"
+            "value": "FLUX 3 Klein · 16단계 · 1분이 아니라 몇 초"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4 passos · segundos, não um minuto"
+            "value": "FLUX 3 Klein · 16 passos · segundos, não um minuto"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4 步 · 只需几秒，不到一分钟"
+            "value": "FLUX 3 Klein · 16 步 · 只需几秒，不到一分钟"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4 步 · 只需幾秒，不到一分鐘"
+            "value": "FLUX 3 Klein · 16 步 · 只需幾秒，不到一分鐘"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "FLUX.2 Klein · 4 kroki · sekundy, nie minuta"
+            "value": "FLUX 3 Klein · 16 kroki · sekundy, nie minuta"
           }
         }
       }

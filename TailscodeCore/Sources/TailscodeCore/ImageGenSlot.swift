@@ -131,7 +131,7 @@ public enum ImageGenEngine: String, Codable, Sendable, CaseIterable {
         switch self {
         case .quality: return Localized.text("Qwen Image 2.1 · 25 steps · edits and paints")
         case .turbo: return Localized.text("Qwen Image 2.1 Turbo · 8 steps · edits and paints")
-        case .fast: return Localized.text("FLUX.2 Klein · 4 steps · seconds, not a minute")
+        case .fast: return Localized.text("FLUX 3 Klein · 16 steps · seconds, not a minute")
         }
     }
 
@@ -177,11 +177,11 @@ public struct ImageGenModelFile: Sendable, Equatable, Hashable, Codable, Identif
         engine: .quality)
 
     public static let kleinDiffusion = ImageGenModelFile(
-        path: "diffusion_models/flux-2-klein-4b.safetensors",
+        path: "diffusion_models/flux3_image_klein_sd_bf16.safetensors",
         role: Localized.text("Klein diffusion model"), engine: .fast)
 
     public static let kleinText = ImageGenModelFile(
-        path: "text_encoders/qwen_3_4b.safetensors", role: Localized.text("Klein text encoder"),
+        path: "text_encoders/qwen3vl_4b_bf16.safetensors", role: Localized.text("Klein text encoder"),
         engine: .fast)
 
     public static let kleinVAE = ImageGenModelFile(
@@ -814,7 +814,7 @@ public struct ImageGenProgress: Sendable, Equatable {
             "ModelSamplingAuraFlow", "CFGNorm", "UnetLoaderGGUF", "QwenImage21Cache":
             return .loading
         case "LoadImage", "FluxKontextImageScale", "ImageScaleToTotalPixels", "GetImageSize",
-            "VAEEncode":
+            "VAEEncode", "ReferenceMultiLatent":
             return .reading
         case "CLIPTextEncode", "TextEncodeQwenImageEditPlus", "TextEncodeQwenImage21",
             "ConditioningZeroOut", "ReferenceLatent", "FluxKontextMultiReferenceLatentMethod",
