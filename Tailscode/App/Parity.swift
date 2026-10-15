@@ -212,7 +212,7 @@ enum ParityManifest {
         case .videoSound: return .implemented("hear")
         case .videoEstimate: return .implemented("expecting")
         case .videoLight: return .implemented("ForgeRingView")
-        case .voiceCall: return .gap("the call surface is being built")
+        case .voiceCall: return .implemented("CallDockView")
         }
     }
 }

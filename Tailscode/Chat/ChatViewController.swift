@@ -14,6 +14,8 @@ final class ChatViewController: UIViewController {
     private var transcriptBottom: NSLayoutConstraint!
     private var dataSource: UICollectionViewDiffableDataSource<Section, String>!
     private let composer = ComposerView()
+    private lazy var callController = ChatCallController(
+        chatID: viewModel.session.id, profileID: viewModel.contextID, host: callHost)
     private let dialPill = ModelDialPill()
     private let commandPalette = SlashCommandPalette()
     private let banner = BannerView()
@@ -273,6 +275,7 @@ final class ChatViewController: UIViewController {
         configureFindBar()
         configureNavTitleView()
         configureDataSource()
+        callController.attach()
         composer.delegate = self
         composer.showsAttach = canAttachAnything
         enhancement.onStatusChange = { [weak self] status in
@@ -455,6 +458,7 @@ final class ChatViewController: UIViewController {
         super.viewWillAppear(animated)
         viewModel.isBound = true
         viewModel.startSubagentTracking()
+        callController.screenAppeared()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -573,6 +577,8 @@ final class ChatViewController: UIViewController {
         flushDraft()
         if !setAsideUnread { SessionSeenStore.markSeen(viewModel.session.id) }
         viewModel.stopSubagentTracking()
+        callController.screenGone()
+        if !isChangingColumns, isCoveredByAnotherChat { callController.chatLeft() }
         if !isChangingColumns,
             isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true
         {
@@ -580,11 +586,19 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    /// Whether the screen now in front of this one in its stack is another conversation, which is
+    /// the reader having gone to a different chat rather than into a part of this one.
+    private var isCoveredByAnotherChat: Bool {
+        guard let top = navigationController?.topViewController as? ChatViewController else { return false }
+        return top !== self
+    }
+
     /// The reader has left this conversation: it stops being bound, stops streaming unless a turn
     /// is still out, and drops an enhancement in flight. A chat that leaves the screen says so
     /// through its own disappearance; one a stack drops while it was buried under another never
     /// appears or disappears, so whoever drops it has to say so here.
     func releaseConversation() {
+        callController.chatLeft()
         viewModel.isBound = false
         if !viewModel.isBusy { viewModel.stop() }
         enhancement.cancel()
@@ -1150,7 +1164,9 @@ final class ChatViewController: UIViewController {
         composerAccessories.translatesAutoresizingMaskIntoConstraints = false
         composerAccessories.addArrangedSubview(attachmentStrip)
         composerAccessories.addArrangedSubview(factsRow)
+        composerAccessories.addArrangedSubview(callController.dock)
         factsRow.widthAnchor.constraint(equalTo: composerAccessories.widthAnchor).isActive = true
+        callController.dock.widthAnchor.constraint(equalTo: composerAccessories.widthAnchor).isActive = true
         view.addSubview(factsScrim)
         view.addSubview(composerAccessories)
         factsRow.bleed(to: view)
@@ -2505,6 +2521,7 @@ final class ChatViewController: UIViewController {
         compose(state, rebuild: rebuildTranscript(state))
         noteOpened(state)
         keepRead(state)
+        callController.conversationChanged()
     }
 
     private var lastReadMarkAt: CFTimeInterval = 0
@@ -2552,6 +2569,7 @@ final class ChatViewController: UIViewController {
     /// redrawn here is the handful of rows docked at the end, which is the whole of what changed.
     private func renderPending() {
         compose(lastRenderedState ?? viewModel.state, rebuild: nil)
+        callController.conversationChanged()
     }
 
     /// What a rebuild leaves behind for the compose pass: the rows as they were, so a repaint can
@@ -3875,7 +3893,7 @@ final class ChatViewController: UIViewController {
     }
 
     private func updateNavControls() {
-        navigationItem.rightBarButtonItems = [overflowBarButton()]
+        navigationItem.rightBarButtonItems = [overflowBarButton()] + callController.barItems
         refreshAttachmentGating()
         refreshDial()
         composer.ultracodeEffort = viewModel.currentEffort
@@ -3960,7 +3978,7 @@ final class ChatViewController: UIViewController {
     private var shownOverflowBadge: (item: ObjectIdentifier, hasPermission: Bool)?
 
     private func updateOverflowBadge(hasPermission: Bool) {
-        guard let barItem = navigationItem.rightBarButtonItems?.last else { return }
+        guard let barItem = navigationItem.rightBarButtonItems?.first else { return }
         let shown = (item: ObjectIdentifier(barItem), hasPermission: hasPermission)
         guard shownOverflowBadge?.item != shown.item
             || shownOverflowBadge?.hasPermission != shown.hasPermission
@@ -5110,7 +5128,7 @@ final class ChatViewController: UIViewController {
             return
         }
         let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        sheet.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.last
+        sheet.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.first
         present(sheet, animated: true)
     }
 
@@ -6773,6 +6791,38 @@ extension ChatViewController: KeyActionHost {
         let target = min(maxY, max(minY, collectionView.contentOffset.y + delta))
         if delta < 0 { userScrolledUp = true }
         collectionView.setContentOffset(CGPoint(x: 0, y: target), animated: true)
+    }
+}
+
+extension ChatViewController {
+    /// What the call needs of this screen and nothing else: the conversation as it stands, the same
+    /// send path a typed message takes, the ordinary stop, and somewhere to present and to say
+    /// things.
+    fileprivate var callHost: ChatCallController.Host {
+        ChatCallController.Host(
+            presenter: { [weak self] in self },
+            state: { [weak self] in self?.viewModel.state ?? ConversationState() },
+            sending: { [weak self] in self?.viewModel.optimisticThinking ?? false },
+            title: { [weak self] in self?.navDisplayTitle ?? "" },
+            deliver: { [weak self] text in self?.sendSpoken(text) ?? false },
+            stopTurn: { [weak self] in self?.viewModel.abort() },
+            toast: { [weak self] message in self?.presentToast(message, duration: 5) },
+            dismissKeyboard: { [weak self] in self?.view.endEditing(true) },
+            barItemsChanged: { [weak self] in self?.refreshCallBarItem() })
+    }
+
+    /// What the voice heard goes out exactly as typed words do — pending ink, queue, marks — with
+    /// the chat's current model and effort, and leaves the draft in the composer alone.
+    fileprivate func sendSpoken(_ text: String) -> Bool {
+        userScrolledUp = false
+        animateNextRender = true
+        viewModel.send(text)
+        return true
+    }
+
+    fileprivate func refreshCallBarItem() {
+        guard let overflow = navigationItem.rightBarButtonItems?.first else { return }
+        navigationItem.rightBarButtonItems = [overflow] + callController.barItems
     }
 }
 

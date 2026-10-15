@@ -252,6 +252,84 @@ plays them through the call's own `VoiceAudioPlayback.play(_:)` so they follow i
 `finished` when `finishedChimes` rises, `attention` when its own conversation says a question or an approval
 is waiting, which the snapshot does not carry, so the choice stays with the client.
 
+## iOS
+
+The call is a state of a conversation on the phone, not a screen. Nothing is pushed or presented
+for it; the chat the person is already in grows a strip, and the transcript above it stays fully
+visible, so the person watches the agent work while talking.
+
+- **The entry** is one bar button on the chat's navigation bar, beside the overflow menu
+  (`ChatCallController.barItem`, `VoiceCallEntryPoint`'s symbol and words). It is not drawn while the
+  reach is unknown, being checked for the first time, or `.noGateway`, so a server without a gateway
+  never shows a call control. For loading, busy, engine down and too old it is drawn dimmed and still
+  takes a press, which answers with the reach's own reason as a toast; a plain disabled bar item
+  would have kept that reason from anyone who is not using VoiceOver. A gateway that asks for a
+  password opens a prompt, keeps the answer through `VoiceCallDesk.remember(password:for:)` and starts
+  the call if that was the only thing missing. While this chat's call is up the button is not drawn:
+  the dock is where it is acted on.
+- **The dock** (`CallDockView`) is the last arranged view of the stack that floats over the composer
+  (`composerAccessories`), below the facts row, so it is directly above the composer and the
+  transcript's bottom inset follows it the way it follows a chip. It holds the call's face
+  (`CallFaceView`) with its word and a tabular `m:ss` timer, the beta mark, mute and hang up; then
+  the last thing each side said (`VoiceCallLine`: the person in secondary ink, the voice in primary,
+  a line still being heard one register quieter, a placeholder where a side has said nothing yet);
+  then the agent's digest wearing its `ActivityKind` face. Every line is one line and always present,
+  so a live strip has one height for as long as it is live and no frame of a call lays anything out. A phone on its side, which has no height to spare, gets the header alone (face, timer, mute, hang up).
+  Ending replaces the strip with the face, `Call ended` and the reason, for six seconds, then clears
+  it; never a modal. A microphone that was refused says how to turn it on and offers `Open
+  Settings`, and that notice stays twelve seconds because it has something to do.
+- **The face** is arithmetic on absolute time from a `CADisplayLink` at the vocabulary's tempo,
+  through `VoiceCallFace.intensity(at:level:reduceMotion:)`; the speaking level is the call's output
+  level eased by `VoiceCallLevels.smoothed`. It is the activity badge at call size rather than the
+  presence orb: the orb draws one aggregate of everything the device watches and has no way to say
+  connecting, hearing or speaking-with-a-level without changes to its shader. Hearing, a degraded
+  voice and an ended call hold perfectly still and run no clock, and so does everything under Reduce
+  Motion. The one clock that keeps running in a still face is the dock's timer, once a second.
+- **Plumbing** is `VoiceCallGate`, one per process beside `DelegateGate`, owning the single
+  `VoiceCallDesk`. It mirrors reaches and report lines into values the main thread reads without
+  waiting on an actor, keeps the screen awake for as long as any call is up and lets go on every end
+  path, hangs the call up when the app leaves the front without the `audio` background mode declared
+  (the app declares it, so a call survives a locked screen) and when the app terminates, and hangs
+  it up when the chat it belongs to is left. A chat on a server with a gateway asks the desk to keep
+  its reach fresh while it is on screen. `AppleVoiceIO.onInterruption` and `onFailure` hang up.
+- **The agent's account** is computed on every state the view model emits and on every change to what
+  the device is holding, with `SpokenDigest.snapshot(from:sending:after:now:)`: the same account as
+  the shared digest, except that a prompt this phone has handed over and the server has not echoed
+  yet reads `Working. Starting on it.` (a question or an approval still outranks it). Without that,
+  the model asked for status straight after `Sent.` would say the agent was idle.
+- **A dispatch** goes through `ChatViewModel.send` with the chat's current model and effort, so the
+  words appear as the ordinary pending row and are queued, marked and carried by the Live Activity
+  exactly as typed words are, and the composer's draft is left alone. `stop` is the ordinary Stop
+  (`ChatViewModel.abort`). A blank transcript is the one thing refused.
+- **Sounds and cues**: `finishedChimes` rising plays `VoiceChime.finished()` through the call's own
+  playback with the `received` cue; a question or an approval starting to wait plays
+  `VoiceChime.attention()` with `needsYou`, unless the person or the voice is speaking; connecting
+  uses `success`, a degraded voice `warning`, mute `selection`, hang up `tap`. No new cue types.
+- **Words**: everything on screen is Core's (`VoiceCallReading`, `VoiceCallFace`, `BetaWords`). The
+  one line the app writes for itself is the microphone usage description, localised in all eleven
+  languages of `InfoPlist.xcstrings`.
+- **Demo**: the `--demo` world's servers are demo hosts, so their chats show the entry, ready, and a
+  press runs the scripted call with no network and no audio devices.
+
+What was compiled, on the Mac, for the iOS device SDK with Swift 6 strict concurrency, and what that
+proves: the sources type-check against the shared Core. What only the iPhone Air can show, and has not
+been shown:
+
+- whether echo cancellation is good enough that the voice does not answer itself on the speaker,
+  and how it behaves on the receiver, a wired headset and Bluetooth hands-free;
+- route changes in the middle of a call (headset in or out, Bluetooth coming and going), and
+  interruptions (a phone call, Siri, another app taking the audio): that the interruption really
+  ends the call and the dock says so once;
+- the feel of the dock: its height against the keyboard, the composer and the facts row at the
+  default and at the largest type sizes; whether the face reads at a glance in sunlight; whether the
+  caption lines, which truncate at their head so the newest words stay visible, are readable at
+  speed; that the sheen on the beta mark plays once and then stops;
+- that the screen stays on and the call survives a locked screen through the audio background mode,
+  and that a call the system suspends is ended rather than left half open;
+- the microphone prompt on first use and the Settings road after a refusal;
+- that the transcript row for a spoken prompt rises and streams the way a typed one does;
+- that the chime is audible over the call's route and not over the voice.
+
 ## Beta
 
 Calls ship as a beta (`BetaFeature.voiceCall`, see `beta.md`). The sheet lists what is solid and what

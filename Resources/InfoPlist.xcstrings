@@ -284,6 +284,77 @@
           }
         }
       }
+    },
+    "NSMicrophoneUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talk to your coding agent out loud. Your voice goes over your tailnet to the server you chose, and nowhere else."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprich laut mit deinem Coding-Agent. Deine Stimme geht über dein Tailnet an den Server, den du gewählt hast, und sonst nirgendwohin."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habla en voz alta con tu agente de programación. Tu voz viaja por tu tailnet hasta el servidor que elegiste, y a ningún otro sitio."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parlez à voix haute à votre agent de programmation. Votre voix passe par votre tailnet jusqu’au serveur que vous avez choisi, et nulle part ailleurs."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parla ad alta voce con il tuo agente di programmazione. La tua voce passa dal tuo tailnet al server che hai scelto, e da nessun’altra parte."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コーディングエージェントに声で話しかけます。あなたの声は tailnet を通って、あなたが選んだサーバーにだけ届きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "코딩 에이전트와 음성으로 대화합니다. 목소리는 사용자의 tailnet을 통해 선택한 서버로만 전달되며, 다른 곳으로는 가지 않습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozmawiaj na głos ze swoim agentem kodowania. Twój głos trafia przez Twój tailnet do wybranego przez Ciebie serwera i nigdzie indziej."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fale em voz alta com o seu agente de programação. Sua voz vai pela sua tailnet até o servidor que você escolheu, e para nenhum outro lugar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用语音与你的编程代理对话。你的声音只会通过你的 tailnet 发送到你所选择的服务器，不会发往其他任何地方。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以語音與你的編碼代理對話。你的聲音只會透過你的 tailnet 傳送到你所選擇的伺服器，不會傳到其他任何地方。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

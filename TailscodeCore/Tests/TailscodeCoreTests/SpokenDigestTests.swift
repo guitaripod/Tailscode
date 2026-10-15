@@ -243,4 +243,24 @@ struct SpokenDigestTests {
         #expect(newAnswer.turn == 4)
         #expect(done.wire == VoiceClientMessage.AgentState(busy: false, digest: "Done. All set.", turn: 3))
     }
+
+    @Test("A prompt handed over and not yet echoed is Starting on it, unless the agent is waiting for the person")
+    func sendingBeforeTheEcho() {
+        let idleState = state([])
+        let plain = SpokenDigest.snapshot(from: idleState, after: nil, now: now)
+        #expect(!plain.busy)
+        let sending = SpokenDigest.snapshot(from: idleState, sending: true, after: plain, now: now)
+        #expect(sending.busy)
+        #expect(sending.digest == SpokenDigest.starting)
+        #expect(sending.turn == plain.turn + 1)
+        let again = SpokenDigest.snapshot(from: idleState, sending: true, after: sending, now: now)
+        #expect(again.turn == sending.turn)
+        let notSending = SpokenDigest.snapshot(from: idleState, sending: false, after: plain, now: now)
+        #expect(notSending == plain)
+        let question = QuestionRequest(
+            id: "q", sessionID: "s", questions: [.init(question: "Which branch?", header: "B", options: [])])
+        let waiting = SpokenDigest.snapshot(from: state([user("hi")], questions: [question]), sending: true, now: now)
+        #expect(waiting.digest.hasPrefix("Waiting for you."))
+        #expect(!waiting.busy)
+    }
 }
