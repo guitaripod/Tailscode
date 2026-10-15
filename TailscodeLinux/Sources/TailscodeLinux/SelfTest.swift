@@ -503,6 +503,22 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkBeta()
+            report("beta: \(checks) claims hold — the mark, its sheen, its card, its report and its seen state")
+        } catch {
+            report("beta: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try await checkVoiceAudio()
+            report("voice audio: \(checks) claims hold — devices, levels, and a stop that is safe twice")
+        } catch {
+            report("voice audio: \(error)")
+            failures += 1
+        }
+
         let radarFailures = checkRadar()
         if radarFailures.isEmpty {
             report("tailnet radar: the dial laps, lights and settles")
