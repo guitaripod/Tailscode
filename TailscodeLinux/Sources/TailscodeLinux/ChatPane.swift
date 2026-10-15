@@ -192,6 +192,10 @@ final class ChatPane: @unchecked Sendable {
     private var compactingStartedAt: Date?
 
     private var attachButton: UnsafeMutablePointer<GtkWidget>?
+    /// This pane's part in a call: the control in the strip below the composer and the strip above
+    /// it. A call is a state of the conversation the pane holds, not a window.
+    private(set) lazy var call = PaneCall(host: self)
+    private var callWordWidth: Int32 = 0
     var composerScroller: UnsafeMutablePointer<GtkWidget> { editor.scroller }
     var vim: VimEngine { editor.vim }
     private let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)
@@ -488,6 +492,7 @@ final class ChatPane: @unchecked Sendable {
         Gtk.addClass(attachmentsBox, "attachments-row")
         Gtk.margins(attachmentsBox, top: 4)
         gtk_box_append(ptr(root), attachmentsBox)
+        gtk_box_append(ptr(root), call.strip.widget)
         gtk_box_append(ptr(root), makeComposer())
         gtk_box_append(ptr(root), makePillRow())
     }
@@ -646,6 +651,8 @@ final class ChatPane: @unchecked Sendable {
 
         gtk_box_append(ptr(row), makeLaneRow())
 
+        gtk_box_append(ptr(row), call.chip)
+
         let attach = Gtk.menuButton("📎", css: ["chip-ctl"]) { [weak self] in
             self?.attachRows() ?? []
         }
@@ -766,7 +773,7 @@ final class ChatPane: @unchecked Sendable {
             } ?? Self.fitSteps[Self.fitSteps.count - 1]
         if chosen.compact != compactOn {
             compactOn = chosen.compact
-            for word in [sendWord, stopWord] {
+            for word in [sendWord, stopWord, call.chipParts.word] {
                 if let word { gtk_widget_set_visible(word, compactOn ? 0 : 1) }
             }
         }
@@ -802,6 +809,7 @@ final class ChatPane: @unchecked Sendable {
         if let attachButton { attachWidth = Self.naturalWidthWhileHidden(attachButton) }
         if let sendWord { sendWordWidth = Self.naturalWidthWhileHidden(sendWord) + 5 }
         if let stopWord { stopWordWidth = Self.naturalWidthWhileHidden(stopWord) + 5 }
+        if let word = call.chipParts.word { callWordWidth = Self.naturalWidthWhileHidden(word) + 5 }
     }
 
     private static func naturalWidthWhileHidden(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
@@ -815,10 +823,12 @@ final class ChatPane: @unchecked Sendable {
     private func noteWordWidths() {
         if let sendWord { sendWordWidth = Self.naturalWidth(sendWord) + 5 }
         if let stopWord { stopWordWidth = Self.naturalWidth(stopWord) + 5 }
+        if let word = call.chipParts.word, call.chipVisible { callWordWidth = Self.naturalWidth(word) + 5 }
     }
 
     private var wordWidths: Int32 {
         sendWordWidth + (gtk_widget_get_visible(stopButton) != 0 ? stopWordWidth : 0)
+            + (call.chipVisible ? callWordWidth : 0)
     }
 
     private static func naturalWidth(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
@@ -1080,6 +1090,7 @@ final class ChatPane: @unchecked Sendable {
         guard !isParked else { return }
         if let entry, presence.isInFlight { host?.keepWatching(entry) }
         isParked = true
+        call.setSuspended(true)
         leaveFreshCanvas()
         releaseStream()
         agentStreamTask?.cancel()
@@ -1093,6 +1104,7 @@ final class ChatPane: @unchecked Sendable {
         guard isParked else { return }
         isParked = false
         guard !isShutDown else { return }
+        call.setSuspended(false)
         if let entry { host?.stopWatching(LiveKey(entry).pinKey) }
         attachStream()
         refreshIdentity()
@@ -1609,6 +1621,7 @@ final class ChatPane: @unchecked Sendable {
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
         stashDraft()
         self.entry = entry
+        call.chatChanged()
         editingQueued = nil
         queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
         conversation = nil
@@ -1882,6 +1895,7 @@ final class ChatPane: @unchecked Sendable {
         resumeTask?.cancel()
         resumeTask = nil
         entry = nil
+        call.chatChanged()
         clearComposer()
         backend = nil
         conversation = nil
@@ -1910,6 +1924,7 @@ final class ChatPane: @unchecked Sendable {
     /// seat until the turn settles.
     func shutdown() {
         stashDraft()
+        call.shutdown()
         if let entry, presence.isInFlight { host?.keepWatching(entry) }
         leaveFreshCanvas()
         releaseStream()
@@ -2174,6 +2189,7 @@ final class ChatPane: @unchecked Sendable {
         scheduleRetryWake()
         handoff.observe(state, sendsInFlight: pending.hasInFlight)
         restateDrainPriority()
+        call.stateChanged(state)
     }
 
     /// A standing revert, docked right where the set-aside messages used to be. It is an account of
@@ -4464,6 +4480,29 @@ final class ChatPane: @unchecked Sendable {
         guard let conversation else { return }
         Task { try? await conversation.cancelCurrentTurn() }
     }
+
+    /// What the call dictated goes where a typed message goes: the pending ink, the queue behind a
+    /// running turn, the marks, with the model and effort the composer would use. False only when
+    /// there is no conversation to send into, which the call tells the gateway as a refusal.
+    func callSend(_ words: String) -> Bool {
+        let text = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let conversation else { return false }
+        AppLog.write(.session, "call dictated a message into session \(entry?.session.id ?? "none")")
+        enqueueOrRun(
+            QueuedSend(
+                text: text, model: chosenModel,
+                effort: ModelEffort.surviving(chosenEffort, options: effortOptions())),
+            through: conversation)
+        return true
+    }
+
+    func callStopTurn() { stopTurn() }
+
+    func callNotice(_ words: String) { setNotice(words) }
+
+    func callAnnounce(_ words: String) { announce(words) }
+
+    func callChipChanged() { queueLaneFit() }
 
     /// The prompt just sent rises to the top of the window and the answer streams onto the empty
     /// page under it. The room is made rather than found: the canvas is padded by what the

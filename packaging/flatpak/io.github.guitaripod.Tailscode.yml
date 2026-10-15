@@ -21,6 +21,9 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  # The voice call hears the microphone and speaks through PulseAudio's socket, which PipeWire
+  # answers too. Without it a call in the sandbox says its audio is unavailable.
+  - --socket=pulseaudio
   # The global summon chord is asked for through the portal rather than grabbed, and notifications
   # about a turn that needs you go through the portal too.
   - --talk-name=org.freedesktop.portal.Desktop

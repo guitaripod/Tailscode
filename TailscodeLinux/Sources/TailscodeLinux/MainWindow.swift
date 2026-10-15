@@ -260,6 +260,7 @@ final class MainWindow: @unchecked Sendable {
         installKeymap(on: window)
         installPressRouting(on: window)
         Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { [weak self] in
+            VoiceCallRunner.shared.hangUp()
             self?.stashDrafts()
         }
         Notifier.shared.attach(
@@ -742,6 +743,16 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(Data("FORGE \(forge.forgeSummary)\n".utf8))
                 case "beta":
                     self.driveBeta(argument, parent: self.window)
+                case "call":
+                    self.driveCall(argument)
+                case "reach":
+                    self.driveReach(argument)
+                case "motion":
+                    self.driveMotion(argument)
+                case "callshow":
+                    self.driveCallShow(argument)
+                case "callnarrow":
+                    self.driveCallNarrow(argument)
                 case "delegate":
                     _ = self.presentDelegate(host: argument.isEmpty ? nil : argument)
                 case "dcompose":

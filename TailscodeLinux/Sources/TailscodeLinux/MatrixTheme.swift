@@ -406,6 +406,28 @@ enum MatrixTheme {
         .beta-card-since .beta-card-body { color: \(text); }
         .beta-glyph-solid { \(t(.panelDetail)) color: \(accent); }
         .beta-glyph-rough { \(t(.panelDetail)) color: \(warn); }
+        .call-strip {
+            margin: 0 \(inset)px 8px \(inset)px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            border: 1px solid \(rule);
+            background-color: \(canvasRaised);
+        }
+        .call-face { min-width: 32px; min-height: 32px; border-radius: 999px; }
+        .call-face-glyph { \(t(.control)) color: \(palette.onAccent); }
+        .call-face-live { background-color: \(accent); }
+        .call-face-attention { background-color: \(warn); }
+        .call-face-danger { background-color: \(danger); }
+        .call-face-quiet { background-color: \(dimInk); }
+        .call-word { \(t(.panelTitle)) color: \(text); }
+        .call-clock { \(t(.rowStamp)) color: \(textDim); }
+        .call-role { \(t(.sectionLabel)) color: \(textDim); }
+        .call-line-you { \(t(.panelDetail)) color: \(textDim); }
+        .call-line-voice { \(t(.panelLabel)) color: \(text); }
+        .call-line-partial { font-style: italic; }
+        .call-line-end { \(t(.panelDetail)) color: \(text); }
+        .call-agent-glyph { \(t(.panelDetail)) }
+        .call-agent-text { \(t(.panelDetail)) color: \(textDim); }
         \(modelTintCSS(for: palette))
 
         .session-row {

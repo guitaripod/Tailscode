@@ -37,6 +37,7 @@ picture.
 | Transcript | rows | Prompt is the heavy voice; answers fill the pane; a turn costs the same gap on every client. |
 | Dock | what the end of the transcript holds | Order, top to bottom: pending sends → queued → turn-state cards (revert, interrupted, retry, compaction, thinking) → needs-you (question, permission). |
 | Facts row | context, spend, branch, goal, agents out, background work, attachments | One row; what is live leads, so scrolling sideways never hides it. Hidden when it has nothing to say, and appearing or leaving never moves the transcript a reader is reading. |
+| Call strip | a live call: face and word, clock, what was said, the agent's account, mute, hang up, the beta mark | Docked directly above the composer, below the facts row; the transcript above it stays fully visible. Only while a call is up or has just ended (6 s). Its entry is one outlined chip in the controls row beside attach, hidden for a server with no gateway. |
 | Composer | the field, send/stop | Exactly one Stop control per client: on iOS the send button becomes it, on the desktops it is the button beside the composer (Send reads Queue meanwhile). The band never carries one. |
 | Controls | model + effort, lane, attach, commands | Same height and shape as a chip. |
 
