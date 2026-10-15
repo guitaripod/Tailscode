@@ -205,7 +205,7 @@ public struct LiveActivityReading: Sendable, Equatable {
 
     /// Every tool call the latest turn made, searched back only as far as the last thing the
     /// person said.
-    private static func turnCalls(in state: ConversationState) -> [ToolCall] {
+    static func turnCalls(in state: ConversationState) -> [ToolCall] {
         var calls: [ToolCall] = []
         for message in state.messages.reversed() {
             if message.role == .user { break }
@@ -219,7 +219,7 @@ public struct LiveActivityReading: Sendable, Equatable {
 
     /// Where the running turn began. An answer the machine opened on its own — background work
     /// ending, with nothing typed — is a turn of its own, so an open answer outranks the prompt.
-    private static func turnStart(in state: ConversationState) -> Date? {
+    static func turnStart(in state: ConversationState) -> Date? {
         var opened: Date?
         for message in state.messages.reversed() {
             if message.role == .user { return opened ?? message.createdAt }
@@ -229,7 +229,7 @@ public struct LiveActivityReading: Sendable, Equatable {
     }
 
     /// The latest turn's answer, or nil when the person spoke last.
-    private static func turnAnswer(in state: ConversationState) -> ChatMessage? {
+    static func turnAnswer(in state: ConversationState) -> ChatMessage? {
         for message in state.messages.reversed() {
             if message.role == .user { return nil }
             if message.role == .assistant { return message }

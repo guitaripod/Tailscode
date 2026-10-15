@@ -33,6 +33,7 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
         lock.lock()
         records[key, default: Record()].entry = entry
         lock.unlock()
+        Notifier.shared.noteServer(profileID: entry.profileID, name: entry.profileName)
     }
 
     /// Whether the window is watching a conversation nobody shows. A watch starts from a reading of
