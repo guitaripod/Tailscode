@@ -1,4 +1,5 @@
 #include "include/CGtkShim.h"
+#include <gdk/gdkcairo.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <pango/pangocairo.h>
 #include <string.h>
@@ -3000,6 +3001,155 @@ static cairo_status_t tailscode_png_write(void *closure, const unsigned char *da
     return CAIRO_STATUS_SUCCESS;
 }
 
+static void tailscode_plate_text(
+    cairo_t *cr, PangoLayout *layout, const char *text, double cx, double cy, int size,
+    int weight, const char *hex) {
+    if (!text || !*text) return;
+    pango_layout_set_attributes(layout, NULL);
+    pango_layout_set_width(layout, -1);
+    pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_NONE);
+    pango_layout_set_text(layout, text, -1);
+    tailscode_pango_font(layout, size, weight);
+    int width = 0, height = 0;
+    pango_layout_get_pixel_size(layout, &width, &height);
+    tailscode_cairo_set_hex(cr, hex, 1.0);
+    cairo_move_to(cr, cx - width / 2.0, cy - height / 2.0);
+    pango_cairo_show_layout(cr, layout);
+}
+
+static void tailscode_plate_squircle(cairo_t *cr, double side, double inset, double radius) {
+    double box = side - 2.0 * inset;
+    tailscode_cairo_round_rect(cr, inset, inset, box, box, radius);
+}
+
+unsigned char *tailscode_notification_plate_png(
+    const char *tone, const char *ink, const char *canvas, const char *glyph, const char *caption,
+    const void *picture, gsize picture_len, gsize *out_len) {
+    if (out_len) *out_len = 0;
+    if (!tone || !ink) return NULL;
+    const int side = 512;
+    const double inset = 10;
+    const double radius = 112;
+    cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, side, side);
+    if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+        cairo_surface_destroy(surface);
+        return NULL;
+    }
+    cairo_t *cr = cairo_create(surface);
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+    cairo_set_source_rgba(cr, 0, 0, 0, 0);
+    cairo_paint(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+    GdkPixbuf *pixbuf = NULL;
+    if (picture && picture_len > 32) {
+        GError *error = NULL;
+        pixbuf = tailscode_pixbuf_from_bytes(picture, picture_len, &error);
+        g_clear_error(&error);
+    }
+
+    PangoLayout *layout = pango_cairo_create_layout(cr);
+    if (pixbuf) {
+        cairo_save(cr);
+        tailscode_plate_squircle(cr, side, inset, radius);
+        cairo_clip(cr);
+        int pw = gdk_pixbuf_get_width(pixbuf);
+        int ph = gdk_pixbuf_get_height(pixbuf);
+        double box = side - 2.0 * inset;
+        double scale = (pw > 0 && ph > 0) ? box / (double)(pw < ph ? pw : ph) : 1;
+        double dw = pw * scale;
+        double dh = ph * scale;
+        cairo_translate(cr, inset + (box - dw) / 2.0, inset + (box - dh) / 2.0);
+        cairo_scale(cr, scale, scale);
+        gdk_cairo_set_source_pixbuf(cr, pixbuf, 0, 0);
+        cairo_paint(cr);
+        cairo_restore(cr);
+        g_object_unref(pixbuf);
+
+        cairo_save(cr);
+        tailscode_plate_squircle(cr, side, inset, radius);
+        cairo_clip(cr);
+        cairo_pattern_t *shade = cairo_pattern_create_radial(
+            side * 0.78, side * 0.78, side * 0.05, side * 0.78, side * 0.78, side * 0.48);
+        cairo_pattern_add_color_stop_rgba(shade, 0, 0, 0, 0, 0.42);
+        cairo_pattern_add_color_stop_rgba(shade, 1, 0, 0, 0, 0);
+        cairo_set_source(cr, shade);
+        cairo_paint(cr);
+        cairo_pattern_destroy(shade);
+        cairo_restore(cr);
+
+        double badge = 148;
+        double cx = side - 42 - badge / 2.0;
+        double cy = side - 42 - badge / 2.0;
+        cairo_arc(cr, cx, cy, badge / 2.0 + 8, 0, 2 * G_PI);
+        tailscode_cairo_set_hex(cr, canvas && *canvas ? canvas : "#111111", 1);
+        cairo_fill(cr);
+        cairo_arc(cr, cx, cy, badge / 2.0, 0, 2 * G_PI);
+        tailscode_cairo_set_hex(cr, tone, 1);
+        cairo_fill(cr);
+        tailscode_plate_text(cr, layout, glyph, cx, cy, 72, 700, ink);
+    } else {
+        tailscode_plate_squircle(cr, side, inset, radius);
+        tailscode_cairo_set_hex(cr, tone, 1);
+        cairo_fill(cr);
+
+        cairo_save(cr);
+        tailscode_plate_squircle(cr, side, inset, radius);
+        cairo_clip(cr);
+        cairo_pattern_t *sheen = cairo_pattern_create_linear(0, inset, 0, side * 0.62);
+        cairo_pattern_add_color_stop_rgba(sheen, 0, 1, 1, 1, 0.22);
+        cairo_pattern_add_color_stop_rgba(sheen, 1, 1, 1, 1, 0);
+        cairo_set_source(cr, sheen);
+        cairo_paint(cr);
+        cairo_pattern_destroy(sheen);
+        cairo_restore(cr);
+
+        cairo_save(cr);
+        tailscode_cairo_round_rect(cr, 28, 28, side - 56, side - 56, radius - 16);
+        cairo_set_source_rgba(cr, 1, 1, 1, 0.20);
+        cairo_set_line_width(cr, 3);
+        cairo_stroke(cr);
+        cairo_restore(cr);
+
+        int caption_height = 0;
+        if (caption && *caption) {
+            pango_layout_set_width(layout, (int)((side - 80) * PANGO_SCALE));
+            pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+            pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+            pango_layout_set_text(layout, caption, -1);
+            tailscode_pango_font(layout, 28, 600);
+            pango_layout_get_pixel_size(layout, NULL, &caption_height);
+        }
+        double glyph_size = caption_height > 0 ? 176 : 290;
+        double block = glyph_size + (caption_height > 0 ? 22 + caption_height : 0);
+        double top = (side - block) / 2.0;
+        tailscode_plate_text(
+            cr, layout, glyph, side / 2.0, top + glyph_size / 2.0, (int)glyph_size, 700, ink);
+        if (caption_height > 0) {
+            pango_layout_set_width(layout, (int)((side - 80) * PANGO_SCALE));
+            pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+            pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+            pango_layout_set_text(layout, caption, -1);
+            tailscode_pango_font(layout, 28, 600);
+            tailscode_cairo_set_hex(cr, ink, 0.92);
+            cairo_move_to(cr, 40, top + glyph_size + 18);
+            pango_cairo_show_layout(cr, layout);
+        }
+    }
+
+    g_object_unref(layout);
+    cairo_destroy(cr);
+    GByteArray *array = g_byte_array_new();
+    cairo_status_t status = cairo_surface_write_to_png_stream(surface, tailscode_png_write, array);
+    cairo_surface_destroy(surface);
+    if (status != CAIRO_STATUS_SUCCESS || array->len == 0) {
+        g_byte_array_free(array, TRUE);
+        return NULL;
+    }
+    if (out_len) *out_len = array->len;
+    return g_byte_array_free(array, FALSE);
+}
+
 void tailscode_clipboard_set_image_png(const void *bytes, gsize len) {
     if (!bytes || len == 0) return;
     GdkDisplay *display = gdk_display_get_default();
@@ -3512,6 +3662,162 @@ char *tailscode_gl_vendor(GtkWidget *window) {
     g_clear_error(&error);
     g_object_unref(context);
     return vendor;
+}
+
+static GDBusConnection *notify_bus = NULL;
+static guint notify_subscription = 0;
+static void (*notify_action)(guint32 id, const char *action, void *data) = NULL;
+static void (*notify_closed)(guint32 id, void *data) = NULL;
+static void *notify_action_data = NULL;
+static guint notify_closed_subscription = 0;
+static gboolean notify_caps_known = FALSE;
+static gboolean notify_markup = TRUE;
+
+static void tailscode_notify_ensure_bus(void) {
+    if (notify_bus) return;
+    GError *error = NULL;
+    notify_bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+    g_clear_error(&error);
+}
+
+static void tailscode_notify_read_caps(void) {
+    if (notify_caps_known || !notify_bus) return;
+    GError *error = NULL;
+    GVariant *reply = g_dbus_connection_call_sync(
+        notify_bus, "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications", "GetCapabilities", g_variant_new("()"),
+        G_VARIANT_TYPE("(as)"), G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &error);
+    g_clear_error(&error);
+    notify_markup = FALSE;
+    if (reply) {
+        GVariant *list = g_variant_get_child_value(reply, 0);
+        gsize count = list ? g_variant_n_children(list) : 0;
+        for (gsize index = 0; index < count; index++) {
+            GVariant *item = g_variant_get_child_value(list, index);
+            const char *name = item ? g_variant_get_string(item, NULL) : NULL;
+            if (name && strcmp(name, "body-markup") == 0) notify_markup = TRUE;
+            if (item) g_variant_unref(item);
+        }
+        if (list) g_variant_unref(list);
+        g_variant_unref(reply);
+    }
+    notify_caps_known = TRUE;
+}
+
+static void tailscode_notify_action_invoked(
+    GDBusConnection *connection, const char *sender, const char *path, const char *interface,
+    const char *signal, GVariant *parameters, gpointer user_data) {
+    (void)connection;
+    (void)sender;
+    (void)path;
+    (void)interface;
+    (void)signal;
+    (void)user_data;
+    if (!notify_action || !parameters) return;
+    guint32 id = 0;
+    const char *action = "";
+    if (!g_variant_is_of_type(parameters, G_VARIANT_TYPE("(us)"))) return;
+    g_variant_get(parameters, "(us)", &id, &action);
+    notify_action(id, action ? action : "", notify_action_data);
+}
+
+static void tailscode_notify_closed_signal(
+    GDBusConnection *connection, const char *sender, const char *path, const char *interface,
+    const char *signal, GVariant *parameters, gpointer user_data) {
+    (void)connection;
+    (void)sender;
+    (void)path;
+    (void)interface;
+    (void)signal;
+    (void)user_data;
+    if (!notify_closed || !parameters) return;
+    if (!g_variant_is_of_type(parameters, G_VARIANT_TYPE("(uu)"))) return;
+    guint32 id = 0, reason = 0;
+    g_variant_get(parameters, "(uu)", &id, &reason);
+    notify_closed(id, notify_action_data);
+}
+
+void tailscode_desktop_notify_listen(
+    void (*action)(guint32 id, const char *action, void *data),
+    void (*closed)(guint32 id, void *data), void *data) {
+    notify_action = action;
+    notify_closed = closed;
+    notify_action_data = data;
+    tailscode_notify_ensure_bus();
+    if (!notify_bus) return;
+    if (!notify_subscription) {
+        notify_subscription = g_dbus_connection_signal_subscribe(
+            notify_bus, "org.freedesktop.Notifications", "org.freedesktop.Notifications",
+            "ActionInvoked", "/org/freedesktop/Notifications", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+            tailscode_notify_action_invoked, NULL, NULL);
+    }
+    if (!notify_closed_subscription) {
+        notify_closed_subscription = g_dbus_connection_signal_subscribe(
+            notify_bus, "org.freedesktop.Notifications", "org.freedesktop.Notifications",
+            "NotificationClosed", "/org/freedesktop/Notifications", NULL,
+            G_DBUS_SIGNAL_FLAGS_NONE, tailscode_notify_closed_signal, NULL, NULL);
+    }
+}
+
+guint32 tailscode_desktop_notify(
+    const char *summary, const char *body_markup, const char *body_plain, const char *image_path,
+    const char *sound_name, const char *category, const char *desktop_entry,
+    unsigned char urgency, int resident, int timeout_ms, guint32 replaces_id,
+    const char *const *actions, int action_count) {
+    tailscode_notify_ensure_bus();
+    if (!notify_bus) return 0;
+    tailscode_notify_read_caps();
+    const char *body = notify_markup && body_markup ? body_markup : (body_plain ? body_plain : "");
+    GVariantBuilder hints;
+    g_variant_builder_init(&hints, G_VARIANT_TYPE("a{sv}"));
+    if (image_path && *image_path) {
+        g_variant_builder_add(&hints, "{sv}", "image-path", g_variant_new_string(image_path));
+        g_variant_builder_add(&hints, "{sv}", "image_path", g_variant_new_string(image_path));
+    }
+    if (sound_name && *sound_name) {
+        g_variant_builder_add(&hints, "{sv}", "sound-name", g_variant_new_string(sound_name));
+        g_variant_builder_add(&hints, "{sv}", "suppress-sound", g_variant_new_boolean(FALSE));
+    }
+    if (category && *category)
+        g_variant_builder_add(&hints, "{sv}", "category", g_variant_new_string(category));
+    if (desktop_entry && *desktop_entry)
+        g_variant_builder_add(
+            &hints, "{sv}", "desktop-entry", g_variant_new_string(desktop_entry));
+    g_variant_builder_add(&hints, "{sv}", "urgency", g_variant_new_byte(urgency));
+    g_variant_builder_add(&hints, "{sv}", "resident", g_variant_new_boolean(resident ? TRUE : FALSE));
+    GVariantBuilder buttons;
+    g_variant_builder_init(&buttons, G_VARIANT_TYPE("as"));
+    for (int index = 0; index < action_count; index++) {
+        if (actions && actions[index]) g_variant_builder_add(&buttons, "s", actions[index]);
+    }
+    GError *error = NULL;
+    GVariant *reply = g_dbus_connection_call_sync(
+        notify_bus, "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications", "Notify",
+        g_variant_new(
+            "(susssasa{sv}i)", "Tailscode", replaces_id,
+            desktop_entry && *desktop_entry ? desktop_entry : "", summary ? summary : "", body,
+            &buttons, &hints, timeout_ms),
+        G_VARIANT_TYPE("(u)"), G_DBUS_CALL_FLAGS_NONE, 2000, NULL, &error);
+    if (!reply) {
+        g_clear_error(&error);
+        return 0;
+    }
+    guint32 id = 0;
+    g_variant_get(reply, "(u)", &id);
+    g_variant_unref(reply);
+    return id;
+}
+
+void tailscode_desktop_notify_close(guint32 id) {
+    if (!notify_bus || id == 0) return;
+    GError *error = NULL;
+    GVariant *reply = g_dbus_connection_call_sync(
+        notify_bus, "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications", "CloseNotification", g_variant_new("(u)", id), NULL,
+        G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &error);
+    g_clear_error(&error);
+    if (reply) g_variant_unref(reply);
 }
 
 gboolean tailscode_systemd_set_unit_properties(

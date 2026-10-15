@@ -171,6 +171,14 @@ unsigned char *tailscode_analytics_card_png(
     const char *const *c, const double *d0, const double *d1, const int *i0,
     int block_count, gsize *out_len);
 
+/// A shoulder-tap's face: a tone squircle and its glyph, or the picture a turn handed back with
+/// that face in the corner. Colours are six-digit hex. `picture` may be NULL. Returns
+/// newly-allocated PNG bytes (caller frees with `g_free`) and writes their length to `out_len`,
+/// or NULL on failure.
+unsigned char *tailscode_notification_plate_png(
+    const char *tone, const char *ink, const char *canvas, const char *glyph, const char *caption,
+    const void *picture, gsize picture_len, gsize *out_len);
+
 /// The widget's vertical offset inside `ancestor`, or -1 when the two are not connected — what a
 /// scroll-to-row needs from graphene without importing it.
 double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor);
@@ -650,6 +658,22 @@ const char *tailscode_renderer_name(GtkWidget *window);
 /// The GL vendor string of a context made on the window's surface, best effort; NULL when the
 /// surface cannot make one. The caller frees the string with `g_free`.
 char *tailscode_gl_vendor(GtkWidget *window);
+
+/// `org.freedesktop.Notifications.Notify`. GNotification cannot carry an image, a sound or
+/// markup, and a desktop that can show them is how a notice is told apart before it is read.
+/// `actions` is key, label, key, label. Returns the daemon id, or 0 when nothing is listening.
+/// A later `ActionInvoked` is handed to `action` with that id, and `NotificationClosed`, however
+/// the notice went (dismissed, expired, withdrawn), to `closed`, so nothing is kept for an id the
+/// daemon may hand to another app's notice.
+void tailscode_desktop_notify_listen(
+    void (*action)(guint32 id, const char *action, void *data),
+    void (*closed)(guint32 id, void *data), void *data);
+guint32 tailscode_desktop_notify(
+    const char *summary, const char *body_markup, const char *body_plain, const char *image_path,
+    const char *sound_name, const char *category, const char *desktop_entry,
+    unsigned char urgency, int resident, int timeout_ms, guint32 replaces_id,
+    const char *const *actions, int action_count);
+void tailscode_desktop_notify_close(guint32 id);
 
 /// `org.freedesktop.systemd1.Manager.SetUnitProperties(unit, runtime=true, a(sv))` on the session
 /// bus, every value a `t`. `g_variant_new` is varargs, which Swift cannot call. On failure the

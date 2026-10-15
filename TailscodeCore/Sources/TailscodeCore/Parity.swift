@@ -846,7 +846,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .activityNotifications, area: "app", title: "The app taps your shoulder",
             spec:
-                "A turn ending or a needs-you state in an unfocused session raises a system notification that deep-links back to it."),
+                "A turn ending or a needs-you state in an unfocused session raises a system notification that deep-links back to it, wearing the same face the chat's status badge raises so a stack of them separates the finished from the waiting before a word is read."),
         CapabilityDefinition(
             id: .missedActivity, area: "app", title: "What happened while you were away",
             spec:

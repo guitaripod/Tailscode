@@ -200,6 +200,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkNotificationPlate()
+            report("notification plate: \(checks) claims hold — face and picture are real PNGs")
+        } catch {
+            report("notification plate: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkFreeLedger()
             report("analytics ledger: \(checks) claims hold — free models counted, gaps named")
         } catch {
@@ -3278,6 +3286,61 @@ public enum SelfTest {
             throw SelfTestFailure("the panel does not say where its numbers came from")
         }
         return spend.turns.count + spend.tiers.count + spend.headline.count
+    }
+
+    /// The notice's face is a real image, a picture handed back is painted into it rather than
+    /// ignored, and only the turn that just ended can hand one back: an earlier turn's screenshot
+    /// or one the person attached would be the wrong answer. A body with a tag in it reaches a
+    /// markup-reading daemon escaped. Headless: cairo and pango, no daemon.
+    private static func checkNotificationPlate() throws -> Int {
+        guard
+            let face = NotificationPlate.render(
+                tone: "#3DDC97", ink: "#0B0B0B", canvas: "#111111", glyph: "✓",
+                caption: "finished", picture: nil),
+            face.starts(with: Data([0x89, 0x50, 0x4E, 0x47])), face.count > 500
+        else { throw SelfTestFailure("the face plate is not a PNG") }
+        guard
+            let pictured = NotificationPlate.render(
+                tone: "#E0A100", ink: "#111111", canvas: "#111111", glyph: "?",
+                caption: nil, picture: face),
+            pictured.starts(with: Data([0x89, 0x50, 0x4E, 0x47])), pictured.count > 500,
+            pictured != face
+        else { throw SelfTestFailure("a picture is not painted into the plate") }
+
+        let words = NotificationPlate.wording(body: "is a < b && c?")
+        guard words.markup == "is a &lt; b &amp;&amp; c?", words.plain == "is a < b && c?" else {
+            throw SelfTestFailure("a body is not escaped for markup: \(words.markup)")
+        }
+
+        let drawn = FileReference(
+            path: "/tmp/selftest/notice.png", mime: "image/png", filename: "notice.png")
+        ImageCache.save(face, for: drawn)
+        let now = Date()
+        func message(_ id: String, _ role: MessageRole, _ kind: MessagePart.Kind) -> ChatMessage {
+            ChatMessage(
+                id: id, role: role, agentType: .claudeCode,
+                parts: [MessagePart(id: id, kind: kind)], createdAt: now)
+        }
+        var state = ConversationState()
+        state.messages = [
+            message("ask", .user, .text("draw it")), message("shot", .assistant, .file(drawn)),
+            message("done", .assistant, .text("Drew it.")),
+        ]
+        guard NotificationPlate.cachedPicture(in: state) == face else {
+            throw SelfTestFailure("the picture the turn handed back is not in its notice")
+        }
+        state.messages.append(message("again", .user, .text("thanks")))
+        state.messages.append(message("ok", .assistant, .text("Welcome.")))
+        guard NotificationPlate.cachedPicture(in: state) == nil else {
+            throw SelfTestFailure("an earlier turn's picture is in this turn's notice")
+        }
+        state.messages = [
+            message("mine", .user, .file(drawn)), message("seen", .assistant, .text("Seen.")),
+        ]
+        guard NotificationPlate.cachedPicture(in: state) == nil else {
+            throw SelfTestFailure("a picture the person attached is in the notice")
+        }
+        return 6
     }
 
     /// The share card is Core geometry painted by the shim: a demo ledger must yield words, a
