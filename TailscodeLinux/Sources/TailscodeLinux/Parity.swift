@@ -71,7 +71,7 @@ enum ParityManifest {
         case .delegateComposer: return .implemented("DelegateComposerDialog")
         case .delegateRun: return .implemented("DelegateRunView")
         case .delegateApproval: return .implemented("respondToApproval")
-        case .betaMark: return .implemented("DelegateBetaBadge")
+        case .betaMark: return .implemented("BetaBadge")
         case .delegateClassDefaults: return .implemented("renderLegend")
         case .delegateNextSteps: return .implemented("replayRun")
         case .delegateSetup: return .implemented("copySetupCommand")

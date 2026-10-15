@@ -1926,6 +1926,67 @@ void tailscode_edge_set(
     gtk_widget_queue_draw(area);
 }
 
+typedef struct {
+    double ink[3];
+    double progress;
+    double radius;
+    double peak;
+} TailscodeSheen;
+
+static void tailscode_sheen_draw(
+    GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
+    TailscodeSheen *sheen = raw;
+    if (sheen->progress < 0 || width <= 0 || height <= 0) return;
+    double w = width;
+    double h = height;
+    double r = MIN(sheen->radius, MIN(w, h) / 2.0);
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, w - r, r, r, -G_PI / 2, 0);
+    cairo_arc(cr, w - r, h - r, r, 0, G_PI / 2);
+    cairo_arc(cr, r, h - r, r, G_PI / 2, G_PI);
+    cairo_arc(cr, r, r, r, G_PI, 3 * G_PI / 2);
+    cairo_close_path(cr);
+    cairo_clip(cr);
+    double half = MAX(h * 1.1, 12.0);
+    double center = -half + CLAMP(sheen->progress, 0.0, 1.0) * (w + 2 * half);
+    cairo_pattern_t *band = cairo_pattern_create_linear(center - half, 0, center + half, h * 0.6);
+    cairo_pattern_add_color_stop_rgba(band, 0.0, sheen->ink[0], sheen->ink[1], sheen->ink[2], 0.0);
+    cairo_pattern_add_color_stop_rgba(
+        band, 0.5, sheen->ink[0], sheen->ink[1], sheen->ink[2], CLAMP(sheen->peak, 0.0, 1.0));
+    cairo_pattern_add_color_stop_rgba(band, 1.0, sheen->ink[0], sheen->ink[1], sheen->ink[2], 0.0);
+    cairo_set_source(cr, band);
+    cairo_paint(cr);
+    cairo_pattern_destroy(band);
+}
+
+GtkWidget *tailscode_sheen_new(void) {
+    GtkWidget *area = gtk_drawing_area_new();
+    TailscodeSheen *sheen = g_new0(TailscodeSheen, 1);
+    sheen->ink[0] = sheen->ink[1] = sheen->ink[2] = 1.0;
+    sheen->progress = -1;
+    sheen->radius = 999;
+    sheen->peak = 0.5;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-sheen", sheen, g_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_sheen_draw, sheen, NULL);
+    gtk_widget_set_can_target(area, FALSE);
+    gtk_widget_set_can_focus(area, FALSE);
+    return area;
+}
+
+void tailscode_sheen_set(GtkWidget *area, double progress, const double *rgb, double peak) {
+    if (!area) return;
+    TailscodeSheen *sheen = g_object_get_data(G_OBJECT(area), "tailscode-sheen");
+    if (!sheen) return;
+    if (rgb) {
+        sheen->ink[0] = rgb[0];
+        sheen->ink[1] = rgb[1];
+        sheen->ink[2] = rgb[2];
+    }
+    sheen->progress = progress;
+    sheen->peak = peak;
+    gtk_widget_queue_draw(area);
+}
+
 static void tailscode_meter_draw(
     GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
     TailscodeRing *meter = raw;

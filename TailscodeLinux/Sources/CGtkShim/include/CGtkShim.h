@@ -504,6 +504,13 @@ void tailscode_edge_set(
     GtkWidget *area, const double *rgb, double track, int count, const double *starts,
     const double *lengths, const double *intensities, double radius, double width);
 
+/// A transparent layer that lays one soft band of light across the capsule under it, clipped to a
+/// fully rounded outline: `progress` is where the band is, 0 left of the capsule and 1 right of it,
+/// and a negative value draws nothing. The ink is one RGB colour in 0-1 and `peak` is the band's
+/// brightest alpha. The layer is never a target and never takes focus.
+GtkWidget *tailscode_sheen_new(void);
+void tailscode_sheen_set(GtkWidget *area, double progress, const double *rgb, double peak);
+
 GtkWidget *tailscode_meter_new(void);
 
 /// One state: how far across the bar is filled (0–1), the fill's ink as RGB in 0–1, how bright

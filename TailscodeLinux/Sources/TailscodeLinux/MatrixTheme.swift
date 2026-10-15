@@ -397,6 +397,15 @@ enum MatrixTheme {
             letter-spacing: 1px;
         }
         .beta-badge:hover { background-color: alpha(\(special), 0.26); }
+        .beta-badge:focus-visible { outline: 2px solid \(special); outline-offset: 2px; }
+        .beta-badge-static, .beta-badge-static:hover { background-color: alpha(\(special), 0.14); }
+        .beta-card-title { \(t(.panelTitle)) color: \(text); }
+        .beta-card-lead { \(t(.panelDetail)) color: \(text); }
+        .beta-card-body { \(t(.panelDetail)) color: \(textDim); }
+        .beta-card-since { border-radius: 10px; padding: 10px 12px; background-color: alpha(\(special), 0.1); border-left: 3px solid \(special); }
+        .beta-card-since .beta-card-body { color: \(text); }
+        .beta-glyph-solid { \(t(.panelDetail)) color: \(accent); }
+        .beta-glyph-rough { \(t(.panelDetail)) color: \(warn); }
         \(modelTintCSS(for: palette))
 
         .session-row {

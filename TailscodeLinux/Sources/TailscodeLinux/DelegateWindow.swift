@@ -91,7 +91,7 @@ final class DelegateWindow: @unchecked Sendable {
 
     private let window: UnsafeMutablePointer<GtkWidget>
     private let titleWidget = adw_window_title_new(DelegateEntryPoint.title, "")!
-    private let beta = DelegateBetaBadge()
+    private let beta = BetaBadge(feature: .delegate) { DelegateWindow.current?.betaReportLines ?? [] }
     private let backButton = gtk_button_new_from_icon_name("go-previous-symbolic")!
     private let refreshButton = gtk_button_new_from_icon_name("view-refresh-symbolic")!
     private var machineButton: UnsafeMutablePointer<GtkWidget>!
@@ -278,6 +278,24 @@ final class DelegateWindow: @unchecked Sendable {
         if open === window { open = nil }
         window.runner.unwatch(window)
         window.beta.tearDown()
+    }
+
+    private var betaReportLines: [String] {
+        guard !currentHost.isEmpty else { return [] }
+        var lines = ["Daemon: \(runner.access(host: currentHost).address)", "Daemon state: \(reportState)"]
+        if case .answering(let version) = reach { lines.append("Daemon version: \(version)") }
+        return lines
+    }
+
+    private var reportState: String {
+        switch reach {
+        case .unknown: return "not checked"
+        case .checking: return "checking"
+        case .answering: return "answering"
+        case .wantsPassword: return "wants a password"
+        case .refused: return "password refused"
+        case .unreachable(let why): return "not answering (\(why))"
+        }
     }
 
     private var board: DelegateBoard { runner.board(host: currentHost, serverName: name(of: currentHost)) }
@@ -496,6 +514,10 @@ final class DelegateWindow: @unchecked Sendable {
         guard let first = rows.first else { return }
         openRun(first.runID)
     }
+
+    var betaReading: String { beta.line }
+
+    func openBetaCard() { beta.open() }
 
     /// Opens a run by id, for the drive verbs that photograph one state at a time.
     func openRun(id: String) { openRun(id) }

@@ -740,6 +740,8 @@ final class MainWindow: @unchecked Sendable {
                     let forge = self.presentForge()
                     if !argument.isEmpty { forge.demonstrate(argument) }
                     FileHandle.standardOutput.write(Data("FORGE \(forge.forgeSummary)\n".utf8))
+                case "beta":
+                    self.driveBeta(argument, parent: self.window)
                 case "delegate":
                     _ = self.presentDelegate(host: argument.isEmpty ? nil : argument)
                 case "dcompose":
