@@ -56,8 +56,7 @@ final class DelegateBoardViewController: UIViewController {
             image: UIImage(systemName: "plus"),
             primaryAction: UIAction { [weak self] _ in self?.compose() })
         plus.accessibilityLabel = DelegateEntryPoint.newPacketTitle
-        let beta = DelegateBetaBadge()
-        beta.onTap = { [weak self] in self?.explainBeta() }
+        let beta = BetaBadge(feature: .delegate, reportLines: { [weak self] in self?.betaReportLines ?? [] })
         navigationItem.rightBarButtonItems = [plus, UIBarButtonItem(customView: beta)]
         configure()
         NotificationCenter.default.addObserver(
@@ -282,7 +281,27 @@ final class DelegateBoardViewController: UIViewController {
 
     /// Why the feature wears its mark, in Core's words, sized to them.
     func explainBeta() {
-        DelegateBetaViewController.present(from: self)
+        BetaCardViewController.present(feature: .delegate, reportLines: { [weak self] in self?.betaReportLines ?? [] }, from: self)
+    }
+
+    /// What the daemon on this machine said last, for a report: where it is, what it answered and
+    /// which version, and nothing the person typed.
+    private var betaReportLines: [String] {
+        let address = (DelegateAccessStore.access(host: host) ?? DelegateAccess(host: host)).address
+        var lines = ["Daemon: \(address)", "Daemon state: \(betaReportState)"]
+        if case .answering(let version) = reach { lines.append("Daemon version: \(version)") }
+        return lines
+    }
+
+    private var betaReportState: String {
+        switch reach {
+        case .unknown: return "not checked"
+        case .checking: return "checking"
+        case .answering: return "answering"
+        case .wantsPassword: return "wants a password"
+        case .refused: return "password refused"
+        case .unreachable(let why): return "not answering (\(why))"
+        }
     }
 
     func compose() {

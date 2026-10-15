@@ -60,3 +60,11 @@ are read as lists. Reduced motion drops the sweep and keeps every word.
 
 Delegate's board title, the server row's line, and the voice call's surface and its entry point. The
 parity capability is `betaMark`; every client answers it with the shared badge's anchor.
+
+On iOS the mark is `BetaBadge` (a `UIControl`: `init(feature:reportLines:)`) and the card is
+`BetaCardViewController`, a sheet sized to its words with a large detent behind it. Opening the card
+reads the mark's freshness first, so a `changed` card leads with what changed, and then marks the
+card seen at the version `AppInstallProbe` reads. The pass of light is a gradient layer positioned
+from `BetaSheen.progress` off a `CADisplayLink` that is invalidated the moment the pass ends, at most
+once per process per feature, and not at all under Reduce Motion; a settled mark runs no clock. Copy
+report puts `BetaReport.compose` on the pasteboard, and the button reads `Report copied` for 1.5 s.

@@ -79,7 +79,7 @@ enum ParityManifest {
         case .delegateRun: return .implemented("DelegateRunViewController")
         case .delegateApproval: return .implemented("desk.approve(runID")
         case .delegateProGate: return .implemented("DelegateGate")
-        case .betaMark: return .implemented("DelegateBetaBadge")
+        case .betaMark: return .implemented("BetaBadge")
         case .delegateClassDefaults: return .implemented("renderLegend")
         case .delegateNextSteps: return .implemented("case .duplicate:")
         case .delegateSetup: return .implemented("copySetupCommand")
