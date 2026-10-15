@@ -41,9 +41,9 @@ public enum BetaFeature: String, Sendable, CaseIterable {
 
     private static var voiceCallCard: BetaCard {
         BetaCard(
-            name: Localized.text("Call"),
-            symbol: "waveform",
-            glyph: "~",
+            name: VoiceCallEntryPoint.title,
+            symbol: VoiceCallEntryPoint.symbol,
+            glyph: VoiceCallEntryPoint.glyph,
             title: Localized.text("Calls are in beta"),
             lead: Localized.text(
                 "Talk to this chat out loud and hear what the agent is doing while it keeps working."),

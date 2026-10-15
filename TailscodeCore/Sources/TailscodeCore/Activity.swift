@@ -603,7 +603,7 @@ public enum ActivityKind: Sendable, Equatable {
         guard state.status == .running else { return nil }
         if let retry = state.retry { return .retrying(attempt: retry.attempt) }
         if let call = runningCall(in: state) {
-            return .usingTool(name: call.name, kind: call.summary.kind)
+            return .usingTool(name: call.name, kind: call.summaryKind)
         }
         if let last = state.messages.last, last.role == .assistant, last.completedAt == nil,
             case .text(let text)? = last.parts.last?.kind, !text.isEmpty

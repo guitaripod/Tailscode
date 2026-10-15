@@ -127,8 +127,62 @@ voice's level, degraded holds perfectly still in the danger tone, ended holds st
 is the existing `ActivityKind` face and wins the chat's status line as it does today; the call adds its
 own, never replaces it. A client draws; it invents no word.
 
-Availability is read like `DelegateReach`: `VoiceReach` from `GET /health` per server, with the reason
-a call cannot start written out (no gateway, the model loading, the GPU busy, a gateway too old).
+Availability is read like `DelegateReach`: `VoiceReach` from `GET /health` per server
+(`VoiceReachProbe`, URLSession based, two seconds), with the reason a call cannot start written out
+(no gateway, the model loading, the GPU busy, a gateway or an app too old, a password wanted, the
+machine not answering). A refused connection is "no gateway"; a timeout is "not answering". The
+protocol must match exactly, so a gateway older than the app and one newer than it are both `tooOld`
+and the line says which side to update. `VoiceEndpoint` finds the gateway from a profile's address
+exactly as `DelegateAccess.host(of:)` finds the delegate daemon, and keeps an optional password under
+`voice.<host>`.
+
+`VoiceCallFace.read(phase:agentBusy:connection:degraded:)` is the pure mapping: `working` is
+`listening` while the agent is busy; a dropped line being redialled reads as `connecting` and the
+snapshot's `reconnecting` flag changes the word. A question or an approval waiting for the person is
+the agent waiting, not working, so it is not `busy`.
+
+## The session (Core)
+
+`VoiceCallSession` is an actor, never main-actor, and owns one call. A client hands it the endpoint,
+the three seams (`VoiceTransport`, `VoiceAudioCapture`, `VoiceAudioPlayback`), the app's own send path
+and stop, and a `VoiceClock` (monotonic time and a sleep a test can drive). It publishes latest-wins
+`VoiceCallSnapshot`s: face, the last six lines (what the person said, what the voice said, partials
+updated in place), when the call started, the degraded reason, whether the line is being redialled,
+whether the microphone is muted, whether the agent is busy, and `finishedChimes`, a counter the client
+compares with the last one it saw to play the "the agent finished" chime.
+
+- The microphone is asked for first, then the line is dialled, then `hello` goes out. A refused
+  microphone ends the call before anything is dialled, with the way back for that platform.
+- Capture chunks go out as binary frames, cut to what the gateway accepts. Muted, the call sends
+  silence of the same length, so the model hears a quiet room and not a gap.
+- Binary frames from the gateway are played, except while the person is speaking (`hearing`) and while
+  the voice is degraded. `phase(hearing)` flushes the speaker at once.
+- `dispatch` runs the app's send path off the receive loop, one at a time in order, and answers `sent`
+  or `refused`. `stop` runs the app's stop. A `degraded` frame flushes the speaker and mutes the voice
+  until the next ordinary phase.
+- The `agent` frame is debounced 250 ms, sent only when its meaning changed, sent again on every
+  `ready`, and repeated every 5 s whether or not it changed.
+- A lost line is redialled after 1, 2 and 4 seconds; the third failure ends the call as lost. A `busy`
+  error while redialling is the old call not yet released, and counts as a failed attempt. Any other
+  `error` frame ends the call with the gateway's reason.
+- However the call ends, capture and playback are stopped before the last snapshot is published.
+- The chime is raised when the agent goes from busy to not busy while the person is not speaking and
+  the voice is not speaking.
+
+`SpokenDigest` writes the `agent` frame by rule. It is English and ASCII, not localised, because it is
+a tool result for an English-only model: `Working. <what it is doing>.`, `Waiting for you. <the
+question, or what it wants approved>.`, `That failed. <first sentence of why>.`, `Done. <the first
+one or two sentences of the last answer after the last prompt>.`, `The agent is idle.`, with code
+blocks, tables, headings, markdown, addresses and long paths removed. A prompt sent in the last 20
+seconds that the agent has not started on is `Working. Starting on it.`, so the model does not say
+"idle" in the moment between sending and starting. `turn` rises whenever the digest or `busy`
+changes.
+
+The demo hosts (`VoiceDemo.isDemoHost`) run the same session over `VoiceDemoStage`: a scripted
+transport that plays forty seconds of cues in a loop (ready, hearing with growing transcripts, a
+dispatch, speaking with captions, a status question, one degraded blip in the first loop, a recycle),
+a microphone whose level follows the scripted lines and a speaker whose level follows the scripted
+speech. `VoiceReachProbe` answers ready for them without asking the network.
 
 ## Beta
 
@@ -153,8 +207,10 @@ Nothing past the gateway is trusted until the model has been measured on this GP
 
 - `VoiceKit` and `voice-bridge`: `swift test`, with a fake NIM that replays scripted event sequences
   (speech, tool calls, runaway, loops, errors, slow tools) and asserts the gateway's frames.
-- Core: `VoiceCallSession` against a fake gateway, `SpokenDigest` against transcript fixtures,
-  readings and faces as pure functions.
+- Core: `VoiceCallSession` against a scripted transport, fake audio and a manual clock (every
+  behaviour above, reconnects, a refused dispatch, a degraded cycle, a debounced flood), `SpokenDigest`
+  against transcript fixtures, readings, faces and levels as pure functions, `VoiceReachProbe` against
+  a scripted fetcher, and the demo script driving a session through every face.
 - Linux: the headless harness (`scripts/dev-linuxapp.sh`) with a PulseAudio null sink as the
   microphone, a WAV played into it, and the recorded playback checked.
 - iOS and Mac: compile on the Mac; echo cancellation and interruptions are a short manual check on
