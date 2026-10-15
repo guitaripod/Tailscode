@@ -119,6 +119,40 @@ chimes and the client plays its haptic; the person asks and `agent_status` answe
 - Never treat the gateway as the authority on the agent. `dispatch` goes through the app's send path
   (`ChatViewModel.send`, or the desktop equivalent) and the result is `sent` or `refused`.
 
+### Apple audio
+
+`AppleVoiceIO` (TailscodeCore, `Voice/Apple/`, compiled only where AVFoundation exists on iOS or
+macOS) is the one implementation of both audio seams for the iPhone and the Mac. It owns a single
+`AVAudioEngine` and vends `capture` and `playback` from it, because echo cancellation only works when
+the microphone and the speaker go through the same voice processing unit. The toolkit-free half is in
+Core and tested everywhere: `VoicePCM` (PCM16 little-endian and Float32, `rms(of:)` on a decibel scale
+from -50 dBFS to full scale so speech reads 0.3 to 0.7), `VoiceChunker` (any buffer size re-cut into
+exact 3840-byte chunks, remainder kept) and `VoiceJitter`/`VoiceJitterQueue` (prebuffer 120 ms, a
+240 ms lookahead handed to the device, the oldest waiting audio dropped past 1500 ms queued or 1 s
+waited, back to prebuffering after a run dry).
+
+Wiring, in the order it happens: the microphone permission is asked through
+`AVAudioApplication.requestRecordPermission` and a denial throws `VoiceAudioError.microphoneDenied`
+before any engine or session work; on iOS the session is set to playAndRecord, voiceChat, Bluetooth
+hands-free allowed, speaker by default, and activated; voice processing is switched on before anything
+is connected or tapped; the tap's first channel is converted to 24 kHz mono Int16, chunked and
+yielded. `flush()` stops, resets and restarts the player node. A configuration change rebuilds the
+engine on a fresh instance (at most five times in ten seconds, then `onFailure`). On iOS an
+interruption that begins ends capture and calls `onInterruption`, and a route change keeps going.
+`stop()` tears the engine, tap and session down and is safe to call twice. The Mac app also needs the
+microphone usage description and, sandboxed, the audio-input entitlement.
+
+What is proven: the arithmetic above by `swift test` on Linux and on the Mac; that both platforms
+compile under Swift 6 strict concurrency (`swift build` on macOS, `xcodebuild` for the iOS device SDK).
+
+What only a device can show, and has not been shown: whether echo cancellation is good enough that
+the voice does not answer itself on the speaker (headphones remain the advice), the first-buffer
+latency and the jitter numbers against a real gateway, that the voice processing reconfiguration
+settles on both platforms and on a Mac with an unusual microphone format, route changes (headset
+plugged in or out, Bluetooth hands-free coming and going, receiver against speaker), interruptions
+(a phone call, Siri, another app taking the audio) and that the level meters look right on the face.
+No file in `Voice/Apple/` has run as audio yet.
+
 ## Words and faces (Core)
 
 `VoiceCallReading` writes every word; `VoiceCallFace` is the one picture of the call on every desk
