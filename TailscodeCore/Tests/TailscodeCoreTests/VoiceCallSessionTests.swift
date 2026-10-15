@@ -456,3 +456,118 @@ struct VoiceCallSessionStartTests {
         #expect(await session.current().end == .hungUp)
     }
 }
+
+private final class GatedStopCapture: VoiceAudioCapture, @unchecked Sendable {
+    private let lock = NSLock()
+    private var gate: CheckedContinuation<Void, Never>?
+    private var waiting = false
+    private var open = false
+    private var active = false
+    private var stopped = false
+
+    var level: Double { 0 }
+    var stopEntered: Bool { lock.withLock { waiting } }
+    var running: Bool { lock.withLock { active } }
+    var didStop: Bool { lock.withLock { stopped } }
+
+    func openGate() {
+        let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            open = true
+            defer { gate = nil }
+            return gate
+        }
+        continuation?.resume()
+    }
+
+    func start() async throws -> AsyncStream<Data> {
+        lock.withLock { active = true }
+        return AsyncStream<Data>.makeStream().stream
+    }
+
+    func stop() async {
+        lock.withLock { waiting = true }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let passThrough = lock.withLock { () -> Bool in
+                if open { return true }
+                gate = continuation
+                return false
+            }
+            if passThrough { continuation.resume() }
+        }
+        lock.withLock {
+            active = false
+            stopped = true
+        }
+    }
+}
+
+@Suite("Voice call session teardown")
+struct VoiceCallSessionTeardownTests {
+    private struct Rig {
+        let session: VoiceCallSession
+        let capture = GatedStopCapture()
+        let playback = FakePlayback()
+        let transport = FakeTransport()
+        let recorder = Recorder()
+        let watcher: Task<Void, Never>
+
+        init() {
+            session = VoiceCallSession(
+                endpoint: VoiceEndpoint(host: "box.tailnet.ts.net"), client: .linux, appVersion: "1", title: nil,
+                transport: transport, capture: capture, playback: playback, send: { _ in true }, stopTurn: {},
+                clock: ManualVoiceClock())
+            watcher = recorder.watch(session.snapshots)
+        }
+
+        func opened() async {
+            await session.start()
+            transport.emit(.ready(.init(gateway: "0.1", model: "voice")))
+            transport.emit(.phase(.listening, at: 1))
+            _ = await eventually { await session.current().face == .listening }
+        }
+
+        func assertHeldOpen() async {
+            #expect(await eventually { capture.stopEntered })
+            let held = await session.current()
+            #expect(held.end == nil)
+            #expect(held.endLine == nil)
+            #expect(held.face != .ended)
+            #expect(recorder.snapshots.allSatisfy { $0.end == nil && $0.face != .ended })
+            #expect(!recorder.isFinished)
+        }
+
+        func assertDoneOnceVisible() async {
+            #expect(await eventually { await session.current().end != nil })
+            #expect(capture.didStop)
+            #expect(!capture.running)
+            #expect(playback.stops >= 1)
+            #expect(transport.closes >= 1)
+            #expect(await eventually { recorder.isFinished })
+            #expect(recorder.snapshots.last?.face == .ended)
+        }
+    }
+
+    @Test("An error frame does not show the call as over until capture, playback and the line are stopped")
+    func errorFrame() async {
+        let rig = Rig()
+        await rig.opened()
+        rig.transport.emit(.error(code: "silent", message: "gone"))
+        await rig.assertHeldOpen()
+        rig.capture.openGate()
+        await rig.assertDoneOnceVisible()
+        #expect(await rig.session.current().end == .gateway(code: "silent", message: "gone"))
+    }
+
+    @Test("A hang up does not show the call as over until capture, playback and the line are stopped")
+    func hangUp() async {
+        let rig = Rig()
+        await rig.opened()
+        let hanging = Task { await rig.session.hangUp() }
+        await rig.assertHeldOpen()
+        await rig.session.hangUp()
+        rig.capture.openGate()
+        await hanging.value
+        await rig.assertDoneOnceVisible()
+        #expect(await rig.session.current().end == .hungUp)
+    }
+}

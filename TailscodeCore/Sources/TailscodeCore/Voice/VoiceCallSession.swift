@@ -41,6 +41,7 @@ public actor VoiceCallSession {
     private var agentBusy = false
     private var finishedChimes = 0
     private var end: VoiceCallEnd?
+    private var finishing = false
     private var started = false
     private var generation = 0
     private var attempts = 0
@@ -85,12 +86,12 @@ public actor VoiceCallSession {
     public func current() -> VoiceCallSnapshot { snapshot() }
 
     public func start() async {
-        guard !started, end == nil else { return }
+        guard !started, !finishing else { return }
         started = true
         publish()
         do {
             let chunks = try await capture.start()
-            guard end == nil else {
+            guard !finishing else {
                 await releaseAudio()
                 return
             }
@@ -102,7 +103,7 @@ public actor VoiceCallSession {
             await finish(Self.audioEnd(error))
             return
         }
-        guard end == nil else {
+        guard !finishing else {
             await releaseAudio()
             return
         }
@@ -120,7 +121,7 @@ public actor VoiceCallSession {
     }
 
     public func hangUp(as reason: VoiceCallEnd = .hungUp) async {
-        guard end == nil else { return }
+        guard !finishing else { return }
         if linkUp, let bye = try? VoiceCodec.encode(VoiceClientMessage.bye) {
             try? await transport.sendText(bye)
         }
@@ -128,13 +129,13 @@ public actor VoiceCallSession {
     }
 
     public func setMuted(_ value: Bool) {
-        guard muted != value, end == nil else { return }
+        guard muted != value, !finishing else { return }
         muted = value
         publish()
     }
 
     public func update(agent: VoiceAgentSnapshot) {
-        guard end == nil else { return }
+        guard !finishing else { return }
         latestAgent = agent
         if agentBusy != agent.busy {
             let wasBusy = agentBusy
@@ -157,7 +158,7 @@ public actor VoiceCallSession {
         generation += 1
         let current = generation
         try await transport.connect(url: endpoint.callURL, bearer: bearer)
-        guard end == nil, current == generation else {
+        guard !finishing, current == generation else {
             await transport.close()
             return
         }
@@ -186,7 +187,7 @@ public actor VoiceCallSession {
     }
 
     private func handle(_ frame: VoiceFrame, generation current: Int) async {
-        guard end == nil, current == generation else { return }
+        guard !finishing, current == generation else { return }
         switch frame {
         case .binary(let pcm):
             guard connection == .live, !voiceIsGated, phase != .hearing else { return }
@@ -285,13 +286,13 @@ public actor VoiceCallSession {
     }
 
     private func answer(id: String, accepted: Bool, generation current: Int) async {
-        guard end == nil, current == generation, linkUp else { return }
+        guard !finishing, current == generation, linkUp else { return }
         let reply: VoiceClientMessage = accepted ? .sent(id: id) : .refused(id: id, reason: Self.refusal)
         await transmit(reply)
     }
 
     private func forward(_ chunk: Data) async {
-        guard end == nil, linkUp else { return }
+        guard !finishing, linkUp else { return }
         let current = generation
         let payload = muted ? Data(count: chunk.count) : chunk
         for piece in VoiceChunks.split(payload, limit: VoiceWire.maxChunkBytes) {
@@ -305,7 +306,7 @@ public actor VoiceCallSession {
     }
 
     private func flushAgent() async {
-        guard end == nil, connection == .live, let latest = latestAgent else { return }
+        guard !finishing, connection == .live, let latest = latestAgent else { return }
         if let sent = sentAgent, sent.sameMeaning(as: latest) { return }
         await sendAgent(latest)
     }
@@ -316,7 +317,7 @@ public actor VoiceCallSession {
     }
 
     private func transmit(_ message: VoiceClientMessage) async {
-        guard end == nil, linkUp, let text = try? VoiceCodec.encode(message) else { return }
+        guard !finishing, linkUp, let text = try? VoiceCodec.encode(message) else { return }
         let current = generation
         do {
             try await transport.sendText(text)
@@ -336,12 +337,12 @@ public actor VoiceCallSession {
     }
 
     private func beat() async {
-        guard end == nil, connection == .live else { return }
+        guard !finishing, connection == .live else { return }
         await sendAgent(latestAgent ?? .idle)
     }
 
     private func lose(generation lost: Int) async {
-        guard end == nil, lost == generation, linkUp || connection == .connecting || reconnecting else { return }
+        guard !finishing, lost == generation, linkUp || connection == .connecting || reconnecting else { return }
         generation += 1
         linkUp = false
         receiveTask?.cancel()
@@ -359,7 +360,7 @@ public actor VoiceCallSession {
     }
 
     private func redial() async {
-        while end == nil, !Task.isCancelled {
+        while !finishing, !Task.isCancelled {
             guard attempts < Self.reconnectBackoff.count else {
                 await finish(.lost)
                 return
@@ -367,7 +368,7 @@ public actor VoiceCallSession {
             let delay = Self.reconnectBackoff[attempts]
             attempts += 1
             do { try await clock.sleep(for: delay) } catch { return }
-            guard end == nil else { return }
+            guard !finishing else { return }
             do {
                 try await open()
                 return
@@ -378,15 +379,16 @@ public actor VoiceCallSession {
     }
 
     private func finish(_ reason: VoiceCallEnd) async {
-        guard end == nil else { return }
-        end = reason
-        connection = .ended
+        guard !finishing else { return }
+        finishing = true
         linkUp = false
         let tasks = [receiveTask, captureTask, heartbeatTask, debounceTask, reconnectTask, dispatchTail]
         tasks.forEach { $0?.cancel() }
         await capture.stop()
         await playback.stop()
         await transport.close()
+        end = reason
+        connection = .ended
         publish()
         output.finish()
     }

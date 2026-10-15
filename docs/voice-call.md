@@ -246,6 +246,12 @@ earlier call first and waits (3 s at most, polling the health) for the release b
 a profile, for development and for the end-to-end check against a real gateway. It is read in
 `VoiceEndpoint.override(in:)` and nowhere else, and a demo host is never redirected.
 
+`VoiceChime.finished()` and `VoiceChime.attention()` are the call's two sounds as PCM16 mono 24 kHz (two soft
+notes a fifth apart, about 420 ms; one lower, softer note, about 250 ms), pure and platform-free. A client
+plays them through the call's own `VoiceAudioPlayback.play(_:)` so they follow its route and echo cancelling:
+`finished` when `finishedChimes` rises, `attention` when its own conversation says a question or an approval
+is waiting, which the snapshot does not carry, so the choice stays with the client.
+
 ## Beta
 
 Calls ship as a beta (`BetaFeature.voiceCall`, see `beta.md`). The sheet lists what is solid and what
