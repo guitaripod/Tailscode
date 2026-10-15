@@ -31,15 +31,14 @@ enum SignInDialog {
         gtk_widget_set_sensitive(entry, 0)
         gtk_box_append(ptr(content), entry)
 
-        let statusBits = UInt(bitPattern: status)
-        let linkBits = UInt(bitPattern: linkButton)
-        let entryBits = UInt(bitPattern: entry)
-        let windowBits = UInt(bitPattern: window)
+        let statusRef = WidgetRef(status)
+        let linkRef = WidgetRef(linkButton)
+        let entryRef = WidgetRef(entry)
+        let windowRef = WidgetRef(window)
 
         let setStatus: @Sendable (String) -> Void = { text in
             Gtk.onMain {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: statusBits) else { return }
-                gtk_label_set_text(op(raw), text)
+                statusRef.with { gtk_label_set_text(op($0), text) }
             }
         }
 
@@ -55,8 +54,7 @@ enum SignInDialog {
                 setStatus(
                     Localized.text("Open the link, sign in, then paste the code back here."))
                 Gtk.onMain {
-                    if let raw = UnsafeMutableRawPointer(bitPattern: linkBits) {
-                        let box: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+                    linkRef.with { box in
                         gtk_box_append(
                             ptr(box),
                             Gtk.button(Localized.text("Open sign-in link"), css: ["suggested-action"]) {
@@ -65,9 +63,7 @@ enum SignInDialog {
                         gtk_box_append(
                             ptr(box), Gtk.label(url, css: "tree-path", wrap: true))
                     }
-                    if let raw = UnsafeMutableRawPointer(bitPattern: entryBits) {
-                        gtk_widget_set_sensitive(ptr(raw), 1)
-                    }
+                    entryRef.with { gtk_widget_set_sensitive($0, 1) }
                 }
             } catch {
                 setStatus(Localized.text("Could not start a sign-in: %@", "\(error)"))
@@ -75,9 +71,9 @@ enum SignInDialog {
         }
 
         Gtk.connect(UnsafeMutableRawPointer(entry), "activate") {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
-            let entry: UnsafeMutablePointer<GtkWidget> = ptr(raw)
-            let code = Dialogs.entryText(entry)
+            var typed = ""
+            entryRef.with { typed = Dialogs.entryText($0) }
+            let code = typed
             guard !code.isEmpty else { return }
             setStatus(Localized.text("Submitting the code…"))
             Task {
@@ -86,9 +82,7 @@ enum SignInDialog {
                     if auth.loggedIn {
                         onSignedIn()
                         Gtk.onMain {
-                            if let raw = UnsafeMutableRawPointer(bitPattern: windowBits) {
-                                gtk_window_destroy(ptr(raw))
-                            }
+                            windowRef.with { gtk_window_destroy(ptr($0)) }
                         }
                     } else {
                         setStatus(
