@@ -33,6 +33,7 @@ public enum VoiceCallReport {
     private static func outcome(_ end: VoiceCallEnd) -> String {
         switch end {
         case .hungUp: return "hung up"
+        case .replaced: return "replaced by another call"
         case .lost: return "connection lost"
         case .couldNotConnect(let why): return "could not connect (\(why))"
         case .microphoneDenied: return "microphone denied"

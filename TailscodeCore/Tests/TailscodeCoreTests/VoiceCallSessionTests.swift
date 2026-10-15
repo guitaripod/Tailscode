@@ -396,3 +396,63 @@ struct VoiceCallSessionTests {
         #expect(await rig.snapshot().end == nil)
     }
 }
+
+private final class GatedCapture: VoiceAudioCapture, @unchecked Sendable {
+    private let lock = NSLock()
+    private var gate: CheckedContinuation<Void, Never>?
+    private var waiting = false
+    private var released = false
+    private var active = false
+
+    var level: Double { 0 }
+    var entered: Bool { lock.withLock { waiting } }
+    var running: Bool { lock.withLock { active } }
+
+    func release() {
+        let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            released = true
+            defer { gate = nil }
+            return gate
+        }
+        continuation?.resume()
+    }
+
+    func start() async throws -> AsyncStream<Data> {
+        lock.withLock { waiting = true }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let resumeNow = lock.withLock { () -> Bool in
+                if released { return true }
+                gate = continuation
+                return false
+            }
+            if resumeNow { continuation.resume() }
+        }
+        lock.withLock { active = true }
+        return AsyncStream<Data>.makeStream().stream
+    }
+
+    func stop() async { lock.withLock { active = false } }
+}
+
+@Suite("Voice call session start")
+struct VoiceCallSessionStartTests {
+    @Test("Hanging up while the microphone is still opening leaves nothing running once it has opened")
+    func hangUpDuringStart() async {
+        let capture = GatedCapture()
+        let playback = FakePlayback()
+        let transport = FakeTransport()
+        let session = VoiceCallSession(
+            endpoint: VoiceEndpoint(host: "box.tailnet.ts.net"), client: .linux, appVersion: "1", title: nil,
+            transport: transport, capture: capture, playback: playback, send: { _ in true }, stopTurn: {},
+            clock: ManualVoiceClock())
+        let starting = Task { await session.start() }
+        #expect(await eventually { capture.entered })
+        await session.hangUp()
+        capture.release()
+        await starting.value
+        #expect(!capture.running)
+        #expect(!playback.isStarted)
+        #expect(transport.connects == 0)
+        #expect(await session.current().end == .hungUp)
+    }
+}

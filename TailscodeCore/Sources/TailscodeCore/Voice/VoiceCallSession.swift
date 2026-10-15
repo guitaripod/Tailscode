@@ -85,11 +85,15 @@ public actor VoiceCallSession {
     public func current() -> VoiceCallSnapshot { snapshot() }
 
     public func start() async {
-        guard !started else { return }
+        guard !started, end == nil else { return }
         started = true
         publish()
         do {
             let chunks = try await capture.start()
+            guard end == nil else {
+                await releaseAudio()
+                return
+            }
             captureTask = Task { [weak self] in
                 for await chunk in chunks { await self?.forward(chunk) }
             }
@@ -98,7 +102,10 @@ public actor VoiceCallSession {
             await finish(Self.audioEnd(error))
             return
         }
-        guard end == nil else { return }
+        guard end == nil else {
+            await releaseAudio()
+            return
+        }
         do {
             try await open()
         } catch {
@@ -106,12 +113,18 @@ public actor VoiceCallSession {
         }
     }
 
-    public func hangUp() async {
+    private func releaseAudio() async {
+        captureTask?.cancel()
+        await capture.stop()
+        await playback.stop()
+    }
+
+    public func hangUp(as reason: VoiceCallEnd = .hungUp) async {
         guard end == nil else { return }
         if linkUp, let bye = try? VoiceCodec.encode(VoiceClientMessage.bye) {
             try? await transport.sendText(bye)
         }
-        await finish(.hungUp)
+        await finish(reason)
     }
 
     public func setMuted(_ value: Bool) {
@@ -393,7 +406,7 @@ public actor VoiceCallSession {
             endLine: end.map { VoiceCallReading.end($0, client: client) })
     }
 
-    private static func audioEnd(_ error: Error) -> VoiceCallEnd {
+    static func audioEnd(_ error: Error) -> VoiceCallEnd {
         switch error as? VoiceAudioError {
         case .microphoneDenied?: return .microphoneDenied
         case .unavailable(let why)?: return .audioUnavailable(why)

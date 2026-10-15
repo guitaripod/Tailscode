@@ -34,6 +34,7 @@ public struct VoiceCallDegradation: Sendable, Equatable {
 
 public enum VoiceCallEnd: Sendable, Equatable {
     case hungUp
+    case replaced
     case lost
     case couldNotConnect(String)
     case microphoneDenied

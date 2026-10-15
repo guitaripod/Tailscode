@@ -114,7 +114,7 @@ struct VoiceCallFaceTests {
     @Test("Every end of a call has a sentence of its own")
     func ends() {
         let ends: [VoiceCallEnd] = [
-            .hungUp, .lost, .couldNotConnect("refused"), .microphoneDenied, .audioUnavailable("no device"),
+            .hungUp, .replaced, .lost, .couldNotConnect("refused"), .microphoneDenied, .audioUnavailable("no device"),
             .gateway(code: "busy", message: ""), .gateway(code: "version", message: ""),
             .gateway(code: "engineDown", message: ""), .gateway(code: "silent", message: ""),
             .gateway(code: "hello", message: ""), .gateway(code: "odd", message: "Something odd."),
@@ -123,7 +123,7 @@ struct VoiceCallFaceTests {
         let lines = ends.map { VoiceCallReading.end($0, client: .ios) }
         #expect(lines.allSatisfy { !$0.isEmpty })
         #expect(Set(lines).count == lines.count)
-        #expect(lines[10].contains("Something odd."))
+        #expect(lines[11].contains("Something odd."))
     }
 }
 

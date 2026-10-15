@@ -184,6 +184,34 @@ dispatch, speaking with captions, a status question, one degraded blip in the fi
 a microphone whose level follows the scripted lines and a speaker whose level follows the scripted
 speech. `VoiceReachProbe` answers ready for them without asking the network.
 
+## The desk (Core)
+
+`VoiceCallDesk` is an actor and never main-actor, made once per process by the client and held above every
+surface, as `DelegateDesk` is for the delegate. It holds three things.
+
+- **The reach per server**, cached with `VoiceReachProbe`'s answer. `reach(for:)` reads it, `refresh(_:)`
+  asks again, `watchReach(of:)` and `unwatchReach(of:)` keep it fresh every 20 s while a surface shows the
+  call button, and `reachChanges()` is a stream of each change. The gateway's password is kept per server
+  (`remember(password:for:)`), and the probe and the call both send it.
+- **The one call.** `start(chat:title:endpoint:client:app:audio:send:stopTurn:)` ends whichever call is
+  running (the earlier surface reads `VoiceCallEnd.replaced` on its snapshots), refuses before opening
+  anything when the server is not `ready` (the reach's own line), when a password is wanted
+  (`VoiceCallStartError.wantsPassword`) or when the audio stack cannot be built, and hands a demo host the
+  scripted call with no probe, password or audio factory. `active` is the `ActiveCall`, whose `snapshots`
+  is a subscription of its own starting from the latest snapshot, so any number of surfaces can draw it and
+  a late one still reads how it ended. `activeChanges()` says when the call changes, `isActive(chat:)` and
+  `hangUp()` do what they say, and `feed(agent:chat:)` forwards the agent's account only to the call's chat.
+- **The report.** `reportLines(for:)` is `VoiceCallReport` with the cached reach and how the last call on
+  that server ended.
+
+A gateway holds one call and keeps reading `busy` for a moment after the hang up of the call this device
+made, so the desk accepts `busy` as its own when it holds, or just ended, a call on that server, ends the
+earlier call first and waits (3 s at most, polling the health) for the release before dialling.
+
+`TAILSCODE_VOICE_ENDPOINT`, a `ws://` or `http://` address, replaces the endpoint `VoiceEndpoint` finds from
+a profile, for development and for the end-to-end check against a real gateway. It is read in
+`VoiceEndpoint.override(in:)` and nowhere else, and a demo host is never redirected.
+
 ## Beta
 
 Calls ship as a beta (`BetaFeature.voiceCall`, see `beta.md`). The sheet lists what is solid and what
@@ -207,6 +235,9 @@ Nothing past the gateway is trusted until the model has been measured on this GP
 
 - `VoiceKit` and `voice-bridge`: `swift test`, with a fake NIM that replays scripted event sequences
   (speech, tool calls, runaway, loops, errors, slow tools) and asserts the gateway's frames.
+- Against the real gateway: a throwaway package imports TailscodeCore and drives a real `VoiceCallSession` over
+  `URLSessionVoiceTransport` against `voice-bridge` and `voice-probe fake-nim` on ephemeral ports (a whole call,
+  barge-in, a killed and a restarted gateway, a refused connection, the reach probe and the desk).
 - Core: `VoiceCallSession` against a scripted transport, fake audio and a manual clock (every
   behaviour above, reconnects, a refused dispatch, a degraded cycle, a debounced flood), `SpokenDigest`
   against transcript fixtures, readings, faces and levels as pure functions, `VoiceReachProbe` against

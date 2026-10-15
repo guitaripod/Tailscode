@@ -19,9 +19,26 @@ public struct VoiceEndpoint: Sendable, Hashable, Identifiable {
         self.port = port
     }
 
-    public init?(profileURL: URL) {
-        guard let host = DelegateAccess.host(of: profileURL), !host.isEmpty else { return nil }
-        self.init(host: host)
+    public static let overrideKey = "TAILSCODE_VOICE_ENDPOINT"
+
+    public init?(profileURL: URL, environment: [String: String] = ProcessInfo.processInfo.environment) {
+        let named = DelegateAccess.host(of: profileURL).flatMap { $0.isEmpty ? nil : $0 }
+        if !(named.map(VoiceDemo.isDemoHost) ?? false), let override = Self.override(in: environment) {
+            self = override
+            return
+        }
+        guard let named else { return nil }
+        self.init(host: named)
+    }
+
+    /// The gateway a developer pointed this process at with `TAILSCODE_VOICE_ENDPOINT`, a `ws://` or
+    /// `http://` address. It is read here and nowhere else, and a demo host is never redirected.
+    public static func override(in environment: [String: String]) -> VoiceEndpoint? {
+        guard let raw = environment[overrideKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+            let url = URL(string: raw), let scheme = url.scheme?.lowercased(), scheme == "ws" || scheme == "http",
+            let host = url.host, !host.isEmpty
+        else { return nil }
+        return VoiceEndpoint(host: host, port: url.port ?? VoiceWire.port)
     }
 
     public var callURL: URL { url(scheme: "ws", path: VoiceWire.callPath) }

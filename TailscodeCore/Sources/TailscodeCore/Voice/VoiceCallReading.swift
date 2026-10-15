@@ -128,6 +128,8 @@ public enum VoiceCallReading {
         switch end {
         case .hungUp:
             return Localized.text("Call ended")
+        case .replaced:
+            return Localized.text("Another call was started, so this one ended.")
         case .lost:
             return Localized.text(
                 "The connection to the voice gateway was lost and could not be restored. Check the tailnet and call again.")
