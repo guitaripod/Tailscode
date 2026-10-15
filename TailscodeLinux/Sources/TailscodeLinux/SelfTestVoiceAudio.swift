@@ -31,10 +31,10 @@ extension SelfTest {
             var sample = Int16(index % 2 == 0 ? 16000 : -16000).littleEndian
             withUnsafeBytes(of: &sample) { loud.append(contentsOf: $0) }
         }
-        try expect(PCMLevel.rms(silence) == 0, "silence reads zero")
-        try expect(abs(PCMLevel.rms(loud) - 16000.0 / 32768) < 1e-6, "a square wave reads its amplitude")
-        try expect(PCMLevel.level(loud) == 1, "the gain brings speech to the meter and clamps at one")
-        try expect(PCMLevel.rms(Data()) == 0 && PCMLevel.rms(Data([1])) == 0, "an empty or half-sample chunk reads zero")
+        try expect(VoicePCM.rms(of: silence) == 0, "silence reads zero")
+        try expect(abs(VoicePCM.linearRMS(of: loud) - 16000.0 / 32768) < 1e-6, "a square wave reads its amplitude")
+        try expect(VoicePCM.rms(of: loud) > 0.8 && VoicePCM.rms(of: loud) <= 1, "Core's decibel scale puts a loud chunk near the top of the meter")
+        try expect(VoicePCM.rms(of: Data()) == 0 && VoicePCM.rms(of: Data([1])) == 0, "an empty or half-sample chunk reads zero")
         try expect(PulseVoiceIO.chunkBytes == 3840 && PulseVoiceIO.playbackLatencyBytes == 5760, "80 ms fragments and 120 ms of buffer at 24 kHz")
 
         let meter = PulseMeter()
@@ -93,7 +93,7 @@ extension SelfTest {
         let started = Date()
         for await chunk in chunks {
             received += 1
-            heard = max(heard, PCMLevel.rms(chunk))
+            heard = max(heard, VoicePCM.linearRMS(of: chunk))
             if received >= 20 || Date().timeIntervalSince(started) > 4 { break }
         }
         player.cancel()

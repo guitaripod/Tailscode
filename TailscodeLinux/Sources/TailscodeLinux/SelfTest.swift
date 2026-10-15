@@ -19,6 +19,7 @@ public enum SelfTest {
     /// when every server's newest chat is empty.
     public static func run() async -> Never {
         startWatchdog()
+        if let only = ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_ONLY"] { runOnly(only) }
         var failures = 0
 
         let tailnet = TailnetStatusLinux.read()
@@ -516,6 +517,14 @@ public enum SelfTest {
             report("voice audio: \(checks) claims hold — devices, levels, and a stop that is safe twice")
         } catch {
             report("voice audio: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkCall()
+            report("call: \(checks) claims hold — the control, the strip, every face, and the call's whole life over fake audio")
+        } catch {
+            report("call: \(error)")
             failures += 1
         }
 

@@ -15,7 +15,7 @@ cd TailscodeLinux
 # evaluated, and SwiftPM keeps that plan until the manifest itself changes — so an engine
 # installed after the last build stayed out of the binary however many times this ran. The
 # machine's answer is stamped, and a change to it is a change to the manifest.
-ENGINES="webkit=$([ -f /usr/include/webkitgtk-6.0/webkit/webkit.h ] && echo 1 || echo 0) mpv=$([ -f /usr/include/mpv/render_gl.h ] && echo 1 || echo 0) vte=$([ -f /usr/include/vte-2.91-gtk4/vte/vte.h ] && echo 1 || echo 0)"
+ENGINES="webkit=$([ -f /usr/include/webkitgtk-6.0/webkit/webkit.h ] && echo 1 || echo 0) mpv=$([ -f /usr/include/mpv/render_gl.h ] && echo 1 || echo 0) vte=$([ -f /usr/include/vte-2.91-gtk4/vte/vte.h ] && echo 1 || echo 0) pulse=$([ -f /usr/include/pulse/simple.h ] && echo 1 || echo 0)"
 STAMP=.build/engines.stamp
 if [ "$(cat "$STAMP" 2>/dev/null)" != "$ENGINES" ]; then
     mkdir -p .build
@@ -86,6 +86,9 @@ if ! ldd "$BIN_DIR/tailscode" | grep -q libwebkitgtk-6.0; then
 fi
 if ! ldd "$BIN_DIR/tailscode" | grep -q libmpv; then
     echo "built WITHOUT libmpv: no in-app video slot (pacman -S mpv, then rerun)" >&2
+fi
+if ! ldd "$BIN_DIR/tailscode" | grep -q libpulse-simple; then
+    echo "built WITHOUT libpulse: the voice call has no audio (pacman -S libpulse, then rerun)" >&2
 fi
 
 # A restart has to look like a launch. The desktop's own portal only grants a key from the whole

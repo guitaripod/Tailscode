@@ -16,6 +16,7 @@ pkgbase = tailscode-git
 	depends = vte4
 	depends = mpv
 	depends = webkitgtk-6.0
+	depends = libpulse
 	depends = curl
 	optdepends = tailscale: reach the machine your agent runs on
 	provides = tailscode

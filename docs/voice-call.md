@@ -153,6 +153,24 @@ plugged in or out, Bluetooth hands-free coming and going, receiver against speak
 (a phone call, Siri, another app taking the audio) and that the level meters look right on the face.
 No file in `Voice/Apple/` has run as audio yet.
 
+### Linux
+
+`PulseVoiceIO` (`TailscodeLinux/PulseVoiceIO.swift`, behind `HAS_PULSE`, libpulse-simple) is both seams: a
+microphone read in 80 ms fragments on its own thread and a speaker held to about 120 ms whose `flush()` drops
+what is queued. It prefers an `echo-cancel*` source and sink when `pactl` lists one and says which device it
+opened in the app log; `TAILSCODE_VOICE_SOURCE` and `TAILSCODE_VOICE_SINK` name them for a harness. Levels are
+`VoicePCM.rms` through `VoiceCallLevels`. A build without libpulse answers `VoiceAudioError.unavailable`.
+
+The call is a state of a conversation, not a window. `VoiceCallRunner` holds the one `VoiceCallDesk` and a
+main-loop mirror of what it says; each `ChatPane` owns a `PaneCall`: the entry chip in the controls row beside
+attach (hidden for `.noGateway`/`.unknown`, dimmed with the reach's own line for loading, busy, engineDown and
+tooOld, a password dialog for `.wantsPassword`) and a `CallStripView` docked directly above the composer while the
+call is live. The dictated words go through the pane's own queue-or-send path with its model and effort, every
+conversation state the pane receives is fed to the call as `SpokenDigest`, and both chimes play through the call's
+speaker. The call ends when the pane closes, the pane holds another chat, or the window closes. The face is
+`CallFaceMark`: arithmetic from absolute time off the widget's frame clock, no clock at all for hearing,
+degraded and ended, and the strip gives up its chips' words, then the clock, then the beta mark as the pane narrows.
+
 ## Words and faces (Core)
 
 `VoiceCallReading` writes every word; `VoiceCallFace` is the one picture of the call on every desk

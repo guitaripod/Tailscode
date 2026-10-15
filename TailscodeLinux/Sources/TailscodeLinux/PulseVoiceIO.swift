@@ -12,10 +12,10 @@ import TailscodeCore
 /// A machine whose build has no libpulse still builds: the same types answer that audio is
 /// unavailable, and Core turns that into the call's own words.
 final class PulseVoiceIO: @unchecked Sendable {
-    static let rate = 24_000
-    static let bytesPerSecond = rate * 2
-    static let chunkBytes = bytesPerSecond * 80 / 1000
-    static let playbackLatencyBytes = bytesPerSecond * 120 / 1000
+    static let rate = VoicePCM.sampleRate
+    static let bytesPerSecond = rate * VoicePCM.bytesPerSample
+    static let chunkBytes = VoicePCM.chunkBytes
+    static let playbackLatencyBytes = VoicePCM.bytes(forMilliseconds: 120)
 
     static var isAvailable: Bool {
         #if HAS_PULSE
@@ -260,7 +260,7 @@ final class PulseCapture: VoiceAudioCapture, @unchecked Sendable {
             }
             guard owner?.isCurrent(epoch) == true else { return }
             let chunk = Data(buffer)
-            owner?.meter.hear(PCMLevel.level(chunk), for: 0.2)
+            owner?.meter.hear(VoicePCM.rms(of: chunk), for: 0.2)
             continuation.yield(chunk)
         }
     }
@@ -311,7 +311,7 @@ final class PulsePlayback: VoiceAudioPlayback, @unchecked Sendable {
             return (stream, generation)
         }
         guard let (current, mine) = held else { return }
-        meter.hear(PCMLevel.level(pcm), for: Double(pcm.count) / Double(PulseVoiceIO.bytesPerSecond))
+        meter.hear(VoicePCM.rms(of: pcm), for: Double(pcm.count) / Double(PulseVoiceIO.bytesPerSecond))
         queue.async { [weak self] in
             guard let self, self.lock.withLock({ self.generation == mine && !self.stopping }) else { return }
             if let failure = current.write(pcm) {

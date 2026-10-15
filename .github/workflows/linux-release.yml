@@ -30,7 +30,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             libgtk-4-dev libadwaita-1-dev libgdk-pixbuf-2.0-dev libepoxy-dev \
-            libvte-2.91-gtk4-dev libmpv-dev libwebkitgtk-6.0-dev \
+            libvte-2.91-gtk4-dev libmpv-dev libwebkitgtk-6.0-dev libpulse-dev \
             desktop-file-utils appstream git curl xvfb xauth
 
       # Every optional pane is decided by probing for its headers at manifest time, so a missing
@@ -41,7 +41,8 @@ jobs:
           for header in \
             /usr/include/vte-2.91-gtk4/vte/vte.h \
             /usr/include/mpv/render_gl.h \
-            /usr/include/webkitgtk-6.0/webkit/webkit.h
+            /usr/include/webkitgtk-6.0/webkit/webkit.h \
+            /usr/include/pulse/simple.h
           do
             test -f "$header" || { echo "missing $header — the build would drop a pane"; exit 1; }
           done

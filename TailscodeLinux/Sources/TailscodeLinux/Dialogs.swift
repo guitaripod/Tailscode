@@ -95,15 +95,15 @@ enum Dialogs {
     /// One line of text in, two buttons out. Serves rename and every prompt like it.
     static func prompt(
         title: String, body: String?, placeholder: String, initial: String = "",
-        confirmLabel: String, parent: UnsafeMutablePointer<GtkWidget>?,
+        confirmLabel: String, secret: Bool = false, parent: UnsafeMutablePointer<GtkWidget>?,
         onConfirm: @escaping @Sendable (String) -> Void
     ) {
         let (window, content) = Self.window(title: title, parent: parent)
         if let body {
             gtk_box_append(ptr(content), Gtk.label(body, css: "row-detail", wrap: true))
         }
-        let entry = gtk_entry_new()!
-        gtk_entry_set_placeholder_text(ptr(entry), placeholder)
+        let entry = secret ? gtk_password_entry_new()! : gtk_entry_new()!
+        if !secret { gtk_entry_set_placeholder_text(ptr(entry), placeholder) }
         gtk_editable_set_text(op(entry), initial)
         gtk_box_append(ptr(content), entry)
 

@@ -45,7 +45,7 @@ Exhaustiveness forces disclosure, not implementation — `.gap("later")` compile
 
 ## Requirements
 
-- **iPhone and iPad** iOS 18+ (Liquid Glass and prompt enhance need iOS 26). **macOS** 26+. **Linux** GTK 4.12+ and libadwaita 1.4+ (Ubuntu 24.04, Debian 13, Fedora 40, Arch; not Ubuntu 22.04 or Debian 12); VTE, mpv and WebKitGTK add the terminal, video and browser panes.
+- **iPhone and iPad** iOS 18+ (Liquid Glass and prompt enhance need iOS 26). **macOS** 26+. **Linux** GTK 4.12+ and libadwaita 1.4+ (Ubuntu 24.04, Debian 13, Fedora 40, Arch; not Ubuntu 22.04 or Debian 12); VTE, mpv, WebKitGTK and libpulse add the terminal, video and browser panes and the voice call's audio.
 - **Tailscale** on this device and on the machine the agent runs on.
 - A machine on that tailnet running one of:
   - `opencode serve` (port 4096), opencode 1.18 or 2 — the app asks the server which API it speaks. One command sets it up as a service, gives it the password opencode 2 insists on, and keeps its model list current:
@@ -87,9 +87,9 @@ First run scans the tailnet for machines already answering — pick one and ther
 **Linux** — Swift 6.2, then:
 
 ```bash
-sudo pacman -S --needed gtk4 libadwaita glib2 gdk-pixbuf2 libepoxy vte4 mpv webkitgtk-6.0 curl   # Arch
+sudo pacman -S --needed gtk4 libadwaita glib2 gdk-pixbuf2 libepoxy vte4 mpv webkitgtk-6.0 libpulse curl   # Arch
 sudo apt install libgtk-4-dev libadwaita-1-dev libgdk-pixbuf-2.0-dev libepoxy-dev \
-    libvte-2.91-gtk4-dev libmpv-dev libwebkitgtk-6.0-dev                                       # Debian, Ubuntu
+    libvte-2.91-gtk4-dev libmpv-dev libwebkitgtk-6.0-dev libpulse-dev                          # Debian, Ubuntu
 
 TAILSCODE_KIT_REMOTE=1 scripts/package-linux.sh build      # static-stdlib binary
 TAILSCODE_KIT_REMOTE=1 scripts/package-linux.sh tarball    # release artifact
@@ -109,7 +109,7 @@ TailscodeCore/       Shared, toolkit-free: parity registry, themes + typography,
 Tailscode/           iPhone and iPad UIKit client — connection, chat, home board, usage,
                      settings, Live Activity + widgets, push
 TailscodeMac/        AppKit client — tiling, Liquid Glass, Metal presence orb, SelfTest
-TailscodeLinux/      GTK4 client — a SwiftPM package (C shims for adw, vte, mpv, WebKit)
+TailscodeLinux/      GTK4 client — a SwiftPM package (C shims for adw, vte, mpv, WebKit, PulseAudio)
 TailscodeWidget/     ActivityKit widget, quota widgets, controls
 TailscodeMacWidget/  Mac quota widget
 TailscodeNSE/        Notification service extension (push-driven widget reloads)
