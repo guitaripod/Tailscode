@@ -1,0 +1,62 @@
+# Beta
+
+A beta is an invitation with its footing stated. It is never a warning and never a place to hide
+things that are unfinished. One catalog in TailscodeCore describes every feature that is in beta, one
+mark and one card are drawn from it on every client, and a feature leaves beta by its case being
+deleted, so every client loses the mark together.
+
+## The catalog
+
+`BetaFeature` is an enum (`delegate`, `voiceCall`). Each case answers `BetaCard`:
+
+- `name`, `symbol` (an SF Symbol for the Apple clients) and `glyph` (one column for the text clients)
+- `title`: "Delegate is in beta"
+- `lead`: one sentence on what it is for
+- `paragraphs`: why it is in beta, the ones Delegate already had
+- `works`: what is solid, as short lines
+- `rough`: what is not, as short lines, and honest
+- `changes`: `BetaChange(since: SoftwareVersion, line: String)`, newest first, authored only where there
+  is a real change to report. A feature with none shows no such section; nothing is invented.
+- `reportName`: where its log lives, in words a person can act on
+
+Nothing in a client spells a beta word. `BetaWords` holds the shared ones (`BETA`, "Got it",
+"Copy report", "Report copied", "Since you last looked").
+
+## The mark
+
+`BetaBadge(feature)` is the capsule beside a feature's title on every client. Its tap or hover opens the
+card. Where a line already says something, `BetaWords.marked(line)` puts the mark in front of it.
+
+The mark has a freshness, `BetaFreshness`, read from `BetaSeenStore` (one key per feature holding the
+version it was last opened at):
+
+- `unseen`: the person has never opened it
+- `changed`: opened at an older version, and the card has a change newer than that
+- `settled`: opened at this version, or nothing newer to say
+
+A fresh mark (`unseen`, `changed`) is announced once: a light crosses the capsule, and a `changed` card
+leads with "Since you last looked". A settled mark holds perfectly still, the way a settled state does
+everywhere else. The sweep is arithmetic in `BetaSheen` (position from absolute time, a single pass of
+about 1.4 s, nothing at all with reduced motion), drawn from the display's own clock. Opening the card
+marks it seen. Nothing nags: no badge dot, no modal, no repeat.
+
+## The card
+
+A sheet on the phone sized to its words, a popover that stays while the pointer is on it on the
+desktops. In order: the title with the mark, the lead, "Since you last looked" when `changed`, the
+paragraphs, two short lists ("Solid" and "Still rough"), and two actions: Copy report and Got it.
+
+Copy report puts `BetaReport.compose` on the pasteboard: the feature, the app version and system, and
+the lines the feature's own surface supplies (a delegate run's daemon address and version, a call's
+gateway address and version). It leaves the device only when the person pastes it somewhere. Nothing is
+sent to Midgar or anyone else.
+
+## Accessibility
+
+`BetaCard.spoken` is what a screen reader hears where a sighted person sees the capsule. The two lists
+are read as lists. Reduced motion drops the sweep and keeps every word.
+
+## Where it is used
+
+Delegate's board title, the server row's line, and the voice call's surface and its entry point. The
+parity capability is `betaMark`; every client answers it with the shared badge's anchor.
