@@ -4,10 +4,10 @@ import TailscodeCore
 /// The mark Delegate wears while it is new, on the Mac: a capsule beside the board's title. Resting
 /// the pointer on it is enough to read why — the popover stays while the pointer is on it and
 /// leaves when the pointer does — and a click does the same for a trackpad or a screen reader.
-/// Every word is `DelegateBeta`'s.
+/// Every word is the catalog's.
 @MainActor
 final class DelegateBetaBadge: NSView, NSPopoverDelegate {
-    private let label = NSTextField(labelWithString: DelegateBeta.badge)
+    private let label = NSTextField(labelWithString: BetaWords.badge)
     private var popover: NSPopover?
     private var closing: DispatchWorkItem?
 
@@ -30,7 +30,7 @@ final class DelegateBetaBadge: NSView, NSPopoverDelegate {
         setContentCompressionResistancePriority(.required, for: .horizontal)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(DelegateBeta.spoken)
+        setAccessibilityLabel(BetaFeature.delegate.card.spoken)
         toolTip = nil
         addTrackingArea(
             NSTrackingArea(
@@ -91,7 +91,7 @@ final class DelegateBetaBadge: NSView, NSPopoverDelegate {
         layer?.borderColor = tint.withAlphaComponent(0.45).cgColor
         label.textColor = tint
         label.attributedStringValue = NSAttributedString(
-            string: DelegateBeta.badge, attributes: [.font: Self.font, .kern: 1.1, .foregroundColor: tint])
+            string: BetaWords.badge, attributes: [.font: Self.font, .kern: 1.1, .foregroundColor: tint])
     }
 
     private func show() {
@@ -141,11 +141,11 @@ final class DelegateBetaPanel: NSViewController {
             top: MacTheme.Spacing.l, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.l,
             right: MacTheme.Spacing.l)
         column.translatesAutoresizingMaskIntoConstraints = false
-        let title = NSTextField(wrappingLabelWithString: DelegateBeta.title)
+        let title = NSTextField(wrappingLabelWithString: BetaFeature.delegate.card.title)
         title.font = MacTheme.Ramp.font(.panelTitle)
         title.textColor = MacTheme.Color.label
         column.addArrangedSubview(title)
-        for paragraph in DelegateBeta.paragraphs {
+        for paragraph in BetaFeature.delegate.card.paragraphs {
             let body = NSTextField(wrappingLabelWithString: paragraph)
             body.font = MacTheme.Ramp.font(.cardBody)
             body.textColor = MacTheme.Color.secondaryLabel

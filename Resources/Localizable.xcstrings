@@ -280392,6 +280392,1852 @@
           }
         }
       }
+    },
+    "A call lets you speak a task to the agent already in this chat. A voice model on your own server's GPU listens and speaks; the agent you chose does all of the work, exactly as if you had typed it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A call lets you speak a task to the agent already in this chat. A voice model on your own server's GPU listens and speaks; the agent you chose does all of the work, exactly as if you had typed it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit einem Anruf sprichst du eine Aufgabe an den Agenten, der schon in diesem Chat ist. Ein Sprachmodell auf der GPU deines eigenen Servers hört zu und spricht; die gesamte Arbeit erledigt der Agent, den du gewählt hast, genau so, als hättest du sie getippt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una llamada te permite decirle una tarea en voz alta al agente que ya está en este chat. Un modelo de voz en la GPU de tu propio servidor escucha y habla; el agente que elegiste hace todo el trabajo, exactamente como si lo hubieras escrito."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un appel vous permet de dicter une tâche à l’agent déjà présent dans ce chat. Un modèle vocal sur le GPU de votre propre serveur écoute et parle ; l’agent que vous avez choisi fait tout le travail, exactement comme si vous l’aviez tapée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una chiamata ti permette di dire a voce un compito all’agente già presente in questa chat. Un modello vocale sulla GPU del tuo server ascolta e parla; l’agente che hai scelto fa tutto il lavoro, esattamente come se lo avessi scritto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話では、このチャットにすでにいるエージェントにタスクを声で伝えられます。あなた自身のサーバーの GPU 上の音声モデルが聞いて話し、作業はすべてあなたが選んだエージェントが行います。文字で入力した場合とまったく同じです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "통화를 하면 이 채팅에 이미 있는 에이전트에게 작업을 말로 전달할 수 있습니다. 내 서버의 GPU에서 실행되는 음성 모델이 듣고 말하며, 모든 작업은 직접 입력했을 때와 똑같이 내가 고른 에이전트가 수행합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozmowa pozwala powiedzieć zadanie na głos agentowi, który już jest w tym czacie. Model głosowy na GPU twojego własnego serwera słucha i mówi; całą pracę wykonuje wybrany przez ciebie agent, dokładnie tak, jakbyś wpisał polecenie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma chamada permite dizer uma tarefa em voz alta ao agente que já está neste chat. Um modelo de voz na GPU do seu próprio servidor escuta e fala; o agente que você escolheu faz todo o trabalho, exatamente como se você tivesse digitado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通话让你可以对这个聊天里已有的智能体直接说出任务。你自己服务器 GPU 上的语音模型负责听和说；所有工作都由你选择的智能体完成，和你亲手输入完全一样。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話讓你可以對這個聊天裡已有的代理直接說出任務。你自己伺服器 GPU 上的語音模型負責聽和說；所有工作都由你選擇的代理完成，和你親手輸入完全一樣。"
+          }
+        }
+      }
+    },
+    "A long call is reset about every minute and a half; the agent keeps its memory, the voice does not": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A long call is reset about every minute and a half; the agent keeps its memory, the voice does not"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein langer Anruf wird etwa alle anderthalb Minuten zurückgesetzt; der Agent behält sein Gedächtnis, die Stimme nicht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una llamada larga se reinicia cada minuto y medio aproximadamente; el agente conserva su memoria, la voz no"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un long appel est réinitialisé environ toutes les minutes et demie ; l’agent garde sa mémoire, la voix non"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una chiamata lunga viene azzerata circa ogni minuto e mezzo; l’agente conserva la memoria, la voce no"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "長い通話は約 1 分半ごとにリセットされます。エージェントは記憶を保ちますが、音声は保ちません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "긴 통화는 약 1분 30초마다 초기화됩니다. 에이전트는 기억을 유지하지만 음성은 그렇지 않습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Długa rozmowa jest resetowana mniej więcej co półtorej minuty; agent zachowuje pamięć, głos nie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma chamada longa é reiniciada a cada minuto e meio, aproximadamente; o agente mantém a memória, a voz não"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "较长的通话大约每一分半钟会重置一次；智能体会保留记忆，语音则不会"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "較長的通話大約每一分半鐘會重置一次；代理會保留記憶，語音則不會"
+          }
+        }
+      }
+    },
+    "A patch lands unstaged in your working tree; nothing is committed for you": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A patch lands unstaged in your working tree; nothing is committed for you"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Patch landet nicht gestaged in deinem Arbeitsverzeichnis; nichts wird für dich committet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un parche aterriza sin preparar en tu árbol de trabajo; no se hace commit de nada por ti"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un correctif atterrit non indexé dans votre arbre de travail ; rien n’est commité à votre place"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una patch atterra senza essere in stage nel tuo albero di lavoro; nulla viene committato al posto tuo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パッチはステージされていない状態で作業ツリーに着地します。あなたに代わってコミットされるものはありません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "패치는 스테이징되지 않은 상태로 작업 트리에 적용되며, 대신 커밋되는 것은 없습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Łatka trafia niezaindeksowana do twojego drzewa roboczego; nic nie jest za ciebie zatwierdzane"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um patch pousa sem staging na sua árvore de trabalho; nada é commitado por você"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "补丁会以未暂存的状态落入你的工作树；不会替你提交任何内容"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修補程式會以未暫存的狀態落入你的工作樹；不會替你提交任何內容"
+          }
+        }
+      }
+    },
+    "Ask what the agent is doing and hear a short answer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask what the agent is doing and hear a short answer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frag, was der Agent gerade tut, und hör eine kurze Antwort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pregunta qué está haciendo el agente y escucha una respuesta breve"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demandez ce que fait l’agent et écoutez une courte réponse"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiedi che cosa sta facendo l’agente e ascolta una risposta breve"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントが何をしているか尋ねると、短い答えが音声で返ってきます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 무엇을 하고 있는지 물어보면 짧은 답을 들을 수 있습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapytaj, co robi agent, i usłyszysz krótką odpowiedź"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pergunte o que o agente está fazendo e ouça uma resposta curta"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "询问智能体正在做什么，就能听到一个简短的回答"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "詢問代理正在做什麼，就能聽到一個簡短的回答"
+          }
+        }
+      }
+    },
+    "Beta. %@ is new; open this to read what that means.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beta. %@ is new; open this to read what that means."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beta. %@ ist neu; öffne dies, um zu lesen, was das bedeutet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beta. %@ es nuevo; abre esto para leer qué significa."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bêta. %@ est nouveau ; ouvrez ceci pour lire ce que cela signifie."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beta. %@ è nuovo; apri questo per leggere cosa significa."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ベータ。%@ は新機能です。これを開くと、その意味を読めます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "베타. %@은(는) 새로운 기능입니다. 무엇을 뜻하는지 읽으려면 이것을 여세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beta. %@ to nowość; otwórz, aby dowiedzieć się, co to oznacza."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beta. %@ é novo; abra isto para ler o que isso significa."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试版。%@ 是新功能；打开这里可以了解这意味着什么。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測試版。%@ 是新功能；打開這裡可以瞭解這代表什麼。"
+          }
+        }
+      }
+    },
+    "Call": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Call"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anruf"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llamada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appel"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiamata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "통화"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozmowa"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chamada"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通话"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話"
+          }
+        }
+      }
+    },
+    "Calls are in beta": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calls are in beta"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe sind in der Beta-Phase"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas están en beta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels sont en bêta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate sono in beta"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話はベータ版です"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "통화는 베타 버전입니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozmowy są w fazie beta"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas estão em beta"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通话处于测试版"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話處於測試版"
+          }
+        }
+      }
+    },
+    "Calls are new and shaped by use. The voice model is small and young, so it sometimes mishears, which is why what it heard is shown on screen as it goes to the agent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calls are new and shaped by use. The voice model is small and young, so it sometimes mishears, which is why what it heard is shown on screen as it goes to the agent."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe sind neu und werden durch den Gebrauch geformt. Das Sprachmodell ist klein und jung und versteht manchmal etwas falsch, weshalb auf dem Bildschirm steht, was es gehört hat, während es an den Agenten geht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas son nuevas y se moldean con el uso. El modelo de voz es pequeño y joven, así que a veces oye mal; por eso lo que oyó se muestra en pantalla mientras se envía al agente."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels sont nouveaux et se façonnent à l’usage. Le modèle vocal est petit et jeune, il comprend parfois de travers ; c’est pourquoi ce qu’il a entendu s’affiche à l’écran pendant qu’il part vers l’agent."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate sono nuove e si formano con l’uso. Il modello vocale è piccolo e giovane, quindi a volte sente male; per questo ciò che ha sentito compare sullo schermo mentre va all’agente."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話は新しい機能で、使われながら形づくられていきます。音声モデルは小さく若いため、聞き間違えることがあります。そのため、聞き取った内容はエージェントに送られる際に画面に表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "통화는 새로운 기능이며 사용하면서 다듬어지고 있습니다. 음성 모델은 작고 아직 어려서 가끔 잘못 알아듣기 때문에, 들은 내용이 에이전트에게 전달되는 동안 화면에 표시됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozmowy są nowe i kształtują się w miarę używania. Model głosowy jest mały i młody, więc czasem źle słyszy, dlatego to, co usłyszał, pojawia się na ekranie, gdy trafia do agenta."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas são novas e moldadas pelo uso. O modelo de voz é pequeno e jovem, então às vezes ouve errado; por isso o que ele ouviu aparece na tela enquanto vai para o agente."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通话是新功能，会在使用中不断打磨。语音模型体积小、也还很年轻，有时会听错，所以它听到的内容会在发送给智能体时显示在屏幕上。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話是新功能，會在使用中不斷打磨。語音模型體積小、也還很年輕，有時會聽錯，所以它聽到的內容會在傳送給代理時顯示在螢幕上。"
+          }
+        }
+      }
+    },
+    "Copy report": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy report"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bericht kopieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar informe"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier le rapport"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copia rapporto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "レポートをコピー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보고서 복사"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skopiuj raport"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar relatório"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制报告"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製報告"
+          }
+        }
+      }
+    },
+    "English only": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English only"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nur Englisch"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo en inglés"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anglais uniquement"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo inglese"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "英語のみ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "영어만 지원"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tylko angielski"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Somente inglês"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅支持英语"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅支援英語"
+          }
+        }
+      }
+    },
+    "Every attempt is verified before its patch lands": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every attempt is verified before its patch lands"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeder Versuch wird verifiziert, bevor sein Patch landet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada intento se verifica antes de que su parche aterrice"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque tentative est vérifiée avant que son correctif n’atterrisse"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ogni tentativo viene verificato prima che la sua patch atterri"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "どの試行も、パッチが着地する前に検証されます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 시도는 패치가 적용되기 전에 검증됩니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Każda próba jest weryfikowana, zanim jej łatka trafi do drzewa"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada tentativa é verificada antes que seu patch pouse"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每次尝试都会在补丁落地前经过验证"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每次嘗試都會在修補程式落地前經過驗證"
+          }
+        }
+      }
+    },
+    "Hand bounded tasks to your own cheaper models and read the verified result.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hand bounded tasks to your own cheaper models and read the verified result."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gib begrenzte Aufgaben an deine eigenen günstigeren Modelle ab und lies das verifizierte Ergebnis."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrega tareas acotadas a tus propios modelos más baratos y lee el resultado verificado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confiez des tâches bornées à vos propres modèles moins chers et lisez le résultat vérifié."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affida compiti circoscritti ai tuoi modelli più economici e leggi il risultato verificato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "範囲を絞ったタスクを、自分のより安価なモデルに任せて、検証済みの結果を読めます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "범위가 정해진 작업을 내 저렴한 모델에 맡기고 검증된 결과를 확인하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przekaż ograniczone zadania własnym, tańszym modelom i przeczytaj zweryfikowany wynik."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entregue tarefas bem delimitadas aos seus próprios modelos mais baratos e leia o resultado verificado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把范围明确的任务交给你自己更便宜的模型，然后查看经过验证的结果。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把範圍明確的任務交給你自己更便宜的模型，然後查看經過驗證的結果。"
+          }
+        }
+      }
+    },
+    "It cannot speak up by itself: a chime says the agent finished, then you ask": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It cannot speak up by itself: a chime says the agent finished, then you ask"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es kann sich nicht von selbst melden: Ein Signalton zeigt an, dass der Agent fertig ist, dann fragst du nach"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No puede hablar por sí mismo: un tono avisa de que el agente terminó y entonces tú preguntas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il ne peut pas prendre la parole de lui-même : un carillon signale que l’agent a terminé, puis vous demandez"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non può farsi sentire da solo: un segnale acustico avvisa che l’agente ha finito, poi chiedi tu"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音声側から自分で話しかけることはできません。エージェントが終わるとチャイムが鳴るので、そのあとで尋ねてください"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스스로 먼저 말을 걸 수는 없습니다. 에이전트가 끝나면 알림음이 울리고, 그다음에 직접 물어보세요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie odezwie się sam z siebie: dzwonek informuje, że agent skończył, a wtedy ty pytasz"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele não fala por conta própria: um sinal sonoro avisa que o agente terminou, e então você pergunta"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它不会主动开口：智能体完成时会响起提示音，然后由你来询问"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它不會主動開口：代理完成時會響起提示音，然後由你來詢問"
+          }
+        }
+      }
+    },
+    "Nothing leaves your tailnet: the audio runs from this device to your own machine and nowhere else.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing leaves your tailnet: the audio runs from this device to your own machine and nowhere else."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nichts verlässt dein Tailnet: Das Audio läuft von diesem Gerät zu deinem eigenen Rechner und nirgendwohin sonst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada sale de tu tailnet: el audio va de este dispositivo a tu propia máquina y a ningún otro sitio."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien ne quitte votre tailnet : l’audio va de cet appareil à votre propre machine et nulle part ailleurs."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nulla esce dalla tua tailnet: l’audio va da questo dispositivo alla tua macchina e da nessun’altra parte."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "何もあなたの tailnet の外には出ません。音声はこのデバイスからあなた自身のマシンへ送られるだけで、ほかのどこにも送られません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "어떤 것도 내 tailnet 밖으로 나가지 않습니다. 오디오는 이 기기에서 내 컴퓨터로만 전달되고 다른 곳으로는 가지 않습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nic nie opuszcza twojego tailnetu: dźwięk idzie z tego urządzenia na twój własny komputer i nigdzie indziej."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada sai da sua tailnet: o áudio vai deste dispositivo para a sua própria máquina e para nenhum outro lugar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有任何内容会离开你的 tailnet：音频只会从这台设备传到你自己的机器，不会去别的地方。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有任何內容會離開你的 tailnet：音訊只會從這台裝置傳到你自己的機器，不會去別的地方。"
+          }
+        }
+      }
+    },
+    "Report copied": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Report copied"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bericht kopiert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Informe copiado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rapport copié"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rapporto copiato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "レポートをコピーしました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보고서를 복사했습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Raport skopiowany"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relatório copiado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "报告已复制"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "報告已複製"
+          }
+        }
+      }
+    },
+    "Since you last looked": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Since you last looked"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seit deinem letzten Blick"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desde la última vez que miraste"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depuis votre dernière visite"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dall’ultima volta che hai guardato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前回見てから"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "마지막으로 확인한 이후"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Od ostatniego spojrzenia"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desde a última vez que você olhou"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自你上次查看以来"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自你上次查看以來"
+          }
+        }
+      }
+    },
+    "Solid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solid"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solide"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sólido"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solide"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solido"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安定している点"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "안정적인 부분"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Działa dobrze"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sólido"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稳定的部分"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "穩定的部分"
+          }
+        }
+      }
+    },
+    "Speak a task and it is sent to the agent as an ordinary message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speak a task and it is sent to the agent as an ordinary message"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprich eine Aufgabe, und sie geht als normale Nachricht an den Agenten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Di una tarea en voz alta y se envía al agente como un mensaje normal"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dictez une tâche et elle part vers l’agent comme un message ordinaire"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dì un compito a voce e viene inviato all’agente come un normale messaggio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タスクを声で伝えると、通常のメッセージとしてエージェントに送られます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "작업을 말하면 일반 메시지로 에이전트에게 전달됩니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Powiedz zadanie, a trafi ono do agenta jako zwykła wiadomość"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diga uma tarefa e ela é enviada ao agente como uma mensagem comum"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "说出任务，它就会作为普通消息发送给智能体"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "說出任務，它就會作為一般訊息傳送給代理"
+          }
+        }
+      }
+    },
+    "Still rough": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still rough"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noch holprig"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún por pulir"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encore perfectible"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ancora da rifinire"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだ粗い点"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 거친 부분"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wciąż do poprawy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda precisa de ajustes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仍有不足"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仍有不足"
+          }
+        }
+      }
+    },
+    "Talk over the voice at any point and it stops to listen": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talk over the voice at any point and it stops to listen"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprich jederzeit dazwischen, und die Stimme hört auf und hört zu"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habla por encima de la voz en cualquier momento y se detiene para escuchar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parlez par-dessus la voix à tout moment et elle s’arrête pour écouter"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parla sopra la voce in qualsiasi momento e si ferma per ascoltare"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "いつでも声にかぶせて話すと、音声は止まって聞き取ります"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "언제든 음성 위에 말하면 멈추고 듣습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przerwij głos w dowolnym momencie, a przestanie mówić i zacznie słuchać"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fale por cima da voz a qualquer momento e ela para para ouvir"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "随时都可以打断语音，它会停下来听你说"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隨時都可以打斷語音，它會停下來聽你說"
+          }
+        }
+      }
+    },
+    "Talk to this chat out loud and hear what the agent is doing while it keeps working.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talk to this chat out loud and hear what the agent is doing while it keeps working."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprich laut mit diesem Chat und hör, was der Agent gerade tut, während er weiterarbeitet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habla en voz alta con este chat y escucha lo que hace el agente mientras sigue trabajando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parlez à ce chat à voix haute et écoutez ce que fait l’agent pendant qu’il continue de travailler."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parla a voce con questa chat e ascolta che cosa sta facendo l’agente mentre continua a lavorare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このチャットに声で話しかけ、エージェントが作業を続けている間の様子を音声で聞けます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 채팅에 소리 내어 말하고, 에이전트가 계속 작업하는 동안 무엇을 하는지 들어보세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozmawiaj z tym czatem na głos i słuchaj, co robi agent, gdy dalej pracuje."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fale em voz alta com este chat e ouça o que o agente está fazendo enquanto ele continua trabalhando."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用语音和这个聊天对话，并在智能体继续工作的同时听到它在做什么。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用語音和這個聊天對話，並在代理繼續工作的同時聽到它在做什麼。"
+          }
+        }
+      }
+    },
+    "the dispatcher's own log on that machine": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the dispatcher's own log on that machine"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "das eigene Protokoll des Dispatchers auf diesem Rechner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "el registro del propio dispatcher en esa máquina"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "le journal du dispatcher lui-même sur cette machine"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "il registro del dispatcher stesso su quella macchina"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのマシン上のディスパッチャー自身のログ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "해당 컴퓨터에 있는 디스패처 자체의 로그"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "własny dziennik dispatchera na tym komputerze"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "o próprio log do dispatcher naquela máquina"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该机器上调度器自身的日志"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "該機器上調度器自身的記錄檔"
+          }
+        }
+      }
+    },
+    "The packet, the ladder and the tier a class starts at keep moving between releases": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The packet, the ladder and the tier a class starts at keep moving between releases"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Paket, die Leiter und die Stufe, bei der eine Klasse beginnt, ändern sich zwischen Versionen weiter"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El paquete, la escalera y el nivel en el que empieza una clase siguen cambiando entre versiones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le paquet, l’échelle et le palier où démarre une classe continuent d’évoluer d’une version à l’autre"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il pacchetto, la scala e il livello da cui parte una classe continuano a cambiare da una versione all’altra"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パケット、ラダー、クラスが始まるティアは、リリースごとに変わり続けます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "패킷, 래더, 그리고 클래스가 시작하는 티어는 릴리스마다 계속 바뀝니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pakiet, drabina i poziom, od którego zaczyna klasa, wciąż zmieniają się między wersjami"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O pacote, a escada e o nível em que uma classe começa continuam mudando entre versões"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数据包、阶梯以及某个类别的起始层级，在各个版本之间还会不断变化"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "封包、階梯以及某個類別的起始層級，在各個版本之間還會不斷變化"
+          }
+        }
+      }
+    },
+    "Use headphones, or the model hears its own voice and answers itself": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use headphones, or the model hears its own voice and answers itself"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benutze Kopfhörer, sonst hört das Modell seine eigene Stimme und antwortet sich selbst"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa auriculares, o el modelo oirá su propia voz y se responderá a sí mismo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utilisez un casque, sinon le modèle entend sa propre voix et se répond à lui-même"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa le cuffie, altrimenti il modello sente la propria voce e si risponde da solo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ヘッドホンを使ってください。使わないと、モデルが自分の声を聞いて自分に答えてしまいます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "헤드폰을 사용하세요. 그렇지 않으면 모델이 자기 목소리를 듣고 스스로 대답합니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Użyj słuchawek, inaczej model usłyszy własny głos i zacznie odpowiadać sam sobie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use fones de ouvido, ou o modelo ouve a própria voz e responde a si mesmo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请使用耳机，否则模型会听到自己的声音并自问自答"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請使用耳機，否則模型會聽到自己的聲音並自問自答"
+          }
+        }
+      }
+    },
+    "voice-bridge on that machine (journalctl --user -u voice-bridge)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "voice-bridge on that machine (journalctl --user -u voice-bridge)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "voice-bridge auf diesem Rechner (journalctl --user -u voice-bridge)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "voice-bridge en esa máquina (journalctl --user -u voice-bridge)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "voice-bridge sur cette machine (journalctl --user -u voice-bridge)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "voice-bridge su quella macchina (journalctl --user -u voice-bridge)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのマシン上の voice-bridge (journalctl --user -u voice-bridge)"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "해당 컴퓨터의 voice-bridge (journalctl --user -u voice-bridge)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "voice-bridge na tym komputerze (journalctl --user -u voice-bridge)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "voice-bridge naquela máquina (journalctl --user -u voice-bridge)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该机器上的 voice-bridge（journalctl --user -u voice-bridge）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "該機器上的 voice-bridge（journalctl --user -u voice-bridge）"
+          }
+        }
+      }
+    },
+    "You cannot interrupt while it is looking up what the agent is doing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You cannot interrupt while it is looking up what the agent is doing"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du kannst nicht unterbrechen, während es nachschaut, was der Agent gerade tut"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No puedes interrumpir mientras consulta lo que hace el agente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous ne pouvez pas l’interrompre pendant qu’il consulte ce que fait l’agent"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non puoi interrompere mentre controlla che cosa sta facendo l’agente"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントの状況を確認している間は、割り込めません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 무엇을 하는지 확인하는 동안에는 끼어들 수 없습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie można mu przerwać, gdy sprawdza, co robi agent"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você não pode interromper enquanto ele consulta o que o agente está fazendo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它在查询智能体当前状态时，你无法打断它"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它在查詢代理目前狀態時，你無法打斷它"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -142,17 +142,18 @@ struct DelegateTests {
         #expect(!DelegateSetup.isWanted(board: DelegateBoard(host: "studio.tailnet-demo.ts.net", serverName: "studio"), known: false))
     }
 
-    @Test("The beta mark is one word on the badge and three paragraphs behind it")
+    @Test("Delegate's beta card keeps its three paragraphs and its mark is one word")
     func betaExplainsItself() {
-        #expect(DelegateBeta.badge == "BETA")
-        #expect(DelegateBeta.paragraphs.count == 3)
-        for paragraph in DelegateBeta.paragraphs {
+        let card = BetaFeature.delegate.card
+        #expect(BetaWords.badge == "BETA")
+        #expect(card.title == "Delegate is in beta")
+        #expect(card.paragraphs.count == 3)
+        for paragraph in card.paragraphs {
             #expect(paragraph.hasSuffix("."))
             #expect(paragraph.count > 80)
         }
-        #expect(DelegateBeta.body.components(separatedBy: "\n\n").count == 3)
-        #expect(DelegateBeta.marked("Not checked yet") == "Beta · Not checked yet")
-        #expect(DelegateBeta.spoken.hasPrefix(DelegateBeta.label))
+        #expect(BetaWords.marked("Not checked yet") == "Beta · Not checked yet")
+        #expect(card.spoken.hasPrefix(BetaWords.label))
     }
 
     @Test("A run climbs the ladder one rung at a time and the lit rung is where it passed")

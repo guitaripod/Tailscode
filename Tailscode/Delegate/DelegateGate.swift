@@ -148,8 +148,8 @@ enum DelegateGate {
     /// What the server row says under its title before the board is opened.
     static func rowDetail(host: String) -> String {
         guard isOpen else { return DelegateProGate.requirement }
-        if let reach = desk.reach[host] { return DelegateBeta.marked(reach.line) }
-        return DelegateBeta.marked(
+        if let reach = desk.reach[host] { return BetaWords.marked(reach.line) }
+        return BetaWords.marked(
             DelegateAccessStore.access(host: host) == nil
                 ? DelegateEntryPoint.subtitle : Localized.text("Not checked yet"))
     }

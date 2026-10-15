@@ -6,7 +6,7 @@ import TailscodeCore
 /// The mark Delegate wears while it is new, on GTK: a capsule beside the window's title. Resting
 /// the pointer on it is enough to read why — the popover stays while the pointer is on it and
 /// leaves when the pointer does — and a click does the same for a touchpad or a screen reader.
-/// Every word is `DelegateBeta`'s.
+/// Every word is the catalog's.
 final class DelegateBetaBadge: @unchecked Sendable {
     let widget: UnsafeMutablePointer<GtkWidget>
     private let popover: UnsafeMutablePointer<GtkWidget>
@@ -19,7 +19,7 @@ final class DelegateBetaBadge: @unchecked Sendable {
         gtk_widget_set_valign(widget, GTK_ALIGN_CENTER)
         gtk_widget_set_cursor_from_name(widget, "pointer")
         gtk_widget_set_tooltip_text(widget, nil)
-        let label = Gtk.label(DelegateBeta.badge, selectable: false)
+        let label = Gtk.label(BetaWords.badge, selectable: false)
         gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
         gtk_widget_set_hexpand(widget, 0)
         gtk_box_append(ptr(widget), label)
@@ -31,8 +31,8 @@ final class DelegateBetaBadge: @unchecked Sendable {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         Gtk.margins(column, top: 12, bottom: 12, leading: 14, trailing: 14)
         gtk_widget_set_size_request(column, 380, -1)
-        gtk_box_append(ptr(column), Gtk.label(DelegateBeta.title, css: "row-title", selectable: false))
-        for paragraph in DelegateBeta.paragraphs {
+        gtk_box_append(ptr(column), Gtk.label(BetaFeature.delegate.card.title, css: "row-title", selectable: false))
+        for paragraph in BetaFeature.delegate.card.paragraphs {
             let body = Gtk.label(paragraph, css: "row-detail", wrap: true, selectable: false)
             gtk_label_set_max_width_chars(op(body), 56)
             gtk_box_append(ptr(column), body)

@@ -2,7 +2,7 @@ import TailscodeCore
 import UIKit
 
 /// The mark Delegate wears while it is new, as a control: the capsule is the whole announcement
-/// and a tap opens the why. Every word is `DelegateBeta`'s; this draws a capsule and forwards a tap.
+/// and a tap opens the why. Every word is the catalog's; this draws a capsule and forwards a tap.
 @MainActor
 final class DelegateBetaBadge: UIControl {
     private let label = UILabel()
@@ -13,12 +13,12 @@ final class DelegateBetaBadge: UIControl {
     init() {
         super.init(frame: .zero)
         isAccessibilityElement = true
-        accessibilityLabel = DelegateBeta.spoken
+        accessibilityLabel = BetaFeature.delegate.card.spoken
         accessibilityTraits = .button
         layer.cornerCurve = .continuous
         layer.borderWidth = 1
         label.attributedText = NSAttributedString(
-            string: DelegateBeta.badge,
+            string: BetaWords.badge,
             attributes: [.font: Self.font, .kern: 1.1])
         label.adjustsFontForContentSizeCategory = true
         symbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 9, weight: .bold)
@@ -78,7 +78,7 @@ final class DelegateBetaBadge: UIControl {
     }
 }
 
-/// Why Delegate is in beta, as a sheet sized to its words. Every word is `DelegateBeta`'s.
+/// Why Delegate is in beta, as a sheet sized to its words. Every word is the catalog's.
 @MainActor
 final class DelegateBetaViewController: UIViewController {
     private let scroll = UIScrollView()
@@ -117,7 +117,7 @@ final class DelegateBetaViewController: UIViewController {
         mark.isUserInteractionEnabled = false
         mark.isAccessibilityElement = false
         let title = UILabel()
-        title.text = DelegateBeta.title
+        title.text = BetaFeature.delegate.card.title
         title.font = Theme.Ramp.font(.panelTitle)
         title.adjustsFontForContentSizeCategory = true
         title.numberOfLines = 0
@@ -126,7 +126,7 @@ final class DelegateBetaViewController: UIViewController {
         heading.alignment = .leading
         heading.spacing = Theme.Spacing.s
         column.addArrangedSubview(heading)
-        for paragraph in DelegateBeta.paragraphs {
+        for paragraph in BetaFeature.delegate.card.paragraphs {
             let body = UILabel()
             body.text = paragraph
             body.font = Theme.Ramp.font(.cardBody)

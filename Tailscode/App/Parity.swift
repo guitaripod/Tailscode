@@ -79,7 +79,7 @@ enum ParityManifest {
         case .delegateRun: return .implemented("DelegateRunViewController")
         case .delegateApproval: return .implemented("desk.approve(runID")
         case .delegateProGate: return .implemented("DelegateGate")
-        case .delegateBeta: return .implemented("DelegateBetaBadge")
+        case .betaMark: return .implemented("DelegateBetaBadge")
         case .delegateClassDefaults: return .implemented("renderLegend")
         case .delegateNextSteps: return .implemented("case .duplicate:")
         case .delegateSetup: return .implemented("copySetupCommand")
@@ -212,6 +212,7 @@ enum ParityManifest {
         case .videoSound: return .implemented("hear")
         case .videoEstimate: return .implemented("expecting")
         case .videoLight: return .implemented("ForgeRingView")
+        case .voiceCall: return .gap("the call surface is being built")
         }
     }
 }
