@@ -55,6 +55,9 @@ final class ServersWindow: NSWindowController {
     /// the ledger rather than rebuilt, so a job landing a reading every couple of seconds does not
     /// throw away whatever section a person had open.
     private var softwareCards: [String: UpdateCardView] = [:]
+    /// Every row's Capabilities section, kept so the desk is asked about them only while this window
+    /// is on screen and let go of when it closes.
+    private var capabilityViews: [SetupCapabilitiesView] = []
     private let listHeader = MacDialogs.sectionHeader(Localized.text("CONFIGURED"))
     private let tailnetHeader = MacDialogs.sectionHeader(Localized.text("THIS MAC"))
     private let tailnetCaption = NSTextField(labelWithString: Localized.text("Tailscale"))
@@ -90,6 +93,12 @@ final class ServersWindow: NSWindowController {
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(updatesChanged), name: MacUpdateWatch.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowClosed), name: NSWindow.willCloseNotification, object: window)
+    }
+
+    @objc private func windowClosed() {
+        capabilityViews.forEach { $0.stop() }
     }
 
     /// An answer landed for some machine — possibly one of these, possibly from a sweep started
@@ -134,6 +143,7 @@ final class ServersWindow: NSWindowController {
     func present() {
         renderList()
         window?.makeKeyAndOrderFront(nil)
+        capabilityViews.forEach { $0.start() }
         pollTailnet()
         Task {
             for profile in ServerDirectory.shared.profiles where profile.backend == .claudeCode {
@@ -236,6 +246,8 @@ final class ServersWindow: NSWindowController {
     }
 
     private func renderList() {
+        capabilityViews.forEach { $0.stop() }
+        capabilityViews = []
         listColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
         softwareCards = [:]
         let profiles = ServerDirectory.shared.profiles
@@ -247,6 +259,7 @@ final class ServersWindow: NSWindowController {
         for profile in profiles {
             listColumn.addArrangedSubview(makeRow(profile))
         }
+        if window?.isVisible == true { capabilityViews.forEach { $0.start() } }
     }
 
     /// A claude-bridge row's embedded software card is floored to a real width below: every label
@@ -274,6 +287,15 @@ final class ServersWindow: NSWindowController {
         lines.orientation = .vertical
         lines.alignment = .leading
         lines.spacing = 2
+
+        let capabilities = SetupCapabilitiesView(profileURL: profile.baseURL)
+        capabilities.openChecklist = { [weak self] target in
+            MacSetupGate.present(
+                target, on: self?.window,
+                reportLines: { MacVoiceCallGate.shared.reportLines(for: VoiceSetupSource.endpoint(of: target)) })
+        }
+        capabilityViews.append(capabilities)
+        lines.addArrangedSubview(capabilities)
 
         if profile.backend == .claudeCode {
             let card = UpdateCardView(style: .embedded)

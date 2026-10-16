@@ -190,11 +190,31 @@ final class PaneCallController {
             host.toast(VoiceCallEntryPoint.tooltip(reach: reading))
             return
         }
+        if reading.opensSetup {
+            openSetup(for: endpoint)
+            return
+        }
         if reading.asksForPassword {
             askPassword(for: endpoint)
             return
         }
         begin(on: endpoint)
+    }
+
+    /// The voice checklist for this server, which every press that cannot start a call opens.
+    /// Finishing it starts the call the person pressed for, if they are still in that chat.
+    private func openSetup(for endpoint: VoiceEndpoint) {
+        MacHaptics.shared.play(.tap)
+        let chat = chatID
+        MacSetupGate.present(
+            .voice(endpoint), on: host.window(), reportLines: { [weak self] in self?.reportLines ?? [] },
+            onFinish: { [weak self] in
+                guard let self, self.live, self.chatID == chat, self.attached == nil else { return }
+                Task { [weak self] in
+                    await self?.gate.desk.refresh(endpoint)
+                    self?.begin(on: endpoint)
+                }
+            })
     }
 
     private func activeChanged(_ call: ActiveCall?) {
@@ -388,7 +408,7 @@ final class PaneCallController {
         guard live, endpoint != nil, attached == nil else { return nil }
         let reading = reach
         switch reading {
-        case .unknown, .checking, .noGateway: return nil
+        case .unknown, .checking: return nil
         default: break
         }
         let usable = VoiceCallEntryPoint.isEnabled(reach: reading) && !starting
@@ -466,6 +486,8 @@ final class PaneCallController {
             return
         case .wantsPassword:
             if let endpoint { askPassword(for: endpoint) }
+        case .notReady(let reach) where reach.opensSetup:
+            if let endpoint { openSetup(for: endpoint) }
         case .notReady, .audio:
             AppLogger.connection.info("call refused chat=\(chat) reason=\(error.line)")
             MacHaptics.shared.play(.warning)
