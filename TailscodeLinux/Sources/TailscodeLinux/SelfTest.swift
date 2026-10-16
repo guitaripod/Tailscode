@@ -536,6 +536,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkSetup()
+            report("setup: \(checks) claims hold — every checklist state, motion that means something, a job followed to its end, the server section, and the call's press")
+        } catch {
+            report("setup: \(error)")
+            failures += 1
+        }
+
         let radarFailures = checkRadar()
         if radarFailures.isEmpty {
             report("tailnet radar: the dial laps, lights and settles")

@@ -145,12 +145,13 @@ final class PaneCall: @unchecked Sendable {
         chipParts.word.flatMap { gtk_label_get_text(op($0)).map { String(cString: $0) } } ?? ""
     }
 
-    /// Visible for a server whose gateway has said something a person can act on, and for a call in
-    /// progress; a server with no gateway, or none heard from yet, never shows it.
+    /// Visible for a server the gateway has been heard from or has not answered at all, because a
+    /// press on a server with no gateway opens the checklist that sets one up, and for a call in
+    /// progress; a server not yet heard from never shows it.
     static func shows(reach: VoiceReach, active: Bool) -> Bool {
         if active { return true }
         switch reach {
-        case .unknown, .noGateway, .checking: return false
+        case .unknown, .checking: return false
         default: return true
         }
     }
@@ -183,12 +184,30 @@ final class PaneCall: @unchecked Sendable {
             runner.hangUp()
             return
         }
-        switch runner.reach(of: endpoint) {
+        let reach = runner.reach(of: endpoint)
+        switch reach {
         case .wantsPassword:
             askForPassword(endpoint)
+        case _ where reach.opensSetup:
+            openSetup(endpoint: endpoint, key: key)
         default:
             begin(entry: entry, endpoint: endpoint, key: key)
         }
+    }
+
+    /// The checklist for voice on this server, which every press that cannot start a call opens.
+    /// Finishing it starts the call the person pressed for, if they are still in the chat they pressed in.
+    func openSetup(endpoint: VoiceEndpoint, key: String) {
+        SetupWindow.present(
+            target: .voice(endpoint), parent: host?.callWindow,
+            reportLines: { VoiceCallRunner.shared.report(for: endpoint) },
+            onFinish: { [weak self] in Gtk.onMain { [weak self] in self?.startAfterSetup(endpoint: endpoint, key: key) } })
+    }
+
+    private func startAfterSetup(endpoint: VoiceEndpoint, key: String) {
+        guard !gone, let entry = host?.callEntry, Self.key(of: entry) == key else { return }
+        runner.refresh(endpoint)
+        begin(entry: entry, endpoint: endpoint, key: key)
     }
 
     private func begin(entry: SessionEntry, endpoint: VoiceEndpoint, key: String) {
@@ -216,6 +235,8 @@ final class PaneCall: @unchecked Sendable {
         switch failure {
         case .wantsPassword: askForPassword(endpoint)
         case .superseded: break
+        case .notReady(let reach) where reach.opensSetup:
+            if let entry = host?.callEntry { openSetup(endpoint: endpoint, key: Self.key(of: entry)) }
         default: host?.callNotice(failure.line)
         }
     }

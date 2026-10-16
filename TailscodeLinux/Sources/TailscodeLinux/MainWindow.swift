@@ -782,6 +782,8 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(Data("FORGE \(forge.forgeSummary)\n".utf8))
                 case "beta":
                     self.driveBeta(argument, parent: self.window)
+                case "setup":
+                    self.driveSetup(argument)
                 case "call":
                     self.driveCall(argument)
                 case "reach":
@@ -3407,12 +3409,13 @@ final class MainWindow: @unchecked Sendable {
 
     /// The window is kept here as well as by the manager's own registry, so a second ask raises
     /// the one already open instead of stacking a second copy of a screen full of live probes.
-    private func presentServers() {
+    func presentServers(expandingEverything: Bool = false) {
         let manager = servers ?? ServerManager { [weak self] in
             Task { [weak self] in await self?.refresh() }
         }
         servers = manager
         manager.present(parent: window)
+        if expandingEverything { manager.expandEverything() }
     }
 
     func presentRename(entry: SessionEntry, backend: any CodingAgentBackend) {

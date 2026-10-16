@@ -1455,6 +1455,26 @@ enum MatrixTheme {
         .preview-bad { color: \(danger); \(t(.rowTitle)) }
         .preview-progress trough { min-height: 4px; background-color: alpha(\(text), 0.10); }
         .preview-progress progress { min-height: 4px; background-color: \(accent); }
+        .setup-section { color: \(textDim); \(t(.rowDetail)) }
+        .setup-chip { color: \(accent); \(t(.rowDetail)) }
+        .setup-capability { padding: 6px 4px; min-height: 0; }
+        .setup-name { color: \(textDim); \(t(.rowDetail)) }
+        .setup-row {
+            padding: 12px 14px;
+            border: 1px solid \(rule);
+            border-radius: 8px;
+            background-color: alpha(\(canvasRaised), 0.55);
+        }
+        .setup-row-done { padding: 6px 14px; border-color: transparent; background-color: transparent; }
+        .setup-failure { color: \(danger); \(t(.rowDetail)) }
+        .setup-command {
+            background-color: \(palette.codeBg);
+            border-left: 2px solid \(rule);
+            padding: 8px 6px 8px 10px;
+        }
+        .setup-command-text { color: \(text); \(t(.code)) }
+        .setup-progress trough { min-height: 6px; background-color: alpha(\(text), 0.10); }
+        .setup-progress progress { min-height: 6px; background-color: \(accent); }
         .preview-banner {
             background-color: alpha(\(canvasRaised), 0.94);
             border: 1px solid alpha(\(danger), 0.55);

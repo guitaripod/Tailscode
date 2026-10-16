@@ -111,7 +111,7 @@ private final class CallAudioRig: @unchecked Sendable {
     var refuseAudio = false
 }
 
-private final class CallStubHost: CallPaneHost, @unchecked Sendable {
+final class CallStubHost: CallPaneHost, @unchecked Sendable {
     var entry: SessionEntry?
     var state: ConversationState?
     var sent: [String] = []
@@ -144,6 +144,7 @@ extension SelfTest {
             switch name {
             case "call": report("call: \(try checkCall()) claims hold")
             case "beta": report("beta: \(try checkBeta()) claims hold")
+            case "setup": report("setup: \(try checkSetup()) claims hold")
             case "audio": report("voice audio: \(try runBlocking { try await checkVoiceAudio() }) claims hold")
             default: report("no check named \(name)"); exit(2)
             }
@@ -209,10 +210,11 @@ extension SelfTest {
         _ expect: (Bool, String) throws -> Void, _ pump: (Double, () -> Bool) -> Bool
     ) throws {
         let reaches: [(VoiceReach, shown: Bool, enabled: Bool)] = [
-            (.unknown, false, true), (.checking, false, false), (.noGateway, false, false),
+            (.unknown, false, true), (.checking, false, false), (.noGateway, true, true),
             (.ready(gateway: "0.1.0"), true, true), (.loading, true, false), (.busy, true, false),
             (.tooOld(protocol: 0), true, false), (.tooOld(protocol: 99), true, false),
-            (.engineDown(detail: "CUDA out of memory"), true, false), (.wantsPassword, true, true),
+            (.needsSetup, true, true), (.engineDown(detail: "CUDA out of memory"), true, true),
+            (.wantsPassword, true, true),
             (.unreachable("it did not answer in time"), true, true),
         ]
         for (reach, shown, enabled) in reaches {

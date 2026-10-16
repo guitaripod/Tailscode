@@ -44,6 +44,7 @@ final class ServerManager: @unchecked Sendable {
     private var expandAfterReload: String?
     private var profiles: [ConnectionProfile] = []
     private var observingUpdates = false
+    private var expandAll = false
 
     init(onChanged: @escaping @Sendable () -> Void) {
         self.onChanged = onChanged
@@ -90,6 +91,12 @@ final class ServerManager: @unchecked Sendable {
     /// Every answer any machine gives redraws that machine's own embedded card in place — the
     /// same ledger the Software window renders from, so the two can never disagree about what a
     /// reading means while both happen to be open at once.
+    /// Opens every server's expander, for a harness that has to look inside them all.
+    func expandEverything() {
+        expandAll = true
+        for row in configuredRows where !profiles.isEmpty { adw_expander_row_set_expanded(ptr(row), 1) }
+    }
+
     private func observeUpdates() {
         guard !observingUpdates else { return }
         observingUpdates = true
@@ -215,11 +222,15 @@ final class ServerManager: @unchecked Sendable {
         guard let group = configuredGroup else { return }
         for row in configuredRows { adw_preferences_group_remove(ptr(group), ptr(row)) }
         configuredRows = []
+        for slots in rows.values { slots.capabilities?.stop() }
         rows = [:]
         self.profiles = profiles
 
         let expanding = expandAfterReload
         expandAfterReload = nil
+        defer {
+            if expandAll { for row in configuredRows where !profiles.isEmpty { adw_expander_row_set_expanded(ptr(row), 1) } }
+        }
         adw_preferences_group_set_description(
             ptr(group),
             profiles.isEmpty
@@ -288,6 +299,12 @@ final class ServerManager: @unchecked Sendable {
         slots.health = health
         slots.healthActions = healthActions
         adw_expander_row_add_row(ptr(row), health)
+
+        let capabilities = SetupCapabilitiesRows(
+            profileURL: profile.baseURL, parent: { [weak self] in self?.window })
+        slots.capabilities = capabilities
+        adw_expander_row_add_row(ptr(row), capabilities.row)
+        capabilities.start()
 
         let isDemo = profile.id.hasPrefix(DemoWorld.profilePrefix)
         let isEnvironment = profile.id == "environment"
@@ -1354,6 +1371,7 @@ final class ServerManager: @unchecked Sendable {
     /// flight will come back to write into a row. Nothing may be touched again, and a reopened
     /// window must build a fresh set rather than take back the group it used to remove rows from.
     private func forgetWidgets() {
+        for slots in rows.values { slots.capabilities?.stop() }
         window = nil
         configuredGroup = nil
         addGroup = nil
@@ -1382,6 +1400,7 @@ private final class ServerRow {
     /// draws it — kept here so a ledger change can rewrite exactly this row's card in place.
     var softwareCard: UpdateCardView?
     var previewHost: PreviewHostRow?
+    var capabilities: SetupCapabilitiesRows?
     var account: UnsafeMutablePointer<GtkWidget>?
     var accountActions: UnsafeMutablePointer<GtkWidget>?
     /// The Full Disk Access checklist, embedded the same way the software card is — kept here so
