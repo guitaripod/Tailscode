@@ -1,0 +1,81 @@
+{
+  "referenceName": "opencode 2 support — Oct 2026",
+  "badge": "MAJOR_UPDATE",
+  "purpose": "ATTRACT_NEW_USERS",
+  "priority": "HIGH",
+  "primaryLocale": "en-US",
+  "deepLink": "tailscode://settings/connections",
+  "purchaseRequirement": "NO_COST_ASSOCIATED",
+  "schedule": {
+    "publishStart": "2026-09-28T09:00:00Z",
+    "eventStart": "2026-09-28T09:00:00Z",
+    "eventEnd": "2026-10-28T09:00:00Z"
+  },
+  "localizations": {
+    "en-US": {
+      "name": "opencode 2, Now Supported",
+      "shortDescription": "Chat with opencode 1.x and 2.x agents on the go.",
+      "longDescription": "opencode 2 rebuilt its API. Tailscode now speaks 1.x and 2.x: answers, tool calls and thoughts stream as they happen."
+    },
+    "en-GB": {
+      "name": "opencode 2, Now Supported",
+      "shortDescription": "Chat with opencode 1.x and 2.x agents on the go.",
+      "longDescription": "opencode 2 rebuilt its API. Tailscode now speaks 1.x and 2.x: answers, tool calls and thoughts stream as they happen."
+    },
+    "en-AU": {
+      "name": "opencode 2, Now Supported",
+      "shortDescription": "Chat with opencode 1.x and 2.x agents on the go.",
+      "longDescription": "opencode 2 rebuilt its API. Tailscode now speaks 1.x and 2.x: answers, tool calls and thoughts stream as they happen."
+    },
+    "de-DE": {
+      "name": "opencode 2 wird unterstützt",
+      "shortDescription": "Chatte unterwegs mit opencode 1.x und 2.x.",
+      "longDescription": "opencode 2 hat seine API umgebaut. Tailscode spricht 1.x und 2.x: Antworten, Tool-Aufrufe und Gedanken streamen live."
+    },
+    "fr-FR": {
+      "name": "Compatible avec opencode 2",
+      "shortDescription": "Discutez avec vos agents opencode 1.x et 2.x.",
+      "longDescription": "opencode 2 a refait son API. Tailscode parle 1.x et 2.x : réponses, appels d'outils et réflexions en direct."
+    },
+    "es-ES": {
+      "name": "Compatible con opencode 2",
+      "shortDescription": "Chatea con tus agentes opencode 1.x y 2.x.",
+      "longDescription": "opencode 2 rehízo su API. Tailscode habla 1.x y 2.x: respuestas, llamadas a herramientas y razonamiento en directo."
+    },
+    "es-MX": {
+      "name": "Compatible con opencode 2",
+      "shortDescription": "Chatea con tus agentes opencode 1.x y 2.x.",
+      "longDescription": "opencode 2 rehízo su API. Tailscode habla 1.x y 2.x: respuestas, llamadas a herramientas y razonamiento en vivo."
+    },
+    "it": {
+      "name": "Supporto per opencode 2",
+      "shortDescription": "Chatta con i tuoi agenti opencode 1.x e 2.x.",
+      "longDescription": "opencode 2 ha rifatto la sua API. Tailscode parla 1.x e 2.x: risposte, chiamate ai tool e ragionamenti in diretta."
+    },
+    "pt-BR": {
+      "name": "Suporte ao opencode 2",
+      "shortDescription": "Converse com seus agentes opencode 1.x e 2.x.",
+      "longDescription": "O opencode 2 refez sua API. O Tailscode fala 1.x e 2.x: respostas, chamadas de ferramentas e raciocínio ao vivo."
+    },
+    "ja": {
+      "name": "opencode 2に対応",
+      "shortDescription": "opencode 1.x・2.xのエージェントとどこでもチャット。",
+      "longDescription": "opencode 2はAPIを刷新。Tailscodeは1.xと2.xの両方に対応し、回答・ツール呼び出し・思考をリアルタイムで表示します。"
+    },
+    "ko": {
+      "name": "opencode 2 지원",
+      "shortDescription": "opencode 1.x·2.x 에이전트와 어디서나 대화하세요.",
+      "longDescription": "opencode 2가 API를 새로 만들었습니다. Tailscode는 1.x와 2.x를 모두 지원하며 답변, 도구 호출, 생각을 실시간으로 보여 줍니다."
+    },
+    "zh-Hans": {
+      "name": "现已支持 opencode 2",
+      "shortDescription": "随时随地与 opencode 1.x 和 2.x 智能体对话。",
+      "longDescription": "opencode 2 重做了 API。Tailscode 同时支持 1.x 与 2.x：回答、工具调用和思考过程实时呈现。"
+    },
+    "zh-Hant": {
+      "name": "現已支援 opencode 2",
+      "shortDescription": "隨時隨地與 opencode 1.x 和 2.x AI 代理對話。",
+      "longDescription": "opencode 2 重新打造了 API。Tailscode 同時支援 1.x 與 2.x：回答、工具呼叫與思考過程即時呈現。"
+    }
+  }
+}

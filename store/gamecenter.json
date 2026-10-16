@@ -1,0 +1,591 @@
+{
+  "app": "6791660932",
+  "locales": [
+    "en-US"
+  ],
+  "leaderboards": [
+    {
+      "id": "com.guitaripod.tailscode.board.streak",
+      "referenceName": "Longest streak",
+      "formatter": "INTEGER",
+      "sort": "DESC",
+      "submission": "BEST_SCORE",
+      "image": {
+        "remote": {
+          "en-US": "745c2018-4170-43f9-a81c-d850aec8ff65"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Longest streak"
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.board.turns30",
+      "referenceName": "Turns in 30 days",
+      "formatter": "INTEGER",
+      "sort": "DESC",
+      "submission": "BEST_SCORE",
+      "image": {
+        "remote": {
+          "en-US": "02402bb2-8cde-4761-b8c7-f216704bc863"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Turns in 30 days"
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.board.tokens30",
+      "referenceName": "Tokens in 30 days",
+      "formatter": "INTEGER",
+      "sort": "DESC",
+      "submission": "BEST_SCORE",
+      "image": {
+        "remote": {
+          "en-US": "691de2fa-e1f4-4998-b6f2-dd4ac72bc42c"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Tokens in 30 days"
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.board.tools30",
+      "referenceName": "Tool calls in 30 days",
+      "formatter": "INTEGER",
+      "sort": "DESC",
+      "submission": "BEST_SCORE",
+      "image": {
+        "remote": {
+          "en-US": "cb66738e-2bd1-4f42-8ebe-3278d3556f75"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Tool calls in 30 days"
+        }
+      }
+    }
+  ],
+  "achievements": [
+    {
+      "id": "com.guitaripod.tailscode.turns1",
+      "referenceName": "First words",
+      "points": 5,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "169a2499-7e12-45a7-911a-ca5de5d8b506"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "First words",
+          "before": "Send a first turn",
+          "after": "You sent your first turn."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.turns100",
+      "referenceName": "A hundred turns",
+      "points": 10,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "8d72bfa9-14ec-408d-9ddc-6e44a7c6b17e"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "A hundred turns",
+          "before": "Send 100 turns inside one month",
+          "after": "You sent 100 turns in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.turns1000",
+      "referenceName": "A thousand turns",
+      "points": 25,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "6999e05e-8d44-4f83-b36d-ce91e08af830"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "A thousand turns",
+          "before": "Send 1,000 turns inside one month",
+          "after": "You sent 1,000 turns in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.turns10000",
+      "referenceName": "Ten thousand turns",
+      "points": 50,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "a9434d6a-f029-4b6d-a719-1dee58d53e00"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Ten thousand turns",
+          "before": "Send 10,000 turns inside one month",
+          "after": "You sent 10,000 turns in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.streak3",
+      "referenceName": "Three days running",
+      "points": 10,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "9532dd44-c279-475f-b5e8-f8bb2a2fcc52"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Three days running",
+          "before": "Work three days in a row",
+          "after": "You worked three days in a row."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.streak7",
+      "referenceName": "A full week",
+      "points": 25,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "0321f51d-1fc3-4c73-bf2e-14f5fbed3abd"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "A full week",
+          "before": "Work seven days in a row",
+          "after": "You worked a full week without missing a day."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.streak14",
+      "referenceName": "A fortnight",
+      "points": 50,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "e731b6be-cd5b-4c79-8811-c44b495d5e20"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "A fortnight",
+          "before": "Work fourteen days in a row",
+          "after": "You worked a fortnight without missing a day."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.streak30",
+      "referenceName": "A month unbroken",
+      "points": 100,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "174e3ead-e8e4-47a7-b995-5282d5bbd07f"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "A month unbroken",
+          "before": "Work thirty days in a row",
+          "after": "You worked thirty days in a row."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.tokens10m",
+      "referenceName": "Ten million tokens",
+      "points": 10,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "972f4d48-920b-4993-96ea-c3848e182de6"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Ten million tokens",
+          "before": "Move 10M tokens inside one month",
+          "after": "You moved ten million tokens in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.tokens100m",
+      "referenceName": "A hundred million tokens",
+      "points": 25,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "45a3b995-78ff-4596-a349-9934f1275da8"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "A hundred million tokens",
+          "before": "Move 100M tokens inside one month",
+          "after": "You moved a hundred million tokens in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.tokens1b",
+      "referenceName": "The billion club",
+      "points": 100,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "f966ae84-6651-4e1e-95ad-17434bd1aa2e"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "The billion club",
+          "before": "Move 1B tokens inside one month",
+          "after": "You moved a billion tokens in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.tools1000",
+      "referenceName": "A thousand tool calls",
+      "points": 10,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "8957603e-7fa3-43df-8ac2-c0468d12803c"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "A thousand tool calls",
+          "before": "Let the agent run 1,000 tools inside one month",
+          "after": "The agent ran a thousand tools for you in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.tools10000",
+      "referenceName": "Ten thousand tool calls",
+      "points": 25,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "c077b447-3888-4c95-b581-f82f9f24ff26"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Ten thousand tool calls",
+          "before": "Let the agent run 10,000 tools inside one month",
+          "after": "The agent ran ten thousand tools for you in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.sessions50",
+      "referenceName": "Fifty conversations",
+      "points": 10,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "a3dda940-feef-49f5-a492-1ab6aad12326"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Fifty conversations",
+          "before": "Hold 50 conversations inside one month",
+          "after": "You held fifty conversations in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.subagent1",
+      "referenceName": "Delegator",
+      "points": 10,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "5818497e-f2bb-4067-856c-84356507e526"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Delegator",
+          "before": "Send a subagent out to work",
+          "after": "You sent your first subagent out to work."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.subagent250",
+      "referenceName": "Fleet commander",
+      "points": 50,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "1f8a843f-dd72-466a-8b08-ff28183d1f0f"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Fleet commander",
+          "before": "Send 250 subagents out inside one month",
+          "after": "You sent 250 subagents out in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.compaction1",
+      "referenceName": "The long haul",
+      "points": 10,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "e9550a6e-ceea-41f3-ab67-84e043f7f1f1"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "The long haul",
+          "before": "Work a conversation long enough to compact it",
+          "after": "You worked a conversation long enough to compact it."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.cache100",
+      "referenceName": "Cache money",
+      "points": 25,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "29319ffa-8a9e-46c7-8b33-ff40c2abb7f0"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Cache money",
+          "before": "Let caching save $100 inside one month",
+          "after": "Caching kept $100 in your pocket in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.cache1000",
+      "referenceName": "A thousand saved",
+      "points": 50,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "fe038063-70d5-45f5-8f71-d527f0805dc1"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "A thousand saved",
+          "before": "Let caching save $1,000 inside one month",
+          "after": "Caching kept $1,000 in your pocket in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.machines2",
+      "referenceName": "A second machine",
+      "points": 25,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "34c3c804-912a-4cfa-949f-6ed4d9ea4f02"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "A second machine",
+          "before": "Put two machines to work in the same month",
+          "after": "You put two machines to work in the same month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.projects5",
+      "referenceName": "Five projects",
+      "points": 10,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "94879f98-820d-4db8-80c4-48441246dac1"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Five projects",
+          "before": "Work five projects inside one month",
+          "after": "You worked five projects in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.models3",
+      "referenceName": "Three models",
+      "points": 10,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "1d7fddec-980f-4b99-8ede-0673ae7b240e"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Three models",
+          "before": "Put three models to work inside one month",
+          "after": "You put three models to work in a month."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.night50",
+      "referenceName": "Night shift",
+      "points": 25,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "fc0241c6-6de1-4184-b0d8-cd2c3717ccef"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Night shift",
+          "before": "Start 50 turns between midnight and five",
+          "after": "You started fifty turns between midnight and five."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.clock24",
+      "referenceName": "Round the clock",
+      "points": 50,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "924efacf-267b-437d-8c29-2d354e31688a"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Round the clock",
+          "before": "Start a turn in every hour of the day",
+          "after": "You started a turn in every hour of the day."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.longturn10",
+      "referenceName": "The ten-minute turn",
+      "points": 25,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "82d621d7-e059-43d0-84ae-52562ff293d2"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "The ten-minute turn",
+          "before": "Keep the agent out on one turn for ten minutes",
+          "after": "You kept the agent out on one turn for ten minutes."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.day100",
+      "referenceName": "The hundred-dollar day",
+      "points": 50,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "0521d483-c81e-4852-9879-70a2792c1e46"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "The hundred-dollar day",
+          "before": "Put $100 of work through one day",
+          "after": "You put $100 of work through a single day."
+        }
+      }
+    },
+    {
+      "id": "com.guitaripod.tailscode.weekend100",
+      "referenceName": "Weekender",
+      "points": 25,
+      "showBeforeEarned": true,
+      "repeatable": false,
+      "image": {
+        "remote": {
+          "en-US": "e12dd464-ee7d-4478-a849-c9cd1cc5b6b0"
+        }
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Weekender",
+          "before": "Send 100 turns on Saturdays and Sundays",
+          "after": "You sent a hundred weekend turns."
+        }
+      }
+    }
+  ]
+}
