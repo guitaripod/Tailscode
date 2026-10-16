@@ -44,6 +44,9 @@ final class ForgeSetupWindow: @unchecked Sendable {
     private let knownGroup = adw_preferences_group_new()!
     private let sweepGroup = adw_preferences_group_new()!
     private let addGroup = adw_preferences_group_new()!
+    private let mediaGroup = adw_preferences_group_new()!
+    private var mediaRows: [UnsafeMutablePointer<GtkWidget>] = []
+    private var lookTicket = 0
     private let radar = RadarView()
     /// The dial's own row, shown only while a scan is out or has answered. A dial nobody has spun
     /// is dead space above the form, and the rest state already says what spinning it would do.
@@ -76,14 +79,14 @@ final class ForgeSetupWindow: @unchecked Sendable {
     ) {
         self.onSaved = onSaved
         setup = ForgeSetup(
-            current: ForgeStore.endpoint(), known: ForgeStore.renderers(),
+            current: ForgeRunner.shared.endpoint ?? ForgeStore.endpoint(), known: ForgeStore.renderers(),
             deviceName: Localized.text("This machine"))
         hintLabel = Gtk.label("", css: "dim", wrap: true, selectable: false)
         secondaryNote = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
 
         window = adw_preferences_window_new()!
         gtk_window_set_title(ptr(window), ForgeSetup.title)
-        gtk_window_set_default_size(ptr(window), 620, 760)
+        gtk_window_set_default_size(ptr(window), 620, 880)
         gtk_window_set_modal(ptr(window), 1)
         if let parent, let root = gtk_widget_get_root(parent) {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
@@ -94,6 +97,7 @@ final class ForgeSetupWindow: @unchecked Sendable {
         adw_preferences_page_add(ptr(page), ptr(sweepGroup))
         adw_preferences_page_add(ptr(page), ptr(knownGroup))
         adw_preferences_page_add(ptr(page), ptr(addGroup))
+        adw_preferences_page_add(ptr(page), ptr(mediaGroup))
 
         buildKnownGroup()
         buildSweepGroup()
@@ -103,9 +107,11 @@ final class ForgeSetupWindow: @unchecked Sendable {
             self?.dismissed()
         }
         readTailnet()
+        writeForm()
         render()
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(addressEntry)
+        if let endpoint = setup.endpoint { check(endpoint) }
     }
 
     private func buildKnownGroup() {
@@ -266,15 +272,32 @@ final class ForgeSetupWindow: @unchecked Sendable {
     private func check(_ endpoint: ForgeEndpoint) {
         guard !checking else { return }
         checking = true
+        lookTicket += 1
+        let ticket = lookTicket
         setup.checking()
         render()
         Task { [weak self] in
-            let verdict = await endpoint.reach()
+            let verdict = await MediaReadiness.shared.verdict(for: endpoint, force: true)
             Gtk.onMain { [weak self] in
-                guard let self else { return }
+                guard let self, self.lookTicket == ticket else { return }
                 self.checking = false
-                self.setup.reached(verdict)
+                self.setup.assessed(verdict)
                 self.render()
+                if let wait = verdict.recheck { self.look(again: wait, at: endpoint, ticket: ticket) }
+            }
+        }
+    }
+
+    /// A ComfyUI that is still loading is asked again by the clock while this window is open, so
+    /// the row that says it is starting turns into the row that says what it has without a press.
+    private func look(again seconds: TimeInterval, at endpoint: ForgeEndpoint, ticket: Int) {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            Gtk.onMain { [weak self] in
+                guard let self, self.lookTicket == ticket, self.setup.endpoint == endpoint,
+                    ForgeSetupWindow.open === self
+                else { return }
+                self.check(endpoint)
             }
         }
     }
@@ -283,8 +306,7 @@ final class ForgeSetupWindow: @unchecked Sendable {
     /// has used and points renders at it in the same breath, so nothing else here has to know what
     /// "remembered" means.
     private func save(_ renderer: ForgeRenderer) {
-        ForgeStore.remember(renderer)
-        SettingsFile.capture()
+        ForgeRunner.shared.file(renderer)
         onSaved()
         gtk_window_close(ptr(window))
     }
@@ -423,6 +445,42 @@ final class ForgeSetupWindow: @unchecked Sendable {
         renderSweep()
         renderKnown()
         renderAdd()
+        renderMedia()
+    }
+
+    /// What the machine at the address can make, once the doctor has looked: one row each for
+    /// ComfyUI's nodes and every model file, in Core's words, each missing file with the one
+    /// command that fetches it. A row with a fix copies the command rather than running it, because
+    /// the files go onto the other machine and only a person there can put them.
+    private func renderMedia() {
+        for row in mediaRows { adw_preferences_group_remove(ptr(mediaGroup), ptr(row)) }
+        mediaRows = []
+        let lines = setup.mediaLines
+        gtk_widget_set_visible(mediaGroup, lines.isEmpty ? 0 : 1)
+        adw_preferences_group_set_title(ptr(mediaGroup), MediaWords.groupTitle)
+        for line in lines {
+            let row = adw_action_row_new()!
+            adw_preferences_row_set_use_markup(ptr(row), 0)
+            adw_preferences_row_set_title(
+                ptr(row),
+                line.isOptional ? "\(line.title) · \(MediaWords.optionalMark)" : line.title)
+            adw_action_row_set_subtitle(ptr(row), line.detail)
+            adw_action_row_set_subtitle_lines(ptr(row), 0)
+            adw_action_row_set_subtitle_selectable(ptr(row), 1)
+            Gtk.setTone(row, Self.tone(line.tone), from: Self.tones)
+            if let command = line.fix?.command {
+                let copy = Self.button(MediaWords.copyCommand) { [weak self] in
+                    Gtk.onMain { [weak self] in
+                        Gtk.copyToClipboard(command)
+                        self?.toast(MediaWords.copied)
+                    }
+                }
+                gtk_widget_set_tooltip_text(copy, command)
+                adw_action_row_add_suffix(ptr(row), copy)
+            }
+            adw_preferences_group_add(ptr(mediaGroup), ptr(row))
+            mediaRows.append(row)
+        }
     }
 
     /// Two facts, in the order they matter: what a renderer is, and whether this machine is on the

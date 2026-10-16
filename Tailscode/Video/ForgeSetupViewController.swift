@@ -37,6 +37,8 @@ final class ForgeSetupViewController: UIViewController {
     private let dock = Theme.Glass.view()
     private let primary = PrimaryButton(title: "")
     private let scroll = UIScrollView()
+    private let mediaTitle = UILabel()
+    private let mediaStack = UIStackView()
     /// The failure already on screen, so a redraw does not yank the scroll under a reader who has
     /// gone looking for the address bar.
     private var shownDiagnosis: ConnectDiagnosis?
@@ -46,8 +48,9 @@ final class ForgeSetupViewController: UIViewController {
     private var check: Task<Void, Never>?
 
     init() {
+        ForgeRunner.shared.suggest()
         setup = ForgeSetup(
-            current: ForgeStore.endpoint(), known: ForgeStore.renderers(),
+            current: ForgeRunner.shared.endpoint ?? ForgeStore.endpoint(), known: ForgeStore.renderers(),
             tailnet: TailnetStatus.reading, deviceName: DeviceWord.thisDevice)
         super.init(nibName: nil, bundle: nil)
     }
@@ -64,6 +67,7 @@ final class ForgeSetupViewController: UIViewController {
         buildUI()
         wire()
         render()
+        if let endpoint = setup.endpoint { ask(endpoint) }
         NotificationCenter.default.addObserver(
             self, selector: #selector(didBecomeActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -104,6 +108,9 @@ final class ForgeSetupViewController: UIViewController {
         tailnetIcon.setContentHuggingPriority(.required, for: .horizontal)
 
         configureKnownStack()
+        mediaStack.axis = .vertical
+        mediaStack.spacing = Theme.Spacing.m
+        mediaTitle.numberOfLines = 0
 
         let tailnetRow = UIStackView(arrangedSubviews: [tailnetIcon, tailnetLabel])
         tailnetRow.axis = .horizontal
@@ -113,7 +120,7 @@ final class ForgeSetupViewController: UIViewController {
         let column = UIStackView(arrangedSubviews: [
             intro, tailnetRow, discover, discoverNote, discoverBlock, knownTitle, knownEmpty,
             knownStack, address, addressHelp, hint, name, statusTitle, statusDetail, diagnosisCard,
-            secondary, secondaryNote,
+            secondary, secondaryNote, mediaTitle, mediaStack,
         ])
         column.axis = .vertical
         column.spacing = Theme.Spacing.m
@@ -237,20 +244,24 @@ final class ForgeSetupViewController: UIViewController {
         }
     }
 
-    /// Asks the port directly rather than making a request: ComfyUI is socket-activated, so
-    /// something listening is the only thing that can be known cheaply, and the first render pays
-    /// for the rest either way.
+    /// Asks the machine what it has, not only whether the port answers: ComfyUI's nodes and every
+    /// model file the lanes need, in the doctor's words. A ComfyUI still loading is asked again
+    /// every few seconds while this screen is up.
     private func ask(_ endpoint: ForgeEndpoint) {
         view.endEditing(true)
         check?.cancel()
         setup.checking()
         render()
         check = Task { [weak self] in
-            let verdict = await endpoint.reach()
+            let verdict = await MediaReadiness.shared.verdict(for: endpoint, force: true)
             guard let self, !Task.isCancelled else { return }
-            self.setup.reached(verdict)
+            self.setup.assessed(verdict)
             Theme.Haptics.received()
             self.render()
+            guard let wait = verdict.recheck else { return }
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            guard !Task.isCancelled, self.setup.endpoint == endpoint else { return }
+            self.ask(endpoint)
         }
     }
 
@@ -353,6 +364,54 @@ final class ForgeSetupViewController: UIViewController {
         renderFields()
         renderStatus()
         renderButtons()
+        renderMedia()
+    }
+
+    /// What the machine at the address can make, once the doctor has looked: a row for each node
+    /// set and model file in Core's words, each missing file with the one command that fetches it.
+    /// The command is copied rather than run, because the files go onto the other machine.
+    private func renderMedia() {
+        let lines = setup.mediaLines
+        mediaTitle.isHidden = lines.isEmpty
+        mediaStack.isHidden = lines.isEmpty
+        mediaTitle.attributedText = NSAttributedString(
+            string: MediaWords.groupTitle,
+            attributes: Theme.Ramp.attributes(.panelLabel, color: Theme.Color.label))
+        for view in mediaStack.arrangedSubviews {
+            mediaStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        for line in lines { mediaStack.addArrangedSubview(mediaRow(line)) }
+    }
+
+    private func mediaRow(_ line: MediaReading.Line) -> UIView {
+        let title = UILabel()
+        title.numberOfLines = 0
+        title.attributedText = NSAttributedString(
+            string: line.isOptional ? "\(line.title) · \(MediaWords.optionalMark)" : line.title,
+            attributes: Theme.Ramp.attributes(.panelLabel, color: Theme.Color.label))
+        let detail = UILabel()
+        detail.numberOfLines = 0
+        detail.attributedText = NSAttributedString(
+            string: line.detail,
+            attributes: Theme.Ramp.attributes(.panelFootnote, color: line.tone.color))
+        var views: [UIView] = [title, detail]
+        if let command = line.fix?.command {
+            var configuration = UIButton.Configuration.plain()
+            configuration.title = MediaWords.copyCommand
+            let copy = UIButton(
+                configuration: configuration,
+                primaryAction: UIAction { _ in
+                    UIPasteboard.general.string = command
+                    Theme.Haptics.success()
+                })
+            copy.contentHorizontalAlignment = .leading
+            views.append(copy)
+        }
+        let row = UIStackView(arrangedSubviews: views)
+        row.axis = .vertical
+        row.spacing = Theme.Spacing.xs
+        return row
     }
 
     private func renderIntro() {

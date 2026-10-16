@@ -48,6 +48,8 @@ final class ForgeRunner {
     /// inside, so each one carries the number its start claimed.
     private var renderTicket = 0
     private var probeTask: Task<Void, Never>?
+    private var guess: MediaEndpointPlan.Choice?
+    private var homeProfile: String?
     /// Whether a rewrite of the words is out right now. The Enhance control says so and the box
     /// stays the person's to edit while it runs.
     private(set) var enhancing = false
@@ -102,7 +104,7 @@ final class ForgeRunner {
     /// Points renders at a machine the setup settled on, and files it among the ones this device
     /// has used so the second time is a tap rather than an address somebody has to look up again.
     func use(_ renderer: ForgeRenderer) {
-        ForgeStore.remember(renderer)
+        file(renderer)
         board.point(at: renderer.endpoint, named: renderer.name ?? renderer.endpoint.shortName)
         announce()
         probe()
@@ -121,17 +123,69 @@ final class ForgeRunner {
     /// Asks the port whether anything is there. Deliberately a TCP connect rather than a request:
     /// the box is socket-activated, so "listening" is the only thing that can be known cheaply and
     /// "ready" is a different question that the first render pays for either way.
-    func probe() {
+    func probe(force: Bool = true) {
         guard let endpoint = board.endpoint, !isStaged else { return }
         probeTask?.cancel()
         board.checking()
         announce()
         probeTask = Task { [weak self] in
-            let verdict = await endpoint.reach()
+            let verdict = await MediaReadiness.shared.verdict(for: endpoint, force: force)
             guard let self, !Task.isCancelled else { return }
-            self.board.reached(verdict)
+            self.board.assessed(verdict)
+            self.keepGuess(if: verdict)
             self.announce()
+            if let wait = verdict.recheck { self.recheck(after: wait, endpoint: endpoint) }
         }
+    }
+
+    /// A ComfyUI that is still loading is asked again in a few seconds until it answers or the
+    /// board is pointed elsewhere.
+    private func recheck(after seconds: TimeInterval, endpoint: ForgeEndpoint) {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard let self, self.board.endpoint == endpoint, !self.board.isBusy else { return }
+            self.probe()
+        }
+    }
+
+    /// What a surface about to be shown owes the reader: a renderer guessed from the server's own
+    /// address when none is filed, and the machine asked again unless a recent answer is held.
+    func prepare() {
+        suggest()
+        guard !board.isBusy, board.endpoint != nil else { return }
+        probe(force: false)
+    }
+
+    /// The renderer before anybody has said where it is: the machine the agent runs on, on the
+    /// port ComfyUI answers on, asked silently and filed against that server only once it answers.
+    func suggest() {
+        let profiles = ConnectionController.shared.profiles
+        guard let choice = MediaEndpointPlan.choose(
+            profiles: profiles, preferring: ConnectionController.shared.activeProfileID)
+        else { return }
+        homeProfile = choice.profileID
+        guard board.endpoint == nil, !board.isBusy, !isStaged else { return }
+        guess = choice
+        board.point(at: choice.endpoint)
+        announce()
+        probe()
+    }
+
+    /// A renderer somebody chose, filed against the server it belongs to as well as on this device.
+    func file(_ renderer: ForgeRenderer) {
+        if let homeProfile {
+            ForgeStore.remember(renderer, forProfile: homeProfile)
+        } else {
+            ForgeStore.remember(renderer)
+        }
+        guess = nil
+    }
+
+    private func keepGuess(if verdict: MediaVerdict) {
+        guard let guess, guess.endpoint == verdict.endpoint, MediaEndpointPlan.confirms(verdict) else {
+            return
+        }
+        file(guess.renderer)
     }
 
     // MARK: - The render

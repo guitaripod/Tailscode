@@ -93,6 +93,7 @@ final class StudioSheet: @unchecked Sendable {
         layer.onRise = { [weak self] in self?.onRise?() }
         layer.prepare = { [weak self] in
             guard let self else { return }
+            ForgeRunner.shared.prepare()
             if self.wantedLane == .image { ImageStudio.shared.adoptDoor() }
             self.select(self.wantedLane)
         }

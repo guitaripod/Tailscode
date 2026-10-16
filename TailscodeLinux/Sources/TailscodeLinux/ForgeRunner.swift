@@ -27,6 +27,9 @@ final class ForgeRunner: @unchecked Sendable, HelperHost {
     /// is numbered and only the newest one is allowed to say what it found.
     private var probeTicket = 0
     private var reachTask: Task<Void, Never>?
+    private var suggesting = false
+    private var guess: MediaEndpointPlan.Choice?
+    private var homeProfile: String?
     /// Whoever is drawing this right now — the modal while it is open, and the control in the
     /// sidebar for as long as the app is up, which is what lets a render still be seen once the
     /// window it was started from has gone.
@@ -84,7 +87,51 @@ final class ForgeRunner: @unchecked Sendable, HelperHost {
     func prepare() {
         board.filled(history: ForgeStore.history())
         adopt(ForgeStore.endpoint())
+        suggest()
+        if !board.isBusy, board.endpoint != nil, board.readiness == nil { probe(force: false) }
         changed()
+    }
+
+    /// The renderer before anybody has said where it is: the machine the agent runs on, on the
+    /// port ComfyUI answers on, asked silently. Nothing is filed until the machine answers, so a
+    /// wrong guess neither opens a picture lane nor outlives the next look — it only shows the
+    /// person, in the doctor's words, what is missing at the address a stranger would try first.
+    func suggest() {
+        guard !suggesting else { return }
+        suggesting = true
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.suggesting = false
+                guard let choice = MediaEndpointPlan.choose(profiles: profiles) else { return }
+                self.homeProfile = choice.profileID
+                guard self.board.endpoint == nil, !self.board.isBusy else { return }
+                self.guess = choice
+                self.board.point(at: choice.endpoint)
+                self.probe()
+                self.changed()
+            }
+        }
+    }
+
+    /// A renderer somebody chose, filed against the server it belongs to as well as on this
+    /// device, so the next look at that server starts from it.
+    func file(_ renderer: ForgeRenderer) {
+        if let homeProfile {
+            ForgeStore.remember(renderer, forProfile: homeProfile)
+        } else {
+            ForgeStore.remember(renderer)
+        }
+        guess = nil
+        SettingsFile.capture()
+    }
+
+    private func keepGuess(if verdict: MediaVerdict) {
+        guard let guess, guess.endpoint == verdict.endpoint, MediaEndpointPlan.confirms(verdict) else {
+            return
+        }
+        file(guess.renderer)
     }
 
     /// Points the board at whatever the store now holds, without disturbing a board already
@@ -195,7 +242,7 @@ final class ForgeRunner: @unchecked Sendable, HelperHost {
     /// its answer to the main loop, so cancelling the task cannot stop one that has already
     /// resolved: without the number, a machine asked before the renderer was changed would report
     /// its reachability onto the row of the machine that replaced it.
-    func probe() {
+    func probe(force: Bool = true) {
         probeTicket += 1
         reachTask?.cancel()
         reachTask = nil
@@ -203,11 +250,25 @@ final class ForgeRunner: @unchecked Sendable, HelperHost {
         board.checking()
         let ticket = probeTicket
         reachTask = Task { [weak self] in
-            let verdict = await endpoint.reach()
+            let verdict = await MediaReadiness.shared.verdict(for: endpoint, force: force)
             Gtk.onMain { [weak self] in
                 guard let self, self.probeTicket == ticket else { return }
-                self.board.reached(verdict)
+                self.board.assessed(verdict)
+                self.keepGuess(if: verdict)
                 self.changed()
+                if let wait = verdict.recheck { self.recheck(after: wait, ticket: ticket) }
+            }
+        }
+    }
+
+    /// A ComfyUI that is still loading is asked again in a few seconds, by the clock, until it
+    /// answers or somebody points the board elsewhere.
+    private func recheck(after seconds: TimeInterval, ticket: Int) {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            Gtk.onMain { [weak self] in
+                guard let self, self.probeTicket == ticket, !self.board.isBusy else { return }
+                self.probe()
             }
         }
     }

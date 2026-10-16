@@ -882,6 +882,11 @@ final class ForgePane: @unchecked Sendable {
                 sentence = ImageGenWords.stoppedNotice
                 tone = .attention
             }
+            if sentence == nil, let line = board.readiness.flatMap(MediaReading.videoLine) {
+                sentence = line.detail
+                tone = line.tone
+                breathing = line.state == .working
+            }
             if sentence == nil, backdropKey != nil, let name = board.endpoint?.shortName {
                 sentence = StudioWords.heldFromShelf(machine: name)
             }
@@ -1199,10 +1204,10 @@ final class ForgePane: @unchecked Sendable {
             state = row?.badge
             tone = .ready
         case .failed(let why):
-            state = why
+            state = board.readiness == nil ? why : row?.badge
             tone = .danger
         case .checking:
-            state = row?.badge
+            state = board.readiness?.isStarting == true ? MediaWords.startingMark : row?.badge
             tone = .unknown
         case .idle:
             state = board.endpoint == nil ? ForgeSetup.title : row?.badge

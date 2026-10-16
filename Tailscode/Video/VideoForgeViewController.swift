@@ -114,7 +114,7 @@ final class VideoForgeViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         guard !runner.isRendering else { return }
-        runner.probe()
+        runner.prepare()
         ImageStudio.shared.library.refresh()
     }
 

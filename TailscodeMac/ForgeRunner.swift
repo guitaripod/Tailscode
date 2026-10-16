@@ -49,6 +49,8 @@ final class ForgeRunner {
     /// claimed.
     private var renderTicket = 0
     private var reachTask: Task<Void, Never>?
+    private var guess: MediaEndpointPlan.Choice?
+    private var homeProfile: String?
     /// Whether the board was put into a named state by hand rather than by a machine. A staged board
     /// is a photograph of a state, and a real probe landing on top of it would replace the state
     /// somebody asked to look at with whatever this Mac can reach.
@@ -138,6 +140,7 @@ final class ForgeRunner {
         guard !isStaged else { return }
         board.filled(history: ForgeStore.history())
         adopt(ForgeStore.endpoint())
+        suggest()
         changed()
     }
 
@@ -149,7 +152,7 @@ final class ForgeRunner {
         board.point(at: endpoint, named: ForgeStore.label(for: endpoint))
         client = nil
         forgetMissingOnMachineLeft()
-        probe()
+        probe(force: false)
     }
 
     /// A receipt filed before machines were recorded is read as being on the one chosen now, so
@@ -172,19 +175,65 @@ final class ForgeRunner {
         changed()
     }
 
-    /// Whether anything is listening, asked the cheap way. The box is socket-activated, so this says
-    /// the port answers and nothing more — which is exactly what the row it feeds claims.
-    func probe() {
+    /// What the machine has, asked once for the video board and the picture studios alike: whether
+    /// ComfyUI answers, and if it does, whether the lanes have their nodes and model files. A
+    /// verdict newer than the cache's lifetime is reused, so opening a surface costs nothing twice.
+    func probe(force: Bool = true) {
         guard let endpoint = board.endpoint, !isStaged else { return }
         board.checking()
         reachTask?.cancel()
         reachTask = Task { [weak self] in
-            let verdict = await endpoint.reach()
+            let verdict = await MediaReadiness.shared.verdict(for: endpoint, force: force)
             guard let self, !Task.isCancelled else { return }
-            self.board.reached(verdict)
+            self.board.assessed(verdict)
+            self.keepGuess(if: verdict)
             self.changed()
+            if let wait = verdict.recheck { self.recheck(after: wait, endpoint: endpoint) }
         }
         changed()
+    }
+
+    /// A ComfyUI that is still loading is asked again in a few seconds until it answers or the
+    /// board is pointed elsewhere.
+    private func recheck(after seconds: TimeInterval, endpoint: ForgeEndpoint) {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard let self, self.board.endpoint == endpoint, !self.board.isBusy, !self.isStaged
+            else { return }
+            self.probe()
+        }
+    }
+
+    /// The renderer before anybody has said where it is: the machine the agent runs on, on the
+    /// port ComfyUI answers on, asked silently and filed against that server only once it answers.
+    func suggest() {
+        guard !isStaged else { return }
+        let profiles = ServerDirectory.shared.profiles
+        guard let choice = MediaEndpointPlan.choose(profiles: profiles) else { return }
+        homeProfile = choice.profileID
+        guard board.endpoint == nil, !board.isBusy else { return }
+        guess = choice
+        board.point(at: choice.endpoint)
+        client = nil
+        probe()
+        changed()
+    }
+
+    /// A renderer somebody chose, filed against the server it belongs to as well as on this Mac.
+    func file(_ renderer: ForgeRenderer) {
+        if let homeProfile {
+            ForgeStore.remember(renderer, forProfile: homeProfile)
+        } else {
+            ForgeStore.remember(renderer)
+        }
+        guess = nil
+    }
+
+    private func keepGuess(if verdict: MediaVerdict) {
+        guard let guess, guess.endpoint == verdict.endpoint, MediaEndpointPlan.confirms(verdict) else {
+            return
+        }
+        file(guess.renderer)
     }
 
     func pick(_ field: ForgeField, id: String) {
@@ -483,7 +532,7 @@ final class ForgeRunner {
         guard !isStaged, board.endpoint != nil,
             board.sections.first(where: { $0.id == ForgeBoard.rendererID })?.phase == .idle
         else { return }
-        probe()
+        probe(force: false)
     }
 }
 

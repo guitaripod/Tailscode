@@ -210,6 +210,7 @@ enum ParityManifest {
         case .videoForge: return .implemented("VideoForgeViewController")
         case .forgeEntry: return .implemented("presentVideo")
         case .forgeSetup: return .implemented("ForgeSetupViewController")
+        case .mediaReadiness: return .implemented("renderMedia")
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("ForgeClipTileCell")
         case .videoLane: return .implemented("composerLanePan")

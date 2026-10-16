@@ -166,6 +166,12 @@ enum StudioMachineDetails {
         if let row = board.rows.first(where: { $0.kind == .field(.endpoint) }), let badge = row.badge {
             gtk_box_append(ptr(column), fact(ForgeField.endpoint.label, badge))
         }
+        if let readiness = board.readiness {
+            gtk_box_append(ptr(column), Gtk.hairline())
+            for line in MediaReading.lines(readiness) where line.id != "media.comfy" {
+                gtk_box_append(ptr(column), checkRow(line))
+            }
+        }
         let verbs = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         gtk_widget_set_margin_top(verbs, 6)
         gtk_box_append(
@@ -175,6 +181,29 @@ enum StudioMachineDetails {
             ptr(verbs),
             Gtk.button(ImageGenMachineWords.change, css: ["draw-action"], onClick: { onChange() }))
         gtk_box_append(ptr(column), verbs)
+        return column
+    }
+
+    /// One of the doctor's rows: what it checks, what it found in Core's words, and — where a file
+    /// or a version is the matter — the one command that puts it right, copied rather than run.
+    private static func checkRow(_ line: MediaReading.Line) -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_box_append(
+            ptr(column),
+            Gtk.label(
+                line.isOptional ? "\(line.title) · \(MediaWords.optionalMark)" : line.title,
+                css: "draw-toggle-detail", selectable: false))
+        let detail = Gtk.label(line.detail, css: "draw-facts", wrap: true, selectable: true)
+        gtk_label_set_xalign(op(detail), 0)
+        gtk_box_append(ptr(column), detail)
+        if line.state == .todo || line.state == .unavailable { Gtk.addClass(detail, "studio-machine-missing") }
+        if let command = line.fix?.command {
+            let copy = Gtk.button(MediaWords.copyCommand, css: ["draw-action"], onClick: {
+                Gtk.onMain { Gtk.copyToClipboard(command) }
+            })
+            gtk_widget_set_halign(copy, GTK_ALIGN_START)
+            gtk_box_append(ptr(column), copy)
+        }
         return column
     }
 
