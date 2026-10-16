@@ -34,6 +34,18 @@ public enum VoiceCallEntryPoint {
         }
     }
 
+    /// Whether a chat shows the control at all. A server not yet heard from never does, and neither
+    /// does one with no gateway: most machines cannot run voice, so a chat there stays as it is and
+    /// the server screen's Capabilities section is where voice is added. A call in progress always
+    /// shows it.
+    public static func isShown(reach: VoiceReach, active: Bool) -> Bool {
+        if active { return true }
+        switch reach {
+        case .unknown, .checking, .noGateway: return false
+        default: return true
+        }
+    }
+
     /// Whether pressing the control opens the voice checklist instead of starting a call: the server
     /// has no gateway, the gateway says it needs setting up, or its engine is down. Every road that
     /// would have toasted one of those reasons opens the same checklist for the same capability.

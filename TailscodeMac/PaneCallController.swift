@@ -407,10 +407,7 @@ final class PaneCallController {
     private func currentEntry() -> CallEntry? {
         guard live, endpoint != nil, attached == nil else { return nil }
         let reading = reach
-        switch reading {
-        case .unknown, .checking: return nil
-        default: break
-        }
+        guard VoiceCallEntryPoint.isShown(reach: reading, active: false) else { return nil }
         let usable = VoiceCallEntryPoint.isEnabled(reach: reading) && !starting
         return CallEntry(
             dimmed: !usable,

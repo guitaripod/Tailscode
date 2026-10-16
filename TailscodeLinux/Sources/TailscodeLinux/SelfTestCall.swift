@@ -210,7 +210,7 @@ extension SelfTest {
         _ expect: (Bool, String) throws -> Void, _ pump: (Double, () -> Bool) -> Bool
     ) throws {
         let reaches: [(VoiceReach, shown: Bool, enabled: Bool)] = [
-            (.unknown, false, true), (.checking, false, false), (.noGateway, true, true),
+            (.unknown, false, true), (.checking, false, false), (.noGateway, false, true),
             (.ready(gateway: "0.1.0"), true, true), (.loading, true, false), (.busy, true, false),
             (.tooOld(protocol: 0), true, false), (.tooOld(protocol: 99), true, false),
             (.needsSetup, true, true), (.engineDown(detail: "CUDA out of memory"), true, true),

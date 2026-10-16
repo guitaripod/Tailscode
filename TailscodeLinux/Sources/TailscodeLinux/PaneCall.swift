@@ -145,15 +145,8 @@ final class PaneCall: @unchecked Sendable {
         chipParts.word.flatMap { gtk_label_get_text(op($0)).map { String(cString: $0) } } ?? ""
     }
 
-    /// Visible for a server the gateway has been heard from or has not answered at all, because a
-    /// press on a server with no gateway opens the checklist that sets one up, and for a call in
-    /// progress; a server not yet heard from never shows it.
     static func shows(reach: VoiceReach, active: Bool) -> Bool {
-        if active { return true }
-        switch reach {
-        case .unknown, .checking: return false
-        default: return true
-        }
+        VoiceCallEntryPoint.isShown(reach: reach, active: active)
     }
 
     private func updateChip() {

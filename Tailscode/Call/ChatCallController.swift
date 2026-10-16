@@ -307,12 +307,7 @@ final class ChatCallController {
 
     private func refreshEntry() {
         let reading = reach
-        let hidden: Bool
-        switch reading {
-        case .unknown, .checking: hidden = true
-        default: hidden = false
-        }
-        let shown = endpoint != nil && !hidden && attached == nil
+        let shown = endpoint != nil && VoiceCallEntryPoint.isShown(reach: reading, active: false) && attached == nil
         let usable = VoiceCallEntryPoint.isEnabled(reach: reading) && !starting
         barItem.tintColor = usable ? nil : Theme.Color.tertiaryLabel
         barItem.accessibilityLabel = starting ? VoiceCallReading.name : VoiceCallEntryPoint.accessibilityLabel(reach: reading, active: false)
