@@ -196,7 +196,7 @@ public struct MediaDoctor: Sendable {
         }
         let startFix = SetupFix(
             id: "media.start", kind: .command, command: ForgeSetup.startCommand,
-            reason: "ComfyUI accepts connections from other machines only when started with --listen")
+            reason: "ComfyUI accepts connections from other machines only when told which addresses to listen on")
         switch await transport.reach(endpoint) {
         case .nameNotResolved: return failed("unresolved")
         case .timedOut: return failed("timedOut")

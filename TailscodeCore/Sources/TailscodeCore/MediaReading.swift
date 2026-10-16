@@ -45,32 +45,10 @@ public enum MediaReading {
         }
     }
 
-    static func title(of check: SetupCheck) -> String {
-        if let role = check.facts["role"].flatMap(MediaRole.init(rawValue:)) { return role.title }
-        switch check.id {
-        case "media.comfy": return Localized.text("ComfyUI")
-        case "media.gpu": return Localized.text("Graphics card")
-        case "media.video.nodes": return Localized.text("Video nodes")
-        case "media.video.models": return Localized.text("Video models")
-        case "media.image.nodes": return Localized.text("Picture nodes")
-        case "media.image.models": return Localized.text("Picture models")
-        case "media.enhancer": return Localized.text("Prompt helper")
-        default: return check.id
-        }
-    }
+    static func title(of check: SetupCheck) -> String { SetupReading.title(of: check) }
 
     static func detail(of check: SetupCheck, in verdict: MediaVerdict) -> String {
-        switch check.id {
-        case "media.comfy": return comfyDetail(check, endpoint: verdict.endpoint)
-        case "media.gpu": return gpuDetail(check)
-        case "media.video.nodes", "media.image.nodes": return nodesDetail(check)
-        case "media.video.models": return modelsDetail(check, lane: .video)
-        case "media.image.models": return modelsDetail(check, lane: .pictures)
-        case "media.enhancer": return enhancerDetail(check)
-        default:
-            if check.facts["role"] != nil { return fileDetail(check) }
-            return check.detail ?? check.id
-        }
+        SetupReading.line(of: check) ?? check.id
     }
 
     public static func comfyDetail(_ check: SetupCheck, endpoint: ForgeEndpoint) -> String {
@@ -85,11 +63,11 @@ public enum MediaReading {
             return Localized.text("ComfyUI is starting on %@; it will be ready in a minute", host)
         case "refused":
             return Localized.text(
-                "Nothing is listening on %@ on %@. If ComfyUI is running there, start it with --listen so other machines can reach it.",
+                "Nothing is listening on %@ on %@. If ComfyUI is running there, start it listening on its Tailscale address so other machines can reach it.",
                 "\(endpoint.port)", host)
         case "loopbackOnly":
             return Localized.text(
-                "ComfyUI is running on %@ but only accepts connections from that machine: start it with --listen",
+                "ComfyUI is running on %@ but only accepts connections from that machine: start it again listening on its Tailscale address",
                 host)
         case "timedOut":
             return ForgeEndpoint.sentence(for: .timedOut, host: host)
@@ -97,38 +75,6 @@ public enum MediaReading {
             return ForgeEndpoint.sentence(for: .nameNotResolved, host: host)
         default:
             return Localized.text("Something answers on %@ but it is not ComfyUI", endpoint.displayHost)
-        }
-    }
-
-    private static func gpuDetail(_ check: SetupCheck) -> String {
-        let need = Int(check.facts["needMB"] ?? "") ?? MediaRequirements.videoVRAMMB
-        if check.state == .blocked { return Localized.text("Waiting for ComfyUI to answer") }
-        if check.facts["none"] != nil {
-            return Localized.text("ComfyUI found no graphics card to paint with")
-        }
-        let name = check.facts["name"] ?? ""
-        let total = Int(check.facts["totalMB"] ?? "") ?? 0
-        if check.state == .ok {
-            return Localized.text("%@ · %@ of video memory", name, memory(total))
-        }
-        return Localized.text(
-            "The video model needs about %@ of video memory; this card, %@, has %@", memory(need),
-            name, memory(total))
-    }
-
-    private static func nodesDetail(_ check: SetupCheck) -> String {
-        switch check.state {
-        case .blocked:
-            return check.facts["phase"] == "unreadable"
-                ? Localized.text("ComfyUI would not list its nodes")
-                : Localized.text("Waiting for ComfyUI to answer")
-        case .ok:
-            let count = check.id == "media.video.nodes"
-                ? MediaRequirements.video.nodes.count : MediaRequirements.imageNodes.count
-            return Localized.text("All %@ node types are in this ComfyUI", "\(count)")
-        default:
-            let missing = (check.facts["missing"] ?? "").split(separator: ",").map(String.init)
-            return nodesSentence(missing: missing, nodes: check)
         }
     }
 
@@ -144,25 +90,6 @@ public enum MediaReading {
         return Localized.text("This ComfyUI lacks %@; %@ or newer has what this needs", names, need)
     }
 
-    private static func modelsDetail(_ check: SetupCheck, lane: Lane) -> String {
-        let total = Int64(check.facts["bytes"] ?? "") ?? 0
-        switch check.state {
-        case .blocked:
-            return Localized.text("Waiting for ComfyUI; the files add up to %@", size(total))
-        case .ok:
-            if let engines = check.facts["engines"] {
-                let labels = engines.split(separator: ",").compactMap { ImageGenEngine(rawValue: String($0))?.label }
-                return Localized.text("Ready: %@", labels.joined(separator: ", "))
-            }
-            let count = lane == .video ? MediaRequirements.video.files.count : MediaRequirements.imageFiles.count
-            return Localized.text("All %@ files are there", "\(count)")
-        default:
-            let roles = (check.facts["missing"] ?? "").split(separator: ",")
-                .compactMap { MediaRole(rawValue: String($0)) }
-            return filesSentence(roles.map(MediaRequirements.file), lane: lane)
-        }
-    }
-
     static func filesSentence(_ files: [MediaFile], lane: Lane) -> String {
         guard let first = files.first else { return "" }
         if files.count == 1 {
@@ -175,29 +102,6 @@ public enum MediaReading {
             ? Localized.text("%@ and %@ more", shown, "\(files.count - 2)") : shown
         let total = files.reduce(Int64(0)) { $0 + $1.bytes }
         return Localized.text("Missing for %@, %@ in all: %@", lane.name, size(total), list)
-    }
-
-    private static func fileDetail(_ check: SetupCheck) -> String {
-        let bytes = Int64(check.facts["bytes"] ?? "") ?? 0
-        let name = check.facts["name"] ?? ""
-        if check.facts["misplaced"] != nil {
-            return Localized.text(
-                "%@ is in a subfolder; ComfyUI needs it directly in %@", name, check.facts["folder"] ?? "")
-        }
-        var parts = [size(bytes), name]
-        if check.facts["unpublished"] != nil {
-            parts.append(Localized.text("not published anywhere yet"))
-        } else if check.facts["gated"] != nil {
-            parts.append(Localized.text("needs the licence accepted first"))
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private static func enhancerDetail(_ check: SetupCheck) -> String {
-        guard let model = check.facts["model"] else {
-            return Localized.text("None found. Optional: pictures and video work without it")
-        }
-        return Localized.text("Rewrites your words with %@", model)
     }
 
     public static func size(_ bytes: Int64) -> String {

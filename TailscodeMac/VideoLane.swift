@@ -8,7 +8,7 @@ import TailscodeCore
 /// a sheet and nothing else — and this owns the stage and the dock it hands over, and answers for
 /// everything that is specific to making a clip: which verbs a stage offers, what a shelf tile is,
 /// what the machine pill says. The Image lane's pieces are used wherever they are generic: the
-/// dock, the pills, the rewrite card, the capsule, the shelf and the machine's popover frame are
+/// dock, the pills, the rewrite card, the capsule, the shelf and the machine checklist are
 /// the same classes, fed by a different brief.
 @MainActor
 final class VideoLane: StudioLane {
@@ -18,7 +18,6 @@ final class VideoLane: StudioLane {
     private let videoStage = VideoStageView()
     private let videoDock: StudioDockView
     private var watchers: [ObjectIdentifier: LaneWatcher] = [:]
-    private var popover: NSPopover?
     private var reading: StudioVideoReading
     private var stageEntryID: String?
     private var continuedID: String?
@@ -66,6 +65,7 @@ final class VideoLane: StudioLane {
         videoDock.onNotice = { [weak self] line in self?.onNotice?(line) }
         videoDock.onOpenMachine = { [weak self] anchor in self?.presentMachine(from: anchor) }
         brief.onSetup = { [weak self] in self?.openSetup() }
+        brief.onChecklist = { [weak self] in self?.openChecklist() }
         brief.onRender = { [weak self] in self?.releaseStage() }
         brief.onChange = { [weak self] change in
             guard let self else { return }
@@ -884,7 +884,7 @@ final class VideoLane: StudioLane {
             runner.probe()
             emit(.everything)
         case .machine:
-            if board.endpoint == nil { openSetup() } else { presentMachine(from: videoStage) }
+            if board.endpoint == nil { openSetup() } else { openChecklist() }
         case .reuse:
             if let entry = exhibit { reuse(entry) }
         case .useEngine:
@@ -902,7 +902,6 @@ final class VideoLane: StudioLane {
     /// The machine's setup, opened over the Studio — the same flow adding a server opens — and the
     /// renderer it settles on is taken up by the runner, which outlives this surface.
     func openSetup() {
-        popover?.close()
         guard let window = videoStage.window else { return }
         ForgeSetupSheet.present(on: window) { [weak self] in
             ForgeRunner.shared.pointAtStoredRenderer()
@@ -910,13 +909,17 @@ final class VideoLane: StudioLane {
         }
     }
 
+    /// What the machine can make, as the shared checklist for images and video led by video: the same
+    /// one the picture lane and the servers window open. Finishing it is pressing Render.
+    func openChecklist() {
+        MediaSetupGate.present(
+            endpoint: board.endpoint, focus: .video, on: videoStage.window,
+            onFinish: { [weak self] in self?.brief.submit(prompt: self?.board.recipe.prompt ?? "") },
+            onChanged: { [weak self] in self?.emit(.everything) })
+    }
+
     func presentMachine(from anchor: NSView) {
-        popover?.close()
-        let pop = NSPopover()
-        pop.behavior = .transient
-        pop.contentViewController = StudioVideoMachineSheet(runner: runner) { [weak self] in self?.openSetup() }
-        pop.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
-        popover = pop
+        openChecklist()
     }
 
     /// Puts a picture the Image lane handed over where the next clip starts from, and says so on the
@@ -926,130 +929,4 @@ final class VideoLane: StudioLane {
         runner.start(from: request.frame, width: request.width, height: request.height)
         videoDock.focusWords()
     }
-}
-
-/// What the machine pill opens in the Video lane: the renderer, whether it answers, the model it
-/// renders with and when it was last looked at — read off the same board the pill reads, so the
-/// two can never disagree — and the two things a person does here, look again and set up another.
-@MainActor
-final class StudioVideoMachineSheet: NSViewController {
-    private let runner: ForgeRunner
-    private let onSetup: () -> Void
-    private let heading = StudioTheme.label(.panelTitle, color: MacTheme.Color.label)
-    private let address = StudioTheme.label(.panelFootnote, color: MacTheme.Color.secondaryLabel)
-    private let summary = StudioTheme.label(.panelLabel, color: MacTheme.Color.label, lines: 4)
-    private let dot = NSImageView()
-    private let modelLabel = StudioTheme.label(.rowTitle, color: MacTheme.Color.secondaryLabel)
-    private let modelValue = StudioTheme.label(.rowDetail, color: MacTheme.Color.label)
-    private let modelNote = StudioTheme.label(.panelFootnote, color: MacTheme.Color.secondaryLabel, lines: 2)
-    private let note = StudioTheme.label(.panelFootnote, color: MacTheme.Color.secondaryLabel, lines: 3)
-    private let check = NSButton(title: "", target: nil, action: nil)
-    private let change = NSButton(title: "", target: nil, action: nil)
-
-    private static let width: CGFloat = 400
-    private static let pad: CGFloat = 18
-
-    init(runner: ForgeRunner, onSetup: @escaping () -> Void) {
-        self.runner = runner
-        self.onSetup = onSetup
-        super.init(nibName: nil, bundle: nil)
-        runner.watch(self) { [weak self] in self?.reload() }
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    isolated deinit { runner.unwatch(self) }
-
-    override func loadView() {
-        let root = StudioFlippedView(frame: NSRect(x: 0, y: 0, width: Self.width, height: 260))
-        for view in [heading, address, summary, dot, modelLabel, modelValue, modelNote, note, check, change] as [NSView] {
-            root.addSubview(view)
-        }
-        check.bezelStyle = .rounded
-        check.target = self
-        check.action = #selector(checkPressed)
-        change.bezelStyle = .rounded
-        change.target = self
-        change.action = #selector(changePressed)
-        dot.imageScaling = .scaleProportionallyDown
-        view = root
-        reload()
-    }
-
-    override func viewDidAppear() {
-        super.viewDidAppear()
-        runner.probeIfUnchecked()
-    }
-
-    func reload() {
-        guard isViewLoaded else { return }
-        let board = runner.board
-        let reading = StudioMachineReading.forge(board)
-        heading.stringValue = reading?.name ?? ForgeField.endpoint.label
-        address.stringValue = board.endpoint.map { "\($0.host):\($0.port)" } ?? ForgeBoard.heading
-        summary.stringValue = reading?.fact ?? board.value(of: .endpoint)
-        let ready = reading?.tone == .live
-        let blocked = reading?.cannotPaint == true
-        dot.image = StudioTheme.symbol(
-            ready ? "checkmark.circle.fill" : "exclamationmark.triangle.fill", size: 20)
-        dot.contentTintColor =
-            ready ? MacTheme.Color.success : (blocked ? MacTheme.Color.danger : MacTheme.Color.tertiaryLabel)
-        modelLabel.stringValue = ForgeBoard.heading
-        modelValue.stringValue = ForgeModel.label
-        modelNote.stringValue = ForgeModel.detail
-        note.stringValue = ForgeBoard.notice
-        check.title = board.isChecking ? Localized.text("Checking…") : ImageGenMachineWords.checkAgain
-        check.isEnabled = !board.isChecking && board.endpoint != nil
-        change.title = board.endpoint == nil ? ForgeSetup.title : ImageGenMachineWords.change
-        layoutAll()
-    }
-
-    private func layoutAll() {
-        let pad = Self.pad
-        let width = Self.width - 2 * pad
-        func wrapped(_ field: NSTextField) -> CGFloat {
-            ceil(field.attributedStringValue.boundingRect(
-                with: NSSize(width: width, height: 200), options: [.usesLineFragmentOrigin]).height) + 2
-        }
-        var y = pad
-        heading.frame = NSRect(x: pad, y: y, width: width - 30, height: 22)
-        dot.frame = NSRect(x: Self.width - pad - 24, y: y - 1, width: 24, height: 24)
-        y += 22
-        address.frame = NSRect(x: pad, y: y, width: width, height: 16)
-        y += 22
-        let summaryHeight = wrapped(summary)
-        summary.frame = NSRect(x: pad, y: y, width: width, height: summaryHeight)
-        y += summaryHeight + 14
-        modelLabel.frame = NSRect(x: pad, y: y, width: 120, height: 18)
-        modelValue.frame = NSRect(x: pad + 120, y: y, width: width - 120, height: 18)
-        modelValue.alignment = .right
-        y += 22
-        let modelHeight = wrapped(modelNote)
-        modelNote.frame = NSRect(x: pad, y: y, width: width, height: modelHeight)
-        y += modelHeight + 10
-        let noteHeight = wrapped(note)
-        note.frame = NSRect(x: pad, y: y, width: width, height: noteHeight)
-        y += noteHeight + 14
-        check.frame = NSRect(x: pad, y: y, width: 130, height: 28)
-        change.frame = NSRect(x: pad + 138, y: y, width: 190, height: 28)
-        y += 28 + pad
-        if abs(y - view.frame.height) > 0.5 {
-            preferredContentSize = NSSize(width: Self.width, height: y)
-            view.frame.size.height = y
-        }
-    }
-
-    @objc private func checkPressed() { runner.probe() }
-
-    @objc private func changePressed() {
-        let setup = onSetup
-        view.window?.close()
-        setup()
-    }
-}
-
-/// A plain view that lays out from its top edge, for a popover that is read down the page.
-final class StudioFlippedView: NSView {
-    override var isFlipped: Bool { true }
 }

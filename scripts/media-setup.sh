@@ -237,20 +237,26 @@ download_models() {
     fi
 }
 
-# The one command that starts ComfyUI where the app can reach it. The tailnet address is where
-# ComfyUI should listen: it has no sign-in of its own, so it must not listen on every interface of a
-# machine that is on other networks as well.
+# The one command that starts ComfyUI where the app can reach it. ComfyUI has no sign-in, so it
+# listens on loopback and on this machine's tailnet address and nowhere else: never on every
+# interface of a machine that is on other networks too. Without a tailnet address it listens on
+# loopback only and says so, which fails safe: nothing else can reach it until Tailscale is up.
 print_start_command() {
-    local address="0.0.0.0"
-    if command -v tailscale >/dev/null 2>&1 && tailscale ip -4 >/dev/null 2>&1; then
-        address=$(tailscale ip -4 | head -n 1)
+    local address=""
+    if command -v tailscale >/dev/null 2>&1; then
+        address=$(tailscale ip -4 2>/dev/null | head -n 1)
+    fi
+    local listen="127.0.0.1"
+    if [ -n "$address" ]; then
+        listen="127.0.0.1,$address"
     else
-        say "Tailscale is not answering here, so the command below listens on every interface."
-        say "ComfyUI has no password: prefer your tailnet address once Tailscale is up."
+        say "Tailscale gave no address here, so the command below listens on this machine only."
+        say "Other machines cannot reach it until Tailscale is up; ComfyUI has no password, so it is"
+        say "never started on every interface."
     fi
     say ""
     say "start it with:"
-    printf '  cd %s/ComfyUI && %s/venv/bin/python main.py --listen %s --port %s\n' "$ROOT" "$ROOT" "$address" "$PORT"
+    printf '  cd %s/ComfyUI && %s/venv/bin/python main.py --listen "%s" --port %s\n' "$ROOT" "$ROOT" "$listen" "$PORT"
     say ""
     say "then open Video or Images in Tailscode: it finds this machine and checks what is installed."
 }

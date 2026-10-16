@@ -86,7 +86,9 @@ public struct SetupSnapshot: Sendable, Equatable {
         self.running = running
     }
 
-    public func checklist(locale: Locale = .current) -> SetupChecklist { SetupChecklist(snapshot: self, locale: locale) }
+    public func checklist(locale: Locale = .current, focus: SetupFocus? = nil) -> SetupChecklist {
+        SetupChecklist(snapshot: self, locale: locale, focus: focus)
+    }
 
     /// Whether the machine has nothing that answers for this capability yet, so a capabilities
     /// section offers to add it rather than to finish it.

@@ -218,7 +218,7 @@ extension ConnectDiagnosis {
                 symbol: "bolt.horizontal.circle",
                 title: Localized.text("Nothing is listening on %@ on %@", "\(endpoint.port)", endpoint.host),
                 detail: Localized.text(
-                    "The machine answered, so the address is right. If ComfyUI is running there, start it with --listen so other machines can reach it."
+                    "The machine answered, so the address is right. If ComfyUI is running there, start it listening on its Tailscale address so other machines can reach it."
                 ),
                 fix: .copyCommand(ForgeSetup.startCommand),
                 actionTitle: ForgeSetup.startCommandTitle)
@@ -228,7 +228,7 @@ extension ConnectDiagnosis {
                 title: Localized.text(
                     "ComfyUI is running on %@ but only accepts connections from that machine", endpoint.host),
                 detail: Localized.text(
-                    "It was started without --listen, so nothing else on the tailnet can reach it. Start it again with --listen."
+                    "It is listening for that machine only, so nothing else on the tailnet can reach it. Start it again listening on its Tailscale address."
                 ),
                 fix: .copyCommand(ForgeSetup.startCommand),
                 actionTitle: ForgeSetup.startCommandTitle)

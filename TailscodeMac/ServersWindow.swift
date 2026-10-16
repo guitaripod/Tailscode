@@ -288,8 +288,12 @@ final class ServersWindow: NSWindowController {
         lines.alignment = .leading
         lines.spacing = 2
 
-        let capabilities = SetupCapabilitiesView(profileURL: profile.baseURL)
+        let capabilities = SetupCapabilitiesView(profileURL: profile.baseURL, profileID: profile.id)
         capabilities.openChecklist = { [weak self] target in
+            if target.capability == SetupCapability.media {
+                MediaSetupGate.present(endpoint: target.forgeEndpoint, focus: nil, on: self?.window)
+                return
+            }
             MacSetupGate.present(
                 target, on: self?.window,
                 reportLines: { MacVoiceCallGate.shared.reportLines(for: VoiceSetupSource.endpoint(of: target)) })

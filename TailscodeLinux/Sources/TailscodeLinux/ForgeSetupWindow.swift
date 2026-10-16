@@ -44,8 +44,6 @@ final class ForgeSetupWindow: @unchecked Sendable {
     private let knownGroup = adw_preferences_group_new()!
     private let sweepGroup = adw_preferences_group_new()!
     private let addGroup = adw_preferences_group_new()!
-    private let mediaGroup = adw_preferences_group_new()!
-    private var mediaRows: [UnsafeMutablePointer<GtkWidget>] = []
     private var lookTicket = 0
     private let radar = RadarView()
     /// The dial's own row, shown only while a scan is out or has answered. A dial nobody has spun
@@ -97,7 +95,6 @@ final class ForgeSetupWindow: @unchecked Sendable {
         adw_preferences_page_add(ptr(page), ptr(sweepGroup))
         adw_preferences_page_add(ptr(page), ptr(knownGroup))
         adw_preferences_page_add(ptr(page), ptr(addGroup))
-        adw_preferences_page_add(ptr(page), ptr(mediaGroup))
 
         buildKnownGroup()
         buildSweepGroup()
@@ -445,42 +442,6 @@ final class ForgeSetupWindow: @unchecked Sendable {
         renderSweep()
         renderKnown()
         renderAdd()
-        renderMedia()
-    }
-
-    /// What the machine at the address can make, once the doctor has looked: one row each for
-    /// ComfyUI's nodes and every model file, in Core's words, each missing file with the one
-    /// command that fetches it. A row with a fix copies the command rather than running it, because
-    /// the files go onto the other machine and only a person there can put them.
-    private func renderMedia() {
-        for row in mediaRows { adw_preferences_group_remove(ptr(mediaGroup), ptr(row)) }
-        mediaRows = []
-        let lines = setup.mediaLines
-        gtk_widget_set_visible(mediaGroup, lines.isEmpty ? 0 : 1)
-        adw_preferences_group_set_title(ptr(mediaGroup), MediaWords.groupTitle)
-        for line in lines {
-            let row = adw_action_row_new()!
-            adw_preferences_row_set_use_markup(ptr(row), 0)
-            adw_preferences_row_set_title(
-                ptr(row),
-                line.isOptional ? "\(line.title) · \(MediaWords.optionalMark)" : line.title)
-            adw_action_row_set_subtitle(ptr(row), line.detail)
-            adw_action_row_set_subtitle_lines(ptr(row), 0)
-            adw_action_row_set_subtitle_selectable(ptr(row), 1)
-            Gtk.setTone(row, Self.tone(line.tone), from: Self.tones)
-            if let command = line.fix?.command {
-                let copy = Self.button(MediaWords.copyCommand) { [weak self] in
-                    Gtk.onMain { [weak self] in
-                        Gtk.copyToClipboard(command)
-                        self?.toast(MediaWords.copied)
-                    }
-                }
-                gtk_widget_set_tooltip_text(copy, command)
-                adw_action_row_add_suffix(ptr(row), copy)
-            }
-            adw_preferences_group_add(ptr(mediaGroup), ptr(row))
-            mediaRows.append(row)
-        }
     }
 
     /// Two facts, in the order they matter: what a renderer is, and whether this machine is on the

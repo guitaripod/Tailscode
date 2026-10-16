@@ -14,8 +14,13 @@ final class SetupChecklistViewController: UIViewController {
     private static let copiedFor: Duration = .milliseconds(1500)
 
     private let target: SetupTarget
+    private let focus: SetupFocus?
     private let reportLines: () -> [String]
     private let onFinish: (() -> Void)?
+    private let onChange: ((SetupChecklistViewController) -> Void)?
+    private let placeLabel = UILabel()
+    private let placeButton = UIButton(type: .system)
+    private let placeLine = UIStackView()
     private let scroll = UIScrollView()
     private let column = UIStackView()
     private let footer = UIView()
@@ -34,10 +39,12 @@ final class SetupChecklistViewController: UIViewController {
     private var copied = false
 
     static func present(
-        target: SetupTarget, from presenter: UIViewController, reportLines: @escaping () -> [String],
-        onFinish: (() -> Void)?
+        target: SetupTarget, focus: SetupFocus?, from presenter: UIViewController,
+        reportLines: @escaping () -> [String], onFinish: (() -> Void)?,
+        onChange: ((SetupChecklistViewController) -> Void)?
     ) {
-        let controller = SetupChecklistViewController(target: target, reportLines: reportLines, onFinish: onFinish)
+        let controller = SetupChecklistViewController(
+            target: target, focus: focus, reportLines: reportLines, onFinish: onFinish, onChange: onChange)
         controller.loadViewIfNeeded()
         let fallbackWidth = presenter.view.bounds.width
         let bottom = presenter.view.safeAreaInsets.bottom
@@ -55,10 +62,15 @@ final class SetupChecklistViewController: UIViewController {
         presenter.present(controller, animated: true)
     }
 
-    private init(target: SetupTarget, reportLines: @escaping () -> [String], onFinish: (() -> Void)?) {
+    private init(
+        target: SetupTarget, focus: SetupFocus?, reportLines: @escaping () -> [String], onFinish: (() -> Void)?,
+        onChange: ((SetupChecklistViewController) -> Void)?
+    ) {
         self.target = target
+        self.focus = focus
         self.reportLines = reportLines
         self.onFinish = onFinish
+        self.onChange = onChange
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -102,13 +114,16 @@ final class SetupChecklistViewController: UIViewController {
             primary.trailingAnchor.constraint(equalTo: footer.trailingAnchor, constant: -Theme.Spacing.l),
             primary.bottomAnchor.constraint(equalTo: footer.safeAreaLayoutGuide.bottomAnchor, constant: -Theme.Spacing.s),
         ])
-        apply(SetupChecklist(snapshot: SetupSnapshot(target: target)))
+        apply(SetupChecklist(snapshot: SetupSnapshot(target: target), focus: focus))
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         SetupGate.desk.follow(target, lifetime: lifetime) { [weak self] snapshot in
-            Task { @MainActor in self?.apply(SetupChecklist(snapshot: snapshot)) }
+            Task { @MainActor in
+                guard let self else { return }
+                self.apply(SetupChecklist(snapshot: snapshot, focus: self.focus))
+            }
         }
     }
 
@@ -156,6 +171,42 @@ final class SetupChecklistViewController: UIViewController {
         return stack
     }
 
+    private func placeView() -> UIView {
+        placeLabel.font = Theme.Ramp.font(.panelFootnote)
+        placeLabel.textColor = Theme.Color.secondaryLabel
+        placeLabel.adjustsFontForContentSizeCategory = true
+        placeLabel.numberOfLines = 0
+        placeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        placeButton.addAction(UIAction { [weak self] _ in self?.pressChange() }, for: .touchUpInside)
+        placeButton.setContentHuggingPriority(.required, for: .horizontal)
+        placeLine.axis = .horizontal
+        placeLine.alignment = .center
+        placeLine.spacing = Theme.Spacing.s
+        placeLine.addArrangedSubview(placeLabel)
+        placeLine.addArrangedSubview(placeButton)
+        placeLine.isHidden = true
+        return placeLine
+    }
+
+    private func renderPlace(_ place: SetupPlace?) {
+        guard let place else {
+            placeLine.isHidden = true
+            return
+        }
+        placeLabel.text = place.line
+        var config = UIButton.Configuration.plain()
+        config.title = place.changeLabel
+        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8)
+        placeButton.configuration = config
+        placeButton.isHidden = onChange == nil
+        placeLine.isHidden = false
+    }
+
+    private func pressChange() {
+        Theme.Haptics.tap()
+        onChange?(self)
+    }
+
     private func configurePrimary() {
         primary.isHidden = true
         primary.addAction(UIAction { [weak self] _ in self?.pressPrimary() }, for: .touchUpInside)
@@ -165,8 +216,12 @@ final class SetupChecklistViewController: UIViewController {
     private func apply(_ next: SetupChecklist) {
         let before = (order, checklist?.headline, checklist?.primary == nil)
         checklist = next
-        if column.arrangedSubviews.isEmpty { column.addArrangedSubview(headerView()) }
+        if column.arrangedSubviews.isEmpty {
+            column.addArrangedSubview(headerView())
+            column.addArrangedSubview(placeView())
+        }
         nameLabel.text = next.name
+        renderPlace(next.place)
         placeBadge(for: next)
         icon.show(next.icon, spoken: next.headline)
         headline.text = next.headline

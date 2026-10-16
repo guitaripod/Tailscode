@@ -46,17 +46,30 @@ By hand, the same steps:
    folder names as their paths. `pip install -U "huggingface_hub[cli]"` provides `hf`; run
    `hf auth login` once, after accepting the two licences. An interrupted download resumes when the
    command is run again.
-4. **Start it where the app can reach it.**
+4. **Start it where the app can reach it, and nowhere else.**
 
    ```
-   cd ComfyUI && ../venv/bin/python main.py --listen <this machine's tailnet address> --port 8188
+   cd ComfyUI && ../venv/bin/python main.py --listen "127.0.0.1,$(tailscale ip -4)" --port 8188
    ```
 
-   ComfyUI listens on 127.0.0.1 unless told otherwise (`--listen` with no argument means every
-   interface, `0.0.0.0,::`). It has no sign-in of its own, so bind it to the tailnet address
-   (`tailscale ip -4`) on a machine that is on other networks too. The app's "copy the start
-   command" button copies `python main.py --listen 0.0.0.0 --port 8188`, which works everywhere and is
-   the broader of the two; a machine that is only ever on a trusted network can use it as it stands.
+   ComfyUI listens on 127.0.0.1 unless told otherwise. `--listen` takes a list of addresses split on
+   commas (`127.2.2.2,127.3.3.3` in its own help, verified in `comfy/cli_args.py` and `server.py` at the
+   pinned tag), and with no argument it means every interface, `0.0.0.0,::`. ComfyUI has no sign-in of
+   its own, so binding every interface publishes an unauthenticated render queue to every network the
+   machine is on; the recipe binds loopback and the tailnet address only. One trap, read from the same
+   source: an empty entry in the list (what `$(tailscale ip -4)` becomes on a machine where Tailscale
+   is down or absent, `127.0.0.1,`) is handed to the socket layer as an empty host, which listens on
+   every interface. So the command the app copies reads the address first and starts nothing without
+   one:
+
+   ```
+   ts=$(tailscale ip -4 | head -n 1); if [ -n "$ts" ]; then python main.py --listen "127.0.0.1,$ts" --port 8188; else echo "Tailscale gave no address, so ComfyUI was not started"; fi
+   ```
+
+   `scripts/media-setup.sh` prints the same bind with the address filled in, and falls back to loopback
+   only, never to `0.0.0.0`, when Tailscale gives none. The binding is IPv4; a client that resolves the
+   machine's name to its IPv6 tailnet address first would not reach it, which was equally true of the
+   `0.0.0.0` this replaces and was not tested here.
 5. Open Video or Images in Tailscode. It guesses this machine from the agent server's address, asks it
    silently and shows the checklist below.
 
@@ -119,9 +132,21 @@ started), `/object_info` (node classes) and `/models/<folder>` (the files in eac
 own choices when a ComfyUI is too old to answer that). The answer is a `SetupReport` of capability
 `media`: `media.comfy`, `media.gpu`, `media.video.nodes`, `media.video.models`, `media.image.nodes`,
 `media.image.models`, `media.enhancer`, and one row per missing file (`media.video.model.<role>`,
-`media.image.model.<role>`) with the one `hf download` line that fetches it. The reports are ready when
-ComfyUI answers and either the video lane or at least one picture engine is complete. A file inside a
-subfolder of its folder is reported as misplaced, because the graphs name files by their bare name.
+`media.image.model.<role>`) with the one `hf download` line that fetches it. The reports are ready when ComfyUI answers and either the video lane or at least one picture engine
+is complete. A file inside a subfolder of its folder is reported as misplaced, because the graphs name
+files by their bare name.
+
+Every road to this answer opens the one checklist the other capabilities use (`docs/setup.md`): the
+video button on a machine that cannot render, the studio's machine pill, the render button's "See what is
+missing" and the server screen's Capabilities row. The checklist is led by where the person came from.
+From video it lists the five video files in order and folds pictures into one optional row; from
+pictures it lists the files of the engine nearest to complete (three files, Qwen Quality by default) as
+required and every other engine's as optional; from the server screen it leads with whichever lane is
+already usable. An optional row never holds the checklist back. The button copies the next missing
+file's command, then says Render or Open the studio. The licences are said once each, in the row that
+needs them: the gate on LTX-2.5 and on FLUX Klein (accept the licence on the repository's page while
+signed in, run `hf auth login` once) and the Qwen research licence ("For personal and research use
+only").
 
 ComfyUI being out of reach has six faces and the app says which: nothing is listening on the port,
 running here but for this machine only, silent (asleep or off the tailnet), a name that does not

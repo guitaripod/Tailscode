@@ -2635,7 +2635,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                     image: UIImage(systemName: ImageGenEntryPoint.symbol)
                 ) { [weak self] _ in self?.presentImage() },
                 UIAction(
-                    title: ImageGenMachineWords.title,
+                    title: Localized.text("See what is missing"),
                     image: UIImage(systemName: "info.circle")
                 ) { [weak self] _ in self?.presentImageMachine() },
                 UIAction(
@@ -2646,9 +2646,9 @@ extension HomeViewController: HomeComposerBarDelegate {
 
     private func presentImageMachine() {
         Theme.Haptics.tap()
-        let nav = UINavigationController(rootViewController: ImageMachineViewController())
-        nav.navigationBar.prefersLargeTitles = true
-        present(nav, animated: true)
+        let held = ImageStudio.shared
+        MediaSetupGate.present(
+            endpoint: held.endpoint.forgeEndpoint, focus: .pictures, from: self, onChanged: { held.adoptDoor() })
     }
 
     /// Sending from the image lane starts the render and opens the studio over it, so the first

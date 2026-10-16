@@ -42,7 +42,8 @@ public actor SetupDesk {
         self.secrets = secrets
         self.clock = clock
         let voice = VoiceSetupSource(http: http) { endpoint in endpoint.password(in: secrets) }
-        var table: [String: any SetupSource] = [voice.capability: voice]
+        let media = MediaSetupSource()
+        var table: [String: any SetupSource] = [voice.capability: voice, media.capability: media]
         for source in sources { table[source.capability] = source }
         self.sources = table
     }

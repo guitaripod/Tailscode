@@ -146,24 +146,24 @@ struct SetupReadingTests {
 
     @Test("A capability can register its own words and they are used for its ids")
     func registration() {
-        struct Media: SetupCapabilityReader {
-            let capability = "media"
-            var name: String { "Images and video" }
-            var setUpLabel: String { "Set up media" }
-            var readyHeadline: String { "Images and video are ready" }
-            var readyActionLabel: String { "Open the studio" }
-            func title(of check: SetupCheck) -> String? { check.id == "media.nodes" ? "ComfyUI nodes" : nil }
+        struct Storage: SetupCapabilityReader {
+            let capability = "storage"
+            var name: String { "Disk space" }
+            var setUpLabel: String { "Set up storage" }
+            var readyHeadline: String { "Disk space is ready" }
+            var readyActionLabel: String { "Open the disk" }
+            func title(of check: SetupCheck) -> String? { check.id == "storage.nodes" ? "Space nodes" : nil }
             func line(of check: SetupCheck, locale: Locale) -> String? {
-                check.id == "media.nodes" ? "The video nodes are missing" : nil
+                check.id == "storage.nodes" ? "The space is missing" : nil
             }
         }
-        SetupReading.register(Media())
-        let check = SetupCheck(id: "media.nodes", state: .todo, detail: "english")
-        #expect(SetupReading.title(of: check) == "ComfyUI nodes")
-        #expect(SetupReading.line(of: check, locale: english) == "The video nodes are missing")
-        #expect(SetupReading.name(of: "media") == "Images and video")
-        let other = SetupCheck(id: "media.models", state: .todo, detail: "The model file is missing")
-        #expect(SetupReading.line(of: other, locale: english) == "The model file is missing")
+        SetupReading.register(Storage())
+        let check = SetupCheck(id: "storage.nodes", state: .todo, detail: "english")
+        #expect(SetupReading.title(of: check) == "Space nodes")
+        #expect(SetupReading.line(of: check, locale: english) == "The space is missing")
+        #expect(SetupReading.name(of: "storage") == "Disk space")
+        let other = SetupCheck(id: "storage.models", state: .todo, detail: "The file is missing")
+        #expect(SetupReading.line(of: other, locale: english) == "The file is missing")
         #expect(SetupReading.name(of: "preview") == "Preview")
     }
 }

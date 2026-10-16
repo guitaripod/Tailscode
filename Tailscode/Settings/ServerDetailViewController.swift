@@ -46,7 +46,7 @@ final class ServerDetailViewController: UIViewController {
     private var previewReach: PreviewReach = .unknown
     private var previewTask: Task<Void, Never>?
     private lazy var capabilities: SetupCapabilitiesSection = {
-        let section = SetupCapabilitiesSection(profileURL: profile.baseURL)
+        let section = SetupCapabilitiesSection(profileURL: profile.baseURL, profileID: profile.id)
         section.onChange = { [weak self] in self?.capabilitiesChanged() }
         return section
     }()
@@ -990,6 +990,10 @@ extension ServerDetailViewController: UICollectionViewDelegate {
         case .capability(let id):
             guard let target = capabilities.target(for: id) else { break }
             Theme.Haptics.tap()
+            if target.capability == SetupCapability.media {
+                MediaSetupGate.present(endpoint: target.forgeEndpoint, focus: nil, from: self)
+                break
+            }
             SetupGate.present(target, from: self, reportLines: { [weak self] in self?.capabilityReport(for: target) ?? [] })
         case .previewHost:
             guard !isPreviewHostChosen else { break }

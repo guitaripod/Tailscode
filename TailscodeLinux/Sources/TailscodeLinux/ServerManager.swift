@@ -301,7 +301,7 @@ final class ServerManager: @unchecked Sendable {
         adw_expander_row_add_row(ptr(row), health)
 
         let capabilities = SetupCapabilitiesRows(
-            profileURL: profile.baseURL, parent: { [weak self] in self?.window })
+            profileURL: profile.baseURL, profileID: profile.id, parent: { [weak self] in self?.window })
         slots.capabilities = capabilities
         adw_expander_row_add_row(ptr(row), capabilities.row)
         capabilities.start()

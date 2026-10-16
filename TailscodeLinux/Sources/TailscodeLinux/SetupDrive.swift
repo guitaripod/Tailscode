@@ -8,9 +8,13 @@ extension MainWindow {
     /// `setup=<state>` puts the voice checklist on screen in one of its states with no machine behind
     /// it (`ready`, `command`, `blocker`, `downloading`, `starting`, `failed`, `unavailable`,
     /// `unreachable`, `absent`, `checking`, `password`); `setup=demo` opens the scripted setup the
-    /// demo hosts play, through the real desk; `setup=voice` and `setup=media` open the live
-    /// checklist for the active chat's server; `setup=press` presses the primary button;
-    /// `setup=caps` opens the server screen with every server expanded; `setup=close` closes it.
+    /// demo hosts play, through the real desk; `setup=voice` opens the live checklist for the active
+    /// chat's server; `setup=media`, `setup=media:video` and `setup=media:pictures` open the images
+    /// and video checklist for the renderer in force, led by video, by pictures or by neither;
+    /// `setup=renderer:host:port` points renders at a machine first, filed against every server as the picker would;
+    /// `setup=press` presses the primary button; `setup=change` presses Change, which opens the
+    /// renderer picker; `setup=caps` opens the server screen with every server expanded;
+    /// `setup=close` closes it.
     func driveSetup(_ argument: String) {
         let parent = windowWidget
         switch argument {
@@ -19,16 +23,31 @@ extension MainWindow {
         case "demo":
             let host = DelegateDemo.hosts.sorted().first ?? ""
             SetupWindow.present(target: SetupTarget(host: host, capability: SetupCapability.voice), parent: parent)
-        case "voice", "media":
-            let capability = argument == "voice" ? SetupCapability.voice : "media"
+        case "voice":
             let entry = activePane.callEntry
             let target: SetupTarget
-            if capability == SetupCapability.voice, let entry, let live = SetupRunner.shared.voiceTarget(for: entry) {
+            if let entry, let live = SetupRunner.shared.voiceTarget(for: entry) {
                 target = live
             } else {
-                target = SetupTarget(host: entry?.host ?? SetupFixtures.host, capability: capability)
+                target = SetupTarget(host: entry?.host ?? SetupFixtures.host, capability: SetupCapability.voice)
             }
             SetupWindow.present(target: target, parent: parent)
+        case "media", "media:video", "media:pictures":
+            let focus: SetupFocus? = argument == "media:video" ? .video : argument == "media:pictures" ? .pictures : nil
+            MediaChecklistFlow.open(endpoint: ForgeRunner.shared.endpoint ?? ForgeStore.endpoint(), focus: focus, parent: parent)
+        case "change":
+            SetupWindow.current?.viewForHarness.onChange?()
+        case _ where argument.hasPrefix("renderer:"):
+            if case .endpoint(let endpoint) = ForgeEndpoint.read(String(argument.dropFirst("renderer:".count))) {
+                let renderer = ForgeRenderer(endpoint: endpoint)
+                ForgeStore.remember(renderer)
+                Task {
+                    for profile in await ServerDirectory.shared.profiles() {
+                        ForgeStore.remember(renderer, forProfile: profile.id)
+                    }
+                    Gtk.onMain { ForgeRunner.shared.pointAtStoredRenderer() }
+                }
+            }
         case "press":
             if let primary = SetupWindow.current?.checklist?.primary {
                 SetupWindow.current?.viewForHarness.onPrimary?(primary)

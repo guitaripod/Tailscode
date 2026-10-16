@@ -116,6 +116,9 @@ public enum ForgeAction: Sendable, Equatable {
     case choose(ForgeField)
     /// There is no renderer yet, so there is nothing to render on. The client asks for an address.
     case configure
+    /// There is a renderer and it cannot render yet: the client opens the shared checklist for
+    /// images and video, led by video, which says what is missing and hands over the command.
+    case checklist
 }
 
 /// One row in a setting's menu. The id is what `ForgeBoard.pick` takes back; the title is what the
@@ -533,7 +536,7 @@ public struct ForgeBoard: Sendable, Equatable {
         if job.isBusy { return .cancel }
         if let asset = job.asset { return .play(asset) }
         guard endpoint != nil else { return .configure }
-        if blocker != nil { return .configure }
+        if blocker != nil { return .checklist }
         guard recipe.isRenderable else { return .edit(.prompt) }
         return .render(recipe)
     }
@@ -796,10 +799,7 @@ public struct ForgeBoard: Sendable, Equatable {
         if job.isBusy { return Localized.text("Stop") }
         if job.asset != nil { return Localized.text("Play") }
         if endpoint == nil { return ForgeSetup.title }
-        if let blocker {
-            return blocker.checkID == "media.comfy"
-                ? ForgeSetup.title : Localized.text("See what is missing")
-        }
+        if blocker != nil { return Localized.text("See what is missing") }
         return Localized.text("Render")
     }
 

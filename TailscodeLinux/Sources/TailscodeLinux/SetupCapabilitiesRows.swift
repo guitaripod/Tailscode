@@ -26,9 +26,9 @@ final class SetupCapabilitiesRows: @unchecked Sendable {
 
     private static let glyphTones = ActivityTone.allCases.map(\.glyphCSS)
 
-    init(profileURL: URL, parent: @escaping @Sendable () -> UnsafeMutablePointer<GtkWidget>?) {
+    init(profileURL: URL, profileID: String? = nil, parent: @escaping @Sendable () -> UnsafeMutablePointer<GtkWidget>?) {
         self.parent = parent
-        targets = SetupTargets.targets(forProfileURL: profileURL)
+        targets = SetupTargets.targets(forProfileURL: profileURL, profileID: profileID)
         Gtk.margins(column, top: 10, bottom: 10, leading: 12, trailing: 12)
         gtk_box_append(ptr(column), heading)
         gtk_list_box_row_set_child(ptr(container), column)
@@ -132,6 +132,10 @@ final class SetupCapabilitiesRows: @unchecked Sendable {
 
     func open(_ target: SetupTarget) {
         guard !stopped else { return }
+        if target.capability == SetupCapability.media {
+            MediaChecklistFlow.open(endpoint: target.forgeEndpoint, focus: nil, parent: parent())
+            return
+        }
         let lines: @Sendable () -> [String] = {
             target.capability == SetupCapability.voice
                 ? VoiceCallRunner.shared.report(for: VoiceSetupSource.endpoint(of: target)) : []

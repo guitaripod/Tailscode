@@ -512,12 +512,17 @@ public struct ForgeSetup: Sendable, Equatable {
 
     public static var forgetTitle: String { Localized.text("Forget this renderer") }
 
-    /// What starts the thing being looked for, handed over the way the server flow hands over its
-    /// install command — a line to copy and run on the other machine, never an instruction to go
-    /// and read a manual. `--listen` is the whole point: a ComfyUI bound to localhost is invisible
-    /// from every other machine on the tailnet, which is the commonest way this fails.
+    /// What starts the thing being looked for, handed over the way the server flow's install
+    /// command is, a line to copy and run on the other machine and never an instruction to go and
+    /// read a manual. A ComfyUI bound to localhost is invisible from every other machine on the
+    /// tailnet, which is the commonest way this fails, and a ComfyUI bound to every interface is an
+    /// unauthenticated render queue on every network the machine is on. So it binds loopback and the
+    /// Tailscale address and nothing else, and it fails safe: ComfyUI reads `--listen` as a list
+    /// split on commas, and an empty entry (what `$(tailscale ip -4)` becomes on a machine without
+    /// Tailscale) is a bind to every interface, so the address is read first and nothing is started
+    /// without one.
     public static var startCommand: String {
-        "python main.py --listen 0.0.0.0 --port \(ForgeSweep.port)"
+        "ts=$(tailscale ip -4 | head -n 1); if [ -n \"$ts\" ]; then python main.py --listen \"127.0.0.1,$ts\" --port \(ForgeSweep.port); else echo \"Tailscale gave no address, so ComfyUI was not started\"; fi"
     }
 
     public static var startCommandTitle: String { Localized.text("Copy the start command") }
@@ -653,13 +658,6 @@ public struct ForgeSetup: Sendable, Equatable {
             diagnosis = ConnectDiagnosis.forge(comfy: found.comfy, endpoint: endpoint)
             stage = .failed
         }
-    }
-
-    /// What the machine can make, row by row, once the doctor has looked: the lines a client draws
-    /// under the status, each with its one copyable fix.
-    public var mediaLines: [MediaReading.Line] {
-        guard let media, media.isAnswering else { return [] }
-        return MediaReading.lines(media).filter { $0.id != "media.comfy" }
     }
 
     public mutating func adopt(_ candidate: ForgeCandidate) {

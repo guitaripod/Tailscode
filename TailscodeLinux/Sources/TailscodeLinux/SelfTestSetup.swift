@@ -83,6 +83,7 @@ extension SelfTest {
         try checkSetupWindow(expect, pump)
         try checkSetupCapabilities(expect, pump)
         try checkSetupEntry(expect, pump)
+        try checkSetupMedia(expect, pump)
         return checks
     }
 
@@ -253,7 +254,7 @@ extension SelfTest {
     }
 }
 
-private final class FinishFlag: @unchecked Sendable {
+final class FinishFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var value = false
     var raised: Bool { lock.withLock { value } }

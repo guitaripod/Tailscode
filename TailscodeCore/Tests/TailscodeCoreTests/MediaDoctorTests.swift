@@ -333,7 +333,7 @@ struct MediaDoctorTests {
         #expect(!refused.report.ready)
         #expect(
             MediaReading.line(for: refused.check("media.comfy")!, in: refused).detail
-                == "Nothing is listening on 8188 on arch. If ComfyUI is running there, start it with --listen so other machines can reach it.")
+                == "Nothing is listening on 8188 on arch. If ComfyUI is running there, start it listening on its Tailscale address so other machines can reach it.")
 
         fake.loopback = true
         let notLocal = await examine(fake)
@@ -342,7 +342,7 @@ struct MediaDoctorTests {
         #expect(local.comfy == .loopbackOnly)
         #expect(
             MediaReading.line(for: local.check("media.comfy")!, in: local).detail
-                == "ComfyUI is running on arch but only accepts connections from that machine: start it with --listen")
+                == "ComfyUI is running on arch but only accepts connections from that machine: start it again listening on its Tailscale address")
 
         fake.reach = .timedOut
         let silent = await examine(fake)
@@ -447,7 +447,7 @@ struct MediaDoctorTests {
         #expect(board.begin() == .render(board.recipe))
         board.assessed(await examine(FakeComfy().without(.videoModel)))
         #expect(board.blocker?.checkID == "media.video.models")
-        #expect(board.begin() == .configure)
+        #expect(board.begin() == .checklist)
         #expect(board.renderCall == "See what is missing")
         let renderer = board.sections.first { $0.id == ForgeBoard.rendererID }?.rows.first
         #expect(renderer?.detail == "The video model is missing: 42 GB, ltx-2.5-22b-distilled-transformer-bf16.safetensors")
@@ -458,8 +458,8 @@ struct MediaDoctorTests {
         let fake = FakeComfy()
         fake.reach = .refused
         board.assessed(await examine(fake))
-        #expect(board.begin() == .configure, "a port nothing listens on cannot render, so the setup opens")
-        #expect(board.renderCall == ForgeSetup.title)
+        #expect(board.begin() == .checklist, "a port nothing listens on cannot render, so the checklist opens")
+        #expect(board.renderCall == "See what is missing")
         #expect(board.sections.first { $0.id == ForgeBoard.rendererID }?.rows.first?.badge == "down")
         fake.reach = .timedOut
         board.assessed(await examine(fake))
@@ -477,8 +477,6 @@ struct MediaDoctorTests {
         #expect(setup.status.stage == .listening)
         #expect(setup.status.tone == .attention)
         #expect(setup.commit?.endpoint == arch)
-        #expect(setup.mediaLines.map(\.id).contains("media.video.model.audioVAE"))
-        #expect(setup.mediaLines.first { $0.id == "media.video.model.audioVAE" }?.fix?.command?.contains("ltx-2.5-audio-vae-bf16") == true)
         let fake = FakeComfy()
         fake.reach = .refused
         setup.assessed(await examine(fake))
@@ -489,6 +487,7 @@ struct MediaDoctorTests {
         fake.loopback = true
         setup.assessed(await examine(fake, thisMachine: true))
         #expect(setup.status.title == "ComfyUI is running on arch but only accepts connections from that machine")
+        #expect(setup.status.diagnosis?.fix == .copyCommand(ForgeSetup.startCommand))
         fake.stats = .success(MediaAnswer(status: 503, body: Data()))
         fake.reach = .listening
         setup.assessed(await examine(fake))

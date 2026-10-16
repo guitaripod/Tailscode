@@ -312910,6 +312910,1994 @@
           }
         }
       }
+    },
+    "%1$@ is gated on Hugging Face. Accept its licence at %2$@ while signed in, then run %3$@ once on that machine. %4$@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ is gated on Hugging Face. Accept its licence at %2$@ while signed in, then run %3$@ once on that machine. %4$@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ ist auf Hugging Face gesperrt. Akzeptiere die Lizenz unter %2$@, während du angemeldet bist, und führe dann einmalig %3$@ auf diesem Rechner aus. %4$@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ está restringido en Hugging Face. Acepta su licencia en %2$@ con la sesión iniciada y ejecuta %3$@ una vez en esa máquina. %4$@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ est protégé sur Hugging Face. Acceptez sa licence sur %2$@ en étant connecté, puis exécutez %3$@ une fois sur cette machine. %4$@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ è ad accesso limitato su Hugging Face. Accetta la licenza su %2$@ dopo aver effettuato l'accesso, poi esegui %3$@ una volta su quel computer. %4$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ は Hugging Face で利用制限がかかっています。サインインした状態で %2$@ にあるライセンスに同意し、そのマシンで %3$@ を一度実行してください。%4$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@은(는) Hugging Face에서 접근이 제한되어 있어요. 로그인한 상태로 %2$@에서 라이선스에 동의한 다음, 그 컴퓨터에서 %3$@을(를) 한 번 실행하세요. %4$@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ jest objęty bramką na Hugging Face. Zaakceptuj jego licencję na %2$@ po zalogowaniu, a potem raz uruchom %3$@ na tym komputerze. %4$@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ tem acesso restrito no Hugging Face. Aceite a licença em %2$@ com a sessão iniciada e execute %3$@ uma vez nesse computador. %4$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 在 Hugging Face 上需要授权访问。请在登录状态下到 %2$@ 接受其许可协议，然后在那台机器上运行一次 %3$@。%4$@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 在 Hugging Face 上需要授權存取。請在登入狀態下到 %2$@ 接受其授權條款，然後在那台機器上執行一次 %3$@。%4$@"
+          }
+        }
+      }
+    },
+    "Add image and video generation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add image and video generation"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bild- und Videoerzeugung hinzufügen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir generación de imágenes y vídeo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter la génération d’images et de vidéo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi la generazione di immagini e video"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像と動画の生成を追加"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지 및 비디오 생성 추가"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj generowanie obrazów i wideo"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar geração de imagens e vídeo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加图像和视频生成"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新增圖像和影片生成"
+          }
+        }
+      }
+    },
+    "An interrupted download resumes when the command is run again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An interrupted download resumes when the command is run again."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein unterbrochener Download wird fortgesetzt, wenn der Befehl erneut ausgeführt wird."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una descarga interrumpida se reanuda al volver a ejecutar el comando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un téléchargement interrompu reprend quand la commande est relancée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un download interrotto riprende quando il comando viene eseguito di nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中断したダウンロードは、コマンドをもう一度実行すると再開されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "중단된 다운로드는 명령을 다시 실행하면 이어서 받아요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przerwane pobieranie jest wznawiane po ponownym uruchomieniu polecenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um download interrompido continua quando o comando é executado de novo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中断的下载会在再次运行该命令时继续。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中斷的下載會在再次執行該指令時繼續。"
+          }
+        }
+      }
+    },
+    "Change": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ändern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambiar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifier"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "変更"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "변경"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zmień"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alterar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更改"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "變更"
+          }
+        }
+      }
+    },
+    "ComfyUI at %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI at %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI unter %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI en %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI sur %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI su %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ の ComfyUI"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@의 ComfyUI"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI na %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI em %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上的 ComfyUI"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上的 ComfyUI"
+          }
+        }
+      }
+    },
+    "ComfyUI has no sign-in, so this starts it for this machine and its Tailscale address only, never for every network it is on. If Tailscale has no address there, the command starts nothing and says so.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI has no sign-in, so this starts it for this machine and its Tailscale address only, never for every network it is on. If Tailscale has no address there, the command starts nothing and says so."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI hat keine Anmeldung. Deshalb startet dieser Befehl es nur für diesen Rechner und seine Tailscale-Adresse, nie für jedes Netzwerk, in dem er hängt. Hat Tailscale dort keine Adresse, startet der Befehl nichts und sagt es."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI no tiene inicio de sesión, así que este comando lo inicia solo para esa máquina y su dirección de Tailscale, nunca para todas las redes en las que esté. Si Tailscale no tiene dirección allí, el comando no inicia nada y lo dice."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI n’a pas de connexion, donc cette commande ne le lance que pour cette machine et son adresse Tailscale, jamais pour tous les réseaux auxquels elle est reliée. Si Tailscale n’a pas d’adresse là-bas, la commande ne lance rien et le dit."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI non ha un accesso con credenziali, quindi questo comando lo avvia solo per quel computer e per il suo indirizzo Tailscale, mai per tutte le reti a cui è collegato. Se Tailscale non ha un indirizzo, il comando non avvia nulla e lo dice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI にはサインイン機能がないため、このコマンドはそのマシン自身と Tailscale アドレスに対してだけ起動し、接続しているすべてのネットワークには公開しません。Tailscale のアドレスがない場合は、何も起動せずにそう表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI에는 로그인 기능이 없어서, 이 명령은 그 컴퓨터 자신과 Tailscale 주소에만 열고 연결된 모든 네트워크에는 열지 않아요. Tailscale 주소가 없으면 아무것도 시작하지 않고 그렇게 알려 줘요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI nie ma logowania, więc to polecenie uruchamia go tylko dla tego komputera i jego adresu Tailscale, nigdy dla wszystkich sieci, w których się znajduje. Jeśli Tailscale nie ma tam adresu, polecenie niczego nie uruchamia i o tym informuje."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O ComfyUI não tem login, então este comando o inicia só para esse computador e o endereço dele no Tailscale, nunca para todas as redes em que ele esteja. Se o Tailscale não tiver endereço lá, o comando não inicia nada e avisa."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI 没有登录功能，所以这条命令只让它面向这台机器及其 Tailscale 地址启动，而不会面向它所在的所有网络。如果那里的 Tailscale 没有地址，命令不会启动任何东西，并会给出提示。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI 沒有登入功能，所以這條指令只讓它面向這台機器及其 Tailscale 位址啟動，而不會面向它所在的所有網路。如果那裡的 Tailscale 沒有位址，指令不會啟動任何東西，並會給出提示。"
+          }
+        }
+      }
+    },
+    "ComfyUI is running on %@ but only accepts connections from that machine: start it again listening on its Tailscale address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI is running on %@ but only accepts connections from that machine: start it again listening on its Tailscale address"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI läuft auf %@, nimmt aber nur Verbindungen von diesem Rechner an: starte es erneut mit Zuhören auf seiner Tailscale-Adresse"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI se está ejecutando en %@ pero solo acepta conexiones de esa máquina: vuelve a iniciarlo escuchando en su dirección de Tailscale"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI tourne sur %@ mais n’accepte que les connexions de cette machine : relancez-le en l’écoutant sur son adresse Tailscale"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI è in esecuzione su %@ ma accetta solo connessioni da quel computer: riavvialo in ascolto sul suo indirizzo Tailscale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI は %@ で動いていますが、そのマシンからの接続しか受け付けません。Tailscale アドレスで待ち受けるように、もう一度起動してください"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI가 %@에서 실행 중이지만 그 컴퓨터에서 오는 연결만 받아요. Tailscale 주소에서 연결을 받도록 다시 시작하세요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI działa na %@, ale przyjmuje połączenia tylko z tego komputera: uruchom go ponownie tak, by nasłuchiwał na swoim adresie Tailscale"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O ComfyUI está em execução em %@, mas só aceita conexões desse computador: inicie-o de novo escutando no endereço dele no Tailscale"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI 正在 %@ 上运行，但只接受来自那台机器的连接：请重新启动它，并让它监听其 Tailscale 地址"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI 正在 %@ 上執行，但只接受來自那台機器的連線：請重新啟動它，並讓它監聽其 Tailscale 位址"
+          }
+        }
+      }
+    },
+    "ComfyUI is starting": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI is starting"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI startet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI se está iniciando"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI démarre"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI si sta avviando"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI を起動しています"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI가 시작되는 중이에요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI się uruchamia"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O ComfyUI está iniciando"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI 正在启动"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComfyUI 正在啟動"
+          }
+        }
+      }
+    },
+    "FLUX Klein": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUX Klein"
+          }
+        }
+      }
+    },
+    "For personal and research use only": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For personal and research use only"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nur für den persönlichen Gebrauch und die Forschung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo para uso personal y de investigación"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réservé à un usage personnel et à la recherche"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo per uso personale e di ricerca"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "個人利用と研究用途に限ります"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "개인 및 연구 용도로만 사용할 수 있어요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tylko do użytku osobistego i badawczego"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Somente para uso pessoal e de pesquisa"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅限个人和研究用途"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅限個人與研究用途"
+          }
+        }
+      }
+    },
+    "Images and video": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Images and video"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder und Video"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imágenes y vídeo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Images et vidéo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Immagini e video"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像と動画"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지 및 비디오"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obrazy i wideo"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imagens e vídeo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图像和视频"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圖像和影片"
+          }
+        }
+      }
+    },
+    "Images and video are ready": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Images and video are ready"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder und Video sind bereit"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las imágenes y el vídeo están listos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les images et la vidéo sont prêtes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Immagini e video sono pronti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像と動画の準備ができました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지와 비디오를 사용할 수 있어요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obrazy i wideo są gotowe"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imagens e vídeo estão prontos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图像和视频已就绪"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圖像和影片已就緒"
+          }
+        }
+      }
+    },
+    "It is listening for that machine only, so nothing else on the tailnet can reach it. Start it again listening on its Tailscale address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It is listening for that machine only, so nothing else on the tailnet can reach it. Start it again listening on its Tailscale address."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es hört nur für diesen Rechner zu, daher erreicht es nichts anderes im Tailnet. Starte es erneut mit Zuhören auf seiner Tailscale-Adresse."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo escucha para esa máquina, así que nada más en la tailnet puede alcanzarlo. Vuelve a iniciarlo escuchando en su dirección de Tailscale."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il n’écoute que pour cette machine, donc rien d’autre sur le tailnet ne peut l’atteindre. Relancez-le en l’écoutant sur son adresse Tailscale."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resta in ascolto solo per quel computer, quindi nient’altro sulla tailnet può raggiungerlo. Riavvialo in ascolto sul suo indirizzo Tailscale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのマシン自身からの接続しか待ち受けていないため、tailnet 上の他のマシンからは届きません。Tailscale アドレスで待ち受けるように、もう一度起動してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "그 컴퓨터에서만 연결을 받고 있어서 tailnet의 다른 컴퓨터는 접속할 수 없어요. Tailscale 주소에서 연결을 받도록 다시 시작하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nasłuchuje tylko dla tego komputera, więc nic innego w tailnecie go nie osiągnie. Uruchom go ponownie tak, by nasłuchiwał na swoim adresie Tailscale."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele escuta só para esse computador, então nada mais na tailnet consegue alcançá-lo. Inicie-o de novo escutando no endereço dele no Tailscale."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它只面向那台机器监听，所以 tailnet 上的其他设备都无法连到它。请重新启动它，并让它监听其 Tailscale 地址。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它只面向那台機器監聽，所以 tailnet 上的其他裝置都無法連到它。請重新啟動它，並讓它監聽其 Tailscale 位址。"
+          }
+        }
+      }
+    },
+    "LTX-2.5": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LTX-2.5"
+          }
+        }
+      }
+    },
+    "Nothing is listening on %@ on %@. If ComfyUI is running there, start it listening on its Tailscale address so other machines can reach it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing is listening on %@ on %@. If ComfyUI is running there, start it listening on its Tailscale address so other machines can reach it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf %2$@ lauscht auf Port %1$@ nichts. Falls ComfyUI dort läuft, starte es mit Zuhören auf seiner Tailscale-Adresse, damit andere Rechner es erreichen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada escucha en el puerto %1$@ de %2$@. Si ComfyUI se está ejecutando allí, inícialo escuchando en su dirección de Tailscale para que otras máquinas lo alcancen."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien n’écoute sur le port %1$@ de %2$@. Si ComfyUI tourne là-bas, lancez-le en l’écoutant sur son adresse Tailscale pour que les autres machines puissent l’atteindre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nulla è in ascolto sulla porta %1$@ di %2$@. Se ComfyUI è in esecuzione lì, avvialo in ascolto sul suo indirizzo Tailscale così gli altri computer possono raggiungerlo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ の %1$@ で待ち受けているものはありません。そこで ComfyUI が動いている場合は、他のマシンから届くように Tailscale アドレスで待ち受けて起動してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@의 %1$@ 포트에서 연결을 받는 것이 없어요. 거기서 ComfyUI가 실행 중이라면 다른 컴퓨터가 접속할 수 있게 Tailscale 주소에서 연결을 받도록 시작하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nic nie nasłuchuje na porcie %1$@ na %2$@. Jeśli ComfyUI tam działa, uruchom go tak, by nasłuchiwał na swoim adresie Tailscale, aby inne komputery mogły się z nim połączyć."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada está escutando na porta %1$@ de %2$@. Se o ComfyUI estiver em execução lá, inicie-o escutando no endereço dele no Tailscale para que outros computadores o alcancem."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ 上的 %1$@ 端口没有任何程序在监听。如果 ComfyUI 正在那里运行，请让它监听其 Tailscale 地址来启动，其他机器才能连到它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ 上的 %1$@ 連接埠沒有任何程式在監聽。如果 ComfyUI 正在那裡執行，請讓它監聽其 Tailscale 位址來啟動，其他機器才能連到它。"
+          }
+        }
+      }
+    },
+    "Open the studio": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the studio"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Studio öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir el estudio"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir le studio"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri lo studio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スタジオを開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스튜디오 열기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz studio"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir o estúdio"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开工作室"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟工作室"
+          }
+        }
+      }
+    },
+    "Optional · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional · %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional · %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opcional · %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Facultatif · %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Facoltativo · %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任意 · %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "선택 사항 · %@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opcjonalne · %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opcional · %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可选 · %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選用 · %@"
+          }
+        }
+      }
+    },
+    "Pictures and clips made on a machine with a graphics card.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pictures and clips made on a machine with a graphics card."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder und Clips, erstellt auf einem Rechner mit Grafikkarte."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imágenes y clips hechos en una máquina con tarjeta gráfica."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Images et clips créés sur une machine dotée d’une carte graphique."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Immagini e clip creati su un computer con scheda grafica."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "グラフィックボードを搭載したマシンで画像とクリップを作ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "그래픽 카드가 있는 컴퓨터에서 이미지와 클립을 만들어요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obrazy i klipy tworzone na komputerze z kartą graficzną."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imagens e clipes feitos em um computador com placa de vídeo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在配有显卡的机器上制作图片和视频片段。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在配有顯示卡的機器上製作圖片和影片片段。"
+          }
+        }
+      }
+    },
+    "Pictures are ready": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pictures are ready"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder sind bereit"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las imágenes están listas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les images sont prêtes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le immagini sono pronte"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像の準備ができました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지를 사용할 수 있어요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obrazy są gotowe"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As imagens estão prontas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图像已就绪"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圖像已就緒"
+          }
+        }
+      }
+    },
+    "Pictures need %@ things": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pictures need %@ things"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder brauchen %@ Dinge"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las imágenes necesitan %@ cosas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les images ont besoin de %@ choses"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le immagini richiedono %@ cose"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像には %@ 件の対応が必要です"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지에 %@가지가 필요해요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obrazy wymagają %@ rzeczy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As imagens precisam de %@ coisas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图像还需要 %@ 项"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圖像還需要 %@ 項"
+          }
+        }
+      }
+    },
+    "Pictures need one thing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pictures need one thing"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder brauchen noch eine Sache"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las imágenes necesitan una cosa"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les images ont besoin d’une chose"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le immagini richiedono una cosa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像には1件の対応が必要です"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지에 한 가지가 필요해요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obrazy wymagają jednej rzeczy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As imagens precisam de uma coisa"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图像还需要一项"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圖像還需要一項"
+          }
+        }
+      }
+    },
+    "The Qwen engines are for personal and research use only": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Qwen engines are for personal and research use only"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Qwen-Engines sind nur für den persönlichen Gebrauch und die Forschung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los motores Qwen son solo para uso personal y de investigación"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les moteurs Qwen sont réservés à un usage personnel et à la recherche"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I motori Qwen sono solo per uso personale e di ricerca"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen のエンジンは個人利用と研究用途に限ります"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen 엔진은 개인 및 연구 용도로만 사용할 수 있어요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silniki Qwen są tylko do użytku osobistego i badawczego"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os mecanismos Qwen são somente para uso pessoal e de pesquisa"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen 引擎仅限个人和研究用途"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen 引擎僅限個人與研究用途"
+          }
+        }
+      }
+    },
+    "The machine answered, so the address is right. If ComfyUI is running there, start it listening on its Tailscale address so other machines can reach it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The machine answered, so the address is right. If ComfyUI is running there, start it listening on its Tailscale address so other machines can reach it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Rechner hat geantwortet, die Adresse stimmt also. Falls ComfyUI dort läuft, starte es mit Zuhören auf seiner Tailscale-Adresse, damit andere Rechner es erreichen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La máquina respondió, así que la dirección es correcta. Si ComfyUI se está ejecutando allí, inícialo escuchando en su dirección de Tailscale para que otras máquinas lo alcancen."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La machine a répondu, l’adresse est donc la bonne. Si ComfyUI tourne là-bas, lancez-le en l’écoutant sur son adresse Tailscale pour que les autres machines puissent l’atteindre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il computer ha risposto, quindi l’indirizzo è corretto. Se ComfyUI è in esecuzione lì, avvialo in ascolto sul suo indirizzo Tailscale così gli altri computer possono raggiungerlo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "マシンから応答があったので、アドレスは正しいです。そこで ComfyUI が動いている場合は、他のマシンから届くように Tailscale アドレスで待ち受けて起動してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "컴퓨터가 응답했으니 주소는 맞아요. 거기서 ComfyUI가 실행 중이라면 다른 컴퓨터가 접속할 수 있게 Tailscale 주소에서 연결을 받도록 시작하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Komputer odpowiedział, więc adres jest poprawny. Jeśli ComfyUI tam działa, uruchom go tak, by nasłuchiwał na swoim adresie Tailscale, aby inne komputery mogły się z nim połączyć."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O computador respondeu, então o endereço está certo. Se o ComfyUI estiver em execução lá, inicie-o escutando no endereço dele no Tailscale para que outros computadores o alcancem."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器有响应，说明地址是对的。如果 ComfyUI 正在那里运行，请让它监听其 Tailscale 地址来启动，其他机器才能连到它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "機器有回應，表示位址是對的。如果 ComfyUI 正在那裡執行，請讓它監聽其 Tailscale 位址來啟動，其他機器才能連到它。"
+          }
+        }
+      }
+    },
+    "These nodes ship with ComfyUI %@ and later": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These nodes ship with ComfyUI %@ and later"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Knoten gibt es ab ComfyUI %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estos nodos vienen con ComfyUI %@ y posteriores"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ces nœuds sont fournis avec ComfyUI %@ et les versions suivantes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questi nodi sono inclusi in ComfyUI %@ e successivi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これらのノードは ComfyUI %@ 以降に含まれています"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 노드는 ComfyUI %@ 이상에 들어 있어요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te węzły są dostępne w ComfyUI %@ i nowszych"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esses nós vêm com o ComfyUI %@ e posteriores"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些节点随 ComfyUI %@ 及更高版本提供"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這些節點隨 ComfyUI %@ 及更新版本提供"
+          }
+        }
+      }
+    },
+    "Video is ready": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video is ready"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video ist bereit"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El vídeo está listo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La vidéo est prête"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il video è pronto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画の準備ができました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "비디오를 사용할 수 있어요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wideo jest gotowe"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O vídeo está pronto"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频已就绪"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "影片已就緒"
+          }
+        }
+      }
+    },
+    "Video needs %@ things": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video needs %@ things"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video braucht %@ Dinge"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El vídeo necesita %@ cosas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La vidéo a besoin de %@ choses"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il video richiede %@ cose"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画には %@ 件の対応が必要です"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "비디오에 %@가지가 필요해요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wideo wymaga %@ rzeczy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O vídeo precisa de %@ coisas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频还需要 %@ 项"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "影片還需要 %@ 項"
+          }
+        }
+      }
+    },
+    "Video needs one thing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video needs one thing"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video braucht noch eine Sache"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El vídeo necesita una cosa"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La vidéo a besoin d’une chose"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il video richiede una cosa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画には1件の対応が必要です"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "비디오에 한 가지가 필요해요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wideo wymaga jednej rzeczy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O vídeo precisa de uma coisa"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频还需要一项"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "影片還需要一項"
+          }
+        }
+      }
+    },
+    "nothing here can do this": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nothing here can do this"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "das kann hier nichts erledigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nada aquí puede hacer esto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "rien ici ne peut le faire"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nulla qui può farlo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここでは実行できません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "여기서는 할 수 없어요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nic tutaj tego nie potrafi"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nada aqui pode fazer isso"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这里无法完成这件事"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這裡無法完成這件事"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

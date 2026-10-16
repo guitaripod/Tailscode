@@ -13,9 +13,11 @@ enum MacSetupGate {
     /// how a call that was pressed for starts once voice is ready. A checklist already up is raised
     /// rather than stacked.
     static func present(
-        _ target: SetupTarget, on window: NSWindow?, reportLines: @escaping () -> [String] = { [] },
-        onFinish: (() -> Void)? = nil
+        _ target: SetupTarget, focus: SetupFocus? = nil, on window: NSWindow?,
+        reportLines: @escaping () -> [String] = { [] }, onFinish: (() -> Void)? = nil,
+        onChange: (@MainActor (NSWindow) -> Void)? = nil
     ) {
-        SetupSheet.present(target: target, on: window, reportLines: reportLines, onFinish: onFinish)
+        SetupSheet.present(
+            target: target, focus: focus, on: window, reportLines: reportLines, onFinish: onFinish, onChange: onChange)
     }
 }

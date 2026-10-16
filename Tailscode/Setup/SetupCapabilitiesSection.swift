@@ -17,8 +17,8 @@ final class SetupCapabilitiesSection {
     private var lifetime = PaneLifetime()
     private var following = false
 
-    init(profileURL: URL) {
-        targets = SetupTargets.targets(forProfileURL: profileURL)
+    init(profileURL: URL, profileID: String? = nil) {
+        targets = SetupTargets.targets(forProfileURL: profileURL, profileID: profileID)
     }
 
     func start() {

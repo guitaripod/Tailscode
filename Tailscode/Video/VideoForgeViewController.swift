@@ -86,7 +86,7 @@ final class VideoForgeViewController: UIViewController {
         navigationItem.leftBarButtonItem = menuItem
         navigationItem.titleView = pill
         menuItem.accessibilityLabel = ImageGenWords.moreTitle
-        pill.addAction(UIAction { [weak self] _ in self?.openRenderer() }, for: .touchUpInside)
+        pill.addAction(UIAction { [weak self] _ in self?.openChecklist() }, for: .touchUpInside)
         intake = ImageReferenceIntake(
             presenter: self,
             deliver: { [weak self] data, name in self?.startFromPicture(data, named: name) },
@@ -489,7 +489,7 @@ final class VideoForgeViewController: UIViewController {
 
     private func failureRemedy() -> String {
         if let reading = StudioMachineReading.forge(board), reading.cannotPaint {
-            return ForgeField.endpoint.label
+            return Localized.text("See what is missing")
         }
         return String(localized: "Try again")
     }
@@ -502,7 +502,7 @@ final class VideoForgeViewController: UIViewController {
             return runner.start(from: nil)
         }
         if let reading = StudioMachineReading.forge(board), reading.cannotPaint {
-            return openRenderer()
+            return openChecklist()
         }
         renderTapped()
     }
@@ -1164,7 +1164,8 @@ final class VideoForgeViewController: UIViewController {
             ? ImageGenWords.stopTitle
             : (runner.endpoint == nil
                 ? ForgeSetup.title
-                : (continuing ? ForgeWords.extendTitle : Localized.text("Render")))
+                : (board.blocker != nil
+                    ? board.renderCall : (continuing ? ForgeWords.extendTitle : Localized.text("Render"))))
         var config = Theme.Glass.buttonConfiguration(prominent: true)
         config.cornerStyle = .large
         config.imagePlacement = .top
@@ -1192,6 +1193,7 @@ final class VideoForgeViewController: UIViewController {
             return
         }
         guard runner.endpoint != nil else { return openRenderer() }
+        guard board.blocker == nil else { return openChecklist() }
         guard board.recipe.isRenderable else {
             promptView.becomeFirstResponder()
             return
@@ -1217,6 +1219,15 @@ final class VideoForgeViewController: UIViewController {
         seedReused = false
         releaseStage()
         runner.render(recipe)
+    }
+
+    /// What the machine can make, as the shared checklist for images and video led by video: the same
+    /// one the picture studio and the server screen open. Finishing it is pressing Render.
+    private func openChecklist() {
+        Theme.Haptics.tap()
+        MediaSetupGate.present(
+            focus: .video, from: self, onFinish: { [weak self] in self?.renderTapped() },
+            onChanged: { [weak self] in self?.render(animated: false) })
     }
 
     private func openRenderer() {

@@ -101,7 +101,7 @@ command fix `voice.install`) built from `VoiceBridgeInstall`; a gateway that has
 | --- | --- | --- |
 | Agent (Claude Code, omp, opencode) | the bridge's health and the client | a bridge, the CLI, a sign-in |
 | Voice calls | `voice-bridge` | NVIDIA GPU with 80 GB, Docker with CDI, the model (44 GB), the image (22 GB) |
-| Image and video | the client (`MediaDoctor`) | ComfyUI reachable, its nodes and model files |
+| Image and video | the client (`MediaDoctor`, through `MediaSetupSource`) | ComfyUI reachable, its nodes and model files |
 | Delegate | the `delegate` daemon | its own toolchain |
 | Preview | `previewd` | its own checklist (the existing doctor) |
 
@@ -127,7 +127,12 @@ the agent server's host on 8188 and is found by probe. That default is a functio
 address, so every device that has the server finds the renderer with nothing stored; a machine chosen
 by hand is filed against that server on the device that chose it (sharing it between devices needs a
 renderer field on the Kit's `ConnectionProfile`, which has none and no sync). Installing ComfyUI and the models is a documented recipe (`docs/media-setup.md`, performed by
-`scripts/media-setup.sh`) the checklist proves row by row. Every model file is public on Hugging Face
+`scripts/media-setup.sh`) the checklist proves row by row. The checklist is the shared one: its report
+is the doctor's (`MediaSetupSource` serves it to `SetupDesk` for the renderer the person uses, reusing
+`MediaReadiness`'s look), its words are `MediaSetupReader`'s, it is opened for a lane
+(`SetupFocus.video`, `.pictures`, or none from the server screen), it names the machine it checks and
+offers Change, which opens the renderer picker and returns to the checklist, and every fix is a command
+to copy. Every model file is public on Hugging Face
 (two of the three repositories behind a licence the person accepts in a browser), so a missing file's
 fix is the one `hf download` line for it, copied; a daemon job that runs it would still need that
 acceptance first.
@@ -209,8 +214,10 @@ decide nothing else.
 - **Linux**: `SetupWindow`, a dialog window transient for the main window, one at a time, with
   `SetupChecklistView` inside; `SetupRunner` owns the desk. `TAILSCODE_DRIVE` verbs: `setup=<state>`
   (`ready`, `command`, `blocker`, `downloading`, `starting`, `failed`, `unavailable`, `unreachable`,
-  `absent`, `checking`, `password`), `setup=demo`, `setup=voice`, `setup=media`, `setup=press`,
-  `setup=caps`, `setup=close`; `TAILSCODE_SELFTEST_ONLY=setup`.
+  `absent`, `checking`, `password`), `setup=demo`, `setup=voice`, `setup=media`, `setup=media:video`, `setup=media:pictures`,
+  `setup=renderer:host:port`, `setup=change`, `setup=press`, `setup=caps`, `setup=close`, and the media
+  fixtures `media-video`, `media-pictures`, `media-ready`, `media-down`, `media-loopback`,
+  `media-starting`, `media-nocard`, `media-smallcard`; `TAILSCODE_SELFTEST_ONLY=setup`.
 - Every row: a glyph in the activity vocabulary (work breathes, everything settled holds still,
   reduced motion drops the movement), a title, one line of facts, and a fix. A finished row of a list
   that still has work is compact; a row that needs the person is a card.
@@ -219,7 +226,9 @@ decide nothing else.
   show. Closing a checklist leaves a running job on the machine; the next one to open finds it in the
   report.
 - The server screen has a Capabilities section (`SetupCapabilityRow`): a row per available
-  capability and one quiet "Add voice calls" row where no gateway answers. `SetupTargets.listed` is the
+  capability, one quiet "Add voice calls" row where no gateway answers, and "Images and video" (a chip
+  and one line) wherever the renderer answers or this device has used it, else one quiet "Add image and
+  video generation" row where the machine is up and no ComfyUI answers. `SetupTargets.listed` is the
   list of capabilities asked about.
 - The call control is visible on a server with no gateway, and a press that cannot start a call
   (`VoiceCallEntryPoint.pressOpensSetup`) opens the checklist; finishing it starts the call.
