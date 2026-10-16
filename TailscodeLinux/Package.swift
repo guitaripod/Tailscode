@@ -136,8 +136,9 @@ enum Kit {
     /// 0.35.0 lets a delegated patch wait to be read: review, the patch, apply and discard.
     /// 0.35.1 stops a Linux binary trapping on a resource bundle it was never given.
     /// 0.36.1 writes a streaming answer's saved transcript at most every thirty seconds and not
-    /// at all when nothing changed.
-    static let version = Version(0, 36, 1)
+    /// at all when nothing changed. 0.37.0 speaks to a preview host: a Mac's simulator watched,
+    /// read and touched.
+    static let version = Version(0, 37, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
