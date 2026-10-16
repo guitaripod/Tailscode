@@ -3921,6 +3921,7 @@ final class ChatViewController: UIViewController {
             viewModel.supportsModelSelection || viewModel.supportsReasoningEffort
         else { return }
         availableModels = ModelCatalog.cached(for: viewModel.contextID)
+        viewModel.adoptCatalog(availableModels)
         updateNavControls()
     }
 
@@ -5992,6 +5993,13 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
                     title: String(localized: "Photo Library"),
                     image: UIImage(systemName: "photo.on.rectangle")
                 ) { [weak self] _ in self?.presentPhotoPicker() })
+        } else if viewModel.canAttachFiles {
+            actions.append(
+                UIAction(
+                    title: String(localized: "Photo Library"),
+                    subtitle: String(localized: "This model can't see images."),
+                    image: UIImage(systemName: "photo.on.rectangle"), attributes: .disabled
+                ) { _ in })
         }
         if viewModel.canAttachFiles {
             actions.append(
@@ -6087,8 +6095,11 @@ extension ChatViewController: UIDocumentPickerDelegate {
         let mime =
             UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
             ?? "application/octet-stream"
-        guard !mime.hasPrefix("image/") || viewModel.canAttachImages else {
-            presentToast(String(localized: "This model can't see images."))
+        guard viewModel.abilities.accepts(mime: mime) else {
+            presentToast(
+                mime.hasPrefix("image/")
+                    ? String(localized: "This model can't see images.")
+                    : String(localized: "This model can't read \(name)."))
             return false
         }
         pendingAttachments.append(PromptAttachment(mime: mime, filename: name, data: data))

@@ -15,25 +15,36 @@ import Foundation
 
 /// What the aim can be handed.
 public struct ModelAbilities: Sendable, Equatable {
+    /// Whether a file can be handed over at all. The agent opens a file on the server, so this is
+    /// the backend's word and never the model's: a model that cannot read a picture can still be
+    /// given the log, the diff or the notes the picture was about.
     public var attachments: Bool
     public var vision: Bool
+    /// Whether the model itself reads a PDF. A PDF the model cannot read reaches it as an error
+    /// line in place of the document, which is worse than refusing it at the door.
+    public var documents: Bool
     /// Whether this device has a camera to point at something. A fact about the machine holding
     /// the surface, not about the machine answering it.
     public var camera: Bool
 
-    public init(attachments: Bool = false, vision: Bool = false, camera: Bool = false) {
+    public init(
+        attachments: Bool = false, vision: Bool = false, documents: Bool? = nil,
+        camera: Bool = false
+    ) {
         self.attachments = attachments
         self.vision = vision
+        self.documents = documents ?? attachments
         self.camera = camera
     }
 
     /// Words only — the honest answer for a backend that takes nothing but a prompt.
     public static let words = ModelAbilities()
 
-    /// The backend's word narrowed by the model's own, which is the only one that decides whether
-    /// a picture can be read. A model the catalog cannot describe is trusted to the backend rather
-    /// than assumed blind: a server that never published per-model capabilities must not lose its
-    /// attach affordance over a fact nobody stated.
+    /// The backend's word narrowed by the model's own where the model is what decides: a picture
+    /// or a PDF is read by the model, so those follow its catalog entry, while any other file is
+    /// opened by the agent and follows the backend alone. A model the catalog cannot describe is
+    /// trusted to the backend rather than assumed blind: a server that never published per-model
+    /// capabilities must not lose its attach affordance over a fact nobody stated.
     public static func resolve(
         supportsAttachments: Bool, model: ModelCapabilities?, camera: Bool = false
     ) -> ModelAbilities {
@@ -41,9 +52,10 @@ public struct ModelAbilities: Sendable, Equatable {
         guard let model else {
             return ModelAbilities(attachments: true, vision: true, camera: camera)
         }
+        let vision = model.attachment && model.imageInput
         return ModelAbilities(
-            attachments: model.attachment, vision: model.attachment && model.imageInput,
-            camera: camera && model.attachment && model.imageInput)
+            attachments: true, vision: vision, documents: model.pdfInput,
+            camera: camera && vision)
     }
 
     /// The same answer from a catalog and a pick, which is the shape a composer actually holds.
@@ -74,7 +86,9 @@ public struct ModelAbilities: Sendable, Equatable {
     /// rather than let the send fail on the other machine.
     public func accepts(mime: String) -> Bool {
         guard attachments else { return false }
-        return vision || !mime.hasPrefix("image/")
+        if mime.hasPrefix("image/") { return vision }
+        if mime == "application/pdf" { return documents }
+        return true
     }
 
     /// What to say when a switch just made something in hand unsendable. Said out loud rather than

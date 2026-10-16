@@ -1434,6 +1434,13 @@ final class ChatViewModel {
         return models
     }
 
+    /// A refresh that landed behind the cached catalog this chat opened on. What the model can be
+    /// handed is read from `knownModels`, so without taking the landing the composer keeps
+    /// answering from the catalog it started with.
+    func adoptCatalog(_ models: [ModelInfo]) {
+        if !models.isEmpty { knownModels = models }
+    }
+
     private var cachedUsage: (value: AgentUsage?, at: Date)?
 
     func usage() async -> AgentUsage? {
