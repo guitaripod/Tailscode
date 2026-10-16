@@ -16,6 +16,7 @@ final class ComposerView: NSView {
     /// dispatcher.
     var onDelegateRequested: ((String) -> Void)?
     var onStop: (() -> Void)?
+    var onCall: (() -> Void)?
     var onLane: ((QuickAskLane) -> Void)?
     /// ↑ from an empty box: the pane takes its last waiting message back for rewriting, and says
     /// whether it did — the key belongs to the text view otherwise.
@@ -353,6 +354,11 @@ final class ComposerView: NSView {
         catalogWatch = nil
     }
 
+    /// The pane's word on whether the call's control is drawn, and how.
+    func setCallEntry(_ entry: CallEntry?) {
+        pills.setCall(entry)
+    }
+
     /// A pane hidden from the reader stops the pill's rainbow and the aura's laps.
     func setParked(_ parked: Bool) {
         pills.setParked(parked)
@@ -480,6 +486,7 @@ final class ComposerView: NSView {
         pills.commandRows = { [weak self] in self?.commandMenuRows() ?? [] }
         pills.attachRows = { [weak self] in self?.attachMenuRows() ?? [] }
         pills.onStop = { [weak self] in self?.onStop?() }
+        pills.onCall = { [weak self] in self?.onCall?() }
         pills.onLane = { [weak self] lane in self?.onLane?(lane) }
     }
 

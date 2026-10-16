@@ -33,6 +33,9 @@ final class PillsRow: NSView {
     var commandRows: (() -> [MenuRow])?
     var attachRows: (() -> [MenuRow])?
     var onStop: (() -> Void)?
+    /// The call's control was pressed: the pane starts the call, asks for the gateway's password, or
+    /// says why it cannot.
+    var onCall: (() -> Void)?
 
     /// The composer's lanes, worn as the segmented control a Mac walks modes with. On a desk each
     /// lane is a surface — chat is this pane, ask is the summoned question window, image is the
@@ -51,6 +54,7 @@ final class PillsRow: NSView {
     private let commandPill: MenuPill
     private let attachButton: MenuPill
     private let stopButton: SymbolChip
+    private let callChip = SymbolChip()
 
     init() {
         commandPill = MenuPill(text: "/")
@@ -97,6 +101,12 @@ final class PillsRow: NSView {
         stopButton.target = self
         stopButton.action = #selector(stopTapped)
 
+        callChip.symbol = VoiceCallEntryPoint.symbol
+        callChip.isHidden = true
+        callChip.target = self
+        callChip.action = #selector(callTapped)
+        callChip.setContentCompressionResistancePriority(.required, for: .horizontal)
+
         dialPill.setContentCompressionResistancePriority(.init(450), for: .horizontal)
         commandPill.setContentCompressionResistancePriority(.init(450), for: .horizontal)
         attachButton.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -116,7 +126,7 @@ final class PillsRow: NSView {
         let row = NSStackView(views: [
             vimBadgeWrap, destinationLabel, dialPill, commandPill,
             RowKit.spacer(),
-            laneControl, attachButton, stopButton,
+            laneControl, callChip, attachButton, stopButton,
         ])
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -127,6 +137,7 @@ final class PillsRow: NSView {
             greaterThanOrEqualToConstant: CGFloat(ChatChrome.chip(on: .pointer).height)
         ).isActive = true
         row.setVisibilityPriority(.init(700), for: laneControl)
+        row.setVisibilityPriority(.init(760), for: callChip)
         row.setVisibilityPriority(.init(720), for: commandPill)
         row.setVisibilityPriority(.init(750), for: destinationLabel)
         addSubview(row)
@@ -155,7 +166,7 @@ final class PillsRow: NSView {
         vimBadge.font = MacTheme.Ramp.font(.badge)
         destinationLabel.font = MacTheme.Ramp.font(.panelFootnote)
         laneControl.restyle()
-        for chip in [commandPill, attachButton, stopButton] { chip.restyle() }
+        for chip in [commandPill, attachButton, stopButton, callChip] { chip.restyle() }
         dialPill.restyle()
     }
 
@@ -230,6 +241,18 @@ final class PillsRow: NSView {
         stopButton.isHidden = !shown
     }
 
+    /// The call's control, drawn only when the pane has an entry for it. A gateway that cannot take a
+    /// call right now leaves the control dimmed and still pressable, because the press is what says
+    /// why in words; a plainly disabled control would keep that reason from anyone not using
+    /// VoiceOver.
+    func setCall(_ entry: CallEntry?) {
+        callChip.isHidden = entry == nil
+        guard let entry else { return }
+        callChip.alphaValue = entry.dimmed ? 0.45 : 1
+        callChip.toolTip = entry.tooltip
+        callChip.setAccessibilityLabel(entry.label)
+    }
+
     /// A hidden pane's pill stops its rainbow; shown again, it picks the rhythm back up.
     func setParked(_ parked: Bool) {
         dialPill.setParked(parked)
@@ -241,6 +264,10 @@ final class PillsRow: NSView {
 
     @objc private func stopTapped() {
         onStop?()
+    }
+
+    @objc private func callTapped() {
+        onCall?()
     }
 }
 
