@@ -7,6 +7,10 @@
 # refuses a build number the iOS train already holds.
 #
 # Usage: scripts/release-ios-local.sh <build-number> <marketing-version> [--upload]
+# SKIP_ARCHIVE=1 reuses the archive of this build number after an export that failed.
+# The keychain search list is narrowed to the temporary keychain and the login one for the run,
+# because a second keychain holding the same distribution identity (a CI leftover) is the one an
+# export can pick, locked, and fail on with errSecInternalComponent.
 set -euo pipefail
 export PATH=/opt/homebrew/bin:$HOME/.local/bin:$PATH
 cd "$(dirname "$0")/.."
@@ -71,7 +75,7 @@ security set-keychain-settings -lut 21600 "$KEYCHAIN"
 security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 security import "$VAULT/midgar_distribution.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
-security list-keychains -d user -s "$KEYCHAIN" $ORIGINAL_KEYCHAINS
+security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
 trap cleanup_keychain EXIT
 
 PROFILES_PLIST=$OUT/profiles.txt
@@ -110,7 +114,9 @@ PY
 xcodegen generate >/dev/null
 
 ARCHIVE=$OUT/Tailscode.xcarchive
-rm -rf "$ARCHIVE" "$OUT/export"
+rm -rf "$OUT/export"
+if [ "${SKIP_ARCHIVE:-0}" != 1 ]; then
+rm -rf "$ARCHIVE"
 xcodebuild archive \
   -project Tailscode.xcodeproj -scheme Tailscode -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" -derivedDataPath "$OUT/dd" \
@@ -121,6 +127,7 @@ xcodebuild archive \
   echo "archive FAILED, log at $OUT/archive.log" >&2
   exit 1
 }
+fi
 [ -d "$ARCHIVE" ] || { echo "no archive produced" >&2; exit 1; }
 
 security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
