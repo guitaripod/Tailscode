@@ -304,7 +304,9 @@ final class ChatRowContentView: UIView, UIContentView {
 /// The list cell a chat row sits in. A band that needs the person is washed in the attention
 /// tone rather than outlined, because a stroke drawn per cell would box every row in the band and
 /// a wash reads as one surface; every other band is the grouped surface, opaque, never glass. A
-/// list that owns its own selection colours hands them in through `surfaceTint`, which wins.
+/// list that owns its own selection colours hands them in through `surfaceTint`, which wins, and a
+/// list that paints no surface (`paintsGroupedSurface` off) is transparent, so the screen's own
+/// ground — the theme's canvas — is what its rows sit on rather than the platform's white.
 @MainActor
 final class ChatRowCell: UICollectionViewListCell {
     var wantsAttention = false {
@@ -329,12 +331,14 @@ final class ChatRowCell: UICollectionViewListCell {
         var background = UIBackgroundConfiguration.listCell().updated(for: state)
         if let tint = surfaceTint?(state) {
             background.backgroundColor = tint
-        } else if !state.isHighlighted, !state.isSelected {
-            if wantsAttention {
-                background.backgroundColor = Self.attentionSurface
-            } else if paintsGroupedSurface {
-                background.backgroundColor = Theme.Color.groupedSurface
+        } else if state.isHighlighted || state.isSelected {
+            if traitCollection.palette != nil {
+                background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.14)
             }
+        } else if wantsAttention {
+            background.backgroundColor = Self.attentionSurface
+        } else {
+            background.backgroundColor = paintsGroupedSurface ? Theme.Color.groupedSurface : .clear
         }
         backgroundConfiguration = background
     }

@@ -207,7 +207,7 @@ final class NewChatViewController: UIViewController {
     }
 
     private func configureCollectionView() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.showsSeparators = false
         collectionView = UICollectionView(
             frame: .zero,
@@ -270,9 +270,9 @@ final class NewChatViewController: UIViewController {
         cell.contentConfiguration = content
 
         var background = UIBackgroundConfiguration.listCell()
-        if index == chooser.cursor {
-            background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.18)
-        }
+        background.backgroundColor =
+            index == chooser.cursor
+            ? Theme.Color.accent.withAlphaComponent(0.18) : Theme.Color.groupedSurface
         cell.backgroundConfiguration = background
 
         if let badge = badge(for: row, index: index) {

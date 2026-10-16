@@ -356,7 +356,7 @@ final class ModelPickerViewController: UIViewController {
     private func listSection(
         at index: Int, environment: NSCollectionLayoutEnvironment
     ) -> NSCollectionLayoutSection {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = sectionTitle(at: index).isEmpty ? .none : .supplementary
         config.footerMode = index == sectionIDs.count - 1 ? .supplementary : .none
         config.leadingSwipeActionsConfigurationProvider = { [weak self] indexPath in
@@ -376,7 +376,7 @@ final class ModelPickerViewController: UIViewController {
             let section =
                 self?.listSection(at: index, environment: environment)
                 ?? .list(
-                    using: UICollectionLayoutListConfiguration(appearance: .insetGrouped),
+                    using: UICollectionLayoutListConfiguration.themed(.insetGrouped),
                     layoutEnvironment: environment)
             if environment.traitCollection.horizontalSizeClass == .regular {
                 section.contentInsetsReference = .readableContent
@@ -389,7 +389,7 @@ final class ModelPickerViewController: UIViewController {
         collectionView.delegate = self
         view.addSubview(collectionView)
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, String> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, String> {
             [weak self] cell, _, id in
             guard let self, let row = self.row(for: id) else { return }
             var content = cell.defaultContentConfiguration()

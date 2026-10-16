@@ -30,7 +30,7 @@ final class GitDiffViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = Theme.Color.background
 
-        var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
+        var configuration = UICollectionLayoutListConfiguration.themed(.plain)
         configuration.showsSeparators = false
         configuration.backgroundColor = .clear
         configuration.headerMode = .supplementary

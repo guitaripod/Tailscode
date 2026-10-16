@@ -54,7 +54,7 @@ final class CommandCatalogViewController: UIViewController {
     }
 
     private func configureCollectionView() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .supplementary
         let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
@@ -64,7 +64,7 @@ final class CommandCatalogViewController: UIViewController {
         collectionView.keyboardDismissMode = .onDrag
         view.addSubview(collectionView)
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, AgentCommand> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, AgentCommand> {
             cell, _, command in
             var content = cell.defaultContentConfiguration()
             content.attributedText = Self.signature(command)

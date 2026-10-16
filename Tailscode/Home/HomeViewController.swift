@@ -2118,7 +2118,7 @@ final class HomeViewController: UIViewController {
     private static func bandSection(
         _ environment: NSCollectionLayoutEnvironment, isFooter: @escaping (IndexPath) -> Bool
     ) -> NSCollectionLayoutSection {
-        var configuration = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var configuration = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         configuration.headerMode = .supplementary
         configuration.backgroundColor = .clear
         configuration.itemSeparatorHandler = { indexPath, separators in

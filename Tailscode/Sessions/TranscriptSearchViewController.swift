@@ -89,7 +89,7 @@ final class TranscriptSearchViewController: UIViewController {
     }
 
     private func configureCollectionView() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.footerMode = .supplementary
         let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)

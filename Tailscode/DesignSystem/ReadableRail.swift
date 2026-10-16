@@ -64,3 +64,15 @@ extension UICollectionViewCompositionalLayout {
         }
     }
 }
+
+extension UICollectionLayoutListConfiguration {
+    /// A list in the platform's own colour is a pane of white or black laid over whatever ground
+    /// the screen behind it wears, which is how a themed window ends up with a cream header over a
+    /// white list. The ground belongs to the screen, so a list starts out transparent and the
+    /// screen's `view.backgroundColor` shows through it.
+    static func themed(_ appearance: Appearance) -> UICollectionLayoutListConfiguration {
+        var config = UICollectionLayoutListConfiguration(appearance: appearance)
+        config.backgroundColor = .clear
+        return config
+    }
+}

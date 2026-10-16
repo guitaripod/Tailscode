@@ -47,7 +47,7 @@ final class ArchivedChatsViewController: UIViewController {
     @objc private func storeDidChange() { applySnapshot() }
 
     private func configureCollectionView() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .none
         config.footerMode = .supplementary
         config.leadingSwipeActionsConfigurationProvider = { [weak self] indexPath in
@@ -92,7 +92,7 @@ final class ArchivedChatsViewController: UIViewController {
     }
 
     private func configureDataSource() {
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, SessionEntry> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, SessionEntry> {
             cell, _, entry in
             var content = UIListContentConfiguration.subtitleCell()
             content.text = SessionListViewController.displayTitle(entry.session.title)

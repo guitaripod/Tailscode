@@ -164,7 +164,7 @@ final class FolderBrowserViewController: UIViewController {
     }
 
     private func configureCollectionView() {
-        var config = UICollectionLayoutListConfiguration(appearance: .plain)
+        var config = UICollectionLayoutListConfiguration.themed(.plain)
         config.backgroundColor = .clear
         config.leadingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             guard let self, let path = self.dataSource.itemIdentifier(for: indexPath),
@@ -263,9 +263,9 @@ final class FolderBrowserViewController: UIViewController {
         cell.contentConfiguration = content
 
         var background = UIBackgroundConfiguration.listCell()
-        if browser.focused?.path == row.path, cursorVisible || !browser.filter.isEmpty {
-            background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.18)
-        }
+        let focused = browser.focused?.path == row.path && (cursorVisible || !browser.filter.isEmpty)
+        background.backgroundColor =
+            focused ? Theme.Color.accent.withAlphaComponent(0.18) : Theme.Color.background
         cell.backgroundConfiguration = background
 
         var accessories: [UICellAccessory] = []

@@ -115,7 +115,7 @@ final class SavedChatsViewController: UIViewController {
     }
 
     private func configureCollectionView() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .none
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             guard let self, let row = self.dataSource.itemIdentifier(for: indexPath) else {
@@ -150,7 +150,7 @@ final class SavedChatsViewController: UIViewController {
     }
 
     private func configureDataSource() {
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Row> { cell, _, row in
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, Row> { cell, _, row in
             var content = UIListContentConfiguration.subtitleCell()
             content.text = row.chat.displayTitle
             content.textProperties.font = row.unread

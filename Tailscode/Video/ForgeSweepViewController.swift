@@ -134,7 +134,7 @@ final class ForgeSweepViewController: UIViewController {
     }
 
     private func configureResults() {
-        var configuration = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var configuration = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         configuration.backgroundColor = .clear
         collectionView = UICollectionView(
             frame: .zero,
@@ -144,7 +144,7 @@ final class ForgeSweepViewController: UIViewController {
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, ForgeCandidate> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, ForgeCandidate> {
             [weak self] cell, _, candidate in
             var content = cell.defaultContentConfiguration()
             content.text = candidate.title

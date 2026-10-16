@@ -80,7 +80,7 @@ final class DelegateRunViewController: UIViewController {
     #endif
 
     private func configure() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .supplementary
         config.itemSeparatorHandler = { [weak self] indexPath, separator in
             var separator = separator
@@ -125,7 +125,7 @@ final class DelegateRunViewController: UIViewController {
                 break
             }
         }
-        let listCell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
+        let listCell = UICollectionView.CellRegistration<SurfaceListCell, Item> { [weak self] cell, _, item in
             self?.configure(cell, item)
         }
         let lineCell = UICollectionView.CellRegistration<DelegateTimelineCell, Item> { [weak self] cell, _, item in

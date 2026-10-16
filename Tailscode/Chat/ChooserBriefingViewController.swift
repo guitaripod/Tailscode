@@ -33,7 +33,7 @@ final class ChooserBriefingViewController: UIViewController {
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             systemItem: .close,
             primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .supplementary
         config.footerMode = .supplementary
         let layout = UICollectionViewCompositionalLayout.list(using: config)
@@ -46,7 +46,7 @@ final class ChooserBriefingViewController: UIViewController {
     }
 
     private func configureDataSource() {
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Int> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, Int> {
             [weak self] cell, indexPath, _ in
             guard let self else { return }
             let line = self.briefing.sections[indexPath.section].lines[indexPath.item]

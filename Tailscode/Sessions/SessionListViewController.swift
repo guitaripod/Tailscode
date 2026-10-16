@@ -553,8 +553,7 @@ final class SessionListViewController: UIViewController {
     /// is a plain run of rows under quiet ones, because at a third of a window the cards' margins
     /// are the title's missing words.
     private func makeLayout() -> UICollectionViewCompositionalLayout {
-        var config = UICollectionLayoutListConfiguration(
-            appearance: showsAsColumn ? .plain : .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(showsAsColumn ? .plain : .insetGrouped)
         config.headerMode = .supplementary
         config.itemSeparatorHandler = { _, separators in
             var out = separators
@@ -1651,7 +1650,7 @@ final class FileBrowserViewController: UIViewController {
     }
 
     private func configureCollectionView() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.showsSeparators = false
         config.headerMode = .supplementary
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
@@ -1699,7 +1698,7 @@ final class FileBrowserViewController: UIViewController {
     }
 
     private func configureDataSource() {
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, FileItem> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, FileItem> {
             [weak self] cell, _, item in
             guard self != nil else { return }
             var content = UIListContentConfiguration.subtitleCell()

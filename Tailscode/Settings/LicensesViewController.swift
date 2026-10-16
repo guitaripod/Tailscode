@@ -78,7 +78,7 @@ final class LicensesViewController: UIViewController {
     }
 
     private func configure() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .supplementary
         config.footerMode = .supplementary
         let layout = UICollectionViewCompositionalLayout.readableList(using: config)
@@ -88,7 +88,7 @@ final class LicensesViewController: UIViewController {
         collectionView.delegate = self
         view.addSubview(collectionView)
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Package> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, Package> {
             cell, _, package in
             var content = cell.defaultContentConfiguration()
             content.text = package.name

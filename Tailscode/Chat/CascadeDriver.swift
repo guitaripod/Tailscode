@@ -13,6 +13,11 @@ struct CascadeTail {
     let phase: Double
     let edge: UIColor
     let spark: UIColor
+    /// The traits of the view this frame is for. A frame is built off the display's clock, outside
+    /// any view's drawing, where `UITraitCollection.current` is the system's — not the window's
+    /// theme and appearance — so the prose colour resolved there is the platform's black on a
+    /// dark theme, and the wave bakes that colour into the text for good.
+    let traits: UITraitCollection
     /// The same frame, for the hand that draws the edge instead of tinting the characters behind
     /// it. Non-nil only while the alpha renderer is the chosen one and this device can run it; a
     /// cell that cannot use it falls back to `paint`/`repaint` below and loses no meaning.
@@ -97,7 +102,6 @@ struct CascadeTail {
     /// glyph leaving the wave lands on the colour it would have had if it had never been in one.
     private func tint(_ string: NSMutableAttributedString, upTo shown: Int, settled: UIColor) {
         guard span > 0, shown > 0 else { return }
-        let traits = UITraitCollection.current
         let fallback = CascadeTint.channels(settled, traits)
         let leading = CascadeTint.channels(edge, traits)
         let burn = CascadeTint.channels(spark, traits)
@@ -298,13 +302,13 @@ final class CascadeDriver {
     }
 
     /// The wave a cell should paint for this row, or nil when the row is not the live one.
-    func tail(for id: String) -> CascadeTail? {
+    func tail(for id: String, traits: UITraitCollection) -> CascadeTail? {
         guard live.id == id, Self.motionAllowed else { return nil }
         let edge = CascadeTint.edge(ultracode: ultracode, phase: live.phase)
-        let spark = CascadeTint.spark(for: edge, traits: UITraitCollection.current)
+        let spark = CascadeTint.spark(for: edge, traits: traits)
         return CascadeTail(
             revealed: live.revealed, span: StreamCascade.span, phase: live.phase, edge: edge,
-            spark: spark, aurora: auroraFrame(edge: edge, spark: spark))
+            spark: spark, traits: traits, aurora: auroraFrame(edge: edge, spark: spark))
     }
 
     /// The alpha renderer's own half of the frame, offered only where it can actually be run. A

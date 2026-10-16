@@ -113,14 +113,14 @@ final class DiscoveryViewController: UIViewController {
     }
 
     private func configureResultsList() {
-        let config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        let config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = .clear
         collectionView.isScrollEnabled = false
         collectionView.delegate = self
 
-        let suggestionCell = UICollectionView.CellRegistration<UICollectionViewListCell, SuggestionItem> { cell, _, item in
+        let suggestionCell = UICollectionView.CellRegistration<SurfaceListCell, SuggestionItem> { cell, _, item in
             var content = cell.defaultContentConfiguration()
             content.text = item.suggestion.recommendedProfileName
             var secondary = item.suggestion.backend.displayName
@@ -159,7 +159,7 @@ final class DiscoveryViewController: UIViewController {
             }
         }
 
-        let deviceCell = UICollectionView.CellRegistration<UICollectionViewListCell, DeviceItem> { cell, _, item in
+        let deviceCell = UICollectionView.CellRegistration<SurfaceListCell, DeviceItem> { cell, _, item in
             var content = cell.defaultContentConfiguration()
             let label = { () -> String in
                 if !item.device.hostname.isEmpty { return item.device.hostname }

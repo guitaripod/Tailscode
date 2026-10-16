@@ -225,7 +225,7 @@ final class ServerDetailViewController: UIViewController {
     }
 
     private func configure() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .supplementary
         config.footerMode = .supplementary
         let layout = UICollectionViewCompositionalLayout.readableList(using: config)
@@ -236,7 +236,7 @@ final class ServerDetailViewController: UIViewController {
         collectionView.selfSizingInvalidation = .enabledIncludingConstraints
         view.addSubview(collectionView)
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, Item> {
             [weak self] cell, _, item in
             self?.configure(cell, item)
         }

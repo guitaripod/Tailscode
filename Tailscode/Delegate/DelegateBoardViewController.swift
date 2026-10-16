@@ -75,7 +75,7 @@ final class DelegateBoardViewController: UIViewController {
     }
 
     private func configure() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .supplementary
         let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
@@ -86,7 +86,7 @@ final class DelegateBoardViewController: UIViewController {
         collectionView.refreshControl?.addAction(UIAction { [weak self] _ in self?.pulled() }, for: .valueChanged)
         view.addSubview(collectionView)
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, Item> { [weak self] cell, _, item in
             self?.configure(cell, item)
         }
         let runCell = UICollectionView.CellRegistration<DelegateRunRowCell, Item> { [weak self] cell, _, item in

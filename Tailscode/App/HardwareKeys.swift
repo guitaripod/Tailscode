@@ -191,7 +191,7 @@ final class ShortcutCheatsheetViewController: UIViewController {
             systemItem: .close,
             primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
 
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .supplementary
         config.footerMode = .supplementary
         collectionView = UICollectionView(
@@ -225,7 +225,7 @@ final class ShortcutCheatsheetViewController: UIViewController {
     }
 
     private func configureDataSource() {
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Row> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, Row> {
             cell, _, row in
             var content = UIListContentConfiguration.valueCell()
             content.text = row.what

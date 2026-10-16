@@ -91,7 +91,7 @@ final class GitStatusViewController: UIViewController {
                 primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         }
 
-        var configuration = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var configuration = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         configuration.headerMode = .supplementary
         configuration.backgroundColor = .clear
         collectionView = UICollectionView(

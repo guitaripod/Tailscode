@@ -46,7 +46,7 @@ final class ThemePickerViewController: UIViewController {
     }
 
     private func buildCollectionView() {
-        var layout = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var layout = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         layout.headerMode = .supplementary
         collectionView = UICollectionView(
             frame: .zero, collectionViewLayout: UICollectionViewCompositionalLayout.readableList(using: layout))

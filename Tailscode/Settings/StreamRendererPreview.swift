@@ -152,7 +152,7 @@ final class StreamRendererPreview: UIView {
         let spark = CascadeTint.spark(for: edge, traits: traitCollection)
         var tail = CascadeTail(
             revealed: live.revealed, span: StreamCascade.span, phase: live.phase, edge: edge,
-            spark: spark)
+            spark: spark, traits: traitCollection)
         if choice == .aurora, AuroraStreamView.isAvailable {
             tail.aurora = AuroraFrame(
                 progress: live.progress, phase: live.phase, time: time, rate: live.rate, edge: edge,

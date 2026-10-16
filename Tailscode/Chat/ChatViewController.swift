@@ -1060,7 +1060,7 @@ final class ChatViewController: UIViewController {
     private var rails: [ReadableRail] = []
 
     private func configureLayout() {
-        var config = UICollectionLayoutListConfiguration(appearance: .plain)
+        var config = UICollectionLayoutListConfiguration.themed(.plain)
         config.showsSeparators = false
         config.backgroundColor = .clear
         let layout = UICollectionViewCompositionalLayout.readableList(using: config)
@@ -1971,13 +1971,13 @@ final class ChatViewController: UIViewController {
         case .text(let text):
             return self.bubble(
                 collectionView, indexPath, text, row.role, reasoning: false,
-                cascade: self.cascade.tail(for: id))
+                cascade: self.cascade.tail(for: id, traits: self.traitCollection))
         case .code(let block):
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: CodeBlockCell.reuseID, for: indexPath) as! CodeBlockCell
             cell.configure(
                 block, expanded: self.expandedReasoning.contains(id),
-                cascade: self.cascade.tail(for: id)
+                cascade: self.cascade.tail(for: id, traits: self.traitCollection)
             ) {
                 [weak self] in self?.toggleReasoning(id)
             }
@@ -2403,7 +2403,7 @@ final class ChatViewController: UIViewController {
     private func repaintLiveCellInPlace(_ id: String) -> CascadePaint {
         guard let indexPath = dataSource.indexPath(for: id) else { return .refused }
         guard let cell = collectionView.cellForItem(at: indexPath) else { return .unseen }
-        guard let tail = cascade.tail(for: id), let row = rowsByID[id] else { return .refused }
+        guard let tail = cascade.tail(for: id, traits: traitCollection), let row = rowsByID[id] else { return .refused }
         switch (row.content, cell) {
         case (.text(let text), let bubble as TextBubbleCell):
             bubble.applyCascade(tail, text: text, reasoning: false)

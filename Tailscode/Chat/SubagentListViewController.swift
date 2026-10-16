@@ -64,7 +64,7 @@ final class SubagentListViewController: UIViewController {
     }
 
     private func configureCollectionView() {
-        let config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        let config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -73,7 +73,7 @@ final class SubagentListViewController: UIViewController {
     }
 
     private func configureDataSource() {
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, String> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, String> {
             [weak self] cell, _, agentID in
             guard let self, let agent = self.agents.first(where: { $0.id == agentID }) else {
                 return

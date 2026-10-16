@@ -395,7 +395,7 @@ final class SettingsViewController: UIViewController {
     }
 
     private func configure() {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .supplementary
         config.footerMode = .supplementary
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
@@ -422,11 +422,11 @@ final class SettingsViewController: UIViewController {
         collectionView.keyboardDismissMode = .onDrag
         view.addSubview(collectionView)
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> {
+        let cell = UICollectionView.CellRegistration<SurfaceListCell, Item> {
             [weak self] cell, _, item in
             self?.configure(cell, item)
         }
-        let midgarCell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> {
+        let midgarCell = UICollectionView.CellRegistration<SurfaceListCell, Item> {
             cell, _, _ in
             Self.embedMidgarEntry(in: cell)
         }
@@ -468,7 +468,7 @@ final class SettingsViewController: UIViewController {
     /// The doorway into the Midgar portal is a card, not a settings row: no header, no footer,
     /// no separator, and a background that lets the card be the only thing drawn.
     private static var midgarListConfiguration: UICollectionLayoutListConfiguration {
-        var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        var config = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         config.headerMode = .none
         config.footerMode = .none
         config.showsSeparators = false
@@ -480,8 +480,8 @@ final class SettingsViewController: UIViewController {
     }
 
     /// Reconfiguring a cell runs this again, so the card is added only once.
-    private static func embedMidgarEntry(in cell: UICollectionViewListCell) {
-        cell.backgroundConfiguration = .clear()
+    private static func embedMidgarEntry(in cell: SurfaceListCell) {
+        cell.surface = .ground
         guard !cell.contentView.subviews.contains(where: { $0 is MidgarEntryView }) else { return }
         MidgarEntryView().embed(in: cell.contentView, verticalInset: 8)
     }
