@@ -406,6 +406,7 @@ enum MatrixTheme {
         .beta-card-since .beta-card-body { color: \(text); }
         .beta-glyph-solid { \(t(.panelDetail)) color: \(accent); }
         .beta-glyph-rough { \(t(.panelDetail)) color: \(warn); }
+        \(ClockCSS.rules(palette: palette))
         .call-strip {
             margin: 0 \(inset)px 8px \(inset)px;
             padding: 10px 12px;

@@ -471,6 +471,17 @@ final class Notifier: @unchecked Sendable {
         }
     }
 
+    /// A time the person asked to be told about. It is theirs from the moment they set it, so it
+    /// is raised whether or not a window of this app is in front, and under neither switch.
+    func raiseClockAlarm(id: String, title: String, body: String) {
+        publish(
+            Outgoing(
+                title: title, lines: [body], face: .turnEnded, picture: nil,
+                identifier: "clock.\(id)", sound: NotificationPlate.sound(.turnEnded),
+                category: NotificationPlate.category(.turnEnded), resident: false, timeout: -1,
+                urgency: 1))
+    }
+
     /// What went wrong when words typed into a notice could not be sent, with the words, so the
     /// person has them back to send again.
     func reportUnsent(title: String, words: String) {

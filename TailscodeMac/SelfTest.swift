@@ -72,6 +72,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try MeridianChecks.run()
+            report("world clock: \(checks) claims hold — the chip, the glance, Meridian's lanes, line and alarms")
+        } catch {
+            report("world clock: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkCompletion()
             report("completion: \(checks) queries rank and gate")
         } catch {

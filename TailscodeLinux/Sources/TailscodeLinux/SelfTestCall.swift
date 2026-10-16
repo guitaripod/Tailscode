@@ -144,6 +144,7 @@ extension SelfTest {
             switch name {
             case "call": report("call: \(try checkCall()) claims hold")
             case "beta": report("beta: \(try checkBeta()) claims hold")
+            case "clock": report("clock: \(try checkClock()) claims hold")
             case "setup": report("setup: \(try checkSetup()) claims hold")
             case "audio": report("voice audio: \(try runBlocking { try await checkVoiceAudio() }) claims hold")
             default: report("no check named \(name)"); exit(2)

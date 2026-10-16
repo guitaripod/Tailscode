@@ -215,6 +215,7 @@ enum ParityManifest {
         case .reviewPrompt: return .implemented("ReviewPromptCoordinator")
         case .rateAndShare: return .implemented("AppStoreLinks")
         case .midgarPortal: return .implemented("MidgarEntryView")
+        case .worldClock: return .gap("the world clock is a desktop chrome feature: a chip at the foot of a sidebar and a sheet whose line is scrubbed with a pointer, and the phone has neither a persistent foot nor a pointer. Every reading is already Core's (WorldClockReading, MeridianBoard, ClockAlarmBook), so the phone owes only the drawing and a road in: a Home tool that opens the same lanes as a sheet.")
         case .videoForge: return .implemented("VideoForgeViewController")
         case .forgeEntry: return .implemented("presentVideo")
         case .forgeSetup: return .implemented("ForgeSetupViewController")

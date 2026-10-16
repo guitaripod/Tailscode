@@ -521,6 +521,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkClock()
+            report("clock: \(checks) claims hold — the chip, the glance, the sheet, its alarms and the palette it draws with")
+        } catch {
+            report("clock: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkFirstRun()
             report("first run: \(checks) claims hold — the desktop entry, the link arguments and every state the window draws")
         } catch {

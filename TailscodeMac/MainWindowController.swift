@@ -1058,6 +1058,17 @@ final class MainWindowController: NSWindowController {
                     self?.transcript.stage(messagesAt: path, directives: Array(spec.dropFirst()))
                 }
         #endif
+        case "clock-glance":
+            if window?.isVisible != true { showWindow(nil) }
+            sidebar.clockChip.reveal()
+        case "clock-sheet":
+            if window?.isVisible != true { showWindow(nil) }
+            if let window {
+                MeridianSheetController.shared.present(in: window)
+                if parts.count > 1, let minute = Int(parts[1]) {
+                    MeridianSheetController.shared.content.scrub(to: minute, animated: false)
+                }
+            }
         case "delegate": presentDelegate()
         case "delegate-beta":
             presentDelegate()
@@ -1073,7 +1084,7 @@ final class MainWindowController: NSWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
+                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], clock-glance, clock-sheet[:minute], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
         }
     }
 

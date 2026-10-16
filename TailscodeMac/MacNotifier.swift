@@ -149,6 +149,19 @@ final class MacNotifier: NSObject {
         deliver(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }
 
+    /// A time the person asked to be told about. It answers to neither notification switch and is
+    /// raised with the app in front too: the person set it for that minute, and a banner they did
+    /// not get is the alarm not having rung.
+    func raiseClockAlarm(_ alarm: ClockAlarm, style: ClockStyle, now: Date) {
+        let notice = alarm.notice(now: now, style: style)
+        let content = UNMutableNotificationContent()
+        content.title = notice.title
+        content.body = notice.body
+        content.sound = .default
+        content.threadIdentifier = "clock"
+        deliver(UNNotificationRequest(identifier: "clock:\(alarm.id)", content: content, trigger: nil))
+    }
+
     /// The alert's face as a thumbnail, so a glance at a stack of banners separates the finished
     /// from the waiting before a word is read. Written fresh per notification because the system
     /// takes ownership of the file it is handed.

@@ -66,6 +66,9 @@ final class SidebarViewController: NSViewController {
     /// therefore on screen before this launch has asked anybody anything. It watches the ledger
     /// itself, so nothing above it has to remember to tell it.
     private let updateFooter = UpdateFooterView()
+    /// The world clock, leading the Update mark in the foot's one row: it is always there, and the
+    /// Update mark beside it hides itself when there is nothing to say.
+    let clockChip = ClockChipView()
     private let supporterCard = SupporterCardView()
     private let bulkBar = SidebarBulkBar()
     private let orb = PresenceOrbView()
@@ -194,7 +197,13 @@ final class SidebarViewController: NSViewController {
         updateFooter.onOpen = { [weak self] in self?.onOpenUpdates?() }
         supporterCard.onUnlock = { [weak self] in self?.onOpenPro?() }
 
-        let footer = FillingStack(views: [bulkBar, supporterCard, updateFooter, usageFooter, orb])
+        MeridianFeed.shared.start()
+        let clockRow = NSStackView(views: [clockChip, updateFooter])
+        clockRow.orientation = .horizontal
+        clockRow.alignment = .centerY
+        clockRow.spacing = MacTheme.Spacing.s
+        clockRow.translatesAutoresizingMaskIntoConstraints = false
+        let footer = FillingStack(views: [bulkBar, supporterCard, clockRow, usageFooter, orb])
         footer.spacing = MacTheme.Spacing.xs
         footer.translatesAutoresizingMaskIntoConstraints = false
 
@@ -229,6 +238,7 @@ final class SidebarViewController: NSViewController {
     /// arrived: a reading nobody could refresh has to say so before it says anything else.
     func renderUsage(_ quotas: [(String, UsageQuota)], answeredAt: Date?) {
         usageFooter.render(quotas, answeredAt: answeredAt)
+        MeridianFeed.shared.update(quotas: quotas)
     }
 
     /// Rows pick their fonts up at configure time, so a reload is the whole zoom.

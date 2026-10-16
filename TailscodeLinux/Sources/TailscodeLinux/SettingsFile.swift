@@ -33,7 +33,7 @@ enum SettingsFile {
         "tailscode.quickask.", "tailscode.updates.", "tailscode.commandCatalog.",
         "tailscode.slash.recents", "tailscode.forge.", "tailscode.image.", "tailscode.usageWindow",
         "tailscode.shareCardStyle", "tailscode.quotaBoard", "tailscode.chatDensity", "tailscode.beta.seen.",
-        "tailscode.preview.",
+        "tailscode.preview.", "tailscode.worldClock",
     ]
 
     /// Long enough to take a burst of changes (a divider dragged, a pane split and resized) as one

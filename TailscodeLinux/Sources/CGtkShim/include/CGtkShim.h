@@ -728,3 +728,4 @@ long tailscode_soak_rows(void);
 
 #include "tile.h"
 #include "previewlens.h"
+#include "meridian.h"

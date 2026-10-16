@@ -38,6 +38,11 @@ final class MainWindow: @unchecked Sendable {
     private let updateGlyph = Gtk.label("·", css: nil, selectable: false)
     private let updateHeadline = Gtk.label("", css: "sidebar-detail", selectable: false)
     private let usageBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+    /// The world clock, leading the Update chip in the foot's one row. It is always there: unlike
+    /// the Update chip it has nothing that could be settled and so nothing to hide.
+    lazy var clockChip = ClockChip { [weak self] in
+        Gtk.onMain { [weak self] in self?.presentClock() }
+    }
     private let orb = OrbPainter()
     private var orbTarget: SessionEntry?
     private var orbKinds: [ActivityKind?] = []
@@ -787,6 +792,8 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(Data("FORGE \(forge.forgeSummary)\n".utf8))
                 case "beta":
                     self.driveBeta(argument, parent: self.window)
+                case "clock":
+                    self.driveClock(argument)
                 case "setup":
                     self.driveSetup(argument)
                 case "call":
@@ -1172,7 +1179,7 @@ final class MainWindow: @unchecked Sendable {
 
         gtk_widget_set_visible(updateBox, 0)
         Gtk.addClass(updateBox, "update-footer")
-        Gtk.margins(updateBox, top: 6, bottom: 6, leading: 10, trailing: 10)
+        Gtk.margins(updateBox, top: 6, bottom: 6, leading: 0, trailing: 10)
         gtk_widget_set_cursor_from_name(updateBox, "pointer")
         gtk_widget_set_tooltip_text(updateBox, Localized.text("What every machine is running"))
         gtk_widget_set_valign(updateGlyph, GTK_ALIGN_CENTER)
@@ -1180,7 +1187,14 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(updateBox), updateGlyph)
         gtk_box_append(ptr(updateBox), updateHeadline)
         Gtk.onRelease(updateBox) { [weak self] in self?.presentUpdates() }
-        gtk_box_append(ptr(column), updateBox)
+        let footRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.addClass(footRow, "clock-footer")
+        Gtk.margins(clockChip.widget, top: 6, bottom: 6, leading: 10, trailing: 0)
+        gtk_widget_set_hexpand(updateBox, 1)
+        gtk_box_append(ptr(footRow), clockChip.widget)
+        gtk_box_append(ptr(footRow), updateBox)
+        gtk_box_append(ptr(column), footRow)
+        ClockWatch.shared.start()
 
         gtk_widget_set_visible(usageBox, 0)
         Gtk.addClass(usageBox, "usage-footer")
@@ -3364,6 +3378,10 @@ final class MainWindow: @unchecked Sendable {
         UpdatePanel.present(parent: sidebarPane)
     }
 
+    func presentClock() {
+        MeridianSheet.present(parent: sidebarPane)
+    }
+
     /// The mark, drawn from what this device already knew. It says one thing and holds still unless
     /// something is actually being installed — an update that exists is a settled fact, and
     /// stillness is what tells a reader the app is not busy on their behalf. There is no dismiss
@@ -4320,6 +4338,7 @@ final class MainWindow: @unchecked Sendable {
         terminal.setFontScale(Preferences.terminalScale)
         terminal.applyPalette(MatrixTheme.palette)
         orb.applyTheme()
+        ClockWatch.shared.themeChanged()
         videoRing?.retheme()
         splitHost.eachPane { $0.applyLayoutPreferences() }
         splitHost.applyRatios()
@@ -4455,6 +4474,7 @@ final class MainWindow: @unchecked Sendable {
             } else {
                 self.lastQuotas = snapshot
                 self.quotasAnsweredAt = answeredAt
+                ClockWatch.shared.setHoldings(from: snapshot)
             }
             self.renderUsage(self.lastQuotas)
         }
