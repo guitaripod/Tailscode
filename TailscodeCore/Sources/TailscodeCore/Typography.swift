@@ -164,6 +164,9 @@ public enum TypeRole: String, CaseIterable, Sendable {
     case hint
 
     case statusLine
+    /// The sentence at the head of Home: what the whole board adds up to, set to be read from
+    /// arm's length. Tabular because the count in it changes while a person is looking.
+    case statusSentence
     case segment
     case pill
     case badge
@@ -313,6 +316,10 @@ public enum Typography {
         case .statusLine:
             return TypeSpec(
                 axis: .chrome, family: .mono, ratio: 0.82, weight: .medium, figures: .tabular)
+        case .statusSentence:
+            return TypeSpec(
+                axis: .chrome, family: .prose, ratio: 1.85, weight: .semibold, tracking: -0.012,
+                figures: .tabular)
         case .segment:
             return TypeSpec(
                 axis: .chrome, family: .mono, ratio: 0.78, weight: .medium, figures: .tabular)
@@ -388,7 +395,8 @@ public enum Typography {
         case .rowTitle, .rowTitleStrong, .rowDetail, .rowMeta, .rowStamp, .rowNote, .sectionLabel,
             .hint:
             return .navigation
-        case .statusLine, .segment, .pill, .badge, .paneIdentity, .chip, .banner, .note:
+        case .statusLine, .statusSentence, .segment, .pill, .badge, .paneIdentity, .chip, .banner,
+            .note:
             return .chrome
         case .metricHero, .metricLarge, .metricValue, .metricLabel, .metricDetail, .gauge,
             .gaugeCaption:

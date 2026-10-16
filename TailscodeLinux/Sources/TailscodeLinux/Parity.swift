@@ -10,6 +10,7 @@ enum ParityManifest {
     static func evidence(for capability: AppCapability) -> ParityEvidence {
         switch capability {
         case .sessionSections: return .implemented("groupIntoSections")
+        case .homeBoard: return .gap("the chat list draws the same sections through groupIntoSections, but nothing on this desk writes the status sentence or holds a band to HomeBandLimits, and a row has no news line under its title. HomeStatus and ChatRowNews are Core; the port is a header over the sidebar and a second label in its rows")
         case .sessionRowStatus: return .implemented("observedPresence")
         case .activityIconography: return .implemented("ActivityPulse")
         case .backgroundWork: return .implemented("inBackground")

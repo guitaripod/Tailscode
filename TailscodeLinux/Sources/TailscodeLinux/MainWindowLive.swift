@@ -4,7 +4,7 @@ import Foundation
 import TailscodeCore
 
 extension MainWindow {
-    /// Watches a conversation whose pane moved on, so a turn still in flight keeps its LIVE NOW seat
+    /// Watches a conversation whose pane moved on, so a turn still in flight keeps its WORKING seat
     /// until it settles. A listing — opencode's especially — cannot say a turn is running, so the
     /// hub keeps the one subscription alive under a `watching` lease and the edge services feed the
     /// sidebar what they read. The lease shares the conversation a pane may still hold, so handing

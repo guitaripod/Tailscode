@@ -280,7 +280,7 @@ final class TileRuntime {
     private var redialDelay: [LiveKey: TimeInterval] = [:]
     private var redialArmed: Set<LiveKey> = []
 
-    /// What each watched conversation's last state said, for the chat list's LIVE NOW, keyed the
+    /// What each watched conversation's last state said, for the chat list's WORKING, keyed the
     /// way the stores are keyed.
     private(set) var backgroundPresence: [String: SessionPresence] = [:]
     /// Told when a watched conversation's reading changes or its watch ends.
@@ -381,7 +381,7 @@ final class TileRuntime {
     func paneCount(_ key: LiveKey) -> Int { holders[key]?.count ?? 0 }
 
     /// Keeps a chat's stream for its edge services after the pane showing it moved on, so a turn
-    /// still in flight keeps its LIVE NOW seat, notifies when it ends and drains its queue.
+    /// still in flight keeps its WORKING seat, notifies when it ends and drains its queue.
     func watch(_ entry: SessionEntry, backend: any CodingAgentBackend) {
         let key = Self.key(entry)
         guard watches[key] == nil else { return }

@@ -113,6 +113,27 @@ final class SessionActivity {
         return ChatViewModel.liveLine(for: viewModel.state)
     }
 
+    /// What this device knows first-hand about a conversation, in the vocabulary a row is decided
+    /// from. A conversation nothing here is driving is `.unobserved`, so the listing is the only
+    /// witness and says no more than it knows.
+    func presence(for sessionID: String) -> SessionPresence {
+        switch status(for: sessionID) {
+        case .running: return .running(liveDetail(for: sessionID))
+        case .awaitingApproval: return .awaitingApproval
+        case .background(let tasks): return .background(tasks: tasks)
+        case .stalled(let tasks): return .stalled(tasks: tasks)
+        case .idle: return .unobserved
+        }
+    }
+
+    /// What a turn waiting on the person is asking to do, for a conversation this device is
+    /// streaming. Anything else has no call in hand and the row says the plain thing.
+    func approvalAsk(for sessionID: String) -> ApprovalAsk? {
+        guard status(for: sessionID) == .awaitingApproval, let viewModel = retained[sessionID]
+        else { return nil }
+        return ApprovalAsk.reading(in: viewModel.state)
+    }
+
     /// How many turns this device is driving on one server right now — which is exactly what a
     /// restart of that server would stop, and so what a person is owed before pressing it.
     func workingCount(onProfile profileID: String) -> Int {

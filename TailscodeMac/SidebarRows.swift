@@ -815,7 +815,7 @@ final class SidebarSearchResultCell: NSView {
     }
 }
 
-/// A section heading with its count — LIVE NOW, SAVED, RECENT, ARCHIVED.
+/// A section heading with its count — NEEDS YOU, WORKING, SAVED, RECENT, ARCHIVED.
 final class SidebarHeaderCell: NSView {
     private let title = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")

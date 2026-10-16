@@ -64,6 +64,7 @@ final class HomeViewController: UIViewController {
     private let orbView = PresenceOrbView()
     private var orbTarget: SessionEntry?
     private var quotas: [UsageQuota] = []
+    private var quotasAnsweredAt: Date?
     private var savedChats: [SavedChat] = SavedChatStore.all()
     private var hasAppeared = false
     private var hasLoadedOnce = false
@@ -75,6 +76,7 @@ final class HomeViewController: UIViewController {
     private var appliedComposeButtonState: String?
     private var composerDraftScope: DraftScope?
     private var resolvedComposeTarget: (profileID: String, directory: String?)?
+    private var appliedTodayState: String?
     private var scheduledSnapshot = false
     private var deferredSnapshot = false
     /// What each card was last drawn from. A diffable identity says which card a row *is*, never
@@ -112,8 +114,8 @@ final class HomeViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = workspace == nil ? "Tailscode" : String(localized: "Home")
-        navigationItem.largeTitleDisplayMode = .always
+        navigationItem.largeTitleDisplayMode = .never
+        navigationItem.backButtonTitle = String(localized: "Home")
         view.backgroundColor = Theme.Color.groupedBackground
         settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
         updateChip.addTarget(self, action: #selector(openUpdates), for: .touchUpInside)
@@ -291,6 +293,19 @@ final class HomeViewController: UIViewController {
                     self?.startChatForVerification(in: directory)
                 }
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_HOME_QUOTAS"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(6))
+                    guard let self else { return }
+                    var found: [UsageQuota] = []
+                    for source in ConnectionController.shared.allBackends() {
+                        if let quota = try? await source.backend.usageQuota() { found.append(quota) }
+                    }
+                    self.quotas = found
+                    self.quotasAnsweredAt = Date()
+                    self.applySnapshot()
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_FOCUS_COMPOSER"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
@@ -399,8 +414,31 @@ final class HomeViewController: UIViewController {
         stopLiveRefresh()
     }
 
+    /// Beside a chat list the pane that is left is Today: the list already holds every row, so
+    /// Home is what a list cannot be — the whole question a waiting agent is asking, and the
+    /// account's quota. With the list tucked away behind the conversation (the narrow band) Home
+    /// is the phone's own board again, bands and all.
+    private var showsToday: Bool {
+        guard let workspace else { return false }
+        return workspace.displayMode != .secondaryOnly
+    }
+
+    /// Whole quota cards need a tall pane; a short one (the Duo's inner display flat, a page of
+    /// the book) keeps the one-line glance, because the composer takes the room the cards would.
+    private var showsQuotaCards: Bool {
+        showsToday && view.bounds.height >= 760 && view.bounds.width >= 460
+    }
+
+    private func refreshTodayLayout() {
+        let state = "\(showsToday)|\(showsQuotaCards)"
+        guard state != appliedTodayState else { return }
+        appliedTodayState = state
+        applySnapshot()
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        refreshTodayLayout()
         keepBoardAboveFold()
         let top = min(composerBar.frame.minY, accessories.frame.minY)
         let overlap = max(0, collectionView.frame.maxY - top - collectionView.safeAreaInsets.bottom)
@@ -461,10 +499,6 @@ final class HomeViewController: UIViewController {
             SessionSeenStore.tourRewindBaseline(seenAge)
             savedChats = SavedChatStore.all()
             applySnapshot()
-        }
-
-        var tourProjectsRail: UIScrollView? {
-            collectionView.visibleCells.first { $0 is ProjectCell }?.superview as? UIScrollView
         }
 
         func tourAim(serverIndex: Int, directory: String?) {
@@ -739,75 +773,121 @@ final class HomeViewController: UIViewController {
         present(nav, animated: true)
     }
 
-    /// Compose aims the docked composer instead of creating a session: server,
-    /// project, and model are all chosen there, and nothing exists on the server
-    /// until a message is actually sent. One server aims straight at it; several
-    /// offer the pick first.
+    /// Home's bar carries one button for everything that is not the board: the tools. The composer
+    /// is the new chat, so a pencil that only focused a box already on screen is gone from the
+    /// phone; with several servers the menu opens with the choice of machine, which keeps its
+    /// one-tap home. A render that is out is the exception, because the light round its button is
+    /// how the app says where a clip or a picture is — that button stays in the bar for as long as
+    /// the light is lit. The iPad keeps its pencil: beside a chat list, where no box is in reach,
+    /// starting a chat is the list's own action.
     private func updateComposeButton() {
         let servers = viewModel.servers
-        let state = servers.map { "\($0.id)|\($0.name)|\($0.backend.rawValue)" }
-            .joined(separator: "\u{1}") + "\u{1}image=\(ImageGenDoor.current().isOpen)"
-            + "\u{1}columns=\(workspace != nil)"
+        let door = ImageGenDoor.current()
+        let rendering = ForgeRunner.shared.light != .dark
+        let painting = ImageStudio.shared.isPainting
+        let state =
+            servers.map { "\($0.id)|\($0.name)|\($0.backend.rawValue)" }.joined(separator: "\u{1}")
+            + "\u{1}image=\(door.isOpen)\u{1}columns=\(workspace != nil)"
+            + "\u{1}render=\(rendering)\u{1}paint=\(painting)"
         guard state != appliedComposeButtonState else { return }
         appliedComposeButtonState = state
+        guard workspace == nil else {
+            navigationItem.rightBarButtonItems = [newChatItem(for: servers)]
+            return
+        }
+        var items = [toolsItem(for: servers, imageOpen: door.isOpen)]
+        if rendering { items.append(videoItem) }
+        if painting { items.append(imageItem) }
+        navigationItem.rightBarButtonItems = items
+    }
+
+    private func newChatItem(for servers: [ConnectionProfile]) -> UIBarButtonItem {
         let compose = UIImage(systemName: "square.and.pencil")
-        let composeItem: UIBarButtonItem
+        let item: UIBarButtonItem
         if servers.count > 1 {
-            let actions = servers.map { profile in
-                UIAction(
-                    title: profile.name,
-                    subtitle: profile.backend.displayName,
-                    image: UIImage(systemName: profile.backend.symbolName)?
-                        .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
-                ) { [weak self] _ in self?.startChat(on: profile) }
-            }
-            composeItem = UIBarButtonItem(
-                image: compose, menu: UIMenu(title: String(localized: "New chat on…"), children: actions))
+            item = UIBarButtonItem(
+                image: compose,
+                menu: UIMenu(
+                    title: String(localized: "New chat on…"), children: newChatActions(for: servers)))
         } else {
-            composeItem = UIBarButtonItem(
-                image: compose, primaryAction: UIAction { [weak self] _ in
+            item = UIBarButtonItem(
+                image: compose,
+                primaryAction: UIAction { [weak self] _ in
                     guard let self, let profile = self.viewModel.servers.first else { return }
                     self.startChat(on: profile)
                 })
         }
-        composeItem.accessibilityLabel = String(localized: "New chat")
-        guard workspace == nil else {
-            navigationItem.rightBarButtonItems = [composeItem]
-            return
-        }
-        var items = [composeItem, videoItem]
-        if ImageGenDoor.current().isOpen { items.append(imageItem) }
-        items.append(delegateItem(for: servers))
-        navigationItem.rightBarButtonItems = items
+        item.accessibilityLabel = String(localized: "New chat")
+        return item
     }
 
-    /// The dispatcher's door on Home: one server opens its board outright, more than one asks which
-    /// machine first. A free copy meets the Pro sheet with the delegate pitch either way.
-    private func delegateItem(for servers: [ConnectionProfile]) -> UIBarButtonItem {
-        let image = UIImage(systemName: DelegateEntryPoint.symbol)
-        let item: UIBarButtonItem
+    private func newChatActions(for servers: [ConnectionProfile]) -> [UIMenuElement] {
+        servers.map { profile in
+            UIAction(
+                title: profile.name, subtitle: profile.backend.displayName,
+                image: UIImage(systemName: profile.backend.symbolName)?
+                    .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
+            ) { [weak self] _ in self?.startChat(on: profile) }
+        }
+    }
+
+    private func toolsItem(for servers: [ConnectionProfile], imageOpen: Bool) -> UIBarButtonItem {
+        var sections: [UIMenuElement] = []
         if servers.count > 1 {
-            let actions = servers.map { profile in
+            sections.append(
+                UIMenu(
+                    title: String(localized: "New chat on…"), options: .displayInline,
+                    children: newChatActions(for: servers)))
+        }
+        var tools: [UIMenuElement] = []
+        if let delegate = delegateElement(for: servers) { tools.append(delegate) }
+        tools.append(
+            UIAction(
+                title: ForgeEntryPoint.menuTitle,
+                image: UIImage(systemName: ForgeEntryPoint.symbol)
+            ) { [weak self] _ in self?.openVideo() })
+        if imageOpen {
+            tools.append(
                 UIAction(
-                    title: profile.name, subtitle: ServerLabel.address(profile),
-                    image: UIImage(systemName: profile.backend.symbolName)?
-                        .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
-                ) { [weak self] _ in
-                    guard let self else { return }
-                    DelegateGate.open(from: self, profile: profile)
-                }
+                    title: ImageGenEntryPoint.menuTitle,
+                    image: UIImage(systemName: ImageGenEntryPoint.symbol)
+                ) { [weak self] _ in self?.openImage() })
+        }
+        sections.append(UIMenu(options: .displayInline, children: tools))
+        let item = UIBarButtonItem(
+            image: UIImage(systemName: "ellipsis"), menu: UIMenu(children: sections))
+        item.accessibilityLabel = String(localized: "Tools")
+        return item
+    }
+
+    /// The dispatcher's door: one server opens its board outright, more than one asks which
+    /// machine first. A free copy meets the Pro sheet with the delegate pitch either way.
+    private func delegateElement(for servers: [ConnectionProfile]) -> UIMenuElement? {
+        let image = UIImage(systemName: DelegateEntryPoint.symbol)
+        switch servers.count {
+        case 0:
+            return nil
+        case 1:
+            return UIAction(
+                title: DelegateEntryPoint.menuTitle, subtitle: DelegateBeta.label, image: image
+            ) { [weak self] _ in
+                guard let self, let profile = servers.first else { return }
+                DelegateGate.open(from: self, profile: profile)
             }
-            item = UIBarButtonItem(image: image, menu: UIMenu(title: DelegateEntryPoint.menuTitle, children: actions))
-        } else {
-            item = UIBarButtonItem(
-                image: image,
-                primaryAction: UIAction { [weak self] _ in
-                    guard let self, let profile = servers.first else { return }
-                    DelegateGate.open(from: self, profile: profile)
+        default:
+            return UIMenu(
+                title: DelegateEntryPoint.menuTitle, subtitle: DelegateBeta.label, image: image,
+                children: servers.map { profile in
+                    UIAction(
+                        title: profile.name, subtitle: ServerLabel.address(profile),
+                        image: UIImage(systemName: profile.backend.symbolName)?
+                            .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
+                    ) { [weak self] _ in
+                        guard let self else { return }
+                        DelegateGate.open(from: self, profile: profile)
+                    }
                 })
         }
-        item.accessibilityLabel = DelegateEntryPoint.title
-        return item
     }
 
     private var lastEnrichment: Date?
@@ -824,6 +904,7 @@ final class HomeViewController: UIViewController {
         let cached = UsageWidgetStore.cachedQuotas()
         guard !cached.isEmpty else { return }
         quotas = cached
+        quotasAnsweredAt = UsageWidgetStore.read()?.date
     }
 
     /// Home is a status board, so it keeps itself current while it is on screen:
@@ -865,14 +946,6 @@ final class HomeViewController: UIViewController {
         }
     }
 
-    /// The clock a card drawn from `entry` must measure against: this device's `now` while that
-    /// entry's server is answering, and the moment it was last heard from once it is not.
-    private func hostClock(for entry: SessionEntry) -> HostClock {
-        HostClock(
-            isLive: !viewModel.unreachable.contains(entry.profileID),
-            observedAt: viewModel.observedAt[entry.profileID])
-    }
-
     private func startLiveRefresh() {
         startClockTick()
         guard liveRefreshTask == nil, viewIfLoaded?.window != nil, isSceneForeground else { return }
@@ -900,12 +973,6 @@ final class HomeViewController: UIViewController {
     private var liveRefreshInterval: Double {
         viewModel.entries.contains(where: isLive) ? 10 : 30
     }
-    /// True from launch so the usage section reserves its height on the first
-    /// frame instead of shoving the list when the quotas land. Tracked per source
-    /// because the opencode scan finishes long after the live fetch, and a card
-    /// with no seat reserved is exactly the shove this avoids.
-    private var isFetchingLiveQuotas = true
-
     /// Why the list is being refreshed, which decides how eagerly the expensive
     /// parts run: a load the user asked for re-runs the quota and scan work,
     /// while the background cadence rides on throttled enrichment. Reachability
@@ -983,7 +1050,6 @@ final class HomeViewController: UIViewController {
         if !force, let last = lastEnrichment, Date().timeIntervalSince(last) < 90 { return }
         lastEnrichment = Date()
         isEnriching = true
-        isFetchingLiveQuotas = true
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.loadEnrichment()
@@ -993,7 +1059,6 @@ final class HomeViewController: UIViewController {
 
     private func loadEnrichment() async {
         await loadQuotas()
-        isFetchingLiveQuotas = false
         applySnapshot()
     }
 
@@ -1008,7 +1073,6 @@ final class HomeViewController: UIViewController {
     /// answered in time, which must not blank a good card.
     private func loadQuotas() async {
         let fetched = await LiveQuotaFetcher.fetch(deadline: 10)
-        isFetchingLiveQuotas = false
         quotas = fetched
         if let deepseek = UsageWidgetStore.cachedQuotas()
             .first(where: { $0.providerName == DeepSeekBalance.providerName })
@@ -1021,6 +1085,7 @@ final class HomeViewController: UIViewController {
             quotas = quotas.filter { $0.providerName != OllamaCloud.providerName } + [ollama]
         }
         guard !quotas.isEmpty else { return }
+        quotasAnsweredAt = Date()
         UsageWidgetStore.writeLive(fetched)
         UsageWarnings.evaluate(quotas: fetched)
         if let deepseek = UsageWidgetStore.read()?.providers
@@ -1039,17 +1104,6 @@ final class HomeViewController: UIViewController {
     private func isLive(_ entry: SessionEntry) -> Bool {
         entry.session.isWorking || entry.session.backgroundWork != nil
             || SessionActivity.shared.status(for: entry.session.id) != .idle
-    }
-
-    /// A cached `isActive` from the cold-launch snapshot can describe an agent
-    /// that died while the app was closed, so unconfirmed liveness renders as
-    /// syncing rather than a confident LIVE.
-    private func presence(for entry: SessionEntry) -> LiveCard.Presence {
-        switch SessionActivity.shared.status(for: entry.session.id) {
-        case .awaitingApproval: return .needsInput
-        case .running, .background, .stalled: return .working
-        case .idle: return hasLoadedOnce ? .working : .syncing
-        }
     }
 
     /// Rebuilding the board is what everything that moves asks for, and almost none of them are
@@ -1103,17 +1157,63 @@ final class HomeViewController: UIViewController {
     private func renderSnapshot() {
         deferredSnapshot = false
         savedChats = SavedChatStore.all()
-        var snapshot = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
-        if hasLoadedOnce {
-            let down = viewModel.servers.filter { viewModel.unreachable.contains($0.id) }
-            if !down.isEmpty {
-                snapshot.appendSections([.alerts])
-                snapshot.appendItems(
-                    uniqued(
-                        down.map { .alert(ServerAlertCard(profileID: $0.id, name: $0.name)) },
-                        in: .alerts),
-                    toSection: .alerts)
+        let today = showsToday
+        let limits: HomeBandLimits = today ? .column : .phone
+        let servers = viewModel.servers
+        let down = hasLoadedOnce ? servers.filter { viewModel.unreachable.contains($0.id) } : []
+        let archived = ArchivedChatStore.all()
+        let isUnread = SessionSeenStore.unreadEvaluator()
+        let pins = Set(SessionPinStore.all())
+        let rows = viewModel.entries
+            .filter { !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id)) }
+            .map { entry in
+                SessionRowModel(
+                    entry: entry, unreachable: viewModel.unreachable.contains(entry.profileID),
+                    unread: isUnread(entry.session.id, entry.session.updatedAt), saved: false,
+                    pinned: pins.contains(SessionPinStore.key(entry.profileID, entry.session.id)),
+                    presence: SessionActivity.shared.presence(for: entry.session.id),
+                    observedAt: viewModel.observedAt[entry.profileID])
             }
+        let vocabulary = ChatListVocabulary(rows: rows)
+        let missed = Dictionary(
+            ActivityInbox.all().map { ($0.sessionID, $0.reason) }, uniquingKeysWith: { first, _ in first })
+
+        func key(_ profileID: String, _ sessionID: String) -> String { "\(profileID)\u{1}\(sessionID)" }
+        let serverIDs = Set(servers.map(\.id))
+        let listed =
+            savedChats.isEmpty ? Set<String>() : Set(viewModel.entries.map { key($0.profileID, $0.session.id) })
+        let kept = Set(
+            rows.filter { $0.state.isInFlight || $0.pinned }.map { key($0.entry.profileID, $0.entry.session.id) })
+        let savedCards = Array(
+            savedChats.lazy
+                .filter { self.isOpenable($0, servers: serverIDs, listed: listed) }
+                .filter { !kept.contains(key($0.profileID, $0.sessionID)) }
+                .prefix(limits.saved)
+                .map { SavedCard(chat: $0, unread: isUnread($0.sessionID, $0.updatedAt)) })
+        let savedKeys = Set(savedCards.map { key($0.chat.profileID, $0.chat.sessionID) })
+        let board = HomeBoard.make(
+            rows: rows.filter { !savedKeys.contains(key($0.entry.profileID, $0.entry.session.id)) },
+            limits: limits, offline: down.map(\.name))
+
+        var snapshot = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
+        if hasLoadedOnce, !servers.isEmpty {
+            let status = HomeStatus.reading(rows: rows, offline: down.map(\.name))
+            snapshot.appendSections([.status])
+            snapshot.appendItems([.status(HomeStatusCard(status: status))], toSection: .status)
+        }
+        if !showsQuotaCards, !quotas.isEmpty {
+            let glance = QuotaGlance.make(
+                from: quotas.map { ("", $0) }, answeredAt: quotasAnsweredAt,
+                board: QuotaBoardStore.current)
+            if !glance.isEmpty {
+                snapshot.appendSections([.glance])
+                snapshot.appendItems([.glance(QuotaGlanceCard(glance: glance))], toSection: .glance)
+            }
+        }
+        if !down.isEmpty {
+            snapshot.appendSections([.alerts])
+            snapshot.appendItems(
+                [.alert(ServerAlertCard(names: down.map(\.name)))], toSection: .alerts)
         }
         if showsDemoNudge {
             snapshot.appendSections([.demoNudge])
@@ -1123,89 +1223,67 @@ final class HomeViewController: UIViewController {
             snapshot.appendSections([.supporter])
             snapshot.appendItems([.supporter(SupporterCard(price: proPrice))], toSection: .supporter)
         }
-        let missed = ActivityInbox.ordered(limit: 4).shown
-        if !missed.isEmpty {
-            snapshot.appendSections([.missed])
-            snapshot.appendItems(
-                uniqued(missed.map(HomeItem.missed), in: .missed), toSection: .missed)
-        }
-        let live = viewModel.entries.filter(isLive)
-            .sorted { lhs, rhs in
-                let lhsBlocked = presence(for: lhs) == .needsInput
-                let rhsBlocked = presence(for: rhs) == .needsInput
-                if lhsBlocked != rhsBlocked { return lhsBlocked }
-                return lhs.session.updatedAt > rhs.session.updatedAt
+
+        func cards(_ band: HomeBoard.Band) -> [HomeItem] {
+            band.rows.map { row in
+                let id = row.entry.session.id
+                return .chat(
+                    ChatRowCard(
+                        row: row,
+                        facts: ChatRowFacts(
+                            row: row, vocabulary: vocabulary,
+                            ask: SessionActivity.shared.approvalAsk(for: id), missed: missed[id]),
+                        band: band.section))
             }
-            .prefix(10)
-        if !live.isEmpty {
-            snapshot.appendSections([.live])
-            snapshot.appendItems(
-                uniqued(
-                    live.map {
-                        .live(
-                            LiveCard(
-                                entry: $0, presence: presence(for: $0),
-                                activity: SessionActivity.shared.liveDetail(for: $0.session.id),
-                                clock: self.hostClock(for: $0)))
-                    }, in: .live),
-                toSection: .live)
         }
-        let isUnread = SessionSeenStore.unreadEvaluator()
-        let liveIDs = Set(live.map(\.session.id))
-        let serverIDs = Set(viewModel.servers.map(\.id))
-        let listed =
-            savedChats.isEmpty
-            ? Set<String>()
-            : Set(viewModel.entries.map { "\($0.profileID)\u{1}\($0.session.id)" })
-        let savedCards = Array(
-            savedChats.lazy
-                .filter { self.isOpenable($0, servers: serverIDs, listed: listed) }
-                .filter { !liveIDs.contains($0.sessionID) }
-                .prefix(3)
-                .map { SavedCard(chat: $0, unread: isUnread($0.sessionID, $0.updatedAt)) })
-        if !savedCards.isEmpty {
+        let bands = Dictionary(uniqueKeysWithValues: board.bands.map { ($0.section, $0) })
+        if today {
+            let asks = (bands[.needsYou]?.rows ?? []).map { row -> HomeItem in
+                let id = row.entry.session.id
+                return .ask(
+                    AskCard(
+                        row: row,
+                        facts: ChatRowFacts(
+                            row: row, vocabulary: vocabulary,
+                            ask: SessionActivity.shared.approvalAsk(for: id), missed: missed[id])))
+            }
+            if !asks.isEmpty {
+                snapshot.appendSections([.asks])
+                snapshot.appendItems(uniqued(asks, in: .asks), toSection: .asks)
+            }
+            if showsQuotaCards {
+                let quotaBoard = QuotaBoardStore.current
+                let shown = quotas.filter {
+                    !quotaBoard.isHidden(QuotaBoard.key(providerName: $0.providerName))
+                }
+                if !shown.isEmpty {
+                    snapshot.appendSections([.usage])
+                    snapshot.appendItems(
+                        shown.map { HomeItem.quota(QuotaCard(quota: $0)) }, toSection: .usage)
+                }
+            }
+        }
+        for section in today ? [] : [SessionSection.needsYou, .working, .pinned] {
+            guard let band = bands[section] else { continue }
+            let id = HomeSection(section)
+            snapshot.appendSections([id])
+            snapshot.appendItems(uniqued(cards(band), in: id), toSection: id)
+        }
+        if !today, !savedCards.isEmpty {
             snapshot.appendSections([.saved])
             snapshot.appendItems(
                 uniqued(savedCards.map(HomeItem.saved), in: .saved), toSection: .saved)
         }
-        let projects = projectCards()
-        if !projects.isEmpty {
-            snapshot.appendSections([.projects])
-            snapshot.appendItems(
-                uniqued(projects.map(HomeItem.project), in: .projects), toSection: .projects)
-        }
-        let shown = liveIDs.union(savedCards.map(\.chat.sessionID))
-        let archived = ArchivedChatStore.all()
-        let recent = Array(
-            viewModel.entries.lazy.filter {
-                !shown.contains($0.session.id)
-                    && !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id))
-            }.prefix(workspace == nil ? 6 : 0))
-        if !recent.isEmpty {
+        if !today, let band = bands[.recent] {
             snapshot.appendSections([.recent])
+            snapshot.appendItems(uniqued(cards(band), in: .recent), toSection: .recent)
             snapshot.appendItems(
-                uniqued(
-                    recent.map {
-                        .recent(
-                            RecentCard(
-                                entry: $0, unread: isUnread($0.session.id, $0.session.updatedAt)))
-                    }, in: .recent),
-                toSection: .recent)
-        } else if !hasLoadedOnce, !viewModel.servers.isEmpty, workspace == nil {
+                [.more(HomeMoreCard(band: .recent, count: rows.count))], toSection: .recent)
+        } else if !today, rows.isEmpty, !hasLoadedOnce, !servers.isEmpty, workspace == nil {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
-        let board = QuotaBoardStore.current
-        let usageCards = quotas
-            .filter { !board.isHidden(QuotaBoard.key(providerName: $0.providerName)) }
-            .map { QuotaCard(quota: $0) }
-        let reserved = reservedUsageCards
-        if !usageCards.isEmpty || reserved > 0 {
-            snapshot.appendSections([.usage])
-            snapshot.appendItems(
-                uniqued(usageCards.map(HomeItem.usage), in: .usage), toSection: .usage)
-            snapshot.appendItems((0..<reserved).map(HomeItem.usagePlaceholder), toSection: .usage)
-        }
+
         let previous = dataSource.snapshot()
         let existing = Set(previous.itemIdentifiers)
         var content: [HomeItem: Int] = [:]
@@ -1217,31 +1295,45 @@ final class HomeViewController: UIViewController {
         }
         appliedContent = content
         if !stale.isEmpty { snapshot.reconfigureItems(stale) }
+        let rowItems = snapshot.itemIdentifiers.filter {
+            switch $0 {
+            case .chat, .ask, .saved, .placeholder: return true
+            case .status, .glance, .quota, .alert, .demoNudge, .supporter, .more: return false
+            }
+        }.count
         if stale.isEmpty, previous.sectionIdentifiers == snapshot.sectionIdentifiers,
             previous.itemIdentifiers == snapshot.itemIdentifiers
         {
-            updateEmptyState(itemCount: snapshot.numberOfItems)
+            refreshVisibleHeaders()
+            updateEmptyState(itemCount: rowItems)
             applyOrbState()
             consumePendingDeepLink()
             return
         }
         dataSource.apply(snapshot, animatingDifferences: shouldAnimate(from: previous, to: snapshot))
-        updateEmptyState(itemCount: snapshot.numberOfItems)
+        refreshVisibleHeaders()
+        updateEmptyState(itemCount: rowItems)
         applyOrbState()
         consumePendingDeepLink()
     }
 
-    /// A missed notice is a place to go back to. The chat may have been deleted or its server
-    /// removed since, in which case the notice is stale and goes rather than sitting there
-    /// failing to open.
-    private func openMissed(_ item: MissedActivity) {
-        guard let entry = viewModel.entries.first(where: { $0.session.id == item.sessionID })
-        else {
-            NotificationManager.clearNotices(sessionID: item.sessionID)
-            applySnapshot()
-            return
+    private var hasUnreadRecents: Bool {
+        guard dataSource.snapshot().sectionIdentifiers.contains(.recent) else { return false }
+        return dataSource.snapshot().itemIdentifiers(inSection: .recent).contains {
+            if case .chat(let card) = $0 { return card.facts.unread }
+            return false
         }
-        openChat(for: entry)
+    }
+
+    private func markRecentsRead() {
+        Theme.Haptics.tap()
+        for item in dataSource.snapshot().itemIdentifiers(inSection: .recent) {
+            if case .chat(let card) = item, card.facts.unread {
+                SessionSeenStore.markSeen(card.entry.session.id)
+            }
+        }
+        NotificationManager.clearAllNotices()
+        applySnapshot()
     }
 
     /// Home lists a saved chat only while it is something you can actually open.
@@ -1271,17 +1363,6 @@ final class HomeViewController: UIViewController {
             || Set(previous.itemIdentifiers) != Set(next.itemIdentifiers)
     }
 
-    /// Skeletons to hold open for cards that are still out. One per source that
-    /// can still answer, and only for sources this user actually has: someone
-    /// without an opencode server must never see a slot for one. A bridge can
-    /// answer for several providers at once (Claude and Grok), so the live fetch
-    /// reserves a single seat and any extra card animates in beside it.
-    private var reservedUsageCards: Int {
-        let backends = Set(viewModel.servers.map(\.backend))
-        let live = isFetchingLiveQuotas && quotas.isEmpty && backends.contains(.claudeCode)
-        return live ? 1 : 0
-    }
-
     /// What a section may be handed. A diffable snapshot given the same identifier twice does not
     /// draw the row twice — it raises, and the app is gone before the row it was drawing appears.
     /// Every list on this screen is derived from something a server said, so a duplicate is a
@@ -1300,99 +1381,20 @@ final class HomeViewController: UIViewController {
         return kept
     }
 
-    private var projectMemo: (revision: Int, cards: [ProjectCard])?
-
-    /// The listing's busiest folders. Worked out over every chat the servers hold, so it is held
-    /// until the listing itself changes rather than redone for each of the redraws a turn asks for.
-    private func projectCards() -> [ProjectCard] {
-        let revision = viewModel.entriesRevision
-        if let memo = projectMemo, memo.revision == revision { return memo.cards }
-        let cards = computeProjectCards()
-        projectMemo = (revision, cards)
-        return cards
-    }
-
-    private func computeProjectCards() -> [ProjectCard] {
-        struct Key: Hashable {
-            let profileID: String
-            let directory: String
-        }
-        var counts: [Key: Int] = [:]
-        var latest: [Key: Date] = [:]
-        var meta: [Key: (name: String, backend: AgentType)] = [:]
-        for entry in viewModel.entries {
-            guard let directory = entry.session.directory else { continue }
-            let key = Key(profileID: entry.profileID, directory: directory)
-            counts[key, default: 0] += 1
-            if entry.session.updatedAt > (latest[key] ?? .distantPast) {
-                latest[key] = entry.session.updatedAt
-            }
-            meta[key] = (entry.profileName, entry.backendType)
-        }
-        return latest.sorted { $0.value > $1.value }.prefix(6).compactMap { key, _ in
-            guard let info = meta[key], let count = counts[key] else { return nil }
-            return ProjectCard(
-                profileID: key.profileID, profileName: info.name, backend: info.backend,
-                directory: key.directory, chatCount: count)
-        }
-    }
-
     private func updateEmptyState(itemCount: Int) {
         let working = itemCount == 0 && !viewModel.isEmptyOfServers && !hasLoadedOnce
-        if !working { collectionView.backgroundView = nil }
+        collectionView.backgroundView = nil
         collectionView.showsWork(working)
-        if itemCount > 0 {
-            contentUnavailableConfiguration = nil
-        } else if viewModel.isEmptyOfServers {
+        if viewModel.isEmptyOfServers {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "server.rack")
             config.text = String(localized: "No servers connected")
             config.secondaryText = String(
                 localized: "Add a connection in Settings to start chatting with your agents.")
             contentUnavailableConfiguration = config
-        } else if !hasLoadedOnce {
-            contentUnavailableConfiguration = nil
         } else {
             contentUnavailableConfiguration = nil
-            collectionView.backgroundView = Self.emptyHintView()
         }
-    }
-
-    /// A plain background hint rather than `contentUnavailableConfiguration`,
-    /// which would overlay (and block) the docked composer it points at.
-    private static func emptyHintView() -> UIView {
-        let icon = UIImageView(
-            image: UIImage(
-                systemName: "bubble.left.and.bubble.right",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 34, weight: .regular)))
-        icon.tintColor = Theme.Color.tertiaryLabel
-        icon.contentMode = .scaleAspectFit
-
-        let title = UILabel()
-        title.text = String(localized: "No conversations yet")
-        title.font = Theme.Ramp.font(.cardTitle)
-        title.textColor = Theme.Color.secondaryLabel
-        title.textAlignment = .center
-
-        let subtitle = UILabel()
-        subtitle.text = String(localized: "Start one below.")
-        subtitle.font = Theme.Ramp.font(.panelLabel)
-        subtitle.textColor = Theme.Color.tertiaryLabel
-        subtitle.textAlignment = .center
-
-        let stack = UIStackView(arrangedSubviews: [icon, title, subtitle])
-        stack.axis = .vertical
-        stack.spacing = Theme.Spacing.s
-        stack.alignment = .center
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        let container = UIView()
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: -40),
-        ])
-        return container
     }
 
     func openSession(withID id: String) {
@@ -1574,7 +1576,6 @@ final class HomeViewController: UIViewController {
     /// board is called Home, the name of the row that brings it back.
     func workspaceDidRearrange() {
         guard isViewLoaded else { return }
-        title = workspace == nil ? "Tailscode" : String(localized: "Home")
         updateLeftBarItems()
         updateComposeButton()
         applySnapshot()
@@ -1675,13 +1676,12 @@ final class HomeViewController: UIViewController {
             SessionListViewController(filterProfileID: filterProfileID), animated: true)
     }
 
-    /// A folder opens a container, never a composer: the card's tap lands on the project's own
-    /// board — its chats and nothing else — with the launch pad's mint waiting in the board's
-    /// chrome and in the card's long-press.
-    private func openProjectBoard(for card: ProjectCard) {
+    /// A folder opens a container, never a composer: a chat's own menu names its project, and
+    /// choosing it lands on that project's board — its chats and nothing else — with the launch
+    /// pad's mint waiting in the board's chrome.
+    private func openProjectBoard(for scope: ProjectScope) {
         Theme.Haptics.tap()
-        let board = SessionListViewController(
-            scope: ProjectScope(profileID: card.profileID, directory: card.directory))
+        let board = SessionListViewController(scope: scope)
         if let workspace {
             board.showsAsColumn = true
             return workspace.push(list: board)
@@ -1745,6 +1745,7 @@ final class HomeViewController: UIViewController {
     @objc private func updateVideoMark() {
         videoButton.apply(
             light: ForgeRunner.shared.light, configured: ForgeRunner.shared.endpoint != nil)
+        updateComposeButton()
         guard askLane == .video else { return }
         appliedComposerState = nil
         updateComposer()
@@ -1780,9 +1781,7 @@ final class HomeViewController: UIViewController {
     @objc private func updateImageMark() {
         let door = ImageGenDoor.current()
         imageButton.apply(painting: ImageStudio.shared.isPainting, door: door)
-        if (navigationItem.rightBarButtonItems?.contains(imageItem) ?? false) != door.isOpen {
-            updateComposeButton()
-        }
+        updateComposeButton()
         guard askLane == .image else { return }
         guard door.isOpen else {
             setLane(.chat, animated: true)
@@ -1822,14 +1821,26 @@ final class HomeViewController: UIViewController {
             let section: NSCollectionLayoutSection
             if let self, let id = self.dataSource?.sectionIdentifier(for: index) {
                 switch id {
-                case .live: section = Self.liveSection()
-                case .projects: section = Self.projectsSection()
-                case .alerts, .demoNudge, .supporter: section = Self.listSection(withHeader: false)
-                case .missed: section = Self.listSection()
-                case .saved, .recent, .usage: section = Self.listSection()
+                case .status: section = Self.plainSection(top: 0, bottom: Theme.Spacing.xs)
+                case .glance:
+                    section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.m)
+                case .alerts, .demoNudge, .supporter:
+                    section = Self.plainSection(top: 0, bottom: Theme.Spacing.m)
+                case .asks:
+                    section = Self.headedSection(columns: 1, estimatedHeight: 190)
+                case .usage:
+                    let wide = environment.container.effectiveContentSize.width >= 640
+                    section = Self.headedSection(columns: wide ? 2 : 1, estimatedHeight: 150)
+                case .needsYou, .working, .pinned, .saved, .recent:
+                    section = Self.bandSection(environment) { [weak self] indexPath in
+                        guard let self, let item = self.dataSource.itemIdentifier(for: indexPath)
+                        else { return false }
+                        if case .more = item { return true }
+                        return false
+                    }
                 }
             } else {
-                section = Self.listSection()
+                section = Self.plainSection(top: 0, bottom: 0)
             }
             if environment.traitCollection.horizontalSizeClass == .regular {
                 section.contentInsetsReference = .readableContent
@@ -1856,16 +1867,10 @@ final class HomeViewController: UIViewController {
         ])
     }
 
-    /// Tapping anywhere outside the composer puts the keyboard away; the tap
-    /// still reaches whatever it landed on. Project cards are exempt — their
-    /// whole point is to re-aim the composer, so the keyboard stays up.
+    /// Tapping anywhere outside the composer puts the keyboard away; the tap still reaches
+    /// whatever it landed on.
     @objc private func backgroundTapped(_ gesture: UITapGestureRecognizer) {
         guard composerBar.isEditingText else { return }
-        if let indexPath = collectionView.indexPathForItem(at: gesture.location(in: collectionView)),
-            case .project = dataSource.itemIdentifier(for: indexPath)
-        {
-            return
-        }
         view.endEditing(true)
     }
 
@@ -1882,6 +1887,13 @@ final class HomeViewController: UIViewController {
             equalTo: view.keyboardLayoutGuide.topAnchor)
         NSLayoutConstraint.activate([composerFloor])
         rails.append(ReadableRail(composerBar, in: view))
+        if #available(iOS 26.0, *) {
+            let edge = UIScrollEdgeElementContainerInteraction()
+            edge.scrollView = collectionView
+            edge.edge = .bottom
+            composerBar.addInteraction(edge)
+            collectionView.bottomEdgeEffect.style = .soft
+        }
 
         configureAccessories()
 
@@ -2065,62 +2077,76 @@ final class HomeViewController: UIViewController {
             signal: PresenceSignal.aggregate(kinds, ultracode: composerBar.auraIsActive))
     }
 
-    private static func liveSection() -> NSCollectionLayoutSection {
-        let item = NSCollectionLayoutItem(
-            layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .fractionalHeight(1)))
-        let group = NSCollectionLayoutGroup.horizontal(
-            layoutSize: .init(widthDimension: .absolute(248), heightDimension: .absolute(104)),
-            subitems: [item])
-        let section = NSCollectionLayoutSection(group: group)
-        section.orthogonalScrollingBehavior = .continuous
-        section.interGroupSpacing = Theme.Spacing.m
-        section.contentInsets = .init(
-            top: Theme.Spacing.s, leading: Theme.Spacing.l,
-            bottom: Theme.Spacing.l, trailing: Theme.Spacing.l)
-        section.boundarySupplementaryItems = [header()]
-        return section
-    }
-
-    private static func projectsSection() -> NSCollectionLayoutSection {
-        let item = NSCollectionLayoutItem(
-            layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .fractionalHeight(1)))
-        let group = NSCollectionLayoutGroup.horizontal(
-            layoutSize: .init(widthDimension: .absolute(150), heightDimension: .absolute(88)),
-            subitems: [item])
-        let section = NSCollectionLayoutSection(group: group)
-        section.orthogonalScrollingBehavior = .continuous
-        section.interGroupSpacing = Theme.Spacing.m
-        section.contentInsets = .init(
-            top: Theme.Spacing.s, leading: Theme.Spacing.l,
-            bottom: Theme.Spacing.l, trailing: Theme.Spacing.l)
-        section.boundarySupplementaryItems = [header()]
-        return section
-    }
-
-    private static func listSection(withHeader: Bool = true) -> NSCollectionLayoutSection {
+    private static func plainSection(top: CGFloat, bottom: CGFloat) -> NSCollectionLayoutSection {
         let item = NSCollectionLayoutItem(
             layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(72)))
         let group = NSCollectionLayoutGroup.vertical(
             layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(72)),
             subitems: [item])
         let section = NSCollectionLayoutSection(group: group)
-        section.interGroupSpacing = Theme.Spacing.s
-        section.contentInsets = .init(
-            top: Theme.Spacing.s, leading: Theme.Spacing.l,
-            bottom: Theme.Spacing.l, trailing: Theme.Spacing.l)
-        if withHeader { section.boundarySupplementaryItems = [header()] }
+        section.contentInsets = NSDirectionalEdgeInsets(
+            top: top, leading: Theme.Spacing.l, bottom: bottom, trailing: Theme.Spacing.l)
         return section
     }
 
-    private static func header() -> NSCollectionLayoutBoundarySupplementaryItem {
-        NSCollectionLayoutBoundarySupplementaryItem(
-            layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(30)),
-            elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)
+    /// A section of whole cards under a label — the questions waiting on the person, the account's
+    /// quota — rather than rows sharing a surface.
+    private static func headedSection(columns: Int, estimatedHeight: CGFloat) -> NSCollectionLayoutSection {
+        let item = NSCollectionLayoutItem(
+            layoutSize: .init(
+                widthDimension: .fractionalWidth(1 / CGFloat(columns)),
+                heightDimension: .estimated(estimatedHeight)))
+        let group = NSCollectionLayoutGroup.horizontal(
+            layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(estimatedHeight)),
+            repeatingSubitem: item, count: columns)
+        group.interItemSpacing = .fixed(Theme.Spacing.m)
+        let section = NSCollectionLayoutSection(group: group)
+        section.interGroupSpacing = Theme.Spacing.m
+        section.contentInsets = NSDirectionalEdgeInsets(
+            top: Theme.Spacing.xs, leading: Theme.Spacing.l, bottom: Theme.Spacing.xl,
+            trailing: Theme.Spacing.l)
+        section.boundarySupplementaryItems = [
+            NSCollectionLayoutBoundarySupplementaryItem(
+                layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(30)),
+                elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)
+        ]
+        return section
+    }
+
+    /// A band is one grouped list: the rows of one kind of attention, sharing a surface, with the
+    /// separator starting where the text does so the state tiles read as one column.
+    private static func bandSection(
+        _ environment: NSCollectionLayoutEnvironment, isFooter: @escaping (IndexPath) -> Bool
+    ) -> NSCollectionLayoutSection {
+        var configuration = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        configuration.headerMode = .supplementary
+        configuration.backgroundColor = .clear
+        configuration.itemSeparatorHandler = { indexPath, separators in
+            var out = separators
+            out.bottomSeparatorInsets = NSDirectionalEdgeInsets(
+                top: 0, leading: isFooter(indexPath) ? 0 : ChatRowContentView.textInset, bottom: 0,
+                trailing: 0)
+            return out
+        }
+        let section = NSCollectionLayoutSection.list(using: configuration, layoutEnvironment: environment)
+        section.contentInsets = NSDirectionalEdgeInsets(
+            top: 0, leading: Theme.Spacing.l, bottom: Theme.Spacing.xl, trailing: Theme.Spacing.l)
+        return section
     }
 
     private func configureDataSource() {
-        let alertCell = UICollectionView.CellRegistration<ServerAlertCell, ServerAlertCard> {
+        let statusCell = UICollectionView.CellRegistration<HomeStatusCell, HomeStatusCard> {
             cell, _, card in cell.configure(card)
+        }
+        let glanceCell = UICollectionView.CellRegistration<HomeGlanceCell, QuotaGlanceCard> {
+            cell, _, card in cell.configure(card)
+        }
+        let alertCell = UICollectionView.CellRegistration<ServerAlertCell, ServerAlertCard> {
+            [weak self] cell, _, card in
+            cell.configure(card)
+            cell.onRetry = { [weak self] in
+                Task { await self?.load(.user) }
+            }
         }
         let demoNudgeCell = UICollectionView.CellRegistration<DemoNudgeCell, DemoNudgeCard> {
             [weak self] cell, _, _ in
@@ -2133,34 +2159,47 @@ final class HomeViewController: UIViewController {
             cell.onUnlock = { [weak self] in self?.openSupporterOffer() }
             cell.onNotNow = { [weak self] in self?.declineSupporterOffer() }
         }
-        let missedCell = UICollectionView.CellRegistration<MissedActivityCell, MissedActivity> {
-            cell, _, item in cell.configure(item)
+        let chatCell = UICollectionView.CellRegistration<ChatRowCell, ChatRowCard> {
+            cell, _, card in
+            cell.wantsAttention = card.band == .needsYou
+            cell.contentConfiguration = ChatRowConfiguration(facts: card.facts)
         }
-        let liveCell = UICollectionView.CellRegistration<LiveSessionCell, LiveCard> {
-            cell, _, card in cell.configure(card)
-        }
-        let projectCell = UICollectionView.CellRegistration<ProjectCell, ProjectCard> {
-            cell, _, card in cell.configure(card)
-        }
-        let recentCell = UICollectionView.CellRegistration<RecentSessionCell, RecentCard> {
-            cell, _, card in cell.configure(card)
-        }
-        let savedCell = UICollectionView.CellRegistration<RecentSessionCell, SavedCard> {
-            cell, _, card in cell.configure(card)
+        let askCell = UICollectionView.CellRegistration<AskCardCell, AskCard> {
+            [weak self] cell, _, card in
+            cell.configure(card)
+            cell.onOpen = { [weak self] in self?.openChat(for: card.entry) }
         }
         let quotaCell = UICollectionView.CellRegistration<QuotaCardCell, QuotaCard> {
             cell, _, card in cell.configure(card)
         }
-        let placeholderCell = UICollectionView.CellRegistration<RecentPlaceholderCell, Int> {
-            _, _, _ in
+        let savedCell = UICollectionView.CellRegistration<ChatRowCell, SavedCard> {
+            cell, _, card in
+            cell.wantsAttention = false
+            cell.contentConfiguration = ChatRowConfiguration(facts: card.facts)
         }
-        let usagePlaceholderCell = UICollectionView.CellRegistration<QuotaPlaceholderCell, Int> {
+        let moreCell = UICollectionView.CellRegistration<ChatRowCell, HomeMoreCard> {
+            cell, _, card in
+            cell.wantsAttention = false
+            var content = UIListContentConfiguration.cell()
+            content.text = String(localized: "See all \(card.count) chats")
+            content.textProperties.font = Theme.Ramp.font(.control)
+            content.textProperties.color = Theme.Color.accent
+            cell.contentConfiguration = content
+            cell.accessories = [.disclosureIndicator()]
+        }
+        let placeholderCell = UICollectionView.CellRegistration<RecentPlaceholderCell, Int> {
             _, _, _ in
         }
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, item in
             switch item {
+            case .status(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: statusCell, for: indexPath, item: card)
+            case .glance(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: glanceCell, for: indexPath, item: card)
             case .alert(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: alertCell, for: indexPath, item: card)
@@ -2170,74 +2209,31 @@ final class HomeViewController: UIViewController {
             case .supporter(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: supporterCell, for: indexPath, item: card)
-            case .missed(let item):
+            case .chat(let card):
                 return collectionView.dequeueConfiguredReusableCell(
-                    using: missedCell, for: indexPath, item: item)
-            case .live(let card):
+                    using: chatCell, for: indexPath, item: card)
+            case .ask(let card):
                 return collectionView.dequeueConfiguredReusableCell(
-                    using: liveCell, for: indexPath, item: card)
-            case .project(let card):
+                    using: askCell, for: indexPath, item: card)
+            case .quota(let card):
                 return collectionView.dequeueConfiguredReusableCell(
-                    using: projectCell, for: indexPath, item: card)
+                    using: quotaCell, for: indexPath, item: card)
             case .saved(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: savedCell, for: indexPath, item: card)
-            case .recent(let card):
+            case .more(let card):
                 return collectionView.dequeueConfiguredReusableCell(
-                    using: recentCell, for: indexPath, item: card)
-            case .usage(let card):
-                return collectionView.dequeueConfiguredReusableCell(
-                    using: quotaCell, for: indexPath, item: card)
+                    using: moreCell, for: indexPath, item: card)
             case .placeholder(let index):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: placeholderCell, for: indexPath, item: index)
-            case .usagePlaceholder(let index):
-                return collectionView.dequeueConfiguredReusableCell(
-                    using: usagePlaceholderCell, for: indexPath, item: index)
             }
         }
 
         let header = UICollectionView.SupplementaryRegistration<HomeHeaderView>(
             elementKind: UICollectionView.elementKindSectionHeader
         ) { [weak self] view, _, indexPath in
-            guard let self,
-                let section = self.dataSource.sectionIdentifier(for: indexPath.section)
-            else { return }
-            switch section {
-            case .alerts, .demoNudge, .supporter:
-                break
-            case .missed:
-                view.configure(
-                    title: String(localized: "Missed"),
-                    actionTitle: String(localized: "Clear")
-                ) {
-                    Theme.Haptics.tap()
-                    NotificationManager.clearAllNotices()
-                    self.applySnapshot()
-                }
-            case .live:
-                view.configure(title: String(localized: "Live now"))
-            case .projects:
-                view.configure(title: String(localized: "Projects"))
-            case .saved:
-                view.configure(
-                    title: String(localized: "Saved"), actionTitle: String(localized: "See all")
-                ) { [weak self] in
-                    self?.pushSaved()
-                }
-            case .recent:
-                view.configure(
-                    title: String(localized: "Recent"), actionTitle: String(localized: "See all")
-                ) { [weak self] in
-                    self?.pushChats()
-                }
-            case .usage:
-                view.configure(
-                    title: String(localized: "Usage"), actionTitle: String(localized: "Details")
-                ) { [weak self] in
-                    self?.pushUsage()
-                }
-            }
+            self?.configureHeader(view, at: indexPath)
         }
         dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
             collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
@@ -2245,9 +2241,64 @@ final class HomeViewController: UIViewController {
     }
 }
 
+extension HomeViewController {
+    /// A band's heading says how many it holds and what can be done to all of them, which are
+    /// facts about the band rather than about any one row: a supplementary view is not
+    /// reconfigured with the items, so every pass that changes the board says it again.
+    fileprivate func configureHeader(_ view: HomeHeaderView, at indexPath: IndexPath) {
+        guard let section = dataSource.sectionIdentifier(for: indexPath.section) else { return }
+        let count = dataSource.snapshot().numberOfItems(inSection: section)
+        switch section {
+        case .needsYou, .asks:
+            view.configure(title: String(localized: "Needs you"), count: count, needsYou: true)
+        case .working:
+            view.configure(title: String(localized: "Working"), count: count)
+        case .pinned:
+            view.configure(title: String(localized: "Pinned"), count: count)
+        case .saved:
+            view.configure(
+                title: String(localized: "Saved"), actionTitle: String(localized: "See all")
+            ) { [weak self] in
+                self?.pushSaved()
+            }
+        case .recent:
+            view.configure(
+                title: String(localized: "Recent"),
+                actionTitle: hasUnreadRecents ? String(localized: "Mark read") : nil
+            ) { [weak self] in
+                self?.markRecentsRead()
+            }
+        case .usage:
+            view.configure(
+                title: String(localized: "Usage"), actionTitle: String(localized: "Details")
+            ) { [weak self] in
+                self?.pushUsage()
+            }
+        case .status, .glance, .alerts, .demoNudge, .supporter:
+            break
+        }
+    }
+
+    fileprivate func refreshVisibleHeaders() {
+        let kind = UICollectionView.elementKindSectionHeader
+        for indexPath in collectionView.indexPathsForVisibleSupplementaryElements(ofKind: kind) {
+            guard let view = collectionView.supplementaryView(forElementKind: kind, at: indexPath)
+                as? HomeHeaderView
+            else { continue }
+            configureHeader(view, at: indexPath)
+        }
+    }
+}
+
 extension HomeViewController: HomeComposerBarDelegate {
     func homeComposer(_ bar: HomeComposerBar, didSend text: String) {
         composerSend(text)
+    }
+
+    func homeComposerDidTapDestination(_ bar: HomeComposerBar) {
+        guard let aim = composerAim else { return }
+        Theme.Haptics.tap()
+        chooseComposeTarget(profile: aim.profile)
     }
 
     func homeComposerDidBeginEditing(_ bar: HomeComposerBar) {
@@ -2563,7 +2614,9 @@ extension HomeViewController: HomeComposerBarDelegate {
             systemName: aim.profile.backend.symbolName,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
             .withTintColor(aim.profile.backend.brandColor, renderingMode: .alwaysOriginal)
-        composerBar.setContext(icon: icon, title: title, menu: composerTargetMenu(for: aim))
+        composerBar.setContext(
+            icon: icon, title: title, menu: composerTargetMenu(for: aim),
+            opensChooserOnTap: aim.lane == .chat)
         updateModelChip(for: aim, label: modelLabel)
         refreshAbilities(for: aim)
         updateSuggestions()
@@ -3784,8 +3837,8 @@ extension HomeViewController: UICollectionViewDelegate {
         _ collectionView: UICollectionView, didHighlightItemAt indexPath: IndexPath
     ) {
         switch dataSource.itemIdentifier(for: indexPath) {
-        case .live(let card): warm(card.entry)
-        case .recent(let card): warm(card.entry)
+        case .chat(let card): warm(card.entry)
+        case .ask(let card): warm(card.entry)
         default: break
         }
     }
@@ -3797,22 +3850,20 @@ extension HomeViewController: UICollectionViewDelegate {
         switch item {
         case .alert:
             onOpenSettings?()
-        case .demoNudge, .supporter:
+        case .status, .demoNudge, .supporter, .placeholder:
             break
-        case .missed(let item):
-            openMissed(item)
-        case .live(let card):
+        case .glance:
+            pushUsage()
+        case .chat(let card):
             openChat(for: card.entry)
-        case .project(let card):
-            openProjectBoard(for: card)
+        case .ask(let card):
+            openChat(for: card.entry)
+        case .quota:
+            pushUsage()
         case .saved(let card):
             openSaved(card.chat)
-        case .recent(let card):
-            openChat(for: card.entry)
-        case .usage:
-            pushUsage()
-        case .placeholder, .usagePlaceholder:
-            break
+        case .more(let card):
+            if card.band == .saved { pushSaved() } else { pushChats() }
         }
     }
 
@@ -3824,48 +3875,13 @@ extension HomeViewController: UICollectionViewDelegate {
             let item = dataSource.itemIdentifier(for: indexPath)
         else { return nil }
         switch item {
-        case .project(let card):
-            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-                UIMenu(children: [
-                    UIAction(
-                        title: String(localized: "New chat here"),
-                        image: UIImage(systemName: "plus.bubble")
-                    ) { _ in
-                        guard let self,
-                            let profile = self.viewModel.servers.first(where: { $0.id == card.profileID })
-                        else { return }
-                        Task {
-                            guard let entry = await self.viewModel.newSession(
-                                on: profile, directory: card.directory)
-                            else { return }
-                            Theme.Haptics.success()
-                            self.openChat(for: entry)
-                        }
-                    },
-                    UIAction(
-                        title: String(localized: "Write here"),
-                        subtitle: String(localized: "Aim the composer at this project"),
-                        image: UIImage(systemName: "square.and.pencil")
-                    ) { _ in
-                        guard let self,
-                            let profile = self.viewModel.servers.first(where: { $0.id == card.profileID })
-                        else { return }
-                        self.setComposeTarget(profile: profile, directory: card.directory)
-                        self.composerBar.focus()
-                    },
-                    UIAction(
-                        title: String(localized: "View chats on \(card.profileName)"),
-                        image: UIImage(systemName: "bubble.left.and.bubble.right")
-                    ) { _ in self?.pushChats(filterProfileID: card.profileID) },
-                ])
-            }
         case .saved(let card):
             return savedMenu(for: card.chat)
-        case .recent(let card):
-            return sessionMenu(for: card.entry, allowDelete: true)
-        case .live(let card):
+        case .chat(let card):
+            return sessionMenu(for: card.entry, allowDelete: !card.row.state.isInFlight)
+        case .ask(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .alert, .demoNudge, .supporter, .missed, .usage, .placeholder, .usagePlaceholder:
+        case .status, .glance, .quota, .alert, .demoNudge, .supporter, .more, .placeholder:
             return nil
         }
     }
@@ -3921,6 +3937,11 @@ extension HomeViewController: UICollectionViewDelegate {
                             self.openChat(for: new)
                         }
                     })
+                actions.append(
+                    UIAction(
+                        title: String(localized: "Chats in \(ProjectScope(of: entry).name)"),
+                        image: UIImage(systemName: "folder")
+                    ) { [weak self] _ in self?.openProjectBoard(for: ProjectScope(of: entry)) })
             }
             let isSaved = SavedChatStore.contains(entry)
             actions.append(

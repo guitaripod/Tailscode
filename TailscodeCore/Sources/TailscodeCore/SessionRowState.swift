@@ -72,10 +72,20 @@ public enum SessionRowState: Equatable, Sendable {
 
     public var glyph: (text: String, css: String) { (icon.glyph, icon.glyphCSS) }
 
-    /// Whether the row belongs in LIVE NOW. A turn that stopped to ask something is still a turn
-    /// in flight — it is the one the person most needs to find — so it leads the section rather
-    /// than falling back into recency with everything that finished hours ago. So does a
-    /// conversation whose process is still working between turns: it is going to speak again.
+    /// Whether the row is waiting on the person. A turn stopped to ask is the plain case; stuck work
+    /// is the other, because it will not speak again on its own and the only way out is a person
+    /// ending it. Both lead the list, above everything that is merely busy.
+    public var needsYou: Bool {
+        switch self {
+        case .awaitingApproval, .stalled: return true
+        case .live, .background, .idle, .offline, .failed: return false
+        }
+    }
+
+    /// Whether the row is a turn in flight. A turn that stopped to ask something is still one — it
+    /// is the one the person most needs to find — so it never falls back into recency with
+    /// everything that finished hours ago. So does a conversation whose process is still working
+    /// between turns: it is going to speak again.
     public var isInFlight: Bool {
         switch self {
         case .live, .awaitingApproval, .background, .stalled: return true
@@ -285,15 +295,17 @@ public struct SessionRowModel: Equatable, Sendable {
 
 /// The sections the chat list is grouped into, in the order the phone's board uses.
 public enum SessionSection: String, CaseIterable, Sendable {
+    case needsYou
+    case working
     case pinned
-    case live
     case saved
     case recent
 
     public var title: String {
         switch self {
+        case .needsYou: return Localized.text("NEEDS YOU")
+        case .working: return Localized.text("WORKING")
         case .pinned: return Localized.text("PINNED")
-        case .live: return Localized.text("LIVE NOW")
         case .saved: return Localized.text("SAVED")
         case .recent: return Localized.text("RECENT")
         }
@@ -301,25 +313,41 @@ public enum SessionSection: String, CaseIterable, Sendable {
 }
 
 /// Splits a flat listing into the sections the sidebar draws, dropping empty ones so the list
-/// never shows a heading with nothing under it. Pinned rows lead in their own section, in the
-/// order the pins were made, and keep their state pill — a pinned live session reads as pinned
-/// *and* live, never as one or the other.
+/// never shows a heading with nothing under it.
+///
+/// What is waiting on the person leads, because a decision must never sit below the fold; what is
+/// merely busy comes next; and only then what the person set aside — their pins, in the order the
+/// pins were made, then their bookmarks. A pinned conversation that is working or waiting is
+/// listed once, where it is working or waiting, and wears its pin there: the section a row is in
+/// answers what it is doing now, and a pin is a fact about the row rather than a place for it.
 ///
 /// Membership is decided on `(profileID, sessionID)` rather than the bare session id, because the
 /// same id on two servers is two different chats: keying on the id alone let one machine's live
 /// conversation swallow another machine's row out of every section below it.
 ///
-/// LIVE NOW is ordered by when each conversation began, newest first, and never by recency of
+/// WORKING is ordered by when each conversation began, newest first, and never by recency of
 /// activity: a working chat's `updatedAt` is a clock rather than an identity — it moves every time
 /// a token lands — so ordering the section on it made two working chats trade places several times
 /// a second under a reader trying to click one. The section a row is *in* already says it is
 /// working; where it sits in that section must be a fact that holds still for as long as it is
 /// there, and the moment it started is the one fact about a live turn that cannot change.
+/// NEEDS YOU is ordered the other way, longest-waiting first, because the oldest question is the
+/// one somebody has been kept from the longest.
 public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [SessionRowModel])] {
     func key(_ row: SessionRowModel) -> String {
         SessionPinStore.key(row.entry.profileID, row.entry.session.id)
     }
-    let pinned = rows.filter { $0.pinned }.sorted {
+    let needs = rows.filter { $0.state.needsYou }.sorted {
+        $0.entry.session.updatedAt == $1.entry.session.updatedAt
+            ? key($0) < key($1) : $0.entry.session.updatedAt < $1.entry.session.updatedAt
+    }
+    var seen = Set(needs.map(key))
+    let working = rows.filter { $0.state.isInFlight && !seen.contains(key($0)) }.sorted {
+        $0.entry.session.createdAt == $1.entry.session.createdAt
+            ? key($0) < key($1) : $0.entry.session.createdAt > $1.entry.session.createdAt
+    }
+    seen.formUnion(working.map(key))
+    let pinned = rows.filter { $0.pinned && !seen.contains(key($0)) }.sorted {
         guard
             let a = SessionPinStore.rank(
                 profileID: $0.entry.profileID, sessionID: $0.entry.session.id),
@@ -328,15 +356,12 @@ public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [S
         else { return false }
         return a < b
     }
-    var seen = Set(pinned.map(key))
-    let live = rows.filter { $0.state.isInFlight && !seen.contains(key($0)) }.sorted {
-        $0.entry.session.createdAt == $1.entry.session.createdAt
-            ? key($0) < key($1) : $0.entry.session.createdAt > $1.entry.session.createdAt
-    }
-    seen.formUnion(live.map(key))
+    seen.formUnion(pinned.map(key))
     let saved = rows.filter { $0.saved && !seen.contains(key($0)) }
     seen.formUnion(saved.map(key))
     let recent = rows.filter { !seen.contains(key($0)) }
-    return [(.pinned, pinned), (.live, live), (.saved, saved), (.recent, recent)]
-        .filter { !$0.1.isEmpty }
+    return [
+        (.needsYou, needs), (.working, working), (.pinned, pinned), (.saved, saved),
+        (.recent, recent),
+    ].filter { !$0.1.isEmpty }
 }

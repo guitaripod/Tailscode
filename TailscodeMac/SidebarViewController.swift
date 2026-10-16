@@ -10,7 +10,7 @@ private struct DeleteTarget: Sendable {
     let backend: any CodingAgentBackend
 }
 
-/// The chat list: every conversation on every configured server, grouped LIVE NOW / SAVED /
+/// The chat list: every conversation on every configured server, grouped NEEDS YOU / WORKING / SAVED /
 /// RECENT, filterable, archivable — the Linux sidebar's semantics spoken through an NSTableView
 /// kept transparent over the system sidebar glass.
 ///
@@ -49,7 +49,7 @@ final class SidebarViewController: NSViewController {
     /// What the open panes know first-hand about the conversations they are streaming, keyed on
     /// `(profileID, sessionID)`. A listing reports `active` for the seconds a turn is literally
     /// open on the server and never reports a turn that stopped to ask something, so the chat a
-    /// person is talking in right now leads LIVE NOW from here rather than from the next sweep.
+    /// person is talking in right now leads WORKING from here rather than from the next sweep.
     var presenceSource: (() -> [String: SessionPresence])?
     /// Says one line in the window's own toast. Filing a chat away is one keystroke, so the list
     /// tells the person what it just did rather than letting a row leave without a word.

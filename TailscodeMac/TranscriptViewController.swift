@@ -28,7 +28,7 @@ final class TranscriptViewController: NSViewController {
     /// Live quotas for used-up surfaces — the same numbers the sidebar footer shows.
     var quotasForStatus: (() -> [UsageQuota])?
     /// A turn still in flight when this pane moves on is handed to the hub's background watcher,
-    /// so the row keeps its LIVE NOW seat until the turn settles.
+    /// so the row keeps its WORKING seat until the turn settles.
     var onBackgroundWatch: ((SessionEntry, any CodingAgentBackend) -> Void)?
     var onStopWatch: ((LiveKey) -> Void)?
 
@@ -153,7 +153,7 @@ final class TranscriptViewController: NSViewController {
     var currentState: ConversationState? { lastState }
 
     /// What this pane knows first-hand about the conversation it is streaming, for the chat list's
-    /// LIVE NOW. A turn stopped on a permission or a question is still a turn in flight and is the
+    /// WORKING. A turn stopped on a permission or a question is still a turn in flight and is the
     /// one the person most needs to find, so it outranks merely running; a failure is only
     /// reported once nothing is running, and the step is the tool the band is already naming.
     /// Nothing is inferred here that the pane's own state does not already say.

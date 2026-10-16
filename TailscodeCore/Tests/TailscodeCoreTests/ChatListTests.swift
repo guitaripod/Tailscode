@@ -20,7 +20,7 @@ struct ChatListTests {
                 agentTask: task, backgroundWork: carrying))
     }
 
-    @Test("A listing whose process still carries work is in LIVE NOW, wearing the work's own face")
+    @Test("A listing whose process still carries work is in WORKING, wearing the work's own face")
     func carriedWorkIsLive() {
         let carrying = row(
             entry(active: false, carrying: BackgroundWork(tasks: 1, task: "until grep DONE; do sleep 60; done")))
@@ -29,7 +29,7 @@ struct ChatListTests {
         #expect(carrying.state.activity == .inBackground(tasks: 1))
         #expect(carrying.state.pill?.text == "BACKGROUND")
         #expect(carrying.snippet == "until grep DONE; do sleep 60; done")
-        #expect(groupIntoSections([carrying]).first?.0 == .live)
+        #expect(groupIntoSections([carrying]).first?.0 == .working)
 
         let turn = row(entry(active: true, carrying: BackgroundWork(tasks: 1)))
         #expect(turn.state == .live, "an open turn is the louder fact")
@@ -64,7 +64,7 @@ struct ChatListTests {
         #expect(stuck.state.icon.tone == .attention)
         #expect(stuck.state.icon.motion == .still)
         #expect(stuck.snippet == "grep -rl x · for 3h")
-        #expect(groupIntoSections([stuck]).first?.0 == .live)
+        #expect(groupIntoSections([stuck]).first?.0 == .needsYou)
 
         let watched = row(
             entry(active: false, carrying: BackgroundWork(tasks: 1)), presence: .stalled(tasks: 1))
@@ -241,7 +241,7 @@ struct ChatListTests {
         #expect(row(named).facets(.full).origin == "Claude Code")
     }
 
-    @Test("A turn stopped for an approval leads LIVE NOW with the running ones")
+    @Test("A turn stopped for an approval is in flight, and leads the list")
     func inFlight() {
         #expect(SessionRowState.live.isInFlight)
         #expect(SessionRowState.awaitingApproval.isInFlight)
@@ -256,13 +256,13 @@ struct ChatListTests {
         let saved = row(entry(sessionID: "b"), saved: true)
         let plain = row(entry(sessionID: "c"))
         let grouped = groupIntoSections([live, saved, plain])
-        #expect(grouped.map(\.0) == [.live, .saved, .recent])
+        #expect(grouped.map(\.0) == [.working, .saved, .recent])
         #expect(grouped[0].1.map(\.entry.session.id) == ["a"])
         #expect(grouped[1].1.map(\.entry.session.id) == ["b"])
         #expect(grouped[2].1.map(\.entry.session.id) == ["c"])
     }
 
-    @Test("LIVE NOW holds still while its rows work")
+    @Test("WORKING holds still while its rows work")
     func liveOrderDoesNotFollowActivity() {
         let older = entry(sessionID: "a", active: true, updated: Date(timeIntervalSince1970: 100))
         let newer = entry(sessionID: "b", active: true, updated: Date(timeIntervalSince1970: 200))
@@ -284,11 +284,11 @@ struct ChatListTests {
         #expect(reversed.map(\.entry.session.id) == ["b", "a"])
     }
 
-    @Test("A saved chat that goes live is listed once, in LIVE NOW")
+    @Test("A saved chat that goes live is listed once, in WORKING")
     func savedAndLive() {
         let both = row(entry(sessionID: "a", active: true), saved: true)
         let grouped = groupIntoSections([both])
-        #expect(grouped.map(\.0) == [.live])
+        #expect(grouped.map(\.0) == [.working])
     }
 
     @Test("The same session id on two servers is two rows, not one")
@@ -296,7 +296,7 @@ struct ChatListTests {
         let here = row(entry(profileID: "one", sessionID: "s1", active: true))
         let there = row(entry(profileID: "two", sessionID: "s1"))
         let grouped = groupIntoSections([here, there])
-        #expect(grouped.map(\.0) == [.live, .recent])
+        #expect(grouped.map(\.0) == [.working, .recent])
         #expect(grouped[1].1.map(\.entry.profileID) == ["two"])
     }
 

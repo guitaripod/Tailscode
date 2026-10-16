@@ -238,7 +238,6 @@
             await hold(3.4)
             await glide(home?.tourScrollView, by: 300, duration: 2.4)
             await hold(0.5)
-            await glideX(home?.tourProjectsRail, by: 170, duration: 1.5)
             home?.tourAim(serverIndex: 0, directory: "/Users/demo/dev/pulse-server")
             await hold(1.7)
         }
@@ -427,7 +426,6 @@
         private func boardWalk() async {
             home?.tourResetBoard(seenAge: 300_000)
             await hold(1.8)
-            await glideX(home?.tourProjectsRail, by: 170, duration: 1.4)
             await hold(0.5)
             await glide(home?.tourScrollView, by: 330, duration: 1.8)
             await hold(2.0)
@@ -588,26 +586,6 @@
             await withCheckedContinuation { continuation in
                 UIView.animate(withDuration: duration, delay: 0, options: [.curveEaseInOut]) {
                     scroll.contentOffset.y = target
-                } completion: { _ in
-                    continuation.resume()
-                }
-            }
-        }
-
-        /// The horizontal twin of `glide`, for the orthogonal rails a compositional
-        /// layout owns.
-        private func glideX(_ scroll: UIScrollView?, by delta: CGFloat, duration: Double) async {
-            guard let scroll else { return }
-            let left = -scroll.adjustedContentInset.left
-            let right = max(
-                left,
-                scroll.contentSize.width + scroll.adjustedContentInset.right - scroll.bounds.width
-            )
-            let target = min(max(scroll.contentOffset.x + delta, left), right)
-            guard abs(target - scroll.contentOffset.x) > 1 else { return }
-            await withCheckedContinuation { continuation in
-                UIView.animate(withDuration: duration, delay: 0, options: [.curveEaseInOut]) {
-                    scroll.contentOffset.x = target
                 } completion: { _ in
                     continuation.resume()
                 }

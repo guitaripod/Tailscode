@@ -1561,7 +1561,7 @@ final class MainWindowController: NSWindowController {
     }
 
     /// What every pane on screen knows first-hand about the conversation it is streaming, keyed
-    /// the way the stores are keyed. This is what makes LIVE NOW honest: the server's listing
+    /// the way the stores are keyed. This is what makes WORKING honest: the server's listing
     /// reports `active` only for the seconds a turn is literally open on it and never reports a
     /// turn that stopped to ask for an approval, so a chat being talked in right now would
     /// otherwise be findable only by recency.
