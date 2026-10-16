@@ -272,6 +272,16 @@ final class MainWindow: @unchecked Sendable {
                 MainWindow.decideFromNotification(
                     profileID: profileID, permission: permission, approve: approve,
                     identifier: identifier)
+            },
+            onReply: { [weak self] profileID, sessionID, words, identifier in
+                self?.sendFromNotification(
+                    profileID: profileID, sessionID: sessionID, words: words,
+                    identifier: identifier)
+            },
+            onAnswer: { [weak self] profileID, question, answers, identifier in
+                self?.answerFromNotification(
+                    profileID: profileID, question: question, answers: answers,
+                    identifier: identifier)
             })
         applyPanePreferences()
         Trace.stampFirstFrame(of: ptr(overlay), "input box")
@@ -326,6 +336,12 @@ final class MainWindow: @unchecked Sendable {
                             Data(
                                 "OPENID missing \(argument) of \(self.visible.count): \(ids.joined(separator: ","))\n"
                                     .utf8))
+                    }
+                case "notice":
+                    if argument == "test" || argument.isEmpty {
+                        Notifier.shared.sendTest()
+                    } else {
+                        NoticeDemo.raise(argument)
                     }
                 case "workflowdemo":
                     self.activePane.driverWorkflowDemo(argument)
@@ -1869,6 +1885,9 @@ final class MainWindow: @unchecked Sendable {
                 profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
                 title: $0.title, isActive: $0.entry.session.isActive == true,
                 updatedAt: $0.entry.session.updatedAt)
+        }
+        for row in rows {
+            Notifier.shared.noteServer(profileID: row.entry.profileID, name: row.entry.profileName)
         }
         Notifier.shared.observeListing(
             observations, openSessionID: selectedID, windowActive: windowIsActive)

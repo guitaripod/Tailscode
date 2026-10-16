@@ -172,11 +172,12 @@ unsigned char *tailscode_analytics_card_png(
     int block_count, gsize *out_len);
 
 /// A shoulder-tap's face: a tone squircle and its glyph, or the picture a turn handed back with
-/// that face in the corner. Colours are six-digit hex. `picture` may be NULL. Returns
+/// that face in the corner. It is drawn to be read at the size a notice shows it, which is small,
+/// so it carries a glyph and no words. Colours are six-digit hex. `picture` may be NULL. Returns
 /// newly-allocated PNG bytes (caller frees with `g_free`) and writes their length to `out_len`,
 /// or NULL on failure.
 unsigned char *tailscode_notification_plate_png(
-    const char *tone, const char *ink, const char *canvas, const char *glyph, const char *caption,
+    const char *tone, const char *ink, const char *canvas, const char *glyph,
     const void *picture, gsize picture_len, gsize *out_len);
 
 /// The widget's vertical offset inside `ancestor`, or -1 when the two are not connected — what a
@@ -668,18 +669,22 @@ char *tailscode_gl_vendor(GtkWidget *window);
 
 /// `org.freedesktop.Notifications.Notify`. GNotification cannot carry an image, a sound or
 /// markup, and a desktop that can show them is how a notice is told apart before it is read.
-/// `actions` is key, label, key, label. Returns the daemon id, or 0 when nothing is listening.
-/// A later `ActionInvoked` is handed to `action` with that id, and `NotificationClosed`, however
-/// the notice went (dismissed, expired, withdrawn), to `closed`, so nothing is kept for an id the
-/// daemon may hand to another app's notice.
+/// `actions` is key, label, key, label; the key `inline-reply` asks for a text field and is
+/// dropped where the daemon does not offer one. `origin` names where the notice came from (the
+/// server), and `reply_placeholder` is what the field asks for. Returns the daemon id, or 0 when
+/// nothing is listening. A later `ActionInvoked` is handed to `action` with that id, text typed
+/// into the field to `replied`, and `NotificationClosed`, however the notice went (dismissed,
+/// expired, withdrawn), to `closed`, so nothing is kept for an id the daemon may hand to another
+/// app's notice.
 void tailscode_desktop_notify_listen(
     void (*action)(guint32 id, const char *action, void *data),
-    void (*closed)(guint32 id, void *data), void *data);
+    void (*closed)(guint32 id, void *data),
+    void (*replied)(guint32 id, const char *text, void *data), void *data);
 guint32 tailscode_desktop_notify(
     const char *summary, const char *body_markup, const char *body_plain, const char *image_path,
-    const char *sound_name, const char *category, const char *desktop_entry,
+    const char *sound_name, const char *category, const char *desktop_entry, const char *origin,
     unsigned char urgency, int resident, int timeout_ms, guint32 replaces_id,
-    const char *const *actions, int action_count);
+    const char *const *actions, int action_count, const char *reply_placeholder);
 void tailscode_desktop_notify_close(guint32 id);
 
 /// `org.freedesktop.systemd1.Manager.SetUnitProperties(unit, runtime=true, a(sv))` on the session

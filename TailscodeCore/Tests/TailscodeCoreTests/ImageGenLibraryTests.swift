@@ -153,6 +153,26 @@ struct ImageGenLibraryTests {
         #expect(recipe.prompt == "dusk" && recipe.negative == "")
     }
 
+    @Test func aKleinPictureReadsBackAsFastInSixteenStepsWithNoAvoidList() throws {
+        #expect(ComfyRecipe.engine(forModel: "flux3_image_klein_sd_bf16.safetensors") == .fast)
+        #expect(ComfyRecipe.engine(forModel: "flux-2-klein-4b.safetensors") == .fast)
+        let paint = try #require(
+            ComfyRecipe.read(
+                graph: ImageGenClient.graph(
+                    prompt: "dusk", engine: .fast, mode: .generate, aspect: .square, seed: 5,
+                    referenceName: nil)))
+        #expect(paint.engine == .fast && paint.steps == 16 && paint.mode == .generate)
+        #expect(paint.prompt == "dusk" && paint.negative == "")
+        let edit = try #require(
+            ComfyRecipe.read(
+                graph: ImageGenClient.graph(
+                    prompt: "a hat", engine: .fast, mode: .edit, aspect: .square, seed: 5,
+                    referenceName: "ref.png")))
+        #expect(edit.engine == .fast && edit.steps == 16 && edit.mode == .edit)
+        #expect(edit.prompt == "a hat" && edit.negative == "")
+        #expect(edit.reference == "ref.png")
+    }
+
     @Test func qwenTextRecipe() throws {
         let recipe = try #require(ComfyRecipe.read(graph: Self.graph(Self.qwenTextGraph)))
         #expect(recipe.prompt == "a serene mountain lake at dusk")
@@ -297,10 +317,10 @@ struct ImageGenLibraryTests {
     @Test func sightingAnswersPerEngine() {
         let sighting = ImageGenSighting(
             host: "arch:8188", reachable: true,
-            missingModels: ["diffusion_models/flux-2-klein-4b.safetensors"])
+            missingModels: ["diffusion_models/flux3_image_klein_sd_bf16.safetensors"])
         #expect(sighting.available(.quality))
         #expect(!sighting.available(.fast))
-        #expect(sighting.missing(for: .fast).map(\.name) == ["flux-2-klein-4b.safetensors"])
+        #expect(sighting.missing(for: .fast).map(\.name) == ["flux3_image_klein_sd_bf16.safetensors"])
         #expect(ImageGenMachineWords.summary(sighting).contains("Quality"))
         #expect(ImageGenMachineWords.summary(nil) == ImageGenMachineWords.neverChecked)
         let full = ImageGenSighting(host: "arch:8188", reachable: true)

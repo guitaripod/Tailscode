@@ -22,10 +22,17 @@ public struct ActivityAlert: Equatable, Sendable {
     /// a notification can answer it from there — the tap needs the same object the in-app sheet
     /// would have been given.
     public let permission: PermissionRequest?
+    /// The question a needs-an-answer alert is about, carried whole for the same reason: a client
+    /// that can put its answers on the notification can send them from there.
+    public let question: QuestionRequest?
+    /// What the alert has to say beyond `body`, read from the conversation it came from. Nil from
+    /// a listing, which knows a session stopped being live and nothing more.
+    public let notice: NoticeReading?
 
     init(
         profileID: String, sessionID: String, identifier: String, title: String, body: String,
-        reason: Reason, permission: PermissionRequest? = nil
+        reason: Reason, permission: PermissionRequest? = nil, question: QuestionRequest? = nil,
+        notice: NoticeReading? = nil
     ) {
         self.profileID = profileID
         self.sessionID = sessionID
@@ -34,6 +41,8 @@ public struct ActivityAlert: Equatable, Sendable {
         self.body = body
         self.reason = reason
         self.permission = permission
+        self.question = question
+        self.notice = notice
     }
 }
 
@@ -124,7 +133,9 @@ public struct ActivityWatch: Sendable {
                     body: failed
                         ? Localized.text("The turn failed.")
                         : Localized.text("Your agent finished."),
-                    reason: failed ? .turnFailed : .turnEnded))
+                    reason: failed ? .turnFailed : .turnEnded,
+                    notice: failed
+                        ? NoticeReader.turnFailed(in: state) : NoticeReader.turnEnded(in: state)))
         }
         openWasRunning[key] = isRunning
 
@@ -139,7 +150,8 @@ public struct ActivityWatch: Sendable {
                     identifier: "perm:\(permission.id)",
                     title: title,
                     body: Localized.text("Approval needed: %@", tool),
-                    reason: .needsApproval, permission: permission))
+                    reason: .needsApproval, permission: permission,
+                    notice: NoticeReader.approval(permission, in: state)))
         }
 
         let questions = state.pendingQuestions
@@ -154,7 +166,8 @@ public struct ActivityWatch: Sendable {
                     title: title,
                     body: text.isEmpty
                         ? Localized.text("Your agent has a question.") : String(text.prefix(120)),
-                    reason: .needsAnswer))
+                    reason: .needsAnswer, question: question,
+                    notice: NoticeReader.question(question)))
         }
 
         var withdrawals: [String] = []

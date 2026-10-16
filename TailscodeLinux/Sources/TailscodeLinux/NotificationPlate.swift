@@ -8,23 +8,6 @@ import TailscodeCore
 /// this device already has the bytes, that picture with the face in the corner — and writes it
 /// where the notification daemon can read it.
 enum NotificationPlate {
-    static func kindWord(_ reason: ActivityAlert.Reason) -> String {
-        switch reason {
-        case .turnEnded: return Localized.text("finished")
-        case .turnFailed: return Localized.text("failed")
-        case .needsApproval: return Localized.text("needs approval")
-        case .needsAnswer: return Localized.text("has a question")
-        }
-    }
-
-    static func kindWord(_ kind: DelegateNotice.Kind) -> String {
-        switch kind {
-        case .asks: return Localized.text("needs approval")
-        case .passed: return Localized.text("finished")
-        case .failed: return Localized.text("failed")
-        }
-    }
-
     static func sound(_ reason: ActivityAlert.Reason) -> String {
         switch reason {
         case .turnEnded: return "complete"
@@ -57,10 +40,19 @@ enum NotificationPlate {
         }
     }
 
-    /// The body as a daemon that reads markup must be given it — an agent's question is free text,
-    /// and a `<` or `&` in it would otherwise be eaten as a tag — and as one that does not wants it.
-    static func wording(body: String) -> (markup: String, plain: String) {
-        (escape(body), body)
+    /// The body as a daemon that reads markup must be given it, with the headline in bold, and as
+    /// one that does not wants it. An agent's question and a command are free text, and a `<` or
+    /// `&` in one would otherwise be eaten as a tag.
+    static func wording(headline: String?, facts: [String], lines: [String])
+        -> (markup: String, plain: String)
+    {
+        let tail = facts.isEmpty ? "" : " · " + facts.joined(separator: " · ")
+        let first = headline.map {
+            (markup: "<b>\(escape($0))</b>" + escape(tail), plain: $0 + tail)
+        }
+        let markup = ([first?.markup].compactMap { $0 } + lines.map(escape))
+        let plain = ([first?.plain].compactMap { $0 } + lines)
+        return (markup.joined(separator: "\n"), plain.joined(separator: "\n"))
     }
 
     /// The newest picture this device has already fetched for the turn that just ended, never an
@@ -80,11 +72,8 @@ enum NotificationPlate {
         return nil
     }
 
-    static func imagePath(
-        face: AlertFace, caption: String, picture: Data?, name: String
-    ) -> String? {
-        guard let png = render(face: face, caption: picture == nil ? caption : nil, picture: picture)
-        else { return nil }
+    static func imagePath(face: AlertFace, picture: Data?, name: String) -> String? {
+        guard let png = render(face: face, picture: picture) else { return nil }
         let directory = cacheDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let file = directory.appendingPathComponent(sanitize(name) + ".png")
@@ -97,9 +86,8 @@ enum NotificationPlate {
         }
     }
 
-    /// The same face, small, for the missed-notice row. Without its word, which at this size is a
-    /// smear. Cached by the colours it was painted in, so a theme change paints a new one and a
-    /// sidebar rebuild does not.
+    /// The same face, small, for the missed-notice row. Cached by the colours it was painted in, so
+    /// a theme change paints a new one and a sidebar rebuild does not.
     static func badge(face: AlertFace, side: Int32) -> UnsafeMutablePointer<GtkWidget>? {
         let palette = MatrixTheme.palette
         let key = "\(face.glyph)|\(toneHex(face.tone, palette))|\(palette.onAccent)"
@@ -108,7 +96,7 @@ enum NotificationPlate {
             texture = cached
         } else {
             guard
-                let png = render(face: face, caption: nil, picture: nil),
+                let png = render(face: face, picture: nil),
                 let made = png.withUnsafeBytes({
                     tailscode_texture_from_bytes($0.baseAddress, gsize($0.count))
                 })
@@ -123,28 +111,25 @@ enum NotificationPlate {
         return widget
     }
 
-    static func render(face: AlertFace, caption: String?, picture: Data?) -> Data? {
+    static func render(face: AlertFace, picture: Data?) -> Data? {
         let palette = MatrixTheme.palette
         return render(
             tone: toneHex(face.tone, palette), ink: palette.onAccent, canvas: palette.canvas,
-            glyph: face.glyph, caption: caption, picture: picture)
+            glyph: face.glyph, picture: picture)
     }
 
     static func render(
-        tone: String, ink: String, canvas: String, glyph: String, caption: String?,
-        picture: Data?
+        tone: String, ink: String, canvas: String, glyph: String, picture: Data?
     ) -> Data? {
         var length: gsize = 0
         let raw: UnsafeMutablePointer<UInt8>?
         if let picture, !picture.isEmpty {
             raw = picture.withUnsafeBytes { buffer in
                 tailscode_notification_plate_png(
-                    tone, ink, canvas, glyph, caption, buffer.baseAddress, gsize(buffer.count),
-                    &length)
+                    tone, ink, canvas, glyph, buffer.baseAddress, gsize(buffer.count), &length)
             }
         } else {
-            raw = tailscode_notification_plate_png(
-                tone, ink, canvas, glyph, caption, nil, 0, &length)
+            raw = tailscode_notification_plate_png(tone, ink, canvas, glyph, nil, 0, &length)
         }
         guard let raw, length > 0 else { return nil }
         defer { g_free(raw) }

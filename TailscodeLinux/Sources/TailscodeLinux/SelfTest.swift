@@ -3320,22 +3320,21 @@ public enum SelfTest {
     private static func checkNotificationPlate() throws -> Int {
         guard
             let face = NotificationPlate.render(
-                tone: "#3DDC97", ink: "#0B0B0B", canvas: "#111111", glyph: "✓",
-                caption: "finished", picture: nil),
+                tone: "#3DDC97", ink: "#0B0B0B", canvas: "#111111", glyph: "✓", picture: nil),
             face.starts(with: Data([0x89, 0x50, 0x4E, 0x47])), face.count > 500
         else { throw SelfTestFailure("the face plate is not a PNG") }
         guard
             let pictured = NotificationPlate.render(
-                tone: "#E0A100", ink: "#111111", canvas: "#111111", glyph: "?",
-                caption: nil, picture: face),
+                tone: "#E0A100", ink: "#111111", canvas: "#111111", glyph: "?", picture: face),
             pictured.starts(with: Data([0x89, 0x50, 0x4E, 0x47])), pictured.count > 500,
             pictured != face
         else { throw SelfTestFailure("a picture is not painted into the plate") }
 
-        let words = NotificationPlate.wording(body: "is a < b && c?")
-        guard words.markup == "is a &lt; b &amp;&amp; c?", words.plain == "is a < b && c?" else {
-            throw SelfTestFailure("a body is not escaped for markup: \(words.markup)")
-        }
+        let words = NotificationPlate.wording(
+            headline: "Needs approval", facts: ["Bash"], lines: ["rm -rf <build> && exit"])
+        guard words.markup == "<b>Needs approval</b> · Bash\nrm -rf &lt;build&gt; &amp;&amp; exit",
+            words.plain == "Needs approval · Bash\nrm -rf <build> && exit"
+        else { throw SelfTestFailure("a body is not escaped for markup: \(words.markup)") }
 
         let drawn = FileReference(
             path: "/tmp/selftest/notice.png", mime: "image/png", filename: "notice.png")

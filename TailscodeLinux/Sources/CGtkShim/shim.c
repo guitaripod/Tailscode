@@ -3084,7 +3084,7 @@ static void tailscode_plate_squircle(cairo_t *cr, double side, double inset, dou
 }
 
 unsigned char *tailscode_notification_plate_png(
-    const char *tone, const char *ink, const char *canvas, const char *glyph, const char *caption,
+    const char *tone, const char *ink, const char *canvas, const char *glyph,
     const void *picture, gsize picture_len, gsize *out_len) {
     if (out_len) *out_len = 0;
     if (!tone || !ink) return NULL;
@@ -3139,16 +3139,16 @@ unsigned char *tailscode_notification_plate_png(
         cairo_pattern_destroy(shade);
         cairo_restore(cr);
 
-        double badge = 148;
-        double cx = side - 42 - badge / 2.0;
-        double cy = side - 42 - badge / 2.0;
-        cairo_arc(cr, cx, cy, badge / 2.0 + 8, 0, 2 * G_PI);
+        double badge = 184;
+        double cx = side - 36 - badge / 2.0;
+        double cy = side - 36 - badge / 2.0;
+        cairo_arc(cr, cx, cy, badge / 2.0 + 10, 0, 2 * G_PI);
         tailscode_cairo_set_hex(cr, canvas && *canvas ? canvas : "#111111", 1);
         cairo_fill(cr);
         cairo_arc(cr, cx, cy, badge / 2.0, 0, 2 * G_PI);
         tailscode_cairo_set_hex(cr, tone, 1);
         cairo_fill(cr);
-        tailscode_plate_text(cr, layout, glyph, cx, cy, 72, 700, ink);
+        tailscode_plate_text(cr, layout, glyph, cx, cy, 104, 700, ink);
     } else {
         tailscode_plate_squircle(cr, side, inset, radius);
         tailscode_cairo_set_hex(cr, tone, 1);
@@ -3172,30 +3172,7 @@ unsigned char *tailscode_notification_plate_png(
         cairo_stroke(cr);
         cairo_restore(cr);
 
-        int caption_height = 0;
-        if (caption && *caption) {
-            pango_layout_set_width(layout, (int)((side - 80) * PANGO_SCALE));
-            pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-            pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
-            pango_layout_set_text(layout, caption, -1);
-            tailscode_pango_font(layout, 28, 600);
-            pango_layout_get_pixel_size(layout, NULL, &caption_height);
-        }
-        double glyph_size = caption_height > 0 ? 176 : 290;
-        double block = glyph_size + (caption_height > 0 ? 22 + caption_height : 0);
-        double top = (side - block) / 2.0;
-        tailscode_plate_text(
-            cr, layout, glyph, side / 2.0, top + glyph_size / 2.0, (int)glyph_size, 700, ink);
-        if (caption_height > 0) {
-            pango_layout_set_width(layout, (int)((side - 80) * PANGO_SCALE));
-            pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-            pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
-            pango_layout_set_text(layout, caption, -1);
-            tailscode_pango_font(layout, 28, 600);
-            tailscode_cairo_set_hex(cr, ink, 0.92);
-            cairo_move_to(cr, 40, top + glyph_size + 18);
-            pango_cairo_show_layout(cr, layout);
-        }
+        tailscode_plate_text(cr, layout, glyph, side / 2.0, side / 2.0, 300, 700, ink);
     }
 
     g_object_unref(layout);
@@ -3733,6 +3710,9 @@ static void *notify_action_data = NULL;
 static guint notify_closed_subscription = 0;
 static gboolean notify_caps_known = FALSE;
 static gboolean notify_markup = TRUE;
+static gboolean notify_inline_reply = FALSE;
+static void (*notify_replied)(guint32 id, const char *text, void *data) = NULL;
+static guint notify_replied_subscription = 0;
 
 static void tailscode_notify_ensure_bus(void) {
     if (notify_bus) return;
@@ -3750,6 +3730,7 @@ static void tailscode_notify_read_caps(void) {
         G_VARIANT_TYPE("(as)"), G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &error);
     g_clear_error(&error);
     notify_markup = FALSE;
+    notify_inline_reply = FALSE;
     if (reply) {
         GVariant *list = g_variant_get_child_value(reply, 0);
         gsize count = list ? g_variant_n_children(list) : 0;
@@ -3757,6 +3738,7 @@ static void tailscode_notify_read_caps(void) {
             GVariant *item = g_variant_get_child_value(list, index);
             const char *name = item ? g_variant_get_string(item, NULL) : NULL;
             if (name && strcmp(name, "body-markup") == 0) notify_markup = TRUE;
+            if (name && strcmp(name, "inline-reply") == 0) notify_inline_reply = TRUE;
             if (item) g_variant_unref(item);
         }
         if (list) g_variant_unref(list);
@@ -3798,11 +3780,30 @@ static void tailscode_notify_closed_signal(
     notify_closed(id, notify_action_data);
 }
 
+static void tailscode_notify_replied_signal(
+    GDBusConnection *connection, const char *sender, const char *path, const char *interface,
+    const char *signal, GVariant *parameters, gpointer user_data) {
+    (void)connection;
+    (void)sender;
+    (void)path;
+    (void)interface;
+    (void)signal;
+    (void)user_data;
+    if (!notify_replied || !parameters) return;
+    if (!g_variant_is_of_type(parameters, G_VARIANT_TYPE("(us)"))) return;
+    guint32 id = 0;
+    const char *text = "";
+    g_variant_get(parameters, "(u&s)", &id, &text);
+    notify_replied(id, text ? text : "", notify_action_data);
+}
+
 void tailscode_desktop_notify_listen(
     void (*action)(guint32 id, const char *action, void *data),
-    void (*closed)(guint32 id, void *data), void *data) {
+    void (*closed)(guint32 id, void *data),
+    void (*replied)(guint32 id, const char *text, void *data), void *data) {
     notify_action = action;
     notify_closed = closed;
+    notify_replied = replied;
     notify_action_data = data;
     tailscode_notify_ensure_bus();
     if (!notify_bus) return;
@@ -3811,6 +3812,12 @@ void tailscode_desktop_notify_listen(
             notify_bus, "org.freedesktop.Notifications", "org.freedesktop.Notifications",
             "ActionInvoked", "/org/freedesktop/Notifications", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
             tailscode_notify_action_invoked, NULL, NULL);
+    }
+    if (!notify_replied_subscription) {
+        notify_replied_subscription = g_dbus_connection_signal_subscribe(
+            notify_bus, "org.freedesktop.Notifications", "org.freedesktop.Notifications",
+            "NotificationReplied", "/org/freedesktop/Notifications", NULL,
+            G_DBUS_SIGNAL_FLAGS_NONE, tailscode_notify_replied_signal, NULL, NULL);
     }
     if (!notify_closed_subscription) {
         notify_closed_subscription = g_dbus_connection_signal_subscribe(
@@ -3822,9 +3829,9 @@ void tailscode_desktop_notify_listen(
 
 guint32 tailscode_desktop_notify(
     const char *summary, const char *body_markup, const char *body_plain, const char *image_path,
-    const char *sound_name, const char *category, const char *desktop_entry,
+    const char *sound_name, const char *category, const char *desktop_entry, const char *origin,
     unsigned char urgency, int resident, int timeout_ms, guint32 replaces_id,
-    const char *const *actions, int action_count) {
+    const char *const *actions, int action_count, const char *reply_placeholder) {
     tailscode_notify_ensure_bus();
     if (!notify_bus) return 0;
     tailscode_notify_read_caps();
@@ -3844,12 +3851,20 @@ guint32 tailscode_desktop_notify(
     if (desktop_entry && *desktop_entry)
         g_variant_builder_add(
             &hints, "{sv}", "desktop-entry", g_variant_new_string(desktop_entry));
+    if (origin && *origin)
+        g_variant_builder_add(&hints, "{sv}", "x-kde-origin-name", g_variant_new_string(origin));
+    if (notify_inline_reply && reply_placeholder && *reply_placeholder)
+        g_variant_builder_add(
+            &hints, "{sv}", "x-kde-reply-placeholder-text", g_variant_new_string(reply_placeholder));
     g_variant_builder_add(&hints, "{sv}", "urgency", g_variant_new_byte(urgency));
     g_variant_builder_add(&hints, "{sv}", "resident", g_variant_new_boolean(resident ? TRUE : FALSE));
     GVariantBuilder buttons;
     g_variant_builder_init(&buttons, G_VARIANT_TYPE("as"));
-    for (int index = 0; index < action_count; index++) {
-        if (actions && actions[index]) g_variant_builder_add(&buttons, "s", actions[index]);
+    for (int index = 0; index + 1 < action_count; index += 2) {
+        if (!actions || !actions[index] || !actions[index + 1]) continue;
+        if (!notify_inline_reply && strcmp(actions[index], "inline-reply") == 0) continue;
+        g_variant_builder_add(&buttons, "s", actions[index]);
+        g_variant_builder_add(&buttons, "s", actions[index + 1]);
     }
     GError *error = NULL;
     GVariant *reply = g_dbus_connection_call_sync(

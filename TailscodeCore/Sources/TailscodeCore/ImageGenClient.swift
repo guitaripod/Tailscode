@@ -148,8 +148,8 @@ public struct ImageGenClient: Sendable {
         case .quality, .turbo:
             return qwenGraph(recipe)
         case .fast:
-            if recipe.mode == .edit, let first = recipe.references.first {
-                return kleinEditGraph(recipe, referencePath: first)
+            if recipe.mode == .edit, !recipe.references.isEmpty {
+                return kleinEditGraph(recipe, referencePaths: recipe.references)
             }
             return kleinGraph(recipe)
         }
@@ -545,13 +545,12 @@ public struct ImageGenClient: Sendable {
     private static func kleinLoaders() -> [String: Any] {
         [
         "70": ["class_type": "UNETLoader", "inputs": [
-            "unet_name": "flux-2-klein-4b.safetensors", "weight_dtype": "default",
+            "unet_name": "flux3_image_klein_sd_bf16.safetensors", "weight_dtype": "default",
         ]],
         "71": ["class_type": "CLIPLoader", "inputs": [
-            "clip_name": "qwen_3_4b.safetensors", "type": "flux2", "device": "default",
+            "clip_name": "qwen3vl_4b_bf16.safetensors", "type": "flux3", "device": "default",
         ]],
         "72": ["class_type": "VAELoader", "inputs": ["vae_name": "flux2-vae.safetensors"]],
-        "61": ["class_type": "KSamplerSelect", "inputs": ["sampler_name": "euler"]],
         "65": ["class_type": "VAEDecode", "inputs": [
             "samples": ["64", 0], "vae": ["72", 0],
         ]],
@@ -561,91 +560,71 @@ public struct ImageGenClient: Sendable {
         ]
     }
 
-    /// FLUX.2 Klein 4B distilled: four steps, the graph the store verified, driven from an
-    /// empty latent so the fast lane paints from words alone.
+    /// How long the distilled checkpoint runs: sixteen steps at a guidance of one, the only way
+    /// it is driven. The base checkpoint wants fifty and a guidance of 3.5, and is not offered.
+    static let kleinSteps = 16
+
+    /// The words, and the same words emptied for the sampler's negative input, which a guidance
+    /// of one never reads but the sampler still has to be wired to.
+    private static func kleinConditioning(_ recipe: ImageGenRecipe) -> [String: Any] {
+        [
+        "74": ["class_type": "CLIPTextEncode", "inputs": [
+            "clip": ["71", 0], "text": recipe.words,
+        ]],
+        "75": ["class_type": "ConditioningZeroOut", "inputs": [
+            "conditioning": ["74", 0],
+        ]],
+        ]
+    }
+
+    private static func kleinSampling(
+        _ recipe: ImageGenRecipe, positive: [Any], negative: [Any], latent: [Any]
+    ) -> [String: Any] {
+        ["64": ["class_type": "KSampler", "inputs": [
+            "model": ["70", 0], "positive": positive, "negative": negative,
+            "latent_image": latent, "seed": Int(clamping: recipe.seed),
+            "steps": kleinSteps, "cfg": 1.0, "sampler_name": "euler",
+            "scheduler": "simple", "denoise": 1.0,
+        ]]]
+    }
+
+    /// FLUX 3 Klein distilled painting from words alone, on the empty latent of the chip's shape
+    /// and size.
     static func kleinGraph(_ recipe: ImageGenRecipe) -> [String: Any] {
         let size = recipe.pixels
-        let prompt = recipe.words
-        let seed = recipe.seed
         var graph = kleinLoaders()
+        graph.merge(kleinConditioning(recipe)) { $1 }
         graph["66"] = ["class_type": "EmptyFlux2LatentImage", "inputs": [
             "width": size.width, "height": size.height, "batch_size": 1,
         ]]
-        graph["62"] = ["class_type": "Flux2Scheduler", "inputs": [
-            "width": size.width, "height": size.height, "steps": 4,
-        ]]
-        graph["74"] = ["class_type": "CLIPTextEncode", "inputs": [
-            "clip": ["71", 0], "text": prompt,
-        ]]
-        graph["82"] = ["class_type": "ConditioningZeroOut", "inputs": [
-            "conditioning": ["74", 0],
-        ]]
-        graph["123"] = ["class_type": "ReferenceLatent", "inputs": [
-            "conditioning": ["74", 0],
-        ]]
-        graph["121"] = ["class_type": "ReferenceLatent", "inputs": [
-            "conditioning": ["82", 0],
-        ]]
-        graph["63"] = ["class_type": "CFGGuider", "inputs": [
-            "model": ["70", 0], "positive": ["123", 0], "negative": ["121", 0],
-            "cfg": 1.0,
-        ]]
-        graph["73"] = ["class_type": "RandomNoise", "inputs": [
-            "noise_seed": Int(clamping: seed),
-        ]]
-        graph["64"] = ["class_type": "SamplerCustomAdvanced", "inputs": [
-            "noise": ["73", 0], "guider": ["63", 0], "sampler": ["61", 0],
-            "sigmas": ["62", 0], "latent_image": ["66", 0],
-        ]]
+        graph.merge(
+            kleinSampling(recipe, positive: ["74", 0], negative: ["75", 0], latent: ["66", 0])
+        ) { $1 }
         return graph
     }
 
-    /// Klein editing a picture, exactly as the store verified it: the reference is scaled to one
-    /// megapixel on a 64-pixel grid, its size becomes the canvas, and its encoded latent rides
-    /// both conditionings as the reference. The fast lane used to ignore the reference and paint
-    /// from words alone while the button said Edit.
-    static func kleinEditGraph(_ recipe: ImageGenRecipe, referencePath: String) -> [String: Any] {
-        let prompt = recipe.words
-        let seed = recipe.seed
+    /// Klein editing from its references: each one is scaled to a megapixel and encoded as a
+    /// reference latent on both conditionings, and the first one's size becomes the canvas, so
+    /// the picture comes back the shape the first reference was. Up to ten are what the model was
+    /// trained on, in the order the words address them.
+    static func kleinEditGraph(
+        _ recipe: ImageGenRecipe, referencePaths: [String]
+    ) -> [String: Any] {
         var graph = kleinLoaders()
-        graph["81"] = ["class_type": "LoadImage", "inputs": ["image": referencePath]]
-        graph["80"] = ["class_type": "ImageScaleToTotalPixels", "inputs": [
-            "image": ["81", 0], "upscale_method": "nearest-exact", "megapixels": 1.0,
-            "resolution_steps": 64,
-        ]]
-        graph["99"] = ["class_type": "GetImageSize", "inputs": ["image": ["80", 0]]]
-        graph["66"] = ["class_type": "EmptyFlux2LatentImage", "inputs": [
-            "width": ["99", 0], "height": ["99", 1], "batch_size": 1,
-        ]]
-        graph["62"] = ["class_type": "Flux2Scheduler", "inputs": [
-            "width": ["99", 0], "height": ["99", 1], "steps": 4,
-        ]]
-        graph["74"] = ["class_type": "CLIPTextEncode", "inputs": [
-            "clip": ["71", 0], "text": prompt,
-        ]]
-        graph["82"] = ["class_type": "ConditioningZeroOut", "inputs": [
-            "conditioning": ["74", 0],
-        ]]
-        graph["122"] = ["class_type": "VAEEncode", "inputs": [
-            "pixels": ["80", 0], "vae": ["72", 0],
-        ]]
-        graph["123"] = ["class_type": "ReferenceLatent", "inputs": [
-            "conditioning": ["74", 0], "latent": ["122", 0],
-        ]]
-        graph["121"] = ["class_type": "ReferenceLatent", "inputs": [
-            "conditioning": ["82", 0], "latent": ["122", 0],
-        ]]
-        graph["63"] = ["class_type": "CFGGuider", "inputs": [
-            "model": ["70", 0], "positive": ["123", 0], "negative": ["121", 0],
-            "cfg": 1.0,
-        ]]
-        graph["73"] = ["class_type": "RandomNoise", "inputs": [
-            "noise_seed": Int(clamping: seed),
-        ]]
-        graph["64"] = ["class_type": "SamplerCustomAdvanced", "inputs": [
-            "noise": ["73", 0], "guider": ["63", 0], "sampler": ["61", 0],
-            "sigmas": ["62", 0], "latent_image": ["66", 0],
-        ]]
+        graph.merge(kleinConditioning(recipe)) { $1 }
+        var inputs: [String: Any] = [
+            "positive": ["74", 0], "negative": ["75", 0], "vae": ["72", 0],
+            "resolution": "resize", "resolution.megapixels": 1.0,
+        ]
+        for (index, reference) in referencePaths.enumerated() {
+            let node = "\(Self.firstReferenceNode + index)"
+            graph[node] = ["class_type": "LoadImage", "inputs": ["image": reference]]
+            inputs["images.image\(index)"] = [node, 0]
+        }
+        graph["17"] = ["class_type": "ReferenceMultiLatent", "inputs": inputs]
+        graph.merge(
+            kleinSampling(recipe, positive: ["17", 0], negative: ["17", 1], latent: ["17", 2])
+        ) { $1 }
         return graph
     }
 }

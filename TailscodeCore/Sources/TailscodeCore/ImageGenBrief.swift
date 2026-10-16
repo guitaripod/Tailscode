@@ -291,7 +291,7 @@ public enum ImageGenBrief {
                     + "a long description best.")
         case .fast:
             lines.append(
-                "The picture is painted by FLUX.2 Klein in four steps: keep the description to "
+                "The picture is painted by FLUX 3 Klein in sixteen steps: keep the description to "
                     + "its strongest elements rather than every corner, around two hundred words.")
         }
         if context.referenceCount > 0 {
