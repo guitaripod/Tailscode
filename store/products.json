@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "subscriptionGroups": [],
+  "inAppPurchases": [
+    {
+      "productId": "com.guitaripod.tailscode.pro",
+      "type": "NON_CONSUMABLE",
+      "referenceName": "Tailscode Pro",
+      "price": {
+        "territory": "USA",
+        "amount": "14.99"
+      },
+      "localizations": {
+        "de-DE": {
+          "name": "Tailscode Pro",
+          "description": "Unbegrenzt Server. Ein Kauf für iPhone und Mac."
+        },
+        "en-US": {
+          "name": "Tailscode Pro",
+          "description": "Unlimited servers. One purchase for iPhone and Mac."
+        },
+        "es-ES": {
+          "name": "Tailscode Pro",
+          "description": "Servidores ilimitados. Una compra para iPhone y Mac."
+        },
+        "fr-FR": {
+          "name": "Tailscode Pro",
+          "description": "Serveurs illimités. Un achat pour iPhone et Mac."
+        },
+        "it": {
+          "name": "Tailscode Pro",
+          "description": "Server illimitati. Un acquisto per iPhone e Mac."
+        },
+        "ja": {
+          "name": "Tailscode Pro",
+          "description": "サーバー数無制限。一度の購入で iPhone と Mac に対応。"
+        },
+        "ko": {
+          "name": "Tailscode Pro",
+          "description": "서버 무제한. 한 번 구매로 iPhone과 Mac 사용."
+        },
+        "pl": {
+          "name": "Tailscode Pro",
+          "description": "Wiele serwerów i aktywności na żywo naraz."
+        },
+        "pt-BR": {
+          "name": "Tailscode Pro",
+          "description": "Servidores ilimitados. Uma compra para iPhone e Mac."
+        },
+        "zh-Hans": {
+          "name": "Tailscode Pro",
+          "description": "服务器不限。一次购买，iPhone 与 Mac 通用。"
+        },
+        "zh-Hant": {
+          "name": "Tailscode Pro",
+          "description": "伺服器無上限。一次購買，iPhone 與 Mac 通用。"
+        }
+      },
+      "reviewScreenshotMd5": "7badf4ca2e95ef816847f9d2c82c21f4"
+    },
+    {
+      "productId": "com.guitaripod.tailscode.tip.large",
+      "type": "CONSUMABLE",
+      "referenceName": "Tip Large",
+      "price": {
+        "territory": "USA",
+        "amount": "19.99"
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Lavish Tip",
+          "description": "You are the reason this app exists. Thank you!"
+        },
+        "pl": {
+          "name": "Suty napiwek",
+          "description": "Dzięki tobie ta aplikacja istnieje!"
+        }
+      },
+      "reviewScreenshotMd5": "7badf4ca2e95ef816847f9d2c82c21f4"
+    },
+    {
+      "productId": "com.guitaripod.tailscode.tip.medium",
+      "type": "CONSUMABLE",
+      "referenceName": "Tip Medium",
+      "price": {
+        "territory": "USA",
+        "amount": "9.99"
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Generous Tip",
+          "description": "Serious fuel for development. Thank you!"
+        },
+        "pl": {
+          "name": "Hojny napiwek",
+          "description": "Solidne paliwo do dalszej pracy. Dzięki!"
+        }
+      },
+      "reviewScreenshotMd5": "7badf4ca2e95ef816847f9d2c82c21f4"
+    },
+    {
+      "productId": "com.guitaripod.tailscode.tip.small",
+      "type": "CONSUMABLE",
+      "referenceName": "Tip Small",
+      "price": {
+        "territory": "USA",
+        "amount": "2.99"
+      },
+      "localizations": {
+        "en-US": {
+          "name": "Small Tip",
+          "description": "A coffee for the developer. Thank you!"
+        },
+        "pl": {
+          "name": "Mały napiwek",
+          "description": "Kawa dla twórcy aplikacji. Dzięki!"
+        }
+      },
+      "reviewScreenshotMd5": "7badf4ca2e95ef816847f9d2c82c21f4"
+    }
+  ]
+}
