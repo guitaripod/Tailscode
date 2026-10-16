@@ -302,20 +302,17 @@ extension SelfTest {
             Int(tailscode_live_ticks()) <= baseline, "a degraded face holds perfectly still and runs no clock")
         strip.dismiss()
 
-        let lines = [
-            VoiceCallLine(id: "u1", kind: .you, text: "can you run the tests", final: false),
-            VoiceCallLine(id: "v1", kind: .voice, text: "Okay, running the tests now.", final: true),
-        ]
+        let lines = [VoiceCallLine(id: "u1", kind: .you, text: "can you run the tests", final: false)]
         strip.apply(VoiceCallSnapshot(face: .hearing, lines: lines, startedAt: started), level: { 0 })
         try expect(
-            strip.report.contains("you=\"can you run the tests\"") && strip.report.contains("voice=\"Okay, running the tests now.\""),
-            "what you said and what the voice said are both on the strip")
+            strip.report.contains("you=\"can you run the tests\"") && !strip.report.contains("voice="),
+            "what you said is on the strip and the strip has no line for a voice")
         try expect(strip.report.contains("clock=\"1:0"), "the timer counts from the call's start")
         strip.setAgent(kind: .usingTool(name: "Bash", kind: .shell), text: "Working. Running a command.")
         try expect(strip.report.contains("agent=\"Working. Running a command.\""), "the agent's line is on the strip")
         let long = String(repeating: "a very long caption that must wrap and then be cut ", count: 12)
         strip.apply(
-            VoiceCallSnapshot(face: .speaking, lines: [VoiceCallLine(id: "v2", kind: .voice, text: long, final: true)], startedAt: started),
+            VoiceCallSnapshot(face: .hearing, lines: [VoiceCallLine(id: "u2", kind: .you, text: long, final: false)], startedAt: started),
             level: { 0.7 })
         try expect(gtk_widget_get_height(strip.widget) < 220 || !pump(0.2) { false }, "a long caption is held to two lines and never grows the strip without end")
 

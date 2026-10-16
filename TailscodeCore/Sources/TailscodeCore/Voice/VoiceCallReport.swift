@@ -8,6 +8,7 @@ public enum VoiceCallReport {
         var lines = [
             "Gateway: \(endpoint.address)",
             "Protocol: \(VoiceWire.version)",
+            "Mode: ear only, the model's speech is never played or shown",
             "Gateway state: \(state(reach))",
         ]
         if let version = reach.gateway { lines.append("Gateway version: \(version)") }

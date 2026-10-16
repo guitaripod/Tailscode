@@ -2,7 +2,7 @@ import CodingAgentKit
 import Foundation
 
 /// The scripted call a demo host gets. It speaks the same wire as the gateway, so the session, the
-/// faces and the captions are the real ones; only the machine is missing.
+/// faces and the lines it hears are the real ones; only the machine is missing.
 public enum VoiceDemo {
     public static let gatewayVersion = "demo"
     public static let modelName = "demo"
@@ -14,8 +14,8 @@ public enum VoiceDemo {
     }
 }
 
-/// One demo call's shared timeline: the transport, the microphone and the speaker all read the
-/// same anchor, so the level the person sees rise is the level of the line being played.
+/// One demo call's shared timeline: the transport and the microphone read the same anchor, so the
+/// level the person sees rise is the level of the line being heard.
 public final class VoiceDemoStage: @unchecked Sendable {
     public let clock: any VoiceClock
     public let transport: VoiceDemoTransport
@@ -27,7 +27,7 @@ public final class VoiceDemoStage: @unchecked Sendable {
         let timeline = VoiceDemoTimeline()
         self.transport = VoiceDemoTransport(clock: clock, timeline: timeline)
         self.capture = VoiceDemoCapture(clock: clock, timeline: timeline)
-        self.playback = VoiceDemoPlayback(clock: clock, timeline: timeline)
+        self.playback = VoiceDemoPlayback()
     }
 }
 
@@ -78,12 +78,7 @@ public final class VoiceDemoTransport: VoiceTransport, @unchecked Sendable {
                 for cue in VoiceDemoScript.cues(loop: loop) {
                     do { try await clock.sleep(for: max(0, cue.at - elapsed)) } catch { return }
                     elapsed = cue.at
-                    switch cue.step {
-                    case .frame(let message):
-                        if let text = try? VoiceCodec.encode(message) { continuation.yield(.text(text)) }
-                    case .silence:
-                        continuation.yield(.binary(Data(count: VoiceWire.preferredChunkBytes)))
-                    }
+                    if let text = try? VoiceCodec.encode(cue.message) { continuation.yield(.text(text)) }
                 }
                 do { try await clock.sleep(for: max(0, VoiceDemoScript.loopLength - elapsed)) } catch { return }
                 loop += 1
@@ -168,24 +163,16 @@ public final class VoiceDemoCapture: VoiceAudioCapture, @unchecked Sendable {
 }
 
 public final class VoiceDemoPlayback: VoiceAudioPlayback, @unchecked Sendable {
-    private let clock: any VoiceClock
-    private let timeline: VoiceDemoTimeline
     private let lock = NSLock()
     private var heard = 0
 
-    init(clock: any VoiceClock, timeline: VoiceDemoTimeline) {
-        self.clock = clock
-        self.timeline = timeline
-    }
+    init() {}
 
     public var chunksPlayed: Int {
         lock.withLock { heard }
     }
 
-    public var level: Double {
-        guard let elapsed = timeline.elapsed(at: clock.now()) else { return 0 }
-        return VoiceDemoScript.voiceLevel(at: elapsed)
-    }
+    public var level: Double { 0 }
 
     public func start() async throws {}
 

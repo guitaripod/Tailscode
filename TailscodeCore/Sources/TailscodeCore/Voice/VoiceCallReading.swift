@@ -13,12 +13,7 @@ public enum VoiceCallReading {
     public static var unmuteTooltip: String { Localized.text("Unmute the microphone") }
     public static var mutedNote: String { Localized.text("Microphone muted") }
     public static var youLabel: String { Localized.text("You") }
-    public static var voiceLabel: String { Localized.text("Voice") }
     public static var youPlaceholder: String { Localized.text("What you say shows here as it is heard") }
-    public static var voicePlaceholder: String { Localized.text("What the voice says shows here") }
-    public static var headphoneHint: String {
-        Localized.text("Use headphones so the voice does not hear itself and answer.")
-    }
     public static var agentFinished: String { Localized.text("The agent finished") }
     public static var reconnecting: String { Localized.text("Reconnecting the call…") }
     public static var sentNote: String { Localized.text("Sent to the agent") }
@@ -115,13 +110,13 @@ public enum VoiceCallReading {
 
     public static func tooltip(reach: VoiceReach, active: Bool) -> String {
         if active { return Localized.text("Hang up the call") }
-        if reach.canStart { return Localized.text("Talk to this chat out loud") }
+        if reach.canStart { return Localized.text("Speak to this chat and it types what you say") }
         return reach.line
     }
 
     public static func accessibility(reach: VoiceReach, active: Bool) -> String {
         if active { return Localized.text("Hang up the call") }
-        if reach.canStart { return Localized.text("Call this chat") }
+        if reach.canStart { return Localized.text("Call this chat. It types what you say") }
         return Localized.text("Call, unavailable. %@", reach.line)
     }
 

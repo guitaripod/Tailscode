@@ -8,6 +8,10 @@ import Foundation
 /// The session is the gateway's hands and ears on this device and nothing more. A `dispatch` goes
 /// through the app's own send path and is answered `sent` or `refused` by what that path says; the
 /// agent is never touched from here.
+///
+/// The call is ear only: the model on the other end listens and its speech is never played, shown or
+/// read as a state. `modelSpeaks` is the one place a model that talks again would be let back in,
+/// and no gateway earns it today.
 public actor VoiceCallSession {
     public static let reconnectBackoff: [TimeInterval] = [1, 2, 4]
     public static let debounce: TimeInterval = 0.25
@@ -29,6 +33,7 @@ public actor VoiceCallSession {
     private let stopTurn: @Sendable () async -> Void
     private let clock: any VoiceClock
     private let wallClock: @Sendable () -> Date
+    private let modelSpeaks: Bool
 
     private var connection = VoiceCallConnection.connecting
     private var phase = VoicePhase.connecting
@@ -62,7 +67,7 @@ public actor VoiceCallSession {
         title: String?, transport: any VoiceTransport, capture: any VoiceAudioCapture,
         playback: any VoiceAudioPlayback, send: @escaping @Sendable (String) async -> Bool,
         stopTurn: @escaping @Sendable () async -> Void, clock: any VoiceClock = SystemVoiceClock(),
-        wallClock: @escaping @Sendable () -> Date = { Date() }
+        wallClock: @escaping @Sendable () -> Date = { Date() }, modelSpeaks: Bool = false
     ) {
         self.endpoint = endpoint
         self.bearer = bearer
@@ -76,6 +81,7 @@ public actor VoiceCallSession {
         self.stopTurn = stopTurn
         self.clock = clock
         self.wallClock = wallClock
+        self.modelSpeaks = modelSpeaks
         let (stream, continuation) = AsyncStream<VoiceCallSnapshot>.makeStream(bufferingPolicy: .bufferingNewest(1))
         self.snapshots = stream
         self.output = continuation
@@ -192,7 +198,7 @@ public actor VoiceCallSession {
         guard !finishing, current == generation else { return }
         switch frame {
         case .binary(let pcm):
-            guard connection == .live, !voiceIsGated, phase != .hearing else { return }
+            guard modelSpeaks, connection == .live, !voiceIsGated, phase != .hearing else { return }
             await playback.play(pcm)
         case .text(let text):
             guard let message = try? VoiceCodec.decodeServer(text) else { return }
@@ -216,13 +222,14 @@ public actor VoiceCallSession {
             publish()
         case .phase(let next, _):
             if next == .hearing { await playback.flush() }
-            phase = next
+            phase = next == .speaking && !modelSpeaks ? .listening : next
             if next != .degraded { degradation = nil }
             publish()
         case .user(let id, let text, let final):
             upsertYou(id: id, text: text, final: final)
             publish()
         case .say(let text, let final):
+            guard modelSpeaks else { break }
             upsertVoice(text: text, final: final)
             publish()
         case .dispatch(let id, let text):

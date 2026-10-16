@@ -35,10 +35,11 @@ final class CallControlButton: SymbolChip {
 /// A live call, docked as a strip in the chat pane directly above the composer so the transcript
 /// stays fully visible above it and the person watches the agent work while talking. It is a state
 /// of the conversation rather than a window: the call's face with its word and a tabular timer, the
-/// last thing each side said, the agent's account wearing its own `ActivityKind` face, mute, hang
-/// up, and the beta mark. Every word is Core's.
+/// last thing the person said as it was heard, the agent's account wearing its own `ActivityKind`
+/// face, mute, hang up, and the beta mark. The voice model never speaks, so the strip has no line
+/// for it. Every word is Core's.
 ///
-/// Every part has one fixed height for as long as the state lasts. Captions and the account are one
+/// Every part has one fixed height for as long as the state lasts. The caption and the account are one
 /// line each and always present, with a placeholder where nothing has been said yet, so no frame of
 /// a call lays anything out; only a state change (live, ended) changes the strip's height, once.
 /// The strip sits on the pane's glass layer, so its inks are the system's, which glass flips and
@@ -69,8 +70,6 @@ final class CallStripView: NSView {
     private let settings = CallControlButton()
     private let youRole = NSTextField(labelWithString: VoiceCallReading.youLabel)
     private let youText = NSTextField(labelWithString: "")
-    private let voiceRole = NSTextField(labelWithString: VoiceCallReading.voiceLabel)
-    private let voiceText = NSTextField(labelWithString: "")
     private let captions = NSStackView()
     private let agentBadge = ActivityBadgeView(pointSize: 11)
     private let agentText = NSTextField(labelWithString: SpokenDigest.idle)
@@ -180,8 +179,8 @@ final class CallStripView: NSView {
     func restyle() {
         word.font = MacTheme.Ramp.font(.control)
         timer.font = MacTheme.Ramp.font(.statusLine)
-        for role in [youRole, voiceRole] { role.font = MacTheme.Ramp.font(.panelFootnote) }
-        for text in [youText, voiceText, agentText] { text.font = MacTheme.Ramp.font(.panelDetail) }
+        youRole.font = MacTheme.Ramp.font(.panelFootnote)
+        for text in [youText, agentText] { text.font = MacTheme.Ramp.font(.panelDetail) }
         noticeText.font = MacTheme.Ramp.font(.panelDetail)
         for chip in [mute, hangUp, settings] { chip.restyle() }
         face.restyle()
@@ -239,33 +238,18 @@ final class CallStripView: NSView {
     }
 
     private func buildCaptions() {
-        for role in [youRole, voiceRole] {
-            label(role, ink: NSColor.tertiaryLabelColor)
-            role.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-            role.setContentCompressionResistancePriority(.required, for: .horizontal)
-        }
-        voiceRole.widthAnchor.constraint(equalTo: youRole.widthAnchor).isActive = true
-        for text in [youText, voiceText] {
-            label(text, ink: MacTheme.Color.onGlass)
-            text.lineBreakMode = .byTruncatingHead
-            text.setContentCompressionResistancePriority(.init(250), for: .horizontal)
-            text.setContentHuggingPriority(.init(250), for: .horizontal)
-        }
-        let you = NSStackView(views: [youRole, youText])
-        let voice = NSStackView(views: [voiceRole, voiceText])
-        for row in [you, voice] {
-            row.orientation = .horizontal
-            row.alignment = .firstBaseline
-            row.spacing = MacTheme.Spacing.s
-            row.setClippingResistancePriority(.init(250), for: .horizontal)
-        }
-        captions.orientation = .vertical
-        captions.alignment = .leading
-        captions.spacing = 2
-        captions.setViews([you, voice], in: .leading)
-        for row in [you, voice] {
-            row.widthAnchor.constraint(equalTo: captions.widthAnchor).isActive = true
-        }
+        label(youRole, ink: NSColor.tertiaryLabelColor)
+        youRole.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        youRole.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label(youText, ink: MacTheme.Color.onGlass)
+        youText.lineBreakMode = .byTruncatingHead
+        youText.setContentCompressionResistancePriority(.init(250), for: .horizontal)
+        youText.setContentHuggingPriority(.init(250), for: .horizontal)
+        captions.orientation = .horizontal
+        captions.alignment = .firstBaseline
+        captions.spacing = MacTheme.Spacing.s
+        captions.setClippingResistancePriority(.init(250), for: .horizontal)
+        captions.setViews([youRole, youText], in: .leading)
         captions.setAccessibilityElement(true)
         captions.setAccessibilityRole(.group)
         paintCaptions([])
@@ -312,23 +296,16 @@ final class CallStripView: NSView {
         mute.setAccessibilitySelected(muted)
     }
 
-    /// A line's ink says whether it is final: the settled ink of its speaker, or the next register
-    /// down while it is still being heard, with an ellipsis after it so the difference is also a
-    /// shape. A side that has said nothing yet keeps its place with the placeholder, so the strip
-    /// never changes height as the first words arrive.
+    /// A line's ink says whether it is final: the settled ink, or the next register down while it is
+    /// still being heard, with an ellipsis after it so the difference is also a shape. Before
+    /// anything is heard the line keeps its place with the placeholder, so the strip never changes
+    /// height as the first words arrive.
     private func paintCaptions(_ lines: [VoiceCallLine]) {
         captionSource = lines
         let you = lines.last { $0.kind == .you }
-        let voice = lines.last { $0.kind == .voice }
         set(youText, line: you, placeholder: VoiceCallReading.youPlaceholder,
             settled: MacTheme.Color.onGlassSecondary, partial: NSColor.tertiaryLabelColor)
-        set(voiceText, line: voice, placeholder: VoiceCallReading.voicePlaceholder,
-            settled: MacTheme.Color.onGlass, partial: MacTheme.Color.onGlassSecondary)
-        let spoken = [
-            you.map { "\(VoiceCallReading.youLabel): \($0.text)" },
-            voice.map { "\(VoiceCallReading.voiceLabel): \($0.text)" },
-        ].compactMap { $0 }.joined(separator: ". ")
-        captions.setAccessibilityLabel(spoken)
+        captions.setAccessibilityLabel(you.map { "\(VoiceCallReading.youLabel): \($0.text)" })
     }
 
     private func set(

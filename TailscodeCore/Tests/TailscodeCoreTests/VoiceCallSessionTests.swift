@@ -69,9 +69,9 @@ struct VoiceCallSessionTests {
         #expect(await rig.snapshot().muted)
     }
 
-    @Test("The voice is played, and the moment the person speaks it is flushed and the tail dropped")
+    @Test("A model that speaks is played, and the moment the person speaks it is flushed and the tail dropped")
     func bargeIn() async {
-        let rig = VoiceRig()
+        let rig = VoiceRig(modelSpeaks: true)
         await rig.opened()
         rig.transport.emit(.phase(.speaking, at: 2))
         rig.transport.emit(audio: audio(1))
@@ -84,6 +84,24 @@ struct VoiceCallSessionTests {
         rig.transport.emit(audio: audio(3))
         #expect(await eventually { rig.playback.played.count == 2 })
         #expect(rig.playback.played.map { $0.first } == [1, 3])
+    }
+
+    @Test("An ear-only call never plays the model, never shows its words and never reads a phase of speaking")
+    func earOnly() async {
+        let rig = VoiceRig()
+        await rig.opened()
+        rig.transport.emit(.phase(.speaking, at: 2))
+        rig.transport.emit(audio: audio(1))
+        rig.transport.emit(.say(text: "I can run those tests for you.", final: false))
+        rig.transport.emit(.user(id: "u1", text: "run the tests", final: true))
+        #expect(await eventually { await rig.snapshot().lines.count == 1 })
+        let heard = await rig.snapshot()
+        #expect(heard.face == .listening)
+        #expect(heard.lines.map(\.kind) == [.you])
+        #expect(rig.playback.played.isEmpty)
+        await rig.session.update(agent: VoiceAgentSnapshot(busy: true, digest: "Working. Thinking.", turn: 1))
+        await rig.session.update(agent: VoiceAgentSnapshot(busy: false, digest: "Done. Fixed.", turn: 2))
+        #expect(await rig.snapshot().finishedChimes == 1)
     }
 
     @Test("A dispatch goes through the app's send path and is answered sent")
@@ -129,7 +147,7 @@ struct VoiceCallSessionTests {
 
     @Test("What was heard is kept as lines, a partial updated in place, and only the last six are held")
     func lines() async {
-        let rig = VoiceRig()
+        let rig = VoiceRig(modelSpeaks: true)
         await rig.opened()
         rig.transport.emit(.user(id: "u1", text: "run the", final: false))
         rig.transport.emit(.user(id: "u1", text: "run the tests", final: false))
@@ -155,7 +173,7 @@ struct VoiceCallSessionTests {
 
     @Test("A degraded voice stops playing and says why until it recovers")
     func degradedCycle() async {
-        let rig = VoiceRig()
+        let rig = VoiceRig(modelSpeaks: true)
         await rig.opened()
         rig.transport.emit(.phase(.speaking, at: 2))
         rig.transport.emit(.degraded(.runaway, recovering: true))
@@ -206,7 +224,7 @@ struct VoiceCallSessionTests {
 
     @Test("The agent finishing while the person is quiet is one chime; while the voice speaks it is none")
     func chime() async {
-        let rig = VoiceRig()
+        let rig = VoiceRig(modelSpeaks: true)
         await rig.opened()
         await rig.session.update(agent: VoiceAgentSnapshot(busy: true, digest: "Working. Thinking.", turn: 1))
         #expect(await rig.snapshot().face == .working)
@@ -334,7 +352,7 @@ struct VoiceCallSessionTests {
 
     @Test("Hanging up in the middle of a sentence leaves nothing playing and ignores the rest of it")
     func hangUpMidSpeech() async {
-        let rig = VoiceRig()
+        let rig = VoiceRig(modelSpeaks: true)
         await rig.opened()
         rig.transport.emit(.phase(.speaking, at: 2))
         rig.transport.emit(audio: audio(1))

@@ -423,7 +423,6 @@ enum MatrixTheme {
         .call-clock { \(t(.rowStamp)) color: \(textDim); }
         .call-role { \(t(.sectionLabel)) color: \(textDim); }
         .call-line-you { \(t(.panelDetail)) color: \(textDim); }
-        .call-line-voice { \(t(.panelLabel)) color: \(text); }
         .call-line-partial { font-style: italic; }
         .call-line-end { \(t(.panelDetail)) color: \(text); }
         .call-agent-glyph { \(t(.panelDetail)) }

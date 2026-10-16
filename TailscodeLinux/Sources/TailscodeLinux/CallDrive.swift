@@ -87,24 +87,18 @@ extension MainWindow {
         }
         let faces: [String: VoiceCallFace] = [
             "connecting": .connecting, "listening": .listening, "hearing": .hearing,
-            "speaking": .speaking, "working": .working, "degraded": .degraded(.runaway), "ended": .ended,
+            "working": .working, "degraded": .degraded(.runaway), "ended": .ended,
         ]
         guard let face = faces[name] else { return }
         let long = parts.contains("long")
         let you = long
             ? "can you look at why the reconnect test is flaky on the build machine and tell me whether it is the backoff or the jitter source that makes it fail only on Tuesdays"
             : "Can you run the tests and tell me what fails?"
-        let voice = long
-            ? "Okay, I will look at the reconnect test first. It fails only when the jitter source returns the same value twice in a row, which is why it looks like Tuesday. I am reading the suite now and will say what I find in a moment."
-            : "Okay, running the tests now."
         let degraded = face == .degraded(.runaway) ? VoiceCallDegradation(reason: .runaway, recovering: true) : nil
         let ended = face == .ended
         let snapshot = VoiceCallSnapshot(
             face: face,
-            lines: [
-                VoiceCallLine(id: "u", kind: .you, text: you, final: name != "hearing"),
-                VoiceCallLine(id: "v", kind: .voice, text: voice, final: name != "speaking"),
-            ],
+            lines: [VoiceCallLine(id: "u", kind: .you, text: you, final: name != "hearing")],
             startedAt: Date().addingTimeInterval(-754), degraded: degraded, muted: parts.contains("muted"),
             agentBusy: face == .working, end: ended ? .lost : nil,
             endLine: ended ? VoiceCallReading.end(.lost, client: .linux) : nil)
@@ -128,10 +122,9 @@ extension MainWindow {
         gtk_window_set_child(ptr(window), strip.widget)
         gtk_window_present(ptr(window))
         let snapshot = VoiceCallSnapshot(
-            face: .speaking,
+            face: .hearing,
             lines: [
-                VoiceCallLine(id: "u", kind: .you, text: "can you look at why the reconnect test is flaky on the build machine", final: true),
-                VoiceCallLine(id: "v", kind: .voice, text: "Okay, I will look at the reconnect test first. It fails only when the jitter source returns the same value twice.", final: false),
+                VoiceCallLine(id: "u", kind: .you, text: "can you look at why the reconnect test is flaky on the build machine", final: false)
             ],
             startedAt: Date().addingTimeInterval(-3725))
         strip.apply(snapshot, level: { 0.6 })

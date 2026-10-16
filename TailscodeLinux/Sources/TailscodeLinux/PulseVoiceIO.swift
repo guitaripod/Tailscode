@@ -65,7 +65,7 @@ enum PulseDevices {
         if let listing = run(["list", "short", kind]), let name = echoCancelled(in: listing) {
             return (name, "echo cancelled")
         }
-        return (nil, "the default, with no echo-cancel device found; headphones advised")
+        return (nil, "the default, with no echo-cancel device found")
     }
 
     private static func run(_ arguments: [String]) -> String? {

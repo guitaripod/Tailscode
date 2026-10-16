@@ -125,8 +125,9 @@ enum CallClock {
     }
 }
 
-/// The call, docked directly above the composer: the face, its word and a clock, what you said and
-/// what the voice said, the agent's own account, mute and hang up, and the beta mark at the edge.
+/// The call, docked directly above the composer: the face, its word and a clock, what you said as it
+/// was heard, the agent's own account, mute and hang up, and the beta mark at the edge. The voice
+/// model never speaks, so there is no line for it.
 /// The transcript stays fully visible above it, because the person is watching the agent work
 /// while they talk.
 ///
@@ -141,8 +142,6 @@ final class CallStripView: @unchecked Sendable {
     private let clockLabel = Gtk.label("", css: "call-clock", selectable: false)
     private let youRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let youText = Gtk.label("", css: "call-line-you", wrap: true, selectable: false)
-    private let voiceRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-    private let voiceText = Gtk.label("", css: "call-line-voice", wrap: true, selectable: false)
     private let endText = Gtk.label("", css: "call-line-end", wrap: true, selectable: false)
     private let agentRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let agentGlyph = Gtk.label("", css: "call-agent-glyph", selectable: false)
@@ -214,9 +213,7 @@ final class CallStripView: @unchecked Sendable {
         }
 
         Self.caption(youRow, role: VoiceCallReading.youLabel, text: youText)
-        Self.caption(voiceRow, role: VoiceCallReading.voiceLabel, text: voiceText)
         gtk_box_append(ptr(widget), youRow)
-        gtk_box_append(ptr(widget), voiceRow)
         gtk_label_set_lines(op(endText), 3)
         gtk_widget_set_visible(endText, 0)
         gtk_box_append(ptr(widget), endText)
@@ -251,7 +248,7 @@ final class CallStripView: @unchecked Sendable {
 
     var report: String {
         "shown=\(isShown) word=\"\(text(of: wordLabel))\" clock=\"\(text(of: clockLabel))\" "
-            + "you=\"\(text(of: youText))\" voice=\"\(text(of: voiceText))\" end=\"\(text(of: endText))\" "
+            + "you=\"\(text(of: youText))\" end=\"\(text(of: endText))\" "
             + "agent=\"\(text(of: agentText))\" muted=\(snapshot?.muted ?? false) \(face.reading)"
     }
 
@@ -282,9 +279,7 @@ final class CallStripView: @unchecked Sendable {
         tailscode_set_accessible_label(widget, next.spoken)
         let open = next.isOpen
         let you = next.lines.last { $0.kind == .you }
-        let voice = next.lines.last { $0.kind == .voice }
         Self.write(youRow, youText, you)
-        Self.write(voiceRow, voiceText, voice)
         if let note = next.endLine, !open {
             gtk_label_set_text(op(endText), next.end == .hungUp ? "" : note)
             gtk_widget_set_visible(endText, next.end == .hungUp ? 0 : 1)

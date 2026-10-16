@@ -271,7 +271,7 @@ struct VoiceRig {
     init(
         transport: FakeTransport = FakeTransport(), capture: FakeCapture = FakeCapture(),
         playback: FakePlayback = FakePlayback(), clock: ManualVoiceClock = ManualVoiceClock(),
-        title: String? = "Fix the parser"
+        title: String? = "Fix the parser", modelSpeaks: Bool = false
     ) {
         let prompts = Prompts()
         self.transport = transport
@@ -283,7 +283,7 @@ struct VoiceRig {
             endpoint: VoiceEndpoint(host: "box.tailnet.ts.net"), bearer: "secret", client: .linux,
             appVersion: "1.70", title: title, transport: transport, capture: capture,
             playback: playback, send: { prompts.send($0) }, stopTurn: { prompts.stop() }, clock: clock,
-            wallClock: { Date(timeIntervalSince1970: 1_000) })
+            wallClock: { Date(timeIntervalSince1970: 1_000) }, modelSpeaks: modelSpeaks)
         let recorder = Recorder()
         self.recorder = recorder
         watcher = recorder.watch(session.snapshots)

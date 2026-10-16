@@ -12,7 +12,8 @@ public enum VoiceCallConnection: Sendable, Equatable {
 /// The one picture of a call, the same on every desk. It is the gateway's phase, whether the agent
 /// is busy and whether the line is up, read down to seven faces that wear the vocabulary the rest
 /// of the app speaks: connecting sweeps, listening and working breathe, hearing is lit steady,
-/// speaking breathes with the voice's level, and degraded and ended hold perfectly still.
+/// and degraded and ended hold perfectly still. `speaking`, which breathes with a voice's level, is
+/// kept for a model that talks again; the session never reads it while the call is ear only.
 public enum VoiceCallFace: Sendable, Equatable {
     case connecting
     case listening

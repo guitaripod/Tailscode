@@ -12,14 +12,14 @@ struct CallNotice: Equatable {
 
 /// A live call, docked as a strip directly above the composer so the transcript stays fully visible
 /// above it and the person watches the agent work while talking. It is a state of the conversation
-/// rather than a screen: the call's face with its word and a tabular timer, the last thing each
-/// side said, the agent's account wearing its own `ActivityKind` face, mute, hang up, and the beta
-/// mark.
+/// rather than a screen: the call's face with its word and a tabular timer, the last thing the
+/// person said as it was heard, the agent's account wearing its own `ActivityKind` face, mute, hang
+/// up, and the beta mark. The voice model never speaks, so the strip has no line for it.
 ///
 /// On a screen with no height to spare (a phone on its side) the strip is its header alone: the face,
 /// the timer, mute and hang up, without the captions and the agent's account.
 ///
-/// Every part has one fixed height for as long as the state lasts. Captions and the account are one
+/// Every part has one fixed height for as long as the state lasts. The caption and the account are one
 /// line each and always present, with a placeholder where nothing has been said yet, so no frame of
 /// a call re-lays anything out; only a state change (live, ended) changes the strip's height, once.
 /// Every word is Core's.
@@ -45,8 +45,6 @@ final class CallDockView: UIView {
     private let settings = UIButton(type: .system)
     private let youRole = UILabel()
     private let youText = UILabel()
-    private let voiceRole = UILabel()
-    private let voiceText = UILabel()
     private let captions = UIStackView()
     private let agentBadge = ActivityBadgeView(pointSize: 12)
     private let agentText = UILabel()
@@ -198,34 +196,22 @@ final class CallDockView: UIView {
 
     private func buildCaptions() {
         youRole.text = VoiceCallReading.youLabel
-        voiceRole.text = VoiceCallReading.voiceLabel
-        for role in [youRole, voiceRole] {
-            role.font = Theme.Ramp.font(.panelFootnote)
-            role.textColor = Theme.Color.tertiaryLabel
-            role.adjustsFontForContentSizeCategory = true
-            role.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-            role.setContentCompressionResistancePriority(.required, for: .horizontal)
-            role.isAccessibilityElement = false
-        }
-        voiceRole.widthAnchor.constraint(equalTo: youRole.widthAnchor).isActive = true
-        for text in [youText, voiceText] {
-            text.font = Theme.Ramp.font(.panelDetail)
-            text.adjustsFontForContentSizeCategory = true
-            text.numberOfLines = 1
-            text.lineBreakMode = .byTruncatingHead
-            text.isAccessibilityElement = false
-        }
-        let you = UIStackView(arrangedSubviews: [youRole, youText])
-        let voice = UIStackView(arrangedSubviews: [voiceRole, voiceText])
-        for row in [you, voice] {
-            row.axis = .horizontal
-            row.alignment = .firstBaseline
-            row.spacing = Theme.Spacing.s
-        }
-        captions.axis = .vertical
-        captions.spacing = 2
-        captions.addArrangedSubview(you)
-        captions.addArrangedSubview(voice)
+        youRole.font = Theme.Ramp.font(.panelFootnote)
+        youRole.textColor = Theme.Color.tertiaryLabel
+        youRole.adjustsFontForContentSizeCategory = true
+        youRole.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        youRole.setContentCompressionResistancePriority(.required, for: .horizontal)
+        youRole.isAccessibilityElement = false
+        youText.font = Theme.Ramp.font(.panelDetail)
+        youText.adjustsFontForContentSizeCategory = true
+        youText.numberOfLines = 1
+        youText.lineBreakMode = .byTruncatingHead
+        youText.isAccessibilityElement = false
+        captions.axis = .horizontal
+        captions.alignment = .firstBaseline
+        captions.spacing = Theme.Spacing.s
+        captions.addArrangedSubview(youRole)
+        captions.addArrangedSubview(youText)
         captions.isAccessibilityElement = true
         captions.accessibilityTraits = .updatesFrequently
         paintCaptions([])
@@ -281,20 +267,14 @@ final class CallDockView: UIView {
 
     private func paintCaptions(_ lines: [VoiceCallLine]) {
         let you = lines.last { $0.kind == .you }
-        let voice = lines.last { $0.kind == .voice }
         set(youText, line: you, placeholder: VoiceCallReading.youPlaceholder, settled: Theme.Color.secondaryLabel,
             partial: Theme.Color.tertiaryLabel)
-        set(voiceText, line: voice, placeholder: VoiceCallReading.voicePlaceholder, settled: Theme.Color.label,
-            partial: Theme.Color.secondaryLabel)
-        captions.accessibilityLabel = [
-            you.map { "\(VoiceCallReading.youLabel): \($0.text)" },
-            voice.map { "\(VoiceCallReading.voiceLabel): \($0.text)" },
-        ].compactMap { $0 }.joined(separator: ". ")
+        captions.accessibilityLabel = you.map { "\(VoiceCallReading.youLabel): \($0.text)" }
     }
 
-    /// A line's ink says whether it is final: the settled ink of its speaker, or the next register
-    /// down while it is still being heard. A side that has said nothing yet keeps its place with
-    /// the placeholder, so the strip never changes height as the first words arrive.
+    /// A line's ink says whether it is final: the settled ink, or the next register down while it is
+    /// still being heard. Before anything is heard the line keeps its place with the placeholder, so
+    /// the strip never changes height as the first words arrive.
     private func set(
         _ label: UILabel, line: VoiceCallLine?, placeholder: String, settled: UIColor, partial: UIColor
     ) {
