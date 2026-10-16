@@ -112,6 +112,48 @@ The install command downloads a prebuilt binary and needs no toolchain; a machin
 not fit builds from source with the old script. When the install finishes it checks `tailscale`, the
 agent CLI and its sign-in, prints the pairing link and QR, and says what is left in plain words.
 
+### First run on each client
+
+Core owns it: `FirstRunPlan` is the rows and every word, `FirstRunFlow` is the state behind them
+(probe, the key held back until Connect, save, Claude's sign-in), and `ConnectLink` /
+`ConnectLinkPlan` read a pairing link. A client draws the plan and wires each intent to its own
+door; it writes no sentence of its own, so the three clients cannot drift.
+
+- **The rows**, in order: Tailscale on this device, your machine, connected. The machine row offers
+  three ways in: scan the code the computer printed (phones only), open or paste a link, and "I
+  don't have a machine set up yet", which shows the one install command and waits. A fourth, quiet
+  way looks for a machine that already runs an agent on the tailnet. An address typed or pasted
+  works exactly as before.
+- **No password where the machine trusts the tailnet.** `BridgeInstall.needsPassword`: claude-bridge
+  from 1.7.2 admits a node signed into the same Tailscale account (`BRIDGE_TAILNET_AUTH=same-user`),
+  so its command carries none and first run shows no password field. omp-bridge 0.8 and opencode
+  have no such gate, so they keep the password step exactly as before: minted, put in the command,
+  filled in when the command is copied or sent.
+- **A link only prefills.** First run pre-selects the agent, fills host and port and probes at
+  once. The `key` a link may carry is held back until the person presses Connect (it is never sent
+  to the host and never logged before that). A host that cannot be on a tailnet says so and is not
+  tried until the person goes on. A link for a server already added opens that server; a link that
+  arrives when servers exist asks "Add this machine?" first.
+- **Claude's sign-in is read right after the save.** Signed out opens the existing sign-in inside
+  first run; a bridge too old to say is not called signed out.
+
+What only a real device shows, and was therefore not seen:
+
+- **iPhone:** the camera scan (permission prompt, denied state, a code held at an angle), the
+  share sheet for "Send these steps to my computer", a `tailscode://connect` link opened from
+  Messages, Notes or AirDrop, cold and warm (the sheet, the duplicate toast, the damaged-link
+  alert), and the Claude sign-in handing over to Safari and back. The app never reads the
+  pasteboard on its own: the system paste control hands over what the person chose.
+- **Mac:** `application(_:open:)` for a link opened from outside (the `tailscode` scheme is
+  registered for both the direct and the Store build), the clipboard offer on window focus (macOS
+  may ask permission to read it), and the sandboxed Store build's "cannot see it" Tailscale row.
+- **Linux:** the harness shows every state (`TAILSCODE_DRIVE` verbs `openlink`, `frpaste`,
+  `frchoose`, `frconfirm`, `frconnect`, `fragent`, `frhanded`; `TAILSCODE_FAKE_TAILNET=up|down` in
+  a debug build). A desktop's handler registration is what is not seen there: with the `.desktop`
+  entry installed (`MimeType=x-scheme-handler/tailscode;`, `Exec=tailscode %u`), `xdg-open
+  'tailscode://connect?…'` and `tailscode --connect '<link>'` must reach the window that is already
+  running rather than start a second one.
+
 ## Testing
 
 - `SetupKit` and `PairingKit`: golden JSON, round trips, QR against known vectors, link parsing
