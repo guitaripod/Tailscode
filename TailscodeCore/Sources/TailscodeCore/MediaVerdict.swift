@@ -245,7 +245,7 @@ public enum MediaHost {
                     || address.pointee.sa_family == sa_family_t(AF_INET6),
                     getnameinfo(address, size, &buffer, socklen_t(buffer.count), nil, 0, NI_NUMERICHOST) == 0
                 {
-                    found.insert(String(cString: buffer).lowercased())
+                    found.insert(String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self).lowercased())
                 }
             }
             cursor = entry.pointee.ifa_next
