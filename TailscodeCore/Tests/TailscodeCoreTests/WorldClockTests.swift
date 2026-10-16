@@ -469,6 +469,58 @@ struct WorldClockTests {
         #expect(book.next?.fireAt == now.addingTimeInterval(3600))
     }
 
+    @Test("Places are listed by their clock, never include here or what is pinned")
+    func placeRows() {
+        let now = instant("2026-10-16T14:07:30+03:00")
+        let prefs = WorldClockPreferences(pins: ["tokyo"], style: .h24)
+        let found = MeridianPlaces.results(
+            for: "to", preferences: prefs, viewer: Self.helsinki, now: now)
+        #expect(!found.contains { $0.id == "tokyo" })
+        let toronto = found.first { $0.id == "toronto" }
+        #expect(toronto?.time == "07:07")
+        #expect(toronto?.offset == "\u{2212}7 h")
+        #expect(toronto?.detail == "Canada \u{00B7} UTC\u{2212}4")
+        #expect(toronto?.dayWord == "today")
+        #expect(
+            !MeridianPlaces.results(for: "helsinki", preferences: prefs, viewer: Self.helsinki, now: now)
+                .contains { $0.id == "helsinki" })
+        #expect(
+            MeridianPlaces.results(for: "zzzz", preferences: prefs, viewer: Self.helsinki, now: now)
+                .isEmpty)
+        #expect(
+            MeridianPlaces.emptyResult(for: "zzzz") == "No place matches \u{201C}zzzz\u{201D}")
+    }
+
+    @Test("Suggestions are the popular places that are not already held")
+    func placeSuggestions() {
+        let now = instant("2026-10-16T14:07:30+03:00")
+        let prefs = WorldClockPreferences(pins: ["london"], style: .h24)
+        let offered = MeridianPlaces.suggestions(preferences: prefs, viewer: Self.helsinki, now: now)
+        #expect(offered.map(\.id) == ["new-york", "san-francisco", "tokyo", "berlin", "sydney", "singapore"])
+        let atHome = MeridianPlaces.suggestions(
+            preferences: .default, viewer: TimeZone(identifier: "Asia/Tokyo")!, now: now)
+        #expect(!atHome.contains { $0.id == "tokyo" })
+    }
+
+    @Test("The list says how full it is and what to do about it")
+    func placesStatus() {
+        var prefs = WorldClockPreferences()
+        #expect(MeridianPlaces.status(prefs).summary == "0 of 8 places")
+        #expect(MeridianPlaces.status(prefs).invitation == "Add a place")
+        for id in WorldCities.all.map(\.id) { prefs.pin(id) }
+        let full = MeridianPlaces.status(prefs)
+        #expect(full.isFull && full.summary == "8 of 8 places")
+        #expect(full.placeholder == "Remove a place to add another")
+    }
+
+    @Test("Each time format shows what it would write")
+    func styleExamples() {
+        let at = instant("2026-10-16T14:07:00+03:00")
+        #expect(ClockStyle.h24.example(at: at, in: Self.helsinki) == "14:07")
+        #expect(ClockStyle.h12.example(at: at, in: Self.helsinki) == "2:07 PM")
+        #expect(["24-hour", "12-hour"].contains(ClockStyle.systemDescription()))
+    }
+
     @Test("Every capability, including the clock, has a spec")
     func registered() {
         #expect(CapabilityRegistry.missingDefinitions.isEmpty)

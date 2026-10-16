@@ -63,7 +63,7 @@ final class ClockGlanceViewController: NSViewController {
         }
         add(header())
         add(
-            RowKit.label(
+            Self.plain(
                 reading.zoneLine, font: MacTheme.Ramp.font(.panelDetail),
                 color: MacTheme.Color.secondaryLabel),
             before: 2)
@@ -90,7 +90,7 @@ final class ClockGlanceViewController: NSViewController {
         }
         add(rule(), before: MacTheme.Spacing.m)
         add(
-            RowKit.label(
+            Self.plain(
                 reading.hint, font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.secondaryLabel),
             before: MacTheme.Spacing.s)
@@ -108,9 +108,9 @@ final class ClockGlanceViewController: NSViewController {
     }
 
     private func header() -> NSView {
-        let date = RowKit.label(
+        let date = Self.plain(
             reading.dateLine, font: MacTheme.Ramp.font(.panelTitle), color: MacTheme.Color.label)
-        let week = RowKit.label(
+        let week = Self.plain(
             reading.weekLine, font: MacTheme.Ramp.font(.panelDetail),
             color: MacTheme.Color.secondaryLabel)
         week.setContentHuggingPriority(.required, for: .horizontal)
@@ -142,9 +142,9 @@ final class ClockGlanceViewController: NSViewController {
     private func zoneRow(_ zone: WorldClockReading.Zone) -> NSView {
         let row = NSView()
         row.translatesAutoresizingMaskIntoConstraints = false
-        let name = RowKit.label(
+        let name = Self.plain(
             zone.name, font: MacTheme.Ramp.font(.rowTitleStrong), color: MacTheme.Color.label)
-        let detail = RowKit.label(
+        let detail = Self.plain(
             zone.detail, font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.secondaryLabel)
         let names = FillingStack(topDown: true, stretches: false)
@@ -153,13 +153,13 @@ final class ClockGlanceViewController: NSViewController {
         names.spacing = 0
         let strip = DaylightStripView()
         strip.apply(bar: zone.bar, marker: zone.marker, isUp: zone.isUp)
-        let time = RowKit.label(
+        let time = Self.plain(
             zone.time, font: MacTheme.Ramp.font(.statusLine), color: MacTheme.Color.label)
         time.alignment = .right
         time.setContentCompressionResistancePriority(.required, for: .horizontal)
         time.setContentHuggingPriority(.required, for: .horizontal)
         for view in [names, strip, time] { row.addSubview(view) }
-        let nameWidth = names.widthAnchor.constraint(equalToConstant: 112 * MacTheme.UIScale.factor)
+        let nameWidth = names.widthAnchor.constraint(equalToConstant: zoneNameWidth)
         NSLayoutConstraint.activate([
             row.heightAnchor.constraint(equalToConstant: 38),
             names.leadingAnchor.constraint(equalTo: row.leadingAnchor),
@@ -179,26 +179,17 @@ final class ClockGlanceViewController: NSViewController {
     }
 
     private func suggestions() -> NSView {
-        let label = RowKit.label(
+        let label = Self.plain(
             Localized.text("Add a city"), font: MacTheme.Ramp.font(.panelDetail),
             color: MacTheme.Color.secondaryLabel)
-        var chips: [NSView] = []
-        for city in reading.suggestions {
-            let chip = SymbolChip()
-            chip.text = city.name
-            chip.onTap = { WorldClockStore.update { $0.pin(city.id) } }
-            chip.setAccessibilityLabel(Localized.text("Add %@", city.name))
-            chips.append(chip)
-        }
-        chips.append(RowKit.spacer())
-        let row = NSStackView(views: chips)
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = MacTheme.Spacing.s
-        row.translatesAutoresizingMaskIntoConstraints = false
+        let flow = MeridianFlowView()
+        flow.set(
+            leading: reading.suggestions.map { city in
+                MeridianTextChip(text: city.name) { WorldClockStore.update { $0.pin(city.id) } }
+            })
         let column = FillingStack(topDown: true)
         column.addArrangedSubview(label)
-        column.addArrangedSubview(row)
+        column.addArrangedSubview(flow)
         column.spacing = MacTheme.Spacing.xs + 2
         return column
     }
@@ -210,13 +201,13 @@ final class ClockGlanceViewController: NSViewController {
             dot.widthAnchor.constraint(equalToConstant: 7),
             dot.heightAnchor.constraint(equalToConstant: 7),
         ])
-        let name = RowKit.label(
+        let name = Self.plain(
             machine.name, font: MacTheme.Ramp.font(.rowTitleStrong), color: MacTheme.Color.label)
-        let status = RowKit.label(
+        let status = Self.plain(
             machine.status, font: MacTheme.Ramp.font(.panelDetail), color: tone)
         status.setContentCompressionResistancePriority(.required, for: .horizontal)
         status.setContentHuggingPriority(.required, for: .horizontal)
-        let time = RowKit.label(
+        let time = Self.plain(
             machine.time ?? "", font: MacTheme.Ramp.font(.statusLine), color: MacTheme.Color.label)
         time.alignment = .right
         time.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -264,16 +255,16 @@ final class ClockGlanceViewController: NSViewController {
             icon.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
             icon.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
         ])
-        let title = RowKit.label(
+        let title = Self.plain(
             reset.title(viewer: MeridianFeed.shared.viewer, style: MeridianFeed.shared.preferences.style),
             font: MacTheme.Ramp.font(.rowTitleStrong), color: MacTheme.Color.label)
-        let note = RowKit.label(
+        let note = Self.plain(
             reset.note, font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.secondaryLabel)
         let text = FillingStack(topDown: true, stretches: false)
         [title, note].forEach { text.addArrangedSubview($0) }
         text.spacing = 0
-        let countdown = RowKit.label(
+        let countdown = Self.plain(
             reset.countdown(now: MeridianFeed.shared.now), font: MacTheme.Ramp.font(.metricValue),
             color: MacTheme.Color.accent)
         countdown.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -286,6 +277,28 @@ final class ClockGlanceViewController: NSViewController {
         row.setAccessibilityElement(true)
         row.setAccessibilityLabel("\(title.stringValue), \(countdown.stringValue)")
         return row
+    }
+
+    static func plain(_ text: String, font: NSFont, color: NSColor) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.font = font
+        field.textColor = color
+        field.lineBreakMode = .byClipping
+        field.maximumNumberOfLines = 1
+        field.isSelectable = false
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        field.setContentHuggingPriority(.required, for: .horizontal)
+        return field
+    }
+
+    private var zoneNameWidth: CGFloat {
+        let widest = reading.zones.map {
+            max(
+                MeridianLabel.width(of: $0.name, role: .rowTitleStrong),
+                MeridianLabel.width(of: $0.detail, role: .panelFootnote))
+        }.max() ?? 0
+        return min(widest, rowWidth * 0.5)
     }
 
     static func color(_ tone: ClockTone) -> NSColor {

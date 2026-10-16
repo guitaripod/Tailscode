@@ -330,3 +330,311 @@ final class SkyGlyphView: NSView {
         return cut
     }
 }
+
+/// The labels Meridian is made of. None of them ellipsizes: a one-line label is as wide as its own
+/// words measure at the type size in force and says so to Auto Layout, and a label that may need
+/// more room wraps. Which is why a larger type scale makes a larger sheet rather than a shortened
+/// one.
+@MainActor
+enum MeridianLabel {
+    static func make(
+        _ text: String, role: TypeRole, color: NSColor = MacTheme.Color.label,
+        alignment: NSTextAlignment = .natural
+    ) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.font = MacTheme.Ramp.font(role)
+        field.textColor = color
+        field.alignment = alignment
+        field.lineBreakMode = .byClipping
+        field.maximumNumberOfLines = 1
+        field.isSelectable = false
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        field.setContentHuggingPriority(.required, for: .horizontal)
+        return field
+    }
+
+    static func framed(
+        _ role: TypeRole, color: NSColor = MacTheme.Color.label, alignment: NSTextAlignment = .natural
+    ) -> NSTextField {
+        let field = make("", role: role, color: color, alignment: alignment)
+        field.translatesAutoresizingMaskIntoConstraints = true
+        return field
+    }
+
+    static func wrapping(_ text: String, role: TypeRole, color: NSColor = MacTheme.Color.label)
+        -> MeridianWrapLabel
+    {
+        let field = MeridianWrapLabel(wrappingLabelWithString: text)
+        field.font = MacTheme.Ramp.font(role)
+        field.textColor = color
+        field.isSelectable = false
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return field
+    }
+
+    static func width(of text: String, role: TypeRole) -> CGFloat {
+        let size = NSAttributedString(
+            string: text, attributes: [.font: MacTheme.Ramp.font(role)]
+        ).size()
+        return ceil(size.width) + 4
+    }
+
+    static func height(of role: TypeRole) -> CGFloat {
+        let font = MacTheme.Ramp.font(role)
+        return ceil(font.ascender - font.descender + font.leading) + 2
+    }
+
+    static func height(wrapping text: String, role: TypeRole, width: CGFloat) -> CGFloat {
+        guard width > 0 else { return height(of: role) }
+        let box = NSAttributedString(
+            string: text, attributes: [.font: MacTheme.Ramp.font(role)]
+        ).boundingRect(
+            with: NSSize(width: max(0, width - 4), height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading])
+        return ceil(box.height) + 2
+    }
+}
+
+/// A wrapping label that tells Auto Layout how tall its words are once it knows how wide it is, which
+/// a bare text field only learns on a second pass the sheet's stack does not give it.
+@MainActor
+final class MeridianWrapLabel: NSTextField {
+    override func layout() {
+        super.layout()
+        guard preferredMaxLayoutWidth != bounds.width else { return }
+        preferredMaxLayoutWidth = bounds.width
+        invalidateIntrinsicContentSize()
+    }
+}
+
+/// Views laid out left to right and wrapped onto further rows when the width runs out, with a
+/// trailing group pushed to the right edge of the last row (or onto a row of its own when it does not
+/// fit beside the rest). It is how the sheet's footer, the machines and the alarms stay whole at any
+/// type size and any window width: what does not fit goes down a row, never into an ellipsis.
+@MainActor
+final class MeridianFlowView: NSView {
+    var spacing: CGFloat = MacTheme.Spacing.s
+    var rowSpacing: CGFloat = MacTheme.Spacing.s
+
+    private(set) var leading: [NSView] = []
+    private(set) var trailing: [NSView] = []
+    private var measuredHeight: CGFloat = 0
+    private var laidOutWidth: CGFloat = -1
+
+    override var isFlipped: Bool { true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func set(leading: [NSView], trailing: [NSView] = []) {
+        (self.leading + self.trailing).forEach { $0.removeFromSuperview() }
+        self.leading = leading
+        self.trailing = trailing
+        for view in leading + trailing {
+            view.translatesAutoresizingMaskIntoConstraints = true
+            addSubview(view)
+        }
+        laidOutWidth = -1
+        measuredHeight = plan(width: .greatestFiniteMagnitude).height
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: measuredHeight)
+    }
+
+    var widestItem: CGFloat {
+        (leading + trailing).filter { !$0.isHidden }.map { size(of: $0).width }.max() ?? 0
+    }
+
+    private func size(of view: NSView) -> CGSize {
+        let natural = view.intrinsicContentSize
+        if natural.width >= 0, natural.height >= 0 { return CGSize(width: ceil(natural.width), height: ceil(natural.height)) }
+        let fitting = view.fittingSize
+        return CGSize(width: ceil(fitting.width), height: ceil(fitting.height))
+    }
+
+    private func plan(width: CGFloat) -> (frames: [(NSView, CGRect)], height: CGFloat) {
+        var rows: [[(NSView, CGSize, Bool)]] = []
+        var used: [CGFloat] = []
+        for view in leading where !view.isHidden {
+            let size = size(of: view)
+            if var last = rows.last, let lastUsed = used.last,
+                lastUsed + (last.isEmpty ? 0 : spacing) + size.width <= width
+            {
+                last.append((view, size, false))
+                rows[rows.count - 1] = last
+                used[used.count - 1] = lastUsed + (last.count > 1 ? spacing : 0) + size.width
+            } else {
+                rows.append([(view, size, false)])
+                used.append(size.width)
+            }
+        }
+        let tail = trailing.filter { !$0.isHidden }.map { ($0, size(of: $0), true) }
+        if !tail.isEmpty {
+            let block = tail.map(\.1.width).reduce(0, +) + spacing * CGFloat(tail.count - 1)
+            if let lastUsed = used.last, lastUsed + spacing + block <= width {
+                rows[rows.count - 1] += tail
+            } else {
+                rows.append(tail)
+                used.append(block)
+            }
+        }
+        var frames: [(NSView, CGRect)] = []
+        var y: CGFloat = 0
+        for (index, row) in rows.enumerated() {
+            let height = row.map(\.1.height).max() ?? 0
+            let head = row.filter { !$0.2 }
+            let tailItems = row.filter { $0.2 }
+            var x: CGFloat = 0
+            for (view, size, _) in head {
+                frames.append((view, CGRect(x: x, y: y + (height - size.height) / 2, width: size.width, height: size.height)))
+                x += size.width + spacing
+            }
+            let block = tailItems.map(\.1.width).reduce(0, +) + spacing * CGFloat(max(0, tailItems.count - 1))
+            var tx = (width.isFinite && width < 100_000 ? width : x + block) - block
+            for (view, size, _) in tailItems {
+                frames.append((view, CGRect(x: tx, y: y + (height - size.height) / 2, width: size.width, height: size.height)))
+                tx += size.width + spacing
+            }
+            y += height + (index == rows.count - 1 ? 0 : rowSpacing)
+        }
+        return (frames, y)
+    }
+
+    override func layout() {
+        super.layout()
+        let result = plan(width: bounds.width)
+        for (view, frame) in result.frames { view.frame = frame }
+        laidOutWidth = bounds.width
+        if abs(result.height - measuredHeight) > 0.5 {
+            measuredHeight = result.height
+            invalidateIntrinsicContentSize()
+        }
+    }
+}
+
+/// A small borderless symbol button that can be reached by Tab and says when it has focus, so the
+/// controls on a lane that appear for a resting pointer appear for the keyboard too.
+@MainActor
+final class MeridianIconButton: NSButton {
+    var onFocusChange: ((Bool) -> Void)?
+    private var handler: () -> Void
+    static let side: CGFloat = 22
+
+    init(symbol: String, label: String, action: @escaping () -> Void) {
+        handler = action
+        super.init(frame: .zero)
+        isBordered = false
+        bezelStyle = .regularSquare
+        imagePosition = .imageOnly
+        image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        contentTintColor = MacTheme.Color.secondaryLabel
+        target = self
+        self.action = #selector(fire)
+        toolTip = label
+        setAccessibilityLabel(label)
+        setAccessibilityRole(.button)
+        translatesAutoresizingMaskIntoConstraints = true
+        HoverPlate.attach(to: self, placement: .over, radius: 6)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: Self.side, height: Self.side) }
+
+    override var acceptsFirstResponder: Bool { isEnabled && alphaValue > 0 }
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted { onFocusChange?(true) }
+        return accepted
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { onFocusChange?(false) }
+        return resigned
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        alphaValue > 0 ? super.hitTest(point) : nil
+    }
+
+    func relabel(_ label: String) {
+        toolTip = label
+        setAccessibilityLabel(label)
+    }
+
+    @objc private func fire() { handler() }
+}
+
+/// A small capsule that says one thing and does one thing when pressed: a city the glance offers to
+/// pin. Its words are as wide as they measure, so no name is ever cut.
+@MainActor
+final class MeridianTextChip: NSControl {
+    private let ground = TintView(
+        fill: { MacTheme.Color.canvasRaised }, stroke: { MacTheme.Color.separator })
+    private let label: NSTextField
+    private var handler: () -> Void
+
+    init(text: String, action: @escaping () -> Void) {
+        handler = action
+        label = MeridianLabel.framed(.chip)
+        super.init(frame: .zero)
+        label.stringValue = text
+        ground.translatesAutoresizingMaskIntoConstraints = true
+        addSubview(ground)
+        addSubview(label)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(Localized.text("Add %@", text))
+        HoverPlate.attach(to: self, placement: .over, radius: intrinsicContentSize.height / 2)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override var intrinsicContentSize: NSSize {
+        let size = MeridianMetrics.fit(label)
+        return NSSize(width: size.width + 20, height: max(24, size.height + 8))
+    }
+
+    override func layout() {
+        super.layout()
+        ground.frame = bounds
+        let size = MeridianMetrics.fit(label)
+        label.frame = CGRect(x: 10, y: (bounds.height - size.height) / 2, width: size.width, height: size.height)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { handler() }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        switch event.charactersIgnoringModifiers {
+        case " ", "\r", "\u{3}": handler()
+        default: super.keyDown(with: event)
+        }
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        handler()
+        return true
+    }
+}

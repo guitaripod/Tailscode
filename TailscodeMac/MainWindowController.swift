@@ -1065,8 +1065,15 @@ final class MainWindowController: NSWindowController {
             if window?.isVisible != true { showWindow(nil) }
             if let window {
                 MeridianSheetController.shared.present(in: window)
-                if parts.count > 1, let minute = Int(parts[1]) {
-                    MeridianSheetController.shared.content.scrub(to: minute, animated: false)
+                let content = MeridianSheetController.shared.content
+                for item in parts.count > 1 ? parts[1].split(separator: "+") : [] {
+                    if let minute = Int(item) {
+                        content.scrub(to: minute, animated: false)
+                    } else if item == "add" {
+                        content.addPlace.open(focusing: false)
+                    } else if item.hasPrefix("q=") {
+                        content.addPlace.setQuery(String(item.dropFirst(2)))
+                    }
                 }
             }
         case "delegate": presentDelegate()
@@ -1084,7 +1091,7 @@ final class MainWindowController: NSWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], clock-glance, clock-sheet[:minute], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
+                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], clock-glance, clock-sheet[:minute+add+q=text], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
         }
     }
 

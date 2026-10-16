@@ -313,8 +313,8 @@ static void strip_marks(GtkWidget *widget, cairo_t *cr, Strip *self, double widt
 
 static void strip_draw(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
     Strip *self = raw;
-    double top = (height - self->strip_height) / 2.0;
-    double strip = self->strip_height;
+    double strip = self->strip_height > 0 ? self->strip_height : height;
+    double top = (height - strip) / 2.0;
     cairo_save(cr);
     rounded(cr, 0, top, width, strip, self->radius);
     cairo_clip(cr);
@@ -489,7 +489,7 @@ static void lines_draw(GtkDrawingArea *area, cairo_t *cr, int width, int height,
             int text_width = 0, text_height = 0;
             PangoLayout *layout = text_layout(GTK_WIDGET(area), self->label, &text_width, &text_height);
             paint(cr, self->ink, INK_ACCENT, 0.95);
-            cairo_move_to(cr, x + MAX(6.0, (w - text_width) / 2), 1);
+            cairo_move_to(cr, x + MAX(6.0, (w - text_width) / 2), height - text_height - 2);
             pango_cairo_show_layout(cr, layout);
             g_object_unref(layout);
         }
@@ -710,4 +710,21 @@ void tailscode_scrubber_set_handler(GtkWidget *area, TailscodeMeridianHandler ha
     if (!self) return;
     self->handler = handler;
     self->data = data;
+}
+
+void tailscode_ticks_measure(GtkWidget *area, int *width, int *height) {
+    Ticks *self = g_object_get_data(G_OBJECT(area), "tailscode-ticks");
+    int widest = 0, tallest = 0;
+    if (self) {
+        for (int index = 0; index < self->count; index++) {
+            int text_width = 0, text_height = 0;
+            PangoLayout *layout = text_layout(area, self->labels[index], &text_width, &text_height);
+            widest = MAX(widest, text_width);
+            tallest = MAX(tallest, text_height);
+            g_object_unref(layout);
+        }
+    }
+    int count = self ? self->count : 0;
+    *width = count > 0 ? (count - 1) * (widest + 16) + widest : 0;
+    *height = tallest + 4;
 }

@@ -38,7 +38,7 @@ enum ClockCSS {
         .clock-dim { \(t(.panelDetail)) color: \(dim); }
         .clock-name { \(t(.rowTitleStrong)) color: \(text); }
         .clock-section { \(t(.sectionLabel)) color: \(dim); }
-        .clock-time { \(t(.statusLine)) font-size: 0.9rem; color: \(text); }
+        .clock-time { \(t(.metricValue)) font-family: monospace; font-weight: 500; color: \(text); }
         .clock-stamp { \(t(.rowStamp)) color: \(text); }
         .clock-status { \(t(.panelDetail)) font-weight: 600; }
         .clock-ok { color: \(accent); }
@@ -83,7 +83,7 @@ enum ClockCSS {
         .clock-now:hover { border-color: \(accent); }
         .clock-lane-tile { border-radius: 9px; background-color: \(raised); padding: 7px; }
         .clock-lane-name { \(t(.rowTitleStrong)) font-weight: 700; color: \(text); }
-        .clock-lane-time { \(t(.statusLine)) font-size: 0.95rem; color: \(text); }
+        .clock-lane-time { \(t(.metricValue)) font-family: monospace; font-weight: 500; color: \(text); }
         .clock-ticks, .clock-strip { \(t(.hint)) }
         .clock-lines { \(t(.pill)) }
         .clock-scrubber:focus-visible { outline: 2px solid \(info); outline-offset: 2px; border-radius: 15px; }
@@ -115,7 +115,33 @@ enum ClockCSS {
         .clock-copy-value { \(t(.rowStamp)) color: \(text); }
         .clock-notify { \(t(.control)) font-weight: 800; padding: 10px 20px; border-radius: 999px; }
         .clock-style { \(t(.panelDetail)) }
-        .clock-result { padding: 2px 8px; }
+        .clock-result { padding: 4px 8px; border-radius: 10px; }
+        .clock-result:hover { background-color: alpha(\(text), 0.06); }
+        .clock-result-on { background-color: alpha(\(accent), 0.14); }
+        .clock-ghost {
+            border: 1px dashed alpha(\(dim), 0.6);
+            border-radius: 14px;
+            padding: 4px;
+        }
+        .clock-ghost:hover { border-color: \(accent); }
+        .clock-ghost-open { border-style: solid; border-color: alpha(\(accent), 0.6); background-color: alpha(\(accent), 0.05); }
+        .clock-ghost-header { padding: 4px 8px; min-height: 36px; border-radius: 10px; }
+        .clock-plus { \(t(.metricLarge)) color: \(dim); }
+        .clock-lane-control { min-width: 22px; min-height: 22px; padding: 0 6px; \(t(.panelLabel)) color: \(dim); }
+        .clock-lane-control:hover { color: \(text); background-color: alpha(\(text), 0.08); }
+        .clock-lane-control:disabled { opacity: 0.3; }
+        .clock-machine { padding: 2px 0; }
+        .clock-seg {
+            border-radius: 12px;
+            border: 1px solid \(rule);
+            background-color: \(raised);
+            padding: 2px;
+        }
+        .clock-seg-item { padding: 4px 12px; border-radius: 10px; min-height: 0; color: \(text); }
+        .clock-seg-item:hover { background-color: alpha(\(text), 0.06); }
+        .clock-seg-on, .clock-seg-on:hover { background-color: alpha(\(accent), 0.2); box-shadow: inset 0 0 0 1px alpha(\(accent), 0.7); }
+        .clock-seg-title { \(t(.panelLabel)) font-weight: 600; color: \(text); }
+        .clock-seg-example { \(t(.rowStamp)) color: \(dim); }
         popover.clock-glance { background: none; }
         .meridian-sheet { background-color: \(canvas); }
         """

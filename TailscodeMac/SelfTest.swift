@@ -22,6 +22,7 @@ enum SelfTest {
         var failures = 0
         let tileChild = TileChecks.Child()
         let chatChild = ChatChecks.Child()
+        let clockChild = MeridianChecks.Child()
 
         do {
             let checks = try checkMarkup()
@@ -73,7 +74,11 @@ enum SelfTest {
 
         do {
             let checks = try MeridianChecks.run()
-            report("world clock: \(checks) claims hold — the chip, the glance, Meridian's lanes, line and alarms")
+            let audit = clockChild.verdict()
+            if let failure = audit.failure { throw SelfTestFailure("label audit: \(failure)") }
+            report(
+                "world clock: \(checks) claims hold — the chip, the glance, Meridian's lanes, line and alarms; "
+                    + "\(audit.notes), 0 cut short at zoom 1.0, 1.5 and 2.0, at 1392x796 and 752x520")
         } catch {
             report("world clock: \(error)")
             failures += 1

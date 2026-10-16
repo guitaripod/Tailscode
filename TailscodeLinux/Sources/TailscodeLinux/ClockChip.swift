@@ -21,12 +21,13 @@ enum ClockUI {
         }
     }
 
-    static func label(_ text: String, _ css: String, wrap: Bool = false) -> UnsafeMutablePointer<GtkWidget> {
+    static func label(
+        _ text: String, _ css: String, wrap: Bool = false, chars: Int32 = 0
+    ) -> UnsafeMutablePointer<GtkWidget> {
         let widget = Gtk.label(text, css: nil, wrap: wrap, selectable: false)
         for name in css.split(separator: " ") { Gtk.addClass(widget, String(name)) }
-        if css.contains("clock-section") || css.contains("clock-copy-title") {
-            gtk_label_set_ellipsize(op(widget), PANGO_ELLIPSIZE_NONE)
-        }
+        gtk_label_set_ellipsize(op(widget), PANGO_ELLIPSIZE_NONE)
+        if wrap, chars > 0 { gtk_label_set_max_width_chars(op(widget), chars) }
         return widget
     }
 
@@ -135,6 +136,8 @@ final class ClockChip: @unchecked Sendable {
     var isShown: Bool { gtk_widget_get_visible(popover) != 0 }
 
     var glanceText: String? { glance?.text }
+
+    var glanceRoot: UnsafeMutablePointer<GtkWidget>? { glance?.widget }
 
     func refresh() {
         let reading = ClockWatch.shared.reading()

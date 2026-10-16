@@ -36,7 +36,7 @@ typedef void (*TailscodeMeridianHandler)(void *data, int kind, double value);
 
 /// A day laid along a line: a gradient from night to day through the stops, rounded, with an
 /// optional hour grid, a sun at noon, a dot where the moment is, and marks. `widget_height` is the
-/// widget's own, `strip_height` the painted band centred in it.
+/// widget's own, `strip_height` the painted band centred in it, or the whole widget when it is 0.
 GtkWidget *tailscode_strip_new(int widget_height, int strip_height, double radius);
 
 /// The gradient as `count` pairs of (position, light).
@@ -80,3 +80,7 @@ double tailscode_scrubber_position(GtkWidget *scrubber);
 
 /// Points the scrubber at a different owner, or at none (NULL).
 void tailscode_scrubber_set_handler(GtkWidget *scrubber, TailscodeMeridianHandler handler, void *data);
+
+/// How much room the hour labels need so none touches its neighbour: the width of the track and the
+/// height of the row, from the labels' own font at its current size.
+void tailscode_ticks_measure(GtkWidget *ticks, int *width, int *height);

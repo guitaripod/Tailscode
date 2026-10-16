@@ -41,6 +41,13 @@ public enum WorldCities {
     /// The cities a first-time reader is offered when nothing is pinned yet.
     public static let suggestedIDs = ["london", "new-york", "san-francisco", "tokyo"]
 
+    /// The places most people watch a clock for, in the order they are offered when nothing has
+    /// been typed.
+    public static let popularIDs = [
+        "london", "new-york", "san-francisco", "tokyo", "berlin", "sydney", "singapore", "dubai",
+        "mumbai", "sao-paulo",
+    ]
+
     public static func city(_ id: String) -> WorldCity? { byID[id] }
 
     /// The city standing for the time zone this desk is in. The zone is exact; the coordinates are

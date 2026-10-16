@@ -19,6 +19,8 @@ final class MeridianFeed {
     static let didTick = Notification.Name("tailscode.mac.meridian.didTick")
 
     private(set) var quotas: [(String, UsageQuota)] = []
+    var preferencesOverride: WorldClockPreferences?
+    var forcesFixtures = false
     private var timer: Timer?
     private var started = false
     private var observers: [NSObjectProtocol] = []
@@ -29,7 +31,7 @@ final class MeridianFeed {
     /// `TAILSCODE_CLOCK_NOW=<epoch seconds>`, which is how a window about to reopen or an alarm
     /// about to ring is looked at at an hour the person is not awake for.
     var now: Date {
-        guard WorldClockFixtures.isOn,
+        guard usesFixtures,
             let raw = ProcessInfo.processInfo.environment["TAILSCODE_CLOCK_NOW"],
             let epoch = TimeInterval(raw)
         else { return Date() }
@@ -40,19 +42,21 @@ final class MeridianFeed {
         TimeZone(identifier: TimeZone.autoupdatingCurrent.identifier) ?? .current
     }
 
+    private var usesFixtures: Bool { WorldClockFixtures.isOn || forcesFixtures }
+
     var preferences: WorldClockPreferences {
-        WorldClockFixtures.isOn ? WorldClockFixtures.preferences : WorldClockStore.current
+        preferencesOverride ?? (usesFixtures ? WorldClockFixtures.preferences : WorldClockStore.current)
     }
 
     var machines: [MachineClock] {
-        if WorldClockFixtures.isOn { return WorldClockFixtures.machines }
+        if usesFixtures { return WorldClockFixtures.machines }
         return MachineClocks.measured(
             ServerDirectory.shared.profiles.map { (name: $0.name, url: $0.baseURL) })
     }
 
     var alarms: ClockAlarmBook {
         var book = ClockAlarmStore.current
-        guard WorldClockFixtures.isOn else { return book }
+        guard usesFixtures else { return book }
         let now = self.now
         book.add(
             at: WorldClockReading.nextMinute(after: now.addingTimeInterval(95 * 60)),
@@ -61,7 +65,7 @@ final class MeridianFeed {
     }
 
     func holdings(now: Date) -> [QuotaHolding] {
-        WorldClockFixtures.isOn
+        usesFixtures
             ? WorldClockFixtures.holdings(now: now) : QuotaRollup.account(from: quotas)
     }
 

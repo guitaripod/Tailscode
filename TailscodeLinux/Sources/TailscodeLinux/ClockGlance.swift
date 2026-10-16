@@ -41,7 +41,7 @@ final class ClockGlanceView: @unchecked Sendable {
             gtk_box_append(ptr(column), section(Localized.text("MACHINES"), top: 12))
             for machine in reading.machines { gtk_box_append(ptr(column), row(for: machine)) }
             if let warning = reading.skewWarning {
-                let card = ClockUI.label(warning, "clock-card-warn", wrap: true)
+                let card = ClockUI.label(warning, "clock-card-warn", wrap: true, chars: 48)
                 gtk_widget_set_margin_top(card, 4)
                 gtk_box_append(ptr(column), card)
             }

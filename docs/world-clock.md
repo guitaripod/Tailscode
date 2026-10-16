@@ -26,6 +26,7 @@ Everything a client says or computes, in `TailscodeCore/Sources/TailscodeCore/`:
   `WorldClockReading`, which is the chip and the glance.
 - `Meridian.swift`: `MeridianBoard`, the sheet: lanes, marks, ticks, the line and now line, the golden
   band where everyone is awake, the insight sentence, copy values, alarms.
+- `MeridianPlaces.swift`: the Add-a-place readings both desktops list from (`PlaceRow`: a city by its clock, offset and day; `results`, `suggestions`, `PlacesStatus`, `emptyResult`) and `ClockStyle.example`, which is what lets the time-format control show what each option writes.
 - `ClockAlarms.swift`: `ClockAlarm`, `ClockAlarmBook`, `ClockAlarmStore` (`tailscode.worldClock.alarms`).
 - `WorldClockFixtures.swift`: `TAILSCODE_CLOCK_FIXTURES=1` pins Tokyo and San Francisco, adds three
   machines (one 47 s behind) and a quota window about to reopen.
@@ -49,14 +50,22 @@ A client decides how a strip and a lane are painted and nothing else.
 - Alarms fire on the minute tick and once at launch, only while the app runs. One that came due while
   the app was closed says how late it is; one more than an hour stale is dropped without a word.
 - The first row is always *here* and is never stored or removable.
+- The sheet opens at the size its content needs at the current type scale, bounded by the screen, and
+  no label is ever cut short at any scale: a column takes the width of its longest member, never a
+  pixel count chosen for one size of type, and what cannot fit on a line wraps. Both desktops audit it
+  (Linux `clock=audit` through `ClockAudit`, Mac `MeridianChecks` in a child process) at type scales 1.0,
+  1.5 and 2.0 and at a small window, and the selftest fails if one label is cut short.
+- Places are managed where they are shown: the last row under the lanes is Add a place (a ghost lane
+  that opens in place), a lane is moved and removed from its own controls on hover or keyboard focus,
+  and the time format is a labelled three-way control that shows what each option writes.
 
 ## Looking at it without a fleet
 
 | | |
 |---|---|
 | both | `TAILSCODE_CLOCK_FIXTURES=1` |
-| Linux | `TAILSCODE_CLOCK_AT=14:07` holds the day's time; drive verbs `clock=glance`, `clock=sheet`, `clock=scrub:N`, `clock=follow`, `clock=notify`, `clock=search:x`, `clock=copy:iso`, `clock=close`, `clock=state`; `selftest` prints the `clock:` claims |
-| Mac | `TAILSCODE_CLOCK_NOW=<epoch>` holds the time; `--open clock-glance`, `--open clock-sheet[:minute]` with `--tree` / `--tree-constraints` |
+| Linux | `TAILSCODE_CLOCK_AT=14:07` holds the day's time; drive verbs `clock=glance`, `clock=sheet`, `clock=scrub:N`, `clock=follow`, `clock=notify`, `clock=search:x`, `clock=copy:iso`, `clock=close`, `clock=state`, `clock=audit`, `clock=size:WxH`; `selftest` prints the `clock:` claims |
+| Mac | `TAILSCODE_CLOCK_NOW=<epoch>` holds the time; `--open clock-glance`, `--open clock-sheet[:minute+add+q=text]` with `--tree` / `--tree-constraints` |
 
 ## Dependency
 
