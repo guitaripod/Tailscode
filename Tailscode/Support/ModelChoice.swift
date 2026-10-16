@@ -66,7 +66,7 @@ enum ModelCatalog {
         guard let models = try? await backend.availableModels(), !models.isEmpty else {
             return cached(for: profileID)
         }
-        let changed = cached(for: profileID).map(\.id) != models.map(\.id)
+        let changed = cached(for: profileID) != models
         memory[profileID] = models
         if let data = try? JSONEncoder().encode(models) {
             UserDefaults.standard.set(data, forKey: prefix + profileID)

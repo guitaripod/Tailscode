@@ -2345,6 +2345,13 @@ extension HomeViewController: HomeComposerBarDelegate {
                     title: String(localized: "Photo Library"),
                     image: UIImage(systemName: "photo.on.rectangle")
                 ) { [weak self] _ in self?.presentPhotoPicker() })
+        } else if abilities.attachments {
+            actions.append(
+                UIAction(
+                    title: String(localized: "Photo Library"),
+                    subtitle: String(localized: "This model can't see images."),
+                    image: UIImage(systemName: "photo.on.rectangle"), attributes: .disabled
+                ) { _ in })
         }
         if abilities.camera {
             actions.append(

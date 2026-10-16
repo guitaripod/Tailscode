@@ -187,7 +187,45 @@ struct ModelAbilitiesTests {
         #expect(!abilities.vision)
         #expect(!abilities.camera)
         #expect(!abilities.accepts(mime: "image/png"))
+        #expect(!abilities.accepts(mime: "application/pdf"))
         #expect(abilities.accepts(mime: "text/plain"))
+    }
+
+    @Test("A model that takes no media still takes files, because the agent opens them")
+    func textOnlyModelKeepsFiles() {
+        let abilities = ModelAbilities.resolve(
+            supportsAttachments: true,
+            model: ModelCapabilities(attachment: false, imageInput: false, pdfInput: false),
+            camera: true)
+        #expect(abilities.attachments)
+        #expect(!abilities.vision)
+        #expect(!abilities.camera)
+        #expect(abilities.accepts(mime: "text/plain"))
+        #expect(abilities.accepts(mime: "application/json"))
+        #expect(!abilities.accepts(mime: "image/jpeg"))
+        #expect(!abilities.accepts(mime: "application/pdf"))
+        #expect(abilities.unavailableReason(supportsAttachments: true) == nil)
+    }
+
+    @Test("A PDF follows the model's own word, a picture follows its eyes")
+    func documentsAndPicturesAreSeparate() {
+        let readsPDF = ModelAbilities.resolve(
+            supportsAttachments: true,
+            model: ModelCapabilities(attachment: true, imageInput: false, pdfInput: true))
+        #expect(readsPDF.accepts(mime: "application/pdf"))
+        #expect(!readsPDF.accepts(mime: "image/png"))
+        let seesOnly = ModelAbilities.resolve(
+            supportsAttachments: true,
+            model: ModelCapabilities(attachment: true, imageInput: true, pdfInput: false))
+        #expect(seesOnly.accepts(mime: "image/png"))
+        #expect(!seesOnly.accepts(mime: "application/pdf"))
+    }
+
+    @Test("A model the catalog cannot describe is offered every kind")
+    func undescribedModelAcceptsEverything() {
+        let abilities = ModelAbilities.resolve(supportsAttachments: true, model: nil)
+        #expect(abilities.accepts(mime: "application/pdf"))
+        #expect(abilities.accepts(mime: "image/png"))
     }
 
     @Test("A model the catalog cannot describe is trusted, not assumed blind")
@@ -213,11 +251,8 @@ struct ModelAbilitiesTests {
         #expect(
             abilities.unavailableReason(supportsAttachments: false)
                 == "This server does not take attachments")
-        let narrowed = ModelAbilities.resolve(
-            supportsAttachments: true,
-            model: ModelCapabilities(attachment: false, imageInput: false, pdfInput: false))
         #expect(
-            narrowed.unavailableReason(supportsAttachments: true)
+            ModelAbilities.words.unavailableReason(supportsAttachments: true)
                 == "This model takes no attachments")
     }
 }
