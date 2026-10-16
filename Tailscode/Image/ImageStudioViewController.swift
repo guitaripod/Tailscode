@@ -454,7 +454,7 @@ final class ImageStudioViewController: UIViewController {
 
     private func failureRemedy() -> String {
         if let reading = StudioMachineReading.image(studio.door), reading.cannotPaint {
-            return ImageGenMachineWords.title
+            return Localized.text("See what is missing")
         }
         return String(localized: "Try again")
     }
@@ -1334,15 +1334,15 @@ final class ImageStudioViewController: UIViewController {
         present(nav, animated: true)
     }
 
+    /// What the machine can paint with, as the shared checklist for images and video led by pictures:
+    /// the same one the video forge and the server screen open. Changing the machine goes through the
+    /// renderer picker and returns to the checklist, and the studio follows the door.
     private func presentMachine() {
         Theme.Haptics.tap()
-        let nav = UINavigationController(rootViewController: ImageMachineViewController())
-        nav.navigationBar.prefersLargeTitles = true
-        if let sheet = nav.sheetPresentationController {
-            sheet.detents = [.large()]
-            sheet.prefersGrabberVisible = true
-        }
-        present(nav, animated: true)
+        let held = studio
+        MediaSetupGate.present(
+            endpoint: studio.endpoint.forgeEndpoint, focus: .pictures, from: self,
+            onChanged: { held.adoptDoor() })
     }
 
     private func presentLibraryPicker() {

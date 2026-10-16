@@ -12,13 +12,15 @@ enum SetupGate {
     /// Opens the checklist as a sheet over `presenter`. Finishing it dismisses it and runs
     /// `onFinish`, which is how a call that was pressed for starts once voice is ready.
     static func present(
-        _ target: SetupTarget, from presenter: UIViewController, reportLines: @escaping () -> [String] = { [] },
-        onFinish: (() -> Void)? = nil
+        _ target: SetupTarget, focus: SetupFocus? = nil, from presenter: UIViewController,
+        reportLines: @escaping () -> [String] = { [] }, onFinish: (() -> Void)? = nil,
+        onChange: ((SetupChecklistViewController) -> Void)? = nil
     ) {
         var top = presenter
         while let above = top.presentedViewController, !above.isBeingDismissed { top = above }
         if top is SetupChecklistViewController { return }
         AppLogger.ui.info("setup opened capability=\(target.capability) host=\(target.host)")
-        SetupChecklistViewController.present(target: target, from: top, reportLines: reportLines, onFinish: onFinish)
+        SetupChecklistViewController.present(
+            target: target, focus: focus, from: top, reportLines: reportLines, onFinish: onFinish, onChange: onChange)
     }
 }

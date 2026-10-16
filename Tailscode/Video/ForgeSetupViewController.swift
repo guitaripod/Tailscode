@@ -14,6 +14,12 @@ final class ForgeSetupViewController: UIViewController {
     private let runner = ForgeRunner.shared
     private var setup: ForgeSetup
 
+    /// Called once a machine was saved, after the screen has gone, so whatever opened it can carry on
+    /// with the machine the person chose.
+    var onSaved: (() -> Void)?
+    /// Called when the screen is cancelled without saving anything.
+    var onCancelled: (() -> Void)?
+
     private let intro = UILabel()
     private let tailnetIcon = UIImageView()
     private let tailnetLabel = UILabel()
@@ -37,8 +43,6 @@ final class ForgeSetupViewController: UIViewController {
     private let dock = Theme.Glass.view()
     private let primary = PrimaryButton(title: "")
     private let scroll = UIScrollView()
-    private let mediaTitle = UILabel()
-    private let mediaStack = UIStackView()
     /// The failure already on screen, so a redraw does not yank the scroll under a reader who has
     /// gone looking for the address bar.
     private var shownDiagnosis: ConnectDiagnosis?
@@ -63,7 +67,10 @@ final class ForgeSetupViewController: UIViewController {
         view.backgroundColor = Theme.Color.groupedBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             systemItem: .cancel,
-            primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+            primaryAction: UIAction { [weak self] _ in
+                let next = self?.onCancelled
+                self?.dismiss(animated: true) { next?() }
+            })
         buildUI()
         wire()
         render()
@@ -108,9 +115,6 @@ final class ForgeSetupViewController: UIViewController {
         tailnetIcon.setContentHuggingPriority(.required, for: .horizontal)
 
         configureKnownStack()
-        mediaStack.axis = .vertical
-        mediaStack.spacing = Theme.Spacing.m
-        mediaTitle.numberOfLines = 0
 
         let tailnetRow = UIStackView(arrangedSubviews: [tailnetIcon, tailnetLabel])
         tailnetRow.axis = .horizontal
@@ -120,7 +124,7 @@ final class ForgeSetupViewController: UIViewController {
         let column = UIStackView(arrangedSubviews: [
             intro, tailnetRow, discover, discoverNote, discoverBlock, knownTitle, knownEmpty,
             knownStack, address, addressHelp, hint, name, statusTitle, statusDetail, diagnosisCard,
-            secondary, secondaryNote, mediaTitle, mediaStack,
+            secondary, secondaryNote,
         ])
         column.axis = .vertical
         column.spacing = Theme.Spacing.m
@@ -269,7 +273,8 @@ final class ForgeSetupViewController: UIViewController {
         view.endEditing(true)
         runner.use(renderer)
         Theme.Haptics.success()
-        dismiss(animated: true)
+        let next = onSaved
+        dismiss(animated: true) { next?() }
     }
 
     private func sweep() {
@@ -364,54 +369,6 @@ final class ForgeSetupViewController: UIViewController {
         renderFields()
         renderStatus()
         renderButtons()
-        renderMedia()
-    }
-
-    /// What the machine at the address can make, once the doctor has looked: a row for each node
-    /// set and model file in Core's words, each missing file with the one command that fetches it.
-    /// The command is copied rather than run, because the files go onto the other machine.
-    private func renderMedia() {
-        let lines = setup.mediaLines
-        mediaTitle.isHidden = lines.isEmpty
-        mediaStack.isHidden = lines.isEmpty
-        mediaTitle.attributedText = NSAttributedString(
-            string: MediaWords.groupTitle,
-            attributes: Theme.Ramp.attributes(.panelLabel, color: Theme.Color.label))
-        for view in mediaStack.arrangedSubviews {
-            mediaStack.removeArrangedSubview(view)
-            view.removeFromSuperview()
-        }
-        for line in lines { mediaStack.addArrangedSubview(mediaRow(line)) }
-    }
-
-    private func mediaRow(_ line: MediaReading.Line) -> UIView {
-        let title = UILabel()
-        title.numberOfLines = 0
-        title.attributedText = NSAttributedString(
-            string: line.isOptional ? "\(line.title) · \(MediaWords.optionalMark)" : line.title,
-            attributes: Theme.Ramp.attributes(.panelLabel, color: Theme.Color.label))
-        let detail = UILabel()
-        detail.numberOfLines = 0
-        detail.attributedText = NSAttributedString(
-            string: line.detail,
-            attributes: Theme.Ramp.attributes(.panelFootnote, color: line.tone.color))
-        var views: [UIView] = [title, detail]
-        if let command = line.fix?.command {
-            var configuration = UIButton.Configuration.plain()
-            configuration.title = MediaWords.copyCommand
-            let copy = UIButton(
-                configuration: configuration,
-                primaryAction: UIAction { _ in
-                    UIPasteboard.general.string = command
-                    Theme.Haptics.success()
-                })
-            copy.contentHorizontalAlignment = .leading
-            views.append(copy)
-        }
-        let row = UIStackView(arrangedSubviews: views)
-        row.axis = .vertical
-        row.spacing = Theme.Spacing.xs
-        return row
     }
 
     private func renderIntro() {
