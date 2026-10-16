@@ -40,6 +40,8 @@ public actor VoiceCallSession {
     private var muted = false
     private var agentBusy = false
     private var finishedChimes = 0
+    private var engine: VoiceEngineState?
+    private var engineProgress: Double?
     private var end: VoiceCallEnd?
     private var finishing = false
     private var started = false
@@ -204,6 +206,8 @@ public actor VoiceCallSession {
         switch message {
         case .ready:
             connection = .live
+            engine = .ready
+            engineProgress = nil
             reconnecting = false
             attempts = 0
             startedAt = startedAt ?? wallClock()
@@ -229,7 +233,11 @@ public actor VoiceCallSession {
             degradation = VoiceCallDegradation(reason: reason, recovering: recovering)
             await playback.flush()
             publish()
-        case .recycled, .unknown, .engine:
+        case .engine(let state, let progress):
+            engine = state
+            engineProgress = progress.map { min(max($0, 0), 1) }
+            publish()
+        case .recycled, .unknown:
             break
         case .error(let code, let message):
             if code == "busy" && reconnecting {
@@ -405,7 +413,8 @@ public actor VoiceCallSession {
             face: face, lines: lines, startedAt: startedAt, degraded: degradation,
             reconnecting: reconnecting && end == nil, muted: muted, agentBusy: agentBusy,
             finishedChimes: finishedChimes, end: end,
-            endLine: end.map { VoiceCallReading.end($0, client: client) })
+            endLine: end.map { VoiceCallReading.end($0, client: client) }, engine: engine,
+            engineProgress: engineProgress)
     }
 
     static func audioEnd(_ error: Error) -> VoiceCallEnd {

@@ -40,6 +40,17 @@ public enum VoiceCallReading {
         }
     }
 
+    public static var startingTheModel: String { Localized.text("Starting the voice model") }
+
+    public static func startingTheModel(progress: Double?) -> String {
+        guard let progress else { return startingTheModel }
+        return Localized.text("Starting the voice model, %@", SetupFormat.percent(progress))
+    }
+
+    public static var startingTheModelSpoken: String {
+        Localized.text("Starting the voice model. This can take a few minutes.")
+    }
+
     public static func spoken(for face: VoiceCallFace) -> String {
         switch face {
         case .connecting: return Localized.text("Connecting the call")
@@ -75,7 +86,7 @@ public enum VoiceCallReading {
         case .stopped:
             return Localized.text("The voice model starts when you call, which can take a few minutes.")
         case .needsSetup:
-            return Localized.text("Voice calls need a one-time setup on this server.")
+            return Localized.text("Voice calls need a one-time setup on this server. Press Call to see what is left.")
         case .loading:
             return Localized.text(
                 "The voice model is still loading on the server, which can take a few minutes. Try again shortly.")
@@ -83,16 +94,16 @@ public enum VoiceCallReading {
             return Localized.text("The server's GPU is busy with another call. Try again when it ends.")
         case .noGateway:
             return Localized.text(
-                "voice-bridge is not running on this server. Start it there with systemctl --user start voice-bridge.")
+                "Voice calls are not set up on this server yet. Press Call and the checklist shows where to start.")
         case .tooOld(let version):
             return version < VoiceWire.version
                 ? Localized.text("voice-bridge on this server is older than this app. Update it there.")
                 : Localized.text("voice-bridge on this server is newer than this app. Update Tailscode.")
         case .engineDown(let detail):
             guard let detail, !detail.isEmpty else {
-                return Localized.text("The voice model is not running on the server. Check voice-bridge there.")
+                return Localized.text("The voice model is not running on the server. Press Call to see why and how to start it.")
             }
-            return Localized.text("The voice model is not running on the server: %@", detail)
+            return Localized.text("The voice model is not running on the server (%@). Press Call to see how to start it.", detail)
         case .wantsPassword:
             return Localized.text("The voice gateway asks for a password. Add it for this server.")
         case .unreachable(let why):

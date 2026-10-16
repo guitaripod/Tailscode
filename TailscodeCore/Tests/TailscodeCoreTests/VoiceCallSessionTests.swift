@@ -571,3 +571,66 @@ struct VoiceCallSessionTeardownTests {
         #expect(await rig.session.current().end == .hungUp)
     }
 }
+
+@Suite("Voice call engine")
+struct VoiceCallEngineTests {
+    @Test("While the gateway loads its model the connecting face says so, with how far it has got")
+    func loadingIsSaid() async {
+        let rig = VoiceRig()
+        await rig.session.start()
+        #expect(await rig.snapshot().word == "Connecting")
+        rig.transport.emit(.engine(.loading, progress: nil))
+        #expect(await eventually { await rig.snapshot().engine == .loading })
+        var snapshot = await rig.snapshot()
+        #expect(snapshot.face == .connecting)
+        #expect(snapshot.isStartingEngine)
+        #expect(snapshot.word == "Starting the voice model")
+        #expect(snapshot.spoken == "Starting the voice model. This can take a few minutes.")
+        rig.transport.emit(.engine(.loading, progress: 0.31))
+        #expect(await eventually { await rig.snapshot().engineProgress == 0.31 })
+        snapshot = await rig.snapshot()
+        #expect(snapshot.word == "Starting the voice model, 31%")
+        #expect(snapshot.face == .connecting)
+        #expect(snapshot.face.icon.motion.isAnimated)
+    }
+
+    @Test("A stopped engine that is about to be started reads the same, and progress is clamped")
+    func stoppedAndClamped() async {
+        let rig = VoiceRig()
+        await rig.session.start()
+        rig.transport.emit(.engine(.stopped, progress: 4))
+        #expect(await eventually { await rig.snapshot().engine == .stopped })
+        let snapshot = await rig.snapshot()
+        #expect(snapshot.isStartingEngine)
+        #expect(snapshot.engineProgress == 1)
+    }
+
+    @Test("When the line opens the wait is over: the face is the call's and the model is ready")
+    func readyEndsTheWait() async {
+        let rig = VoiceRig()
+        await rig.session.start()
+        rig.transport.emit(.engine(.loading, progress: 0.9))
+        #expect(await eventually { await rig.snapshot().engine == .loading })
+        rig.transport.emit(.ready(.init(gateway: "0.1", model: "voice")))
+        rig.transport.emit(.phase(.listening, at: 1))
+        #expect(await eventually { await rig.snapshot().face == .listening })
+        let snapshot = await rig.snapshot()
+        #expect(snapshot.engine == .ready)
+        #expect(snapshot.engineProgress == nil)
+        #expect(!snapshot.isStartingEngine)
+        #expect(snapshot.word == "Listening")
+    }
+
+    @Test("A state that is not a wait leaves the face's own word alone, and a redial is still a redial")
+    func otherStates() async {
+        let rig = VoiceRig()
+        await rig.session.start()
+        rig.transport.emit(.engine(.busy, progress: nil))
+        #expect(await eventually { await rig.snapshot().engine == .busy })
+        #expect(await rig.snapshot().word == "Connecting")
+        var snapshot = VoiceCallSnapshot(face: .connecting, reconnecting: true, engine: .loading)
+        #expect(snapshot.word == "Reconnecting the call…")
+        snapshot = VoiceCallSnapshot(face: .listening, engine: .loading)
+        #expect(snapshot.word == "Listening")
+    }
+}

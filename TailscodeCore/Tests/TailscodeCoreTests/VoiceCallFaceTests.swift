@@ -174,9 +174,35 @@ struct VoiceCallEntryPointTests {
         #expect(VoiceCallEntryPoint.isEnabled(reach: .unknown))
         #expect(VoiceCallEntryPoint.isEnabled(reach: .wantsPassword))
         #expect(VoiceCallEntryPoint.isEnabled(reach: .unreachable("x")))
-        for reach: VoiceReach in [.checking, .loading, .busy, .noGateway, .tooOld(protocol: 0), .engineDown(detail: nil)] {
+        for reach: VoiceReach in [.noGateway, .needsSetup, .engineDown(detail: nil), .engineDown(detail: "no GPU")] {
+            #expect(VoiceCallEntryPoint.isEnabled(reach: reach), "a press is how the checklist opens: \(reach)")
+        }
+        for reach: VoiceReach in [.checking, .loading, .busy, .tooOld(protocol: 0), .tooOld(protocol: 9)] {
             #expect(!VoiceCallEntryPoint.isEnabled(reach: reach))
         }
+    }
+
+    @Test("A press opens the checklist when the server has no gateway, needs setting up or has its engine down")
+    func pressOpensSetup() {
+        for reach: VoiceReach in [.noGateway, .needsSetup, .engineDown(detail: nil), .engineDown(detail: "no GPU")] {
+            #expect(VoiceCallEntryPoint.pressOpensSetup(reach: reach), "\(reach)")
+            #expect(reach.opensSetup)
+        }
+        for reach: VoiceReach in [
+            .unknown, .checking, .ready(gateway: "0.1"), .stopped(gateway: "0.1"), .loading, .busy,
+            .tooOld(protocol: 0), .wantsPassword, .unreachable("x"),
+        ] {
+            #expect(!VoiceCallEntryPoint.pressOpensSetup(reach: reach), "\(reach)")
+        }
+    }
+
+    @Test("No reason tells anyone to run a service command; the ones that open the checklist say where to start")
+    func reasonsPointAtTheChecklist() {
+        for reach: VoiceReach in [.noGateway, .needsSetup, .engineDown(detail: nil), .engineDown(detail: "docker exited")] {
+            #expect(!reach.line.contains("systemctl"))
+            #expect(reach.line.contains("Press Call"), "\(reach.line)")
+        }
+        #expect(VoiceReach.noGateway.line.contains("not set up on this server yet"))
     }
 
     @Test("A gateway older than the app and one newer than it are told apart")
@@ -184,12 +210,15 @@ struct VoiceCallEntryPointTests {
         #expect(VoiceReach.tooOld(protocol: 0).line != VoiceReach.tooOld(protocol: 2).line)
     }
 
-    @Test("Tones follow meaning: ready is live, waiting is attention, a dead end is danger")
+    @Test("Tones follow meaning: ready is live, waiting is attention, an unreachable machine is danger")
     func tones() {
         #expect(VoiceReach.ready(gateway: "0.1").tone == .live)
         #expect(VoiceReach.loading.tone == .attention)
         #expect(VoiceReach.wantsPassword.tone == .attention)
-        #expect(VoiceReach.noGateway.tone == .danger)
+        #expect(VoiceReach.noGateway.tone == .quiet)
+        #expect(VoiceReach.needsSetup.tone == .attention)
+        #expect(VoiceReach.engineDown(detail: nil).tone == .attention)
+        #expect(VoiceReach.unreachable("x").tone == .danger)
         #expect(VoiceReach.checking.tone == .quiet)
     }
 }

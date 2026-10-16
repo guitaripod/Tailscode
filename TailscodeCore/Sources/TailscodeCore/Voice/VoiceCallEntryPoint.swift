@@ -21,13 +21,26 @@ public enum VoiceCallEntryPoint {
     }
 
     /// A call in progress can always be hung up. Otherwise the control is live when a call can
-    /// start, or when pressing it is the way to find out or to be asked for a password; it is
-    /// dimmed only where the gateway has said that no press could help, and the tooltip says why.
+    /// start, or when pressing it is the way to find out, to be asked for a password, or to be shown
+    /// what the server still needs; it is dimmed only where the gateway has said that no press could
+    /// help, and the tooltip says why.
     public static func isEnabled(reach: VoiceReach, active: Bool = false) -> Bool {
         if active { return true }
         switch reach {
-        case .unknown, .ready, .stopped, .needsSetup, .wantsPassword, .unreachable: return true
-        case .checking, .loading, .busy, .noGateway, .tooOld, .engineDown: return false
+        case .unknown, .ready, .stopped, .needsSetup, .noGateway, .engineDown, .wantsPassword, .unreachable:
+            return true
+        case .checking, .loading, .busy, .tooOld:
+            return false
+        }
+    }
+
+    /// Whether pressing the control opens the voice checklist instead of starting a call: the server
+    /// has no gateway, the gateway says it needs setting up, or its engine is down. Every road that
+    /// would have toasted one of those reasons opens the same checklist for the same capability.
+    public static func pressOpensSetup(reach: VoiceReach) -> Bool {
+        switch reach {
+        case .needsSetup, .noGateway, .engineDown: return true
+        default: return false
         }
     }
 }

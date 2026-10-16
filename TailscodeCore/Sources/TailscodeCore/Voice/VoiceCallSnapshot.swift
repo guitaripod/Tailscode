@@ -58,12 +58,14 @@ public struct VoiceCallSnapshot: Sendable, Equatable {
     public var finishedChimes: Int
     public var end: VoiceCallEnd?
     public var endLine: String?
+    public var engine: VoiceEngineState?
+    public var engineProgress: Double?
 
     public init(
         face: VoiceCallFace = .connecting, lines: [VoiceCallLine] = [], startedAt: Date? = nil,
         degraded: VoiceCallDegradation? = nil, reconnecting: Bool = false, muted: Bool = false,
         agentBusy: Bool = false, finishedChimes: Int = 0, end: VoiceCallEnd? = nil,
-        endLine: String? = nil
+        endLine: String? = nil, engine: VoiceEngineState? = nil, engineProgress: Double? = nil
     ) {
         self.face = face
         self.lines = lines
@@ -75,12 +77,30 @@ public struct VoiceCallSnapshot: Sendable, Equatable {
         self.finishedChimes = finishedChimes
         self.end = end
         self.endLine = endLine
+        self.engine = engine
+        self.engineProgress = engineProgress
     }
 
-    /// The face's word, except while the line is being redialled, which the face cannot say.
-    public var word: String { reconnecting ? VoiceCallReading.reconnecting : face.word }
+    /// Whether the call is connecting only because the gateway is bringing its voice model up, which
+    /// is the one wait of a call that takes minutes and deserves its own words.
+    public var isStartingEngine: Bool {
+        guard face == .connecting, !reconnecting, end == nil else { return false }
+        return engine == .loading || engine == .stopped
+    }
 
-    public var spoken: String { reconnecting ? VoiceCallReading.reconnecting : face.spoken }
+    /// The face's word, except while the line is being redialled, which the face cannot say, and
+    /// while the voice model is being started, which it can say with how far it has got.
+    public var word: String {
+        if reconnecting { return VoiceCallReading.reconnecting }
+        if isStartingEngine { return VoiceCallReading.startingTheModel(progress: engineProgress) }
+        return face.word
+    }
+
+    public var spoken: String {
+        if reconnecting { return VoiceCallReading.reconnecting }
+        if isStartingEngine { return VoiceCallReading.startingTheModelSpoken }
+        return face.spoken
+    }
 
     public var isOpen: Bool { end == nil }
 }

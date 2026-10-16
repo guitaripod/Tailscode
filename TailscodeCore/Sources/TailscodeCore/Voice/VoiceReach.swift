@@ -30,15 +30,18 @@ public enum VoiceReach: Sendable, Equatable {
 
     public var asksForPassword: Bool { self == .wantsPassword }
 
+    /// Whether pressing the call control opens the voice checklist rather than starting a call.
+    public var opensSetup: Bool { VoiceCallEntryPoint.pressOpensSetup(reach: self) }
+
     /// The one line that says why a call can or cannot start.
     public var line: String { VoiceCallReading.reason(for: self) }
 
     public var tone: ActivityTone {
         switch self {
-        case .unknown, .checking, .stopped: return .quiet
+        case .unknown, .checking, .stopped, .noGateway: return .quiet
         case .ready: return .live
-        case .loading, .busy, .wantsPassword, .needsSetup: return .attention
-        case .noGateway, .tooOld, .engineDown, .unreachable: return .danger
+        case .loading, .busy, .wantsPassword, .needsSetup, .engineDown: return .attention
+        case .tooOld, .unreachable: return .danger
         }
     }
 
