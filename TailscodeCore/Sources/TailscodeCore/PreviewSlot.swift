@@ -54,13 +54,14 @@ public struct PreviewSlot: Sendable, Equatable {
     }
 
     public var checklist: [PreviewChecklistRow] {
-        state.checks.map { check in
+        let rows = state.checks.map { check in
             let job = check.fix.flatMap { state.fixes[$0] }
             return PreviewChecklistRow(
                 id: check.id, title: PreviewReading.title(of: check), detail: PreviewReading.detail(of: check),
                 state: check.state, fix: check.fix, fixLabel: check.fix.map(PreviewReading.fixLabel),
-                progress: job?.fraction, working: job?.state == .running)
+                progress: job?.fraction, working: job?.state == .running, optional: check.optional == true)
         }
+        return rows.filter { !$0.optional } + rows.filter(\.optional)
     }
 
     /// Asked for a toggle of light and dark: what the Mac's simulator should be set to next.
@@ -77,6 +78,9 @@ public struct PreviewChecklistRow: Sendable, Equatable, Identifiable {
     public var fixLabel: String?
     public var progress: Double?
     public var working: Bool
+    public var optional: Bool = false
+
+    public var tag: String? { optional ? Localized.text("Optional") : nil }
 }
 
 /// What a keystroke means inside a preview pane. Narrow on purpose: the picture takes no keys, so

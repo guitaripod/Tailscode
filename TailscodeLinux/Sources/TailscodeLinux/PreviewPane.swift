@@ -391,9 +391,16 @@ final class PreviewPane: @unchecked Sendable {
 
         let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_widget_set_hexpand(words, 1)
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let title = Gtk.label(row.title, css: "preview-row-title", wrap: true, selectable: false)
         Self.capWidth(title, 40)
-        gtk_box_append(ptr(words), title)
+        gtk_box_append(ptr(heading), title)
+        if let tag = row.tag {
+            let optional = Gtk.label(tag, css: "dim", selectable: false)
+            gtk_widget_set_valign(optional, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(heading), optional)
+        }
+        gtk_box_append(ptr(words), heading)
         if let detail = row.detail {
             let detailLabel = Gtk.label(detail, css: "preview-row-detail", wrap: true, selectable: true)
             Self.capWidth(detailLabel, 44)

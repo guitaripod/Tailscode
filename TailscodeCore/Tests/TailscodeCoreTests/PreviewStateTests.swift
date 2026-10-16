@@ -98,6 +98,21 @@ import Testing
         #expect(rows[1].fix == nil)
     }
 
+    @Test func optionalRowsComeLastAndSayTheyAreOptional() {
+        var slot = PreviewSlot(target: PreviewTarget(host: "m", project: "/p"))
+        var state = PreviewState()
+        state.checks = [
+            DoctorCheck(id: "hotReload", title: "x", state: .fixable, detail: nil, fix: "installHotReload", optional: true),
+            DoctorCheck(id: "xcode", title: "x", state: .ok),
+            DoctorCheck(id: "inspector", title: "x", state: .ok, optional: true),
+            DoctorCheck(id: "disk", title: "x", state: .ok),
+        ]
+        slot.apply(state)
+        let rows = slot.checklist
+        #expect(rows.map(\.id) == ["xcode", "disk", "hotReload", "inspector"])
+        #expect(rows.map(\.tag) == [nil, nil, "Optional", "Optional"])
+    }
+
     @Test func nextAppearanceTogglesAndCommandsAreNarrow() {
         var slot = PreviewSlot()
         #expect(slot.nextAppearance == "dark")
