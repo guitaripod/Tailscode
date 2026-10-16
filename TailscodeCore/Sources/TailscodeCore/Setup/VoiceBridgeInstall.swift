@@ -17,6 +17,6 @@ public enum VoiceBridgeInstall {
 public enum VoiceRequirements {
     public static let gpuMemoryMB: Int64 = 80 * 1024
     public static let modelBytes: Int64 = 46_868_000_000
-    public static let imageBytes: Int64 = 23_622_320_128
-    public static let engineMemoryMB: Int64 = 66 * 1024
+    public static let imageBytes: Int64 = 22_500_000_000
+    public static let engineMemoryMB: Int64 = 70_000
 }

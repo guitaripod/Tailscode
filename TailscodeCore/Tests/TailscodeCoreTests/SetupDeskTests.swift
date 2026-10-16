@@ -111,8 +111,8 @@ private func checks() -> [SetupCheck] {
         SetupCheck(id: "voice.image", state: .todo, fix: fix("voice.pullImage")),
         SetupCheck(
             id: "voice.cdi", state: .todo,
-            fix: SetupFix(id: "voice.enableCdi", kind: .command, command: "sudo nvidia-ctk cdi generate")),
-        SetupCheck(id: "voice.engine", state: .todo, fix: SetupFix(id: "voice.startEngine")),
+            fix: SetupFix(id: "voice.generateCDI", kind: .command, command: "sudo nvidia-ctk cdi generate")),
+        SetupCheck(id: "voice.engine", state: .todo, fix: SetupFix(id: "voice.engineJob")),
     ]
 }
 
@@ -179,6 +179,22 @@ struct SetupDeskTests {
         })
         #expect(await eventually { await desk.snapshot(for: target).job == nil })
         await desk.unwatch(target)
+    }
+
+    @Test("Following a target watches it for the length of a lifetime and gives the watch back when it ends")
+    func followingFollowsALifetime() async throws {
+        let clock = ManualVoiceClock()
+        let daemon = FakeDaemon(checks: checks())
+        let desk = desk(daemon, clock: clock)
+        let lifetime = PaneLifetime()
+        let heard = Heard()
+        desk.follow(target, lifetime: lifetime) { heard.add($0) }
+        #expect(await eventually { heard.snapshots.contains { $0.phase == .loaded } })
+        await clock.advance(by: SetupDesk.idleInterval + 1)
+        #expect(clock.sleepers > 0)
+        lifetime.cancelAll()
+        await clock.settle()
+        #expect(await eventually { clock.sleepers == 0 })
     }
 
     @Test("A time left comes from the rate watched, and from the daemon's own figure when it gives one")
@@ -334,6 +350,8 @@ private final class Heard: @unchecked Sendable {
 
     var snapshots: [SetupSnapshot] { lock.withLock { held } }
 
+    func add(_ snapshot: SetupSnapshot) { lock.withLock { held.append(snapshot) } }
+
     func collect(_ stream: AsyncStream<SetupChange>) -> Task<Void, Never> {
         Task {
             for await change in stream { lock.withLock { held.append(change.snapshot) } }
@@ -478,7 +496,7 @@ struct VoiceSetupSourceTests {
 
 @Suite("Setup demo")
 struct SetupDemoTests {
-    @Test("A demo host walks every state with no machine: a blocker, a command, two downloads, a start, ready")
+    @Test("A demo host walks every state with no machine: a command, two downloads, a blocker, ready")
     func walksEveryState() async throws {
         let clock = ManualVoiceClock()
         let desk = SetupDesk(secrets: MemorySecrets(), clock: clock)
@@ -486,19 +504,14 @@ struct SetupDemoTests {
         #expect(demo.isDemo)
         let english = Locale(identifier: "en_US")
         var list = (await desk.refresh(demo)).checklist(locale: english)
-        #expect(list.rows.first { $0.id == "voice.vram" }?.state == .needsYou)
-        #expect(list.primary == nil)
-
-        await clock.advance(by: SetupDemoSource.blockerClears + 1)
-        list = (await desk.refresh(demo)).checklist(locale: english)
-        #expect(list.rows.first { $0.id == "voice.vram" }?.state == .done)
         #expect(list.rows.first { $0.id == "voice.cdi" }?.fix?.kind == .command)
         guard case .copy = list.primary else {
             Issue.record("expected a command to copy, got \(String(describing: list.primary))")
             return
         }
+        #expect(list.rows.first { $0.id == "voice.engine" }?.state == .todo)
 
-        await clock.advance(by: SetupDemoSource.commandTaken)
+        await clock.advance(by: SetupDemoSource.commandTaken + 1)
         list = (await desk.refresh(demo)).checklist(locale: english)
         #expect(list.rows.first { $0.id == "voice.cdi" }?.state == .done)
         #expect(list.primary == .setUp(label: "Set up voice"))
@@ -511,12 +524,20 @@ struct SetupDemoTests {
             let mid = await desk.snapshot(for: demo).checklist(locale: english)
             return mid.jobRow?.job?.line?.contains(" left") == true && mid.headline.hasPrefix("Working:")
         })
-        for _ in 0..<40 {
+        for _ in 0..<60 {
             await clock.advance(by: 1)
-            if (await desk.snapshot(for: demo)).report?.ready == true { break }
+            let now = await desk.snapshot(for: demo).report
+            if now?.checks.first(where: { $0.id == "voice.engine" })?.state == .blocked { break }
         }
         await chain.value
         list = (await desk.snapshot(for: demo)).checklist(locale: english)
+        let engine = try #require(list.rows.first { $0.id == "voice.engine" })
+        #expect(engine.state == .needsYou)
+        #expect(engine.line?.contains("never stop another job") == true)
+        #expect(list.primary == nil)
+
+        await clock.advance(by: SetupDemoSource.blockerClears + 1)
+        list = (await desk.refresh(demo)).checklist(locale: english)
         #expect(list.status == .ready)
         #expect(list.primary == .finish(label: "Try a call"))
         await desk.unwatch(demo)

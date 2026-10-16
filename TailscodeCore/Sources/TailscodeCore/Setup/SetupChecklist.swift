@@ -34,14 +34,23 @@ public struct SetupRowFix: Sendable, Equatable {
     public let cost: String?
     public let command: String?
     public let reason: String?
+    public let enabled: Bool
 
-    public init(id: String, kind: Kind, label: String, cost: String? = nil, command: String? = nil, reason: String? = nil) {
+    public init(
+        id: String, kind: Kind, label: String, cost: String? = nil, command: String? = nil, reason: String? = nil,
+        enabled: Bool = true
+    ) {
         self.id = id
         self.kind = kind
         self.label = label
         self.cost = cost
         self.command = command
         self.reason = reason
+        self.enabled = enabled
+    }
+
+    func disabled() -> SetupRowFix {
+        SetupRowFix(id: id, kind: kind, label: label, cost: cost, command: command, reason: reason, enabled: false)
     }
 }
 
@@ -95,6 +104,10 @@ public struct SetupRow: Sendable, Equatable, Identifiable {
         self.fix = fix
         self.job = job
         self.failure = failure
+    }
+
+    func withFix(_ next: SetupRowFix?) -> SetupRow {
+        SetupRow(id: id, state: state, title: title, line: line, fix: next, job: job, failure: failure)
     }
 
     public var icon: ActivityIcon {
@@ -270,7 +283,9 @@ extension SetupChecklist {
     ) -> SetupChecklist {
         let target = snapshot.target
         let followed = snapshot.job ?? report.job
-        let rows = report.checks.map { row(for: $0, snapshot: snapshot, job: followed, locale: locale) }
+        let built = report.checks.map { row(for: $0, snapshot: snapshot, job: followed, locale: locale) }
+        let busy = built.contains { $0.job != nil }
+        let rows = built.map { busy && $0.job == nil && $0.fix?.kind == .job ? $0.withFix($0.fix?.disabled()) : $0 }
         let open = rows.filter { $0.state != .done }
 
         func result(_ status: SetupStatus, _ headline: String, _ tone: ActivityTone, _ primary: SetupAction?)
@@ -323,7 +338,7 @@ extension SetupChecklist {
         let title = SetupReading.title(of: check)
         var line = SetupReading.line(of: check, locale: locale)
         let fix = check.fix.map { rowFix($0, capability: snapshot.target.capability, locale: locale) }
-        let mine = job.flatMap { $0.fix == check.fix?.id ? $0 : nil }
+        let mine = job.flatMap { Self.owns(check, $0) ? $0 : nil }
         if let mine, !mine.state.isSettled {
             let face = SetupRowJob(
                 id: mine.id, fixID: mine.fix, fraction: mine.fraction.map { min(max($0, 0), 1) },
@@ -336,15 +351,29 @@ extension SetupChecklist {
             return SetupRow(id: check.id, state: .unavailable, title: title, line: line)
         }
         if check.state == .working { return SetupRow(id: check.id, state: .working, title: title, line: line) }
-        let failed = [snapshot.failed, job].compactMap { $0 }.first { $0.fix == check.fix?.id && $0.state == .failed }
+        let failed = [snapshot.failed, job].compactMap { $0 }.first { Self.owns(check, $0) && $0.state == .failed }
         if let failed {
             return SetupRow(
                 id: check.id, state: .failed, title: title, line: line, fix: fix,
                 failure: SetupReading.failure(of: failed, locale: locale))
         }
+        if check.state == .todo, let last = check.facts["lastFailure"] {
+            let earlier = SetupJob(id: check.facts["lastJob"] ?? "", fix: check.fix?.id ?? "", state: .failed, failure: last)
+            return SetupRow(
+                id: check.id, state: .failed, title: title, line: line, fix: fix,
+                failure: SetupReading.failure(of: earlier, locale: locale))
+        }
         if line == nil { line = SetupReading.neutral(check.state) }
-        let needsYou = check.state == .blocked || fix == nil || fix?.kind == .command
+        let waiting = check.state == .todo && fix == nil && check.facts["after"] != nil
+        let needsYou = !waiting && (check.state == .blocked || fix == nil || fix?.kind == .command)
         return SetupRow(id: check.id, state: needsYou ? .needsYou : .todo, title: title, line: line, fix: fix)
+    }
+
+    /// Whether a job is the one a check is waiting on. A check that is working has no fix left to point
+    /// at, so the machine names the job in its facts instead; one still to do names it by its fix.
+    private static func owns(_ check: SetupCheck, _ job: SetupJob) -> Bool {
+        if check.facts["job"] == job.id { return true }
+        return check.fix?.id == job.fix
     }
 
     private static func rowFix(_ fix: SetupFix, capability: String, locale: Locale) -> SetupRowFix {

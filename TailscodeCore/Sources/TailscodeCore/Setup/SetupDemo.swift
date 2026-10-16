@@ -2,18 +2,18 @@ import CodingAgentKit
 import Foundation
 
 /// The machine a demo host pretends to be, scripted so every state of the checklist is seen in about
-/// a minute with nothing behind it: a blocker that clears by itself (another job leaving the GPU), a
-/// command to copy that is taken as run after a while, two downloads that fill with bytes and a time
-/// left, a start, and then ready. It speaks the daemon's own wire types, so the rows, the headline and
-/// the primary action are the real ones; only the machine is missing.
+/// a minute with nothing behind it: a command to copy that is taken as run after a while, two
+/// downloads that fill with bytes and a time left, and an engine that cannot start for a few seconds
+/// because another job holds the GPU, and then can. It speaks the daemon's own wire types, in the
+/// shapes the real gateway reports them, so the rows, the headline and the primary action are the
+/// real ones; only the machine is missing.
 public actor SetupDemoSource: SetupSource {
     public nonisolated let capability = SetupCapability.voice
 
+    public static let commandTaken: TimeInterval = 12
     public static let blockerClears: TimeInterval = 8
-    public static let commandTaken: TimeInterval = 18
     public static let modelSeconds: TimeInterval = 16
     public static let imageSeconds: TimeInterval = 10
-    public static let engineSeconds: TimeInterval = 4
 
     private struct Run {
         let fix: String
@@ -24,7 +24,7 @@ public actor SetupDemoSource: SetupSource {
 
     private let clock: any VoiceClock
     private var began: TimeInterval?
-    private var blockerGone: TimeInterval?
+    private var imageDoneAt: TimeInterval?
     private var runs: [String: Run] = [:]
     private var done: Set<String> = []
     private var counter = 0
@@ -65,16 +65,14 @@ public actor SetupDemoSource: SetupSource {
     }
 
     private static func seconds(of fix: String) -> TimeInterval {
-        switch fix {
-        case "voice.downloadModel": return modelSeconds
-        case "voice.pullImage": return imageSeconds
-        default: return engineSeconds
-        }
+        fix == "voice.downloadModel" ? modelSeconds : imageSeconds
     }
 
     private func settle(_ now: TimeInterval) {
-        if blockerGone == nil, let began, now - began >= Self.blockerClears { blockerGone = began + Self.blockerClears }
-        for run in runs.values where !run.cancelled && now - run.started >= run.seconds { done.insert(run.fix) }
+        for run in runs.values where !run.cancelled && now - run.started >= run.seconds {
+            done.insert(run.fix)
+            if run.fix == "voice.pullImage", imageDoneAt == nil { imageDoneAt = run.started + run.seconds }
+        }
     }
 
     private func openRun(_ now: TimeInterval) -> (key: String, value: Run)? {
@@ -85,77 +83,60 @@ public actor SetupDemoSource: SetupSource {
         let elapsed = now - run.started
         if run.cancelled { return SetupJob(id: id, fix: run.fix, state: .cancelled, startedAt: run.started) }
         let fraction = min(1, max(0, elapsed / run.seconds))
-        let finished = fraction >= 1
+        let total = run.fix == "voice.downloadModel" ? VoiceRequirements.modelBytes : VoiceRequirements.imageBytes
+        let minutes = run.fix == "voice.downloadModel" ? 12.0 : 6.0
         var job = SetupJob(
-            id: id, fix: run.fix, state: finished ? .succeeded : .running, step: Self.step(of: run.fix),
-            fraction: fraction, startedAt: run.started)
-        if let total = Self.bytes(of: run.fix) {
-            job.bytesTotal = total
-            job.bytesDone = Int64(Double(total) * fraction)
-            job.facts["etaSeconds"] = String(Int(Double(Self.minutes(of: run.fix)) * 60 * (1 - fraction)))
-        }
+            id: id, fix: run.fix, state: fraction >= 1 ? .succeeded : .running,
+            step: run.fix == "voice.downloadModel" ? "download" : "pull", fraction: fraction, startedAt: run.started)
+        job.bytesTotal = total
+        job.bytesDone = Int64(Double(total) * fraction)
+        job.facts["etaSeconds"] = String(Int(minutes * 60 * (1 - fraction)))
         return job
     }
 
-    private static func step(of fix: String) -> String {
-        switch fix {
-        case "voice.downloadModel": return "download"
-        case "voice.pullImage": return "pull"
-        default: return "start"
-        }
-    }
-
-    private static func bytes(of fix: String) -> Int64? {
-        switch fix {
-        case "voice.downloadModel": return VoiceRequirements.modelBytes
-        case "voice.pullImage": return VoiceRequirements.imageBytes
-        default: return nil
-        }
-    }
-
-    private static func minutes(of fix: String) -> Int { fix == "voice.downloadModel" ? 12 : 6 }
-
     private func checks(now: TimeInterval) -> [SetupCheck] {
-        let gone = blockerGone != nil
-        let commandRun = blockerGone.map { now - $0 >= Self.commandTaken - Self.blockerClears } ?? false
-        let modelRunning = isRunning("voice.downloadModel", now)
-        let imageRunning = isRunning("voice.pullImage", now)
-        let engineRunning = isRunning("voice.startEngine", now)
+        let commandRun = began.map { now - $0 >= Self.commandTaken } ?? false
+        let modelJob = runningJob("voice.downloadModel", now)
+        let imageJob = runningJob("voice.pullImage", now)
         return [
-            SetupCheck(id: "voice.gateway", state: .ok, facts: ["version": VoiceDemo.gatewayVersion]),
-            SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "RTX PRO 6000", "vramMB": "97887"]),
-            gone
-                ? SetupCheck(id: "voice.vram", state: .ok, facts: ["freeMB": "90112", "needMB": "67584"])
-                : SetupCheck(id: "voice.vram", state: .todo, facts: ["freeMB": "2048", "needMB": "67584"]),
-            SetupCheck(id: "voice.docker", state: .ok, facts: ["version": "28.0.1"]),
+            SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "NVIDIA RTX PRO 6000 Blackwell"]),
+            SetupCheck(id: "voice.vram", state: .ok, facts: ["totalMB": "97887", "needMB": "70000"]),
+            SetupCheck(id: "voice.docker", state: .ok, facts: ["os": "arch"]),
             commandRun
-                ? SetupCheck(id: "voice.cdi", state: .ok)
+                ? SetupCheck(id: "voice.cdi", state: .ok, facts: ["toolkit": "installed"])
                 : SetupCheck(
-                    id: "voice.cdi", state: .todo,
+                    id: "voice.cdi", state: .blocked, facts: ["toolkit": "installed"],
                     fix: SetupFix(
-                        id: "voice.enableCdi", kind: .command,
+                        id: "voice.generateCDI", kind: .command,
                         command: "sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml")),
-            artifact("voice.model", fix: "voice.downloadModel", bytes: VoiceRequirements.modelBytes, minutes: 12, running: modelRunning),
-            artifact("voice.image", fix: "voice.pullImage", bytes: VoiceRequirements.imageBytes, minutes: 6, running: imageRunning),
-            engineRunning
-                ? SetupCheck(id: "voice.engine", state: .working, facts: ["engine": VoiceEngineState.loading.rawValue])
-                : done.contains("voice.startEngine")
-                    ? SetupCheck(id: "voice.engine", state: .ok, facts: ["engine": VoiceEngineState.stopped.rawValue])
-                    : SetupCheck(
-                        id: "voice.engine", state: .todo,
-                        fix: SetupFix(id: "voice.startEngine", kind: .job, minutes: 1)),
+            artifact("voice.model", fix: "voice.downloadModel", total: VoiceRequirements.modelBytes, minutes: 12, job: modelJob),
+            artifact("voice.image", fix: "voice.pullImage", total: VoiceRequirements.imageBytes, minutes: 6, job: imageJob),
+            engine(now: now),
+            SetupCheck(id: "voice.gateway", state: .ok, facts: ["version": VoiceDemo.gatewayVersion]),
         ]
     }
 
-    private func artifact(_ id: String, fix: String, bytes: Int64, minutes: Int, running: Bool) -> SetupCheck {
-        if done.contains(fix) { return SetupCheck(id: id, state: .ok, facts: ["bytes": String(bytes)]) }
-        return SetupCheck(
-            id: id, state: running ? .working : .todo, facts: ["bytes": String(bytes)],
-            fix: SetupFix(id: fix, bytes: bytes, minutes: minutes))
+    private func artifact(_ id: String, fix: String, total: Int64, minutes: Int, job: String?) -> SetupCheck {
+        let facts = ["bytes": String(done.contains(fix) ? total : 0), "needBytes": String(total)]
+        if done.contains(fix) { return SetupCheck(id: id, state: .ok, facts: facts) }
+        if let job { return SetupCheck(id: id, state: .working, facts: facts.merging(["job": job]) { _, new in new }) }
+        return SetupCheck(id: id, state: .todo, facts: facts, fix: SetupFix(id: fix, bytes: total, minutes: minutes))
     }
 
-    private func isRunning(_ fix: String, _ now: TimeInterval) -> Bool {
-        runs.values.contains { $0.fix == fix && !$0.cancelled && now - $0.started < $0.seconds }
+    private func engine(now: TimeInterval) -> SetupCheck {
+        guard let finished = imageDoneAt, done.contains("voice.downloadModel") else {
+            return SetupCheck(id: "voice.engine", state: .todo, facts: ["mode": "managed", "after": "voice.model"])
+        }
+        if now - finished < Self.blockerClears {
+            return SetupCheck(
+                id: "voice.engine", state: .blocked,
+                facts: ["mode": "managed", "state": "busy", "freeMB": "2048", "needMB": "70000"])
+        }
+        return SetupCheck(id: "voice.engine", state: .ok, facts: ["mode": "managed", "state": "stopped"])
+    }
+
+    private func runningJob(_ fix: String, _ now: TimeInterval) -> String? {
+        runs.first { $0.value.fix == fix && !$0.value.cancelled && now - $0.value.started < $0.value.seconds }?.key
     }
 }
 
@@ -164,8 +145,8 @@ public actor SetupDemoSource: SetupSource {
 /// same `SetupChecklist`. Each name is a state a person can meet.
 public enum SetupFixtures {
     public static let names = [
-        "ready", "command", "blocker", "downloading", "starting", "failed", "unavailable", "unreachable",
-        "absent", "checking", "password",
+        "ready", "command", "blocker", "downloading", "starting", "failed", "unavailable", "smallgpu",
+        "unreachable", "absent", "checking", "password",
     ]
 
     public static let host = "fixture.tailnet.ts.net"
@@ -177,25 +158,29 @@ public enum SetupFixtures {
             return SetupSnapshot(target: target, phase: .loaded, report: report(checks: allGood(), ready: true))
         case "command":
             var checks = allGood()
-            checks[4] = SetupCheck(
-                id: "voice.cdi", state: .todo,
+            checks[3] = SetupCheck(
+                id: "voice.cdi", state: .blocked, facts: ["toolkit": "installed"],
                 fix: SetupFix(
-                    id: "voice.enableCdi", kind: .command,
+                    id: "voice.generateCDI", kind: .command,
                     command: "sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml"))
-            checks[5] = pending("voice.model", fix: "voice.downloadModel", bytes: VoiceRequirements.modelBytes, minutes: 12)
-            checks[6] = pending("voice.image", fix: "voice.pullImage", bytes: VoiceRequirements.imageBytes, minutes: 6)
+            checks[4] = pending("voice.model", fix: "voice.downloadModel", bytes: VoiceRequirements.modelBytes, minutes: 12)
+            checks[5] = pending("voice.image", fix: "voice.pullImage", bytes: VoiceRequirements.imageBytes, minutes: 6)
+            checks[6] = SetupCheck(id: "voice.engine", state: .todo, facts: ["mode": "managed", "after": "voice.cdi"])
             return SetupSnapshot(target: target, phase: .loaded, report: report(checks: checks, ready: false))
         case "blocker":
             var checks = allGood()
-            checks[2] = SetupCheck(id: "voice.vram", state: .todo, facts: ["freeMB": "2048", "needMB": "67584"])
-            checks[5] = pending("voice.model", fix: "voice.downloadModel", bytes: VoiceRequirements.modelBytes, minutes: 12)
+            checks[6] = SetupCheck(
+                id: "voice.engine", state: .blocked,
+                facts: ["mode": "managed", "state": "busy", "freeMB": "2048", "needMB": "70000", "holders": "ollama"])
             return SetupSnapshot(target: target, phase: .loaded, report: report(checks: checks, ready: false))
         case "downloading":
             var checks = allGood()
+            checks[4] = SetupCheck(
+                id: "voice.model", state: .working,
+                facts: ["bytes": "0", "needBytes": String(VoiceRequirements.modelBytes), "job": "fixture-1", "progress": "0.31"])
             checks[5] = SetupCheck(
-                id: "voice.model", state: .working, facts: ["bytes": String(VoiceRequirements.modelBytes)],
-                fix: SetupFix(id: "voice.downloadModel", bytes: VoiceRequirements.modelBytes, minutes: 12))
-            checks[6] = pending("voice.image", fix: "voice.pullImage", bytes: VoiceRequirements.imageBytes, minutes: 6)
+                id: "voice.image", state: .todo, facts: ["needBytes": String(VoiceRequirements.imageBytes)],
+                fix: SetupFix(id: "voice.pullImage", bytes: VoiceRequirements.imageBytes, minutes: 6))
             let job = SetupJob(
                 id: "fixture-1", fix: "voice.downloadModel", state: .running, step: "download", fraction: 0.31,
                 bytesDone: Int64(Double(VoiceRequirements.modelBytes) * 0.31), bytesTotal: VoiceRequirements.modelBytes,
@@ -205,21 +190,38 @@ public enum SetupFixtures {
                 eta: 498, running: true)
         case "starting":
             var checks = allGood()
-            checks[7] = SetupCheck(id: "voice.engine", state: .working, facts: ["engine": VoiceEngineState.loading.rawValue])
+            checks[6] = SetupCheck(
+                id: "voice.engine", state: .working, facts: ["mode": "managed", "state": "loading", "progress": "0.40"])
             return SetupSnapshot(target: target, phase: .loaded, report: report(checks: checks, ready: false))
         case "failed":
             var checks = allGood()
-            checks[5] = pending("voice.model", fix: "voice.downloadModel", bytes: VoiceRequirements.modelBytes, minutes: 12)
+            checks[4] = SetupCheck(
+                id: "voice.model", state: .todo,
+                facts: ["bytes": "9663676416", "needBytes": String(VoiceRequirements.modelBytes), "lastFailure": "noDisk", "lastJob": "fixture-2"],
+                fix: SetupFix(id: "voice.downloadModel", bytes: VoiceRequirements.modelBytes - 9_663_676_416, minutes: 9))
+            checks[6] = SetupCheck(id: "voice.engine", state: .todo, facts: ["mode": "managed", "after": "voice.model"])
             let job = SetupJob(
-                id: "fixture-2", fix: "voice.downloadModel", state: .failed, failure: "diskFull",
+                id: "fixture-2", fix: "voice.downloadModel", state: .failed, failure: "noDisk",
                 facts: ["freeMB": "9216", "needMB": "44700"], startedAt: 0)
             return SetupSnapshot(
                 target: target, phase: .loaded, report: report(checks: checks, ready: false), failed: job)
         case "unavailable":
-            let checks = [
-                SetupCheck(id: "voice.gateway", state: .ok, facts: ["version": VoiceDemo.gatewayVersion]),
-                SetupCheck(id: "voice.gpu", state: .unavailable),
-            ]
+            let checks =
+                [SetupCheck(id: "voice.gpu", state: .unavailable, detail: "No NVIDIA GPU was found on this machine.")]
+                + ["voice.vram", "voice.docker", "voice.cdi", "voice.model", "voice.image", "voice.engine"]
+                    .map { SetupCheck(id: $0, state: .unavailable) }
+                + [SetupCheck(id: "voice.gateway", state: .ok, facts: ["version": "0.4.0"])]
+            return SetupSnapshot(
+                target: target, phase: .loaded, report: report(checks: checks, ready: false, available: false))
+        case "smallgpu":
+            let checks =
+                [
+                    SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "NVIDIA GeForce RTX 4090"]),
+                    SetupCheck(id: "voice.vram", state: .unavailable, facts: ["totalMB": "24564", "needMB": "70000"]),
+                ]
+                + ["voice.docker", "voice.cdi", "voice.model", "voice.image", "voice.engine"]
+                    .map { SetupCheck(id: $0, state: .unavailable) }
+                + [SetupCheck(id: "voice.gateway", state: .ok, facts: ["version": "0.4.0"])]
             return SetupSnapshot(
                 target: target, phase: .loaded, report: report(checks: checks, ready: false, available: false))
         case "unreachable":
@@ -243,19 +245,24 @@ public enum SetupFixtures {
 
     private static func pending(_ id: String, fix: String, bytes: Int64, minutes: Int) -> SetupCheck {
         SetupCheck(
-            id: id, state: .todo, facts: ["bytes": String(bytes)], fix: SetupFix(id: fix, bytes: bytes, minutes: minutes))
+            id: id, state: .todo, facts: ["bytes": "0", "needBytes": String(bytes)],
+            fix: SetupFix(id: fix, bytes: bytes, minutes: minutes))
     }
 
     private static func allGood() -> [SetupCheck] {
         [
+            SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "NVIDIA RTX PRO 6000 Blackwell"]),
+            SetupCheck(id: "voice.vram", state: .ok, facts: ["totalMB": "97887", "needMB": "70000"]),
+            SetupCheck(id: "voice.docker", state: .ok, facts: ["os": "arch"]),
+            SetupCheck(id: "voice.cdi", state: .ok, facts: ["toolkit": "installed"]),
+            SetupCheck(
+                id: "voice.model", state: .ok,
+                facts: ["bytes": String(VoiceRequirements.modelBytes + 45_192_085), "needBytes": String(VoiceRequirements.modelBytes)]),
+            SetupCheck(
+                id: "voice.image", state: .ok,
+                facts: ["bytes": String(VoiceRequirements.imageBytes), "needBytes": String(VoiceRequirements.imageBytes)]),
+            SetupCheck(id: "voice.engine", state: .ok, facts: ["mode": "managed", "state": "stopped", "freeMB": "87892", "needMB": "70000"]),
             SetupCheck(id: "voice.gateway", state: .ok, facts: ["version": "0.4.0"]),
-            SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "RTX PRO 6000", "vramMB": "97887"]),
-            SetupCheck(id: "voice.vram", state: .ok, facts: ["freeMB": "90112", "needMB": "67584"]),
-            SetupCheck(id: "voice.docker", state: .ok, facts: ["version": "28.0.1"]),
-            SetupCheck(id: "voice.cdi", state: .ok),
-            SetupCheck(id: "voice.model", state: .ok, facts: ["bytes": String(VoiceRequirements.modelBytes)]),
-            SetupCheck(id: "voice.image", state: .ok, facts: ["bytes": String(VoiceRequirements.imageBytes)]),
-            SetupCheck(id: "voice.engine", state: .ok, facts: ["engine": VoiceEngineState.stopped.rawValue]),
         ]
     }
 }

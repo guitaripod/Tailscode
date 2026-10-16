@@ -27,8 +27,8 @@ struct SetupChecklistTests {
     @Test("A command is a monospace block with its reason, and the primary button copies it")
     func command() throws {
         let list = try checklist("command")
-        #expect(list.status == .needs(3))
-        #expect(list.headline == "Needs 3 things")
+        #expect(list.status == .needs(4))
+        #expect(list.headline == "Needs 4 things")
         let row = try #require(list.rows.first { $0.id == "voice.cdi" })
         #expect(row.state == .needsYou)
         #expect(row.fix?.kind == .command)
@@ -43,13 +43,22 @@ struct SetupChecklistTests {
     @Test("A blocker is an explanation with no fix, and the button does not pretend there is one")
     func blocker() throws {
         let list = try checklist("blocker")
-        #expect(list.status == .needs(2))
-        let row = try #require(list.rows.first { $0.id == "voice.vram" })
+        #expect(list.status == .needs(1))
+        let row = try #require(list.rows.first { $0.id == "voice.engine" })
         #expect(row.state == .needsYou)
         #expect(row.fix == nil)
         #expect(row.line?.contains("Only 2 GB") == true)
         #expect(row.icon.tone == .attention && row.icon.motion == .still)
         #expect(list.primary == nil)
+    }
+
+    @Test("A row waiting on another is quiet, not a blocker")
+    func waitingRows() throws {
+        let list = try checklist("command")
+        let engine = try #require(list.rows.first { $0.id == "voice.engine" })
+        #expect(engine.state == .todo)
+        #expect(engine.line == "Waits for GPU access in containers")
+        #expect(engine.icon.tone == .quiet)
     }
 
     @Test("A download breathes with its bytes and its time left, and nothing else offers a button")
@@ -67,6 +76,7 @@ struct SetupChecklistTests {
         #expect(row.job?.fraction == 0.31)
         let next = try #require(list.rows.first { $0.id == "voice.image" })
         #expect(next.state == .todo)
+        #expect(next.fix?.enabled == false)
     }
 
     @Test("A machine that can never do it says so once, with the reason, and offers nothing")
@@ -80,6 +90,10 @@ struct SetupChecklistTests {
         let row = try #require(list.rows.first { $0.id == "voice.gpu" })
         #expect(row.state == .unavailable)
         #expect(row.icon.motion == .still)
+        let small = try checklist("smallgpu")
+        #expect(small.headline == "Not possible on this machine: its GPU has 24 GB of memory and voice needs 80 GB")
+        #expect(small.rows.first { $0.id == "voice.gpu" }?.state == .done)
+        #expect(small.rows.first { $0.id == "voice.vram" }?.state == .unavailable)
     }
 
     @Test("A failed job keeps its row, says why in words and offers to try again")
@@ -88,6 +102,14 @@ struct SetupChecklistTests {
         let row = try #require(list.rows.first { $0.id == "voice.model" })
         #expect(row.state == .failed)
         #expect(row.failure == "There is not enough room on the disk: 9 GB free, 44 GB needed.")
+        let relaunched = SetupChecklist(
+            snapshot: SetupSnapshot(
+                target: SetupTarget(host: "x", capability: "voice"), phase: .loaded,
+                report: (try #require(SetupFixtures.snapshot(named: "failed"))).report),
+            locale: english)
+        let again = try #require(relaunched.rows.first { $0.id == "voice.model" })
+        #expect(again.state == .failed)
+        #expect(again.failure == "There is not enough room on the disk.")
         #expect(row.icon.tone == .danger && row.icon.motion == .still)
         #expect(list.primary == .setUp(label: "Try again"))
     }
@@ -96,8 +118,8 @@ struct SetupChecklistTests {
     func starting() throws {
         let list = try checklist("starting")
         #expect(list.status == .working)
-        #expect(list.rows.last?.state == .working)
-        #expect(list.rows.last?.line == "Starting. This can take a few minutes.")
+        #expect(list.rows.first { $0.id == "voice.engine" }?.state == .working)
+        #expect(list.rows.first { $0.id == "voice.engine" }?.line == "Starting, 40%. This can take a few minutes.")
         #expect(!list.canCancel)
     }
 

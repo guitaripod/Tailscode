@@ -30,40 +30,61 @@ struct SetupReadingTests {
 
     private var richFacts: [String: String] {
         [
-            "name": "RTX PRO 6000", "vramMB": "97887", "freeMB": "2048", "needMB": "67584",
-            "bytes": "46868000000", "version": "28.0.1", "engine": "stopped",
+            "name": "RTX PRO 6000", "totalMB": "97887", "freeMB": "2048", "needMB": "67584", "bytes": "46868000000",
+            "needBytes": "46868000000", "os": "arch", "state": "stopped", "mode": "managed", "progress": "0.4",
+            "reason": "docker exited", "after": "voice.docker", "toolkit": "installed", "version": "0.4.0",
         ]
     }
 
-    @Test("The GPU says what it has and what voice needs")
+    @Test("The GPU says what it is and what it lacks, as the gateway reports it")
     func gpu() {
-        let ok = SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "RTX PRO 6000", "vramMB": "97887"])
-        #expect(SetupReading.line(of: ok, locale: english) == "RTX PRO 6000, 96 GB")
-        let small = SetupCheck(id: "voice.gpu", state: .unavailable, facts: ["name": "RTX 4090", "vramMB": "24564"])
-        #expect(SetupReading.line(of: small, locale: english) == "RTX 4090 has 24 GB. Voice calls need 80 GB.")
-        #expect(
-            SetupReading.impossibility(of: small, locale: english) == "its RTX 4090 has 24 GB and voice needs 80 GB")
-        let none = SetupCheck(id: "voice.gpu", state: .unavailable)
+        let ok = SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "NVIDIA RTX PRO 6000 Blackwell"])
+        #expect(SetupReading.line(of: ok, locale: english) == "NVIDIA RTX PRO 6000 Blackwell")
+        let none = SetupCheck(id: "voice.gpu", state: .unavailable, detail: "No NVIDIA GPU was found on this machine.")
         #expect(SetupReading.line(of: none, locale: english) == "No NVIDIA GPU with 80 GB was found.")
         #expect(SetupReading.impossibility(of: none, locale: english) == "it has no NVIDIA GPU with 80 GB")
+        let small = SetupCheck(id: "voice.vram", state: .unavailable, facts: ["totalMB": "24564", "needMB": "70000"])
+        #expect(SetupReading.line(of: small, locale: english) == "This GPU has 24 GB of memory and voice calls need a card with 80 GB.")
+        #expect(SetupReading.impossibility(of: small, locale: english) == "its GPU has 24 GB of memory and voice needs 80 GB")
+        let unread = SetupCheck(id: "voice.vram", state: .unavailable, detail: "The card's memory size could not be read.")
+        #expect(SetupReading.impossibility(of: unread, locale: english) == "The card's memory size could not be read.")
+        let skipped = SetupCheck(id: "voice.docker", state: .unavailable)
+        #expect(SetupReading.line(of: skipped, locale: english) == "Not possible on this machine")
     }
 
-    @Test("Free memory is a fact about someone else's job, said without blame")
-    func vram() {
-        let check = SetupCheck(id: "voice.vram", state: .todo, facts: ["freeMB": "2048", "needMB": "67584"])
+    @Test("A busy engine is a fact about someone else's job, said without blame")
+    func engineBusy() {
+        let check = SetupCheck(
+            id: "voice.engine", state: .blocked, facts: ["state": "busy", "freeMB": "2048", "needMB": "70000", "holders": "ollama"])
         let line = SetupReading.line(of: check, locale: english) ?? ""
-        #expect(line.hasPrefix("Only 2 GB of the GPU is free and the voice model needs 66 GB."))
+        #expect(line.hasPrefix("Only 2 GB of the GPU is free and the voice model needs 68 GB."))
         #expect(line.contains("never stop another job"))
+        let down = SetupCheck(id: "voice.engine", state: .blocked, facts: ["state": "down", "reason": "container exited"])
+        #expect(SetupReading.line(of: down, locale: english) == "Not running: container exited")
+        let loading = SetupCheck(id: "voice.engine", state: .working, facts: ["state": "loading", "progress": "0.40"])
+        #expect(SetupReading.line(of: loading, locale: english) == "Starting, 40%. This can take a few minutes.")
+        let stopped = SetupCheck(id: "voice.engine", state: .ok, facts: ["state": "stopped"])
+        #expect(SetupReading.line(of: stopped, locale: english) == "Starts when you call and stops after ten idle minutes")
     }
 
-    @Test("A download names its size and a fix says what it costs before it starts")
+    @Test("A check waiting on another says which, and is not a blocker")
+    func waiting() {
+        let image = SetupCheck(id: "voice.image", state: .todo, facts: ["after": "voice.docker"])
+        #expect(SetupReading.line(of: image, locale: english) == "Waits for Docker")
+    }
+
+    @Test("A download names what is left to fetch, and a fix says what it costs before it starts")
     func downloads() {
         let model = SetupCheck(
-            id: "voice.model", state: .todo, facts: ["bytes": "46868000000"],
+            id: "voice.model", state: .todo, facts: ["bytes": "0", "needBytes": "46868000000"],
             fix: SetupFix(id: "voice.downloadModel", bytes: 46_868_000_000, minutes: 12))
         #expect(SetupReading.line(of: model, locale: english) == "44 GB to download")
         #expect(SetupReading.fixLabel(of: model.fix!) == "Download the voice model")
         #expect(SetupReading.fixCost(of: model.fix!, locale: english) == "44 GB, about 12 minutes")
+        let resumed = SetupCheck(id: "voice.model", state: .todo, facts: ["bytes": "23434000000", "needBytes": "46868000000"])
+        #expect(SetupReading.line(of: resumed, locale: english) == "22 GB to download")
+        let installed = SetupCheck(id: "voice.image", state: .ok, facts: ["bytes": "22543587937", "needBytes": "22500000000"])
+        #expect(SetupReading.line(of: installed, locale: english) == "21 GB on this machine")
         #expect(SetupReading.fixCost(of: SetupFix(id: "x"), locale: english) == nil)
         #expect(SetupReading.fixCost(of: SetupFix(id: "x", minutes: 1), locale: english) == "about 1 minute")
     }
@@ -92,10 +113,14 @@ struct SetupReadingTests {
     @Test("A job's failure id is read with its facts, and an unknown one still says something true")
     func failures() {
         let full = SetupJob(
-            id: "j", fix: "voice.downloadModel", state: .failed, failure: "diskFull",
+            id: "j", fix: "voice.downloadModel", state: .failed, failure: "noDisk",
             facts: ["freeMB": "9216", "needMB": "44700"])
         #expect(
             SetupReading.failure(of: full, locale: english) == "There is not enough room on the disk: 9 GB free, 44 GB needed.")
+        #expect(
+            SetupReading.failure(of: SetupJob(id: "j", fix: "a", state: .failed, failure: "denied"))?.contains("refused access") == true)
+        #expect(
+            SetupReading.failure(of: SetupJob(id: "j", fix: "a", state: .failed, failure: "interrupted"))?.contains("interrupted") == true)
         let strange = SetupJob(id: "j", fix: "x.y", state: .failed, failure: "meteor")
         #expect(SetupReading.failure(of: strange, locale: english)?.contains("picks up where it left off") == true)
         #expect(SetupReading.failure(of: SetupJob(id: "j", fix: "a", state: .cancelled)) == nil)
@@ -113,6 +138,8 @@ struct SetupReadingTests {
         #expect(SetupReading.jobLine(job, eta: 120, locale: english) == "25%, about 2 minutes left")
         job.fraction = nil
         #expect(SetupReading.jobLine(job, eta: nil, locale: english) == "Downloading")
+        job.step = "permissions"
+        #expect(SetupReading.jobLine(job, eta: nil, locale: english) == "Finishing up")
         job.step = "mystery"
         #expect(SetupReading.jobLine(job, eta: nil, locale: english) == nil)
     }

@@ -67,6 +67,34 @@ Core's `SetupReading` turns ids and facts into words; unknown ids fall back to `
 the three clients draw: a row is a glyph (the activity vocabulary: breathing while working, still
 when settled), a title, one line of facts, and its fix button.
 
+### Voice ids, facts and fixes
+
+The words are Core's (`VoiceSetupReader`), written against the gateway's own report (`Doctor` in
+voice-bridge), so the gateway reports only these ids, facts and fix ids; any other id reads from its
+`detail`. Facts are text, so numbers are digits. Checks come in dependency order, because
+`Set up voice` runs job fixes in that order and stops at the first command or blocker.
+
+| Check id | State and facts | Fix |
+| --- | --- | --- |
+| `voice.gpu` | `ok` with `name`; `unavailable` when there is no NVIDIA GPU (with `available: false`) | none |
+| `voice.vram` | `ok` with `totalMB`, `needMB`; `unavailable` with `totalMB` when the card is below 80 GB | none |
+| `voice.docker` | `ok` with `os`; `blocked` with `problem` | `voice.installDocker` (command) |
+| `voice.cdi` | `ok` or `blocked`, `toolkit` (`installed`, `missing`) | `voice.generateCDI` (command) |
+| `voice.model` | `ok`, `todo` or `working`; `bytes` on disk, `needBytes`; `job`, `progress` while working; `lastFailure`, `lastJob` after a failed attempt | `voice.downloadModel` (job, `bytes` = what is left) |
+| `voice.image` | as the model; a `todo` with `after` and no fix waits on Docker | `voice.pullImage` (job) |
+| `voice.engine` | `state` (`running`, `stopped`, `loading` with `progress`, `busy` with `freeMB`, `needMB`, `holders`, `down` with `reason`, `needsSetup`), `mode`; `busy` and `down` are `blocked` with no fix; `after` names what it waits for | none (it starts on a call) |
+| `voice.gateway` | `ok` with `version` | none |
+
+Job `step` ids with words: `starting`, `disk`, `download`, `permissions`, `pull`, `done`. Failure ids
+with words: `noDisk` (`freeMB`, `needMB`), `network`, `interrupted`, `denied`; anything else reads
+generically. `POST /setup/fix` answers 409 with the running job when one is already open, which the
+app follows rather than refuses. A job's `facts.etaSeconds`, when present, is the time left and
+outranks the rate the app measures itself.
+
+A host with no answering gateway is a synthetic report (`voice.gateway`, `todo`, the one install
+command fix `voice.install`) built from `VoiceBridgeInstall`; a gateway that has `/health` but no
+`/setup` is the same report carrying its `version`, so the install command doubles as the update.
+
 ## Capabilities
 
 | Capability | Owner of the checks | Needs |
@@ -122,3 +150,44 @@ agent CLI and its sign-in, prints the pairing link and QR, and says what is left
   ComfyUI (`scripts/mock-comfyui.py`).
 - Clients: the headless Linux harness for the visuals; iOS and Mac are compile-checked, and what only
   a device shows is written down.
+
+### Clients
+
+The three clients draw one value, `SetupChecklist` (rows, headline, the single primary action), and
+decide nothing else.
+
+- **iOS**: `SetupChecklistViewController`, a sheet sized to its content with a large detent, the
+  primary button pinned under the list; `SetupGate` owns the process's `SetupDesk`.
+- **Mac**: `SetupChecklistViewController` in a window sheet (`SetupSheet`), Return presses the primary
+  button, Esc closes; `MacSetupGate` owns the desk.
+- **Linux**: `SetupWindow`, a dialog window transient for the main window, one at a time, with
+  `SetupChecklistView` inside; `SetupRunner` owns the desk. `TAILSCODE_DRIVE` verbs: `setup=<state>`
+  (`ready`, `command`, `blocker`, `downloading`, `starting`, `failed`, `unavailable`, `unreachable`,
+  `absent`, `checking`, `password`), `setup=demo`, `setup=voice`, `setup=media`, `setup=press`,
+  `setup=caps`, `setup=close`; `TAILSCODE_SELFTEST_ONLY=setup`.
+- Every row: a glyph in the activity vocabulary (work breathes, everything settled holds still,
+  reduced motion drops the movement), a title, one line of facts, and a fix. A finished row of a list
+  that still has work is compact; a row that needs the person is a card.
+- The desk polls only while a surface follows it (`SetupDesk.follow` with a `PaneLifetime`): the
+  sheet or window while it is open, the server screen's Capabilities section while the screen is on
+  show. Closing a checklist leaves a running job on the machine; the next one to open finds it in the
+  report.
+- The server screen has a Capabilities section (`SetupCapabilityRow`): a row per available
+  capability and one quiet "Add voice calls" row where no gateway answers. `SetupTargets.listed` is the
+  list of capabilities asked about.
+- The call control is visible on a server with no gateway, and a press that cannot start a call
+  (`VoiceCallEntryPoint.pressOpensSetup`) opens the checklist; finishing it starts the call.
+
+What only a real iPhone or Mac can show, and was not seen:
+
+- Both Apple clients were compiled, never run: the sheet's detent height with Dynamic Type at its
+  largest sizes, the pinned primary button over the home indicator, VoiceOver reading of a row
+  (`isAccessibilityElement` is off on the card and its glyph and buttons are the elements), the
+  Reduce Motion setting dropping the swell on a working glyph (`ActivityBadgeView`), and the haptics on
+  copy and on a finished job.
+- On the Mac: the sheet's size at the window's own minimum, Return and Esc with a field focused, the
+  Capabilities rows in the Servers window at a narrow width, and the restyle of an open sheet when the
+  theme changes.
+- On both: a real gateway answering `/setup` (none existed when this was written; the machine side
+  was proven against fakes, the scripted demo and a mock HTTP seam), and a real multi-gigabyte
+  download's bytes and time left.

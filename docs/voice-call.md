@@ -471,6 +471,21 @@ entitlements are the ones declared. What only a real Mac can show, and has not b
 - that the transcript row for a spoken prompt rises and streams the way a typed one does, and that the
   chime is audible over the call's route and not over the voice.
 
+## Setting up, and the engine starting
+
+A server with no gateway, a gateway that says it needs setting up and an engine that is down are not
+reasons to toast: `VoiceCallEntryPoint.pressOpensSetup(reach:)` is true for `noGateway`, `needsSetup`
+and `engineDown`, the control stays live for them, and the press opens the voice checklist of
+`docs/setup.md` on every client (a call that fails to start with one of those reaches opens it too).
+Finishing the checklist starts the call. `VoiceCallReading.reason(for:)` no longer tells anyone to run
+a service command; it says voice is not set up here and that Call is where to start.
+
+While the gateway loads its model the call face stays `connecting` (it sweeps) and says what is
+happening: `VoiceServerMessage.engine` sets `VoiceCallSnapshot.engine` and `engineProgress`,
+`isStartingEngine` is true for `loading` and `stopped` before the line opens, and `word` reads
+"Starting the voice model" with the percentage when the gateway reports one. The line opening
+(`ready`) ends the wait.
+
 ## Beta
 
 Calls ship as a beta (`BetaFeature.voiceCall`, see `beta.md`). The sheet lists what is solid and what

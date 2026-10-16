@@ -98,6 +98,9 @@ public enum SetupReading {
     }
 
     public static func line(of check: SetupCheck, locale: Locale = .current) -> String? {
+        if check.state == .todo, check.fix == nil, let after = SetupFacts(check.facts).text("after") {
+            return Localized.text("Waits for %@", title(of: SetupCheck(id: after, state: .ok)))
+        }
         if let line = SetupReaders.shared.reader(forCheck: check.id)?.line(of: check, locale: locale) {
             return line
         }
@@ -167,12 +170,12 @@ public enum SetupReading {
 
     public static func step(_ step: String?) -> String? {
         switch step {
+        case "starting", "start": return Localized.text("Starting")
+        case "disk": return Localized.text("Checking the disk")
         case "download": return Localized.text("Downloading")
-        case "verify": return Localized.text("Checking the download")
-        case "unpack": return Localized.text("Unpacking")
+        case "permissions": return Localized.text("Finishing up")
         case "pull": return Localized.text("Downloading the image")
-        case "load": return Localized.text("Loading the model")
-        case "start": return Localized.text("Starting")
+        case "done": return Localized.text("Done")
         default: return nil
         }
     }
@@ -187,17 +190,17 @@ public enum SetupReading {
     public static func generalFailure(of job: SetupJob, locale: Locale = .current) -> String {
         let facts = SetupFacts(job.facts)
         switch job.failure {
-        case "diskFull":
+        case "noDisk", "diskFull":
             if let free = facts.integer("freeMB"), let need = facts.integer("needMB") {
                 return Localized.text(
                     "There is not enough room on the disk: %1$@ free, %2$@ needed.",
                     SetupFormat.megabytes(free, locale: locale), SetupFormat.megabytes(need, locale: locale))
             }
             return Localized.text("There is not enough room on the disk.")
-        case "network":
+        case "network", "interrupted":
             return Localized.text("The download was interrupted. Trying again picks up where it stopped.")
-        case "checksum":
-            return Localized.text("The download did not check out and was thrown away. Try again.")
+        case "denied":
+            return Localized.text("The vendor's download site refused access, so nothing was downloaded.")
         default:
             return Localized.text("It stopped before it finished. Trying again picks up where it left off.")
         }

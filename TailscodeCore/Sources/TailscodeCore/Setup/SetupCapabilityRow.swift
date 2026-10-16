@@ -89,3 +89,21 @@ public struct SetupCapabilityRow: Sendable, Equatable, Identifiable {
 
     public static var sectionTitle: String { Localized.text("Capabilities") }
 }
+
+/// Which capabilities a server screen asks each machine about, and where each one is answered. Voice
+/// is answered by the gateway on its own port; a capability added later names its capability here and
+/// is answered by whatever source is registered for it on the desk.
+public enum SetupTargets {
+    public nonisolated(unsafe) static var listed: [String] = [SetupCapability.voice]
+
+    public static func targets(forProfileURL url: URL) -> [SetupTarget] {
+        listed.compactMap { capability in
+            if capability == SetupCapability.voice {
+                return VoiceEndpoint(profileURL: url).map(SetupTarget.voice)
+            }
+            return DelegateAccess.host(of: url).flatMap { $0.isEmpty ? nil : $0 }.map {
+                SetupTarget(host: $0, capability: capability)
+            }
+        }
+    }
+}

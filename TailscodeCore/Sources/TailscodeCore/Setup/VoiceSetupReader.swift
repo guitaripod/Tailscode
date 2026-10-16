@@ -2,9 +2,11 @@ import CodingAgentKit
 import Foundation
 
 /// The ids `voice-bridge` reports and the facts each carries, written in the person's language. The
-/// facts are the contract with the gateway (see docs/setup.md): `name` and `vramMB` on `voice.gpu`,
-/// `freeMB` and `needMB` on `voice.vram`, `bytes` on `voice.model` and `voice.image`, `version` on
-/// `voice.docker` and `voice.gateway`, `engine` on `voice.engine`.
+/// ids and facts are the gateway's own (its `Doctor`, see docs/setup.md): `name` on `voice.gpu`,
+/// `totalMB` and `needMB` on `voice.vram`, `os` on `voice.docker`, `toolkit` on `voice.cdi`, `bytes`
+/// and `needBytes` on `voice.model` and `voice.image`, `state`, `mode`, `progress`, `freeMB`, `needMB`
+/// and `reason` on `voice.engine`, `version` on `voice.gateway`; a check waiting on another names it in
+/// `after`, and a check whose job is running carries its id in `job`.
 struct VoiceSetupReader: SetupCapabilityReader {
     let capability = SetupCapability.voice
 
@@ -30,16 +32,17 @@ struct VoiceSetupReader: SetupCapabilityReader {
 
     func line(of check: SetupCheck, locale: Locale) -> String? {
         let facts = SetupFacts(check.facts)
+        if check.state == .unavailable && check.id != "voice.vram" && check.id != "voice.gpu" { return nil }
         switch check.id {
-        case "voice.gpu": return gpuLine(check, facts, locale)
+        case "voice.gpu": return gpuLine(check, facts)
         case "voice.vram": return vramLine(check, facts, locale)
-        case "voice.docker": return dockerLine(check, facts)
+        case "voice.docker": return dockerLine(check)
         case "voice.cdi":
             return check.state == .ok
                 ? Localized.text("Containers can use the GPU")
                 : Localized.text("Containers cannot use the GPU yet.")
         case "voice.model", "voice.image": return downloadLine(check, facts, locale)
-        case "voice.engine": return engineLine(check, facts)
+        case "voice.engine": return engineLine(check, facts, locale)
         case "voice.gateway": return gatewayLine(check, facts, locale)
         default: return nil
         }
@@ -47,14 +50,14 @@ struct VoiceSetupReader: SetupCapabilityReader {
 
     func impossibility(of check: SetupCheck, locale: Locale) -> String? {
         let facts = SetupFacts(check.facts)
+        let need = SetupFormat.megabytes(VoiceRequirements.gpuMemoryMB, locale: locale)
         switch check.id {
         case "voice.gpu":
-            let need = SetupFormat.megabytes(facts.integer("needMB") ?? VoiceRequirements.gpuMemoryMB, locale: locale)
-            guard let name = facts.text("name"), let memory = facts.integer("vramMB") else {
-                return Localized.text("it has no NVIDIA GPU with %@", need)
-            }
+            return Localized.text("it has no NVIDIA GPU with %@", need)
+        case "voice.vram":
+            guard let total = facts.integer("totalMB") else { return nil }
             return Localized.text(
-                "its %1$@ has %2$@ and voice needs %3$@", name, SetupFormat.megabytes(memory, locale: locale), need)
+                "its GPU has %1$@ of memory and voice needs %2$@", SetupFormat.megabytes(total, locale: locale), need)
         default:
             return nil
         }
@@ -64,9 +67,8 @@ struct VoiceSetupReader: SetupCapabilityReader {
         switch fix.id {
         case "voice.downloadModel": return Localized.text("Download the voice model")
         case "voice.pullImage": return Localized.text("Download the engine image")
-        case "voice.startEngine": return Localized.text("Start the voice engine")
         case "voice.installDocker": return Localized.text("Install Docker")
-        case "voice.enableCdi": return Localized.text("Let containers use the GPU")
+        case "voice.generateCDI": return Localized.text("Let containers use the GPU")
         case VoiceBridgeInstall.installFixID: return Localized.text("Install voice calls")
         default: return nil
         }
@@ -77,7 +79,7 @@ struct VoiceSetupReader: SetupCapabilityReader {
         case "voice.installDocker":
             return Localized.text(
                 "Installing Docker needs administrator rights, so this one is yours to run in a shell on the machine.")
-        case "voice.enableCdi":
+        case "voice.generateCDI":
             return Localized.text(
                 "Giving containers the GPU needs administrator rights, so this one is yours to run in a shell on the machine.")
         case VoiceBridgeInstall.installFixID:
@@ -92,70 +94,71 @@ struct VoiceSetupReader: SetupCapabilityReader {
         switch fixID {
         case "voice.downloadModel": return Localized.text("downloading the voice model")
         case "voice.pullImage": return Localized.text("downloading the engine image")
-        case "voice.startEngine": return Localized.text("starting the voice engine")
         default: return nil
         }
     }
 
-    private func gpuLine(_ check: SetupCheck, _ facts: SetupFacts, _ locale: Locale) -> String {
-        let need = SetupFormat.megabytes(facts.integer("needMB") ?? VoiceRequirements.gpuMemoryMB, locale: locale)
-        let memory = facts.integer("vramMB").map { SetupFormat.megabytes($0, locale: locale) }
-        let name = facts.text("name")
-        if check.state == .ok {
-            switch (name, memory) {
-            case (let name?, let memory?): return Localized.text("%1$@, %2$@", name, memory)
-            case (let name?, nil): return name
-            default: return Localized.text("An NVIDIA GPU was found")
-            }
-        }
-        if let name, let memory {
-            return Localized.text("%1$@ has %2$@. Voice calls need %3$@.", name, memory, need)
-        }
-        return Localized.text("No NVIDIA GPU with %@ was found.", need)
+    private func gpuLine(_ check: SetupCheck, _ facts: SetupFacts) -> String {
+        if check.state == .ok { return facts.text("name") ?? Localized.text("An NVIDIA GPU was found") }
+        return Localized.text(
+            "No NVIDIA GPU with %@ was found.", SetupFormat.megabytes(VoiceRequirements.gpuMemoryMB))
     }
 
     private func vramLine(_ check: SetupCheck, _ facts: SetupFacts, _ locale: Locale) -> String {
-        let free = facts.integer("freeMB").map { SetupFormat.megabytes($0, locale: locale) }
-        let need = SetupFormat.megabytes(facts.integer("needMB") ?? VoiceRequirements.engineMemoryMB, locale: locale)
+        let total = facts.integer("totalMB").map { SetupFormat.megabytes($0, locale: locale) }
         if check.state == .ok {
-            return free.map { Localized.text("%@ free", $0) } ?? Localized.text("Enough memory is free")
+            return total.map { Localized.text("%@ of GPU memory", $0) } ?? Localized.text("Enough memory is free")
         }
-        guard let free else {
-            return Localized.text("The voice model needs %@ of free GPU memory.", need)
-        }
-        return Localized.text(
-            "Only %1$@ of the GPU is free and the voice model needs %2$@. Something else is using it, and voice calls never stop another job.",
-            free, need)
+        let need = SetupFormat.megabytes(VoiceRequirements.gpuMemoryMB, locale: locale)
+        guard let total else { return Localized.text("The card's memory size could not be read.") }
+        return Localized.text("This GPU has %1$@ of memory and voice calls need a card with %2$@.", total, need)
     }
 
-    private func dockerLine(_ check: SetupCheck, _ facts: SetupFacts) -> String {
-        if check.state == .ok {
-            return facts.text("version").map { Localized.text("Docker %@ is installed", $0) }
-                ?? Localized.text("Docker is installed")
-        }
-        return Localized.text("Docker is not installed, or this account cannot use it.")
+    private func dockerLine(_ check: SetupCheck) -> String {
+        check.state == .ok
+            ? Localized.text("Docker is installed")
+            : Localized.text("Docker is not installed, or this account cannot use it.")
     }
 
     private func downloadLine(_ check: SetupCheck, _ facts: SetupFacts, _ locale: Locale) -> String {
-        let size = facts.integer("bytes").map { SetupFormat.bytes($0, locale: locale) }
-        switch (check.state, size) {
-        case (.ok, let size?): return Localized.text("%@ on this machine", size)
-        case (.ok, nil): return Localized.text("On this machine")
-        case (.working, _): return Localized.text("Downloading")
-        case (_, let size?): return Localized.text("%@ to download", size)
-        default: return Localized.text("Not on this machine yet")
+        let have = facts.integer("bytes") ?? 0
+        let total = facts.integer("needBytes")
+        switch check.state {
+        case .ok:
+            return have > 0
+                ? Localized.text("%@ on this machine", SetupFormat.bytes(have, locale: locale))
+                : Localized.text("On this machine")
+        case .working:
+            return Localized.text("Downloading")
+        default:
+            if let total { return Localized.text("%@ to download", SetupFormat.bytes(max(0, total - have), locale: locale)) }
+            return Localized.text("Not on this machine yet")
         }
     }
 
-    private func engineLine(_ check: SetupCheck, _ facts: SetupFacts) -> String {
-        let engine = VoiceEngineState(rawValue: facts.text("engine") ?? "")
-        switch (check.state, engine) {
-        case (.working, _), (_, .loading?): return Localized.text("Starting. This can take a few minutes.")
-        case (_, .ready?): return Localized.text("Running")
-        case (_, .busy?): return Localized.text("The GPU is busy with another job")
-        case (_, .down?): return Localized.text("Not running")
-        case (.ok, _): return Localized.text("Starts when you call and stops after ten idle minutes")
-        default: return Localized.text("Waits for the steps above")
+    private func engineLine(_ check: SetupCheck, _ facts: SetupFacts, _ locale: Locale) -> String {
+        switch facts.text("state") {
+        case "running": return Localized.text("Running")
+        case "stopped": return Localized.text("Starts when you call and stops after ten idle minutes")
+        case "loading":
+            guard let progress = facts.number("progress") else {
+                return Localized.text("Starting. This can take a few minutes.")
+            }
+            return Localized.text(
+                "Starting, %@. This can take a few minutes.", SetupFormat.percent(progress, locale: locale))
+        case "busy":
+            let free = facts.integer("freeMB").map { SetupFormat.megabytes($0, locale: locale) }
+            let need = SetupFormat.megabytes(facts.integer("needMB") ?? VoiceRequirements.engineMemoryMB, locale: locale)
+            guard let free else { return Localized.text("The GPU is busy with another job") }
+            return Localized.text(
+                "Only %1$@ of the GPU is free and the voice model needs %2$@. Something else is using it, and voice calls never stop another job.",
+                free, need)
+        case "down":
+            guard let reason = facts.text("reason") else { return Localized.text("Not running") }
+            return Localized.text("Not running: %@", reason)
+        default:
+            return check.state == .working
+                ? Localized.text("Starting. This can take a few minutes.") : Localized.text("Waits for the steps above")
         }
     }
 

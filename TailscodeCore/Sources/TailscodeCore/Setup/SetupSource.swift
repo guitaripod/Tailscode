@@ -204,7 +204,7 @@ public struct VoiceSetupSource: SetupSource {
             throw Self.failure(for: error)
         }
         switch answer.status {
-        case 200..<300: return answer
+        case 200..<300, 409: return answer
         case 401, 403: throw SetupSourceError.wantsPassword
         case 404: throw SetupSourceError.gone
         default: throw SetupSourceError.refused(VoiceCallReading.httpStatus(answer.status))
