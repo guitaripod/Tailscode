@@ -117,7 +117,7 @@ struct VoiceSetupReader: SetupCapabilityReader {
     private func dockerLine(_ check: SetupCheck) -> String {
         check.state == .ok
             ? Localized.text("Docker is installed")
-            : Localized.text("Docker is not installed, or this account cannot use it.")
+            : Localized.text("Docker is not installed, or this account cannot use it. After the command, log out and back in so the docker group applies.")
     }
 
     private func downloadLine(_ check: SetupCheck, _ facts: SetupFacts, _ locale: Locale) -> String {

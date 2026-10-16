@@ -312839,6 +312839,77 @@
           }
         }
       }
+    },
+    "Docker is not installed, or this account cannot use it. After the command, log out and back in so the docker group applies.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker is not installed, or this account cannot use it. After the command, log out and back in so the docker group applies."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker ist nicht installiert, oder dieses Konto darf es nicht benutzen. Melde dich nach dem Befehl ab und wieder an, damit die Docker-Gruppe gilt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker no está instalado, o esta cuenta no puede usarlo. Después del comando, cierra sesión y vuelve a entrar para que se aplique el grupo docker."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker n’est pas installé, ou ce compte ne peut pas l’utiliser. Après la commande, déconnectez-vous puis reconnectez-vous pour que le groupe docker s’applique."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker non è installato, oppure questo account non può usarlo. Dopo il comando, esci e rientra perché il gruppo docker venga applicato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker がインストールされていないか、このアカウントでは使えません。コマンドの実行後、docker グループを反映させるために一度ログアウトして、ログインし直してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker가 설치되어 있지 않거나 이 계정에서 사용할 수 없습니다. 명령을 실행한 뒤 docker 그룹이 적용되도록 로그아웃했다가 다시 로그인하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker nie jest zainstalowany albo to konto nie może go używać. Po poleceniu wyloguj się i zaloguj ponownie, aby grupa docker zaczęła obowiązywać."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Docker não está instalado, ou esta conta não pode usá-lo. Depois do comando, saia e entre de novo para que o grupo docker seja aplicado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未安装 Docker，或这个账户无法使用它。运行命令后，请注销并重新登录，让 docker 用户组生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未安裝 Docker，或這個帳戶無法使用它。執行指令後，請登出再重新登入，讓 docker 群組生效。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
