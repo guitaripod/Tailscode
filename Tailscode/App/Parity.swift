@@ -132,6 +132,13 @@ enum ParityManifest {
         case .gitState: return .implemented("GitStatusViewController")
         case .terminalPane: return .notApplicable("iOS has no shell; the pane presumes the app shares a filesystem with the agent")
         case .browserSlot: return .notApplicable("no tiling on a phone; a page beside the work presumes panes that tile, and the system browser owns the page on iOS")
+        case .livePreview:
+            return .partial(
+                "PreviewViewController",
+                missing:
+                    "a phone has no tiling, so the picture is a modal viewer opened from the conversation rather than a pane that splits, zooms and survives a restart; the offer and the Look card inside the transcript are not built, and the viewer does not take a touch on the picture")
+        case .previewLenses: return .gap("the phone's preview viewer shows the picture only; the Compare, Inspect, Quality, Matrix and Rewind lenses are not built here yet")
+        case .previewTouch: return .gap("the phone's preview viewer does not take a touch, a scroll or a key on the picture yet; the host and PreviewTouchReading in Core already support it")
         case .imageGenSlot: return .notApplicable("a draw slot is a pane among panes — the same reason splitPanes is not applicable applies to what a pane could hold; a full-screen painter would be a different app")
         case .videoSlot: return .notApplicable("no tiling on a phone; a slot is a pane among panes, and the same reason splitPanes is not applicable applies to what a pane could hold")
         case .imageLane: return .implemented("ImageStudioViewController")

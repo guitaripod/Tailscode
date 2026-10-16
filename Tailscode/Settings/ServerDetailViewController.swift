@@ -7,7 +7,7 @@ import UIKit
 final class ServerDetailViewController: UIViewController {
     private var profile: ConnectionProfile
 
-    private enum Section: Int, CaseIterable { case info, status, software, permissions, defaults, delegate, actions }
+    private enum Section: Int, CaseIterable { case info, status, software, permissions, defaults, delegate, preview, actions }
     private enum Item: Hashable {
         case value(label: String, value: String)
         case status(String)
@@ -22,6 +22,7 @@ final class ServerDetailViewController: UIViewController {
         case isDefault
         case defaultModel
         case delegate
+        case previewHost
         case restart
         case edit
         case remove
@@ -41,6 +42,9 @@ final class ServerDetailViewController: UIViewController {
     private var permissionRequesting: MachinePermissions.Grant.Kind?
     private var permissionPollTask: Task<Void, Never>?
     private var turnWaitAvailability: TurnWaitAvailability = .unknown
+    private var previewReach: PreviewReach = .unknown
+    private var previewTask: Task<Void, Never>?
+    private let previewSecrets: any SecretStore = KeychainSecretStore()
 
     /// The reading this screen's software card renders, from the one ledger every surface renders
     /// from. Never this screen's own words and never its own asking: a press goes to
@@ -74,13 +78,25 @@ final class ServerDetailViewController: UIViewController {
             self, selector: #selector(deskChanged), name: DelegateDesk.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(deskChanged), name: ProStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(previewHostsChanged), name: PreviewAccessStore.didChange, object: nil)
         Task { await refresh() }
+        checkPreviewHost()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         startPermissionPollingIfNeeded()
         #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_SCROLL_PREVIEW"] != nil {
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    guard let self, let indexPath = self.dataSource.indexPath(for: .previewHost)
+                    else { return }
+                    self.collectionView.scrollToItem(
+                        at: indexPath, at: .centeredVertically, animated: false)
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_SCROLL_PERMISSIONS"] != nil {
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(for: .seconds(1))
@@ -99,6 +115,92 @@ final class ServerDetailViewController: UIViewController {
     }
 
     @objc private func deskChanged() { reconfigure([.delegate]) }
+
+    @objc private func previewHostsChanged() { reconfigure([.previewHost]) }
+
+    private var previewAccess: PreviewAccess? {
+        profile.baseURL.host.map { PreviewAccessStore.access(host: $0) ?? PreviewAccess(host: $0) }
+    }
+
+    private var previewPassword: String? {
+        previewAccess.flatMap { (try? previewSecrets.value(for: $0.secretKey)) ?? nil }
+    }
+
+    /// Asks the machine once whether a preview host answers on it, off the main thread. A server
+    /// with none shows nothing at all, never an error, because most servers will never have one.
+    private func checkPreviewHost() {
+        guard !isDemo, let access = previewAccess else { return }
+        let password = previewPassword
+        previewTask?.cancel()
+        previewTask = Task { [weak self] in
+            let found = await PreviewProbe.probe(access, password: password)
+            guard !Task.isCancelled else { return }
+            self?.settlePreview(found)
+        }
+    }
+
+    private func settlePreview(_ found: PreviewReach) {
+        previewReach = found
+        AppLogger.connection.info("preview host on \(profile.baseURL.host ?? "?"): \(String(describing: found))")
+        applySnapshot()
+        reconfigure([.previewHost])
+    }
+
+    private var isShowingPreviewHost: Bool {
+        previewReach.isAnswering || previewReach.asksForPassword
+    }
+
+    private var isPreviewHostChosen: Bool {
+        guard let host = previewAccess?.host else { return false }
+        return PreviewAccessStore.access(host: host) != nil && previewReach.isAnswering
+    }
+
+    /// Remembers this machine's preview host for the chats that run on it. A host that asks for a
+    /// password is asked for it here, once, and the password is kept with the delegate's.
+    private func choosePreviewHost() {
+        guard let access = previewAccess else { return }
+        Theme.Haptics.tap()
+        if previewReach.asksForPassword, previewPassword == nil {
+            askPreviewPassword(for: access)
+            return
+        }
+        adoptPreviewHost(access, password: previewPassword, typed: nil)
+    }
+
+    private func askPreviewPassword(for access: PreviewAccess) {
+        let alert = UIAlertController(
+            title: Localized.text("Preview host"), message: previewReach.line, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = Localized.text("Password")
+            field.isSecureTextEntry = true
+            field.autocapitalizationType = .none
+            field.autocorrectionType = .no
+        }
+        alert.addAction(UIAlertAction(title: Localized.text("Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: Localized.text("Use for previews"), style: .default) { [weak self, weak alert] _ in
+                let typed = alert?.textFields?.first?.text ?? ""
+                guard !typed.isEmpty else { return }
+                self?.adoptPreviewHost(access, password: typed, typed: typed)
+            })
+        present(alert, animated: true)
+    }
+
+    private func adoptPreviewHost(_ access: PreviewAccess, password: String?, typed: String?) {
+        previewTask?.cancel()
+        previewTask = Task { [weak self] in
+            let found = await PreviewProbe.probe(access, password: password)
+            guard !Task.isCancelled, let self else { return }
+            if found.isAnswering {
+                PreviewAccessStore.remember(access)
+                if let typed { try? self.previewSecrets.setValue(typed, for: access.secretKey) }
+                Theme.Haptics.success()
+            } else {
+                Theme.Haptics.warning()
+            }
+            self.settlePreview(found)
+        }
+    }
 
     /// An answer landed for some machine — possibly this one, possibly from a sweep started on
     /// another screen, and during an update every two seconds. The card rewrites itself in place.
@@ -194,6 +296,8 @@ final class ServerDetailViewController: UIViewController {
             )
         case .delegate:
             return DelegateEntryPoint.subtitle
+        case .preview:
+            return nil
         case .info, .status, .actions:
             return nil
         }
@@ -207,7 +311,7 @@ final class ServerDetailViewController: UIViewController {
         case .permissions: return permissions.map(MachinePermissionReading.sectionTitle)
         case .defaults: return String(localized: "Defaults")
         case .delegate: return DelegateEntryPoint.title
-        case .actions, .none: return nil
+        case .preview, .actions, .none: return nil
         }
     }
 
@@ -293,6 +397,15 @@ final class ServerDetailViewController: UIViewController {
             content.image = UIImage(systemName: DelegateEntryPoint.symbol)
             content.imageProperties.tintColor = DelegateGate.isOpen ? Theme.Color.accent : Theme.Color.special
             cell.accessories = [.disclosureIndicator()]
+        case .previewHost:
+            content.text = Localized.text("Preview host")
+            content.secondaryText = previewReach.line
+            content.secondaryTextProperties.numberOfLines = 0
+            content.secondaryTextProperties.color =
+                previewReach.asksForPassword ? Theme.Color.warning : Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "iphone")
+            content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = isPreviewHostChosen ? [.checkmark()] : [.customView(configuration: previewChoice())]
         case .edit:
             content.text = String(localized: "Edit server")
             content.textProperties.color = Theme.Color.accent
@@ -365,6 +478,18 @@ final class ServerDetailViewController: UIViewController {
             return AppPreferences.pushAlertsEnabled
                 ? String(localized: "Not registered yet") : String(localized: "Turned off")
         }
+    }
+
+    private func previewChoice() -> UICellAccessory.CustomViewConfiguration {
+        var config = UIButton.Configuration.filled()
+        config.cornerStyle = .capsule
+        config.baseBackgroundColor = Theme.Color.accent
+        config.baseForegroundColor = Theme.Color.onAccent
+        config.title = Localized.text("Use for previews")
+        config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
+        let button = UIButton(configuration: config)
+        button.addAction(UIAction { [weak self] _ in self?.choosePreviewHost() }, for: .touchUpInside)
+        return .init(customView: button, placement: .trailing())
     }
 
     private func modelAccessory() -> UICellAccessory.CustomViewConfiguration {
@@ -487,7 +612,10 @@ final class ServerDetailViewController: UIViewController {
     private func applySnapshot() {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         let showsPermissions = MachinePermissionReading.isShown(permissions)
-        snapshot.appendSections(Section.allCases.filter { $0 != .permissions || showsPermissions })
+        snapshot.appendSections(
+            Section.allCases.filter {
+                ($0 != .permissions || showsPermissions) && ($0 != .preview || (isShowingPreviewHost && !isDemo))
+            })
         var info: [Item] = [
             .value(label: String(localized: "Backend"), value: profile.backend.displayName),
             .value(label: String(localized: "Host"), value: profile.baseURL.host ?? "—"),
@@ -531,6 +659,8 @@ final class ServerDetailViewController: UIViewController {
         snapshot.appendItems(defaults, toSection: .defaults)
 
         if !isDemo { snapshot.appendItems([.delegate], toSection: .delegate) }
+
+        if !isDemo, isShowingPreviewHost { snapshot.appendItems([.previewHost], toSection: .preview) }
 
         var actions: [Item] = isDemo ? [] : [.edit]
         if !isDemo, ServerRestart.isOffered(profile.backend) { actions.insert(.restart, at: 0) }
@@ -815,6 +945,9 @@ extension ServerDetailViewController: UICollectionViewDelegate {
             presentEditor()
         case .delegate:
             DelegateGate.open(from: self, profile: profile)
+        case .previewHost:
+            guard !isPreviewHostChosen else { break }
+            choosePreviewHost()
         case .remove:
             confirmRemove()
         case .pushState:

@@ -168,6 +168,9 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case watchAccounts
     case browserSlot
     case imageGenSlot
+    case livePreview
+    case previewLenses
+    case previewTouch
     case imageLane
     case imageLibrary
     case imagePromptHelper
@@ -883,6 +886,18 @@ public enum CapabilityRegistry {
             id: .imageGenSlot, area: "splits", title: "Draw slot in the split grid",
             spec:
                 "A pane can paint. ImageGenEndpoint names the ComfyUI server that does the work, ImageGenSlot holds the ask — words, an engine (Qwen for quality, Klein for speed), an aspect, and either a blank canvas or a picture handed in to edit — and the slot queues the render, watches it, and keeps every picture it finished, newest first, each one captioned with the words and the seconds that made it. The pane is a pane like any other: it splits, the dividers resize it, zoom hides its siblings, closing it hands the space back, and the layout snapshot restores the endpoint and the last prompt. An empty slot asks what to draw with the chips already showing, a painting one shows its progress in its own body, and a finished one puts the picture where the work is — beside the conversation that asked for it. What it costs is stated rather than discovered: the render runs on the machine ComfyUI runs on, not in this pane's grid."),
+        CapabilityDefinition(
+            id: .livePreview, area: "splits", title: "Live preview pane",
+            spec:
+                "A pane can hold a running iOS app. PreviewTarget names an app folder on a Mac that runs a preview host (previewd, port 4300), and PreviewRunner builds it on that Mac's simulator and streams the screen as it changes, so the app is looked at beside the conversation that is writing it. The pane is a pane like any other: it splits, the dividers resize it, zoom hides its siblings, closing it hands the space back, and the layout snapshot restores the same app on the same Mac. It wears PreviewLight in its identity strip — starting and reconnecting sweep, a change being shown breathes, a Mac that needs setting up knocks, and live, broken and offline hold perfectly still — and until the Mac is ready it draws the host's own checklist in PreviewReading's words rather than a blank pane. When a change would not build, the last picture that worked stays on screen with the failure under it, so a mistake costs words and never the view."),
+        CapabilityDefinition(
+            id: .previewLenses, area: "splits", title: "Lenses over the running app",
+            spec:
+                "A preview pane reads the running app more than one way. PreviewLens names six — Look (the picture), Compare (two shots of one screen with the changed places outlined), Inspect (point at a view and the app's own tree says what it is), Quality (the findings of an audit of the screen), Matrix (the same screen under other sizes and settings) and Rewind (the last ten seconds, with the slow frames marked) — and a plain digit picks one while the pane has the keyboard. Each lens asks the host only when it is opened and everything it started ends when it is left or the pane is parked, so a lens nobody is looking at costs nothing; a host too old for a lens says so in words rather than showing an empty stage."),
+        CapabilityDefinition(
+            id: .previewTouch, area: "splits", title: "Operate the running app from the picture",
+            spec:
+                "When the preview host reports that it can touch the simulator (PreviewState.acceptsTouch), the picture is operable. A press and release on it is a tap, a drag is a swipe sent on release (PreviewTouchTracker decides which), the wheel and the touchpad become the swipes a finger would make (PreviewScrollAccumulator: one currency for notches and smooth deltas, at most one swipe every 120 ms, none lost), and a Home button sends the home key. A Keys switch forwards typed characters, Return and Delete to the app's focused field (PreviewKeyReading), batches a burst of characters into one request, lets Escape give the keyboard back, and turns itself off when the pane leaves the Look lens. The host can only show a touch once it has acted, so the client answers at once and honestly (PreviewTouchFeedback): a ring opens at the press, turns to a calm busy ring if the host is still working on it, and fades when the touch is delivered or has failed, and a drag leaves a fading line; reduced motion keeps the ring still and changes only its light. Touches go to the host one at a time in the order they were made (PreviewTouchQueue joins neighbours that say one thing and gives up the oldest scroll of a runaway queue first), never on the interface thread, and a refusal is said in PreviewTouchReading's words over the picture, never in a dialog. Whether the pointer operates the app or only watches is the person's choice (PreviewTouchPreference), on by default and remembered per device; Inspect keeps its own pointer and a press there pins a view and never taps."),
         CapabilityDefinition(
             id: .imageLane, area: "composer", title: "A picture is a lane on the prompt box",
             spec:

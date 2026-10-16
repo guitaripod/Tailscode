@@ -397,6 +397,12 @@ final class ChatViewModel {
         ConnectionController.shared.profiles.first { $0.id == contextID }.flatMap { DelegateAccess.host(of: $0.baseURL) }
     }
 
+    /// Where this chat's app can be watched running: its machine's preview host, when this device
+    /// has agreed to use one, and the folder the agent works in on that machine.
+    var previewTarget: PreviewTarget? {
+        PreviewEntry.target(host: delegateHost, directory: session.directory)
+    }
+
     /// A chat whose machine is known by name can hand a task to that machine's dispatcher.
     var supportsDelegate: Bool { delegateHost?.isEmpty == false }
 

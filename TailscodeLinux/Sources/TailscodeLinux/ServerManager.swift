@@ -454,6 +454,12 @@ final class ServerManager: @unchecked Sendable {
             adw_expander_row_add_row(ptr(row), delegateRow)
         }
 
+        if !isDemo, let previewHost = profile.baseURL.host {
+            let previews = PreviewHostRow(host: previewHost)
+            slots.previewHost = previews
+            previews.add(to: row)
+        }
+
         if !isEnvironment {
             let remove = adw_action_row_new()!
             adw_preferences_row_set_use_markup(ptr(remove), 0)
@@ -1375,6 +1381,7 @@ private final class ServerRow {
     /// The embedded software card, Core's `UpdateCard` drawn the same way the Software window
     /// draws it — kept here so a ledger change can rewrite exactly this row's card in place.
     var softwareCard: UpdateCardView?
+    var previewHost: PreviewHostRow?
     var account: UnsafeMutablePointer<GtkWidget>?
     var accountActions: UnsafeMutablePointer<GtkWidget>?
     /// The Full Disk Access checklist, embedded the same way the software card is — kept here so

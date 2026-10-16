@@ -8,6 +8,11 @@ public enum PaneKind: String, Codable, Sendable, CaseIterable {
     case web
     case video
     case draw
+    case preview
+
+    /// Whether the pane holds something that keeps drawing by itself — a player, a streamed
+    /// screen — and so is parked, not squeezed, when it is hidden or another one has the room.
+    public var ownsStream: Bool { self == .video || self == .preview }
 }
 
 /// What one pane holds, as one value. A snapshot used to carry four parallel dictionaries keyed by
@@ -20,6 +25,7 @@ public enum PaneContent: Sendable, Equatable {
     case web(String)
     case video(String)
     case draw(String)
+    case preview(String)
 
     public var kind: PaneKind {
         switch self {
@@ -28,6 +34,7 @@ public enum PaneContent: Sendable, Equatable {
         case .web: return .web
         case .video: return .video
         case .draw: return .draw
+        case .preview: return .preview
         }
     }
 }
@@ -58,6 +65,9 @@ extension PaneContent: Codable {
         case .web: self = address.map(PaneContent.web) ?? .empty
         case .video: self = address.map(PaneContent.video) ?? .empty
         case .draw: self = address.map(PaneContent.draw) ?? .empty
+        case .preview:
+            self = address.flatMap { PreviewTarget.read($0) == nil ? nil : PaneContent.preview($0) }
+                ?? .empty
         case .empty, .none: self = .empty
         }
     }
@@ -70,7 +80,7 @@ extension PaneContent: Codable {
         case .chat(let session):
             try container.encode(session.profileID, forKey: .profileID)
             try container.encode(session.sessionID, forKey: .sessionID)
-        case .web(let address), .video(let address), .draw(let address):
+        case .web(let address), .video(let address), .draw(let address), .preview(let address):
             try container.encode(address, forKey: .address)
         }
     }

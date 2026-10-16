@@ -718,6 +718,8 @@ final class TileHost: PaneTiling, @unchecked Sendable {
             switch snapshot.content(for: id) {
             case .draw(let address):
                 pane.showDraw(ImageGenEndpoint(address: address))
+            case .preview:
+                if let target = snapshot.preview(for: id) { pane.showPreview(target) }
             case .web:
                 if let target = snapshot.page(for: id) { pane.showWeb(target) }
             case .video:
@@ -736,7 +738,9 @@ final class TileHost: PaneTiling, @unchecked Sendable {
     func snapshot() -> SplitSnapshot {
         var contents: [String: PaneContent] = [:]
         for (id, pane) in panes {
-            if let endpoint = pane.drawEndpoint {
+            if let target = pane.previewTarget {
+                contents[id.raw] = .preview(target.address)
+            } else if let endpoint = pane.drawEndpoint {
                 contents[id.raw] = .draw(endpoint.address)
             } else if let target = pane.webTarget {
                 contents[id.raw] = .web(target.address)
@@ -1063,6 +1067,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
     /// stream it is showing, the last glance it read, or the chat list's listing.
     private func describe(_ id: PaneID) -> (title: String, activity: ActivityKind?) {
         guard let pane = panes[id] else { return (Localized.text("No conversation"), nil) }
+        if let preview = pane.previewSummary { return (preview, nil) }
         if let page = pane.webSummary { return (page, nil) }
         if let video = pane.videoSummary { return (video, nil) }
         if let entry = pane.entry {

@@ -46,6 +46,7 @@ public enum PaneSizing {
     public static let web = PaneMinimum(width: 280, height: 200)
     public static let video = PaneMinimum(width: 280, height: 158)
     public static let draw = PaneMinimum(width: 360, height: 300)
+    public static let preview = PaneMinimum(width: 280, height: 158)
     public static let empty = PaneMinimum(width: 240, height: 160)
 
     /// The minimum a pane of `kind` needs at `density`. Only a chat changes with density; every
@@ -56,6 +57,7 @@ public enum PaneSizing {
         case .web: return web
         case .video: return video
         case .draw: return draw
+        case .preview: return preview
         case .empty: return empty
         }
     }

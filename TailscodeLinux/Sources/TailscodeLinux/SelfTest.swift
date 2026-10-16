@@ -240,6 +240,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkPreviewPane()
+            report("preview: \(checks) claims hold — every face drawn, no clock left behind")
+        } catch {
+            report("preview: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkRepeatingMotion()
             report("repeating motion: \(checks) claims hold — every never-ending lap asks again")
         } catch {

@@ -720,3 +720,4 @@ void tailscode_soak_track_row(GtkWidget *widget);
 long tailscode_soak_rows(void);
 
 #include "tile.h"
+#include "previewlens.h"

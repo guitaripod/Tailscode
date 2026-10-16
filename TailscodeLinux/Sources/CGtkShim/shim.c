@@ -517,11 +517,16 @@ static void tailscode_surface_paintable_init(TailscodeSurfacePaintable *self) {
     (void)self;
 }
 
-GtkWidget *tailscode_picture_for_texture(GdkTexture *texture) {
+/// A picture over `texture` that already knows the size it is to be laid out at. A paintable that
+/// declares a static size may never announce a change of it, so the size is decided before the
+/// picture first reads it, never corrected afterwards.
+static GtkWidget *tailscode_picture_with_intrinsic(GdkTexture *texture, int width, int height) {
     TailscodeSurfacePaintable *paintable =
         g_object_new(TAILSCODE_TYPE_SURFACE_PAINTABLE, NULL);
     paintable->width = gdk_texture_get_width(texture);
     paintable->height = gdk_texture_get_height(texture);
+    paintable->intrinsic_width = width;
+    paintable->intrinsic_height = height;
     paintable->surface = cairo_image_surface_create(
         CAIRO_FORMAT_ARGB32, paintable->width, paintable->height);
     if (cairo_surface_status(paintable->surface) == CAIRO_STATUS_SUCCESS) {
@@ -538,14 +543,12 @@ GtkWidget *tailscode_picture_for_texture(GdkTexture *texture) {
     return picture;
 }
 
+GtkWidget *tailscode_picture_for_texture(GdkTexture *texture) {
+    return tailscode_picture_with_intrinsic(texture, 0, 0);
+}
+
 GtkWidget *tailscode_picture_for_texture_sized(GdkTexture *texture, int width, int height) {
-    GtkWidget *picture = tailscode_picture_for_texture(texture);
-    GdkPaintable *paintable = gtk_picture_get_paintable(GTK_PICTURE(picture));
-    TailscodeSurfacePaintable *self = TAILSCODE_SURFACE_PAINTABLE(paintable);
-    self->intrinsic_width = width;
-    self->intrinsic_height = height;
-    gdk_paintable_invalidate_size(paintable);
-    return picture;
+    return tailscode_picture_with_intrinsic(texture, width, height);
 }
 
 static gboolean tailscode_label_link_activated(GtkLabel *label, const char *uri, gpointer data) {

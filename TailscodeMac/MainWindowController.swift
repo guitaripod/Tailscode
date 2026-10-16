@@ -953,6 +953,12 @@ final class MainWindowController: NSWindowController {
     /// person reaches with a menu item or a keystroke; nothing is reachable this way that is not
     /// reachable that way.
     func openSurface(named name: String) {
+        if name.hasPrefix("preview=") {
+            let rest = String(name.dropFirst("preview=".count))
+            let splits = rest.hasSuffix("+split")
+            openPreview(address: splits ? String(rest.dropLast("+split".count)) : rest, fixture: nil, split: splits)
+            return
+        }
         let parts = name.split(separator: ":", maxSplits: 1).map(String.init)
         switch parts.first ?? name {
         case "servers": presentServers()
@@ -1004,6 +1010,11 @@ final class MainWindowController: NSWindowController {
         case "draw":
             transcript.showDraw(nil)
             splitPanes.persist()
+        case "preview":
+            let stages = parts.count > 1 ? parts[1].split(separator: "+").map(String.init) : []
+            openPreview(
+                address: nil, fixture: stages.first(where: { $0 != "split" }),
+                split: stages.contains("split"))
         case "studio", "image":
             let stages = parts.count > 1 ? parts[1].split(separator: "+").map(String.init) : []
             if let state = stages.first { StudioDemo.apply(state, to: StudioWindowController.shared.image.studio) }
@@ -1062,8 +1073,29 @@ final class MainWindowController: NSWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], draw, renderer, delegate\n").utf8))
+                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
         }
+    }
+
+    /// A preview pane for the headless driver. A fixture name draws that face from hand-built state
+    /// with no host and no Keychain; an address (`HOST:PORT:/folder`) points a pane at a real host.
+    /// `split` puts it beside the pane that was there, which is how its strip is looked at.
+    private func openPreview(address: String?, fixture: String?, split: Bool) {
+        if window?.isVisible != true { showWindow(nil) }
+        if split { splitPanes.splitActive(axis: .horizontal) }
+        let pane = splitPanes.active
+        if let address {
+            pane.showPreview(PreviewDemo.target(address))
+        } else if let fixture, fixture != "asking", let state = PreviewDemo.state(fixture) {
+            let memory = PreviewMemorySecrets()
+            let target = PreviewTarget(host: PreviewDemo.host, project: PreviewDemo.project)
+            pane.showPreview(target, runs: false, secrets: memory)
+            let wantsPicture = ["live", "reconnecting", "broken"].contains(fixture)
+            pane.previewView?.applyForTest(state, jpeg: wantsPicture ? PreviewDemo.picture : nil)
+        } else {
+            pane.showPreview(nil, secrets: PreviewMemorySecrets())
+        }
+        splitPanes.persist()
     }
 
     /// The Studio, raised: one sheet for the whole app, rising inside this window over the
@@ -1206,6 +1238,8 @@ final class MainWindowController: NSWindowController {
             chooser.offersWatching = false
             chooser.offersBrowsing = false
         #endif
+        chooser.offersPreview = true
+        chooser.previewHosts = PreviewAccessStore.all()
         pane.showChooser(chooser)
         refreshWatchFeed()
     }
@@ -1296,6 +1330,13 @@ final class MainWindowController: NSWindowController {
         case .draw:
             splitPanes.focus(pane, grabKeyboard: false)
             pane.showDraw(nil)
+            splitPanes.persist()
+        case .preview(let choice):
+            splitPanes.focus(pane, grabKeyboard: false)
+            switch choice {
+            case .app(let host): pane.showPreview(nil, fixedHost: host)
+            case .addMac: pane.showPreview(nil)
+            }
             splitPanes.persist()
         case .chooseServer, .allChats, .back:
             break
@@ -1965,6 +2006,11 @@ final class MainWindowController: NSWindowController {
         if focused == .transcript, pendingChords.isEmpty, transcript.handleWebChord(chord) {
             return nil
         }
+        if focused == .transcript, pendingChords.isEmpty, context == .normal,
+            transcript.handlePreviewChord(chord)
+        {
+            return nil
+        }
         let awaiting =
             context == .normal
             && !(transcript.currentState?.pendingPermissions.isEmpty ?? true)
@@ -2537,6 +2583,21 @@ extension MainWindowController: PaneHost {
 
     func pane(_ pane: TranscriptViewController, answeredChooser action: PaneChooserAction) {
         self.pane(pane, chose: action)
+    }
+
+    func pane(_ pane: TranscriptViewController, askedAgent words: String) {
+        let chats = splitPanes.orderedPanes.filter { $0 !== pane && $0.currentEntry != nil }
+        let target = chats.first { $0 === splitPanes.active } ?? chats.first
+        guard let target else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(words, forType: .string)
+            toast(Localized.text("Copied"))
+            return
+        }
+        guard target.composer.sendAgain(words) else {
+            toast(Localized.text("Send or clear what is in the composer first."))
+            return
+        }
     }
 
     func paneQuotas() -> [UsageQuota] { lastQuotas.map(\.1) }

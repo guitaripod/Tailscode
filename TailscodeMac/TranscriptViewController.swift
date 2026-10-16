@@ -76,6 +76,7 @@ final class TranscriptViewController: NSViewController {
     private let identityLabel = NSTextField(labelWithString: "")
     private let identityPin = NSImageView()
     private let identityAlso = NSTextField(labelWithString: "")
+    private let identityBadge = ActivityBadgeView(pointSize: 11)
     private var identityGlass: NSView?
     private var identityStrip: NSView?
     /// Where the page begins. With no strip it is the top of the pane and the toolbar's own safe
@@ -126,6 +127,11 @@ final class TranscriptViewController: NSViewController {
     private var page: WebSlotView?
     /// What this pane is painting instead of talking, when it is a draw slot rather than a chat.
     private var draw: DrawSlotView?
+    /// What this pane is streaming instead of talking, when it is a preview slot rather than a chat.
+    private var preview: PreviewSlotView?
+    /// Told to the window when a preview pane composes a request for the agent, which is a
+    /// conversation's to send and not the pane's.
+    var onPreviewAskAgent: ((String) -> Void)?
     /// Told to the hub when a slot starts, stops, or learns its stream's title, so the layout is
     /// written back exactly as an opened conversation writes it back.
     var onVideoChanged: (() -> Void)?
@@ -407,7 +413,8 @@ final class TranscriptViewController: NSViewController {
         identityAlso.textColor = MacTheme.Color.onGlassSecondary
         identityAlso.isHidden = true
         identityAlso.setContentCompressionResistancePriority(.init(250), for: .horizontal)
-        let strip = PaneStripView(views: [identityPin, identityLabel, identityAlso])
+        identityBadge.isHidden = true
+        let strip = PaneStripView(views: [identityBadge, identityPin, identityLabel, identityAlso])
         strip.payload = { [weak self] in self?.paneMovePayload?() }
         strip.spacing = MacTheme.Spacing.xs
         strip.edgeInsets = NSEdgeInsets(
@@ -432,6 +439,7 @@ final class TranscriptViewController: NSViewController {
         let foot = strip > 0 ? safe + strip : 0
         if scrollTop.constant != foot { scrollTop.constant = foot }
         let top = strip > 0 ? CGFloat(0) : safe
+        preview?.topClearance = strip > 0 ? foot : safe
         chromeInsets = NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
         applyInsets()
         railController.reposition()
@@ -856,7 +864,10 @@ final class TranscriptViewController: NSViewController {
     /// window and starts notifying behind a player that still covers the pane edge to edge — live
     /// and invisible, with no way back short of closing the pane — so the slot goes first.
     private func clearSlot() {
-        guard isWatching || page != nil || draw != nil else { return }
+        guard isWatching || page != nil || draw != nil || preview != nil else { return }
+        preview?.shutdown()
+        preview?.removeFromSuperview()
+        preview = nil
         draw?.shutdown()
         draw?.removeFromSuperview()
         draw = nil
@@ -962,6 +973,65 @@ final class TranscriptViewController: NSViewController {
         onVideoChanged?()
     }
 
+    /// Turns this pane into a preview slot, or points the one it already is at another app. A pane
+    /// built from a snapshot starts its runner at once; one asked for with no target asks in its own
+    /// body, and `fixedHost` names the Mac the chooser row already chose.
+    func showPreview(
+        _ target: PreviewTarget?, fixedHost: String? = nil, runs: Bool = true,
+        secrets: (any SecretStore)? = nil
+    ) {
+        chooser = nil
+        chooserView.isHidden = true
+        if preview == nil {
+            let slot = PreviewSlotView(
+                target: target, fixedHost: fixedHost, runs: runs, secrets: secrets)
+            slot.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(slot, positioned: .below, relativeTo: identityGlass)
+            NSLayoutConstraint.activate([
+                slot.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                slot.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                slot.topAnchor.constraint(equalTo: view.topAnchor),
+                slot.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+            preview = slot
+            slot.onChange = { [weak self] in
+                self?.refreshIdentity()
+                self?.onVideoChanged?()
+            }
+            slot.onAskAgent = { [weak self] words in self?.onPreviewAskAgent?(words) }
+            setChatFurnitureVisible(false)
+            if isParked { slot.park() }
+            view.needsLayout = true
+        } else if let target {
+            preview?.point(at: target)
+        } else {
+            preview?.ask()
+        }
+        if target == nil { preview?.focusPrompt() }
+        refreshIdentity()
+        onVideoChanged?()
+    }
+
+    var isPreviewing: Bool { preview != nil }
+    var previewTarget: PreviewTarget? { preview?.target }
+    var previewSummary: String? { preview?.summary }
+    var previewView: PreviewSlotView? { preview }
+
+    /// The pane's name and face as the overflow strip wears them, for a preview that has no room.
+    var previewIdentity: (title: String, activity: ActivityKind?)? {
+        preview.map { ("\($0.slot.title) · \($0.slot.subtitle)", $0.slot.light.activity) }
+    }
+
+    /// A preview pane claims only plain letters, and only while the person is not typing into one
+    /// of its fields: the picture takes no keys, so everything else belongs to the window.
+    func handlePreviewChord(_ chord: KeyChord) -> Bool {
+        guard let preview, !preview.isAsking, let command = PreviewCommand.command(for: chord) else {
+            return false
+        }
+        preview.handle(command)
+        return true
+    }
+
     var isDrawing: Bool { draw != nil }
     var drawEndpoint: ImageGenEndpoint? { draw?.endpoint }
     var drawSummary: String? { draw?.summary }
@@ -1028,13 +1098,19 @@ final class TranscriptViewController: NSViewController {
         hoverBar.dismiss()
         railController.dismiss()
         furnitureHidden = view.subviews.filter { subview in
-            subview !== identityGlass && subview !== page && subview !== draw && !subview.isHidden
-                && !isVideoSlot(subview)
+            subview !== identityGlass && subview !== page && subview !== draw
+                && subview !== preview && !subview.isHidden && !isVideoSlot(subview)
         }
         furnitureHidden.forEach { $0.isHidden = true }
     }
 
     private func refreshIdentity() {
+        identityBadge.activity = preview?.slot.light.activity
+        if identityBadge.activity == nil { identityBadge.isHidden = true }
+        if let preview {
+            identityLabel.stringValue = "\(preview.slot.title) · \(preview.slot.subtitle)"
+            return
+        }
         if let draw {
             identityLabel.stringValue = draw.title
             return
@@ -1070,6 +1146,7 @@ final class TranscriptViewController: NSViewController {
         interruptionPress = nil
         draw?.shutdown()
         page?.shutdown()
+        preview?.shutdown()
         #if !TAILSCODE_MAS
             video?.shutdown()
         #endif
@@ -1270,6 +1347,7 @@ final class TranscriptViewController: NSViewController {
         guard parked != isParked else { return }
         isParked = parked
         composer.setParked(parked)
+        if parked { preview?.park() } else { preview?.unpark() }
         if parked {
             handToWatchIfInFlight()
             lifetime.cancelAll()
@@ -4634,7 +4712,7 @@ final class TranscriptViewController: NSViewController {
     /// of a transcript that has one, and never while a fresh canvas is deliberately holding the
     /// prompt at the top.
     private func syncJumpPill() {
-        let show = !followsBottom && canvasHold == nil && !rowViews.isEmpty && draw == nil
+        let show = !followsBottom && canvasHold == nil && !rowViews.isEmpty && draw == nil && preview == nil
         jumpGlass?.isHidden = !show
         if show { applyJumpReading() }
     }

@@ -87,6 +87,15 @@ final class AppCoordinator: NSObject {
                     failures.isEmpty
                         ? "CHAT_SELFTEST_OK" : "CHAT_SELFTEST_FAIL " + failures.joined(separator: "; "))
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_PREVIEW"] == "1" {
+                let failures = PreviewDemo.selfCheck()
+                AppLogger.ui.info(
+                    failures.isEmpty
+                        ? "PREVIEW_SELFTEST_OK" : "PREVIEW_SELFTEST_FAIL " + failures.joined(separator: "; "))
+            }
+            if CommandLine.arguments.contains("--preview") || CommandLine.arguments.contains("--preview-live") {
+                openPreviewForDebug()
+            }
             let duoScreen = ProcessInfo.processInfo.environment["TAILSCODE_DUO_SCREEN"]
             if CommandLine.arguments.contains("--usage") || duoScreen == "usage" {
                 openUsageForDebug()
@@ -142,6 +151,18 @@ final class AppCoordinator: NSObject {
         private func openSettingsForDebug(slug: String) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.openSettings(section: SettingsViewController.Section(rawValue: slug))
+            }
+        }
+
+        /// `--preview <asking|setup|starting|live|reconnecting|broken>` presents the preview viewer
+        /// with a fixture state over whatever the app opened on; `--preview-live HOST:PORT:/folder`
+        /// presents it against a real preview host.
+        private func openPreviewForDebug() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                var top = self?.window.rootViewController
+                while let presented = top?.presentedViewController { top = presented }
+                guard let top else { return }
+                PreviewDemo.presentIfAsked(from: top)
             }
         }
 

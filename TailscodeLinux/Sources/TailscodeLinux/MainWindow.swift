@@ -662,6 +662,29 @@ final class MainWindow: @unchecked Sendable {
                     pane.showWeb(WebTarget.classify(argument))
                     FileHandle.standardOutput.write(
                         Data("BROWSE \(pane.webSummary ?? "-")\n".utf8))
+                case "preview":
+                    let pane = self.activePane
+                    pane.showPreview(Self.previewTarget(from: argument))
+                    FileHandle.standardOutput.write(
+                        Data("PREVIEW \(pane.previewSummary ?? "-")\n".utf8))
+                case "previewsum":
+                    FileHandle.standardOutput.write(
+                        Data("PREVIEWSUM \(self.activePane.previewSummary ?? "-")\n".utf8))
+                case "previewlens":
+                    let pane = self.activePane
+                    if let lens = PreviewLens(rawValue: argument) { _ = pane.preview?.chooseLens(lens) }
+                    FileHandle.standardOutput.write(
+                        Data("PREVIEWLENS \(pane.previewLensSummary ?? "-")\n".utf8))
+                case "lens":
+                    let pane = self.activePane
+                    let accepted = pane.preview?.driveLens(argument) ?? false
+                    FileHandle.standardOutput.write(
+                        Data("LENS \(accepted) \(pane.previewLensSummary ?? "-")\n".utf8))
+                case "previewfixture":
+                    let pane = self.activePane
+                    pane.drivePreviewFixture(argument)
+                    FileHandle.standardOutput.write(
+                        Data("PREVIEWFIXTURE \(pane.previewSummary ?? "-")\n".utf8))
                 case "draw":
                     let pane = self.activePane
                     pane.showDraw(
@@ -1506,9 +1529,17 @@ final class MainWindow: @unchecked Sendable {
         [(sidebarColumn, .chats), (terminal.widget, .terminal)]
     }
 
+    /// A preview pane's app or light changed: the title bar follows it when it is the focused pane.
+    func previewTitleChanged(_ pane: ChatPane) {
+        guard pane === activePane, let title = pane.previewHeaderTitle else { return }
+        gtk_label_set_text(op(titleLabel), title)
+    }
+
     private func refreshChromeForActivePane() {
         let pane = activePane
-        if let entry = pane.entry {
+        if let title = pane.previewHeaderTitle {
+            gtk_label_set_text(op(titleLabel), title)
+        } else if let entry = pane.entry {
             gtk_label_set_text(
                 op(titleLabel),
                 entry.session.hasPlaceholderTitle
@@ -1789,7 +1820,9 @@ final class MainWindow: @unchecked Sendable {
         for pane in splitHost.orderedPanes {
             let onScreen = layout.zoomedPane == nil || layout.zoomedPane == pane.id
             let kind: PaneKind
-            if pane.drawEndpoint != nil {
+            if pane.previewTarget != nil {
+                kind = .preview
+            } else if pane.drawEndpoint != nil {
                 kind = .draw
             } else if pane.webTarget != nil {
                 kind = .web
@@ -2938,6 +2971,8 @@ final class MainWindow: @unchecked Sendable {
         var model = PaneChooser(
             servers: chooserServers, entries: entries, preferredServer: preferredServer)
         model.watchSummary = watchSummary
+        model.offersPreview = true
+        model.previewHosts = PreviewAccessStore.all()
         checkWhatIsOn()
         return model
     }
@@ -3011,6 +3046,14 @@ final class MainWindow: @unchecked Sendable {
             pane.showDraw(nil)
             splitHost.focus(pane, grabKeyboard: false)
             splitHost.persist()
+        case .preview(.app(let host)):
+            pane.showPreview(nil, fixedHost: host)
+            splitHost.focus(pane, grabKeyboard: false)
+            splitHost.persist()
+        case .preview(.addMac):
+            pane.showPreview(nil)
+            splitHost.focus(pane, grabKeyboard: false)
+            splitHost.persist()
         case .chooseServer, .allChats, .back:
             break
         }
@@ -3048,6 +3091,31 @@ final class MainWindow: @unchecked Sendable {
     /// so a restart reopens what was playing, exactly as it reopens a conversation.
     func videoSlotChanged() {
         splitHost.persist()
+    }
+
+    /// `HOST:PORT:/folder`, the driver's way of pointing a preview pane without typing into it; an
+    /// empty argument opens the pane asking.
+    static func previewTarget(from argument: String) -> PreviewTarget? {
+        let parts = argument.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+            .map(String.init)
+        guard parts.count == 3, let port = Int(parts[1]), !parts[0].isEmpty, !parts[2].isEmpty else {
+            return nil
+        }
+        return PreviewTarget(host: parts[0], port: port, project: parts[2])
+    }
+
+    /// A sentence a preview pane composed — the build that would not build, and what to do about
+    /// it — handed to a conversation the way a design follow-up is: the focused chat if there is
+    /// one, otherwise the first chat on screen. With no chat open the words go to the clipboard so
+    /// nothing the pane worked out is lost.
+    func previewAsksAgent(_ words: String, from source: ChatPane) {
+        let chats = splitHost.orderedPanes.filter { $0 !== source && $0.entry != nil }
+        let target = chats.first { $0 === activePane } ?? chats.first
+        guard let target else {
+            Gtk.copyToClipboard(words)
+            return
+        }
+        target.sendComposed(words)
     }
 
     /// What a chat dragged from the list is called, for the caption inside the drop highlight —
@@ -3690,6 +3758,11 @@ final class MainWindow: @unchecked Sendable {
             }
             if self.focused == .transcript, self.pendingChords.isEmpty,
                 self.activePane.handleWebChord(chord)
+            {
+                return true
+            }
+            if context == .normal, self.focused == .transcript, self.pendingChords.isEmpty,
+                self.activePane.handlePreviewChord(chord)
             {
                 return true
             }

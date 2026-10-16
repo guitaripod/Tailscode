@@ -44,6 +44,7 @@ public struct SplitSnapshot: Codable, Sendable, Equatable {
             case .video(let address): videos[key] = address
             case .web(let address): pages[key] = address
             case .draw(let address): draws[key] = address
+            case .preview: break
             }
         }
         self.sessions = sessions
@@ -175,6 +176,13 @@ public struct SplitSnapshot: Codable, Sendable, Equatable {
     public func draw(for pane: PaneID) -> String? {
         guard case .draw(let address) = content(for: pane) else { return nil }
         return address
+    }
+
+    /// The preview a pane held, read back to the app and the Mac it was pointed at. An address a
+    /// newer build wrote that this one cannot read is no target, and the pane restores empty.
+    public func preview(for pane: PaneID) -> PreviewTarget? {
+        guard case .preview(let address) = content(for: pane) else { return nil }
+        return PreviewTarget.read(address)
     }
 
     private static func migrate(

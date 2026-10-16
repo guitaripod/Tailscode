@@ -16,6 +16,7 @@ protocol PaneHost: AnyObject {
     func paneSlotChanged(_ pane: TranscriptViewController)
     func pane(_ pane: TranscriptViewController, pressedBand action: StatusFacts.Action)
     func pane(_ pane: TranscriptViewController, answeredChooser action: PaneChooserAction)
+    func pane(_ pane: TranscriptViewController, askedAgent words: String)
     func paneQuotas() -> [UsageQuota]
     func paneWatchInBackground(_ entry: SessionEntry, backend: any CodingAgentBackend)
     func paneStopWatching(_ key: LiveKey)
@@ -36,6 +37,10 @@ extension TranscriptViewController {
         }
         onToast = { [weak host] text in host?.paneToast(text) }
         onDialToast = { [weak host] text in host?.paneDialToast(text) }
+        onPreviewAskAgent = { [weak host, weak self] words in
+            guard let self else { return }
+            host?.pane(self, askedAgent: words)
+        }
         onVideoChanged = { [weak host, weak self] in
             guard let self else { return }
             host?.paneSlotChanged(self)
@@ -57,6 +62,7 @@ extension TranscriptViewController {
     /// one a restore is holding for it), or the chooser.
     func paneKind(held: Bool) -> PaneKind {
         if isDrawing { return .draw }
+        if isPreviewing { return .preview }
         if isBrowsing { return .web }
         #if !TAILSCODE_MAS
             if isWatching { return .video }
