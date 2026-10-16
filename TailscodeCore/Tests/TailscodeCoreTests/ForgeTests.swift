@@ -870,7 +870,7 @@ struct ForgeSetupTests {
         setup.reached(.refused)
         #expect(setup.status.diagnosis?.fix == .copyCommand(ForgeSetup.startCommand))
         #expect(setup.status.diagnosis?.actionTitle == ForgeSetup.startCommandTitle)
-        #expect(setup.status.title == Localized.text("Nothing is rendering on %@", "arch"))
+        #expect(setup.status.title == Localized.text("Nothing is listening on %@ on %@", "8188", "arch"))
         #expect(setup.secondary != nil)
 
         setup.reached(.nameNotResolved)

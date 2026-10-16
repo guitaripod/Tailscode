@@ -529,6 +529,7 @@ public struct ForgeSetup: Sendable, Equatable {
     /// worth offering: a machine asleep may be the right one, a name that does not resolve is not.
     public private(set) var verdict: PortReachability.Verdict?
     public private(set) var diagnosis: ConnectDiagnosis?
+    public private(set) var media: MediaVerdict?
     public private(set) var current: ForgeEndpoint?
     public private(set) var known: [ForgeRenderer]
     /// What this machine's own Tailscale says, so the surface can state the one condition that
@@ -599,6 +600,7 @@ public struct ForgeSetup: Sendable, Equatable {
         typed = text
         verdict = nil
         diagnosis = nil
+        media = nil
         stage = settledStage()
     }
 
@@ -631,6 +633,35 @@ public struct ForgeSetup: Sendable, Equatable {
 
     /// Takes a scan result into the form, already checked. A machine that answered a sweep answered
     /// the same question the button asks, so asking it twice is a wait bought for nothing.
+    /// The doctor's answer in place of the port's: what became of the address, and what the
+    /// machine at it can make. A running ComfyUI that lacks files is still the right machine, so
+    /// it files like any other and the shortfall is said under it rather than in its way.
+    public mutating func assessed(_ found: MediaVerdict) {
+        guard let endpoint, found.endpoint == endpoint else { return }
+        media = found
+        switch found.comfy {
+        case .answering, .starting:
+            verdict = .listening
+            diagnosis = nil
+            stage = .listening
+        case .timedOut:
+            reached(.timedOut)
+        case .unresolved:
+            reached(.nameNotResolved)
+        case .refused, .loopbackOnly, .notComfy:
+            verdict = found.comfy == .notComfy ? .listening : .refused
+            diagnosis = ConnectDiagnosis.forge(comfy: found.comfy, endpoint: endpoint)
+            stage = .failed
+        }
+    }
+
+    /// What the machine can make, row by row, once the doctor has looked: the lines a client draws
+    /// under the status, each with its one copyable fix.
+    public var mediaLines: [MediaReading.Line] {
+        guard let media, media.isAnswering else { return [] }
+        return MediaReading.lines(media).filter { $0.id != "media.comfy" }
+    }
+
     public mutating func adopt(_ candidate: ForgeCandidate) {
         typed = candidate.endpoint.displayHost
         name = candidate.machine
@@ -672,6 +703,18 @@ public struct ForgeSetup: Sendable, Equatable {
                 detail: Localized.text("Asking whether anything is listening before saving it."),
                 tone: .live)
         case .listening:
+            if let media, let check = media.check("media.comfy"), let endpoint {
+                if media.isStarting {
+                    return ForgeSetupReading(
+                        stage: .listening, title: Localized.text("%@ is starting", endpoint.host),
+                        detail: MediaReading.comfyDetail(check, endpoint: endpoint), tone: .live)
+                }
+                if let blocker = media.video {
+                    return ForgeSetupReading(
+                        stage: .listening, title: Localized.text("%@ answered", endpoint.host),
+                        detail: blocker.sentence, tone: .attention)
+                }
+            }
             return ForgeSetupReading(
                 stage: .listening, title: Localized.text("%@ answered", endpoint?.host ?? ""),
                 detail: Localized.text(

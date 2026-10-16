@@ -211,7 +211,8 @@ public struct ForgeClient: Sendable {
             endpoint.url("/prompt"), body: body, host: endpoint.host,
             timeout: ForgeFetch.coldTimeout)
         if let complaint = ForgeFetch.complaint(in: answer) {
-            throw ForgeFailure.rejected(endpoint.host, complaint)
+            let found = await MediaReadiness.shared.verdict(for: endpoint, force: true)
+            throw ForgeFailure.rejected(endpoint.host, found.video?.sentence ?? complaint)
         }
         guard let accepted = answer["prompt_id"] as? String, !accepted.isEmpty else {
             throw ForgeFailure.refused(
@@ -329,6 +330,11 @@ public struct ForgeClient: Sendable {
         var job = ForgeJob(recipe: recipe, expected: expecting)
         job.submitting()
         continuation.yield(job)
+
+        let found = await MediaReadiness.shared.verdict(for: endpoint)
+        if let blocker = found.video {
+            return end(&job, ForgeFailure.rejected(endpoint.host, blocker.sentence), continuation)
+        }
 
         let placed: String?
         do {

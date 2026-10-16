@@ -35,6 +35,8 @@ public struct ImageGenEndpoint: Sendable, Equatable, Codable {
 
     public var displayHost: String { "\(host):\(port)" }
 
+    public var forgeEndpoint: ForgeEndpoint { ForgeEndpoint(host: host, port: port) }
+
     /// A route on the machine, with its query escaped once here rather than by hand at every call.
     public func url(_ path: String, query: [String: String] = [:]) -> URL? {
         var parts = URLComponents(string: address)
@@ -1249,8 +1251,12 @@ public enum ImageGenWords {
 
     /// What the render button says when it cannot honestly start: the engine's files are not on
     /// the machine, said before a queue error would have said it worse.
-    public static func cannotRender(engine: ImageGenEngine, machine: String) -> String {
-        Localized.text(
+    public static func cannotRender(
+        engine: ImageGenEngine, machine: String, missing: [ImageGenModelFile] = []
+    ) -> String {
+        let files = missing.compactMap { MediaRequirements.file(named: $0.name) }
+        if !files.isEmpty { return MediaReading.filesSentence(files, lane: .pictures) }
+        return Localized.text(
             "%@ is not set up for %@ — its model files are missing. Choose the other engine or add the files.",
             machine, engine.label)
     }

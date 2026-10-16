@@ -256,6 +256,9 @@ public struct ForgeBoard: Sendable, Equatable {
     /// Whether the size was picked by hand in this board's life. A chosen size is kept by the
     /// helper and by a start picture; an inherited one follows either.
     public private(set) var sizeChosen = false
+    /// What the doctor last found on the machine the board points at, nil until it has looked and
+    /// again whenever the board is pointed somewhere else.
+    public private(set) var readiness: MediaVerdict?
 
     private var reach = ForgePhase.idle
     /// Whether the store has been asked yet. A board nobody has handed a history to has no history
@@ -312,6 +315,7 @@ public struct ForgeBoard: Sendable, Equatable {
     public var isChecking: Bool { reach == .checking }
 
     public mutating func point(at endpoint: ForgeEndpoint?, named name: String? = nil) {
+        if endpoint != self.endpoint { readiness = nil }
         self.endpoint = endpoint
         rendererName = name.flatMap { $0.isEmpty ? nil : $0 }
         reach = endpoint == nil ? .idle : .checking
@@ -337,6 +341,27 @@ public struct ForgeBoard: Sendable, Equatable {
         }
         rebuild()
     }
+
+    /// What the doctor found on the machine, in place of the bare port question: whether ComfyUI
+    /// answers, and if it does, whether the video lane has its nodes and its files. An answer about
+    /// another machine than the one on the board is somebody else's and is dropped.
+    public mutating func assessed(_ verdict: MediaVerdict) {
+        guard let endpoint, verdict.endpoint == endpoint else { return }
+        readiness = verdict
+        switch verdict.comfy {
+        case .answering:
+            reach = .ready
+        case .starting:
+            reach = .checking
+        case .refused, .loopbackOnly, .timedOut, .unresolved, .notComfy:
+            let check = verdict.check("media.comfy")
+            reach = .failed(check.map { MediaReading.comfyDetail($0, endpoint: endpoint) } ?? "")
+        }
+        rebuild()
+    }
+
+    /// Why the next render would not work, or nil when nothing known stands in its way.
+    public var blocker: MediaBlocker? { readiness?.video ?? readiness?.cannotReach }
 
     public mutating func describe(_ words: String) {
         revise(recipe.with(prompt: words))
@@ -508,6 +533,7 @@ public struct ForgeBoard: Sendable, Equatable {
         if job.isBusy { return .cancel }
         if let asset = job.asset { return .play(asset) }
         guard endpoint != nil else { return .configure }
+        if blocker != nil { return .configure }
         guard recipe.isRenderable else { return .edit(.prompt) }
         return .render(recipe)
     }
@@ -728,8 +754,14 @@ public struct ForgeBoard: Sendable, Equatable {
     private var rendererLine: String {
         switch reach {
         case .failed(let reason): return reason
-        case .checking: return Localized.text("Checking…")
-        case .ready: return Localized.text("Answering on %@", "\(endpoint?.port ?? ForgeEndpoint.defaultPort)")
+        case .checking:
+            if let readiness, readiness.isStarting, let check = readiness.check("media.comfy") {
+                return MediaReading.comfyDetail(check, endpoint: readiness.endpoint)
+            }
+            return Localized.text("Checking…")
+        case .ready:
+            if let blocker { return blocker.sentence }
+            return Localized.text("Answering on %@", "\(endpoint?.port ?? ForgeEndpoint.defaultPort)")
         case .idle:
             return endpoint == nil
                 ? Localized.text("Point this at the machine with the card")
@@ -739,7 +771,7 @@ public struct ForgeBoard: Sendable, Equatable {
 
     private var reachBadge: String? {
         switch reach {
-        case .ready: return Localized.text("up")
+        case .ready: return blocker == nil ? Localized.text("up") : Localized.text("not ready")
         case .failed: return Localized.text("down")
         case .checking, .idle: return nil
         }
@@ -764,6 +796,10 @@ public struct ForgeBoard: Sendable, Equatable {
         if job.isBusy { return Localized.text("Stop") }
         if job.asset != nil { return Localized.text("Play") }
         if endpoint == nil { return ForgeSetup.title }
+        if let blocker {
+            return blocker.checkID == "media.comfy"
+                ? ForgeSetup.title : Localized.text("See what is missing")
+        }
         return Localized.text("Render")
     }
 
