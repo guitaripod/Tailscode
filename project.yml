@@ -231,7 +231,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
         MARKETING_VERSION: "1.78"
-        CURRENT_PROJECT_VERSION: "198"
+        CURRENT_PROJECT_VERSION: "199"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -297,7 +297,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.widget
         MARKETING_VERSION: "1.78"
-        CURRENT_PROJECT_VERSION: "198"
+        CURRENT_PROJECT_VERSION: "199"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -349,7 +349,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) NOTICE_EXTENSION"
         MARKETING_VERSION: "1.78"
-        CURRENT_PROJECT_VERSION: "198"
+        CURRENT_PROJECT_VERSION: "199"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -408,7 +408,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.notificationui
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) NOTICE_EXTENSION"
         MARKETING_VERSION: "1.78"
-        CURRENT_PROJECT_VERSION: "198"
+        CURRENT_PROJECT_VERSION: "199"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
