@@ -36,6 +36,8 @@ final class ForgeSetupSheet: NSObject {
     private let tailnetLine = NSTextField(wrappingLabelWithString: "")
     private let tailnetRemedy = TailnetRemedyView()
 
+    private let mediaHeader = MacDialogs.sectionHeader("")
+    private let mediaColumn = FillingStack()
     private let knownHeader = MacDialogs.sectionHeader("")
     private let knownColumn = FillingStack()
 
@@ -73,6 +75,7 @@ final class ForgeSetupSheet: NSObject {
     /// leaves nothing on screen is indistinguishable from a button that did nothing.
     private var copied: (command: String, of: ConnectDiagnosis)?
     private var checking = false
+    private var lookTicket = 0
     private var writing = false
 
     /// As wide as the servers window, because this is the servers window's job done for a different
@@ -92,13 +95,15 @@ final class ForgeSetupSheet: NSObject {
         made.sheet.makeFirstResponder(made.addressField)
         made.readTailnet()
         made.render()
+        if let endpoint = made.setup.endpoint { made.check(endpoint) }
         return made
     }
 
     private init(onSaved: @escaping @MainActor () -> Void) {
         self.onSaved = onSaved
+        ForgeRunner.shared.suggest()
         setup = ForgeSetup(
-            current: ForgeStore.endpoint(), known: ForgeStore.renderers(),
+            current: ForgeRunner.shared.endpoint ?? ForgeStore.endpoint(), known: ForgeStore.renderers(),
             deviceName: Localized.text("This Mac"))
 
         sheet = NSWindow(
@@ -137,6 +142,7 @@ final class ForgeSetupSheet: NSObject {
             row.spacing = MacTheme.Spacing.s
         }
         knownColumn.spacing = MacTheme.Spacing.s
+        mediaColumn.spacing = MacTheme.Spacing.s
         foundColumn.spacing = MacTheme.Spacing.s
 
         column.spacing = MacTheme.Spacing.m
@@ -146,6 +152,7 @@ final class ForgeSetupSheet: NSObject {
             knownHeader, knownColumn,
             addressHeader, addressField, hintLabel, nameField,
             statusTitle, statusDetail, statusActions, copiedLabel, noteLabel, buttonRow,
+            mediaHeader, mediaColumn,
         ] as [NSView] {
             column.addArrangedSubview(view)
         }
@@ -215,7 +222,7 @@ final class ForgeSetupSheet: NSObject {
             label.font = MacTheme.Ramp.font(.cardTitle)
         }
         addressField.font = MacTheme.Ramp.font(.code)
-        for header in [knownHeader, sweepHeader, addressHeader] {
+        for header in [knownHeader, sweepHeader, addressHeader, mediaHeader] {
             header.font = MacTheme.Ramp.font(.sectionLabel)
             header.textColor = MacTheme.Color.secondaryLabel
         }
@@ -312,12 +319,18 @@ final class ForgeSetupSheet: NSObject {
         checking = true
         setup.checking()
         render()
+        lookTicket += 1
+        let ticket = lookTicket
         Task { [weak self] in
-            let verdict = await endpoint.reach()
-            guard let self else { return }
+            let verdict = await MediaReadiness.shared.verdict(for: endpoint, force: true)
+            guard let self, self.lookTicket == ticket else { return }
             self.checking = false
-            self.setup.reached(verdict)
+            self.setup.assessed(verdict)
             self.render()
+            guard let wait = verdict.recheck else { return }
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            guard self.lookTicket == ticket, self.setup.endpoint == endpoint else { return }
+            self.check(endpoint)
         }
     }
 
@@ -325,7 +338,7 @@ final class ForgeSetupSheet: NSObject {
     /// used and points renders at it in the same breath, so nothing else here has to know what
     /// "remembered" means.
     private func save(_ renderer: ForgeRenderer) {
-        ForgeStore.remember(renderer)
+        ForgeRunner.shared.file(renderer)
         onSaved()
         close()
     }
@@ -504,7 +517,47 @@ final class ForgeSetupSheet: NSObject {
         renderKnown()
         renderSweep()
         renderForm()
+        renderMedia()
         resize()
+    }
+
+    /// What the machine at the address can make, once the doctor has looked: a row for each node set
+    /// and model file in Core's words, each missing file with the one command that fetches it. The
+    /// command is copied rather than run, because the files go onto the other machine.
+    private func renderMedia() {
+        let lines = setup.mediaLines
+        mediaHeader.stringValue = MediaWords.groupTitle.uppercased()
+        mediaHeader.isHidden = lines.isEmpty
+        mediaColumn.isHidden = lines.isEmpty
+        mediaColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for line in lines { mediaColumn.addArrangedSubview(makeMediaRow(line)) }
+    }
+
+    private func makeMediaRow(_ line: MediaReading.Line) -> NSView {
+        let title = line.isOptional ? "\(line.title) · \(MediaWords.optionalMark)" : line.title
+        let name = RowKit.label(
+            title, font: MacTheme.Ramp.font(.rowTitle), color: MacTheme.Color.label)
+        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let detail = MacDialogs.detailLabel(line.detail, wraps: true)
+        detail.textColor = line.tone.color
+        let words = NSStackView(views: [name, detail])
+        words.orientation = .vertical
+        words.alignment = .leading
+        words.spacing = 2
+        var views: [NSView] = [words, RowKit.spacer()]
+        if let command = line.fix?.command {
+            let copy = RowKit.ActionButton(title: MediaWords.copyCommand) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(command, forType: .string)
+            }
+            copy.toolTip = command
+            views.append(copy)
+        }
+        let row = NSStackView(views: views)
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = MacTheme.Spacing.s
+        return row
     }
 
     private func renderIntro() {

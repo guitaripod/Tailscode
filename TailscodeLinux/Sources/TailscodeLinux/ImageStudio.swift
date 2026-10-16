@@ -475,7 +475,8 @@ final class ImageStudio: @unchecked Sendable, HelperHost {
             slot.fail(
                 prompt: text,
                 reason: ImageGenWords.cannotRender(
-                    engine: slot.engine, machine: slot.endpoint.shortName))
+                    engine: slot.engine, machine: slot.endpoint.shortName,
+                    missing: sighting?.missing(for: slot.engine) ?? []))
             announce()
             return
         }

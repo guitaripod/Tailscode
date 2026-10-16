@@ -208,6 +208,31 @@ public enum ForgeStore {
     }
 
     /// Every renderer this device has pointed at, most recently used first.
+    static let profilesKey = "tailscode.forge.byProfile"
+
+    /// The renderer filed against one server, which is the part of the choice that belongs to the
+    /// server rather than to this device: a person with two servers has two machines with cards.
+    public static func endpoint(forProfile id: String) -> ForgeEndpoint? {
+        guard let data = defaults.data(forKey: profilesKey), !data.isEmpty,
+            let all = try? JSONDecoder().decode([String: ForgeEndpoint].self, from: data)
+        else { return nil }
+        return all[id]
+    }
+
+    /// Files a renderer against a server and uses it, so the guess made from a server's address is
+    /// the answer from then on and every later look starts from it.
+    public static func remember(_ renderer: ForgeRenderer, forProfile id: String) {
+        var all: [String: ForgeEndpoint] = [:]
+        if let data = defaults.data(forKey: profilesKey), !data.isEmpty,
+            let held = try? JSONDecoder().decode([String: ForgeEndpoint].self, from: data)
+        {
+            all = held
+        }
+        all[id] = renderer.endpoint
+        if let data = try? JSONEncoder().encode(all) { defaults.set(data, forKey: profilesKey) }
+        remember(renderer)
+    }
+
     public static func renderers() -> [ForgeRenderer] {
         guard let data = defaults.data(forKey: renderersKey) else { return [] }
         return (try? JSONDecoder().decode([ForgeRenderer].self, from: data)) ?? []

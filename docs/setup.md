@@ -123,10 +123,14 @@ again after ten idle minutes so the GPU goes back to what else it does. The stat
 Before the first render, and whenever the endpoint is saved, the client asks ComfyUI what it has
 (`object_info`, its model lists) and compares it with what each lane needs. A missing file is named
 by its role and size ("the video model, 42 GB"), never by a node's error. The endpoint defaults to
-the agent server's host on 8188 and is found by probe; it is kept with the profile so every device
-sees it. Installing ComfyUI and the models is a documented recipe (`docs/media-setup.md`) the checklist
-proves row by row; a daemon fix for it arrives with the models being published somewhere a stranger
-can download them.
+the agent server's host on 8188 and is found by probe. That default is a function of the server's
+address, so every device that has the server finds the renderer with nothing stored; a machine chosen
+by hand is filed against that server on the device that chose it (sharing it between devices needs a
+renderer field on the Kit's `ConnectionProfile`, which has none and no sync). Installing ComfyUI and the models is a documented recipe (`docs/media-setup.md`, performed by
+`scripts/media-setup.sh`) the checklist proves row by row. Every model file is public on Hugging Face
+(two of the three repositories behind a licence the person accepts in a browser), so a missing file's
+fix is the one `hf download` line for it, copied; a daemon job that runs it would still need that
+acceptance first.
 
 ## First run
 

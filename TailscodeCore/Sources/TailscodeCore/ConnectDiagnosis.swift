@@ -196,17 +196,48 @@ extension ConnectDiagnosis {
         case .nameNotResolved:
             return unresolvable(deviceName: deviceName, host: endpoint.host)
         case .refused:
-            return ConnectDiagnosis(
-                symbol: "bolt.horizontal.circle",
-                title: Localized.text("Nothing is rendering on %@", endpoint.host),
-                detail: Localized.text(
-                    "The machine answered, so the address is right — but nothing is listening on %@. Start ComfyUI there, and make sure it binds 0.0.0.0 rather than localhost.",
-                    "\(endpoint.port)"),
-                fix: .copyCommand(ForgeSetup.startCommand),
-                actionTitle: ForgeSetup.startCommandTitle)
+            return forge(comfy: .refused, endpoint: endpoint)
         case .timedOut:
             if let tailnet, !tailnet.isUp { return offTailnet(deviceName: deviceName) }
             return noAnswer(deviceName: deviceName, displayHost: endpoint.displayHost)
+        }
+    }
+
+    /// The renderer's failures as the doctor tells them apart, which a bare port cannot: a port
+    /// that refuses (nothing is there, or ComfyUI listens for its own machine only), a ComfyUI that
+    /// is running but bound to loopback — knowable only from the machine it runs on — and an
+    /// address that answers as something else.
+    public static func forge(comfy: MediaVerdict.Comfy, endpoint: ForgeEndpoint) -> ConnectDiagnosis? {
+        switch comfy {
+        case .refused:
+            return ConnectDiagnosis(
+                symbol: "bolt.horizontal.circle",
+                title: Localized.text("Nothing is listening on %@ on %@", "\(endpoint.port)", endpoint.host),
+                detail: Localized.text(
+                    "The machine answered, so the address is right. If ComfyUI is running there, start it with --listen so other machines can reach it."
+                ),
+                fix: .copyCommand(ForgeSetup.startCommand),
+                actionTitle: ForgeSetup.startCommandTitle)
+        case .loopbackOnly:
+            return ConnectDiagnosis(
+                symbol: "bolt.horizontal.circle",
+                title: Localized.text(
+                    "ComfyUI is running on %@ but only accepts connections from that machine", endpoint.host),
+                detail: Localized.text(
+                    "It was started without --listen, so nothing else on the tailnet can reach it. Start it again with --listen."
+                ),
+                fix: .copyCommand(ForgeSetup.startCommand),
+                actionTitle: ForgeSetup.startCommandTitle)
+        case .notComfy:
+            return ConnectDiagnosis(
+                symbol: "questionmark.app",
+                title: Localized.text("That is not ComfyUI"),
+                detail: Localized.text(
+                    "Something answers on %@, but it does not speak ComfyUI. ComfyUI listens on %@ unless it was told otherwise.",
+                    endpoint.displayHost, "\(ForgeEndpoint.defaultPort)"),
+                fix: .retry, actionTitle: Localized.text("Try again"))
+        case .answering, .starting, .timedOut, .unresolved:
+            return nil
         }
     }
 

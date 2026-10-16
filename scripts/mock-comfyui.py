@@ -37,6 +37,27 @@ is how it appears on the shelf. Point the harness at it with
 TAILSCODE_IMAGE_ENDPOINT=http://<host>:8190 (debug builds only); a hostname rather than
 127.0.0.1 is what makes the shelf read "On <machine>". Every websocket client hears every job.
 Needs Pillow.
+
+The readiness doctor (MediaDoctor) asks this server what a real ComfyUI answers: /system_stats
+with a device, /object_info with every node class, /models/<folder> with the files in each. All of
+it is on by default, so a machine with everything installed is what the studios see unless told
+otherwise, and each of these makes it a different machine:
+
+    MOCK_BIND=127.0.0.1    listen on loopback only (ComfyUI without --listen)
+    MOCK_START_DELAY=45    accept connections at once but answer 503 for this many seconds, the
+                           way a socket-activated proxy does while the process behind it loads
+    MOCK_START_STYLE=hold  hold requests until the delay is over instead of answering 503
+    MOCK_NO_VIDEO=1        none of the video files are installed
+    MOCK_MISSING=a.safetensors,b.safetensors    files to leave out of every listing
+    MOCK_SUBFOLDER=name.safetensors             list this file inside a subfolder instead
+    MOCK_NODES_MISSING=QwenImage21Cache,...     node classes this ComfyUI does not have
+    MOCK_VRAM_GB=24        the card's memory (default 96)
+    MOCK_DEVICE=cpu        report no accelerator
+    MOCK_VERSION=0.41.2    the version /system_stats names (default 0.41.2)
+    MOCK_COMFY_DIR=/path   where main.py lives, as /system_stats argv says (default /opt/ComfyUI)
+    MOCK_LEGACY=1          answer 404 for /models/<folder>, like a ComfyUI that predates it
+    MOCK_NOT_COMFY=1       answer /system_stats with a page that is not ComfyUI
+    MOCK_DOCTOR_ONLY=1     start without any pictures to hand back (renders will fail)
 """
 import base64, hashlib, io, json, mimetypes, os, shutil, struct, sys, threading, time, uuid
 from email.utils import formatdate
@@ -59,11 +80,70 @@ PREVIEW_IMAGE = 1
 FORMAT_JPEG = 1
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-MODELS = {
-    "UNETLoader": ("unet_name", ["flux3_image_klein_sd_bf16.safetensors", "qwen_image_2.1_int8_convrot.safetensors", "qwen_image_2.1_turbo_bf16.safetensors"]),
-    "CLIPLoader": ("clip_name", ["qwen3vl_4b_bf16.safetensors", "qwen3vl_8b_int8_convrot.safetensors"]),
-    "VAELoader": ("vae_name", ["qwen_image_2.1_vae_bf16.safetensors", "flux2-vae.safetensors"]),
+BIND = os.environ.get("MOCK_BIND", "0.0.0.0")
+START_DELAY = float(os.environ.get("MOCK_START_DELAY", "0"))
+START_STYLE = os.environ.get("MOCK_START_STYLE", "503")
+STARTED = time.time()
+VRAM_GB = float(os.environ.get("MOCK_VRAM_GB", "96"))
+DEVICE = os.environ.get("MOCK_DEVICE", "cuda")
+VERSION = os.environ.get("MOCK_VERSION", "0.41.2")
+COMFY_DIR = os.environ.get("MOCK_COMFY_DIR", "/opt/ComfyUI")
+LEGACY = os.environ.get("MOCK_LEGACY") == "1"
+NOT_COMFY = os.environ.get("MOCK_NOT_COMFY") == "1"
+MISSING = {n.strip() for n in os.environ.get("MOCK_MISSING", "").split(",") if n.strip()}
+SUBFOLDER = os.environ.get("MOCK_SUBFOLDER", "").strip()
+NODES_MISSING = {n.strip() for n in os.environ.get("MOCK_NODES_MISSING", "").split(",") if n.strip()}
+
+VIDEO_FILES = {
+    "diffusion_models": ["ltx-2.5-22b-distilled-transformer-bf16.safetensors"],
+    "text_encoders": ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"],
+    "vae": ["ltx-2.5-video-vae-bf16.safetensors", "ltx-2.5-audio-vae-bf16.safetensors"],
+    "latent_upscale_models": ["ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"],
 }
+FILES = {
+    "diffusion_models": ["flux3_image_klein_sd_bf16.safetensors", "qwen_image_2.1_int8_convrot.safetensors", "qwen_image_2.1_turbo_bf16.safetensors"],
+    "text_encoders": ["qwen3vl_4b_bf16.safetensors", "qwen3vl_8b_int8_convrot.safetensors"],
+    "vae": ["qwen_image_2.1_vae_bf16.safetensors", "flux2-vae.safetensors"],
+    "latent_upscale_models": [],
+}
+if os.environ.get("MOCK_NO_VIDEO") != "1":
+    for folder, names in VIDEO_FILES.items(): FILES[folder] = FILES[folder] + names
+
+LOADERS = {
+    "UNETLoader": ("unet_name", "diffusion_models"),
+    "CLIPLoader": ("clip_name", "text_encoders"),
+    "VAELoader": ("vae_name", "vae"),
+    "LatentUpscaleModelLoader": ("model_name", "latent_upscale_models"),
+}
+
+NODE_CLASSES = [
+    "UNETLoader", "CLIPLoader", "VAELoader", "LatentUpscaleModelLoader", "CLIPTextEncode",
+    "LTXVConditioning", "EmptyLTXVLatentVideo", "LTXVEmptyLatentAudio", "LTXVConcatAVLatent",
+    "RandomNoise", "KSamplerSelect", "ManualSigmas", "LTXVDualCFGGuider", "SamplerCustomAdvanced",
+    "LTXVSeparateAVLatent", "LTXVLatentUpsampler", "VAEDecodeTiled", "LTXVAudioVAEDecode",
+    "CreateVideo", "SaveVideo", "LoadImage", "LoadVideo", "GetVideoComponents", "ImageFromBatch",
+    "LTXVPreprocess", "LTXVImgToVideoInplace", "VAEDecode", "SaveImage", "TextEncodeQwenImage21",
+    "QwenImage21Cache", "EmptyLatentImage", "KSampler", "SamplerCustom", "ConditioningZeroOut",
+    "EmptyFlux2LatentImage", "ReferenceMultiLatent",
+]
+
+def listed(folder):
+    """The files a /models/<folder> answer lists: everything installed that is not left out."""
+    names = [n for n in FILES.get(folder, []) if n not in MISSING]
+    return [("sub/" + n) if n == SUBFOLDER else n for n in names]
+
+def object_info():
+    """/object_info: every node class this ComfyUI has, loaders with their file choices."""
+    out = {}
+    for cls in NODE_CLASSES:
+        if cls in NODES_MISSING: continue
+        out[cls] = {"input": {"required": {}}}
+    for cls, (field, folder) in LOADERS.items():
+        if cls in out: out[cls] = {"input": {"required": {field: [listed(folder)]}}}
+    return out
+
+def ready():
+    return time.time() - STARTED >= START_DELAY
 
 jobs = [0]
 running = {}
@@ -99,7 +179,7 @@ def choose_results():
     return (pictures_in(os.path.join(OUTPUT, "studio")) or pictures_in(OUTPUT)), []
 
 def banner(missing):
-    print(f"mock-comfyui: http://0.0.0.0:{PORT}  output={OUTPUT}", flush=True)
+    print(f"mock-comfyui: http://{BIND}:{PORT}  output={OUTPUT}", flush=True)
     print(f"mock-comfyui: render {RENDER_SECONDS:g}s per job"
           + (f", paused at step {PAUSE_AT} from job {PAUSE_FROM_JOB}" if PAUSE_AT else ""), flush=True)
     origin = "MOCK_RESULTS" if RESULT_NAMES else "the output folder"
@@ -258,13 +338,31 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path); q = parse_qs(u.query)
         if u.path == "/ws": return self.websocket(q)
-        if u.path == "/system_stats": return self._json({"system": {"os": "linux", "comfyui_version": "0.36.0"}, "devices": []})
-        if u.path == "/object_info":
-            return self._json({n: {"input": {"required": {f: [names]}}} for n, (f, names) in MODELS.items()})
+        if not ready() and u.path != "/ws":
+            if START_STYLE == "hold":
+                time.sleep(max(0, START_DELAY - (time.time() - STARTED)))
+            else:
+                return self._send(503, b"starting", "text/plain")
+        if u.path == "/system_stats":
+            if NOT_COMFY: return self._send(200, b"<html>not comfy</html>", "text/html")
+            total = int(VRAM_GB * 1024 ** 3)
+            devices = [{
+                "name": "cpu" if DEVICE == "cpu" else "cuda:0 Mock GPU : cudaMallocAsync",
+                "type": DEVICE, "index": 0 if DEVICE != "cpu" else None,
+                "vram_total": total, "vram_free": total - 1024 ** 3,
+                "torch_vram_total": total, "torch_vram_free": total - 1024 ** 3}]
+            return self._json({"system": {"os": "linux", "comfyui_version": VERSION,
+                                          "argv": [COMFY_DIR + "/main.py", "--listen", "--port", str(PORT)]},
+                               "devices": devices})
+        if u.path == "/models": return self._json(sorted(FILES))
+        if u.path.startswith("/models/"):
+            folder = u.path.rsplit("/", 1)[1]
+            if LEGACY or folder not in FILES: return self._send(404)
+            return self._json(listed(folder))
+        if u.path == "/object_info": return self._json(object_info())
         if u.path.startswith("/object_info/"):
             node = u.path.rsplit("/", 1)[1]
-            field, names = MODELS.get(node, ("name", []))
-            return self._json({node: {"input": {"required": {field: [names]}}}})
+            return self._json({node: object_info()[node]} if node in object_info() else {})
         if u.path == "/queue":
             with lock: live = sorted(running.items(), key=lambda kv: kv[1])
             return self._json({"queue_running": [[number, pid, {}, {}, []] for pid, number in live], "queue_pending": []})
@@ -358,7 +456,7 @@ class H(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     results, missing = choose_results()
     banner(missing)
-    if not results:
+    if not results and os.environ.get("MOCK_DOCTOR_ONLY") != "1":
         sys.exit("mock-comfyui: no pictures to serve; put a .png in MOCK_OUTPUT/studio or fix MOCK_RESULTS")
     ThreadingHTTPServer.daemon_threads = True
-    ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
+    ThreadingHTTPServer((BIND, PORT), H).serve_forever()

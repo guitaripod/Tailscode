@@ -81,6 +81,11 @@ public final class ImageGenRunner: @unchecked Sendable {
                 }
                 var wanted = recipe
                 wanted.references = handed
+                let found = await MediaReadiness.shared.verdict(for: client.endpoint.forgeEndpoint)
+                if let blocker = found.image(recipe.engine) {
+                    done(.failure(blocker.sentence))
+                    return
+                }
                 let socket = Self.open(client: client, held: held)
                 let request = try await client.queue(ImageGenClient.graph(wanted))
                 ticket.request = request

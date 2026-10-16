@@ -81,68 +81,24 @@ public struct ImageGenClient: Sendable {
         }
     }
 
-    /// The queue's own answer: is the machine there, which model files it holds, what version it
-    /// runs and what it is doing right now.
-    public func health() async -> ImageGenHealth {
-        guard let url = endpoint.url("/system_stats") else { return .unknown() }
-        guard let (data, response) = await tolerantGet(url),
-            let http = response as? HTTPURLResponse, http.statusCode == 200
-        else {
-            return ImageGenHealth(reachable: false, missingModels: [], version: nil)
-        }
-        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        let system = object?["system"] as? [String: Any]
-        let version = system?["comfyui_version"] as? String
-        async let missing = missingModels()
-        async let running = queuedCount()
-        return ImageGenHealth(
-            reachable: true, missingModels: await missing, version: version,
-            running: await running)
-    }
-
-    /// Which loader answers for a family of model files, and under which field. A store keeps
-    /// diffusion models, text encoders and VAEs in three directories and ComfyUI publishes each
-    /// one through its own node, so asking a single node about all three is asking a question it
-    /// has no way to answer — and taking its silence for absence is how every model reads as
-    /// missing on a machine that holds all of them.
-    private static let loaders: [String: (node: String, field: String)] = [
-        "diffusion_models": ("UNETLoader", "unet_name"),
-        "text_encoders": ("CLIPLoader", "clip_name"),
-        "vae": ("VAELoader", "vae_name"),
-    ]
-
-    private func available(from loader: (node: String, field: String)) async -> [String]? {
-        guard let url = endpoint.url("/object_info/\(loader.node)") else { return nil }
-        guard let (data, _) = try? await session.data(from: url),
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let node = object[loader.node] as? [String: Any],
-            let input = node["input"] as? [String: Any],
-            let required = input["required"] as? [String: Any],
-            let field = required[loader.field] as? [Any],
-            let names = field.first as? [String]
-        else { return nil }
-        return names
-    }
-
-    /// The required files the store cannot offer. A loader this server does not publish is
-    /// reported as its whole family missing rather than quietly passing, because a graph that
-    /// names a node ComfyUI has never heard of fails at queue time with an error nobody can read.
-    private func missingModels() async -> [String] {
-        var missing: [String] = []
-        for (directory, loader) in Self.loaders {
-            let wanted = ImageGenModelFile.all.filter { $0.directory == directory }
-            guard !wanted.isEmpty else { continue }
-            guard let names = await available(from: loader) else {
-                missing.append(contentsOf: wanted.map(\.path))
-                continue
-            }
-            let offered = Set(names.map { ($0 as NSString).lastPathComponent })
-            missing.append(contentsOf: wanted.filter { !offered.contains($0.name) }.map(\.path))
-        }
-        return missing.sorted()
+    /// The machine's health as the video board reads it: the same look, the same cache, the same
+    /// words, so a studio and the forge can never disagree about whether ComfyUI is up or which
+    /// files it holds. The doctor asks; this only reshapes the answer and adds what the queue is
+    /// doing right now.
+    public func health(force: Bool = false) async -> ImageGenHealth {
+        let verdict = await MediaReadiness.shared.verdict(for: endpoint.forgeEndpoint, force: force)
+        guard verdict.isAnswering else { return verdict.health() }
+        return verdict.health(running: await queuedCount())
     }
 
     /// The graph for one ask, built once so the runner can queue it and read its nodes back.
+    static func engine(of graph: [String: Any]) -> ImageGenEngine? {
+        let loader = graph.values.compactMap { $0 as? [String: Any] }
+            .first { $0["class_type"] as? String == "UNETLoader" }
+        let name = (loader?["inputs"] as? [String: Any])?["unet_name"] as? String
+        return ImageGenEngine.allCases.first { $0.files.first?.name == name }
+    }
+
     public static func graph(_ recipe: ImageGenRecipe) -> [String: Any] {
         switch recipe.engine {
         case .quality, .turbo:
@@ -205,7 +161,9 @@ public struct ImageGenClient: Sendable {
             let message = (list?.first?["message"] as? String)
                 ?? (top?["message"] as? String)
                 ?? "ComfyUI refused the request"
-            throw ImageGenFailure.refused(message)
+            let found = await MediaReadiness.shared.verdict(for: endpoint.forgeEndpoint, force: true)
+            let words = Self.engine(of: graph).flatMap { found.image($0)?.sentence }
+            throw ImageGenFailure.refused(words ?? message)
         }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let id = object["prompt_id"] as? String

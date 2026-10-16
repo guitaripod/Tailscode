@@ -192,7 +192,8 @@ final class MacImageStudio {
     /// that engine's files. Unknown is not a refusal.
     var engineBlocked: String? {
         guard let sighting, sighting.reachable, !sighting.available(slot.engine) else { return nil }
-        return ImageGenWords.cannotRender(engine: slot.engine, machine: endpoint.shortName)
+        return ImageGenWords.cannotRender(
+            engine: slot.engine, machine: endpoint.shortName, missing: sighting.missing(for: slot.engine))
     }
 
     /// The engine the machine can paint with when the chosen one cannot, so a refusal can offer the
