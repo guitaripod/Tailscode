@@ -2882,7 +2882,10 @@ final class ChatViewController: UIViewController {
                 body: permission.toolName.map { String(localized: "Approval needed: \($0)") }
                     ?? String(localized: "Approval needed."),
                 identifier: "perm:\(permission.id)", sessionID: viewModel.session.id,
-                profileID: viewModel.contextID, permission: permission, activity: .needsApproval)
+                profileID: viewModel.contextID, permission: permission,
+                notice: NoticeReader.wire(approval: permission, in: state).located(
+                    on: viewModel.serverName, agent: viewModel.backend.agentType.rawValue),
+                activity: .needsApproval)
         }
         if let question = pendingQuestion, question.id != lastNotifiedQuestionID {
             lastNotifiedQuestionID = question.id
@@ -2897,7 +2900,10 @@ final class ChatViewController: UIViewController {
                 body: question.questions.first?.question
                     ?? String(localized: "The agent has a question."),
                 identifier: "question:\(question.id)", sessionID: viewModel.session.id,
-                profileID: viewModel.contextID, activity: .needsAnswer)
+                profileID: viewModel.contextID, question: question,
+                notice: NoticeReader.wire(question: question).located(
+                    on: viewModel.serverName, agent: viewModel.backend.agentType.rawValue),
+                activity: .needsAnswer)
         }
         updateBanner(for: state)
         updateGoalChip(for: state)

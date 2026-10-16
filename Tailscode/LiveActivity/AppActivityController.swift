@@ -292,7 +292,7 @@ final class AppActivityController {
 
     /// Whether a person is looking at the conversation this moment: on screen, in the app in
     /// front. A chat left on screen under the Lock Screen is not being read.
-    private func isBeingRead(_ sessionID: String) -> Bool {
+    func isBeingRead(_ sessionID: String) -> Bool {
         guard UIApplication.shared.applicationState == .active else { return false }
         let surfaces = readers.keyEnumerator().allObjects.compactMap { $0 as? UIViewController }
         return surfaces.contains { surface in

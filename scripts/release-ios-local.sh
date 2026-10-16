@@ -27,6 +27,7 @@ PROFILE_FILES=(
   "$VAULT/tailscode-appstore-2026.mobileprovision"
   "$VAULT/tailscode-widget-appstore-2026.mobileprovision"
   "$VAULT/tailscode-nse-appstore-2026.mobileprovision"
+  "$VAULT/tailscode-notificationui-appstore-2026.mobileprovision"
 )
 for file in "${PROFILE_FILES[@]}"; do
   [ -f "$file" ] || { echo "no App Store profile at $file" >&2; exit 1; }

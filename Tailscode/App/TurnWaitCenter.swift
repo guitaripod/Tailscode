@@ -390,9 +390,24 @@ final class TurnWaitCenter {
 
         NotificationManager.notify(
             kind: kind, title: title, body: body, identifier: identifier,
-            sessionID: info.sessionID, profileID: info.profileID, activity: reason)
+            sessionID: info.sessionID, profileID: info.profileID,
+            notice: Self.wire(for: kind, reason: reason, toolCount: toolCount, profile: profile),
+            activity: reason)
         AppLogger.lifecycle.info(
             "turnwait posted for profile=\(info.profileID) session=\(info.sessionID) (\(result.state))")
+    }
+
+    /// What this device knows of an ending it was told about over the wait: that it happened, how
+    /// many tools the turn ran, and where. A needs-you ending says nothing of what is being asked,
+    /// so it stays an open-only notice, as before.
+    private static func wire(
+        for kind: NotificationManager.Kind, reason: MissedActivity.Reason, toolCount: Int,
+        profile: ConnectionProfile
+    ) -> NoticeWire? {
+        guard kind == .turnComplete else { return nil }
+        return NoticeWire(
+            kind: reason == .turnFailed ? .failed : .done, tools: toolCount > 0 ? toolCount : nil
+        ).located(on: profile.name, agent: profile.backend.rawValue)
     }
 
     /// Whether a bridge's own remote push already covers this profile's turn endings — every one

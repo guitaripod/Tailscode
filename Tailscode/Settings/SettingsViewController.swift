@@ -1278,6 +1278,23 @@ final class SettingsViewController: UIViewController {
         return false
     }
 
+    /// Which notice to send to this phone, so each kind can be seen on the Lock Screen and pulled
+    /// down into its long look, buttons and reply field included.
+    private func presentSamplePicker() {
+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        for sample in NoticeSample.allCases {
+            sheet.addAction(
+                UIAlertAction(title: sample.menuTitle, style: .default) { _ in
+                    NotificationManager.sendTest(sample)
+                })
+        }
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        sheet.popoverPresentationController?.sourceView = view
+        sheet.popoverPresentationController?.sourceRect = CGRect(
+            x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        present(sheet, animated: true)
+    }
+
     private func handlePermissionTap() {
         switch notificationStatus {
         case .notDetermined:
@@ -1429,7 +1446,7 @@ extension SettingsViewController: UICollectionViewDelegate {
             PushRegistrar.reregisterIfNeeded()
         case .testNotification:
             Theme.Haptics.tap()
-            NotificationManager.sendTest()
+            presentSamplePicker()
         case .software:
             Theme.Haptics.tap()
             UpdateCenterViewController.present(from: self)

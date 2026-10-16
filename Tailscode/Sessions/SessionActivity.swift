@@ -154,11 +154,17 @@ final class SessionActivity {
                     identifier: "done:\(sessionID)", profileID: profileID, sessionID: sessionID,
                     title: title, body: body)
             } else if TurnEndGate.claim(profileID: profileID, sessionID: sessionID) {
+                let ended = keepAlive.state
+                let failed = ended.lastFailure != nil
+                let notice = (failed
+                    ? NoticeReader.wire(turnFailed: ended) : NoticeReader.wire(turnEnded: ended))
+                    .located(on: keepAlive.serverName, agent: keepAlive.backend.agentType.rawValue)
                 NotificationManager.notify(
                     kind: .turnComplete,
                     title: title, body: body,
                     identifier: "done:\(sessionID)",
-                    sessionID: sessionID, profileID: profileID, activity: .turnEnded)
+                    sessionID: sessionID, profileID: profileID, notice: notice,
+                    activity: failed ? .turnFailed : .turnEnded)
             } else {
                 AppLogger.lifecycle.info(
                     "turn ended locally but already claimed by the background wait; skipping duplicate banner for session=\(sessionID)"

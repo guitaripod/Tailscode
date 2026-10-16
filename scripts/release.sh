@@ -77,5 +77,6 @@ exec "$HOME/Dev/buildvm/bin/buildvm" build \
   --profile "$SIGNING/tailscode-appstore-2026.mobileprovision" \
   --profile "$SIGNING/tailscode-widget-appstore-2026.mobileprovision" \
   --profile "$SIGNING/tailscode-nse-appstore-2026.mobileprovision" \
+  --profile "$SIGNING/tailscode-notificationui-appstore-2026.mobileprovision" \
   --build "$BUILD" \
   ${MARKETING:+--marketing "$MARKETING"}

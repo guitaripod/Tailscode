@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1280">
+<title>iOS notifications, before and after</title>
+<style>
+:root{--ok:#30d158;--warn:#ff9f0a;--danger:#ff453a;--ink:#fff;--ink2:rgba(235,235,245,.64);--ink3:rgba(235,235,245,.34);--note:#ff6bb5;--accent:#2ab6a3}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;background:radial-gradient(1200px 900px at 20% 10%,#24324a 0,#0f1626 55%,#07090f 100%);color:var(--ink);font-family:-apple-system,"SF Pro Text",system-ui,"Inter",sans-serif;-webkit-font-smoothing:antialiased;padding:36px 40px 44px}
+h1{font:600 22px/1.2 system-ui;letter-spacing:.2px;margin-bottom:4px}
+.sub{color:var(--ink2);font-size:13px;margin-bottom:26px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:44px}
+.col h2{font:600 12px/1 ui-monospace,Menlo,monospace;letter-spacing:1.4px;text-transform:uppercase;color:var(--ink3);margin-bottom:14px}
+.kind{font:11px/1 ui-monospace,Menlo,monospace;color:var(--note);margin:18px 0 7px 4px}
+.n{position:relative;background:rgba(58,60,68,.62);backdrop-filter:blur(30px);border-radius:24px;padding:13px 14px 13px 14px;display:grid;grid-template-columns:34px 1fr auto;column-gap:11px;box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset,0 8px 28px rgba(0,0,0,.28)}
+.n.stack::after{content:"";position:absolute;left:14px;right:14px;bottom:-7px;height:14px;border-radius:0 0 22px 22px;background:rgba(58,60,68,.42);z-index:-1}
+.app{width:34px;height:34px;border-radius:8px;background:linear-gradient(145deg,#2ab6a3,#0f6f66);display:grid;place-items:center;font:700 16px/1 ui-monospace,Menlo,monospace;color:#04211e}
+.t{font:600 15px/1.25 -apple-system,system-ui}
+.s{font:600 14px/1.3 -apple-system,system-ui;color:rgba(255,255,255,.92);margin-top:1px}
+.s b{font-weight:700}
+.s .f{font-weight:500;color:var(--ink2)}
+.b{font:400 14px/1.32 -apple-system,system-ui;color:rgba(255,255,255,.84);margin-top:2px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.time{font:12px/1.2 system-ui;color:var(--ink3);padding-top:2px}
+.thumb{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;margin-top:20px;justify-self:end}
+.thumb svg{width:22px;height:22px}
+.thumb.ok{background:rgba(48,209,88,.2);color:var(--ok)}
+.thumb.warn{background:rgba(255,159,10,.2);color:var(--warn)}
+.thumb.danger{background:rgba(255,69,58,.2);color:var(--danger)}
+.thumb.sq{border-radius:12px;color:#06160b}
+.thumb.sq.ok{background:linear-gradient(180deg,#5ee889,var(--ok))}
+.thumb.sq.warn{background:linear-gradient(180deg,#ffbf5c,var(--warn))}
+.thumb.sq.danger{background:linear-gradient(180deg,#ff7a70,var(--danger))}
+.acts{display:flex;gap:8px;margin:7px 0 0 0;padding:0 2px}
+.acts span{flex:1;text-align:center;background:rgba(90,92,100,.55);border-radius:20px;padding:9px 0;font:600 14px/1 system-ui;color:#fff;display:flex;gap:6px;align-items:center;justify-content:center}
+.acts span svg{width:15px;height:15px}
+.acts .d{color:#ff6a60}
+.acts .tinted{color:var(--accent)}
+.reply{margin:7px 2px 0;background:rgba(90,92,100,.4);border-radius:20px;padding:9px 14px;color:var(--ink3);font:14px/1 system-ui;display:flex;justify-content:space-between}
+.reply i{font-style:normal;color:var(--accent);font-weight:600}
+.note{position:absolute;right:-6px;top:-9px;transform:translateX(100%);width:150px;font:10.5px/1.35 ui-monospace,Menlo,monospace;color:var(--note)}
+.group{margin-top:26px;padding:10px 12px;border:1px dashed rgba(255,107,181,.5);border-radius:14px;color:var(--note);font:11px/1.5 ui-monospace,Menlo,monospace}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.6 4.6L19 7.4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></symbol>
+<symbol id="hand" viewBox="0 0 24 24"><path d="M8 11V6a1.5 1.5 0 013 0v4m0-4.5a1.5 1.5 0 013 0V10m0-3.5a1.5 1.5 0 013 0V14c0 4-2.5 6-6 6-3 0-4.5-1.7-6-4.5L4 12.5a1.6 1.6 0 012.6-1.7L8 12.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="q" viewBox="0 0 24 24"><path d="M9.2 9.4a2.9 2.9 0 115.2 1.7c-.8 1-2.1 1.4-2.1 3M12.3 17.2v.1" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
+<symbol id="tri" viewBox="0 0 24 24"><path d="M12 4.5l8.5 15h-17z M12 10v4.5 M12 17.2v.1" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="reply" viewBox="0 0 24 24"><path d="M10 7L4 12l6 5V13c5 0 8 1.6 10 5-.6-5-3.6-9-10-9z" fill="currentColor"/></symbol>
+<symbol id="again" viewBox="0 0 24 24"><path d="M19 8a8 8 0 10.8 7M19 4v4h-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="gauge" viewBox="0 0 24 24"><path d="M4.5 16a7.5 7.5 0 1115 0M12 16l3.2-4.2" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></symbol>
+</defs></svg>
+
+<h1>iOS notifications: today and remastered</h1>
+<div class="sub">Lock Screen, dark. Same five events on both sides. Text is real output of Core's NoticeReader (see docs/ios-notifications.md).</div>
+<div class="cols">
+
+<div class="col">
+<h2>Today</h2>
+
+<div class="kind">turn finished · push or local</div>
+<div class="n"><div class="app">T</div><div><div class="t">Enrich Linux notification</div><div class="b">Your agent finished.</div></div><div class="time">now</div><div></div><div></div><div class="thumb ok" style="grid-area:1/3;margin-top:22px"><svg><use href="#check"/></svg></div></div>
+
+<div class="kind">turn failed</div>
+<div class="n"><div class="app">T</div><div><div class="t">Release 1.77 notes</div><div class="b">The turn failed.</div></div><div class="time">now</div><div class="thumb danger" style="grid-area:1/3;margin-top:22px"><svg><use href="#tri"/></svg></div></div>
+
+<div class="kind">needs approval</div>
+<div class="n"><div class="app">T</div><div><div class="t">Clean the build folder</div><div class="b">Approval needed: Bash</div></div><div class="time">now</div><div class="thumb warn" style="grid-area:1/3;margin-top:22px"><svg><use href="#hand"/></svg></div></div>
+<div class="acts"><span>Approve</span><span class="d">Deny</span></div>
+
+<div class="kind">has a question</div>
+<div class="n"><div class="app">T</div><div><div class="t">Pick a database</div><div class="b">Which database should the notes live in?</div></div><div class="time">now</div><div class="thumb warn" style="grid-area:1/3;margin-top:22px"><svg><use href="#q"/></svg></div></div>
+
+<div class="kind">usage warning</div>
+<div class="n"><div class="app">T</div><div><div class="t">Claude 5-hour window</div><div class="b">80% used, resets in 1h 12m</div></div><div class="time">now</div><div class="thumb warn" style="grid-area:1/3;margin-top:22px"><svg><use href="#gauge"/></svg></div></div>
+</div>
+
+<div class="col">
+<h2>Remastered</h2>
+
+<div class="kind">turn finished · reply from the Lock Screen</div>
+<div class="n stack"><div class="app">T</div><div><div class="t">Enrich Linux notification</div><div class="s"><b>Finished</b> <span class="f">· 4m · 12 tools · +24 −6</span></div><div class="b">Done. The notification now carries a painted face, how long the turn took, the first of what I answered and a reply field. All selftests pass.</div></div><div class="time">now</div><div class="thumb sq ok" style="grid-area:1/3;margin-top:24px"><svg><use href="#check"/></svg></div></div>
+<div class="reply"><span>Reply to the agent…</span><i>Send</i></div>
+
+<div class="kind">turn failed</div>
+<div class="n"><div class="app">T</div><div><div class="t">Release 1.77 notes</div><div class="s"><b>Failed</b> <span class="f">· 4m · 3 tools</span></div><div class="b">The provider returned an error: overloaded, try again shortly</div></div><div class="time">now</div><div class="thumb sq danger" style="grid-area:1/3;margin-top:24px"><svg><use href="#tri"/></svg></div></div>
+<div class="acts"><span><svg><use href="#again"/></svg>Try again</span><span><svg><use href="#reply"/></svg>Reply</span></div>
+
+<div class="kind">needs approval · time sensitive, Approve asks for unlock</div>
+<div class="n"><div class="app">T</div><div><div class="t">Clean the build folder</div><div class="s"><b>Needs approval</b> <span class="f">· Bash</span></div><div class="b">rm -rf build/ &amp;&amp; swift build</div></div><div class="time">now</div><div class="thumb sq warn" style="grid-area:1/3;margin-top:24px"><svg><use href="#hand"/></svg></div></div>
+<div class="acts"><span class="tinted"><svg><use href="#check"/></svg>Approve</span><span class="d"><svg><use href="#x"/></svg>Deny</span></div>
+
+<div class="kind">has a question · its options are the buttons</div>
+<div class="n"><div class="app">T</div><div><div class="t">Pick a database</div><div class="s"><b>Has a question</b></div><div class="b">Which database should the notes live in?</div></div><div class="time">now</div><div class="thumb sq warn" style="grid-area:1/3;margin-top:24px"><svg><use href="#q"/></svg></div></div>
+<div class="acts"><span>Postgres</span><span>SQLite</span><span><svg><use href="#reply"/></svg>Other</span></div>
+
+<div class="kind">usage warning · passive, opens Usage</div>
+<div class="n"><div class="app">T</div><div><div class="t">Claude 5-hour window</div><div class="s"><b>80% used</b> <span class="f">· resets in 1h 12m</span></div><div class="b">Next send unlocks at 21:40. Weekly is at 41%.</div></div><div class="time">now</div><div class="thumb sq warn" style="grid-area:1/3;margin-top:24px"><svg><use href="#gauge"/></svg></div></div>
+
+<div class="group">Grouped by chat (thread-id = session). Summary line: “3 more updates in Enrich Linux notification”. Badge on the icon: chats waiting on you.</div>
+</div>
+</div>
+</body></html>

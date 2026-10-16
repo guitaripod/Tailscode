@@ -108,8 +108,8 @@ targetTemplates:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.76"
-        CURRENT_PROJECT_VERSION: "192"
+        MARKETING_VERSION: "1.78"
+        CURRENT_PROJECT_VERSION: "195"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         SWIFT_EMIT_LOC_STRINGS: YES
@@ -123,6 +123,7 @@ targets:
     platform: iOS
     sources:
       - path: Tailscode
+      - path: TailscodeNotificationUI/NoticeCardView.swift
       - path: TailscodeWidget/UsageWidget.swift
       - path: TailscodeWidget/UsageWidgetViews.swift
       - path: TailscodeWidget/UsageWidgetConfiguration.swift
@@ -144,6 +145,8 @@ targets:
       - target: TailscodeWidget
         embed: true
       - target: TailscodeNSE
+        embed: true
+      - target: TailscodeNotificationUI
         embed: true
       - sdk: WidgetKit.framework
         weak: true
@@ -227,8 +230,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.76"
-        CURRENT_PROJECT_VERSION: "192"
+        MARKETING_VERSION: "1.78"
+        CURRENT_PROJECT_VERSION: "196"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -293,8 +296,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.widget
-        MARKETING_VERSION: "1.76"
-        CURRENT_PROJECT_VERSION: "192"
+        MARKETING_VERSION: "1.78"
+        CURRENT_PROJECT_VERSION: "196"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -323,6 +326,13 @@ targets:
       - path: Tailscode/Usage/UsagePushPayload.swift
       - path: Tailscode/Logging/AppLogger.swift
       - path: Tailscode/Logging/LogFileWriter.swift
+      - path: Tailscode/Notifications/NoticeFace.swift
+      - path: Tailscode/Notifications/NoticeContent.swift
+      - path: Tailscode/Notifications/NoticeCategories.swift
+      - path: Tailscode/Notifications/NoticeBadge.swift
+      - path: Tailscode/Notifications/NoticePushDresser.swift
+      - path: TailscodeCore/Sources/TailscodeCore/NoticeWire.swift
+      - path: TailscodeCore/Sources/TailscodeCore/Localized.swift
     info:
       path: TailscodeNSE/Info.plist
       properties:
@@ -337,8 +347,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
-        MARKETING_VERSION: "1.76"
-        CURRENT_PROJECT_VERSION: "192"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) NOTICE_EXTENSION"
+        MARKETING_VERSION: "1.78"
+        CURRENT_PROJECT_VERSION: "196"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -355,6 +366,64 @@ targets:
         Release:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
           PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE App Store 2026
+
+  TailscodeNotificationUI:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: TailscodeNotificationUI
+      - path: Resources/Localizable.xcstrings
+        buildPhase: resources
+      - path: Tailscode/Notifications/NoticeFace.swift
+      - path: TailscodeCore/Sources/TailscodeCore/NoticeWire.swift
+      - path: TailscodeCore/Sources/TailscodeCore/Localized.swift
+    info:
+      path: TailscodeNotificationUI/Info.plist
+      properties:
+        CFBundleDisplayName: Tailscode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.content-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationViewController
+          NSExtensionAttributes:
+            UNNotificationExtensionCategory:
+              - tailscode.turn
+              - tailscode.turn.failed
+              - tailscode.approval
+              - tailscode.question
+              - tailscode.question.slot0
+              - tailscode.question.slot1
+              - tailscode.question.slot2
+              - tailscode.question.slot3
+            UNNotificationExtensionInitialContentSizeRatio: 0.7
+            UNNotificationExtensionDefaultContentHidden: true
+            UNNotificationExtensionUserInteractionEnabled: false
+    dependencies:
+      - sdk: UserNotifications.framework
+      - sdk: UserNotificationsUI.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.notificationui
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) NOTICE_EXTENSION"
+        MARKETING_VERSION: "1.78"
+        CURRENT_PROJECT_VERSION: "196"
+        SKIP_INSTALL: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        TARGETED_DEVICE_FAMILY: "1,2"
+        DEVELOPMENT_TEAM: P4DQK6SRKR
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Notification UI Dev iPhone Air 2026
+        Release:
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Notification UI App Store 2026
 
   TailscodeMacWidget:
     type: app-extension
@@ -391,8 +460,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.macwidget
-        MARKETING_VERSION: "1.76"
-        CURRENT_PROJECT_VERSION: "192"
+        MARKETING_VERSION: "1.78"
+        CURRENT_PROJECT_VERSION: "195"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -418,7 +487,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Tailscode
-        CURRENT_PROJECT_VERSION: "192"
+        CURRENT_PROJECT_VERSION: "195"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TAILSCODE_MAS"
         CODE_SIGN_ENTITLEMENTS: TailscodeMac/TailscodeMac-Store.entitlements
         ENABLE_APP_SANDBOX: YES

@@ -29,6 +29,15 @@ enum NotificationManager {
             }
         }
 
+        func wireKind(activity: MissedActivity.Reason?) -> NoticeWire.Kind {
+            switch self {
+            case .turnComplete: return activity == .turnFailed ? .failed : .done
+            case .approval: return .approval
+            case .question: return .question
+            case .usage: return .usage
+            }
+        }
+
         /// Where a tap lands when the notice is not about one conversation. A quota warning names
         /// no session, and a notification whose tap does nothing at all is worse than none — the
         /// thing it is about has a screen, so it opens it.
@@ -41,20 +50,11 @@ enum NotificationManager {
     }
 
     /// Tells the system what each kind of notification is and which buttons it carries, from the
-    /// same catalog every client reads — an approval arrives wearing Approve and Deny, everything
-    /// else answers only to being opened.
+    /// one catalog the app, its notification service and its long look all read: a finished turn
+    /// takes a reply, a failed one can be tried again, an approval wears Approve and Deny, and a
+    /// question wears its own options.
     static func registerCategories() {
-        let categories = AlertCategory.allCases.map { category in
-            UNNotificationCategory(
-                identifier: category.rawValue,
-                actions: category.actions.map { action in
-                    UNNotificationAction(
-                        identifier: action.id, title: action.title,
-                        options: action.isDestructive ? [.destructive] : [])
-                },
-                intentIdentifiers: [])
-        }
-        UNUserNotificationCenter.current().setNotificationCategories(Set(categories))
+        NoticeCategories.register()
     }
 
     /// Whether this launch is a scripted one — the demo, the usage board, or a DEBUG driver that
@@ -133,9 +133,16 @@ enum NotificationManager {
     static func withdraw(identifiers: [String]) {
         guard !identifiers.isEmpty else { return }
         ActivityInbox.withdraw(identifiers)
+        for identifier in identifiers { NoticeSlots.release(identifier: identifier) }
         let center = UNUserNotificationCenter.current()
         center.removeDeliveredNotifications(withIdentifiers: identifiers)
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
+    /// Takes a notice down from Notification Center and nothing else: the Missed list still holds
+    /// it, which is the point of a notice that lost its place to another.
+    static func removeDelivered(_ identifiers: [String]) {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
     }
 
     /// Opening a conversation answers every notice about it, in both places a notice lives.
@@ -204,10 +211,24 @@ enum NotificationManager {
                 MissedActivity(
                     identifier: fromServer ? "done:\(sessionID)" : raised,
                     profileID: profileID, sessionID: sessionID, title: content.title,
-                    body: content.body, reason: reason(forIdentifier: fromServer ? "done:" : raised),
+                    body: content.body,
+                    reason: fromServer
+                        ? reason(of: NoticeWire(userInfo: content.userInfo))
+                        : reason(forIdentifier: raised),
                     at: notice.date))
         }
         ActivityInbox.record(adopted, liveSessionIDs: liveSessionIDs)
+    }
+
+    /// What a pushed notice was about, read from the notice it carries; one from a bridge that
+    /// predates notices is a turn that ended.
+    private static func reason(of wire: NoticeWire?) -> MissedActivity.Reason {
+        switch wire?.kind {
+        case .failed?: return .turnFailed
+        case .approval?: return .needsApproval
+        case .question?: return .needsAnswer
+        default: return .turnEnded
+        }
     }
 
     /// What a delivered notice was about, read from the name it was raised under — the only thing
@@ -221,6 +242,12 @@ enum NotificationManager {
     /// - Parameters:
     ///   - permission: the request an approval is about, carried whole so the notification's own
     ///     Approve and Deny buttons can answer it without opening the app.
+    ///   - question: the question a notice asks, carried whole so its options and its reply field
+    ///     can answer it from outside the app.
+    ///   - notice: what the notice has to say beyond `body`: how long the turn took, what it did,
+    ///     the first of what it answered. Absent, the notice is `body` under the kind's own face.
+    ///   - picture: what the turn drew, when this device already has the bytes, worn with the
+    ///     face in its corner in place of the face alone.
     ///   - activity: what happened in the session, when the notice is about one. A notice raised
     ///     is also a notice that can be missed — a banner lasts seconds whether or not anybody was
     ///     looking — so anything named here is written into `ActivityInbox` by the same decision
@@ -228,6 +255,7 @@ enum NotificationManager {
     static func notify(
         kind: Kind, title: String, body: String, identifier: String, sessionID: String? = nil,
         profileID: String? = nil, permission: PermissionRequest? = nil,
+        question: QuestionRequest? = nil, notice: NoticeWire? = nil, picture: Data? = nil,
         activity: MissedActivity.Reason? = nil
     ) {
         guard kind.isEnabled else {
@@ -242,29 +270,53 @@ enum NotificationManager {
                     title: title, body: body, reason: activity)
             ])
         }
-        let face = kind.face
+        let wire = notice ?? NoticeWire(kind: kind.wireKind(activity: activity))
+        var category: String?
+        if wire.kind != .usage && (sessionID == nil || (wire.kind == .approval && permission == nil)) {
+            category = NoticeActionID.plainCategory
+        } else if wire.kind == .question,
+            let claim = NoticeCategories.claimSlot(
+                identifier: identifier, reading: NoticeWords.reading(wire))
+        {
+            category = claim.category
+            if let evicted = claim.evicted { removeDelivered([evicted]) }
+        }
         let content = UNMutableNotificationContent()
         content.title = title
-        content.body = body
-        content.sound = .default
-        content.categoryIdentifier = face.category.rawValue
-        var userInfo: [String: Any] = [:]
-        if let sessionID {
-            userInfo["sessionID"] = sessionID
-            content.threadIdentifier = sessionID
+        NoticeContent.dress(
+            content, as: wire, title: title, sessionID: sessionID, profileID: profileID,
+            category: category, withFace: picture == nil)
+        if notice == nil {
+            content.subtitle = ""
+            content.body = body
         }
-        if let profileID { userInfo["profileID"] = profileID }
+        var userInfo = content.userInfo
         if let route = kind.route { userInfo["route"] = route }
         if let permission, let encoded = try? JSONEncoder().encode(permission) {
             userInfo["permission"] = String(decoding: encoded, as: UTF8.self)
         }
+        if let question, let encoded = try? JSONEncoder().encode(question) {
+            userInfo["question"] = String(decoding: encoded, as: UTF8.self)
+        }
         content.userInfo = userInfo
-        if let attachment = faceAttachment(face) {
+        if let picture, let attachment = NoticeFace.attachment(
+            picture: picture, presentation: NoticePresentation.of(wire.kind))
+        {
             content.attachments = [attachment]
         }
+        let pending = ActivityInbox.all().count
+        if pending > 0 { content.badge = NSNumber(value: pending) }
         let request = UNNotificationRequest(
             identifier: identifier, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+
+    /// Keeps the app icon's badge and the app group's copy of it equal to what the Missed list
+    /// holds, which is what the notification service counts up from when it badges a push.
+    static func syncBadge() {
+        let count = ActivityInbox.all().count
+        NoticeBadge.set(count)
+        UNUserNotificationCenter.current().setBadgeCount(count)
     }
 
     /// Puts a notice on the moment a spent window reopens.
@@ -303,74 +355,36 @@ enum NotificationManager {
 
     private static func resumeIdentifier(_ row: UUID) -> String { "resume:\(row.uuidString)" }
 
-    /// The kind's face as a thumbnail, so a glance at a stack of banners separates the finished
-    /// from the waiting before a word is read. Written fresh per notification because the system
-    /// takes ownership of the file it is handed.
-    private static func faceAttachment(_ face: AlertFace) -> UNNotificationAttachment? {
-        let image = faceImage(face)
-        guard let data = image.pngData() else { return nil }
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("alert-face-\(UUID().uuidString).png")
-        do {
-            try data.write(to: url)
-            return try UNNotificationAttachment(identifier: "face", url: url)
-        } catch {
-            AppLogger.lifecycle.error("notification face attachment failed: \(error)")
-            return nil
-        }
-    }
-
-    private static func faceImage(_ face: AlertFace) -> UIImage {
-        let side: CGFloat = 256
-        let size = CGSize(width: side, height: side)
-        let tint = face.tone.color
-        return UIGraphicsImageRenderer(size: size).image { _ in
-            tint.withAlphaComponent(0.18).setFill()
-            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
-            let config = UIImage.SymbolConfiguration(pointSize: side * 0.42, weight: .semibold)
-            guard
-                let symbol = UIImage(systemName: face.symbol, withConfiguration: config)?
-                    .withTintColor(tint, renderingMode: .alwaysOriginal)
-            else { return }
-            let rect = CGRect(
-                x: (side - symbol.size.width) / 2, y: (side - symbol.size.height) / 2,
-                width: symbol.size.width, height: symbol.size.height)
-            symbol.draw(in: rect)
-        }
-    }
-
     /// Proves the whole delivery path end to end from Settings — authorization,
-    /// presentation, sound — which is otherwise only observable by waiting for a
-    /// real turn to finish while the app is backgrounded. The short delay is what
-    /// lets it banner over a foreground app.
-    static func sendTest() {
+    /// presentation, sound, the face, the long look and the buttons — which is otherwise only
+    /// observable by waiting for a real turn to finish while the app is backgrounded. The short
+    /// delay is what lets it banner over a foreground app.
+    static func sendTest(_ sample: NoticeSample = .finished) {
+        let center = UNUserNotificationCenter.current()
+        let identifier = "test:\(UUID().uuidString)"
         let content = UNMutableNotificationContent()
-        content.title = "Tailscode"
-        content.body = String(
-            localized: "Notifications are working. This is what a finished turn looks like.")
-        content.sound = .default
-        content.categoryIdentifier = AlertCategory.turn.rawValue
-        if let attachment = faceAttachment(.turnEnded) {
-            content.attachments = [attachment]
+        var category: String?
+        if sample.wire.kind == .question,
+            let claim = NoticeCategories.claimSlot(
+                identifier: identifier, reading: NoticeWords.reading(sample.wire))
+        {
+            category = claim.category
+            if let evicted = claim.evicted { removeDelivered([evicted]) }
         }
+        NoticeContent.dress(
+            content, as: sample.wire, title: sample.title, sessionID: nil, profileID: nil,
+            category: category)
+        var userInfo = content.userInfo
+        userInfo["test"] = true
+        content.userInfo = userInfo
         let request = UNNotificationRequest(
-            identifier: "test:\(UUID().uuidString)",
-            content: content,
+            identifier: identifier, content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false))
-        UNUserNotificationCenter.current().add(request)
-        AppLogger.lifecycle.info("test notification scheduled")
+        center.add(request)
+        AppLogger.lifecycle.info("test notification scheduled: \(sample)")
     }
 }
 
-/// Routes notification taps to the session they concern, and answers an approval's own buttons
-/// without ever opening the app — the decision travels straight to the server the request came
-/// from.
-///
-/// Both delegate methods are implemented in their completion-handler form, never as `async`: the
-/// async variants hand their compiler-generated completion to whatever concurrency thread the
-/// method resumed on, and UIKit runs its state-restoration snapshot synchronously inside that
-/// completion when a tap is foregrounding the app — main-thread-only work that asserts and aborts
-/// on any other thread. The completion must be invoked from the main thread, after the work.
 final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Sendable {
     static let shared = NotificationRouter()
 
@@ -385,6 +399,9 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
             @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         let isPush = notification.request.trigger is UNPushNotificationTrigger
+        let userInfo = notification.request.content.userInfo
+        let sessionID = userInfo["sessionID"] as? String
+        let waitsOnYou = NoticeWire(userInfo: userInfo).map { $0.kind == .question || $0.kind == .approval } ?? false
         nonisolated(unsafe) let complete = completionHandler
         DispatchQueue.main.async {
             guard isPush else {
@@ -392,7 +409,12 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
                 return
             }
             let isActive = UIApplication.shared.applicationState == .active
-            complete(isActive ? [.list] : [.banner, .list, .sound])
+            guard isActive else {
+                complete([.banner, .list, .sound])
+                return
+            }
+            let beingRead = sessionID.map { AppActivityController.shared.isBeingRead($0) } ?? false
+            complete(waitsOnYou && !beingRead ? [.banner, .list, .sound] : [.list])
         }
     }
 
@@ -403,20 +425,58 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
     ) {
         let content = response.notification.request.content
         let payload = content.userInfo["permission"] as? String
+        let questionJSON = content.userInfo["question"] as? String
+        let wire = NoticeWire(userInfo: content.userInfo)
         let profileID = content.userInfo["profileID"] as? String
         let sessionID = content.userInfo["sessionID"] as? String
         let route = content.userInfo["route"] as? String
+        let isTest = content.userInfo["test"] as? Bool ?? false
+        let title = content.title
         let identifier = response.notification.request.identifier
         let action = response.actionIdentifier
+        let typed = (response as? UNTextInputNotificationResponse)?.userText
         nonisolated(unsafe) let complete = completionHandler
         Task { @MainActor in
             switch action {
-            case AlertCategory.approveActionID, AlertCategory.denyActionID:
+            case NoticeActionID.approve, NoticeActionID.deny:
                 await Self.decide(
                     payload: payload, profileID: profileID, identifier: identifier,
-                    approve: action == AlertCategory.approveActionID)
+                    approve: action == NoticeActionID.approve)
+            case NoticeActionID.reply, NoticeActionID.retry:
+                let words =
+                    action == NoticeActionID.retry
+                    ? wire?.prompt : typed?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let words, !words.isEmpty, let sessionID {
+                    await NoticeReplies.send(
+                        words, sessionID: sessionID, profileID: profileID, identifier: identifier,
+                        title: title)
+                } else if isTest, let words, !words.isEmpty {
+                    Self.echo(words)
+                } else if action == NoticeActionID.retry,
+                    let url = Self.destination(route: route, sessionID: sessionID)
+                {
+                    PendingRoute.deliver(url)
+                }
+            case NoticeActionID.answer:
+                let words = typed?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !words.isEmpty, let sessionID {
+                    await NoticeReplies.answer(
+                        [[words]], question: Self.question(questionJSON), asked: wire?.text,
+                        sessionID: sessionID, profileID: profileID, identifier: identifier,
+                        title: title)
+                } else if isTest, !words.isEmpty {
+                    Self.echo(words)
+                }
             default:
-                if let url = Self.destination(route: route, sessionID: sessionID) {
+                if let index = NoticeActionID.choiceIndex(action), let wire, let sessionID {
+                    let choices = NoticeWords.reading(wire).choices
+                    if choices.indices.contains(index) {
+                        await NoticeReplies.answer(
+                            [[choices[index]]], question: Self.question(questionJSON),
+                            asked: wire.text, sessionID: sessionID, profileID: profileID,
+                            identifier: identifier, title: title)
+                    }
+                } else if let url = Self.destination(route: route, sessionID: sessionID) {
                     PendingRoute.deliver(url)
                 }
             }
@@ -424,9 +484,23 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
         }
     }
 
-    /// A notice about one conversation opens it; one about the account opens the screen it is
-    /// about. Anything else lands on whatever the app was showing, which is what a tap with
-    /// nothing to say means.
+    @MainActor
+    private static func question(_ json: String?) -> QuestionRequest? {
+        json.flatMap { try? JSONDecoder().decode(QuestionRequest.self, from: Data($0.utf8)) }
+    }
+
+    /// The words typed into a test notice, shown back, which proves the whole trip from the Lock
+    /// Screen's field to this app.
+    @MainActor
+    private static func echo(_ words: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "Tailscode"
+        content.body = words
+        content.sound = .default
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "test-reply:\(UUID().uuidString)", content: content, trigger: nil))
+    }
+
     private static func destination(route: String?, sessionID: String?) -> URL? {
         if let route, let url = URL(string: "tailscode://\(route)") { return url }
         guard let sessionID else { return nil }
