@@ -911,7 +911,7 @@ final class SessionListViewController: UIViewController {
     /// live in the list and in the section it sits in. Never re-derives liveness inside a cell.
     private func configure(_ cell: ChatRowCell, with row: SessionRowModel) {
         let entry = row.entry
-        cell.paintsGroupedSurface = false
+        cell.paintsGroupedSurface = !showsAsColumn
         cell.wantsAttention = row.state.needsYou && !showsAsColumn
         cell.contentConfiguration = ChatRowConfiguration(
             facts: ChatRowFacts(
