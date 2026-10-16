@@ -22,9 +22,57 @@ if [ "$(cat "$STAMP" 2>/dev/null)" != "$ENGINES" ]; then
     echo "$ENGINES" > "$STAMP"
     touch Package.swift
 fi
-# No `|| true` here: with pipefail a failed build must abort the install, or a stale binary from
-# the last good build gets installed and "installed/restarted" lies about what is running.
-swift build -c release --manifest-cache none 2>&1 | grep -E "error:|Build complete"
+# A release build compiles each module whole, so the app's own module is one batch for minutes and
+# SwiftPM names it only twice: when it starts planning the module and, with -v, when it finishes and
+# lists the files. What is shown is therefore the module being compiled with how long it has been on
+# it and the build's total, redrawn in place on a terminal and said once per step (and again every
+# thirty seconds of silence) anywhere else, followed by a permanent line per module with its files
+# once it is done. The verbose commands, warnings and errors go to the log; errors are also shown.
+# A failed build must abort the install, or a stale binary from the last good build gets installed
+# and "installed/restarted" lies about what is running.
+BUILD_LOG="${TMPDIR:-/tmp}/tailscode-linux-build.log"
+BUILD_STATE=$(mktemp)
+BUILD_TTY=no
+[ -t 1 ] && BUILD_TTY=yes
+BUILD_START=$SECONDS
+
+span() {
+    local total=$1
+    if [ "$total" -ge 60 ]; then printf '%dm %02ds' $((total / 60)) $((total % 60)); else printf '%ds' "$total"; fi
+}
+
+progress_ticker() {
+    local last="" since=$SECONDS beat=$SECONDS cols step
+    cols=${COLUMNS:-$(tput cols 2>/dev/null || echo 100)}
+    while sleep 1; do
+        step=$(cat "$BUILD_STATE" 2>/dev/null)
+        [ -n "$step" ] || continue
+        if [ "$step" != "$last" ]; then last=$step; since=$SECONDS; beat=$SECONDS; fi
+        if [ "$BUILD_TTY" = yes ]; then
+            printf '\r\033[K%.*s' $((cols - 1)) "$step  $(span $((SECONDS - since)))  (total $(span $((SECONDS - BUILD_START))))"
+        elif [ $((SECONDS - beat)) -ge 30 ]; then
+            beat=$SECONDS
+            echo "  ... $step ($(span $((SECONDS - since))), total $(span $((SECONDS - BUILD_START))))"
+        fi
+    done
+}
+
+progress_ticker &
+TICKER=$!
+trap 'kill "$TICKER" 2>/dev/null; rm -f "$BUILD_STATE"' EXIT
+echo "building (full log: $BUILD_LOG)"
+set +e
+swift build -c release --manifest-cache none -v 2>&1 | tee "$BUILD_LOG" | sed -u 's/\xe2\x80\x89/ /g' |
+    awk -v tty="$BUILD_TTY" -v state="$BUILD_STATE" -f ../scripts/lib/swift-progress.awk
+BUILD_STATUS=${PIPESTATUS[0]}
+set -e
+kill "$TICKER" 2>/dev/null || true
+[ "$BUILD_TTY" = yes ] && printf '\r\033[K'
+if [ "$BUILD_STATUS" -ne 0 ] || ! grep -q "^Build complete" "$BUILD_LOG"; then
+    echo "** BUILD FAILED ** (full log: $BUILD_LOG)" >&2
+    exit 1
+fi
+echo "built in $(span $((SECONDS - BUILD_START)))"
 BUILT=$PWD/.build/release/tailscode
 [ -x "$BUILT" ] || { echo "no binary at $BUILT"; exit 1; }
 
