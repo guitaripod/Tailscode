@@ -309,7 +309,7 @@ final class ChatCallController {
         let reading = reach
         let hidden: Bool
         switch reading {
-        case .unknown, .checking, .noGateway: hidden = true
+        case .unknown, .checking: hidden = true
         default: hidden = false
         }
         let shown = endpoint != nil && !hidden && attached == nil
@@ -330,11 +330,32 @@ final class ChatCallController {
             host.toast(VoiceCallEntryPoint.tooltip(reach: reading))
             return
         }
+        if reading.opensSetup {
+            openSetup(for: endpoint)
+            return
+        }
         if reading.asksForPassword {
             askPassword(for: endpoint)
             return
         }
         begin(on: endpoint)
+    }
+
+    /// The voice checklist for this server, which every press that cannot start a call opens.
+    /// Finishing it starts the call the person pressed for, if they are still in that chat.
+    private func openSetup(for endpoint: VoiceEndpoint) {
+        guard let presenter = host.presenter() else { return }
+        Theme.Haptics.tap()
+        let chat = chatID
+        SetupGate.present(
+            .voice(endpoint), from: presenter, reportLines: { [weak self] in self?.reportLines ?? [] },
+            onFinish: { [weak self] in
+                guard let self, self.chatID == chat, self.attached == nil else { return }
+                Task { [weak self] in
+                    await self?.gate.desk.refresh(endpoint)
+                    self?.begin(on: endpoint)
+                }
+            })
     }
 
     private func askPassword(for endpoint: VoiceEndpoint) {
@@ -394,6 +415,8 @@ final class ChatCallController {
             return
         case .wantsPassword:
             if let endpoint { askPassword(for: endpoint) }
+        case .notReady(let reach) where reach.opensSetup:
+            if let endpoint { openSetup(for: endpoint) }
         case .notReady, .audio:
             AppLogger.connection.info("call refused chat=\(chatID) reason=\(error.line)")
             Theme.Haptics.warning()

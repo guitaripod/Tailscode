@@ -7,7 +7,7 @@ import UIKit
 final class ServerDetailViewController: UIViewController {
     private var profile: ConnectionProfile
 
-    private enum Section: Int, CaseIterable { case info, status, software, permissions, defaults, delegate, preview, actions }
+    private enum Section: Int, CaseIterable { case info, status, capabilities, software, permissions, defaults, delegate, preview, actions }
     private enum Item: Hashable {
         case value(label: String, value: String)
         case status(String)
@@ -18,6 +18,7 @@ final class ServerDetailViewController: UIViewController {
         case software
         case updateCenter
         case permissions
+        case capability(String)
         case makeDefault
         case isDefault
         case defaultModel
@@ -44,6 +45,11 @@ final class ServerDetailViewController: UIViewController {
     private var turnWaitAvailability: TurnWaitAvailability = .unknown
     private var previewReach: PreviewReach = .unknown
     private var previewTask: Task<Void, Never>?
+    private lazy var capabilities: SetupCapabilitiesSection = {
+        let section = SetupCapabilitiesSection(profileURL: profile.baseURL)
+        section.onChange = { [weak self] in self?.capabilitiesChanged() }
+        return section
+    }()
     private let previewSecrets: any SecretStore = KeychainSecretStore()
 
     /// The reading this screen's software card renders, from the one ledger every surface renders
@@ -86,6 +92,7 @@ final class ServerDetailViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        capabilities.start()
         startPermissionPollingIfNeeded()
         #if DEBUG
             if ProcessInfo.processInfo.environment["TAILSCODE_SCROLL_PREVIEW"] != nil {
@@ -111,10 +118,16 @@ final class ServerDetailViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        capabilities.stop()
         stopPermissionPolling()
     }
 
     @objc private func deskChanged() { reconfigure([.delegate]) }
+
+    private func capabilitiesChanged() {
+        applySnapshot()
+        reconfigure(capabilities.rows.map { .capability($0.capability) })
+    }
 
     @objc private func previewHostsChanged() { reconfigure([.previewHost]) }
 
@@ -287,7 +300,7 @@ final class ServerDetailViewController: UIViewController {
         switch section {
         case .software:
             return nil
-        case .permissions:
+        case .permissions, .capabilities:
             return nil
         case .defaults:
             return String(
@@ -309,6 +322,7 @@ final class ServerDetailViewController: UIViewController {
         case .status: return String(localized: "Health")
         case .software: return String(localized: "Software")
         case .permissions: return permissions.map(MachinePermissionReading.sectionTitle)
+        case .capabilities: return SetupCapabilityRow.sectionTitle
         case .defaults: return String(localized: "Defaults")
         case .delegate: return DelegateEntryPoint.title
         case .preview, .actions, .none: return nil
@@ -397,6 +411,16 @@ final class ServerDetailViewController: UIViewController {
             content.image = UIImage(systemName: DelegateEntryPoint.symbol)
             content.imageProperties.tintColor = DelegateGate.isOpen ? Theme.Color.accent : Theme.Color.special
             cell.accessories = [.disclosureIndicator()]
+        case .capability(let id):
+            guard let row = capabilities.rows.first(where: { $0.capability == id }) else { break }
+            content.text = row.title
+            content.secondaryText = row.line
+            content.secondaryTextProperties.numberOfLines = 0
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: row.icon.symbol)
+            content.imageProperties.tintColor = row.icon.tone.color
+            cell.accessibilityLabel = row.spoken
+            cell.accessories = [.customView(configuration: capabilityChip(row)), .disclosureIndicator()]
         case .previewHost:
             content.text = Localized.text("Preview host")
             content.secondaryText = previewReach.line
@@ -646,6 +670,10 @@ final class ServerDetailViewController: UIViewController {
         statusItems.append(.test)
         snapshot.appendItems(statusItems, toSection: .status)
 
+        if !capabilities.rows.isEmpty {
+            snapshot.appendItems(capabilities.rows.map { .capability($0.capability) }, toSection: .capabilities)
+        }
+
         if !isDemo { snapshot.appendItems([.software, .updateCenter], toSection: .software) }
 
         if showsPermissions {
@@ -675,6 +703,20 @@ final class ServerDetailViewController: UIViewController {
         guard !present.isEmpty else { return }
         snapshot.reconfigureItems(present)
         dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
+    private func capabilityChip(_ row: SetupCapabilityRow) -> UICellAccessory.CustomViewConfiguration {
+        let label = UILabel()
+        label.text = row.chip
+        label.font = Theme.Ramp.font(.rowDetail)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = row.quiet ? Theme.Color.secondaryLabel : row.tone.color
+        return UICellAccessory.CustomViewConfiguration(customView: label, placement: .trailing())
+    }
+
+    private func capabilityReport(for target: SetupTarget) -> [String] {
+        guard target.capability == SetupCapability.voice else { return [] }
+        return VoiceCallGate.shared.reportLines(for: VoiceSetupSource.endpoint(of: target))
     }
 
     @objc private func pushStatesChanged() { reconfigure([.pushState]) }
@@ -945,6 +987,10 @@ extension ServerDetailViewController: UICollectionViewDelegate {
             presentEditor()
         case .delegate:
             DelegateGate.open(from: self, profile: profile)
+        case .capability(let id):
+            guard let target = capabilities.target(for: id) else { break }
+            Theme.Haptics.tap()
+            SetupGate.present(target, from: self, reportLines: { [weak self] in self?.capabilityReport(for: target) ?? [] })
         case .previewHost:
             guard !isPreviewHostChosen else { break }
             choosePreviewHost()
