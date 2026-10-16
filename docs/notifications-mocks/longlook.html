@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1360">
+<title>Long look, the notification content extension</title>
+<style>
+:root{--ok:#30d158;--warn:#ff9f0a;--danger:#ff453a;--ink:#fff;--ink2:rgba(235,235,245,.66);--ink3:rgba(235,235,245,.36);--note:#ff6bb5;--accent:#2ab6a3;--line:rgba(255,255,255,.09)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1360px;background:radial-gradient(1200px 900px at 80% 0,#2a2a46 0,#10131f 55%,#07090f 100%);color:var(--ink);font-family:-apple-system,"SF Pro Text",system-ui,"Inter",sans-serif;-webkit-font-smoothing:antialiased;padding:34px 36px 40px}
+h1{font:600 22px/1.2 system-ui;margin-bottom:4px}
+.sub{color:var(--ink2);font-size:13px;margin-bottom:24px}
+.row{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;align-items:start}
+.cap{font:11px/1.35 ui-monospace,Menlo,monospace;color:var(--note);margin:0 4px 8px;min-height:30px}
+.card{background:rgba(52,54,62,.72);backdrop-filter:blur(30px);border-radius:30px;padding:18px 18px 16px;box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 14px 40px rgba(0,0,0,.4)}
+.top{display:grid;grid-template-columns:48px 1fr auto;gap:12px;align-items:center}
+.face{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;color:#06160b}
+.face svg{width:26px;height:26px}
+.face.ok{background:linear-gradient(180deg,#5ee889,var(--ok))}
+.face.warn{background:linear-gradient(180deg,#ffbf5c,var(--warn))}
+.face.danger{background:linear-gradient(180deg,#ff7a70,var(--danger))}
+.name{font:600 17px/1.2 system-ui}
+.where{font:500 12.5px/1.2 system-ui;color:var(--ink2);margin-top:3px;display:flex;gap:6px;align-items:center}
+.where i{font-style:normal;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:9px;font-size:11.5px}
+.time{font:12px/1 system-ui;color:var(--ink3);align-self:start}
+.head{font:700 13px/1 ui-monospace,Menlo,monospace;letter-spacing:1.1px;text-transform:uppercase;margin:16px 0 9px}
+.head.ok{color:var(--ok)}.head.warn{color:var(--warn)}.head.danger{color:var(--danger)}
+.stats{display:flex;gap:8px;margin-bottom:12px}
+.stat{flex:1;background:rgba(255,255,255,.07);border-radius:14px;padding:9px 10px}
+.stat b{display:block;font:700 18px/1.1 ui-monospace,Menlo,monospace;letter-spacing:-.3px}
+.stat span{display:block;font:500 11px/1.2 system-ui;color:var(--ink2);margin-top:3px}
+.stat.add b{color:var(--ok)}.stat.del b{color:var(--danger)}
+.text{font:400 15px/1.38 system-ui;color:rgba(255,255,255,.9);display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;overflow:hidden}
+.text em{font-style:normal;color:var(--ink2)}
+.code{background:rgba(0,0,0,.42);border-radius:14px;padding:12px 13px;font:500 13px/1.45 ui-monospace,"SF Mono",Menlo,monospace;color:#e8eaf0;margin-bottom:11px;word-break:break-all}
+.code .p{color:var(--ok)}
+.code .k{color:#ff7ab2}
+.file{display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.42);border-radius:14px;padding:11px 13px;font:500 13px/1.3 ui-monospace,Menlo,monospace;margin-bottom:11px}
+.file .d{display:flex;gap:7px}.file .d .a{color:var(--ok)}.file .d .r{color:var(--danger)}
+.err{background:rgba(255,69,58,.14);border-radius:14px;padding:11px 13px;font:500 13.5px/1.4 system-ui;color:#ffb3ad;margin-bottom:11px}
+.said{border-left:3px solid rgba(255,255,255,.22);padding:2px 0 2px 11px;font:400 13.5px/1.4 system-ui;color:var(--ink2);margin-top:2px}
+.said b{display:block;font:600 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);margin-bottom:5px}
+.q{font:600 17px/1.32 system-ui;margin-bottom:12px}
+.opt{display:grid;grid-template-columns:26px 1fr;gap:10px;padding:10px 12px;background:rgba(255,255,255,.07);border-radius:14px;margin-bottom:7px;align-items:start}
+.opt .k{width:26px;height:26px;border-radius:9px;background:rgba(255,159,10,.22);color:var(--warn);display:grid;place-items:center;font:700 13px/1 ui-monospace,Menlo,monospace}
+.opt b{display:block;font:600 15px/1.25 system-ui}
+.opt span{display:block;font:400 12.5px/1.35 system-ui;color:var(--ink2);margin-top:2px}
+.acts{display:flex;gap:8px;margin-top:12px}
+.acts span{flex:1;text-align:center;background:rgba(90,92,100,.55);border-radius:20px;padding:10px 0;font:600 14px/1 system-ui}
+.acts .d{color:#ff6a60}.acts .t{color:var(--accent)}
+.reply{margin-top:12px;background:rgba(90,92,100,.4);border-radius:20px;padding:10px 14px;color:var(--ink3);font:14px/1 system-ui;display:flex;justify-content:space-between}
+.reply i{font-style:normal;color:var(--accent);font-weight:600}
+.sizes{margin-top:22px;font:11px/1.6 ui-monospace,Menlo,monospace;color:var(--note);border:1px dashed rgba(255,107,181,.5);border-radius:14px;padding:10px 14px}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.6 4.6L19 7.4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="hand" viewBox="0 0 24 24"><path d="M8 11V6a1.5 1.5 0 013 0v4m0-4.5a1.5 1.5 0 013 0V10m0-3.5a1.5 1.5 0 013 0V14c0 4-2.5 6-6 6-3 0-4.5-1.7-6-4.5L4 12.5a1.6 1.6 0 012.6-1.7L8 12.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="q" viewBox="0 0 24 24"><path d="M9.2 9.4a2.9 2.9 0 115.2 1.7c-.8 1-2.1 1.4-2.1 3M12.3 17.2v.1" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
+<symbol id="tri" viewBox="0 0 24 24"><path d="M12 4.5l8.5 15h-17z M12 10v4.5 M12 17.2v.1" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</defs></svg>
+<h1>Long look: the notification content extension</h1>
+<div class="sub">What pulling a notification down shows. The system draws the action row; the extension draws everything above it from the payload (no network, no app launch).</div>
+<div class="row">
+
+<div><div class="cap">turn finished<br>stats first, then the answer</div>
+<div class="card">
+<div class="top"><div class="face ok"><svg><use href="#check"/></svg></div><div><div class="name">Enrich Linux notification</div><div class="where">arch <i>Claude Code</i></div></div><div class="time">now</div></div>
+<div class="head ok">Finished</div>
+<div class="stats"><div class="stat"><b>4m</b><span>took</span></div><div class="stat"><b>12</b><span>tools</span></div><div class="stat add"><b>+24</b><span>added</span></div><div class="stat del"><b>−6</b><span>removed</span></div></div>
+<div class="text">Done. The notification now carries a painted face, how long the turn took, the first of what I answered and a reply field. All selftests pass. The Linux client shows the same words as this one, from Core's NoticeReader, so a stack of them reads one way everywhere.</div>
+<div class="reply"><span>Reply to the agent…</span><i>Send</i></div>
+</div></div>
+
+<div><div class="cap">turn failed<br>the error, and what was asked</div>
+<div class="card">
+<div class="top"><div class="face danger"><svg><use href="#tri"/></svg></div><div><div class="name">Release 1.77 notes</div><div class="where">macbook <i>Claude Code</i></div></div><div class="time">now</div></div>
+<div class="head danger">Failed · 4m · 3 tools</div>
+<div class="err">The provider returned an error: overloaded, try again shortly</div>
+<div class="said"><b>You asked</b>Write the 1.77 release notes in all ten languages from the commit log since 1.76 and fold in the Mac notes.</div>
+<div class="acts"><span class="t">Try again</span><span>Reply</span></div>
+</div></div>
+
+<div><div class="cap">needs approval · command<br>exactly what would run</div>
+<div class="card">
+<div class="top"><div class="face warn"><svg><use href="#hand"/></svg></div><div><div class="name">Clean the build folder</div><div class="where">arch <i>opencode</i></div></div><div class="time">now</div></div>
+<div class="head warn">Needs approval · Bash</div>
+<div class="code"><span class="p">$</span> <span class="k">rm</span> -rf build/ &amp;&amp; swift build -c release --product tailscode</div>
+<div class="text"><em>The agent has paused until you answer. Approving from here asks for Face ID first.</em></div>
+<div class="acts"><span class="t">Approve</span><span class="d">Deny</span></div>
+</div></div>
+
+<div><div class="cap">has a question<br>every option, with its reason</div>
+<div class="card">
+<div class="top"><div class="face warn"><svg><use href="#q"/></svg></div><div><div class="name">Pick a database</div><div class="where">arch <i>Claude Code</i></div></div><div class="time">now</div></div>
+<div class="head warn">Has a question</div>
+<div class="q">Which database should the notes live in?</div>
+<div class="opt"><div class="k">A</div><div><b>Postgres</b><span>A shared server, backups, concurrent writers.</span></div></div>
+<div class="opt"><div class="k">B</div><div><b>SQLite</b><span>One file, no service to run, fine below ten users.</span></div></div>
+<div class="acts"><span>Postgres</span><span>SQLite</span><span class="t">Other…</span></div>
+</div></div>
+
+</div>
+<div class="sizes">Content extension: UNNotificationExtensionCategory = [turn, turn.failed, approval, question]; DefaultContentHidden = true (we draw our own header); InitialContentSizeRatio ≈ 0.62; data from userInfo["notice"] only; SwiftUI in a UIHostingController; max 4 KB of payload, so the answer is cut at 600 characters here and 220 in the banner.</div>
+</body></html>
