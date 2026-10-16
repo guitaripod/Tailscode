@@ -65,8 +65,10 @@ enum Kit {
     /// 0.35.1 stops a Linux binary trapping on a resource bundle it was never given.
     /// 0.36.1 writes a streaming answer's saved transcript at most every thirty seconds and not
     /// at all when nothing changed. 0.37.0 speaks to a preview host: a Mac's simulator watched,
-    /// read and touched.
-    static let version = Version(0, 38, 0)
+    /// read and touched. 0.38.0 speaks a voice call, says what a machine cannot do yet and carries a
+    /// pairing link. 0.39.0 learns how far a server's clock is from this device's from the Date
+    /// header of the answers it already gives.
+    static let version = Version(0, 39, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

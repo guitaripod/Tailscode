@@ -69,6 +69,5 @@ A client decides how a strip and a lane are painted and nothing else.
 
 ## Dependency
 
-The ledger is CodingAgentKit's, committed after 0.38.0. A release build pinned to a published Kit tag
-needs a Kit tag that carries `ServerClockLedger` and `Kit.version` in `TailscodeCore/Package.swift`
-moved to it.
+The ledger is CodingAgentKit's, released in 0.39.0, which is what `Kit.version` in
+`TailscodeCore/Package.swift` and both `Package.resolved` files name.
