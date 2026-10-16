@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Idempotent App Store Connect listing finisher for Tailscode.
+"""Superseded by `midgar listing` (Midgar decision D13); kept until this app's store flow moves to it. See ops/runbooks/store-commands.md in guitaripod/midgar-platform.
+
+Idempotent App Store Connect listing finisher for Tailscode.
 
 Reads docs/asc-metadata.json and pushes the decided listing: categories,
 name/subtitle/privacy URL (appInfoLocalization), description/keywords/promo/
