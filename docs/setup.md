@@ -18,7 +18,7 @@ feature that is not ready leads to the same checklist.
 4. **Every road in leads to the same place.** The Call button on a machine without voice, the video
    button on a machine without models, the server screen's capabilities and the first-run flow all
    open the same checklist for the same capability.
-5. **Honest hardware.** What a capability needs (an NVIDIA GPU with 80 GB for voice) is stated before
+5. **Honest hardware.** What a capability needs (an NVIDIA GPU with 64 GB for voice) is stated before
    anything is downloaded, read from the machine, never guessed.
 6. **Nothing is installed without being asked, and nothing leaves the tailnet.** Downloads come from
    the vendor's own host to the person's machine; the app never relays them.
@@ -77,7 +77,7 @@ voice-bridge), so the gateway reports only these ids, facts and fix ids; any oth
 | Check id | State and facts | Fix |
 | --- | --- | --- |
 | `voice.gpu` | `ok` with `name`; `unavailable` when there is no NVIDIA GPU (with `available: false`) | none |
-| `voice.vram` | `ok` with `totalMB`, `needMB`; `unavailable` with `totalMB` when the card is below 80 GB | none |
+| `voice.vram` | `ok` with `totalMB`, `needMB`; `unavailable` with `totalMB` when the card is below 64 GB | none |
 | `voice.docker` | `ok` with `os`; `blocked` with `problem` | `voice.installDocker` (command) |
 | `voice.cdi` | `ok` or `blocked`, `toolkit` (`installed`, `missing`) | `voice.generateCDI` (command) |
 | `voice.model` | `ok`, `todo` or `working`; `bytes` on disk, `needBytes`; `job`, `progress` while working; `lastFailure`, `lastJob` after a failed attempt | `voice.downloadModel` (job, `bytes` = what is left) |
@@ -100,7 +100,7 @@ command fix `voice.install`) built from `VoiceBridgeInstall`; a gateway that has
 | Capability | Owner of the checks | Needs |
 | --- | --- | --- |
 | Agent (Claude Code, omp, opencode) | the bridge's health and the client | a bridge, the CLI, a sign-in |
-| Voice calls | `voice-bridge` | NVIDIA GPU with 80 GB, Docker with CDI, the model (44 GB), the image (22 GB) |
+| Voice calls | `voice-bridge` | NVIDIA GPU with 64 GB and about 62 GB of it free, Docker with CDI, the model (44 GB), the image (22 GB) |
 | Image and video | the client (`MediaDoctor`, through `MediaSetupSource`) | ComfyUI reachable, its nodes and model files |
 | Delegate | the `delegate` daemon | its own toolchain |
 | Preview | `previewd` | its own checklist (the existing doctor) |
@@ -117,6 +117,13 @@ stops someone else's job) and says so while it loads, which takes up to five min
 again after ten idle minutes so the GPU goes back to what else it does. The state is on the wire
 (`engine`: `ready`, `loading`, `stopped`, `busy`, `down`, plus progress) so the call face can say
 "Starting the voice model" instead of failing.
+
+The memory figures are the 2026-10-16 gate's (`docs/voice-call.md`, "The gate"): the engine, with the
+gateway's lowered memory fractions, holds about 58 GB when it runs and needs about 62 GB free to start,
+so a card under 64 GB can never run it and a 64 GB card runs it only with nothing else on it. The app
+quotes them from `VoiceRequirements` (`gpuMemoryMB` for the card, `engineMemoryMB` for the free memory;
+`voice.vram` and `voice.engine` carry the machine's own `needMB`, which wins where it is present), so a
+sentence and its number come from one constant and cannot drift.
 
 ## Images and video
 

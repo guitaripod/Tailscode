@@ -1,29 +1,40 @@
 # Voice call
 
-A call is a voice for a chat that already exists. The person talks, the words go to the agent the
-conversation already has, and a short spoken account of what the agent is doing comes back. The model
-that listens and speaks (NemotronLabs VoiceChat 11B, on the server's GPU) does none of the building. It
-is an ear and a mouth, and everything it says or hears is treated as lossy.
+A call is an ear for a chat that already exists. The person talks, the model listens and writes down
+what it hears as it hears it, every finished sentence of at least three words goes to the agent the
+conversation already has as an ordinary message, and a chime says when the agent finished. Nothing is
+spoken back. The model (NemotronLabs VoiceChat 11B, on the server's GPU) does none of the building and
+none of the talking, and what it hears is treated as lossy.
 
 This file is the contract. `VoiceKit` (CodingAgentKit) holds the wire types, `voice-bridge` is the
-gateway, TailscodeCore holds the call's words, faces and session, and each client draws it.
+gateway, TailscodeCore holds the call's words, faces and session, and each client draws it. The
+design changed on 2026-10-16, when the model was measured on this GPU (see "The gate"): it is an
+excellent ear and a poor mouth, so the call is ear only.
 
 ## What the model can and cannot do
 
-Facts that shaped the design, from the model card, the paper and NVIDIA's API reference:
+Facts that shaped the design. The first group is from the model card, the paper and NVIDIA's API
+reference; the second is what the gate measured on this machine, which is what decided the design.
 
 - Audio in, audio out. The only thing a client may add to a live session is a `function_call_output`.
-  There is no way to make the model speak a given text. Agent words reach the ear only as a tool
-  result the model re-voices in its own words.
-- While a tool call is outstanding the person cannot interrupt. So every tool answers at once, from
-  state the gateway already holds.
-- Tool arguments are unreliable (about 42% argument accuracy), so what is sent to the agent is the
-  model's own transcript of the person's speech, never the model's arguments.
-- The transcript can drop words, the model can run on to talk to itself, and it forgets beyond about two
-  minutes of audio. The gateway watches for all three, and a session is disposable: the agent session is
-  the source of truth, the voice session carries a persona of a few lines and nothing else.
+  There is no way to make the model speak a given text.
+- The transcript can drop words, and the model forgets beyond about two minutes of audio. A session is
+  disposable: the agent session is the source of truth.
 - English only. Prompts and tool results must be ASCII.
-- It needs about 66 GB of VRAM on one GPU and up to five minutes to load.
+- It needs a lot of GPU memory and up to five minutes to load (see "The gate" for the figures).
+- It hears well: first audio arrives 239 ms after the end of speech (p95), and the user transcript
+  streams live and is mostly right.
+- It does not call tools reliably: 0 of 5 with the shipped prompt, about 1 of 5 with heavily tuned ones.
+- It ignores instructions to be silent or to answer in one word, and improvises assistant chatter
+  instead. Prompts cannot fix either.
+
+So the call is ear only. The model listens and transcribes; every final transcript of at least three
+words is sent to the agent as an ordinary message; the model's own speech and captions are muted at the
+gateway and it has no tools; a chime says when the agent finished. The call strip shows what was heard
+(the "you" lines) as it is heard. The client never plays the model's audio, never shows a caption of it
+and never reads a phase of speaking, so the echo problem of a speaker feeding a microphone is gone and
+no headphone advice is given. Because the agent gets what was heard, a misheard word reaches it as
+heard, and a pause can split one request into two messages.
 
 ## Topology
 
@@ -67,39 +78,40 @@ Gateway to client:
 | `t` | fields | meaning |
 | --- | --- | --- |
 | `ready` | `v`, `gateway`, `model` | the session is open |
-| `phase` | `phase`, `at` | `connecting`, `listening`, `hearing`, `speaking`, `degraded` |
+| `phase` | `phase`, `at` | `connecting`, `listening`, `hearing`, `speaking`, `degraded`; the app reads `speaking` as `listening` |
 | `user` | `id`, `text`, `final` | what the model heard, for the screen |
-| `say` | `text`, `final` | what the model is saying, for captions |
-| `dispatch` | `id`, `text` | send this to the agent as the person's prompt |
-| `stop` | | cancel the agent's current turn |
+| `say` | `text`, `final` | what the model is saying; never sent while the model is muted, ignored by the app |
+| `dispatch` | `id`, `text` | send this to the agent as the person's prompt: a final transcript of at least three words |
+| `stop` | | cancel the agent's current turn; only the tool experiment sends it |
 | `degraded` | `reason`, `recovering` | `runaway`, `loop`, `engineError`, `engineDown`, `overload` |
 | `recycled` | | the voice session was swapped for a fresh one |
 | `error` | `code`, `message` | fatal, then the socket closes |
 
 `digest` is ASCII, at most 300 characters. The client builds it (`SpokenDigest`, Core) from the
-transcript, and the gateway sanitises it again.
+transcript, and the gateway sanitises it again. `busy` and `turn` are what an ear-only call uses; the
+digest is the account a speaking model would be handed (see "If the model improves").
 
-## The model's three tools
+## What the gateway sends the agent
 
-All three answer from cached state in well under 50 ms, so barge-in is never lost.
+`VOICE_DISPATCH=transcripts` and `VOICE_SPEECH=muted` are the gateway's defaults. In that mode no tools
+are registered with the model at all, and the gateway sends `dispatch` for each final user transcript
+of at least three words, as soon as it is final, with a fresh id. Shorter ones (a cough, "yes") are
+dropped. The client answers `sent` or `refused` from the app's own send path, exactly as for a typed
+message, and the words appear as the ordinary pending row.
 
-- `send_to_agent`: no meaningful arguments. The gateway sends `dispatch` with every final user
-  transcript since the last dispatch, joined, at most 4000 characters, and answers `Sent.` (or
-  `Nothing to send.`).
-- `agent_status`: answers the last `digest`, or `The agent is idle.`.
-- `stop_agent`: sends `stop`, answers `Stopped.`.
+The old tool mode (`VOICE_DISPATCH=tool`, the model calling `send_to_agent`, `agent_status` and
+`stop_agent`) and the speaking model (`VOICE_SPEECH=model`) remain in the gateway as experiments only.
+Tool arguments were never trusted (about 42% argument accuracy), so even then what went to the agent
+was the model's transcript of the person's speech, never its arguments.
 
-If the model skips `send_to_agent`, nothing is sent. That is a measured failure (see the gate), not a
-reason to guess: the call's fallback, decided at the gate, is to dispatch every final transcript.
-
-The model cannot start talking by itself. When the agent finishes while the person is silent, the call
-chimes and the client plays its haptic; the person asks and `agent_status` answers.
+The model cannot start talking by itself and does not talk at all. When the agent finishes while the
+person is silent, the call chimes and the client plays its haptic.
 
 ## Watchdogs (gateway)
 
-- **Runaway**: model audio for more than 25 s with no person speaking, or any audio more than 3 s after
-  `response.done`. Mute, send `degraded(runaway)`, recycle.
-- **Loop**: the same four-word run three times in the last 200 characters of the `say` text. Same.
+- **Runaway** and **loop** watch the model's speech (audio for more than 25 s with no person speaking,
+  the same four-word run three times in the `say` text). The model is muted, so they do not run in an
+  ear-only call; they belong to the speaking experiment.
 - **Engine**: a NIM `error`, a closed socket or no event for 10 s while audio is flowing. One recycle,
   then `degraded(engineError)`. NIM unreachable at connect: `error(engineDown)`.
 - **Client**: no frame of any kind for 15 s closes the call.
@@ -108,14 +120,16 @@ chimes and the client plays its haptic; the person asks and `agent_status` answe
 
 ## Client duties
 
-- Capture the microphone with echo cancellation (the model hears everything the speaker plays, and
-  would answer itself), 24 kHz mono PCM16. iOS and Mac use `AVAudioEngine` voice processing; Linux uses
-  PulseAudio's simple API (PipeWire speaks it), with the desktop's echo-cancel module or a headset.
-- Play the binary frames back with a jitter buffer; stop and flush the buffer when `phase` becomes
-  `hearing` (the person is talking over it).
+- Capture the microphone, 24 kHz mono PCM16. iOS and Mac use `AVAudioEngine` with voice processing;
+  Linux uses PulseAudio's simple API (PipeWire speaks it), preferring the desktop's echo-cancel module
+  when there is one. Nothing the model says is ever played, so echo is not a hazard of the call; the
+  speaker carries only the call's chimes.
+- Ignore the gateway's binary frames and its `say` frames, and read a phase of `speaking` as
+  `listening` (`VoiceCallSession` does this unless it is built with `modelSpeaks`, which no client does).
 - Keep the screen on and the audio session alive for the length of the call (iOS: playAndRecord,
   voiceChat mode, the audio background mode).
-- Show what was heard (`user`) before it is sent: the transcript row is the ordinary pending row.
+- Show what was heard (`user`) as it is heard, partial lines updated in place: the transcript row is the
+  ordinary pending row once it is sent.
 - Never treat the gateway as the authority on the agent. `dispatch` goes through the app's send path
   (`ChatViewModel.send`, or the desktop equivalent) and the result is `sent` or `refused`.
 
@@ -145,9 +159,9 @@ microphone usage description and, sandboxed, the audio-input entitlement.
 What is proven: the arithmetic above by `swift test` on Linux and on the Mac; that both platforms
 compile under Swift 6 strict concurrency (`swift build` on macOS, `xcodebuild` for the iOS device SDK).
 
-What only a device can show, and has not been shown: whether echo cancellation is good enough that
-the voice does not answer itself on the speaker (headphones remain the advice), the first-buffer
-latency and the jitter numbers against a real gateway, that the voice processing reconfiguration
+What only a device can show, and has not been shown: that the microphone with voice processing hears
+speech well enough for the model, that a chime is not clipped by it, the capture latency against a real
+gateway, that the voice processing reconfiguration
 settles on both platforms and on a Mac with an unusual microphone format, route changes (headset
 plugged in or out, Bluetooth hands-free coming and going, receiver against speaker), interruptions
 (a phone call, Siri, another app taking the audio) and that the level meters look right on the face.
@@ -174,10 +188,13 @@ degraded and ended, and the strip gives up its chips' words, then the clock, the
 ## Words and faces (Core)
 
 `VoiceCallReading` writes every word; `VoiceCallFace` is the one picture of the call on every desk
-(connecting sweeps, listening breathes slowly, hearing is lit steady, speaking breathes with the
-voice's level, degraded holds perfectly still in the danger tone, ended holds still). The agent working
-is the existing `ActivityKind` face and wins the chat's status line as it does today; the call adds its
-own, never replaces it. A client draws; it invents no word.
+(connecting sweeps, listening breathes slowly, hearing is lit steady, degraded holds perfectly still in
+the danger tone, ended holds still). The `speaking` case, which breathes with a voice's level, is kept
+for a model that talks again and is never reached: `VoiceCallSession` reads the gateway's `speaking`
+phase as `listening`, so no client shows a "Speaking" state. The agent working is the existing
+`ActivityKind` face and wins the chat's status line as it does today; the call adds its own, never
+replaces it. A client draws; it invents no word, and it promises no speech: the entry's tooltip says the
+chat types what you say.
 
 Availability is read like `DelegateReach`: `VoiceReach` from `GET /health` per server
 (`VoiceReachProbe`, URLSession based, two seconds), with the reason a call cannot start written out
@@ -198,8 +215,8 @@ the agent waiting, not working, so it is not `busy`.
 `VoiceCallSession` is an actor, never main-actor, and owns one call. A client hands it the endpoint,
 the three seams (`VoiceTransport`, `VoiceAudioCapture`, `VoiceAudioPlayback`), the app's own send path
 and stop, and a `VoiceClock` (monotonic time and a sleep a test can drive). It publishes latest-wins
-`VoiceCallSnapshot`s: face, the last six lines (what the person said, what the voice said, partials
-updated in place), when the call started, the degraded reason, whether the line is being redialled,
+`VoiceCallSnapshot`s: face, the last six lines (what the person said, partials updated in place), when
+the call started, the degraded reason, whether the line is being redialled,
 whether the microphone is muted, whether the agent is busy, and `finishedChimes`, a counter the client
 compares with the last one it saw to play the "the agent finished" chime.
 
@@ -207,8 +224,11 @@ compares with the last one it saw to play the "the agent finished" chime.
   microphone ends the call before anything is dialled, with the way back for that platform.
 - Capture chunks go out as binary frames, cut to what the gateway accepts. Muted, the call sends
   silence of the same length, so the model hears a quiet room and not a gap.
-- Binary frames from the gateway are played, except while the person is speaking (`hearing`) and while
-  the voice is degraded. `phase(hearing)` flushes the speaker at once.
+- Binary frames from the gateway are dropped: the model's voice is never played. `say` frames are
+  dropped too and a `speaking` phase is read as `listening`. All three come back only for a session
+  built with `modelSpeaks: true`, which the tests use for the old path and no client does; with it,
+  frames are played except while the person is speaking or the voice is degraded, and `phase(hearing)`
+  flushes the speaker at once.
 - `dispatch` runs the app's send path off the receive loop, one at a time in order, and answers `sent`
   or `refused`. `stop` runs the app's stop. A `degraded` frame flushes the speaker and mutes the voice
   until the next ordinary phase.
@@ -218,8 +238,7 @@ compares with the last one it saw to play the "the agent finished" chime.
   error while redialling is the old call not yet released, and counts as a failed attempt. Any other
   `error` frame ends the call with the gateway's reason.
 - However the call ends, capture and playback are stopped before the last snapshot is published.
-- The chime is raised when the agent goes from busy to not busy while the person is not speaking and
-  the voice is not speaking.
+- The chime is raised when the agent goes from busy to not busy while the person is not speaking.
 
 `SpokenDigest` writes the `agent` frame by rule. It is English and ASCII, not localised, because it is
 a tool result for an English-only model: `Working. <what it is doing>.`, `Waiting for you. <the
@@ -232,9 +251,10 @@ changes.
 
 The demo hosts (`VoiceDemo.isDemoHost`) run the same session over `VoiceDemoStage`: a scripted
 transport that plays forty seconds of cues in a loop (ready, hearing with growing transcripts, a
-dispatch, speaking with captions, a status question, one degraded blip in the first loop, a recycle),
-a microphone whose level follows the scripted lines and a speaker whose level follows the scripted
-speech. `VoiceReachProbe` answers ready for them without asking the network.
+dispatch, a second request heard and dispatched, one degraded blip in the first loop, a recycle) and a
+microphone whose level follows the scripted lines. The voice never speaks in the script. The agent
+working and the chime that says it finished come from the conversation the client already holds, as in
+a real call. `VoiceReachProbe` answers ready for them without asking the network.
 
 ## The desk (Core)
 
@@ -289,18 +309,21 @@ visible, so the person watches the agent work while talking.
   (`composerAccessories`), below the facts row, so it is directly above the composer and the
   transcript's bottom inset follows it the way it follows a chip. It holds the call's face
   (`CallFaceView`) with its word and a tabular `m:ss` timer, the beta mark, mute and hang up; then
-  the last thing each side said (`VoiceCallLine`: the person in secondary ink, the voice in primary,
-  a line still being heard one register quieter, a placeholder where a side has said nothing yet);
-  then the agent's digest wearing its `ActivityKind` face. Every line is one line and always present,
-  so a live strip has one height for as long as it is live and no frame of a call lays anything out. A phone on its side, which has no height to spare, gets the header alone (face, timer, mute, hang up).
+  the last thing the person said as it was heard (`VoiceCallLine`: secondary ink, a line still being
+  heard one register quieter, a placeholder before anything is heard); then the agent's digest wearing
+  its `ActivityKind` face. There is no line for the voice, because it never speaks. Every line is one
+  line and always present, so a live strip has one height for as long as it is live and no frame of a
+  call lays anything out. A phone on its side, which has no height to spare, gets the header alone
+  (face, timer, mute, hang up).
   Ending replaces the strip with the face, `Call ended` and the reason, for six seconds, then clears
   it; never a modal. A microphone that was refused says how to turn it on and offers `Open
   Settings`, and that notice stays twelve seconds because it has something to do.
 - **The face** is arithmetic on absolute time from a `CADisplayLink` at the vocabulary's tempo,
-  through `VoiceCallFace.intensity(at:level:reduceMotion:)`; the speaking level is the call's output
-  level eased by `VoiceCallLevels.smoothed`. It is the activity badge at call size rather than the
-  presence orb: the orb draws one aggregate of everything the device watches and has no way to say
-  connecting, hearing or speaking-with-a-level without changes to its shader. Hearing, a degraded
+  through `VoiceCallFace.intensity(at:level:reduceMotion:)`; the level a speaking face would lean on is
+  the call's output level eased by `VoiceCallLevels.smoothed`, and stays unused while no voice
+  speaks. It is the activity badge at call size rather than the presence orb: the orb draws one
+  aggregate of everything the device watches and has no way to say connecting or hearing without
+  changes to its shader. Hearing, a degraded
   voice and an ended call hold perfectly still and run no clock, and so does everything under Reduce
   Motion. The one clock that keeps running in a still face is the dock's timer, once a second.
 - **Plumbing** is `VoiceCallGate`, one per process beside `DelegateGate`, owning the single
@@ -321,7 +344,7 @@ visible, so the person watches the agent work while talking.
   (`ChatViewModel.abort`). A blank transcript is the one thing refused.
 - **Sounds and cues**: `finishedChimes` rising plays `VoiceChime.finished()` through the call's own
   playback with the `received` cue; a question or an approval starting to wait plays
-  `VoiceChime.attention()` with `needsYou`, unless the person or the voice is speaking; connecting
+  `VoiceChime.attention()` with `needsYou`, unless the person is speaking; connecting
   uses `success`, a degraded voice `warning`, mute `selection`, hang up `tap`. No new cue types.
 - **Words**: everything on screen is Core's (`VoiceCallReading`, `VoiceCallFace`, `BetaWords`). The
   one line the app writes for itself is the microphone usage description, localised in all eleven
@@ -333,20 +356,20 @@ What was compiled, on the Mac, for the iOS device SDK with Swift 6 strict concur
 proves: the sources type-check against the shared Core. What only the iPhone Air can show, and has not
 been shown:
 
-- whether echo cancellation is good enough that the voice does not answer itself on the speaker,
-  and how it behaves on the receiver, a wired headset and Bluetooth hands-free;
+- how the microphone behaves with voice processing on the receiver, a wired headset and Bluetooth
+  hands-free, and that a chime on those routes is neither clipped nor heard back by the model;
 - route changes in the middle of a call (headset in or out, Bluetooth coming and going), and
   interruptions (a phone call, Siri, another app taking the audio): that the interruption really
   ends the call and the dock says so once;
 - the feel of the dock: its height against the keyboard, the composer and the facts row at the
   default and at the largest type sizes; whether the face reads at a glance in sunlight; whether the
-  caption lines, which truncate at their head so the newest words stay visible, are readable at
-  speed; that the sheen on the beta mark plays once and then stops;
+  caption line, which truncates at its head so the newest words stay visible, is readable at speed;
+  that the sheen on the beta mark plays once and then stops;
 - that the screen stays on and the call survives a locked screen through the audio background mode,
   and that a call the system suspends is ended rather than left half open;
 - the microphone prompt on first use and the Settings road after a refusal;
 - that the transcript row for a spoken prompt rises and streams the way a typed one does;
-- that the chime is audible over the call's route and not over the voice.
+- that the chime is audible over the call's route.
 
 ## macOS
 
@@ -373,11 +396,12 @@ time per process) while the others keep streaming.
   and the composer capsule, so the transcript's bottom inset follows it exactly as it follows the band
   and a call never covers a line of the conversation. It holds the face (`CallFaceView`) with its word
   and a tabular `m:ss` timer, the beta mark (`BetaBadge(feature: .voiceCall)`, its card opening upward),
-  mute and hang up; then the last thing each side said (`VoiceCallLine`: the person in secondary ink,
-  the voice in primary, a line still being heard one register quieter and followed by an ellipsis so the
-  difference is also a shape, a placeholder where a side has said nothing yet); then the agent's digest
-  wearing its `ActivityKind` face. Every line is one line and always present, so a live strip has one
-  height for as long as it is live and no frame of a call lays anything out. Mute is a real toggle (the
+  mute and hang up; then the last thing the person said as it was heard (`VoiceCallLine`: secondary
+  ink, a line still being heard one register quieter and followed by an ellipsis so the difference is
+  also a shape, a placeholder before anything is heard); then the agent's digest wearing its
+  `ActivityKind` face. There is no line for the voice, because it never speaks. Every line is one line
+  and always present, so a live strip has one height for as long as it is live and no frame of a call
+  lays anything out. Mute is a real toggle (the
   slashed microphone, the accent fill, `Unmute` as its name and `Microphone muted` as its value); hang
   up is the danger fill with its word. Ending replaces the strip with the face, `Call ended` and the
   reason, for six seconds, then clears it; never a modal. A refused microphone says how to turn it on
@@ -385,11 +409,12 @@ time per process) while the others keep streaming.
   Microphone), offers `Open System Settings` (the Privacy_Microphone pane) and stays twelve seconds. A
   second call started anywhere ends the first and the first pane's strip says why (`.replaced`).
 - **The face** is the activity badge at call size on an opaque disc, not the presence orb (the orb draws
-  one aggregate of everything the device watches and could not say connecting, hearing or
-  speaking-with-a-level without shader changes). Connecting turns, and listening and the agent working
-  breathe, on the render server's clock like every other badge in the window; speaking is the one face
-  whose light depends on a value that changes every frame, the voice's output level, so it alone runs
-  the display's clock (`NSView.displayLink(target:selector:)`, at the vocabulary's tempo): each frame is
+  one aggregate of everything the device watches and could not say connecting or hearing without
+  shader changes). Connecting turns, and listening and the agent working
+  breathe, on the render server's clock like every other badge in the window; the kept `speaking` face
+  is the one whose light would depend on a value that changes every frame, the voice's output level, so
+  it alone runs the display's clock (`NSView.displayLink(target:selector:)`, at the vocabulary's tempo),
+  and it is never reached while the call is ear only: each frame is
   `VoiceCallFace.intensity(at:level:)` over the level eased by `VoiceCallLevels.smoothed`, laid on the
   badge's alpha and on the disc's `sublayerTransform` about its centre. Hearing, a degraded voice and an
   ended call hold perfectly still and run no clock, and so does everything under Reduce Motion or a
@@ -422,7 +447,7 @@ time per process) while the others keep streaming.
   not survive a window nobody can see.
 - **Sounds and cues**: `finishedChimes` rising plays `VoiceChime.finished()` through the call's own
   playback with the `received` cue; a question or an approval starting to wait plays
-  `VoiceChime.attention()` with `needsYou`, unless the person or the voice is speaking; connecting uses
+  `VoiceChime.attention()` with `needsYou`, unless the person is speaking; connecting uses
   `success`, a degraded voice `warning`, mute `selection`, hang up `tap`. Every arrival that is news is
   also announced to VoiceOver.
 - **Audio** is `AppleVoiceIO`, the same implementation as the phone, built per call. The direct build is
@@ -443,10 +468,10 @@ touched. Nothing was launched. No window, pane, popover or strip was ever drawn,
 opened. What that proves: the sources type-check against the shared Core and the Info.plist and
 entitlements are the ones declared. What only a real Mac can show, and has not been shown:
 
-- whether echo cancellation (`AppleVoiceIO`'s voice processing) is good enough on the built-in
-  microphone and speakers that the voice does not answer itself, and how that compares with
-  headphones, a wired headset, AirPods and an external USB microphone; whether the voice processing
-  unit ducks other audio on the Mac the way it does on the phone;
+- how the microphone behaves with voice processing (`AppleVoiceIO`) on the built-in microphone,
+  headphones, a wired headset, AirPods and an external USB microphone, and that a chime is neither
+  clipped nor heard back by the model; whether the voice processing unit ducks other audio on the Mac
+  the way it does on the phone;
 - the first microphone prompt in each build (direct and App Store), that the usage text appears in the
   language of the system, and that after a refusal the `Open System Settings` button lands on the
   Microphone pane and the next call works once it is turned on without a relaunch;
@@ -454,8 +479,8 @@ entitlements are the ones declared. What only a real Mac can show, and has not b
   input changed in System Settings, a display's speakers coming and going over HDMI): that the engine
   rebuilds, that the call survives, and that five failures in ten seconds really ends it with a notice;
 - the feel of the strip: its height against the composer and the status band at the default type size
-  and at both ends of the scale, whether the caption lines (which truncate at their head so the newest
-  words stay visible) read at speaking speed, the glass-on-glass look of the strip beside the band and the
+  and at both ends of the scale, whether the caption line (which truncates at its head so the newest
+  words stay visible) reads at the speed of speech, the glass-on-glass look of the strip beside the band and the
   composer capsule, whether the face reads at a glance, that the hang up chip's danger fill passes
   contrast on the glass in light and dark and under the themes, and that the strip's arrival does not
   move a transcript that is being read;
@@ -469,7 +494,7 @@ entitlements are the ones declared. What only a real Mac can show, and has not b
 - that the Mac stays awake through a long call with the screen asleep, and that a call is ended rather
   than left half open by sleep;
 - that the transcript row for a spoken prompt rises and streams the way a typed one does, and that the
-  chime is audible over the call's route and not over the voice.
+  chime is audible over the call's route.
 
 ## Setting up, and the engine starting
 
@@ -488,35 +513,85 @@ happening: `VoiceServerMessage.engine` sets `VoiceCallSnapshot.engine` and `engi
 
 ## Beta
 
-Calls ship as a beta (`BetaFeature.voiceCall`, see `beta.md`). The sheet lists what is solid and what
-is rough, truthfully: English only, headphones recommended, interrupting does not work while the agent
-is being asked for status, and what the model heard is shown on screen because it is sometimes wrong.
+Calls ship as a beta (`BetaFeature.voiceCall`, see `beta.md`). The sheet says what the call is, in
+sentences that match this file: it listens and types what you say into the chat as you speak; it does not
+talk back, on purpose, because the model that listens is not good enough at talking; what it heard is
+shown as it arrives and is sometimes wrong, so the agent gets what was heard; nothing leaves the
+tailnet. Its rough lines are the mishearing, a pause splitting one request into two messages, no voice
+answers and no stopping the agent by voice, English only, and the GPU it needs. That last figure comes
+from `VoiceRequirements.gpuMemoryMB`, the same constant the setup checklist quotes.
 
 ## The gate
 
-Nothing past the gateway is trusted until the model has been measured on this GPU
-(`voice-probe`, a CLI in voice-bridge). Targets, to be calibrated against the first baseline:
+Nothing past the gateway was trusted until the model had been measured on this GPU (`voice-probe`, a
+CLI in voice-bridge; the raw files of the 2026-10-16 run are `probe.json`, `e2e.json` and `nimexp.py`).
+The gate changed the product: the model is an excellent ear and a poor mouth.
 
-- end of speech to first audio, p95 under 700 ms
-- silence within 300 ms of a barge-in
-- no runaway turn in a 10 minute soak with scripted dialogue and silences
-- `send_to_agent` called on at least 95% of 50 scripted task utterances, else the dispatch fallback
-- word error rate of the user transcript, gated against the baseline
-- a recycle mid-call with no audible gap over 1 s
-- sm_120 (RTX PRO 6000 Blackwell) runs the container at all
+| What was measured | Result | Verdict |
+| --- | --- | --- |
+| End of speech to first audio (the ear's side of the latency, 5 scripted task utterances) | p50 157 ms, p95 239 ms; three end-to-end calls through the gateway 239, 237 and 324 ms | Excellent; the target was p95 under 700 ms |
+| User transcript | Streams live word by word every 150 to 300 ms and finalises at the end of speech; 3 words wrong in 49 | Mostly right, not trusted: "cache" heard as "cash", "build" as "bill", a leading "add" dropped |
+| Gateway to NIM protocol | Works end to end: session, audio both ways, transcripts, no model errors, no runaway, no recycle in the run | Good |
+| Tool calls (`send_to_agent`) | 0 of 5 with the shipped prompt; about 1 of 5 with heavily tuned prompts and argument variants (`nimexp.py`); the end-to-end call through the gateway sent no dispatch | Failed; the target was 95%. Prompts cannot fix it |
+| Obeying "be silent" or "answer in one word" | Ignored every time; the model improvises assistant chatter ("I can run those tests for you. Just let me know what specific tests...") that answers nothing | Failed. Prompts cannot fix it |
+| GPU memory | The NIM runs two engines in one container, each reserving a share of the whole card: NVIDIA's defaults are 0.45 and 0.40, so 85% of it, and on the 96 GB card with a desktop holding about 12 GB it failed to start. With the gateway's lowered shares (0.30 and 0.25) it loads in about 5 minutes and the container uses about 58 GB, so about 62 GB must be free to start | A card under 64 GB cannot run it. It was documented as 66 GB and 80 GB before the measure |
+| sm_120 (RTX PRO 6000 Blackwell) | Runs the container | Pass |
+
+Why prompts cannot fix it: the variants run through `nimexp.py` (the tool's description, an optional
+`task` argument, dropping `stop_agent`, longer settle times) moved the tool rate from 0 to about one in
+five and never made it reliable, and nothing moved the chatter. What the model does reliably is hear, so
+the design uses only that.
+
+The memory finding, for anyone reproducing it. The two shares are plain environment variables the NIM
+container reads, `LLM_GPU_MEM_UTIL` (language engine) and `TTS_GPU_MEM_UTIL` (speech engine). The gateway
+starts the engine with 0.30 and 0.25 and lets a machine with more room raise them through its own
+`VOICE_LLM_MEM_UTIL` and `VOICE_TTS_MEM_UTIL` (0.1 to 0.6; anything else is ignored); lower shares than
+that pair have not been tried. The gateway's `voice.vram` is `unavailable` below 64000 MB and
+`voice.engine` is `busy` while less than 62000 MB is free (`needMB` on both). Core quotes the same
+figures before it has heard from a machine, as `VoiceRequirements.gpuMemoryMB` (the card) and
+`engineMemoryMB` (the free memory), in the unit its size formatter uses, so the card reads 64 GB and
+the free memory 62 GB; the machine's own `needMB` wins where it is present.
+
+Targets of the original gate that no longer apply: silence within 300 ms of a barge-in, no runaway
+turn in a 10 minute soak, and a recycle mid-call with no audible gap, all of which concern a voice.
+
+## If the model improves
+
+Re-enable in this order, and only after the gate passes on the new model:
+
+1. Run the gate again: `voice-probe run --wav u1.wav --wav u2.wav --instructions prompt.txt
+   --summary-table` against the new engine (`--tools-json` registers the tools in a file, `--no-tools`
+   registers none, `--barge-in-ms` and `--soak-seconds` measure the interruption and the soak). The bar
+   is the original targets: tool calls on at least 95% of 50 scripted task utterances, a model that
+   stays quiet when told to, first audio p95 under 700 ms, no runaway in a 10 minute soak, silence
+   within 300 ms of a barge-in.
+2. Tools: set `VOICE_DISPATCH=tool` on the gateway. The model's `send_to_agent`, `agent_status` and
+   `stop_agent` answer from cached state in under 50 ms, so barge-in is never lost. Nothing in the
+   client changes: `dispatch`, `stop` and the `agent` digest (`SpokenDigest`) are still on the wire and
+   still handled.
+3. Speech: set `VOICE_SPEECH=model` on the gateway, build `VoiceCallSession` with `modelSpeaks: true`
+   in `VoiceCallDesk`, and bring back what was removed from the three strips: the line for the voice
+   (`VoiceCallLine.Kind.voice` is still produced by the session) in `CallDockView`, `CallStripView`
+   (Linux) and `CallStripView` (Mac), `VoiceCallReading.voiceLabel` and `voicePlaceholder`, a
+   headphone hint, the speaking level on the face (`speaking` is kept in `VoiceCallFace` and both
+   face views), the demo script's speaking windows, and the card's "does not talk back" paragraph.
+4. The runaway and loop watchdogs apply again, and the beta card, this file, `docs/setup.md` and the
+   call bullet in `CLAUDE.md` must change in the same commit.
 
 ## Testing
 
 - `VoiceKit` and `voice-bridge`: `swift test`, with a fake NIM that replays scripted event sequences
-  (speech, tool calls, runaway, loops, errors, slow tools) and asserts the gateway's frames.
+  (speech, transcripts, tool calls, runaway, loops, errors, slow tools) and asserts the gateway's frames.
 - Against the real gateway: a throwaway package imports TailscodeCore and drives a real `VoiceCallSession` over
   `URLSessionVoiceTransport` against `voice-bridge` and `voice-probe fake-nim` on ephemeral ports (a whole call,
   barge-in, a killed and a restarted gateway, a refused connection, the reach probe and the desk).
 - Core: `VoiceCallSession` against a scripted transport, fake audio and a manual clock (every
-  behaviour above, reconnects, a refused dispatch, a degraded cycle, a debounced flood), `SpokenDigest`
-  against transcript fixtures, readings, faces and levels as pure functions, `VoiceReachProbe` against
-  a scripted fetcher, and the demo script driving a session through every face.
+  behaviour above, reconnects, a refused dispatch, a degraded cycle, a debounced flood, and that an
+  ear-only call plays nothing of the model and never reads `speaking`), `SpokenDigest` against transcript
+  fixtures, readings, faces and levels as pure functions, `VoiceReachProbe` against a scripted fetcher,
+  and the demo script driving a session through every face a listening call has, both dispatches and
+  the chime.
 - Linux: the headless harness (`scripts/dev-linuxapp.sh`) with a PulseAudio null sink as the
   microphone, a WAV played into it, and the recorded playback checked.
-- iOS and Mac: compile on the Mac; echo cancellation and interruptions are a short manual check on
-  the iPhone Air, and that is said plainly rather than implied.
+- iOS and Mac: compile on the Mac; interruptions, route changes and the chime are a short manual check
+  on the iPhone Air, and that is said plainly rather than implied.
