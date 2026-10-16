@@ -412,8 +412,15 @@ final class SetupStepCard: UIView {
         applyStatus(animated: animated)
     }
 
-    func setDetail(_ text: String) {
+    func setDetail(_ text: String?) {
         detailLabel.text = text
+        detailLabel.isHidden = text?.isEmpty != false
+    }
+
+    func setTitle(_ text: String) {
+        guard titleLabel.text != text else { return }
+        titleLabel.text = text
+        titleLabel.accessibilityLabel = String(localized: "Step \(index) of \(total): \(text)")
     }
 
     func setPill(_ text: String?, symbol: String = "checkmark.circle.fill", tint: UIColor = Theme.Color.success) {
@@ -542,7 +549,7 @@ final class CommandBlockView: UIView {
     private let shareButton = UIButton(type: .system)
     private var resetTask: Task<Void, Never>?
 
-    init(command: String) {
+    init(command: String, copyLabel: String? = nil, offersShare: Bool = true) {
         self.command = command
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -559,8 +566,12 @@ final class CommandBlockView: UIView {
             string: command,
             attributes: [.accessibilitySpeechPunctuation: true])
 
-        configure(copyButton, symbol: "doc.on.doc", label: String(localized: "Copy command"))
-        configure(shareButton, symbol: "square.and.arrow.up", label: String(localized: "Send command to another device"))
+        configure(
+            copyButton, symbol: "doc.on.doc", label: copyLabel ?? String(localized: "Copy command"))
+        configure(
+            shareButton, symbol: "square.and.arrow.up",
+            label: String(localized: "Send command to another device"))
+        shareButton.isHidden = !offersShare
         copyButton.addAction(UIAction { [weak self] _ in self?.copy() }, for: .touchUpInside)
         shareButton.addAction(
             UIAction { [weak self] _ in
@@ -861,6 +872,7 @@ final class OnboardingFooterBar: UIView {
     private let glass = Theme.Glass.view()
     private let secondary = UIButton(type: .system)
     private let stack = UIStackView()
+    private var secondaryAction: UIAction?
 
     init() {
         super.init(frame: .zero)
@@ -891,13 +903,28 @@ final class OnboardingFooterBar: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func setSecondary(title: String, action: @escaping () -> Void) {
+    var hasContent: Bool { !primary.isHidden || !secondary.isHidden }
+
+    func setPrimaryHidden(_ hidden: Bool) {
+        primary.isHidden = hidden
+    }
+
+    func setSecondary(title: String?, hint: String? = nil, action: @escaping () -> Void = {}) {
+        if let secondaryAction { secondary.removeAction(secondaryAction, for: .touchUpInside) }
+        secondaryAction = nil
+        guard let title else {
+            secondary.isHidden = true
+            return
+        }
         var config = UIButton.Configuration.plain()
         config.title = title
         config.baseForegroundColor = Theme.Color.accent
         config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
         secondary.configuration = config
+        secondary.accessibilityHint = hint
         secondary.isHidden = false
-        secondary.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        let next = UIAction { _ in action() }
+        secondaryAction = next
+        secondary.addAction(next, for: .touchUpInside)
     }
 }

@@ -1662,6 +1662,10 @@ final class HomeViewController: UIViewController {
         }
     #endif
 
+    func openServer(withID id: String) {
+        pushChats(filterProfileID: id)
+    }
+
     private func pushChats(filterProfileID: String? = nil) {
         if let workspace {
             return workspace.showChats(filterProfileID.map { .profile($0) } ?? .all)

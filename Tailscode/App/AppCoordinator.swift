@@ -69,6 +69,10 @@ final class AppCoordinator: NSObject {
             sizeWindowForVerificationIfAsked()
         #endif
         UpdateMonitor.checkIfDue()
+        DispatchQueue.main.async { [weak self] in
+            self?.isStanding = true
+            self?.deliverParkedConnectLink()
+        }
         SessionMarkSync.shared.configure { profileID in
             await MainActor.run {
                 let controller = ConnectionController.shared
@@ -255,6 +259,8 @@ final class AppCoordinator: NSObject {
     #endif
 
     private var pendingSessionLink: (url: URL, parkedAt: Date)?
+    private var pendingConnectLink: (url: URL, parkedAt: Date)?
+    private var isStanding = false
     private var pendingComposeFocus = false
     private var pendingShortcut: ShortcutTarget?
 
@@ -312,11 +318,19 @@ final class AppCoordinator: NSObject {
     /// appear or disappear.
     @objc private func connectionsDidChange() {
         guard ConnectionController.shared.hasConnection != showingMain else { return }
-        guard window.rootViewController?.presentedViewController == nil else {
+        guard !isSettingUp, window.rootViewController?.presentedViewController == nil else {
             needsRootSync = true
             return
         }
         route(animated: true)
+    }
+
+    /// The setup screen saves a server before it is done with it: Claude's sign-in and the
+    /// machine's permissions come after the save, so the root waits for the screen's own
+    /// `onConnected` instead of swapping out from under them.
+    private var isSettingUp: Bool {
+        guard let nav = window.rootViewController as? UINavigationController else { return false }
+        return nav.viewControllers.contains { $0 is ServerSetupViewController }
     }
 
     private var showingMain = false
@@ -388,22 +402,115 @@ final class AppCoordinator: NSObject {
         home.openSession(withID: decoded)
     }
 
-    /// Fills the setup screen in from a link the server itself can print, so the
-    /// address makes the trip from computer to phone without being typed twice.
+    /// A pairing link the machine prints, opened from Messages, AirDrop or Notes. With no server
+    /// the setup screen reads it; with servers a sheet asks before anything is added. A link that
+    /// arrives before the UI is standing waits for it, and the log never carries the link itself,
+    /// which can hold the machine's password.
     private func handleConnectLink(_ url: URL) {
-        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        guard let host = items.first(where: { $0.name == "host" })?.value, !host.isEmpty else { return }
-        let port = items.first { $0.name == "port" }?.value
-        let address = port.map { "\(host):\($0)" } ?? host
+        guard isStanding else {
+            pendingConnectLink = (url, Date())
+            return
+        }
+        let reading = ConnectLink.read(url: url)
+        switch reading {
+        case .link(let link): AppLogger.lifecycle.info("connect link opened: \(ConnectLink.logLine(link))")
+        case .rejected(let rejection):
+            AppLogger.lifecycle.info("connect link opened: \(ConnectLink.logLine(rejection: rejection))")
+        }
+        guard showingMain else {
+            openSetup(with: url.absoluteString)
+            return
+        }
+        guard home != nil else {
+            pendingConnectLink = (url, Date())
+            return
+        }
+        switch reading {
+        case .link(let link): offerAddition(of: link, from: url)
+        case .rejected(let rejection): presentRejection(rejection)
+        }
+    }
+
+    private func deliverParkedConnectLink() {
+        guard let parked = pendingConnectLink else { return }
+        pendingConnectLink = nil
+        guard Date().timeIntervalSince(parked.parkedAt) < 60 else { return }
+        handleConnectLink(parked.url)
+    }
+
+    private func openSetup(with text: String) {
         guard
             let nav = window.rootViewController as? UINavigationController,
             let welcome = nav.viewControllers.first as? WelcomeViewController
         else {
-            AppLogger.lifecycle.info("connect link ignored — a server is already set up")
+            AppLogger.lifecycle.info("connect link ignored, the welcome screen is not showing")
             return
         }
-        nav.dismiss(animated: true)
-        welcome.openSetup(prefilling: address)
+        guard nav.presentedViewController != nil else {
+            welcome.openSetup(link: text)
+            return
+        }
+        nav.dismiss(animated: true) { welcome.openSetup(link: text) }
+    }
+
+    private var topPresenter: UIViewController? {
+        var top = window.rootViewController
+        while let presented = top?.presentedViewController { top = presented }
+        return top
+    }
+
+    private func offerAddition(of link: PairingLink, from url: URL) {
+        Task { [weak self] in
+            guard let self else { return }
+            let flow = FirstRunFlow(platform: .current, mode: .addition, environment: .app())
+            await flow.paste(url.absoluteString)
+            if case .openExisting(let id) = await flow.plan.outcome {
+                self.openExisting(profileID: id)
+                return
+            }
+            self.dismissAdditionSheet()
+            guard let presenter = self.topPresenter else { return }
+            let sheet = AddMachineViewController(flow: flow, link: link)
+            sheet.onOpenExisting = { [weak self] id in self?.openExisting(profileID: id) }
+            let nav = UINavigationController(rootViewController: sheet)
+            nav.modalPresentationStyle = .pageSheet
+            nav.sheetPresentationController?.detents = [.medium(), .large()]
+            presenter.present(nav, animated: true)
+        }
+    }
+
+    private func dismissAdditionSheet() {
+        guard let nav = topPresenter as? UINavigationController,
+            nav.viewControllers.first is AddMachineViewController
+        else { return }
+        nav.presentingViewController?.dismiss(animated: false)
+    }
+
+    private func presentRejection(_ rejection: ConnectLink.Rejection) {
+        let message = ConnectLinkReading.rejection(rejection)
+        let alert = UIAlertController(
+            title: message.title, message: message.detail, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: Localized.text("OK"), style: .default))
+        Theme.Haptics.warning()
+        topPresenter?.present(alert, animated: true)
+    }
+
+    /// A link for a server that is already added opens that server's chats instead of adding it
+    /// twice, and says why.
+    private func openExisting(profileID: String) {
+        guard let profile = ConnectionController.shared.profiles.first(where: { $0.id == profileID })
+        else { return }
+        let open = { [weak self] in
+            guard let self else { return }
+            self.home?.openServer(withID: profileID)
+            ToastView(message: ConnectLinkReading.alreadyAdded(profile.name)).flash(
+                in: self.window, above: self.window.safeAreaLayoutGuide.bottomAnchor, duration: 3)
+        }
+        guard let root = window.rootViewController, root.presentedViewController != nil else {
+            open()
+            return
+        }
+        root.dismiss(animated: true, completion: open)
     }
 
     /// A Control opens the app and leaves a route flag in the shared App Group
@@ -477,6 +584,7 @@ final class AppCoordinator: NSObject {
             self.pendingShortcut = nil
             perform(pendingShortcut)
         }
+        if pendingConnectLink != nil, isStanding { deliverParkedConnectLink() }
     }
 
     /// A link released by a root swap waits for the swap to finish. `route` is the one moment the
