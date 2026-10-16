@@ -193,7 +193,7 @@ enum ParityManifest {
         case .videoForge: return .implemented("ForgePane")
         case .forgeEntry: return .implemented("presentForge")
         case .forgeSetup: return .implemented("ForgeSetupWindow")
-        case .mediaReadiness: return .implemented("renderMedia")
+        case .mediaReadiness: return .implemented("MediaChecklistFlow")
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("presentClipMenu")
         case .videoLane: return .implemented("makeLaneRow")

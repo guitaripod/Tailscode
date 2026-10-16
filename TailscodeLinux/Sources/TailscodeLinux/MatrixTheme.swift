@@ -1762,7 +1762,7 @@ enum MatrixTheme {
         .viewer-bar button:hover { border-color: alpha(\(accent), 0.60); }
         .viewer-bar button:focus-visible { outline: 2px solid alpha(\(accent), 0.65); outline-offset: 1px; }
         .studio-toolbar { padding: 8px 12px 0 12px; }
-        .studio-pill, .studio-pill > button {
+        .studio-pill {
             background-color: \(canvasRaised);
             background-image: none;
             color: \(text);
@@ -1772,9 +1772,8 @@ enum MatrixTheme {
             box-shadow: none;
             min-height: 0;
         }
-        menubutton.studio-pill { padding: 0; border: none; background: none; }
-        .studio-pill > button:hover { border-color: alpha(\(accent), 0.50); }
-        .studio-pill > button:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 1px; }
+        .studio-pill:hover { border-color: alpha(\(accent), 0.50); }
+        .studio-pill:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 1px; }
         .studio-pill-line { color: \(text); \(t(.chip)) }
         .studio-dot { \(t(.hint)) }
         .studio-note { color: \(textDim); \(t(.hint)) margin-top: 1px; }

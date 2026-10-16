@@ -69,21 +69,17 @@ extension DrawPane {
             guard let self, let draft = self.studio.draft, draft.isUsable else { return }
             self.studio.rewrite(draft.original, instruction: words)
         }
-        machine.details = { [weak self] in
-            guard let self else { return Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0) }
-            return StudioMachineDetails.image(
-                studio: self.studio, sighting: self.studio.sighting,
-                onCheck: { [weak self] in Gtk.onMain { [weak self] in self?.studio.recheckMachine() } },
-                onChange: { [weak self] in
-                    Gtk.onMain { [weak self] in
-                        guard let self else { return }
-                        let held = self.studio
-                        ForgeSetupWindow.present(parent: self.hostWindow) {
-                            Gtk.onMain { if held === ImageStudio.shared { held.adoptDoor() } }
-                        }
-                    }
-                })
-        }
+        machine.onPress = { [weak self] in self?.openChecklist() }
+    }
+
+    /// What the machine can paint with, as the shared checklist for images and video led by
+    /// pictures. Changing the machine goes through the renderer picker and comes back here, and the
+    /// studio follows the door to wherever the person pointed it.
+    func openChecklist() {
+        let held = studio
+        MediaChecklistFlow.open(
+            endpoint: studio.endpoint.forgeEndpoint, focus: .pictures, parent: hostWindow,
+            onChanged: { Gtk.onMain { if held === ImageStudio.shared { held.adoptDoor() } } })
     }
 
     /// The words changed under a person's hands: the one nudge this surface gives is a count in

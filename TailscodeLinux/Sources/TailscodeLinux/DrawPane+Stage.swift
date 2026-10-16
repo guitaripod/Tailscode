@@ -474,8 +474,8 @@ extension DrawPane {
     }
 
     /// The failure's one honest sentence and the remedies that follow from it: a machine that
-    /// lacks the engine's files offers the other engine it can paint with, the machine's own
-    /// account and another look; anything else offers the same words again and the machine. A
+    /// lacks the engine's files offers the other engine it can paint with, the checklist of what
+    /// it is missing and another look; anything else offers the same words again and the machine. A
     /// refusal before anything was sent says so and says where the words are.
     private func failureCard(_ reason: String) -> UnsafeMutablePointer<GtkWidget> {
         let held = studio
@@ -495,8 +495,8 @@ extension DrawPane {
                 (title: Localized.text("Try again"), primary: true, perform: { held.submit(prompt: words) }))
         }
         remedies.append(
-            (title: ImageGenMachineWords.title + "…", primary: false,
-             perform: { [weak self] in self?.machine.open() }))
+            (title: missing ? Localized.text("See what is missing") : ImageGenMachineWords.title + "…",
+             primary: false, perform: { [weak self] in self?.machine.open() }))
         remedies.append(
             (title: ImageGenMachineWords.checkAgain, primary: false,
              perform: { held.recheckMachine() }))

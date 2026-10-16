@@ -23,12 +23,16 @@ final class SetupChecklistView: @unchecked Sendable {
     var onPrimary: ((SetupAction) -> Void)?
     var onFix: ((SetupRowFix) -> Void)?
     var onCancel: (() -> Void)?
+    var onChange: (() -> Void)?
 
     private let headlineGlyph = Gtk.label("·", selectable: false)
     private let nameLabel = Gtk.label("", css: "setup-name", selectable: false)
     private let headlineLabel = Gtk.label("", css: "preflight-headline", wrap: true, selectable: false)
     private let titleLine = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let rowsBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+    private let placeBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+    private let placeLabel = Gtk.label("", css: "preview-row-detail", selectable: false)
+    private var placeButton: UnsafeMutablePointer<GtkWidget>?
     private let primaryButton = gtk_button_new()!
     private let footerBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private var badge: BetaBadge?
@@ -59,6 +63,12 @@ final class SetupChecklistView: @unchecked Sendable {
         gtk_box_append(ptr(header), headlineGlyph)
         gtk_box_append(ptr(header), titles)
         gtk_box_append(ptr(root), header)
+
+        gtk_widget_set_hexpand(placeLabel, 1)
+        gtk_label_set_xalign(op(placeLabel), 0)
+        gtk_box_append(ptr(placeBox), placeLabel)
+        gtk_widget_set_visible(placeBox, 0)
+        gtk_box_append(ptr(root), placeBox)
 
         gtk_box_append(ptr(root), rowsBox)
 
@@ -100,9 +110,35 @@ final class SetupChecklistView: @unchecked Sendable {
         ActivityPulse.apply(next.icon, to: headlineGlyph)
         gtk_label_set_text(op(headlineLabel), next.headline)
         tailscode_set_accessible_label(widget, next.spoken)
+        renderPlace(next.place)
         renderRows(next.rows)
         renderPrimary(next.primary)
     }
+
+    private func renderPlace(_ place: SetupPlace?) {
+        guard let place else {
+            gtk_widget_set_visible(placeBox, 0)
+            return
+        }
+        gtk_label_set_text(op(placeLabel), place.line)
+        if let placeButton {
+            gtk_button_set_label(ptr(placeButton), place.changeLabel)
+        } else if onChange != nil {
+            let button = Gtk.button(place.changeLabel, css: ["flat"]) { [weak self] in
+                Gtk.onMain { [weak self] in self?.onChange?() }
+            }
+            gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(placeBox), button)
+            placeButton = button
+        }
+        gtk_widget_set_visible(placeBox, 1)
+    }
+
+    var placeText: String? {
+        gtk_widget_get_visible(placeBox) == 0 ? nil : gtk_label_get_text(op(placeLabel)).map { String(cString: $0) }
+    }
+
+    var offersChange: Bool { placeButton != nil && gtk_widget_get_visible(placeBox) != 0 }
 
     private func placeBadge(for next: SetupChecklist) {
         guard next.beta != badgeFeature else { return }

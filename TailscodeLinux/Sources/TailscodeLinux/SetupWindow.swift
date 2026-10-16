@@ -26,38 +26,46 @@ final class SetupWindow: @unchecked Sendable {
     /// `fixture` puts a fixed snapshot on screen with no machine behind it, for the harness.
     static func present(
         target: SetupTarget, parent: UnsafeMutablePointer<GtkWidget>?, fixture: SetupSnapshot? = nil,
-        reportLines: @escaping @Sendable () -> [String] = { [] }, onFinish: (@Sendable () -> Void)? = nil
+        focus: SetupFocus? = nil, reportLines: @escaping @Sendable () -> [String] = { [] },
+        onFinish: (@Sendable () -> Void)? = nil, onChange: (@Sendable () -> Void)? = nil
     ) {
         if let open = shared {
-            if open.target == target, open.fixture == nil, fixture == nil {
+            if open.target == target, open.focus == focus, open.fixture == nil, fixture == nil {
                 open.onFinish = onFinish ?? open.onFinish
+                open.onChange = onChange ?? open.onChange
                 gtk_window_present(ptr(open.window))
                 return
             }
             open.close()
         }
         shared = SetupWindow(
-            target: target, parent: parent, fixture: fixture, reportLines: reportLines, onFinish: onFinish)
+            target: target, parent: parent, fixture: fixture, focus: focus, reportLines: reportLines,
+            onFinish: onFinish, onChange: onChange)
     }
 
     static func dismiss() { shared?.close() }
 
     private let target: SetupTarget
     private let fixture: SetupSnapshot?
+    private let focus: SetupFocus?
     private let window: UnsafeMutablePointer<GtkWidget>
     private let view: SetupChecklistView
     private let lifetime = PaneLifetime()
     private var onFinish: (@Sendable () -> Void)?
+    private var onChange: (@Sendable () -> Void)?
     private var closed = false
     private(set) var checklist: SetupChecklist?
 
     private init(
-        target: SetupTarget, parent: UnsafeMutablePointer<GtkWidget>?, fixture: SetupSnapshot?,
-        reportLines: @escaping @Sendable () -> [String], onFinish: (@Sendable () -> Void)?
+        target: SetupTarget, parent: UnsafeMutablePointer<GtkWidget>?, fixture: SetupSnapshot?, focus: SetupFocus?,
+        reportLines: @escaping @Sendable () -> [String], onFinish: (@Sendable () -> Void)?,
+        onChange: (@Sendable () -> Void)?
     ) {
         self.target = target
         self.fixture = fixture
+        self.focus = focus
         self.onFinish = onFinish
+        self.onChange = onChange
         view = SetupChecklistView(reportLines: reportLines)
         let name = SetupReading.name(of: target.capability)
         let made = Dialogs.windowWithActions(title: name, parent: parent, width: 600)
@@ -70,6 +78,9 @@ final class SetupWindow: @unchecked Sendable {
         view.onPrimary = { [weak self] action in Gtk.onMain { [weak self] in self?.pressed(action) } }
         view.onFix = { [weak self] fix in Gtk.onMain { [weak self] in self?.start(fix) } }
         view.onCancel = { [weak self] in Gtk.onMain { [weak self] in self?.cancel() } }
+        if onChange != nil {
+            view.onChange = { [weak self] in Gtk.onMain { [weak self] in self?.onChange?() } }
+        }
         Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { [weak self] in self?.dismissed() }
         Gtk.onKey(window) { [weak self] keyval, _ in
             guard keyval == Keymap.escape else { return false }
@@ -90,7 +101,7 @@ final class SetupWindow: @unchecked Sendable {
 
     private func show(_ snapshot: SetupSnapshot) {
         guard !closed else { return }
-        let next = SetupChecklist(snapshot: snapshot)
+        let next = SetupChecklist(snapshot: snapshot, focus: focus)
         checklist = next
         view.apply(next)
     }

@@ -281,13 +281,7 @@ final class ForgePane: @unchecked Sendable {
             guard let self, let draft = self.runner.draft, draft.isUsable else { return }
             self.runner.rewrite(draft.original, instruction: words)
         }
-        machine.details = { [weak self] in
-            guard let self else { return Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0) }
-            return StudioMachineDetails.forge(
-                board: self.board,
-                onCheck: { [weak self] in Gtk.onMain { [weak self] in self?.runner.probe() } },
-                onChange: { [weak self] in Gtk.onMain { [weak self] in self?.openSetup() } })
-        }
+        machine.onPress = { [weak self] in self?.openChecklist() }
     }
 
     private func choiceRows(_ field: ForgeField)
@@ -549,6 +543,8 @@ final class ForgePane: @unchecked Sendable {
             choose(field)
         case .configure:
             openSetup()
+        case .checklist:
+            openChecklist()
         }
     }
 
@@ -583,6 +579,17 @@ final class ForgePane: @unchecked Sendable {
                 self?.reason = nil
             }
         }
+    }
+
+    /// What the machine can make, as the shared checklist for images and video led by video: the
+    /// same one the server screen and the picture studio open. Finishing it is pressing Render,
+    /// which is what the person came to do; changing the machine is the picker above, and it
+    /// returns here.
+    private func openChecklist() {
+        MediaChecklistFlow.open(
+            endpoint: board.endpoint, focus: .video, parent: hostWindow,
+            onFinish: { [weak self] in Gtk.onMain { [weak self] in self?.callPressed() } },
+            onChanged: { [weak self] in Gtk.onMain { [weak self] in self?.reason = nil } })
     }
 
     /// Where the clip starts: a file chosen here, the end of a clip already made, or nothing. The
