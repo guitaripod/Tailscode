@@ -42,7 +42,15 @@ public enum PaneChooserAction: Sendable, Equatable {
     case watch
     case browse
     case draw
+    case preview(PreviewChoice)
     case back
+}
+
+/// What choosing a preview row asks for: an app to pick on a Mac this device already knows, or
+/// the Mac itself, because a preview needs a machine that runs a preview host and none is known.
+public enum PreviewChoice: Sendable, Equatable {
+    case app(host: String)
+    case addMac
 }
 
 /// A row's one-word state, told in the vocabulary the chat list already uses rather than in a
@@ -115,6 +123,13 @@ public struct PaneChooser: Sendable, Equatable {
     /// Whether this client can actually open a draw slot. Same rule as ``offersWatching``:
     /// a chooser offers what pressing it would do, and a client without the pane owes a refusal.
     public var offersDrawing = true
+    /// Whether this client can actually open a preview pane. Unlike the others it is off until a
+    /// client says otherwise: a preview needs a Mac that runs a preview host, and only the client
+    /// that draws the pane can promise one.
+    public var offersPreview = false
+    /// The Macs this device knows run a preview host, one row each. Empty with the flag open
+    /// offers the one row that adds a Mac.
+    public var previewHosts: [PreviewAccess] = []
 
     /// - Parameter preferredServer: the server the pane was already looking at, if any; it is
     ///   pre-focused rather than pre-chosen, so the question is still asked and still answerable
@@ -187,6 +202,7 @@ public struct PaneChooser: Sendable, Equatable {
         if offersWatching { rows.append(watchRow) }
         if offersBrowsing { rows.append(Self.browseRow) }
         if offersDrawing { rows.append(Self.drawRow) }
+        rows += previewRows
         return rows
     }
 
@@ -217,6 +233,26 @@ public struct PaneChooser: Sendable, Equatable {
         detail: Localized.text("From words, or from a picture you hand it"),
         note: ImageGenNotice.splitCostLine)
 
+    /// The fourth answer that is not a machine: a running app, previewed in this pane. One row
+    /// per Mac that is known to run a host, so the second pane lands on the right one in a press;
+    /// with none known, the single row that sets one up.
+    var previewRows: [PaneChooserRow] {
+        guard offersPreview else { return [] }
+        guard !previewHosts.isEmpty else {
+            return [
+                PaneChooserRow(
+                    action: .preview(.addMac), title: Localized.text("Preview an app on a Mac"),
+                    detail: Localized.text("See your app running, beside the chat that builds it"))
+            ]
+        }
+        return previewHosts.map { access in
+            PaneChooserRow(
+                action: .preview(.app(host: access.host)),
+                title: Localized.text("Preview an app on %@", access.label),
+                detail: Localized.text("Builds on that Mac and streams the screen here"))
+        }
+    }
+
     private var serverRows: [PaneChooserRow] {
         guard !servers.isEmpty else {
             return [
@@ -237,7 +273,7 @@ public struct PaneChooser: Sendable, Equatable {
                 detail: [server.address, Localized.text("%@ chats", "\(count)")].joined(
                     separator: " · "), badge: badge)
         } + (offersWatching ? [watchRow] : []) + (offersBrowsing ? [Self.browseRow] : [])
-            + (offersDrawing ? [Self.drawRow] : [])
+            + (offersDrawing ? [Self.drawRow] : []) + previewRows
     }
 
     private func chats(on profileID: String) -> [SessionEntry] {
@@ -277,7 +313,7 @@ public struct PaneChooser: Sendable, Equatable {
         case .back:
             back()
             return nil
-        case .openChat, .newChat, .addServer, .watch, .browse, .draw:
+        case .openChat, .newChat, .addServer, .watch, .browse, .draw, .preview:
             return action
         }
     }
@@ -305,6 +341,8 @@ public struct PaneChooser: Sendable, Equatable {
         next.offersWatching = offersWatching
         next.offersBrowsing = offersBrowsing
         next.offersDrawing = offersDrawing
+        next.offersPreview = offersPreview
+        next.previewHosts = previewHosts
         if let serverID, servers.contains(where: { $0.profileID == serverID }) {
             _ = next.activate(.chooseServer(serverID))
             if showsEveryChat { _ = next.activate(.allChats(profileID: serverID)) }

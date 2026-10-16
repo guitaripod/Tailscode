@@ -706,32 +706,24 @@ final class SplitHost: @unchecked Sendable {
     }
 
     func snapshot() -> SplitSnapshot {
-        var sessions: [String: SplitPaneSession] = [:]
-        var videos: [String: String] = [:]
-        var pages: [String: String] = [:]
-        var draws: [String: String] = [:]
+        var contents: [String: PaneContent] = [:]
         for (id, pane) in panes {
-            if let endpoint = pane.drawEndpoint {
-                draws[id.raw] = endpoint.address
-                continue
+            if let target = pane.previewTarget {
+                contents[id.raw] = .preview(target.address)
+            } else if let endpoint = pane.drawEndpoint {
+                contents[id.raw] = .draw(endpoint.address)
+            } else if let target = pane.webTarget {
+                contents[id.raw] = .web(target.address)
+            } else if let target = pane.videoTarget {
+                contents[id.raw] = .video(target.address)
+            } else if let entry = pane.entry {
+                contents[id.raw] = .chat(
+                    SplitPaneSession(profileID: entry.profileID, sessionID: entry.session.id))
+            } else if let held = host?.heldSession(for: id) {
+                contents[id.raw] = .chat(held)
             }
-            if let target = pane.webTarget {
-                pages[id.raw] = target.address
-                continue
-            }
-            if let target = pane.videoTarget {
-                videos[id.raw] = target.address
-                continue
-            }
-            guard let entry = pane.entry else {
-                if let held = host?.heldSession(for: id) { sessions[id.raw] = held }
-                continue
-            }
-            sessions[id.raw] = SplitPaneSession(
-                profileID: entry.profileID, sessionID: entry.session.id)
         }
-        return SplitSnapshot(
-            layout: layout, sessions: sessions, videos: videos, pages: pages, draws: draws)
+        return SplitSnapshot(layout: layout, contents: contents)
     }
 
     /// Rebuilds panes from a persisted arrangement and hands back what each pane was showing.
@@ -745,7 +737,9 @@ final class SplitHost: @unchecked Sendable {
         var bindings: [PaneID: SplitPaneSession] = [:]
         for id in layout.paneIDs {
             let pane = makePane(id)
-            if let address = snapshot.draw(for: id) {
+            if let target = snapshot.preview(for: id) {
+                pane.showPreview(target)
+            } else if let address = snapshot.draw(for: id) {
                 pane.showDraw(ImageGenEndpoint(address: address))
             } else if let target = snapshot.page(for: id) {
                 pane.showWeb(target)
@@ -771,6 +765,7 @@ final class SplitHost: @unchecked Sendable {
         let worthKeeping =
             paneCount > 1 || !snapshot.videos.isEmpty || !snapshot.pages.isEmpty
             || !snapshot.draws.isEmpty
+            || snapshot.contents.values.contains { $0.kind == .preview }
         SettingsFile.set(worthKeeping ? encoded : nil, forKey: SplitSnapshot.defaultsKey)
     }
 }

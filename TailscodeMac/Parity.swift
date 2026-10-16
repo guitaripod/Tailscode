@@ -221,6 +221,9 @@ enum ParityManifest {
                 "DrawSlotView",
                 missing:
                     "A pane becomes a draw slot from the chooser's Make an image row and is the Studio's Image lane at pane size — the same stage, dock and shelf strip over a studio of its own — and the layout snapshot restores that the pane was one and which machine it painted on. What the snapshot does not carry is the words last typed there, because the draw record it shares with the other desks is the machine's address alone.")
+        case .livePreview: return .implemented("PreviewSlotView")
+        case .previewLenses: return .gap("the Mac pane draws the picture and its chips only; the Compare, Inspect, Quality, Matrix and Rewind lenses are not built here yet")
+        case .previewTouch: return .gap("the Mac pane shows the picture but does not send the host a touch, a scroll or a key yet; the host and PreviewTouchReading in Core already support it")
         case .imageLane:
             return .partial(
                 "StudioWindowController",

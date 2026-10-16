@@ -521,6 +521,8 @@ final class TileHost: NSViewController, PaneTiling {
                 #endif
             case .draw:
                 recordDropped("draw")
+            case .preview:
+                if let target = snapshot.preview(for: id) { pane.showPreview(target) }
             case .empty:
                 break
             }
@@ -543,6 +545,10 @@ final class TileHost: NSViewController, PaneTiling {
         for (id, pane) in panes {
             if let target = pane.webTarget {
                 contents[id.raw] = .web(target.address)
+                continue
+            }
+            if let target = pane.previewTarget {
+                contents[id.raw] = .preview(target.address)
                 continue
             }
             #if !TAILSCODE_MAS
@@ -752,6 +758,7 @@ final class TileHost: NSViewController, PaneTiling {
     private func describe(_ id: PaneID) -> (title: String, activity: ActivityKind?) {
         guard let pane = panes[id] else { return (Localized.text("No conversation"), nil) }
         if let page = pane.webSummary { return (page, nil) }
+        if let preview = pane.previewIdentity { return (preview.title, preview.activity) }
         #if !TAILSCODE_MAS
             if let video = pane.videoSummary { return (video, nil) }
         #endif

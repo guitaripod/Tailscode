@@ -255,6 +255,17 @@ enum SelfTest {
             failures += 1
         }
 
+        let previewFailures = PreviewCheck.run()
+        if previewFailures.isEmpty {
+            report(
+                "preview: every face the pane can wear draws from its state — the checklist, the picture "
+                    + "decoded from real JPEG bytes, the banner, the strip's badge — and a parked or "
+                    + "shut-down pane owns no clock and no stream")
+        } else {
+            report("preview: \(previewFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         let studioFailures = StudioCheck.run()
         if studioFailures.isEmpty {
             report(

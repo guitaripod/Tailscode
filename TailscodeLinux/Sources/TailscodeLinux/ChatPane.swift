@@ -256,6 +256,8 @@ final class ChatPane: @unchecked Sendable {
     private(set) var page: WebPane?
     /// What this pane is painting instead of talking, when it is a draw slot rather than a chat.
     private(set) var draw: DrawPane?
+    /// What this pane is streaming instead of talking, when it is a preview slot rather than a chat.
+    private(set) var preview: PreviewPane?
     private(set) var backend: (any CodingAgentBackend)?
     private var inFlightDesignBoards: Set<String> = []
     private(set) var conversation: AgentConversation?
@@ -1054,7 +1056,10 @@ final class ChatPane: @unchecked Sendable {
     func setFocused(_ focused: Bool) {
         guard focused != isFocusedPane else { return }
         isFocusedPane = focused
-        if !focused { letGoOfCascade() }
+        if !focused {
+            letGoOfCascade()
+            preview?.focusLost()
+        }
         restateDrainPriority()
         if focused, !isParked, let state = lastState, lastFullRows.count > renderedRows.count {
             apply(state: state, rows: lastFullRows)
@@ -1091,6 +1096,7 @@ final class ChatPane: @unchecked Sendable {
         if let entry, presence.isInFlight { host?.keepWatching(entry) }
         isParked = true
         call.setSuspended(true)
+        preview?.park()
         leaveFreshCanvas()
         releaseStream()
         agentStreamTask?.cancel()
@@ -1103,6 +1109,7 @@ final class ChatPane: @unchecked Sendable {
     func unpark() {
         guard isParked else { return }
         isParked = false
+        preview?.unpark()
         guard !isShutDown else { return }
         call.setSuspended(false)
         if let entry { host?.stopWatching(LiveKey(entry).pinKey) }
@@ -1141,6 +1148,7 @@ final class ChatPane: @unchecked Sendable {
     /// holding or waiting for a conversation, and nothing otherwise.
     func paneKind(held: Bool) -> PaneKind {
         if let kindOverride { return kindOverride }
+        if preview != nil { return .preview }
         if drawEndpoint != nil { return .draw }
         if webTarget != nil { return .web }
         if videoTarget != nil { return .video }
@@ -1290,6 +1298,64 @@ final class ChatPane: @unchecked Sendable {
 
     var drawEndpoint: ImageGenEndpoint? { draw?.target }
 
+    /// Turns this pane into a preview slot, or points the one it already is at another app. A
+    /// pane built from a snapshot starts its runner at once; one asked for with no target asks in
+    /// its own body, and `fixedHost` names the Mac the chooser row already chose.
+    func showPreview(_ target: PreviewTarget?, fixedHost: String? = nil, runs: Bool = true) {
+        becomeSlot()
+        leaveSlots(except: preview.map(ObjectIdentifier.init))
+        if preview == nil {
+            let pane = PreviewPane(target: target, fixedHost: fixedHost, runs: runs)
+            preview = pane
+            gtk_box_append(ptr(root), pane.root)
+            setChatFurnitureVisible(false)
+            pane.onChange = { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.refreshIdentity()
+                    self.host?.previewTitleChanged(self)
+                    self.host?.videoSlotChanged()
+                }
+            }
+            pane.onAskAgent = { [weak self] words in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.host?.previewAsksAgent(words, from: self)
+                }
+            }
+            if isParked { pane.park() }
+        } else if let target {
+            preview?.point(at: target)
+        } else {
+            preview?.ask()
+        }
+        if target == nil { preview?.focusPrompt() }
+        refreshIdentity()
+        host?.previewTitleChanged(self)
+    }
+
+    /// What the window's title bar says while this pane is a preview: the app and what it is
+    /// doing, never the title of a chat the pane held before it became a slot.
+    var previewHeaderTitle: String? {
+        preview.map { "\($0.slot.title) · \($0.slot.subtitle)" }
+    }
+
+    var previewTarget: PreviewTarget? { preview?.target }
+    var previewSummary: String? { preview?.summary }
+    var previewLensSummary: String? { preview?.lensSummary }
+
+    /// A preview pane claims only plain letters, and only while the person is not typing into one
+    /// of its fields: the picture takes no keys, so everything else belongs to the window.
+    func handlePreviewChord(_ chord: KeyChord) -> Bool {
+        guard let preview, !preview.isAsking else { return false }
+        if preview.keysOn, preview.forwardKey(chord) { return true }
+        if let lens = PreviewLensKeys.lens(for: chord) { return preview.chooseLens(lens) }
+        if PreviewLensKeys.isEscape(chord) { return preview.escape() }
+        guard let command = PreviewCommand.command(for: chord) else { return false }
+        preview.handle(command)
+        return true
+    }
+
     var isBrowsing: Bool { page != nil }
     var webTarget: WebTarget? {
         page.flatMap { pane in pane.currentAddress.map(WebTarget.page) ?? pane.target }
@@ -1366,7 +1432,7 @@ final class ChatPane: @unchecked Sendable {
         while let current = child {
             let next = gtk_widget_get_next_sibling(current)
             if current != identityLabel, current != video?.root, current != page?.root,
-                current != draw?.root, gtk_widget_get_visible(current) != 0
+                current != draw?.root, current != preview?.root, gtk_widget_get_visible(current) != 0
             {
                 hiddenFurniture.append(UInt(bitPattern: current))
                 gtk_widget_set_visible(current, 0)
@@ -1410,18 +1476,29 @@ final class ChatPane: @unchecked Sendable {
             self.draw = nil
             left = true
         }
-        guard left, video == nil, page == nil, draw == nil else { return }
+        if let preview, ObjectIdentifier(preview) != keep {
+            preview.shutdown()
+            gtk_box_remove(ptr(root), preview.root)
+            self.preview = nil
+            left = true
+        }
+        guard left, video == nil, page == nil, draw == nil, preview == nil else { return }
         setChatFurnitureVisible(true)
         refreshIdentity()
     }
 
     /// Whether the pane is a slot rather than a chat.
-    var isSlot: Bool { video != nil || page != nil || draw != nil }
+    var isSlot: Bool { video != nil || page != nil || draw != nil || preview != nil }
 
     /// A pane wears what it is doing in its own identity strip, so a grid of four says which one
     /// is working without the reader having to find and read four status bands. The strip is what
     /// a pane is; the band is what its turn is; this is the one fact both have to agree on.
     private func refreshIdentity() {
+        if let preview {
+            setIdentity(
+                "\(preview.slot.title) · \(preview.slot.subtitle)", activity: preview.slot.light.activity)
+            return
+        }
         if let page {
             setIdentity("\(page.slot.title) · \(page.slot.subtitle)", activity: nil)
             return
@@ -1448,7 +1525,7 @@ final class ChatPane: @unchecked Sendable {
 
     /// The name this pane's chat wears in its strip, for comparing with the panes beside it.
     private var conversationTitle: String? {
-        guard page == nil, draw == nil, video == nil, let entry else { return nil }
+        guard page == nil, draw == nil, video == nil, preview == nil, let entry else { return nil }
         return Self.title(of: entry)
     }
 
@@ -1932,6 +2009,8 @@ final class ChatPane: @unchecked Sendable {
         lifetime.cancelAll()
         cascade.release()
         repairingTail = false
+        preview?.shutdown()
+        preview = nil
         draw?.shutdown()
         draw = nil
         video?.shutdown()
@@ -2764,7 +2843,7 @@ final class ChatPane: @unchecked Sendable {
     /// A pane holding an unanswered question or a slot is not an empty pane looking for a chat:
     /// the listing may refresh under it, but nothing may fill it except the person who opened it.
     var isAnswering: Bool {
-        chooser != nil || video != nil || page != nil
+        chooser != nil || video != nil || page != nil || preview != nil
     }
 
     /// One line describing the chooser, for the headless driver: the question, then the rows with
@@ -5944,6 +6023,7 @@ final class ChatPane: @unchecked Sendable {
     }
 
     func retheme() {
+        preview?.retheme()
         rebuildTranscriptRows()
     }
 

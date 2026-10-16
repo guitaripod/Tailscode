@@ -1361,6 +1361,108 @@ enum MatrixTheme {
             border-radius: 10px;
         }
         .draw-caption { color: \(textDim); \(t(.hint)) opacity: 0.85; }
+        .preview-pane { background-color: \(canvas); }
+        .preview-entry {
+            background-color: \(canvasRaised);
+            color: \(text);
+            border: 1px solid \(rule);
+            border-radius: 12px;
+            padding: 10px 14px;
+            \(t(.composer))
+        }
+        .preview-entry:focus {
+            border-color: alpha(\(accent), 0.55);
+            box-shadow: 0 0 0 1px alpha(\(accent), 0.35) inset;
+        }
+        .preview-say {
+            background-color: \(canvasRaised);
+            color: \(text);
+            border: 1px solid \(rule);
+            border-radius: 10px;
+            padding: 4px 10px;
+            min-height: 0;
+            \(t(.rowDetail))
+        }
+        .preview-say:focus {
+            border-color: alpha(\(accent), 0.55);
+            box-shadow: 0 0 0 1px alpha(\(accent), 0.35) inset;
+        }
+        .preview-chip {
+            background-color: \(canvasRaised);
+            background-image: none;
+            color: \(textDim);
+            border: 1px solid \(rule);
+            border-radius: 999px;
+            padding: 3px 12px;
+            min-height: 0;
+            box-shadow: none;
+            \(t(.chip))
+        }
+        .preview-chip:hover { color: \(text); border-color: alpha(\(accent), 0.45); }
+        .preview-chip-on { color: \(text); border-color: alpha(\(accent), 0.65); }
+        .preview-picture { border-radius: 16px; }
+        .preview-lens {
+            background-color: transparent;
+            background-image: none;
+            color: \(textDim);
+            border: 1px solid transparent;
+            border-radius: 999px;
+            padding: 2px 11px;
+            min-height: 0;
+            box-shadow: none;
+            \(t(.chip))
+        }
+        .preview-lens:hover { color: \(text); }
+        .preview-lens-on { color: \(text); background-color: alpha(\(text), 0.08); border-color: \(rule); }
+        .preview-caption {
+            background-color: alpha(\(canvas), 0.78);
+            color: \(text);
+            border-radius: 999px;
+            padding: 2px 10px;
+            \(t(.chip))
+        }
+        .preview-shot {
+            background-color: transparent;
+            background-image: none;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            padding: 6px 10px;
+            min-height: 0;
+            box-shadow: none;
+        }
+        .preview-shot:hover { background-color: alpha(\(text), 0.05); }
+        .preview-shot-on { border-color: alpha(\(special), 0.7); background-color: alpha(\(special), 0.10); }
+        .preview-cell {
+            background-color: transparent;
+            background-image: none;
+            border: 1px solid transparent;
+            border-radius: 12px;
+            padding: 6px;
+            box-shadow: none;
+        }
+        .preview-cell:hover:not(:disabled) { background-color: alpha(\(text), 0.05); border-color: \(rule); }
+        .preview-status { color: \(text); \(t(.statusLine)) }
+        .preview-row {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 12px;
+            padding: 10px 14px;
+        }
+        .preview-row-title { color: \(text); \(t(.rowTitle)) }
+        .preview-row-detail { color: \(textDim); \(t(.rowDetail)) }
+        .preview-ok { color: \(accent); \(t(.rowTitle)) }
+        .preview-attention { color: \(warn); \(t(.rowTitle)) }
+        .preview-bad { color: \(danger); \(t(.rowTitle)) }
+        .preview-progress trough { min-height: 4px; background-color: alpha(\(text), 0.10); }
+        .preview-progress progress { min-height: 4px; background-color: \(accent); }
+        .preview-banner {
+            background-color: alpha(\(canvasRaised), 0.94);
+            border: 1px solid alpha(\(danger), 0.55);
+            border-radius: 12px;
+            padding: 10px 12px;
+        }
+        .preview-banner-title { color: \(danger); \(t(.banner)) }
+        .preview-problem { color: \(text); \(t(.code)) }
         .draw-stage-room { min-height: 180px; }
         .draw-facts { color: \(textDim); \(t(.badge)) }
         .draw-actions { margin-top: 4px; transition: opacity 450ms ease-out; }

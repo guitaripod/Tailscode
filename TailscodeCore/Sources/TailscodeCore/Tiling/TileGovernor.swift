@@ -511,22 +511,22 @@ public struct TileGovernor: Sendable {
         let present = Set(panes.map(\.id))
         allowedBySize = allowedBySize.filter { present.contains($0.key) }
         let budgetDropped = lastBudget.map { budget < $0 } ?? false
-        let videos = panes.filter { $0.kind == .video && $0.placed && !occluded }
+        let streams = panes.filter { $0.kind.ownsStream && $0.placed && !occluded }
 
         for pane in panes {
             let allowed = rule.allowsFull(
                 width: pane.width, height: pane.height,
                 wasAllowed: allowedBySize[pane.id] ?? true)
             if pane.placed { allowedBySize[pane.id] = allowed }
-            guard pane.placed, !(occluded && (pane.kind == .chat || pane.kind == .video)) else {
+            guard pane.placed, !(occluded && (pane.kind == .chat || pane.kind.ownsStream)) else {
                 densities[pane.id] = .parked
                 continue
             }
             switch pane.kind {
             case .empty, .web, .draw:
                 densities[pane.id] = .full
-            case .video:
-                densities[pane.id] = pane.focused || videos.count == 1 ? .full : .parked
+            case .video, .preview:
+                densities[pane.id] = pane.focused || streams.count == 1 ? .full : .parked
             case .chat:
                 if !allowed {
                     densities[pane.id] = .glance

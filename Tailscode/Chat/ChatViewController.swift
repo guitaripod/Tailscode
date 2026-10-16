@@ -138,8 +138,12 @@ final class ChatViewController: UIViewController {
     /// the repository — read-only, because this app never commits on anyone's behalf.
     private let gitChip = ChatChip(kind: .fact)
     private var git: GitState?
+    /// The way into the running app, offered only where this conversation's machine runs a preview
+    /// host and the folder is known. It is a control, so it is outlined, and it leads the one
+    /// chip row the chat has, so a row that scrolls sideways never hides it.
+    private let previewChip = ChatChip(kind: .control)
     private lazy var factsRow = ChatFactsRow(chips: [
-        agentsChip, backgroundChip, goalChip, contextChip, spendChip, gitChip,
+        previewChip, agentsChip, backgroundChip, goalChip, contextChip, spendChip, gitChip,
     ])
     private let factsScrim = FadeScrimView(fade: CGFloat(ChatChrome.transcriptToChrome))
     private let findBar = UIView()
@@ -271,6 +275,7 @@ final class ChatViewController: UIViewController {
         configureContextChip()
         configureSpendChip()
         configureGitChip()
+        configurePreviewChip()
         configureBackgroundChip()
         configureFindBar()
         configureNavTitleView()
@@ -459,6 +464,7 @@ final class ChatViewController: UIViewController {
         viewModel.isBound = true
         viewModel.startSubagentTracking()
         callController.screenAppeared()
+        updatePreviewChip()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -3362,6 +3368,44 @@ final class ChatViewController: UIViewController {
             localized: "The repository this conversation is working in. Opens its state.")
         gitChip.addAction(
             UIAction { [weak self] _ in self?.presentGit() }, for: .touchUpInside)
+    }
+
+    /// Opens the app this conversation is building, running on the Mac's simulator, full screen.
+    private func configurePreviewChip() {
+        previewChip.setSymbol("iphone")
+        previewChip.text = Localized.text("Preview")
+        previewChip.accessibilityLabel = Localized.text("Preview")
+        previewChip.accessibilityHint = Localized.text("Opens the app running on your Mac.")
+        previewChip.addAction(
+            UIAction { [weak self] _ in self?.presentPreview() }, for: .touchUpInside)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(previewHostsChanged), name: PreviewAccessStore.didChange,
+            object: nil)
+    }
+
+    @objc private func previewHostsChanged() { updatePreviewChip() }
+
+    private func updatePreviewChip() {
+        defer { factsRow.refresh(); syncFactsScrim() }
+        previewChip.isHidden = viewModel.previewTarget == nil
+    }
+
+    private func presentPreview() {
+        guard let target = viewModel.previewTarget else { return }
+        Theme.Haptics.tap()
+        AppLogger.ui.info(
+            "preview: open \(target.address) from session=\(viewModel.session.id)")
+        let viewer = PreviewViewController(target: target)
+        viewer.onAskAgent = { [weak self] words in self?.offerToAgent(words) }
+        present(viewer, animated: true)
+    }
+
+    /// The words the viewer composed go into this conversation's own box, after whatever is
+    /// already there, and are left for the person to read and send: nothing leaves on their behalf.
+    private func offerToAgent(_ words: String) {
+        let held = composer.currentText
+        composer.setDraft(held.isEmpty ? words : held + "\n\n" + words, focus: true, cursorAtEnd: true)
+        AppLogger.chat.info("preview: composed a fix request for session=\(viewModel.session.id)")
     }
 
     private func updateGitChip() {
