@@ -465,8 +465,11 @@ struct FirstRunFlowTests {
         let flow = await flow(recorder: recorder)
         await flow.choose(.link)
         await flow.typeAddress("studio")
+        await flow.setPassword("half")
+        await flow.revealPassword()
         await flow.back()
         let state = await flow.snapshot
+        #expect(!state.passwordShown && state.password.isEmpty)
         #expect(state.way == .choosing)
         #expect(state.typed.isEmpty)
         #expect(state.machine == .idle)

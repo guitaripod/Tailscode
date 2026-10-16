@@ -22,6 +22,7 @@ enum FirstRunReading {
     static var connect: String { Localized.text("Connect") }
     static var connecting: String { Localized.text("Connecting…") }
     static var later: String { Localized.text("Later") }
+    static var back: String { Localized.text("Back") }
     static var waiting: String { Localized.text("Waiting") }
     static var machineTitle: String { Localized.text("Your machine") }
     static var connectedTitle: String { Localized.text("Connected") }
@@ -91,7 +92,7 @@ enum FirstRunReading {
                     kind: .install, title: Localized.text("I don't have a machine set up yet"),
                     detail: Localized.text("One command installs it. You run it on the computer.")))
         }
-        if state.offersTailnetScan {
+        if state.offersTailnetScan, includingInstall || !state.platform.watchesTailnet {
             ways.append(
                 FirstRunPlan.Way(
                     kind: .tailnet, title: Localized.text("Find it on my tailnet"),

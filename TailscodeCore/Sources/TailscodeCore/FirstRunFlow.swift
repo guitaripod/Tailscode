@@ -232,6 +232,9 @@ public actor FirstRunFlow {
         state.typed = ""
         state.notice = nil
         state.machine = .idle
+        state.password = ""
+        state.passwordShown = false
+        state.passwordNote = nil
         publish()
     }
 

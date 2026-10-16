@@ -33,7 +33,7 @@ public struct FirstRunPlan: Sendable, Equatable {
         case waiting(String)
         case diagnosis(ConnectDiagnosis)
         case link(LinkCard)
-        case password(note: String?)
+        case password(PasswordField)
         case signIn(SignInCard)
         case remedy(TailscaleReading)
     }
@@ -81,6 +81,11 @@ public struct FirstRunPlan: Sendable, Equatable {
         public let connectAnywayTitle: String?
     }
 
+    public struct PasswordField: Sendable, Equatable {
+        public let text: String
+        public let note: String?
+    }
+
     public struct SignInCard: Sendable, Equatable {
         public let title: String
         public let detail: String
@@ -108,6 +113,8 @@ public struct FirstRunPlan: Sendable, Equatable {
     public let rows: [Row]
     public let primary: Primary?
     public let later: String?
+    public let dismiss: String
+    public let back: String?
     public let demo: Demo?
     public let isFinished: Bool
     public let outcome: FirstRunState.Outcome?
@@ -127,6 +134,8 @@ extension FirstRunPlan {
             rows: rows,
             primary: primary(state),
             later: later(state),
+            dismiss: later(state) ?? (state.mode == .addition ? ConnectLinkReading.notNow : FirstRunReading.later),
+            back: state.way != .choosing && !state.hasLiveConnection ? FirstRunReading.back : nil,
             demo: state.mode == .firstRun && !state.hasLiveConnection ? FirstRunReading.demo : nil,
             isFinished: state.finished,
             outcome: state.outcome)
@@ -215,7 +224,9 @@ extension FirstRunPlan {
             }
         }
         blocks.append(contentsOf: statusBlocks(state))
-        if state.passwordShown { blocks.append(.password(note: state.passwordNote)) }
+        if state.passwordShown {
+            blocks.append(.password(FirstRunPlan.PasswordField(text: state.password, note: state.passwordNote)))
+        }
         return blocks
     }
 

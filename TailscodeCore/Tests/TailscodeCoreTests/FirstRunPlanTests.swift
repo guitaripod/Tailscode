@@ -160,6 +160,29 @@ struct FirstRunPlanTests {
         #expect(choices.filter(\.isSelected).map(\.agent) == [.omp])
     }
 
+    @Test("a client that watches its own tailnet while it waits does not also offer to look")
+    func installWaysOnDesktop() throws {
+        for platform in [FirstRunPlatform.linux, .mac] {
+            var store = state(platform)
+            store.way = .install
+            store.install = BridgeInstall.install(for: .claudeCode)
+            let row = try #require(FirstRunPlan.make(store).row(.machine))
+            let ways = row.blocks.compactMap { block -> [FirstRunPlan.Way]? in
+                if case .ways(let ways) = block { return ways }
+                return nil
+            }.first
+            #expect(ways?.map(\.kind) == [.link])
+        }
+        var phone = state(.iPhone)
+        phone.way = .install
+        phone.install = BridgeInstall.install(for: .claudeCode)
+        let ways = FirstRunPlan.make(phone).row(.machine)?.blocks.compactMap { block -> [FirstRunPlan.Way]? in
+            if case .ways(let ways) = block { return ways }
+            return nil
+        }.first
+        #expect(ways?.map(\.kind) == [.scan, .link, .tailnet])
+    }
+
     @Test("waiting words differ by what the client can watch")
     func waitingWords() {
         #expect(FirstRunReading.waitingForMachine(.iPhone).contains("scan the code"))
@@ -230,6 +253,24 @@ struct FirstRunPlanTests {
         #expect(plan.primary?.intent == .openTailscale)
         let desktop = FirstRunPlan.make(state(.linux, tailscale: .daemonDown))
         #expect(desktop.primary == nil)
+    }
+
+    @Test("a way that was chosen can be left, and the choosing screen has nothing to go back to")
+    func back() {
+        #expect(FirstRunPlan.make(state()).back == nil)
+        var store = state()
+        for way in [FirstRunState.Way.paste, .install, .link] {
+            store.way = way
+            #expect(FirstRunPlan.make(store).back == "Back")
+        }
+        store.connection = .saving
+        #expect(FirstRunPlan.make(store).back == nil)
+    }
+
+    @Test("the way out says Later on a first run and Not now on a question")
+    func dismissWords() {
+        #expect(FirstRunPlan.make(state()).dismiss == "Later")
+        #expect(FirstRunPlan.make(FirstRunState(platform: .linux, mode: .addition)).dismiss == "Not now")
     }
 
     @Test("the demo is one tap away until a server is being saved")
@@ -344,6 +385,9 @@ struct FirstRunPlanTests {
         #expect(!FirstRunPlan.make(store).rows[1].blocks.contains { if case .password = $0 { return true } else { return false } })
         store.passwordShown = true
         store.passwordNote = "note"
-        #expect(FirstRunPlan.make(store).rows[1].blocks.contains(.password(note: "note")))
+        store.password = "typed"
+        #expect(
+            FirstRunPlan.make(store).rows[1].blocks.contains(
+                .password(FirstRunPlan.PasswordField(text: "typed", note: "note"))))
     }
 }
