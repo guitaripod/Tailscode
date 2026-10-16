@@ -55,7 +55,7 @@ final class DelegateWindowController: NSWindowController {
     private let runsColumn = NSStackView()
     private let emptyLabel = NSTextField(wrappingLabelWithString: "")
     private let runView = DelegateRunView()
-    private let betaBadge = DelegateBetaBadge()
+    private lazy var betaBadge = BetaBadge(feature: .delegate, reportLines: { [weak self] in self?.betaReportLines ?? [] })
     private var hosts: [(host: String, name: String)] = []
     private var selectedHost: String?
     private var selectedRun: String?
@@ -119,6 +119,28 @@ final class DelegateWindowController: NSWindowController {
 
     /// Why the feature wears its mark, opened as a press would open it.
     func revealBeta() { betaBadge.reveal() }
+
+    /// What the dispatcher on this machine said last, for a report: where it is, what it answered and
+    /// which version, and nothing the person typed.
+    private var betaReportLines: [String] {
+        guard let host = selectedHost else { return [] }
+        let address = (DelegateAccessStore.access(host: host) ?? DelegateAccess(host: host)).address
+        let reach = desk.reach[host] ?? .unknown
+        var lines = ["Daemon: \(address)", "Daemon state: \(Self.betaReportState(reach))"]
+        if case .answering(let version) = reach { lines.append("Daemon version: \(version)") }
+        return lines
+    }
+
+    private static func betaReportState(_ reach: DelegateReach) -> String {
+        switch reach {
+        case .unknown: return "not checked"
+        case .checking: return "checking"
+        case .answering: return "answering"
+        case .wantsPassword: return "wants a password"
+        case .refused: return "password refused"
+        case .unreachable(let why): return "not answering (\(why))"
+        }
+    }
 
     private var board: DelegateBoard? {
         guard let host = selectedHost else { return nil }

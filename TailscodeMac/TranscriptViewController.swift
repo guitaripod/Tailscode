@@ -56,6 +56,7 @@ final class TranscriptViewController: NSViewController {
     private let authBanner = NSStackView()
     private var authGlass: NSView?
     let composer = ComposerView()
+    private lazy var calls = PaneCallController(host: callHost)
     private let findBar = FindBar()
     private let jumpChip = SymbolChip()
     /// How many rows the page held when the reader last left its end, so the jump control can say
@@ -701,6 +702,7 @@ final class TranscriptViewController: NSViewController {
         detachLive()
         self.entry = entry
         self.backend = backend
+        calls.bind(entry)
         editingQueued = nil
         queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
         lastState = nil
@@ -1025,6 +1027,7 @@ final class TranscriptViewController: NSViewController {
             return
         }
         guard furnitureHidden.isEmpty else { return }
+        calls.leave(because: "something else took the pane")
         hoverBar.dismiss()
         railController.dismiss()
         furnitureHidden = view.subviews.filter { subview in
@@ -1103,6 +1106,13 @@ final class TranscriptViewController: NSViewController {
         lifetime.add { taken.cancel() }
         lifetime.add { token.cancel() }
         lifetime.add { MainActor.assumeIsolated { TileRuntime.shared.detach(me, from: key) } }
+        let call = calls
+        call.paneBecameLive()
+        lifetime.add {
+            MainActor.assumeIsolated {
+                call.paneStopped(because: "the pane let go of its conversation")
+            }
+        }
     }
 
     private func detachLive() {
@@ -1641,7 +1651,10 @@ final class TranscriptViewController: NSViewController {
         auth.isHidden = true
         authGlass = auth
 
-        let host = FillingStack(views: [auth, band, card])
+        calls.onEntryChanged = { [weak self] entry in self?.composer.setCallEntry(entry) }
+        composer.onCall = { [weak self] in self?.calls.pressEntry() }
+
+        let host = FillingStack(views: [auth, band, calls.glass, card])
         host.spacing = MacTheme.Spacing.m
         host.translatesAutoresizingMaskIntoConstraints = false
         let group = MacTheme.glassGroup()
@@ -1812,10 +1825,10 @@ final class TranscriptViewController: NSViewController {
 
     private func sendPrompt(
         _ text: String, model: ModelSelection?, effort: String?,
-        attachments: [PromptAttachment], reusing: UUID? = nil
+        attachments: [PromptAttachment], reusing: UUID? = nil, spoken: Bool = false
     ) {
         guard let conversation else { return }
-        if let id = editingQueued {
+        if !spoken, let id = editingQueued {
             editingQueued = nil
             _ = queue.replace(id: id, text: text, attachments: attachments)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
@@ -1858,6 +1871,35 @@ final class TranscriptViewController: NSViewController {
                 self?.markSendFailed(row, error: error)
             }
         }
+    }
+
+    /// What a call's voice heard goes out exactly as typed words do — pending ink, queue, marks —
+    /// with the model and effort the composer would send with, and leaves the box and a waiting
+    /// message that is being rewritten alone.
+    private func sendSpoken(_ text: String) -> Bool {
+        guard conversation != nil else { return false }
+        let choice = composer.promptChoice
+        sendPrompt(text, model: choice.model, effort: choice.effort, attachments: [], spoken: true)
+        return true
+    }
+
+    private var callTitle: String {
+        guard let entry else { return "" }
+        return entry.session.hasPlaceholderTitle ? Localized.text("New conversation") : entry.session.title
+    }
+
+    /// What the call needs of this pane and nothing else: the conversation as it stands, the same
+    /// send path a typed message takes, the ordinary stop, and somewhere to say things.
+    private var callHost: PaneCallController.Host {
+        PaneCallController.Host(
+            state: { [weak self] in self?.lastState ?? ConversationState() },
+            sending: { [weak self] in self?.pending.hasInFlight ?? false },
+            title: { [weak self] in self?.callTitle ?? "" },
+            deliver: { [weak self] text in self?.sendSpoken(text) ?? false },
+            stopTurn: { [weak self] in self?.stopTurn() },
+            toast: { [weak self] text in self?.onToast?(text) },
+            window: { [weak self] in self?.view.window },
+            announce: { [weak self] text in self?.announce(text) })
     }
 
     #if DEBUG
@@ -2430,6 +2472,7 @@ final class TranscriptViewController: NSViewController {
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
         handoff.observe(state, sendsInFlight: pending.hasInFlight)
         drainQueue()
+        calls.conversationChanged()
     }
 
     /// What the transcript draws: the rows the server has confirmed, plus the prompt this device is
@@ -3156,6 +3199,7 @@ final class TranscriptViewController: NSViewController {
         earlierButton.font = MacTheme.Ramp.font(.panelFootnote)
         earlierButton.contentTintColor = MacTheme.Color.secondaryLabel
         jumpChip.restyle()
+        calls.restyle()
     }
 
     func applyUIScale() {
@@ -3184,6 +3228,7 @@ final class TranscriptViewController: NSViewController {
     /// An empty pane asks which server rather than captioning itself. The chooser owns the
     /// canvas until something fills it, and every re-render keeps the person's place.
     func showChooser(_ model: PaneChooser) {
+        calls.leave(because: "the pane asked which server")
         chooser = model
         hideEmptyState()
         composer.isHidden = true

@@ -68,3 +68,17 @@ card seen at the version `AppInstallProbe` reads. The pass of light is a gradien
 from `BetaSheen.progress` off a `CADisplayLink` that is invalidated the moment the pass ends, at most
 once per process per feature, and not at all under Reduce Motion; a settled mark runs no clock. Copy
 report puts `BetaReport.compose` on the pasteboard, and the button reads `Report copied` for 1.5 s.
+
+On the Mac the mark is `BetaBadge` (an `NSControl`: `init(feature:reportLines:)`) and the card is
+`BetaCardViewController` inside an `NSPopover`, one pair for every feature in beta. Resting the pointer
+on the capsule opens the card; the card stays while the pointer is on the capsule or on the card and
+leaves 0.35 s after it is on neither, and a click, Space or Return opens it too for a trackpad and for
+VoiceOver (Escape closes it). Opening the card reads the mark's freshness first, so a `changed` card
+leads with what changed, and then marks the card seen at the version `MacAppInstall` reads from the
+bundle. The pass of light is a gradient layer positioned from `BetaSheen.progress` off the capsule's
+own display link (`NSView.displayLink(target:selector:)`), removed the moment the pass ends, at most
+once per process per feature, once the mark is actually on screen and not at all under Reduce Motion
+(`NSWorkspace.shared.accessibilityDisplayShouldReduceMotion`); a settled mark runs no clock. Copy
+report puts `BetaReport.compose` on `NSPasteboard.general`, and the button reads `Report copied` for
+1.5 s. The delegate board supplies the daemon's address, state and version; the call's strip supplies
+the gateway's (`VoiceCallReport`).

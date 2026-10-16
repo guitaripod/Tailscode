@@ -330,6 +330,129 @@ been shown:
 - that the transcript row for a spoken prompt rises and streams the way a typed one does;
 - that the chime is audible over the call's route and not over the voice.
 
+## macOS
+
+The call is a state of a conversation on the Mac too, and a conversation on the Mac is a pane. Nothing
+is opened for it: no window, no sheet, no panel. The pane the person is in grows a strip, the transcript
+above it stays fully visible, and with several panes tiled each pane can be on its own call (one at a
+time per process) while the others keep streaming.
+
+- **The entry** is one chip in the composer's controls row (`PillsRow.callChip`, a `SymbolChip` with
+  `VoiceCallEntryPoint.symbol`), between the lane control and the attach button. The row is where
+  `docs/chat-design.md` keeps what a person can choose for the next thing they say (model and effort,
+  lane, attach, commands), and it is per pane, so a tiled window has one entry per conversation and the
+  strip it starts is in the pane it was pressed in. The window's toolbar acts on the focused pane, so
+  it would have put the control one pointer-move away from the strip it controls and made it change
+  meaning with focus. The chip is not drawn while the reach is unknown, being checked for the first
+  time, or `.noGateway`; for loading, busy, engine down and too old it is drawn dimmed and still takes a
+  press, which answers with the reach's own reason as a toast; a gateway that asks for a password opens
+  a sheet on the window (`NSAlert` with a secure field, the way the dispatcher's password is asked),
+  keeps the answer through `VoiceCallDesk.remember(password:for:)` and starts the call if that was the
+  only thing missing. While the pane's call is up the chip is not drawn: the strip is where it is acted
+  on. The row drops the lane control first and the call chip after the command pill, so a narrow pane
+  keeps it.
+- **The strip** (`CallStripView`) is one glass shape in the pane's glass group, between the status band
+  and the composer capsule, so the transcript's bottom inset follows it exactly as it follows the band
+  and a call never covers a line of the conversation. It holds the face (`CallFaceView`) with its word
+  and a tabular `m:ss` timer, the beta mark (`BetaBadge(feature: .voiceCall)`, its card opening upward),
+  mute and hang up; then the last thing each side said (`VoiceCallLine`: the person in secondary ink,
+  the voice in primary, a line still being heard one register quieter and followed by an ellipsis so the
+  difference is also a shape, a placeholder where a side has said nothing yet); then the agent's digest
+  wearing its `ActivityKind` face. Every line is one line and always present, so a live strip has one
+  height for as long as it is live and no frame of a call lays anything out. Mute is a real toggle (the
+  slashed microphone, the accent fill, `Unmute` as its name and `Microphone muted` as its value); hang
+  up is the danger fill with its word. Ending replaces the strip with the face, `Call ended` and the
+  reason, for six seconds, then clears it; never a modal. A refused microphone says how to turn it on
+  (`VoiceCallReading.microphoneDenied(client: .mac)`, System Settings under Privacy & Security,
+  Microphone), offers `Open System Settings` (the Privacy_Microphone pane) and stays twelve seconds. A
+  second call started anywhere ends the first and the first pane's strip says why (`.replaced`).
+- **The face** is the activity badge at call size on an opaque disc, not the presence orb (the orb draws
+  one aggregate of everything the device watches and could not say connecting, hearing or
+  speaking-with-a-level without shader changes). Connecting turns, and listening and the agent working
+  breathe, on the render server's clock like every other badge in the window; speaking is the one face
+  whose light depends on a value that changes every frame, the voice's output level, so it alone runs
+  the display's clock (`NSView.displayLink(target:selector:)`, at the vocabulary's tempo): each frame is
+  `VoiceCallFace.intensity(at:level:)` over the level eased by `VoiceCallLevels.smoothed`, laid on the
+  badge's alpha and on the disc's `sublayerTransform` about its centre. Hearing, a degraded voice and an
+  ended call hold perfectly still and run no clock, and so does everything under Reduce Motion or a
+  governor level that allows no pulses. The one clock a still face keeps is the timer, once a second.
+- **Plumbing** is `MacVoiceCallGate`, one per process beside `MacDelegateGate`, owning the single
+  `VoiceCallDesk`, mirroring reaches and report lines into values the main thread reads without waiting
+  on an actor, and holding the Mac awake (`ProcessInfo.beginActivity(.userInitiated)`: no idle system
+  sleep and no App Nap, the screen may still sleep) for as long as a call is up, letting go on every end
+  path. It hangs the call up when the Mac is going to sleep and when the app quits. `PaneCallController`
+  is everything one pane does about a call (the strip, the entry's state, starting, following the
+  snapshots, the agent's account, the chimes) and the pane supplies the conversation, the send path,
+  the stop, a window for the password sheet and the announcement. The endpoint is
+  `VoiceEndpoint(profileURL:)` of the pane's profile; a pane that is live asks the desk to keep that
+  server's reach fresh (`watchReach`/`unwatchReach`).
+- **The agent's account** is computed on every state the pane applies and on every change to what the
+  device is holding, with `SpokenDigest.snapshot(from:sending:after:now:)` where `sending` is
+  `PendingSendLedger.hasInFlight`, so a prompt this Mac has handed over and the server has not echoed
+  reads `Working. Starting on it.`
+- **A dispatch** goes through the pane's `sendPrompt` with the model and effort the composer would send
+  with (`ComposerView.promptChoice`): the words appear as the ordinary pending row, are queued while a
+  turn runs, marked and carried exactly as typed words are, and the composer's draft is left alone. A
+  waiting message that is being rewritten is not touched by a spoken one (`spoken: true` skips the
+  replace). `stop` is the ordinary stop (`cancelCurrentTurn`). A blank transcript is the one thing
+  refused.
+- **Lifetime.** The call lives exactly as long as the pane's hold on its conversation (see
+  `docs/tiling.md` 8.9.2): the pane closing, being parked by the governor or a hidden window, another
+  chat being opened into it, a page or a stream taking it over, the app quitting and the Mac sleeping all
+  hang it up, and a hang up stops capture and playback before the last snapshot is published. The call
+  belongs to the pane that started it. A covered or minimised window parks every pane, so a call does
+  not survive a window nobody can see.
+- **Sounds and cues**: `finishedChimes` rising plays `VoiceChime.finished()` through the call's own
+  playback with the `received` cue; a question or an approval starting to wait plays
+  `VoiceChime.attention()` with `needsYou`, unless the person or the voice is speaking; connecting uses
+  `success`, a degraded voice `warning`, mute `selection`, hang up `tap`. Every arrival that is news is
+  also announced to VoiceOver.
+- **Audio** is `AppleVoiceIO`, the same implementation as the phone, built per call. The direct build is
+  unsandboxed and signed without the hardened runtime, so it needs only
+  `NSMicrophoneUsageDescription` (in the `MacApp` template, localised in eleven languages through
+  `Resources/InfoPlist.xcstrings`, which the Mac targets now include); the App Store build is sandboxed
+  and hardened and carries `com.apple.security.device.audio-input` as well.
+- **Demo**: the `--demo` world's servers are demo hosts, so their chats show the entry, ready, and a
+  press runs the scripted call with no network and no audio devices (the desk hands a demo endpoint the
+  scripted stage and never builds `AppleVoiceIO`).
+- **Words**: everything on screen is Core's (`VoiceCallReading`, `VoiceCallFace`, `BetaWords`). The only
+  line the app writes for itself is the microphone usage description; `Open System Settings`, `Password`,
+  `Save` and `Cancel` were already in the catalog.
+
+What was compiled: both Mac schemes, `TailscodeMac` (direct) and `TailscodeMacStore` (`TAILSCODE_MAS`),
+on the Mac host, Swift 6 strict concurrency, warnings counted as failures in the files this change
+touched. Nothing was launched. No window, pane, popover or strip was ever drawn, and no microphone was
+opened. What that proves: the sources type-check against the shared Core and the Info.plist and
+entitlements are the ones declared. What only a real Mac can show, and has not been shown:
+
+- whether echo cancellation (`AppleVoiceIO`'s voice processing) is good enough on the built-in
+  microphone and speakers that the voice does not answer itself, and how that compares with
+  headphones, a wired headset, AirPods and an external USB microphone; whether the voice processing
+  unit ducks other audio on the Mac the way it does on the phone;
+- the first microphone prompt in each build (direct and App Store), that the usage text appears in the
+  language of the system, and that after a refusal the `Open System Settings` button lands on the
+  Microphone pane and the next call works once it is turned on without a relaunch;
+- route changes in the middle of a call (headphones plugged in or out, Bluetooth connecting, the default
+  input changed in System Settings, a display's speakers coming and going over HDMI): that the engine
+  rebuilds, that the call survives, and that five failures in ten seconds really ends it with a notice;
+- the feel of the strip: its height against the composer and the status band at the default type size
+  and at both ends of the scale, whether the caption lines (which truncate at their head so the newest
+  words stay visible) read at speaking speed, the glass-on-glass look of the strip beside the band and the
+  composer capsule, whether the face reads at a glance, that the hang up chip's danger fill passes
+  contrast on the glass in light and dark and under the themes, and that the strip's arrival does not
+  move a transcript that is being read;
+- that the beta mark's hover card opens upward from the strip, stays while the pointer travels from the
+  mark onto the card, leaves when it is on neither, and opens from the keyboard (Space, Return) and
+  from VoiceOver, and that the single pass of light plays once and stops;
+- the tiling behaviour: that a call survives a divider drag, a split and a focus change of its own
+  pane, that it really ends in the pane that is parked by the governor under load, in a zoomed-away pane,
+  when the window is covered or minimised, and when the chat is switched; that the starter's strip is
+  the only one drawn when two panes show the same chat;
+- that the Mac stays awake through a long call with the screen asleep, and that a call is ended rather
+  than left half open by sleep;
+- that the transcript row for a spoken prompt rises and streams the way a typed one does, and that the
+  chime is audible over the call's route and not over the voice.
+
 ## Beta
 
 Calls ship as a beta (`BetaFeature.voiceCall`, see `beta.md`). The sheet lists what is solid and what

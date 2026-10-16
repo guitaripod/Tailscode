@@ -37,9 +37,9 @@ picture.
 | Transcript | rows | Prompt is the heavy voice; answers fill the pane; a turn costs the same gap on every client. |
 | Dock | what the end of the transcript holds | Order, top to bottom: pending sends → queued → turn-state cards (revert, interrupted, retry, compaction, thinking) → needs-you (question, permission). |
 | Facts row | context, spend, branch, goal, agents out, background work, attachments | One row; what is live leads, so scrolling sideways never hides it. Hidden when it has nothing to say, and appearing or leaving never moves the transcript a reader is reading. |
-| Call strip | a live call: face, word and timer, the last words each way, the agent's account, mute, hang up, the beta mark | The last thing in the floating stack, directly above the composer; the transcript stays visible above it. One fixed height while the call is live; the ending shows for six seconds and clears. Never a modal. |
+| Call strip | a live call: face, word and timer, the last words each way, the agent's account, mute, hang up, the beta mark | The last thing in the floating stack, directly above the composer (on the Mac, one glass shape in the pane's glass group between the band and the composer capsule); the transcript stays visible above it. One fixed height while the call is live; the ending shows for six seconds and clears. Never a modal. |
 | Composer | the field, send/stop | Exactly one Stop control per client: on iOS the send button becomes it, on the desktops it is the button beside the composer (Send reads Queue meanwhile). The band never carries one. |
-| Controls | model + effort, lane, attach, commands | Same height and shape as a chip. |
+| Controls | model + effort, lane, call, attach, commands | Same height and shape as a chip. The call's entry lives here on the desktops (one chip per pane, because a call belongs to one conversation), and in the navigation bar next to the overflow menu on the phone; it is not drawn while the call is up. |
 
 ## Chips (`ChatChrome`)
 

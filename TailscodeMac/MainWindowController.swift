@@ -1923,6 +1923,7 @@ final class MainWindowController: NSWindowController {
         #if !TAILSCODE_MAS
             terminalPane.stopRunning()
         #endif
+        MacVoiceCallGate.shared.prepareToQuit()
         SessionListCache.flushPendingSave()
         splitPanes.flushPersistence()
         Seatbelts.shared.finish(panes: splitPanes.paneCount)

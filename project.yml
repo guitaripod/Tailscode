@@ -30,6 +30,8 @@ targetTemplates:
       - path: Tailscode/Logging/LogFileWriter.swift
       - path: Resources/Localizable.xcstrings
         buildPhase: resources
+      - path: Resources/InfoPlist.xcstrings
+        buildPhase: resources
     dependencies:
       - package: CodingAgentKit
         product: CodingAgentKit
@@ -102,6 +104,7 @@ targetTemplates:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
+        NSMicrophoneUsageDescription: Talk to your coding agent out loud. Your voice goes over your tailnet to the server you chose, and nowhere else.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
