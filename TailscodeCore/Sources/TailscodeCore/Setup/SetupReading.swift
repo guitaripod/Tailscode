@@ -21,6 +21,30 @@ public struct SetupFacts: Sendable, Equatable {
     public func number(_ key: String) -> Double? { text(key).flatMap { Double($0) } }
 }
 
+/// Which part of a capability the person came from, so a checklist opened from the video button
+/// leads with video and one opened from Images leads with pictures. It changes the order and the
+/// headline and never what is true.
+public struct SetupFocus: Sendable, Hashable {
+    public let id: String
+
+    public init(_ id: String) { self.id = id }
+
+    public static let video = SetupFocus("video")
+    public static let pictures = SetupFocus("pictures")
+}
+
+/// The machine a checklist is looking at, when the person chose it and may choose another: the line
+/// that names it and the word on the button that changes it.
+public struct SetupPlace: Sendable, Equatable {
+    public let line: String
+    public let changeLabel: String
+
+    public init(line: String, changeLabel: String) {
+        self.line = line
+        self.changeLabel = changeLabel
+    }
+}
+
 /// Every word one capability's checks, fixes and failures are written in. A capability the app knows
 /// registers one, and anything it does not know is read from the report's own `detail`. The readers
 /// answer `nil` for an id they have no words for, so a newer daemon never makes a wrong sentence.
@@ -31,6 +55,15 @@ public protocol SetupCapabilityReader: Sendable {
     var readyHeadline: String { get }
     var readyActionLabel: String { get }
     var beta: BetaFeature? { get }
+    var addTitle: String? { get }
+    var addLine: String? { get }
+
+    func readyHeadline(rows: [SetupRow], focus: SetupFocus?) -> String
+    func readyActionLabel(focus: SetupFocus?) -> String
+    func headline(blocking rows: [SetupRow], focus: SetupFocus?) -> String?
+    func arrange(_ checks: [SetupCheck], focus: SetupFocus?) -> [SetupCheck]
+    func place(of target: SetupTarget) -> SetupPlace?
+    func fixReason(of fix: SetupFix, in check: SetupCheck) -> String?
 
     func title(of check: SetupCheck) -> String?
     func line(of check: SetupCheck, locale: Locale) -> String?
@@ -43,6 +76,15 @@ public protocol SetupCapabilityReader: Sendable {
 
 extension SetupCapabilityReader {
     public var beta: BetaFeature? { nil }
+    public var addTitle: String? { nil }
+    public var addLine: String? { nil }
+
+    public func readyHeadline(rows: [SetupRow], focus: SetupFocus?) -> String { readyHeadline }
+    public func readyActionLabel(focus: SetupFocus?) -> String { readyActionLabel }
+    public func headline(blocking rows: [SetupRow], focus: SetupFocus?) -> String? { nil }
+    public func arrange(_ checks: [SetupCheck], focus: SetupFocus?) -> [SetupCheck] { checks }
+    public func place(of target: SetupTarget) -> SetupPlace? { nil }
+    public func fixReason(of fix: SetupFix, in check: SetupCheck) -> String? { fixReason(of: fix) }
 
     public func title(of check: SetupCheck) -> String? { nil }
     public func line(of check: SetupCheck, locale: Locale) -> String? { nil }
@@ -53,8 +95,8 @@ extension SetupCapabilityReader {
     public func failure(of job: SetupJob, locale: Locale) -> String? { nil }
 }
 
-/// The readers the process knows, by capability. The voice reader is always here; another capability
-/// adds its own with `register` before its first report is drawn.
+/// The readers the process knows, by capability. The voice and media readers are always here; another
+/// capability adds its own with `register` before its first report is drawn.
 public final class SetupReaders: @unchecked Sendable {
     public static let shared = SetupReaders()
 
@@ -63,7 +105,8 @@ public final class SetupReaders: @unchecked Sendable {
 
     private init() {
         let voice = VoiceSetupReader()
-        readers = [voice.capability: voice]
+        let media = MediaSetupReader()
+        readers = [voice.capability: voice, media.capability: media]
     }
 
     public func register(_ reader: any SetupCapabilityReader) {
@@ -146,8 +189,9 @@ public enum SetupReading {
         return fix.kind == .command ? Localized.text("Copy command") : Localized.text("Set it up")
     }
 
-    public static func fixReason(of fix: SetupFix, capability: String? = nil) -> String? {
+    public static func fixReason(of fix: SetupFix, in check: SetupCheck? = nil, capability: String? = nil) -> String? {
         let reader = capability.flatMap { SetupReaders.shared.reader(for: $0) } ?? SetupReaders.shared.reader(forCheck: fix.id)
+        if let check, let reason = reader?.fixReason(of: fix, in: check) { return reason }
         if let reason = reader?.fixReason(of: fix) { return reason }
         return fix.reason.flatMap { $0.isEmpty ? nil : $0 }
     }

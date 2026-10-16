@@ -233,7 +233,7 @@ public enum SetupFixtures {
         case "password":
             return SetupSnapshot(target: target, phase: .wantsPassword)
         default:
-            return nil
+            return mediaSnapshot(named: name)
         }
     }
 

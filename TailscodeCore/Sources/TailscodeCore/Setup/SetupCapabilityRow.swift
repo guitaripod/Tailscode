@@ -77,33 +77,41 @@ public struct SetupCapabilityRow: Sendable, Equatable, Identifiable {
     }
 
     public static func addTitle(for capability: String) -> String {
-        capability == SetupCapability.voice
-            ? Localized.text("Add voice calls") : Localized.text("Add %@", SetupReading.name(of: capability))
+        if let title = SetupReaders.shared.reader(for: capability)?.addTitle { return title }
+        return Localized.text("Add %@", SetupReading.name(of: capability))
     }
 
     public static func addLine(for capability: String) -> String {
-        capability == SetupCapability.voice
-            ? Localized.text("Talk to your chats out loud. Needs an NVIDIA GPU with 80 GB.")
-            : Localized.text("Not set up on this server yet.")
+        if let line = SetupReaders.shared.reader(for: capability)?.addLine { return line }
+        return Localized.text("Not set up on this server yet.")
     }
 
     public static var sectionTitle: String { Localized.text("Capabilities") }
 }
 
 /// Which capabilities a server screen asks each machine about, and where each one is answered. Voice
-/// is answered by the gateway on its own port; a capability added later names its capability here and
-/// is answered by whatever source is registered for it on the desk.
+/// is answered by the gateway on its own port; images and video by the client's own doctor, asked of
+/// the renderer the person chose for that server or else of the server's own host on ComfyUI's port;
+/// a capability added later names its capability here and is answered by whatever source is
+/// registered for it on the desk.
 public enum SetupTargets {
-    public nonisolated(unsafe) static var listed: [String] = [SetupCapability.voice]
+    public nonisolated(unsafe) static var listed: [String] = [SetupCapability.voice, SetupCapability.media]
 
-    public static func targets(forProfileURL url: URL) -> [SetupTarget] {
+    public static func targets(
+        forProfileURL url: URL, profileID: String? = nil,
+        filed: (String) -> ForgeEndpoint? = { ForgeStore.endpoint(forProfile: $0) }
+    ) -> [SetupTarget] {
         listed.compactMap { capability in
             if capability == SetupCapability.voice {
                 return VoiceEndpoint(profileURL: url).map(SetupTarget.voice)
             }
-            return DelegateAccess.host(of: url).flatMap { $0.isEmpty ? nil : $0 }.map {
-                SetupTarget(host: $0, capability: capability)
+            guard let host = DelegateAccess.host(of: url).flatMap({ $0.isEmpty ? nil : $0 }) else { return nil }
+            if capability == SetupCapability.media {
+                if VoiceDemo.isDemoHost(host) { return nil }
+                let renderer = profileID.flatMap(filed) ?? ForgeEndpoint(host: host)
+                return SetupTarget.media(renderer)
             }
+            return SetupTarget(host: host, capability: capability)
         }
     }
 }

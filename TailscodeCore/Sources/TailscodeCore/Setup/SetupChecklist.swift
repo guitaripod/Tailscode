@@ -17,6 +17,16 @@ public struct SetupTarget: Sendable, Hashable {
         SetupTarget(host: endpoint.host, port: endpoint.port, capability: SetupCapability.voice)
     }
 
+    public static func media(_ endpoint: ForgeEndpoint) -> SetupTarget {
+        SetupTarget(host: endpoint.host, port: endpoint.port, capability: SetupCapability.media)
+    }
+
+    /// The renderer a media target names, or nil for any other capability.
+    public var forgeEndpoint: ForgeEndpoint? {
+        guard capability == SetupCapability.media, !host.isEmpty else { return nil }
+        return ForgeEndpoint(host: host, port: port ?? ForgeEndpoint.defaultPort)
+    }
+
     public var isDemo: Bool { VoiceDemo.isDemoHost(host) }
 }
 
@@ -92,10 +102,11 @@ public struct SetupRow: Sendable, Equatable, Identifiable {
     public let fix: SetupRowFix?
     public let job: SetupRowJob?
     public let failure: String?
+    public let optional: Bool
 
     public init(
         id: String, state: State, title: String, line: String?, fix: SetupRowFix? = nil,
-        job: SetupRowJob? = nil, failure: String? = nil
+        job: SetupRowJob? = nil, failure: String? = nil, optional: Bool = false
     ) {
         self.id = id
         self.state = state
@@ -104,10 +115,22 @@ public struct SetupRow: Sendable, Equatable, Identifiable {
         self.fix = fix
         self.job = job
         self.failure = failure
+        self.optional = optional
     }
 
     func withFix(_ next: SetupRowFix?) -> SetupRow {
-        SetupRow(id: id, state: state, title: title, line: line, fix: next, job: job, failure: failure)
+        SetupRow(
+            id: id, state: state, title: title, line: line, fix: next, job: job, failure: failure,
+            optional: optional)
+    }
+
+    /// Whether the checklist is waiting on this row: something still to do that the person has not
+    /// been told is optional, and not a thing this machine can never do.
+    public var isBlocking: Bool {
+        switch state {
+        case .done, .unavailable: return false
+        case .todo, .working, .needsYou, .failed: return !optional
+        }
     }
 
     public var icon: ActivityIcon {
@@ -184,11 +207,13 @@ public struct SetupChecklist: Sendable, Equatable {
     public let primary: SetupAction?
     public let canCancel: Bool
     public let unavailable: Bool
+    public let focus: SetupFocus?
+    public let place: SetupPlace?
 
     public init(
         target: SetupTarget, name: String, beta: BetaFeature?, status: SetupStatus, headline: String,
         tone: ActivityTone, rows: [SetupRow], primary: SetupAction?, canCancel: Bool = false,
-        unavailable: Bool = false
+        unavailable: Bool = false, focus: SetupFocus? = nil, place: SetupPlace? = nil
     ) {
         self.target = target
         self.name = name
@@ -200,6 +225,8 @@ public struct SetupChecklist: Sendable, Equatable {
         self.primary = primary
         self.canCancel = canCancel
         self.unavailable = unavailable
+        self.focus = focus
+        self.place = place
     }
 
     public var isReady: Bool { status == .ready }
@@ -245,21 +272,22 @@ extension SetupChecklist {
 }
 
 extension SetupChecklist {
-    public init(snapshot: SetupSnapshot, locale: Locale = .current) {
-        self = Self.make(snapshot: snapshot, locale: locale)
+    public init(snapshot: SetupSnapshot, locale: Locale = .current, focus: SetupFocus? = nil) {
+        self = Self.make(snapshot: snapshot, locale: locale, focus: focus)
     }
 
-    private static func make(snapshot: SetupSnapshot, locale: Locale) -> SetupChecklist {
+    private static func make(snapshot: SetupSnapshot, locale: Locale, focus: SetupFocus?) -> SetupChecklist {
         let target = snapshot.target
         let reader = SetupReaders.shared.reader(for: target.capability)
         let name = SetupReading.name(of: target.capability)
         let beta = reader?.beta
+        let place = reader?.place(of: target)
         func plain(_ status: SetupStatus, _ headline: String, _ tone: ActivityTone, _ primary: SetupAction? = nil)
             -> SetupChecklist
         {
             SetupChecklist(
                 target: target, name: name, beta: beta, status: status, headline: headline, tone: tone, rows: [],
-                primary: primary)
+                primary: primary, focus: focus, place: place)
         }
         switch snapshot.phase {
         case .unreachable(let why):
@@ -274,26 +302,30 @@ extension SetupChecklist {
         guard let report = snapshot.report else {
             return plain(.checking, Localized.text("Checking this machine…"), .quiet)
         }
-        return build(report: report, snapshot: snapshot, reader: reader, name: name, beta: beta, locale: locale)
+        return build(
+            report: report, snapshot: snapshot, reader: reader, name: name, beta: beta, place: place,
+            focus: focus, locale: locale)
     }
 
     private static func build(
         report: SetupReport, snapshot: SetupSnapshot, reader: (any SetupCapabilityReader)?, name: String,
-        beta: BetaFeature?, locale: Locale
+        beta: BetaFeature?, place: SetupPlace?, focus: SetupFocus?, locale: Locale
     ) -> SetupChecklist {
         let target = snapshot.target
         let followed = snapshot.job ?? report.job
-        let built = report.checks.map { row(for: $0, snapshot: snapshot, job: followed, locale: locale) }
+        let checks = report.available ? (reader?.arrange(report.checks, focus: focus) ?? report.checks) : report.checks
+        let built = checks.map { row(for: $0, snapshot: snapshot, job: followed, locale: locale) }
         let busy = built.contains { $0.job != nil }
         let rows = built.map { busy && $0.job == nil && $0.fix?.kind == .job ? $0.withFix($0.fix?.disabled()) : $0 }
-        let open = rows.filter { $0.state != .done }
+        let open = rows.filter(\.isBlocking)
 
         func result(_ status: SetupStatus, _ headline: String, _ tone: ActivityTone, _ primary: SetupAction?)
             -> SetupChecklist
         {
             SetupChecklist(
                 target: target, name: name, beta: beta, status: status, headline: headline, tone: tone, rows: rows,
-                primary: primary, canCancel: rows.contains { $0.job != nil }, unavailable: !report.available)
+                primary: primary, canCancel: rows.contains { $0.job != nil }, unavailable: !report.available,
+                focus: focus, place: place)
         }
 
         if !report.available {
@@ -307,22 +339,23 @@ extension SetupChecklist {
         }
         if open.isEmpty && (report.ready || !rows.isEmpty) {
             return result(
-                .ready, reader?.readyHeadline ?? Localized.text("%@ is ready", name), .live,
-                .finish(label: reader?.readyActionLabel ?? Localized.text("Done")))
+                .ready, reader?.readyHeadline(rows: rows, focus: focus) ?? Localized.text("%@ is ready", name), .live,
+                .finish(label: reader?.readyActionLabel(focus: focus) ?? Localized.text("Done")))
         }
+        let told = reader?.headline(blocking: open, focus: focus)
         if open.contains(where: { $0.state == .working }) {
-            return result(.working, Localized.text("Working on it…"), .live, nil)
+            return result(.working, told ?? Localized.text("Working on it…"), .live, nil)
         }
         let count = max(1, open.count)
         return result(
-            .needs(count), headline(forNeeding: count, locale: locale), .attention,
-            primary(rows: rows, snapshot: snapshot, reader: reader))
+            .needs(count), told ?? headline(forNeeding: count, locale: locale), .attention,
+            primary(rows: open, snapshot: snapshot, reader: reader))
     }
 
     private static func primary(rows: [SetupRow], snapshot: SetupSnapshot, reader: (any SetupCapabilityReader)?)
         -> SetupAction?
     {
-        guard let first = rows.first(where: { $0.state != .done }) else { return nil }
+        guard let first = rows.first else { return nil }
         guard let fix = first.fix else { return nil }
         switch fix.kind {
         case .command:
@@ -337,7 +370,8 @@ extension SetupChecklist {
     private static func row(for check: SetupCheck, snapshot: SetupSnapshot, job: SetupJob?, locale: Locale) -> SetupRow {
         let title = SetupReading.title(of: check)
         var line = SetupReading.line(of: check, locale: locale)
-        let fix = check.fix.map { rowFix($0, capability: snapshot.target.capability, locale: locale) }
+        let fix = check.fix.map { rowFix($0, in: check, capability: snapshot.target.capability, locale: locale) }
+        let optional = check.facts["optional"] != nil
         let mine = job.flatMap { Self.owns(check, $0) ? $0 : nil }
         if let mine, !mine.state.isSettled {
             let face = SetupRowJob(
@@ -346,11 +380,13 @@ extension SetupChecklist {
                 step: SetupReading.step(mine.step), waiting: mine.state == .queued)
             return SetupRow(id: check.id, state: .working, title: title, line: line, fix: fix, job: face)
         }
-        if check.state == .ok { return SetupRow(id: check.id, state: .done, title: title, line: line) }
+        if check.state == .ok { return SetupRow(id: check.id, state: .done, title: title, line: line, optional: optional) }
         if check.state == .unavailable {
-            return SetupRow(id: check.id, state: .unavailable, title: title, line: line)
+            return SetupRow(id: check.id, state: .unavailable, title: title, line: line, optional: optional)
         }
-        if check.state == .working { return SetupRow(id: check.id, state: .working, title: title, line: line) }
+        if check.state == .working {
+            return SetupRow(id: check.id, state: .working, title: title, line: line, optional: optional)
+        }
         let failed = [snapshot.failed, job].compactMap { $0 }.first { Self.owns(check, $0) && $0.state == .failed }
         if let failed {
             return SetupRow(
@@ -366,7 +402,9 @@ extension SetupChecklist {
         if line == nil { line = SetupReading.neutral(check.state) }
         let waiting = check.state == .todo && fix == nil && check.facts["after"] != nil
         let needsYou = !waiting && (check.state == .blocked || fix == nil || fix?.kind == .command)
-        return SetupRow(id: check.id, state: needsYou ? .needsYou : .todo, title: title, line: line, fix: fix)
+        return SetupRow(
+            id: check.id, state: needsYou ? .needsYou : .todo, title: title, line: line, fix: fix,
+            optional: optional)
     }
 
     /// Whether a job is the one a check is waiting on. A check that is working has no fix left to point
@@ -376,12 +414,12 @@ extension SetupChecklist {
         return check.fix?.id == job.fix
     }
 
-    private static func rowFix(_ fix: SetupFix, capability: String, locale: Locale) -> SetupRowFix {
+    private static func rowFix(_ fix: SetupFix, in check: SetupCheck, capability: String, locale: Locale) -> SetupRowFix {
         SetupRowFix(
             id: fix.id, kind: fix.kind == .command ? .command : .job,
             label: SetupReading.fixLabel(of: fix, capability: capability),
             cost: fix.kind == .job ? SetupReading.fixCost(of: fix, locale: locale) : nil,
             command: fix.kind == .command ? fix.command : nil,
-            reason: fix.kind == .command ? SetupReading.fixReason(of: fix, capability: capability) : nil)
+            reason: fix.kind == .command ? SetupReading.fixReason(of: fix, in: check, capability: capability) : nil)
     }
 }
