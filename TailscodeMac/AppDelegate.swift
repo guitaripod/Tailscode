@@ -8,6 +8,7 @@ import TailscodeCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var main: MainWindowController?
     private var menu: MainMenu?
+    private var pendingLinks: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
@@ -43,9 +44,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MacNotifier.shared.onOpen = { [weak controller] sessionID in
             controller?.openSession(withID: sessionID)
         }
-        FirstRunWindow.presentIfNeeded { [weak controller] in
-            Task { [weak controller] in await controller?.sidebar.refresh() }
-        }
+        FirstRunWindow.hooks = FirstRunWindow.Hooks(
+            saved: { [weak controller] in
+                Task { [weak controller] in await controller?.sidebar.refresh() }
+            },
+            seePro: { [weak controller] in controller?.presentPro() },
+            openServer: { [weak controller] id in
+                guard let controller else { return }
+                ConnectLinkDoor.show(serverID: id, main: controller)
+            })
+        FirstRunWindow.presentIfNeeded()
+        openPendingLinks()
         #if DEBUG
             if !LiveShot.holdsBack("activation") { NSApp.activate(ignoringOtherApps: true) }
         #else
@@ -58,6 +67,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DriveHooks.install(main: controller)
             LiveShot.install()
         #endif
+    }
+
+    /// A `tailscode://` address opened from outside. One that arrives while the app is still
+    /// starting waits until the main window exists, because first run and the alert for a
+    /// refused link both stand on it.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        pendingLinks.append(contentsOf: urls)
+        openPendingLinks()
+    }
+
+    private func openPendingLinks() {
+        guard let main, !pendingLinks.isEmpty else { return }
+        let urls = pendingLinks
+        pendingLinks = []
+        ConnectLinkDoor.open(urls, main: main)
     }
 
     #if TAILSCODE_MAS
