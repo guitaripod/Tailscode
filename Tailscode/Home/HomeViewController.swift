@@ -869,14 +869,14 @@ final class HomeViewController: UIViewController {
             return nil
         case 1:
             return UIAction(
-                title: DelegateEntryPoint.menuTitle, subtitle: DelegateBeta.label, image: image
+                title: DelegateEntryPoint.menuTitle, subtitle: BetaWords.label, image: image
             ) { [weak self] _ in
                 guard let self, let profile = servers.first else { return }
                 DelegateGate.open(from: self, profile: profile)
             }
         default:
             return UIMenu(
-                title: DelegateEntryPoint.menuTitle, subtitle: DelegateBeta.label, image: image,
+                title: DelegateEntryPoint.menuTitle, subtitle: BetaWords.label, image: image,
                 children: servers.map { profile in
                     UIAction(
                         title: profile.name, subtitle: ServerLabel.address(profile),
