@@ -36,8 +36,6 @@ final class ForgeSetupSheet: NSObject {
     private let tailnetLine = NSTextField(wrappingLabelWithString: "")
     private let tailnetRemedy = TailnetRemedyView()
 
-    private let mediaHeader = MacDialogs.sectionHeader("")
-    private let mediaColumn = FillingStack()
     private let knownHeader = MacDialogs.sectionHeader("")
     private let knownColumn = FillingStack()
 
@@ -142,7 +140,6 @@ final class ForgeSetupSheet: NSObject {
             row.spacing = MacTheme.Spacing.s
         }
         knownColumn.spacing = MacTheme.Spacing.s
-        mediaColumn.spacing = MacTheme.Spacing.s
         foundColumn.spacing = MacTheme.Spacing.s
 
         column.spacing = MacTheme.Spacing.m
@@ -152,7 +149,6 @@ final class ForgeSetupSheet: NSObject {
             knownHeader, knownColumn,
             addressHeader, addressField, hintLabel, nameField,
             statusTitle, statusDetail, statusActions, copiedLabel, noteLabel, buttonRow,
-            mediaHeader, mediaColumn,
         ] as [NSView] {
             column.addArrangedSubview(view)
         }
@@ -222,7 +218,7 @@ final class ForgeSetupSheet: NSObject {
             label.font = MacTheme.Ramp.font(.cardTitle)
         }
         addressField.font = MacTheme.Ramp.font(.code)
-        for header in [knownHeader, sweepHeader, addressHeader, mediaHeader] {
+        for header in [knownHeader, sweepHeader, addressHeader] {
             header.font = MacTheme.Ramp.font(.sectionLabel)
             header.textColor = MacTheme.Color.secondaryLabel
         }
@@ -517,47 +513,7 @@ final class ForgeSetupSheet: NSObject {
         renderKnown()
         renderSweep()
         renderForm()
-        renderMedia()
         resize()
-    }
-
-    /// What the machine at the address can make, once the doctor has looked: a row for each node set
-    /// and model file in Core's words, each missing file with the one command that fetches it. The
-    /// command is copied rather than run, because the files go onto the other machine.
-    private func renderMedia() {
-        let lines = setup.mediaLines
-        mediaHeader.stringValue = MediaWords.groupTitle.uppercased()
-        mediaHeader.isHidden = lines.isEmpty
-        mediaColumn.isHidden = lines.isEmpty
-        mediaColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for line in lines { mediaColumn.addArrangedSubview(makeMediaRow(line)) }
-    }
-
-    private func makeMediaRow(_ line: MediaReading.Line) -> NSView {
-        let title = line.isOptional ? "\(line.title) · \(MediaWords.optionalMark)" : line.title
-        let name = RowKit.label(
-            title, font: MacTheme.Ramp.font(.rowTitle), color: MacTheme.Color.label)
-        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let detail = MacDialogs.detailLabel(line.detail, wraps: true)
-        detail.textColor = line.tone.color
-        let words = NSStackView(views: [name, detail])
-        words.orientation = .vertical
-        words.alignment = .leading
-        words.spacing = 2
-        var views: [NSView] = [words, RowKit.spacer()]
-        if let command = line.fix?.command {
-            let copy = RowKit.ActionButton(title: MediaWords.copyCommand) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(command, forType: .string)
-            }
-            copy.toolTip = command
-            views.append(copy)
-        }
-        let row = NSStackView(views: views)
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = MacTheme.Spacing.s
-        return row
     }
 
     private func renderIntro() {

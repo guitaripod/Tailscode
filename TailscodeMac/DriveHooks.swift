@@ -164,17 +164,6 @@
                 say(StudioDrive.state())
             case "stoolbar":
                 say(StudioDrive.toolbar())
-            case "smachineshot":
-                let sheet = StudioVideoMachineSheet(runner: .shared) {}
-                sheet.loadViewIfNeeded()
-                sheet.view.layoutSubtreeIfNeeded()
-                sheet.view.appearance = MacTheme.Chrome.appearance
-                if let rep = sheet.view.bitmapImageRepForCachingDisplay(in: sheet.view.bounds) {
-                    sheet.view.cacheDisplay(in: sheet.view.bounds, to: rep)
-                    try? rep.representation(using: .png, properties: [:])?.write(
-                        to: URL(fileURLWithPath: argument))
-                    say("SMACHINESHOT \(argument) \(Int(sheet.view.bounds.width))x\(Int(sheet.view.bounds.height))")
-                }
             case "sdemo":
                 StudioVideoDemo.apply(argument)
             case "sfocus":

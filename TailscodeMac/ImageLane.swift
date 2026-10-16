@@ -16,7 +16,6 @@ final class ImageLane: StudioLane {
     private let imageStage: StudioStageView
     private let imageDock: StudioDockView
     private var watchers: [ObjectIdentifier: LaneWatcher] = [:]
-    private var popover: NSPopover?
 
     var onNotice: ((String) -> Void)?
     var onAnimate: ((StudioAnimateRequest) -> Void)?
@@ -468,12 +467,13 @@ final class ImageLane: StudioLane {
         }
     }
 
+    /// What the machine can paint with, as the shared checklist for images and video led by pictures:
+    /// the same one the video lane and the servers window open. Changing the machine goes through the
+    /// renderer picker and returns to the checklist, and the studio follows the door.
     func presentMachine(from anchor: NSView) {
-        popover?.close()
-        let pop = NSPopover()
-        pop.behavior = .transient
-        pop.contentViewController = StudioMachineSheet(studio: studio)
-        pop.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
-        popover = pop
+        let held = studio
+        MediaSetupGate.present(
+            endpoint: studio.endpoint.forgeEndpoint, focus: .pictures, on: anchor.window,
+            onChanged: { held.adoptDoor() })
     }
 }

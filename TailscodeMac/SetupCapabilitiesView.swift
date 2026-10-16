@@ -19,8 +19,8 @@ final class SetupCapabilitiesView: NSStackView {
     private var following = false
     private let header = MacDialogs.sectionHeader(SetupCapabilityRow.sectionTitle)
 
-    init(profileURL: URL) {
-        targets = SetupTargets.targets(forProfileURL: profileURL)
+    init(profileURL: URL, profileID: String? = nil) {
+        targets = SetupTargets.targets(forProfileURL: profileURL, profileID: profileID)
         super.init(frame: .zero)
         orientation = .vertical
         alignment = .leading

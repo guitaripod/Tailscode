@@ -18,6 +18,7 @@ final class VideoBrief: StudioBriefing {
     let runner: ForgeRunner
     var noticeHandler: ((String) -> Void)?
     var onSetup: (() -> Void)?
+    var onChecklist: (() -> Void)?
     var onChange: ((Change) -> Void)?
     var onRender: (() -> Void)?
 
@@ -149,6 +150,10 @@ final class VideoBrief: StudioBriefing {
         runner.describe(prompt)
         guard runner.endpoint != nil else {
             onSetup?()
+            return
+        }
+        guard board.blocker == nil else {
+            onChecklist?()
             return
         }
         guard board.recipe.isRenderable, !runner.isRendering else { return }

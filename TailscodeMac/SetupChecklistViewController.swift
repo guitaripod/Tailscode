@@ -14,9 +14,16 @@ final class SetupChecklistViewController: NSViewController {
 
     var onFinish: (() -> Void)?
     var onClose: (() -> Void)?
+    var onChange: (() -> Void)? {
+        didSet { placeButton.isHidden = onChange == nil }
+    }
 
     private let target: SetupTarget
+    private let focus: SetupFocus?
     private let reportLines: () -> [String]
+    private let placeLabel = NSTextField(wrappingLabelWithString: "")
+    private let placeButton = NSButton()
+    private let placeLine = NSStackView()
     private let lifetime = PaneLifetime()
     private let column = FillingStack()
     private let ground = RowKit.Ground(frame: .zero)
@@ -34,8 +41,9 @@ final class SetupChecklistViewController: NSViewController {
     private var copied = false
     private var copiedTicket = 0
 
-    init(target: SetupTarget, reportLines: @escaping () -> [String]) {
+    init(target: SetupTarget, focus: SetupFocus? = nil, reportLines: @escaping () -> [String]) {
         self.target = target
+        self.focus = focus
         self.reportLines = reportLines
         super.init(nibName: nil, bundle: nil)
     }
@@ -76,6 +84,21 @@ final class SetupChecklistViewController: NSViewController {
         column.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 16, right: 24)
         column.addArrangedSubview(header)
 
+        placeLabel.font = MacTheme.Ramp.font(.panelFootnote)
+        placeLabel.textColor = MacTheme.Color.secondaryLabel
+        placeButton.title = ""
+        placeButton.bezelStyle = .rounded
+        placeButton.controlSize = .small
+        placeButton.target = self
+        placeButton.action = #selector(changePressed)
+        placeButton.isHidden = onChange == nil
+        placeLine.orientation = .horizontal
+        placeLine.alignment = .centerY
+        placeLine.spacing = MacTheme.Spacing.s
+        placeLine.setViews([placeLabel, NSView(), placeButton], in: .leading)
+        placeLine.isHidden = true
+        column.addArrangedSubview(placeLine)
+
         let scroll = MacDialogs.scrollColumn(holding: column)
         content.addSubview(scroll)
 
@@ -112,13 +135,16 @@ final class SetupChecklistViewController: NSViewController {
             content.heightAnchor.constraint(greaterThanOrEqualToConstant: 360),
         ])
         view = content
-        apply(SetupChecklist(snapshot: SetupSnapshot(target: target)))
+        apply(SetupChecklist(snapshot: SetupSnapshot(target: target), focus: focus))
     }
 
     override func viewDidAppear() {
         super.viewDidAppear()
         MacSetupGate.desk.follow(target, lifetime: lifetime) { [weak self] snapshot in
-            Task { @MainActor in self?.apply(SetupChecklist(snapshot: snapshot)) }
+            Task { @MainActor in
+                guard let self else { return }
+                self.apply(SetupChecklist(snapshot: snapshot, focus: self.focus))
+            }
         }
     }
 
@@ -141,8 +167,24 @@ final class SetupChecklistViewController: NSViewController {
         placeBadge(for: next)
         icon.show(next.icon, spoken: next.headline)
         headline.stringValue = next.headline
+        renderPlace(next.place)
         renderRows(next.rows)
         renderPrimary(next.primary)
+    }
+
+    private func renderPlace(_ place: SetupPlace?) {
+        guard let place else {
+            placeLine.isHidden = true
+            return
+        }
+        placeLabel.stringValue = place.line
+        placeButton.title = place.changeLabel
+        placeLine.isHidden = false
+    }
+
+    @objc private func changePressed() {
+        MacHaptics.shared.play(.tap)
+        onChange?()
     }
 
     private func placeBadge(for next: SetupChecklist) {
@@ -269,17 +311,30 @@ final class SetupSheet: NSObject {
     private let window: NSWindow
     private let controller: SetupChecklistViewController
     private let target: SetupTarget
+    private let focus: SetupFocus?
     private var finish: (() -> Void)?
 
+    /// Ends the checklist on screen, if there is one, and runs `then` once it has gone.
+    static func dismiss(then: @escaping @MainActor () -> Void) {
+        guard let open = active else {
+            then()
+            return
+        }
+        open.end()
+        DispatchQueue.main.async { MainActor.assumeIsolated { then() } }
+    }
+
     static func present(
-        target: SetupTarget, on host: NSWindow?, reportLines: @escaping () -> [String], onFinish: (() -> Void)?
+        target: SetupTarget, focus: SetupFocus? = nil, on host: NSWindow?, reportLines: @escaping () -> [String],
+        onFinish: (() -> Void)?, onChange: (@MainActor (NSWindow) -> Void)? = nil
     ) {
-        if let open = active, open.target == target {
+        if let open = active, open.target == target, open.focus == focus {
             open.finish = onFinish ?? open.finish
             return
         }
         guard let host else { return }
-        let made = SetupSheet(target: target, reportLines: reportLines, onFinish: onFinish)
+        let made = SetupSheet(target: target, focus: focus, reportLines: reportLines, onFinish: onFinish)
+        if let onChange { made.controller.onChange = { [weak made] in if let window = made?.window { onChange(window) } } }
         active = made
         host.beginSheet(made.window) { _ in
             made.controller.viewDidDisappear()
@@ -287,10 +342,11 @@ final class SetupSheet: NSObject {
         }
     }
 
-    private init(target: SetupTarget, reportLines: @escaping () -> [String], onFinish: (() -> Void)?) {
+    private init(target: SetupTarget, focus: SetupFocus?, reportLines: @escaping () -> [String], onFinish: (() -> Void)?) {
         self.target = target
+        self.focus = focus
         finish = onFinish
-        controller = SetupChecklistViewController(target: target, reportLines: reportLines)
+        controller = SetupChecklistViewController(target: target, focus: focus, reportLines: reportLines)
         window = NSWindow(contentViewController: controller)
         super.init()
         window.styleMask = [.titled]
