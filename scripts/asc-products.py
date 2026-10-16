@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Idempotent creation of Tailscode's four IAPs in ASC.
+"""Superseded by `midgar products` (Midgar decision D13); kept until this app's store flow moves to it. See ops/runbooks/store-commands.md in guitaripod/midgar-platform.
+
+Idempotent creation of Tailscode's four IAPs in ASC.
 
 Tailscode Pro (non-consumable, Family Sharing on) + three tip consumables,
 matching Tailscode.storekit and ProStore.swift exactly. Each gets an en-US

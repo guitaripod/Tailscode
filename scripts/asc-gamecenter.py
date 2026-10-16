@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Idempotent Game Center provisioner for Tailscode.
+"""Superseded by `midgar gamecenter` (Midgar decision D13); kept until this app's store flow moves to it. See ops/runbooks/store-commands.md in guitaripod/midgar-platform.
+
+Idempotent Game Center provisioner for Tailscode.
 
 Mirrors the trophy catalog in TailscodeCore/Sources/TailscodeCore/Trophies.swift —
 that file is the source of truth; a trophy added there is added here in the same

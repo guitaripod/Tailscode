@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Upload Tailscode's macOS App Store screenshots (en-US): one APP_DESKTOP set.
+"""Superseded by `midgar shots` (Midgar decision D13); kept until this app's store flow moves to it. See ops/runbooks/store-commands.md in guitaripod/midgar-platform.
+
+Upload Tailscode's macOS App Store screenshots (en-US): one APP_DESKTOP set.
 
 The Mac train shares the iOS app record, so this is the same three-step asset dance the iPhone
 set uses — reserve (POST /v1/appScreenshots → uploadOperations) → PUT the bytes → commit

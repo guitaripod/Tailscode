@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Upload Tailscode's App Store screenshots for every locale the listing carries.
+"""Superseded by `midgar shots` (Midgar decision D13); kept until this app's store flow moves to it. See ops/runbooks/store-commands.md in guitaripod/midgar-platform.
+
+Upload Tailscode's App Store screenshots for every locale the listing carries.
 
 The composed panels live in marketing/appstore/panels: iphone/ and ipad/ are the
 en-US sets, l10n/<locale>/iphone/ the localized iPhone sets. Apple falls back to
