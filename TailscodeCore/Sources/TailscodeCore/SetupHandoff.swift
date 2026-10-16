@@ -4,12 +4,11 @@ import Foundation
 ///
 /// Setup is typed on the machine that will run the agent, not on the phone, and that machine is
 /// often across the room with nothing connecting it to the phone but the person holding both. The
-/// text is the same three steps the setup cards show — the commands verbatim, so what lands in
-/// Notes or Messages can be pasted straight into a terminal.
+/// text is the steps the setup shows — the commands verbatim, so what lands in Notes or Messages
+/// can be pasted straight into a terminal — and ends on what the machine prints for the phone to
+/// read, so nobody has to carry an address back by hand.
 public enum SetupHandoff: Sendable {
     public static let tailscaleDownloadURL = "https://tailscale.com/download"
-
-    public static let addressCommand = "tailscale ip -4"
 
     public static func message(installCommand: String) -> String {
         [
@@ -20,8 +19,8 @@ public enum SetupHandoff: Sendable {
             Localized.text(
                 "2. Run this in a terminal on this computer:\n%@", installCommand),
             Localized.text(
-                "3. Then run this to read this computer's address, and type it into Tailscode on my phone:\n%@",
-                addressCommand),
+                "3. When it finishes it prints a code and a link. Scan the code with Tailscode on the phone, or send the link to it."
+            ),
         ].joined(separator: "\n\n")
     }
 

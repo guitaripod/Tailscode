@@ -83,8 +83,9 @@ extension DeviceStores {
             let message = SetupHandoff.message(installCommand: command)
             #expect(message.contains(SetupHandoff.tailscaleDownloadURL))
             #expect(message.contains("\n\(command)\n"))
-            #expect(message.hasSuffix(SetupHandoff.addressCommand))
-            let order = [SetupHandoff.tailscaleDownloadURL, command, SetupHandoff.addressCommand]
+            #expect(message.contains("prints a code and a link"))
+            #expect(!message.contains("tailscale ip"))
+            let order = [SetupHandoff.tailscaleDownloadURL, command, "prints a code and a link"]
                 .compactMap { message.range(of: $0)?.lowerBound }
             #expect(order == order.sorted() && order.count == 3)
         }

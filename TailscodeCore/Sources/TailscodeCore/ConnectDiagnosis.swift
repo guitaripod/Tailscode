@@ -78,8 +78,8 @@ public struct ConnectDiagnosis: Equatable, Sendable {
                 return httpsDiagnosis(plain: plain)
             }
             let detail = Localized.text(
-                "Something is listening on %@, but it isn't an agent this app knows. opencode serves 4096, claude-bridge 4098, omp-bridge 4099.",
-                address.displayHost)
+                "Something on %@ answered, but not as a coding agent Tailscode knows. Run the install command on that machine again, then try once more.",
+                machine(of: address))
             if let alternatePort, let port = alternatePort.port {
                 return ConnectDiagnosis(
                     symbol: "questionmark.app",
@@ -105,8 +105,8 @@ public struct ConnectDiagnosis: Equatable, Sendable {
                     symbol: "bolt.horizontal.circle",
                     title: Localized.text("Nothing is listening on %@", address.displayHost),
                     detail: Localized.text(
-                        "The machine is reachable, so the address is right — but no agent is bound to that port. Start it there, and make sure it binds 0.0.0.0 rather than localhost."
-                    ),
+                        "%@ is reachable, but no coding agent is running on it yet. Run the install command on that machine, or start the agent there if it is already installed.",
+                        machine(of: address)),
                     fix: .retry,
                     actionTitle: Localized.text("Try again"))
             case .nameNotResolved:
@@ -118,8 +118,8 @@ public struct ConnectDiagnosis: Equatable, Sendable {
                     symbol: "questionmark.app",
                     title: Localized.text("%@ answered, but not as an agent", address.displayHost),
                     detail: Localized.text(
-                        "The port is open and something is on it, yet it didn't respond as a known agent. Check the port — 4096 opencode, 4098 claude-bridge, 4099 omp-bridge."
-                    ),
+                        "%@ is up and something is listening, but it did not answer as a coding agent. Run the install command on that machine again, then try once more.",
+                        machine(of: address)),
                     fix: alternatePort.map { .retryOtherPort($0) } ?? .retry,
                     actionTitle: alternatePort?.port.map { Localized.text("Try port %@", "\($0)") }
                         ?? Localized.text("Try again"))
@@ -151,6 +151,10 @@ public struct ConnectDiagnosis: Equatable, Sendable {
             ),
             fix: .openTailscale,
             actionTitle: Localized.text("Open Tailscale"))
+    }
+
+    private static func machine(of address: HostAddress) -> String {
+        address.url.host ?? address.displayHost
     }
 
     static func unresolvable(deviceName: String, host: String) -> ConnectDiagnosis {
