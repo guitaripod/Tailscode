@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Push the localized store listing — name, subtitle, keywords, promotional text, description — to
+"""Superseded by `midgar listing` (Midgar decision D13); kept until this app's store flow moves to it. See ops/runbooks/store-commands.md in guitaripod/midgar-platform.
+
+Push the localized store listing — name, subtitle, keywords, promotional text, description — to
 every locale on every version that is still editable, creating a locale the store does not have yet — docs/asc-listing-l10n.json for the iPhone
 train, docs/asc-listing-l10n-macos.json for the Mac's, which sells a window rather than a Lock Screen.
 
