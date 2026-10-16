@@ -617,13 +617,13 @@ final class SettingsViewController: UIViewController {
             }
         case .tailnetToken:
             content.text = String(localized: "API access token")
-            content.secondaryText =
-                TailnetCredentials.hasToken
-                ? String(localized: "Saved in Keychain") : String(localized: "Not set")
+            let key = TailnetCredentials.key
+            content.secondaryText = key.settingsValue
             content.prefersSideBySideTextAndSecondaryText = true
-            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(systemName: "key")
-            content.imageProperties.tintColor = Theme.Color.info
+            content.secondaryTextProperties.color =
+                key == .rejected ? Theme.Color.warning : Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: key == .rejected ? "key.slash" : "key")
+            content.imageProperties.tintColor = key == .rejected ? Theme.Color.warning : Theme.Color.info
             cell.accessories = [.disclosureIndicator()]
         case .tailnetScan:
             content.text = String(localized: "Last discovery")

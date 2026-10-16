@@ -1,3 +1,4 @@
+import CodingAgentKit
 import CodingAgentKitApple
 import Darwin
 import Foundation
@@ -12,6 +13,8 @@ enum TailnetCredentials {
     private static let keychain = KeychainSecretStore()
     private static let tokenKey = "tailscale.token"
     private static let scanKey = "tailscale.lastScan"
+    private static let rejectedKey = "tailscale.rejected"
+    private static let knownKey = "tailscale.known"
 
     static var token: String? {
         let stored = (try? keychain.value(for: tokenKey)) ?? nil
@@ -21,15 +24,44 @@ enum TailnetCredentials {
 
     static var hasToken: Bool { token != nil }
 
+    /// Whether the token is absent, working, or one Tailscale refused. A refused token stays stored
+    /// so Settings can say so, and is never sent again until the person replaces it.
+    static var key: TailnetKey {
+        guard hasToken else { return .none }
+        return UserDefaults.standard.bool(forKey: rejectedKey) ? .rejected : .saved
+    }
+
     static func setToken(_ value: String) throws {
         try keychain.setValue(value, for: tokenKey)
+        UserDefaults.standard.removeObject(forKey: rejectedKey)
         AppLogger.connection.info("tailscale token saved")
     }
 
     static func clearToken() {
         try? keychain.removeValue(for: tokenKey)
         UserDefaults.standard.removeObject(forKey: scanKey)
+        UserDefaults.standard.removeObject(forKey: rejectedKey)
+        UserDefaults.standard.removeObject(forKey: knownKey)
         AppLogger.connection.info("tailscale token cleared")
+    }
+
+    static func markRejected() {
+        UserDefaults.standard.set(true, forKey: rejectedKey)
+        AppLogger.connection.error("tailscale refused the saved token")
+    }
+
+    static var knownMachines: KnownMachines? {
+        guard let data = UserDefaults.standard.data(forKey: knownKey) else { return nil }
+        return try? JSONDecoder().decode(KnownMachines.self, from: data)
+    }
+
+    static var rememberedDevices: [TailscaleDevice] {
+        knownMachines?.devices() ?? []
+    }
+
+    static func remember(_ listing: [TailscaleDevice]) {
+        guard let data = try? JSONEncoder().encode(KnownMachines.remembering(listing)) else { return }
+        UserDefaults.standard.set(data, forKey: knownKey)
     }
 
     struct Scan: Codable {
@@ -47,6 +79,43 @@ enum TailnetCredentials {
         let scan = Scan(date: Date(), deviceCount: devices, serverCount: servers)
         guard let data = try? JSONEncoder().encode(scan) else { return }
         UserDefaults.standard.set(data, forKey: scanKey)
+    }
+}
+
+/// The tailnet's machines as this phone can get them: Tailscale's own list when the token works,
+/// and the machines it last saw when the token is missing or has stopped working. A phone cannot
+/// ask the daemon, so the token is the only live source — and the memory is what keeps a token that
+/// expires in the middle of a quarter from taking discovery with it.
+@MainActor
+enum TailnetDirectory {
+    struct Listing {
+        let devices: [TailscaleDevice]
+        let fromMemory: Bool
+    }
+
+    enum Failure: Error {
+        case needsKey
+        case rejected
+        case unavailable(Error)
+    }
+
+    static func load() async throws -> Listing {
+        let key = TailnetCredentials.key
+        if key == .saved, let token = TailnetCredentials.token {
+            do {
+                let devices = try await TailscaleClient().fetchDevices(with: token)
+                TailnetCredentials.remember(devices)
+                return Listing(devices: devices, fromMemory: false)
+            } catch where TailscaleClient.isRejection(error) {
+                TailnetCredentials.markRejected()
+            } catch {
+                guard !TailnetCredentials.rememberedDevices.isEmpty else { throw Failure.unavailable(error) }
+                AppLogger.connection.error("tailscale listing failed, using remembered machines: \(error.localizedDescription)")
+            }
+        }
+        let remembered = TailnetCredentials.rememberedDevices
+        if !remembered.isEmpty { return Listing(devices: remembered, fromMemory: true) }
+        throw TailnetCredentials.key == .rejected ? Failure.rejected : Failure.needsKey
     }
 }
 

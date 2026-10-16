@@ -192,7 +192,7 @@ final class ForgeSweepViewController: UIViewController {
     private func openTokenEditor() {
         let editor = TailnetTokenViewController()
         editor.onChange = { [weak self] in
-            guard let self, TailnetCredentials.hasToken else { return }
+            guard let self, TailnetCredentials.key == .saved else { return }
             self.gate = .ready
             self.render()
             self.startScan()
@@ -206,7 +206,7 @@ final class ForgeSweepViewController: UIViewController {
         #if DEBUG
             if stagedDevices != nil { return true }
         #endif
-        return TailnetCredentials.hasToken
+        return TailnetCredentials.key != .none || !TailnetCredentials.rememberedDevices.isEmpty
     }
 
     /// Asks the tailnet, or lands on the key when there is none to ask with — a phone has no
@@ -220,12 +220,12 @@ final class ForgeSweepViewController: UIViewController {
                 return
             }
         #endif
-        guard TailnetCredentials.hasToken, let token = TailnetCredentials.token else {
+        guard TailnetCredentials.key != .none || !TailnetCredentials.rememberedDevices.isEmpty else {
             gate = .needsKey(rejected: false)
             render()
             return
         }
-        begin { (try await TailscaleClient().fetchDevices(with: token), ForgeSweep.liveProbe) }
+        begin { (try await TailnetDirectory.load().devices, ForgeSweep.liveProbe) }
     }
 
     /// One scan, however the peer list was got. The list is the only thing a phone cannot ask for
@@ -399,10 +399,14 @@ final class ForgeSweepViewController: UIViewController {
     /// that failed — scanning again with the same key fails identically for as long as the app is
     /// up — so it lands on the key rather than on the dial.
     private static func gate(for error: Error) -> Gate {
-        guard let agent = error as? AgentError, case .http(let status, _) = agent,
-            status == 401 || status == 403
-        else { return .trouble(String(localized: "Scan failed: \(error.localizedDescription)")) }
-        return .needsKey(rejected: true)
+        switch error as? TailnetDirectory.Failure {
+        case .needsKey: return .needsKey(rejected: false)
+        case .rejected: return .needsKey(rejected: true)
+        case .unavailable(let underlying):
+            return .trouble(String(localized: "Scan failed: \(underlying.localizedDescription)"))
+        case nil:
+            return .trouble(String(localized: "Scan failed: \(error.localizedDescription)"))
+        }
     }
 }
 

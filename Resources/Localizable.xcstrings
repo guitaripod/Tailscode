@@ -322140,6 +322140,929 @@
           }
         }
       }
+    },
+    "Add a new token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add a new token"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neues Token hinzufügen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir un token nuevo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter un nouveau jeton"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi un nuovo token"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいトークンを追加"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 토큰 추가"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj nowy token"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar um novo token"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加新令牌"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新增權杖"
+          }
+        }
+      }
+    },
+    "Asked %lld remembered machines.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asked %lld remembered machines."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld gespeicherte Rechner gefragt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se consultaron %lld máquinas recordadas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld machines mémorisées interrogées."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interrogate %lld macchine memorizzate."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記憶済みのマシン %lld 台に問い合わせました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "기억된 머신 %lld대에 문의했습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapytano %lld zapamiętanych komputerów."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consultadas %lld máquinas lembradas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已询问 %lld 台记住的机器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已詢問 %lld 台記住的電腦。"
+          }
+        }
+      }
+    },
+    "Checking with Tailscale…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking with Tailscale…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird mit Tailscale geprüft…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comprobando con Tailscale…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérification auprès de Tailscale…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifica con Tailscale…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale に確認しています…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale에 확인하는 중…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprawdzanie w Tailscale…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificando com o Tailscale…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在向 Tailscale 确认…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在向 Tailscale 確認…"
+          }
+        }
+      }
+    },
+    "Couldn't reach Tailscale to check the token. Check your connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't reach Tailscale to check the token. Check your connection and try again."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale war nicht erreichbar, um das Token zu prüfen. Prüfe deine Verbindung und versuche es erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo contactar con Tailscale para comprobar el token. Revisa tu conexión e inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de joindre Tailscale pour vérifier le jeton. Vérifiez votre connexion et réessayez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile contattare Tailscale per verificare il token. Controlla la connessione e riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "トークンを確認するため Tailscale に接続できませんでした。接続を確認して、もう一度お試しください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "토큰을 확인하려고 Tailscale에 연결할 수 없습니다. 연결을 확인하고 다시 시도하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie udało się połączyć z Tailscale, aby sprawdzić token. Sprawdź połączenie i spróbuj ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível contactar o Tailscale para verificar o token. Confira sua conexão e tente de novo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法连接 Tailscale 来检查令牌。请检查网络连接后重试。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法連上 Tailscale 來檢查權杖。請檢查網路連線後再試一次。"
+          }
+        }
+      }
+    },
+    "No Tailscale token, but this phone remembers %lld machines. Ask them again, or add a token to find new ones.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Tailscale token, but this phone remembers %lld machines. Ask them again, or add a token to find new ones."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Tailscale-Token, aber dieses Telefon kennt %lld Rechner. Frag sie erneut ab oder füge ein Token hinzu, um neue zu finden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hay token de Tailscale, pero este teléfono recuerda %lld máquinas. Pregúntales de nuevo o añade un token para encontrar nuevas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun jeton Tailscale, mais ce téléphone se souvient de %lld machines. Interrogez-les à nouveau, ou ajoutez un jeton pour en trouver de nouvelles."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun token Tailscale, ma questo telefono ricorda %lld macchine. Interrogale di nuovo o aggiungi un token per trovarne di nuove."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale のトークンはありませんが、この端末は %lld 台のマシンを記憶しています。もう一度問い合わせるか、トークンを追加して新しいマシンを探してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 토큰이 없지만 이 휴대폰은 %lld대의 머신을 기억하고 있습니다. 다시 문의하거나 토큰을 추가해 새 머신을 찾으세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brak tokena Tailscale, ale ten telefon pamięta %lld komputery. Zapytaj je ponownie albo dodaj token, aby znaleźć nowe."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem token do Tailscale, mas este celular lembra de %lld máquinas. Pergunte a elas de novo ou adicione um token para encontrar novas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有 Tailscale 令牌，但这部手机记得 %lld 台机器。可再次询问它们，或添加令牌以发现新机器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有 Tailscale 權杖，但這支手機記得 %lld 台電腦。可再次詢問它們，或新增權杖以探索新電腦。"
+          }
+        }
+      }
+    },
+    "Scan remembered machines": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan remembered machines"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gespeicherte Rechner scannen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escanear máquinas recordadas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analyser les machines mémorisées"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analizza le macchine memorizzate"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記憶済みのマシンをスキャン"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "기억된 머신 스캔"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skanuj zapamiętane komputery"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escanear máquinas lembradas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扫描记住的机器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "掃描記住的電腦"
+          }
+        }
+      }
+    },
+    "Stopped working — tap to replace": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped working — tap to replace"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funktioniert nicht mehr – zum Ersetzen tippen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dejó de funcionar: toca para reemplazar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A cessé de fonctionner — touchez pour remplacer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ha smesso di funzionare — tocca per sostituire"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動作しなくなりました — タップして置き換え"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "작동을 멈춤 — 눌러서 교체"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przestał działać — dotknij, aby zastąpić"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parou de funcionar — toque para substituir"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已失效 — 轻点以替换"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已失效 — 輕點以取代"
+          }
+        }
+      }
+    },
+    "Stored only in the Keychain and used solely to list your Tailscale devices — connecting to a server never needs it. Tailscale tokens last at most 90 days; when one stops working Tailscode says so and keeps asking the machines it already knows.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored only in the Keychain and used solely to list your Tailscale devices — connecting to a server never needs it. Tailscale tokens last at most 90 days; when one stops working Tailscode says so and keeps asking the machines it already knows."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nur im Schlüsselbund gespeichert und allein dazu verwendet, deine Tailscale-Geräte aufzulisten – zum Verbinden mit einem Server wird es nie gebraucht. Tailscale-Token gelten höchstens 90 Tage; wenn eines nicht mehr funktioniert, sagt Tailscode das und fragt weiter die Rechner, die es bereits kennt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se guarda solo en el llavero y se usa únicamente para listar tus dispositivos de Tailscale: conectarse a un servidor nunca lo necesita. Los tokens de Tailscale duran como máximo 90 días; cuando uno deja de funcionar, Tailscode lo indica y sigue preguntando a las máquinas que ya conoce."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stocké uniquement dans le trousseau et utilisé seulement pour lister vos appareils Tailscale — la connexion à un serveur n’en a jamais besoin. Les jetons Tailscale expirent au plus tard après 90 jours ; quand l’un cesse de fonctionner, Tailscode le signale et continue d’interroger les machines déjà connues."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conservato solo nel portachiavi e usato unicamente per elencare i tuoi dispositivi Tailscale — la connessione a un server non lo richiede mai. I token Tailscale durano al massimo 90 giorni; quando uno smette di funzionare, Tailscode lo segnala e continua a interrogare le macchine già note."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キーチェーンにのみ保存され、Tailscale のデバイス一覧を取得するためだけに使われます。サーバへの接続には不要です。Tailscale のトークンの有効期限は最長 90 日です。トークンが使えなくなると、Tailscode がそれを伝え、既知のマシンへの問い合わせは続けます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "키체인에만 저장되며 Tailscale 기기 목록을 가져올 때만 사용됩니다. 서버 연결에는 전혀 필요하지 않습니다. Tailscale 토큰은 최대 90일간 유효합니다. 토큰이 작동하지 않으면 Tailscode가 이를 알려 주고, 이미 알고 있는 머신에는 계속 문의합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przechowywany wyłącznie w Pęku kluczy i używany tylko do wyświetlania listy twoich urządzeń Tailscale — połączenie z serwerem nigdy go nie wymaga. Tokeny Tailscale wygasają najpóźniej po 90 dniach; gdy któryś przestanie działać, Tailscode to mówi i dalej pyta komputery, które już zna."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardado apenas nas Chaves e usado só para listar seus dispositivos Tailscale — conectar a um servidor nunca precisa dele. Tokens do Tailscale duram no máximo 90 dias; quando um deixa de funcionar, o Tailscode avisa e continua perguntando às máquinas que já conhece."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅保存在钥匙串中，只用于列出你的 Tailscale 设备 — 连接服务器从不需要它。Tailscale 令牌最长有效 90 天；令牌失效时，Tailscode 会告知，并继续询问已知的机器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅儲存在鑰匙圈中，只用於列出你的 Tailscale 裝置 — 連線伺服器從不需要它。Tailscale 權杖最長有效 90 天；權杖失效時，Tailscode 會告知，並繼續詢問已知的電腦。"
+          }
+        }
+      }
+    },
+    "Tailscale didn't accept that token. Check that you copied all of it and that it hasn't expired.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale didn't accept that token. Check that you copied all of it and that it hasn't expired."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale hat dieses Token nicht akzeptiert. Prüfe, ob du es vollständig kopiert hast und es nicht abgelaufen ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale no aceptó ese token. Comprueba que lo copiaste completo y que no ha caducado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale n’a pas accepté ce jeton. Vérifiez que vous l’avez copié en entier et qu’il n’a pas expiré."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale non ha accettato quel token. Controlla di averlo copiato per intero e che non sia scaduto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale がそのトークンを受け付けませんでした。すべてコピーできているか、期限切れでないか確認してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale이 이 토큰을 받아들이지 않았습니다. 토큰을 전부 복사했는지, 만료되지 않았는지 확인하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale nie zaakceptował tego tokena. Sprawdź, czy skopiowałeś go w całości i czy nie wygasł."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale não aceitou esse token. Confira se você copiou tudo e se ele não expirou."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 不接受该令牌。请检查是否完整复制，并确认令牌未过期。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 不接受該權杖。請確認你已完整複製，且權杖尚未過期。"
+          }
+        }
+      }
+    },
+    "Tailscale no longer accepts your token, so new machines can't be listed. This phone still remembers %lld machines it can ask.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale no longer accepts your token, so new machines can't be listed. This phone still remembers %lld machines it can ask."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale akzeptiert dein Token nicht mehr, daher können keine neuen Rechner aufgelistet werden. Dieses Telefon kennt aber noch %lld Rechner, die es fragen kann."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale ya no acepta tu token, así que no se pueden listar máquinas nuevas. Este teléfono todavía recuerda %lld máquinas a las que puede preguntar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale n’accepte plus votre jeton, donc les nouvelles machines ne peuvent pas être listées. Ce téléphone se souvient encore de %lld machines qu’il peut interroger."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale non accetta più il tuo token, quindi non è possibile elencare nuove macchine. Questo telefono ricorda ancora %lld macchine a cui può chiedere."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale がトークンをもう受け付けないため、新しいマシンを一覧できません。この端末は、問い合わせ可能な %lld 台のマシンをまだ記憶しています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale이 더 이상 토큰을 받아들이지 않아 새 머신을 목록에 표시할 수 없습니다. 이 휴대폰은 여전히 문의할 수 있는 %lld대의 머신을 기억합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale nie akceptuje już twojego tokena, więc nowych komputerów nie da się wylistować. Ten telefon nadal pamięta %lld komputery, o które może zapytać."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale não aceita mais seu token, então novas máquinas não podem ser listadas. Este celular ainda lembra de %lld máquinas para perguntar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 已不再接受你的令牌，因此无法列出新机器。这部手机仍记得 %lld 台可以询问的机器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 已不再接受你的權杖，因此無法列出新電腦。這支手機仍記得 %lld 台可以詢問的電腦。"
+          }
+        }
+      }
+    },
+    "Tailscale no longer accepts your token. It expired or was revoked — add a new one to list your machines.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale no longer accepts your token. It expired or was revoked — add a new one to list your machines."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale akzeptiert dein Token nicht mehr. Es ist abgelaufen oder wurde widerrufen – füge ein neues hinzu, um deine Rechner aufzulisten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale ya no acepta tu token. Ha caducado o se ha revocado: añade uno nuevo para listar tus máquinas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale n’accepte plus votre jeton. Il a expiré ou a été révoqué — ajoutez-en un nouveau pour lister vos machines."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale non accetta più il tuo token. È scaduto o è stato revocato — aggiungine uno nuovo per elencare le tue macchine."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale がトークンをもう受け付けません。期限切れか取り消されています。新しいトークンを追加すると、マシンを一覧できます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale이 더 이상 토큰을 받아들이지 않습니다. 만료되었거나 취소되었습니다 — 머신 목록을 보려면 새 토큰을 추가하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale nie akceptuje już twojego tokena. Wygasł albo został unieważniony — dodaj nowy, aby wylistować swoje komputery."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale não aceita mais seu token. Ele expirou ou foi revogado — adicione um novo para listar suas máquinas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 已不再接受你的令牌。它已过期或被撤销 — 添加一个新令牌即可列出你的机器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 已不再接受你的權杖。它已過期或被撤銷 — 新增一個新權杖即可列出你的電腦。"
+          }
+        }
+      }
+    },
+    "This phone isn't on your tailnet. Turn Tailscale on and the scan starts by itself.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This phone isn't on your tailnet. Turn Tailscale on and the scan starts by itself."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Telefon ist nicht in deinem Tailnet. Schalte Tailscale ein, dann startet der Scan von selbst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este teléfono no está en tu tailnet. Activa Tailscale y el escaneo empieza solo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce téléphone n’est pas sur votre tailnet. Activez Tailscale et l’analyse démarre toute seule."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo telefono non è nel tuo tailnet. Attiva Tailscale e la scansione parte da sola."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この端末は tailnet に接続されていません。Tailscale をオンにすると、スキャンは自動的に始まります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 휴대폰은 tailnet에 연결되어 있지 않습니다. Tailscale을 켜면 스캔이 자동으로 시작됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten telefon nie jest w twoim tailnet. Włącz Tailscale, a skanowanie ruszy samo."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este celular não está na sua tailnet. Ligue o Tailscale e a varredura começa sozinha."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这部手机不在你的 tailnet 中。打开 Tailscale，扫描会自动开始。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這支手機不在你的 tailnet 中。開啟 Tailscale，掃描會自動開始。"
+          }
+        }
+      }
+    },
+    "Your Tailscale token stopped working, so only remembered machines were asked. Add a new one to find new machines.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Tailscale token stopped working, so only remembered machines were asked. Add a new one to find new machines."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Tailscale-Token funktioniert nicht mehr, daher wurden nur gespeicherte Rechner gefragt. Füge ein neues hinzu, um neue Rechner zu finden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu token de Tailscale dejó de funcionar, así que solo se consultaron las máquinas recordadas. Añade uno nuevo para encontrar máquinas nuevas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre jeton Tailscale a cessé de fonctionner : seules les machines mémorisées ont été interrogées. Ajoutez-en un nouveau pour trouver de nouvelles machines."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo token Tailscale ha smesso di funzionare, quindi sono state interrogate solo le macchine memorizzate. Aggiungine uno nuovo per trovare nuove macchine."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale のトークンが動作しなくなったため、記憶済みのマシンにのみ問い合わせました。新しいトークンを追加すると、新しいマシンを見つけられます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 토큰이 작동하지 않아 기억된 머신에만 문의했습니다. 새 토큰을 추가하면 새 머신을 찾을 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twój token Tailscale przestał działać, więc zapytano tylko zapamiętane komputery. Dodaj nowy, aby znaleźć nowe komputery."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu token do Tailscale parou de funcionar, então só as máquinas lembradas foram consultadas. Adicione um novo para encontrar máquinas novas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的 Tailscale 令牌已失效，因此只询问了记住的机器。添加一个新令牌即可找到新机器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的 Tailscale 權杖已失效，因此只詢問了記住的電腦。新增一個新權杖即可找到新電腦。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

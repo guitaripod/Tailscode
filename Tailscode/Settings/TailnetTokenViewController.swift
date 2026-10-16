@@ -1,3 +1,5 @@
+import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 /// The one editor for the Tailscale API token, reached from Settings and from
@@ -11,6 +13,8 @@ final class TailnetTokenViewController: UIViewController {
         title: String(localized: "API access token"), placeholder: "tskey-api-...", secure: true)
     private let saveButton = PrimaryButton(title: String(localized: "Save"))
     private let clearButton = UIButton(type: .system)
+    private let statusLabel = UILabel()
+    private var checkTask: Task<Void, Never>?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -42,10 +46,7 @@ final class TailnetTokenViewController: UIViewController {
             }, for: .touchUpInside)
 
         let note = UILabel()
-        note.text = String(
-            localized:
-                "Stored only in the Keychain. Used solely to list your Tailscale devices — connecting to a server never needs it."
-        )
+        note.text = TailnetTokenReading.note
         note.font = Theme.Ramp.font(.panelFootnote)
         note.textColor = Theme.Color.tertiaryLabel
         note.numberOfLines = 0
@@ -57,8 +58,12 @@ final class TailnetTokenViewController: UIViewController {
         clearButton.isHidden = !TailnetCredentials.hasToken
         clearButton.addAction(UIAction { [weak self] _ in self?.clear() }, for: .touchUpInside)
 
+        statusLabel.font = Theme.Ramp.font(.panelFootnote)
+        statusLabel.numberOfLines = 0
+        statusLabel.isHidden = true
+
         let stack = UIStackView(arrangedSubviews: [
-            header, openButton, tokenField, note, saveButton, clearButton,
+            header, openButton, tokenField, statusLabel, note, saveButton, clearButton,
         ])
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.l
@@ -93,21 +98,44 @@ final class TailnetTokenViewController: UIViewController {
             clear()
             return
         }
-        do {
-            try TailnetCredentials.setToken(token)
-        } catch {
-            Theme.Haptics.error()
-            let alert = UIAlertController(
-                title: String(localized: "Couldn't save token"),
-                message: error.localizedDescription,
-                preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
-            present(alert, animated: true)
-            return
+        guard checkTask == nil else { return }
+        view.endEditing(true)
+        show(TailnetTokenReading.checking, color: Theme.Color.secondaryLabel)
+        saveButton.setLoading(true)
+        checkTask = Task { [weak self] in
+            do {
+                let devices = try await TailscaleClient().fetchDevices(with: token)
+                guard !Task.isCancelled, let self else { return }
+                try TailnetCredentials.setToken(token)
+                TailnetCredentials.remember(devices)
+                Theme.Haptics.success()
+                onChange?()
+                finish()
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.failed(error)
+            }
         }
-        Theme.Haptics.success()
-        onChange?()
-        finish()
+    }
+
+    private func failed(_ error: Error) {
+        checkTask = nil
+        saveButton.setLoading(false)
+        Theme.Haptics.error()
+        if TailscaleClient.isRejection(error) {
+            show(TailnetTokenReading.rejected, color: Theme.Color.danger)
+        } else if error is AgentError {
+            show(TailnetTokenReading.unreachable, color: Theme.Color.danger)
+        } else {
+            show(error.localizedDescription, color: Theme.Color.danger)
+        }
+    }
+
+    private func show(_ text: String, color: UIColor) {
+        statusLabel.text = text
+        statusLabel.textColor = color
+        statusLabel.isHidden = false
+        UIAccessibility.post(notification: .announcement, argument: text)
     }
 
     private func clear() {
@@ -115,6 +143,11 @@ final class TailnetTokenViewController: UIViewController {
         Theme.Haptics.warning()
         onChange?()
         finish()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if isMovingFromParent || isBeingDismissed { checkTask?.cancel() }
     }
 
     private func finish() {

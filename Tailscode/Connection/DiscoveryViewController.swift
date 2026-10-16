@@ -7,9 +7,11 @@ import UIKit
 final class DiscoveryViewController: UIViewController {
     var onConnected: (() -> Void)?
 
-    private var apiToken: String { TailnetCredentials.token ?? "" }
-
-    private var hasCreds: Bool { TailnetCredentials.hasToken }
+    private var reading: TailnetDiscoveryReading {
+        TailnetDiscoveryReading.read(
+            tailnetUp: TailnetStatus.isConnected, key: TailnetCredentials.key,
+            remembered: TailnetCredentials.rememberedDevices.count)
+    }
 
     private let statusLabel = UILabel()
     private let scanButton = PrimaryButton(title: String(localized: "Scan tailnet"))
@@ -25,6 +27,9 @@ final class DiscoveryViewController: UIViewController {
     private var resultsHeightConstraint: NSLayoutConstraint?
     private var lastDeviceCount: Int?
     private var didAutoScan = false
+    private var couldScan = false
+    private var hasScanned = false
+    private var activeObserver: NSObjectProtocol?
 
     private enum Section: Int, CaseIterable { case servers, devices }
     private enum ListItem: Hashable {
@@ -47,16 +52,43 @@ final class DiscoveryViewController: UIViewController {
         refreshState()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshState()
+        guard activeObserver == nil else { return }
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.appBecameActive() }
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
+        activeObserver = nil
+    }
+
     /// Never demands the token on appear: an unrequested modal on top of a modal,
     /// asking for a third-party API key before the screen has explained itself,
     /// is the shape of an abandoned setup. The button is right there.
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        guard hasCreds else { return }
+        guard reading.canScan else { return }
         if suggestions.isEmpty && !didAutoScan {
             didAutoScan = true
             scanTapped()
         }
+    }
+
+    /// Coming back from the Tailscale app: if turning it on is what made a scan possible, the scan
+    /// the person was waiting for starts without a tap.
+    private func appBecameActive() {
+        let couldBefore = couldScan
+        refreshState()
+        guard !couldBefore, couldScan, scanTask == nil, suggestions.isEmpty else { return }
+        didAutoScan = true
+        scanTapped()
     }
 
     private func buildUI() {
@@ -73,8 +105,8 @@ final class DiscoveryViewController: UIViewController {
         statusLabel.numberOfLines = 0
         statusLabel.textColor = Theme.Color.secondaryLabel
 
-        scanButton.addTarget(self, action: #selector(scanTapped), for: .touchUpInside)
-        configureButton.addTarget(self, action: #selector(configureTapped), for: .touchUpInside)
+        scanButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
+        configureButton.addTarget(self, action: #selector(secondaryTapped), for: .touchUpInside)
 
         resultsHeader.font = Theme.Ramp.font(.panelFootnote)
         resultsHeader.textColor = Theme.Color.secondaryLabel
@@ -209,18 +241,19 @@ final class DiscoveryViewController: UIViewController {
     }
 
     private func refreshState() {
-        if hasCreds {
-            if suggestions.isEmpty && devices.isEmpty {
-                statusLabel.text = String(
-                    localized: "Tap Scan to discover servers on your tailnet.")
-            }
-            configureButton.configuration?.title = String(localized: "Update token")
-            scanButton.isHidden = false
-        } else {
-            statusLabel.text = String(
-                localized: "Add a Tailscale API access token to discover servers.")
-            configureButton.configuration?.title = String(localized: "Add access token")
-            scanButton.isHidden = true
+        let reading = reading
+        couldScan = reading.canScan
+        let key = TailnetCredentials.key
+        if suggestions.isEmpty && devices.isEmpty && scanTask == nil {
+            statusLabel.text = reading.headline
+        }
+        scanButton.setTitle(
+            hasScanned && reading.canScan
+                ? String(localized: "Scan again")
+                : TailnetDiscoveryReading.title(of: reading.primary, key: key))
+        configureButton.isHidden = reading.secondary == nil
+        if let secondary = reading.secondary {
+            configureButton.configuration?.title = TailnetDiscoveryReading.title(of: secondary, key: key)
         }
         let hasResults = !suggestions.isEmpty || (!devices.isEmpty && suggestions.isEmpty)
         resultsContainer.isHidden = !hasResults
@@ -230,8 +263,21 @@ final class DiscoveryViewController: UIViewController {
         }
     }
 
-    @objc private func configureTapped() {
-        presentCredentialForm()
+    @objc private func primaryTapped() {
+        perform(reading.primary)
+    }
+
+    @objc private func secondaryTapped() {
+        guard let secondary = reading.secondary else { return }
+        perform(secondary)
+    }
+
+    private func perform(_ action: TailnetDiscoveryReading.Action) {
+        switch action {
+        case .openTailscale: TailnetStatus.openTailscaleApp()
+        case .addKey, .replaceKey: presentCredentialForm()
+        case .scan, .scanRemembered: scanTapped()
+        }
     }
 
     private func presentCredentialForm() {
@@ -239,7 +285,7 @@ final class DiscoveryViewController: UIViewController {
         editor.onChange = { [weak self] in
             guard let self else { return }
             self.refreshState()
-            if self.hasCreds, self.suggestions.isEmpty { self.scanTapped() }
+            if self.reading.canScan, self.suggestions.isEmpty { self.scanTapped() }
         }
         editor.navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel, target: self, action: #selector(dismissForm))
@@ -249,7 +295,7 @@ final class DiscoveryViewController: UIViewController {
     private var scanTask: Task<Void, Never>?
 
     @objc private func scanTapped() {
-        guard hasCreds, scanTask == nil else { return }
+        guard reading.canScan, scanTask == nil else { return }
         scanButton.setLoading(true)
         scanActivity.working(true, spoken: String(localized: "Scanning the tailnet"))
         statusLabel.text = String(localized: "Fetching devices and probing servers…")
@@ -263,16 +309,18 @@ final class DiscoveryViewController: UIViewController {
         scanTask = Task {
             defer { scanTask = nil }
             do {
-                let client = TailscaleClient()
-                let fetched = try await client.fetchDevices(with: apiToken)
+                let listing = try await TailnetDirectory.load()
+                let fetched = listing.devices
                 guard !Task.isCancelled else { return }
-                AppLogger.connection.info("fetched \(fetched.count) tailscale devices")
+                AppLogger.connection.info("fetched \(fetched.count) tailscale devices (remembered: \(listing.fromMemory))")
                 lastDeviceCount = fetched.count
                 devices = TailnetScanner.scannableDevices(fetched)
-                let online = TailnetScanner.scannableDevices(fetched).count
+                let online = devices.count
                 skippedDeviceCount = fetched.count - online
-                statusLabel.text = Self.probingStatus(
-                    online: online, skipped: skippedDeviceCount)
+                statusLabel.text =
+                    listing.fromMemory
+                    ? TailnetDiscoveryReading.rememberedNote(count: online)
+                    : Self.probingStatus(online: online, skipped: skippedDeviceCount)
                 let scanner = TailnetScanner()
                 let found = await scanner.scan(
                     devices: fetched,
@@ -294,20 +342,22 @@ final class DiscoveryViewController: UIViewController {
                     found.isEmpty
                     ? String(localized: "No supported servers found")
                     : String(localized: "Found \(found.count) servers")
-                statusLabel.text =
+                var summary =
                     lastDeviceCount.map {
                         String(localized: "Scanned \($0) devices.") + " " + countText
                     } ?? countText
+                if TailnetCredentials.key == .rejected { summary += "\n" + TailnetDiscoveryReading.rejectedNote }
+                statusLabel.text = summary
+                hasScanned = true
                 UIAccessibility.post(notification: .announcement, argument: statusLabel.text)
-            } catch let error as AgentError {
-                if case .http(let status, _) = error, status == 401 || status == 403 {
-                    statusLabel.text = String(
-                        localized: "Invalid Tailscale token. Update it and try again.")
-                } else {
-                    statusLabel.text = String(
-                        localized: "Scan failed: \(error.localizedDescription)")
+            } catch let failure as TailnetDirectory.Failure {
+                switch failure {
+                case .needsKey, .rejected:
+                    statusLabel.text = reading.headline
+                case .unavailable(let error):
+                    statusLabel.text = String(localized: "Scan failed: \(error.localizedDescription)")
+                    AppLogger.connection.error("tailnet scan failed: \(error.localizedDescription)")
                 }
-                AppLogger.connection.error("tailnet scan failed: \(error.localizedDescription)")
                 suggestions = []
             } catch {
                 AppLogger.connection.error("tailnet scan failed: \(error.localizedDescription)")
@@ -317,7 +367,6 @@ final class DiscoveryViewController: UIViewController {
             }
             scanButton.setLoading(false)
             scanActivity.working(false)
-            scanButton.setTitle(String(localized: "Scan again"))
             applyResultsSnapshot()
             refreshState()
         }
