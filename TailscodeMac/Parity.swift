@@ -29,6 +29,7 @@ enum ParityManifest {
         case .providerRetry: return .implemented("providerRetry")
         case .conversationRevert: return .implemented("revertBanner")
         case .sessionSections: return .implemented("groupIntoSections")
+        case .homeBoard: return .gap("the sidebar already draws the same sections through groupIntoSections, but nothing on this desk writes the sentence or holds a band to HomeBandLimits: the Mac has no Home place beside its chat list, so the board is the sidebar. HomeStatus and ChatRowNews are Core, and the port is a header line over the sidebar and a news line in its rows")
         case .sessionRowStatus: return .implemented("observedPresence")
         case .activityIconography: return .implemented("ActivityBadgeView")
         case .backgroundWork: return .implemented("inBackground")

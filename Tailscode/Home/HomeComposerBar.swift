@@ -5,6 +5,9 @@ import UIKit
 protocol HomeComposerBarDelegate: AnyObject {
     func homeComposer(_ bar: HomeComposerBar, didSend text: String)
     func homeComposerDidBeginEditing(_ bar: HomeComposerBar)
+    /// The destination chip was tapped while it opens a chooser rather than a menu: the host
+    /// presents the sheet that asks where the chat should start.
+    func homeComposerDidTapDestination(_ bar: HomeComposerBar)
     func homeComposerTextDidChange(_ text: String)
     /// The switch was thrown. Which lane it landed in is already on the bar; what the lane means —
     /// where the words go, which memory aims them, which draft comes back — is the host's.
@@ -33,6 +36,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private let bar = Theme.Glass.view(interactive: false)
     private let laneButton = UIButton(type: .system)
     private let chipButton = UIButton(type: .system)
+    private var destinationOpensChooser = false
     private let chevron = UIImageView()
     /// The pill for model and effort, in the box's bottom row beside the paperclip and Send — the
     /// same control, in the same place, as in a chat.
@@ -83,6 +87,18 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private var dialConstraints: [NSLayoutConstraint] = []
     private var dialToAttach: NSLayoutConstraint?
     private var dialToBar: NSLayoutConstraint?
+
+    /// Whether the host has a model and an effort to offer, which is a different question from
+    /// whether there is room to show them: a window that is short — a phone on its side, the
+    /// folded Duo's outer display in landscape — gives the row the pill sits in back to the words,
+    /// and the pill is waiting when the window is tall again.
+    private var dialWanted = false {
+        didSet { refreshDial() }
+    }
+
+    private func refreshDial() {
+        showsDial = dialWanted && traitCollection.verticalSizeClass != .compact
+    }
 
     /// Whether the box carries the pill. Without a model or an effort to choose there is nothing to
     /// show, and the box is the single line it was.
@@ -165,6 +181,11 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         chip.baseForegroundColor = Theme.Color.secondaryLabel
         chipButton.configuration = chip
         chipButton.showsMenuAsPrimaryAction = true
+        chipButton.addAction(
+            UIAction { [weak self] _ in
+                guard let self, self.destinationOpensChooser else { return }
+                self.delegate?.homeComposerDidTapDestination(self)
+            }, for: .touchUpInside)
         chipButton.contentHorizontalAlignment = .leading
         chipButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -221,10 +242,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             ])
         attachButton.accessibilityLabel = String(localized: "Attach")
 
-        var send = UIButton.Configuration.filled()
-        send.cornerStyle = .capsule
-        send.baseBackgroundColor = Theme.Color.accent
-        sendButton.configuration = send
+        sendButton.configuration = Theme.Glass.buttonConfiguration()
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
         sendButton.addGestureRecognizer(
@@ -327,6 +345,9 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             (view: HomeComposerBar, _) in
             view.enhanceBadge.layer.borderColor = Theme.Color.background.cgColor
             view.paintLaneSwitch()
+        }
+        registerForTraitChanges([UITraitVerticalSizeClass.self]) { (view: HomeComposerBar, _) in
+            view.refreshDial()
         }
 
         paintLaneSwitch()
@@ -485,11 +506,15 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         row.addArrangedSubview(chevron)
     }
 
-    func setContext(icon: UIImage?, title: String, menu: UIMenu) {
+    /// - Parameter opensChooserOnTap: a tap asks the host where the chat should start, and the menu
+    ///   of recent folders stays behind a long press; the other lanes keep their menu as the tap.
+    func setContext(icon: UIImage?, title: String, menu: UIMenu, opensChooserOnTap: Bool = false) {
         var config = chipButton.configuration ?? .plain()
         config.image = icon
         config.attributedTitle = Self.chipTitle(title)
         chipButton.configuration = config
+        destinationOpensChooser = opensChooserOnTap
+        chipButton.showsMenuAsPrimaryAction = !opensChooserOnTap
         chipButton.menu = menu
         chipButton.accessibilityLabel =
             lane == .ask
@@ -501,12 +526,12 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     /// must not show an affordance that does nothing.
     func setDial(_ content: ModelDialPill.Content?, menu: UIMenu?) {
         guard let content else {
-            showsDial = false
+            dialWanted = false
             return
         }
         dialPill.content = content
         dialPill.modelMenu = menu
-        showsDial = true
+        dialWanted = true
     }
 
     private static func chipTitle(_ text: String) -> AttributedString {
@@ -640,15 +665,14 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     /// the press, not after it.
     private func updateSendButton() {
         let hasText = !trimmed.isEmpty || carriesAttachments
-        var config = sendButton.configuration ?? .filled()
+        let live = hasText || isSending
+        var config = Theme.Glass.buttonConfiguration(prominent: live)
+        config.cornerStyle = .capsule
         config.image = isSending
             ? nil
             : UIImage(
                 systemName: lane.needsRenderer ? lane.symbol : "arrow.up",
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
-        config.baseBackgroundColor =
-            hasText || isSending ? Theme.Color.accent : Theme.Color.separator
-        config.baseForegroundColor = Theme.Color.onAccent
         sendButton.configuration = config
         sendWork.show(isSending, on: sendButton)
         sendButton.isEnabled = hasText && !isSending

@@ -10,7 +10,7 @@ import Testing
     /// Roles whose text changes while a person is looking at it. Proportional digits there make a
     /// settled fact read as motion.
     private static let changingNumbers: [TypeRole] = [
-        .statusLine, .segment, .gauge, .gaugeCaption, .rowStamp, .workflowMeter,
+        .statusLine, .statusSentence, .segment, .gauge, .gaugeCaption, .rowStamp, .workflowMeter,
         .metricHero, .metricLarge, .metricValue, .metricDetail,
     ]
 

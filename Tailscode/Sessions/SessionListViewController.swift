@@ -4,7 +4,7 @@ import CodingAgentKitApple
 import UIKit
 
 /// Every conversation across every server in one list, grouped into the shared sections —
-/// PINNED, LIVE NOW, SAVED, RECENT — with filter chips narrowing what is grouped, so finding a
+/// NEEDS YOU, WORKING, PINNED, SAVED, RECENT — with filter chips narrowing what is grouped, so finding a
 /// chat is scroll-or-search instead of expand-and-hunt.
 @MainActor
 final class SessionListViewController: UIViewController {
@@ -556,6 +556,12 @@ final class SessionListViewController: UIViewController {
         var config = UICollectionLayoutListConfiguration(
             appearance: showsAsColumn ? .plain : .insetGrouped)
         config.headerMode = .supplementary
+        config.itemSeparatorHandler = { _, separators in
+            var out = separators
+            out.bottomSeparatorInsets = NSDirectionalEdgeInsets(
+                top: 0, leading: ChatRowContentView.textInset, bottom: 0, trailing: 0)
+            return out
+        }
         if showsAsColumn { config.headerTopPadding = Theme.Spacing.s }
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             guard let self, !self.isSelecting,
@@ -869,7 +875,7 @@ final class SessionListViewController: UIViewController {
     }
 
     private func configureDataSource() {
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, SessionEntry> {
+        let cell = UICollectionView.CellRegistration<ChatRowCell, SessionEntry> {
             [weak self] cell, _, entry in
             guard let self else { return }
             let row = self.rowModels[ChatSelection.key(entry)]
@@ -900,91 +906,35 @@ final class SessionListViewController: UIViewController {
         }
     }
 
-    /// One row, drawn from what `SessionRowModel` already decided. The pill, the tint and the
-    /// snippet all read the row's `state` rather than re-asking the listing, which is what keeps a
-    /// conversation this device is streaming looking live in the list and in the section it sits
-    /// in. Never re-derives liveness inside a cell.
-    private func configure(_ cell: UICollectionViewListCell, with row: SessionRowModel) {
+    /// One row, drawn from what `SessionRowModel` already decided and spelled by the same row
+    /// Home's bands use. The state, the news and the tint all read the row's `state` rather than
+    /// re-asking the listing, which is what keeps a conversation this device is streaming looking
+    /// live in the list and in the section it sits in. Never re-derives liveness inside a cell.
+    private func configure(_ cell: ChatRowCell, with row: SessionRowModel) {
         let entry = row.entry
-        var content = UIListContentConfiguration.subtitleCell()
-        content.text = Self.displayTitle(entry.session.title)
-        content.textProperties.font =
-            row.unread ? Theme.Ramp.font(.rowTitleStrong) : Theme.Ramp.font(.rowTitle)
-        content.textProperties.numberOfLines = 1
-
-        let facets = row.facets(vocabulary)
-        content.secondaryAttributedText = ModelChipText.line(
-            chip: ModelBadge.chip(for: entry),
-            pieces: ModelChipText.facetPieces(facets, snippet: row.snippet),
-            size: Theme.Ramp.font(.panelFootnote).pointSize)
-        content.secondaryTextProperties.numberOfLines = 1
-        content.textToSecondaryTextVerticalPadding = 2
-        content.prefersSideBySideTextAndSecondaryText = false
-
-        content.image = UIImage(systemName: entry.backendType.symbolName)?
-            .withTintColor(
-                Self.tint(for: row.state) ?? entry.backendType.brandColor,
-                renderingMode: .alwaysOriginal)
-        content.imageProperties.maximumSize = CGSize(width: 20, height: 20)
-        content.imageProperties.reservedLayoutSize = CGSize(width: 20, height: 20)
-        content.imageToTextPadding = Theme.Spacing.m
-        cell.contentConfiguration = content
+        cell.paintsGroupedSurface = false
+        cell.wantsAttention = row.state.needsYou && !showsAsColumn
+        cell.contentConfiguration = ChatRowConfiguration(
+            facts: ChatRowFacts(
+                row: row, vocabulary: vocabulary,
+                ask: SessionActivity.shared.approvalAsk(for: entry.session.id)))
 
         let marked = isSelecting && selection.contains(entry)
         let column = showsAsColumn
-        cell.configurationUpdateHandler = { cell, state in
-            var background = UIBackgroundConfiguration.listCell().updated(for: state)
-            if marked {
-                background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.18)
-            } else if column, state.isSelected {
-                background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.14)
-            }
-            cell.backgroundConfiguration = background
+        cell.surfaceTint = { state in
+            if marked { return Theme.Color.accent.withAlphaComponent(0.18) }
+            if column, state.isSelected { return Theme.Color.accent.withAlphaComponent(0.14) }
+            return nil
         }
 
-        var accessories: [UICellAccessory] = [Self.ageAccessory(facets.age)]
+        var accessories: [UICellAccessory] = []
         if isSelecting {
             accessories.append(Self.markAccessory(marked: selection.contains(entry)))
         }
-        if row.pinned {
-            let pin = UIImageView(image: UIImage(systemName: "pin.fill"))
-            pin.tintColor = Theme.Color.accent
-            pin.contentMode = .scaleAspectFit
-            pin.frame = CGRect(x: 0, y: 0, width: 13, height: 13)
-            accessories.append(.customView(
-                configuration: .init(
-                    customView: pin, placement: .trailing(displayed: .always),
-                    maintainsFixedSize: true)))
-        }
-        if let pill = Self.statusPill(for: row.state) {
-            accessories.append(pill)
-        } else if row.unread {
-            accessories.append(Self.dot(Theme.Color.accent))
-        }
         if !isSelecting, !showsAsColumn { accessories.append(.disclosureIndicator()) }
         cell.accessories = accessories
-        cell.accessibilityValue = Self.spoken(row, marked: isSelecting && selection.contains(entry))
+        cell.accessibilityValue = marked ? String(localized: "Selected") : nil
         cell.answersPointer(cornerRadius: showsAsColumn ? 0 : Theme.Radius.control)
-    }
-
-    /// What a row says out loud: the mark first while selecting, because in an editing mode
-    /// whether this chat is going with the next verb outranks what it is doing. Never leaves a
-    /// marked row indistinguishable from an unmarked one to VoiceOver.
-    private static func spoken(_ row: SessionRowModel, marked: Bool) -> String? {
-        var parts: [String] = []
-        if marked { parts.append(String(localized: "Selected")) }
-        switch row.state {
-        case .awaitingApproval: parts.append(String(localized: "Awaiting approval"))
-        case .live: parts.append(String(localized: "Agent running"))
-        case .background(let tasks): parts.append(ActivityKind.inBackground(tasks: tasks).spoken)
-        case .stalled(let tasks): parts.append(ActivityKind.stalled(tasks: tasks).spoken)
-        case .failed: parts.append(String(localized: "Last turn failed"))
-        case .offline: parts.append(String(localized: "Server unreachable"))
-        case .idle: break
-        }
-        if row.unread { parts.append(String(localized: "Unread")) }
-        parts.append(relativeDate(row.entry.session.updatedAt))
-        return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
     private static func markAccessory(marked: Bool) -> UICellAccessory {
@@ -999,42 +949,6 @@ final class SessionListViewController: UIViewController {
             configuration: .init(
                 customView: mark, placement: .leading(displayed: .always),
                 maintainsFixedSize: true))
-    }
-
-    /// How long ago the chat moved, in a fixed column at the trailing edge rather than at the end
-    /// of the second line: staleness is compared down a list, and a number that starts at a
-    /// different x on every row cannot be compared at a glance. Monospaced digits so the column
-    /// holds even as the figures change under it.
-    private static func ageAccessory(_ age: String) -> UICellAccessory {
-        let label = UILabel()
-        label.text = age
-        label.font = UIFontMetrics(forTextStyle: .caption2)
-            .scaledFont(for: .monospacedDigitSystemFont(ofSize: 11, weight: .regular))
-        label.adjustsFontForContentSizeCategory = true
-        label.textColor = Theme.Color.tertiaryLabel
-        label.textAlignment = .right
-        label.sizeToFit()
-        label.frame = CGRect(x: 0, y: 0, width: max(26, label.frame.width), height: 16)
-        label.isAccessibilityElement = false
-        return .customView(
-            configuration: .init(
-                customView: label, placement: .trailing(displayed: .always),
-                maintainsFixedSize: true))
-    }
-
-    private static func dot(_ color: UIColor) -> UICellAccessory {
-        let dot = UIView(frame: CGRect(x: 0, y: 0, width: 8, height: 8))
-        dot.backgroundColor = color
-        dot.layer.cornerRadius = 4
-        return .customView(
-            configuration: .init(customView: dot, placement: .trailing(displayed: .always)))
-    }
-
-    /// The leading server mark takes the state's own tone, so a row that needs you reads amber
-    /// from its first pixel to its last. Idle keeps the backend's brand — nothing is happening, so
-    /// the only thing worth saying is which agent this is.
-    private static func tint(for state: SessionRowState) -> UIColor? {
-        state.activity?.icon.tone.color
     }
 
     private func bind() {
@@ -1093,7 +1007,7 @@ final class SessionListViewController: UIViewController {
 
     /// A turn starting or stopping moves the row between sections, not just its pill, so the whole
     /// snapshot is rebuilt rather than the visible cells reloaded — a chat that just went live must
-    /// arrive in LIVE NOW, never wear a spinner down in RECENT.
+    /// arrive in WORKING, never wear a spinner down in RECENT.
     private func reconfigureActivity() {
         guard dataSource != nil else { return }
         applySnapshot()
@@ -1113,7 +1027,7 @@ final class SessionListViewController: UIViewController {
         }
     }
 
-    /// Whether the row would land in LIVE NOW, asked the same way `groupIntoSections` asks it, so
+    /// Whether the row would land in WORKING, asked the same way `groupIntoSections` asks it, so
     /// the Live chip's count and the section's contents can never disagree. Never re-reads
     /// liveness off the listing alone once this device is watching the turn itself. It is the
     /// same reading the archive is held to (`ChatArchiveRule`), because a conversation that is
@@ -1155,13 +1069,7 @@ final class SessionListViewController: UIViewController {
     /// What this device is watching first-hand, so a row is live the moment a turn starts here
     /// rather than when the server's next sweep agrees, and a turn stopped for an approval says so.
     private func presence(for entry: SessionEntry) -> SessionPresence {
-        switch SessionActivity.shared.status(for: entry.session.id) {
-        case .running: return .running(SessionActivity.shared.liveDetail(for: entry.session.id))
-        case .awaitingApproval: return .awaitingApproval
-        case .background(let tasks): return .background(tasks: tasks)
-        case .stalled(let tasks): return .stalled(tasks: tasks)
-        case .idle: return .unobserved
-        }
+        SessionActivity.shared.presence(for: entry.session.id)
     }
 
     /// What every row of one render is judged against, read from the stores once. The evaluator and
@@ -1192,10 +1100,10 @@ final class SessionListViewController: UIViewController {
             observedAt: viewModel.observedAt[entry.profileID])
     }
 
-    /// The listing as the shared `groupIntoSections` groups it — PINNED, LIVE NOW, SAVED, RECENT,
+    /// The listing as the shared `groupIntoSections` groups it — NEEDS YOU, WORKING, PINNED, SAVED, RECENT,
     /// with empty sections dropped so no heading ever sits over nothing. Every row carries the
     /// presence this device knows first-hand, which is what puts the conversation being streamed
-    /// right now in LIVE NOW instead of waiting for the server's next sweep to agree.
+    /// right now in WORKING instead of waiting for the server's next sweep to agree.
     private func sectionedRows(for entries: [SessionEntry]) -> [(SessionSection, [SessionRowModel])]
     {
         let saved = Set(SavedChatStore.all().map { SessionPinStore.key($0.profileID, $0.sessionID) })
@@ -1392,32 +1300,6 @@ final class SessionListViewController: UIViewController {
     private static func serverIcon(for backend: AgentType) -> UIImage? {
         UIImage(systemName: backend.symbolName)?
             .withTintColor(backend.brandColor, renderingMode: .alwaysOriginal)
-    }
-
-    /// The row's own word for what it is doing, taken from `SessionRowState.pill` so the phone
-    /// says NEEDS YOU where the desktops say NEEDS YOU, wearing the same symbol and the same
-    /// motion the desks give it: a running turn breathes, a turn stopped for you knocks twice, a
-    /// failure holds still. Idle is silence, never a pill reading "idle".
-    ///
-    /// A running turn is the badge alone. It is the state a list has most of, and a row of capsules
-    /// reading LIVE down the whole screen is a wall of words where a moving dot is a glance.
-    private static func statusPill(for state: SessionRowState) -> UICellAccessory? {
-        guard let activity = state.activity else { return nil }
-        let badge = ActivityBadgeView(pointSize: 11)
-        badge.activity = activity
-        guard let pill = state.pill, state != .live else {
-            badge.frame = CGRect(x: 0, y: 0, width: 22, height: 22)
-            return .customView(
-                configuration: .init(
-                    customView: badge, placement: .trailing(displayed: .always),
-                    maintainsFixedSize: true))
-        }
-        let capsule = RowStatePill(
-            activity: activity, text: pill.text, color: activity.icon.tone.color)
-        return .customView(
-            configuration: .init(
-                customView: capsule, placement: .trailing(displayed: .always),
-                reservedLayoutWidth: .custom(capsule.frame.width), maintainsFixedSize: true))
     }
 
     @objc private func refresh() { Task { await viewModel.load() } }
@@ -2105,7 +1987,7 @@ extension SessionListViewController: KeyActionHost {
     }
 
     /// The cursor is a flat position over every row on screen, not an offset into one section: a
-    /// pinned chat or a LIVE NOW heading used to leave the keyboard verbs acting on a row the
+    /// pinned chat or a WORKING heading used to leave the keyboard verbs acting on a row the
     /// person was not looking at. Never addresses a snapshot by a hardcoded section.
     private func cursorEntry() -> SessionEntry? {
         guard let keyCursor, visibleEntries.indices.contains(keyCursor) else { return nil }
@@ -2195,60 +2077,3 @@ extension SessionListViewController: UICollectionViewDragDelegate {
         return [item]
     }
 }
-
-/// A row's state in words, worn as a capsule: the activity badge and the pill's text on a wash of
-/// the state's own colour. The capsule is laid out by Auto Layout and measured once, as it is made,
-/// and the cell is told to reserve exactly that width: a custom accessory left to the standard
-/// reservation is centred in a slot a third its size, which put the pill over the row's age and
-/// past the trailing edge of any row narrower than a wide phone's.
-private final class RowStatePill: UIView {
-    private let capsule = UIView()
-
-    init(activity: ActivityKind, text: String, color: UIColor) {
-        super.init(frame: .zero)
-        let badge = ActivityBadgeView(pointSize: 11)
-        badge.activity = activity
-        badge.isAccessibilityElement = false
-        let label = UILabel()
-        label.text = text
-        label.font = Theme.Ramp.font(.pill)
-        label.adjustsFontForContentSizeCategory = true
-        label.textColor = color
-        label.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let row = UIStackView(arrangedSubviews: [badge, label])
-        row.axis = .horizontal
-        row.alignment = .center
-        row.spacing = 1
-        row.translatesAutoresizingMaskIntoConstraints = false
-        capsule.translatesAutoresizingMaskIntoConstraints = false
-        capsule.backgroundColor = UIColor { traits in
-            color.withAlphaComponent(0.15)
-                .blended(over: Theme.Color.secondaryBackground, traits: traits)
-        }
-        capsule.layer.cornerCurve = .continuous
-        capsule.addSubview(row)
-        addSubview(capsule)
-        NSLayoutConstraint.activate([
-            capsule.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            capsule.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-            capsule.topAnchor.constraint(equalTo: topAnchor),
-            capsule.bottomAnchor.constraint(equalTo: bottomAnchor),
-            row.leadingAnchor.constraint(equalTo: capsule.leadingAnchor, constant: 6),
-            row.trailingAnchor.constraint(equalTo: capsule.trailingAnchor, constant: -7),
-            row.topAnchor.constraint(equalTo: capsule.topAnchor, constant: 3),
-            row.bottomAnchor.constraint(equalTo: capsule.bottomAnchor, constant: -3),
-            badge.widthAnchor.constraint(equalToConstant: 15),
-        ])
-        isAccessibilityElement = true
-        accessibilityLabel = activity.spoken
-        frame = CGRect(origin: .zero, size: systemLayoutSizeFitting(UIView.layoutFittingCompressedSize))
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        capsule.layer.cornerRadius = capsule.bounds.height / 2
-    }
-}
-

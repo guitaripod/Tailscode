@@ -10,6 +10,7 @@ enum ParityManifest {
     static func evidence(for capability: AppCapability) -> ParityEvidence {
         switch capability {
         case .sessionSections: return .implemented("sectionedRows")
+        case .homeBoard: return .implemented("HomeBoard")
         case .sessionRowStatus: return .implemented("statusPill")
         case .activityIconography: return .implemented("ActivityBadgeView")
         case .backgroundWork: return .implemented("inBackground")
@@ -37,7 +38,7 @@ enum ParityManifest {
         case .liveListUpdates: return .implemented("startStreams")
         case .rowContextActions: return .implemented("sessionMenu")
         case .rowSnippet: return .implemented("agentTask")
-        case .rowFacets: return .implemented("ageAccessory")
+        case .rowFacets: return .implemented("ChatRowFacts")
         case .modelIdentityTint: return .implemented("ModelChipText")
         case .usageGauges: return .implemented("QuotaCard")
         case .quotaExhaustion: return .implemented("applyQuotaExhaustion")
@@ -185,7 +186,11 @@ enum ParityManifest {
                     + "so the four states collapse into two and the remedy is always the same tap")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("NotificationManager")
-        case .missedActivity: return .implemented("MissedActivityCell")
+        case .missedActivity:
+            return .partial(
+                "ChatRowNews",
+                missing:
+                    "a notice is the chat's own row — its news line and unread dot, cleared by Mark read — rather than a list of notices, so one whose chat is no longer in the listing (deleted, or its server removed) is not shown")
         case .liveActivity: return .implemented("AppActivityController")
         case .turnEndWhileAway: return .implemented("TurnWaitCenter")
         case .hapticFeedback: return .implemented("HapticEngine")

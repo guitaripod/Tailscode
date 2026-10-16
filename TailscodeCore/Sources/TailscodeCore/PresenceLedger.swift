@@ -5,8 +5,8 @@ import Foundation
 /// Opening a chat replaces one witness with another: the background watcher that kept the row alive
 /// is torn down and the pane's own conversation starts knowing nothing. For a server whose listing
 /// can report a running turn that gap is invisible — the listing covers it. For one whose listing
-/// cannot, the gap was the only evidence there was, so a row read LIVE NOW, then RECENT, then LIVE
-/// NOW again inside one round trip.
+/// cannot, the gap was the only evidence there was, so a row read WORKING, then RECENT, then WORKING
+/// again inside one round trip.
 ///
 /// This holds the last settled reading across that gap. Only a witness that has heard the server
 /// and reports nothing running settles a row; a reading with nothing to say yet leaves the memory
