@@ -20,6 +20,8 @@ public enum VoiceCallReport {
         case .unknown: return "not checked"
         case .checking: return "checking"
         case .ready: return "ready"
+        case .stopped: return "model stopped, starts on demand"
+        case .needsSetup: return "needs setup"
         case .loading: return "model loading"
         case .busy: return "busy"
         case .noGateway: return "no gateway"

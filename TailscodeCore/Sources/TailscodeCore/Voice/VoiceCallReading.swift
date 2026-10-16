@@ -72,6 +72,10 @@ public enum VoiceCallReading {
             return Localized.text("Checking the voice gateway…")
         case .ready(let gateway):
             return Localized.text("Ready to call: voice-bridge %@ is answering", gateway)
+        case .stopped:
+            return Localized.text("The voice model starts when you call, which can take a few minutes.")
+        case .needsSetup:
+            return Localized.text("Voice calls need a one-time setup on this server.")
         case .loading:
             return Localized.text(
                 "The voice model is still loading on the server, which can take a few minutes. Try again shortly.")

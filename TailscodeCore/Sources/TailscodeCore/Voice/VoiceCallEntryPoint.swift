@@ -26,7 +26,7 @@ public enum VoiceCallEntryPoint {
     public static func isEnabled(reach: VoiceReach, active: Bool = false) -> Bool {
         if active { return true }
         switch reach {
-        case .unknown, .ready, .wantsPassword, .unreachable: return true
+        case .unknown, .ready, .stopped, .needsSetup, .wantsPassword, .unreachable: return true
         case .checking, .loading, .busy, .noGateway, .tooOld, .engineDown: return false
         }
     }

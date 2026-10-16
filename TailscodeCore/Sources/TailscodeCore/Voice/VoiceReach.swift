@@ -11,6 +11,8 @@ public enum VoiceReach: Sendable, Equatable {
     case unknown
     case checking
     case ready(gateway: String)
+    case stopped(gateway: String)
+    case needsSetup
     case loading
     case busy
     case noGateway
@@ -20,8 +22,10 @@ public enum VoiceReach: Sendable, Equatable {
     case unreachable(String)
 
     public var canStart: Bool {
-        if case .ready = self { return true }
-        return false
+        switch self {
+        case .ready, .stopped: return true
+        default: return false
+        }
     }
 
     public var asksForPassword: Bool { self == .wantsPassword }
@@ -31,16 +35,18 @@ public enum VoiceReach: Sendable, Equatable {
 
     public var tone: ActivityTone {
         switch self {
-        case .unknown, .checking: return .quiet
+        case .unknown, .checking, .stopped: return .quiet
         case .ready: return .live
-        case .loading, .busy, .wantsPassword: return .attention
+        case .loading, .busy, .wantsPassword, .needsSetup: return .attention
         case .noGateway, .tooOld, .engineDown, .unreachable: return .danger
         }
     }
 
     public var gateway: String? {
-        if case .ready(let gateway) = self { return gateway }
-        return nil
+        switch self {
+        case .ready(let gateway), .stopped(let gateway): return gateway
+        default: return nil
+        }
     }
 }
 
@@ -119,6 +125,8 @@ public struct VoiceReachProbe: Sendable {
         }
         switch health.engine {
         case .ready: return .ready(gateway: health.gateway)
+        case .stopped: return .stopped(gateway: health.gateway)
+        case .needsSetup: return .needsSetup
         case .loading: return .loading
         case .busy: return .busy
         case .down: return .engineDown(detail: health.detail.flatMap { $0.isEmpty ? nil : VoiceText.ascii($0) })

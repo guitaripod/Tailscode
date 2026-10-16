@@ -229,7 +229,7 @@ public actor VoiceCallSession {
             degradation = VoiceCallDegradation(reason: reason, recovering: recovering)
             await playback.flush()
             publish()
-        case .recycled, .unknown:
+        case .recycled, .unknown, .engine:
             break
         case .error(let code, let message):
             if code == "busy" && reconnecting {
