@@ -319,6 +319,13 @@ targets:
       - path: Tailscode/Usage/UsagePushPayload.swift
       - path: Tailscode/Logging/AppLogger.swift
       - path: Tailscode/Logging/LogFileWriter.swift
+      - path: Tailscode/Notifications/NoticeFace.swift
+      - path: Tailscode/Notifications/NoticeContent.swift
+      - path: Tailscode/Notifications/NoticeCategories.swift
+      - path: Tailscode/Notifications/NoticeBadge.swift
+      - path: Tailscode/Notifications/NoticePushDresser.swift
+      - path: TailscodeCore/Sources/TailscodeCore/NoticeWire.swift
+      - path: TailscodeCore/Sources/TailscodeCore/Localized.swift
     info:
       path: TailscodeNSE/Info.plist
       properties:
@@ -333,6 +340,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) NOTICE_EXTENSION"
         MARKETING_VERSION: "1.78"
         CURRENT_PROJECT_VERSION: "195"
         SKIP_INSTALL: YES

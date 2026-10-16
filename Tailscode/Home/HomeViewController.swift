@@ -961,6 +961,7 @@ final class HomeViewController: UIViewController {
             viewModel.entries.filter { $0.session.isWorking }.map(\.session.id)
         ).union(
             SessionActivity.shared.statuses.filter { $0.value != .idle }.map(\.key))
+        NoticeOwners.remember(owners)
         await NotificationManager.adoptDelivered(
             profileForSession: { owners[$0] }, liveSessionIDs: live)
     }

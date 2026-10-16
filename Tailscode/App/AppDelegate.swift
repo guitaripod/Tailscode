@@ -18,6 +18,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         GameCenterCoordinator.shared.start()
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
         NotificationManager.registerCategories()
+        NotificationManager.syncBadge()
+        #if DEBUG
+            NoticeDebug.runIfRequested()
+        #endif
+        NotificationCenter.default.addObserver(
+            forName: ActivityInbox.didChange, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { NotificationManager.syncBadge() }
+        }
         AppActivityController.shared.adoptStanding()
         TurnWaitCenter.shared.start()
         UsageBackgroundRefresh.register()
