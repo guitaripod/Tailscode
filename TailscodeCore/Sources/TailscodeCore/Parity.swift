@@ -122,6 +122,9 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case openCodeTwoServer
     case connectDiagnosis
     case serverAccess
+    case firstRunPlan
+    case pairingLink
+    case pairingScan
     case serverSignIn
     case machinePermissions
     case serverSelfUpdate
@@ -674,6 +677,18 @@ public enum CapabilityRegistry {
             id: .serverAccess, area: "servers", title: "A tailnet is a credential",
             spec:
                 "Tailscale already authenticated every node with a key and an account, so a bridge on a tailnet admits a device by asking tailscaled who it is (claude-bridge TailnetGate, same-user by default) and a password is one of two keys rather than the only one. The client owes two things. Where a server is explained, it says what let this device in (ServerHealth.access → ServerAccessReading.line): trusted through the tailnet as whom, let in by its password, or open — and says nothing for a server that does not report it, because a guess reads as a fact. Where a server refused, a refusal that names the tailnet (AuthChallenge.tailnetOnly, read from the 401 body) is never written as a password prompt — no field is revealed and the diagnosis sends the person to Tailscale on this device — and a scan row wearing that refusal says its tailnet only rather than wants a password."),
+        CapabilityDefinition(
+            id: .firstRunPlan, area: "servers", title: "First run is one plan",
+            spec:
+                "A stranger reaches a working first conversation without transcribing an address, minting a password or guessing a port, and the three clients say the same thing in the same order because none of them writes first run: Core's FirstRunPlan owns the rows and their words and FirstRunFlow owns the state behind them. The rows are Tailscale on this device (proven where the platform can read it, and honestly unable to on a sandboxed Mac), the machine, and connected. The machine row offers three ways in, in this order — scan the code the computer printed (phones only), open or paste a link, and I do not have a machine set up yet, which shows the one install command (BridgeInstall.needsPassword decides whether it carries a password: claude-bridge from 1.7.2 trusts the tailnet and carries none, omp-bridge and opencode still do) with Copy and, on a phone, the share sheet, then waits for the machine to appear — and says in one sentence what a machine is. The flow probes the address the moment it has one, names the machine in a failure rather than telling anyone to check a port, reads Claude's sign-in the moment the server is saved and opens the existing sign-in inside first run when it is signed out, and keeps the demo one tap away. An address typed or pasted still works exactly as before; a password is asked for only once a server has said it wants one."),
+        CapabilityDefinition(
+            id: .pairingLink, area: "servers", title: "A pairing link prefills first run",
+            spec:
+                "The machine prints a tailscode://connect link (PairingKit) and the app opens it: ConnectLink reads it into a PairingLink or the plain reason it is not one (damaged, asks for something else, not a link), ConnectLinkPlan decides what happens — first run pre-selects the agent, fills the host and port and probes at once; a link for a server already added just opens that server; a link arriving when servers exist asks Add this machine? first — and ConnectLinkReading says what the link says, including This address is not on a tailnet when the host cannot be one, in which case nothing is tried until the person goes on. The link only prefills: nothing is saved until Connect, and the password the link may carry (key) goes to the keychain and to the host only after that press, never into a log (PairingLink.redacted). Every client has a way to hand the app a link: iOS opens it from any app and from a scanned code, the Mac registers the tailscode scheme and handles the open, Linux registers x-scheme-handler/tailscode and accepts tailscode --connect <link> or a bare tailscode:// argument on the single instance already running, and all of them have a paste field that notices a link on the clipboard and offers it."),
+        CapabilityDefinition(
+            id: .pairingScan, area: "servers", title: "Scan the code the computer printed",
+            spec:
+                "The install prints a QR code beside its link and a phone reads it with the camera (AVCaptureMetadataOutput, QR only) straight into the same ConnectLink handler a pasted link goes through. A camera that is denied or absent is one plain line and the paste path, never a dead end, and a code that is not a Tailscode link is told so in the link's own words. A desktop has no camera to point at a terminal and answers not applicable: it pastes or opens the link."),
         CapabilityDefinition(
             id: .serverSignIn, area: "servers", title: "Split browser sign-in",
             spec:
