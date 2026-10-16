@@ -316886,6 +316886,1000 @@
           }
         }
       }
+    },
+    "Speak to this chat and it types what you say, as you say it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speak to this chat and it types what you say, as you say it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprich in diesen Chat, und er tippt mit, was du sagst, während du es sagst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habla en este chat y escribe lo que dices, a medida que lo dices."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parlez dans ce chat et il tape ce que vous dites, au fur et à mesure."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parla in questa chat e scrive ciò che dici, mentre lo dici."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このチャットに話しかけると、話した内容をそのまま入力します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 채팅에 말하면 말하는 내용을 그대로 입력합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mów do tego czatu, a zapisze to, co mówisz, w miarę mówienia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fale com este chat e ele digita o que você diz, conforme você fala."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对此聊天说话，它会边听边把你说的话打出来。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "對這個聊天說話，它會邊聽邊把你說的話打出來。"
+          }
+        }
+      }
+    },
+    "A voice model on your own server's GPU listens and writes down your words, and each finished sentence of three words or more goes to the agent in this chat as an ordinary message, exactly as if you had typed it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A voice model on your own server's GPU listens and writes down your words, and each finished sentence of three words or more goes to the agent in this chat as an ordinary message, exactly as if you had typed it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Sprachmodell auf der GPU deines eigenen Servers hört zu und schreibt deine Worte mit, und jeder fertige Satz mit mindestens drei Wörtern wird als normale Nachricht an den Agenten in diesem Chat gesendet, genau so, als hättest du ihn getippt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un modelo de voz en la GPU de tu propio servidor escucha y transcribe tus palabras, y cada frase terminada de tres palabras o más se envía al agente de este chat como un mensaje normal, exactamente como si la hubieras escrito."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un modèle vocal sur le GPU de votre propre serveur écoute et transcrit vos mots, et chaque phrase terminée de trois mots ou plus est envoyée à l'agent dans ce chat comme un message ordinaire, exactement comme si vous l'aviez tapée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un modello vocale sulla GPU del tuo server ascolta e trascrive le tue parole, e ogni frase completata di tre parole o più viene inviata all'agente in questa chat come messaggio normale, esattamente come se l'avessi digitata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ご自身のサーバーのGPU上の音声モデルが聞き取って言葉を書き起こし、3語以上の文が完了するたびに、入力したのとまったく同じ通常のメッセージとしてこのチャットのエージェントに送られます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 서버의 GPU에서 돌아가는 음성 모델이 말을 듣고 받아 적으며, 세 단어 이상으로 이루어진 문장이 끝날 때마다 이 채팅의 에이전트에 직접 입력한 것과 똑같이 일반 메시지로 전달됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model głosowy na GPU twojego własnego serwera słucha i zapisuje twoje słowa, a każde ukończone zdanie złożone z co najmniej trzech słów trafia do agenta w tym czacie jako zwykła wiadomość, dokładnie tak, jakbyś ją wpisał."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um modelo de voz na GPU do seu próprio servidor ouve e transcreve suas palavras, e cada frase concluída de três palavras ou mais é enviada ao agente neste chat como uma mensagem comum, exatamente como se você a tivesse digitado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你自己服务器上 GPU 中的语音模型会听取并记录你的话，每个完整句子（不少于三个词）都会作为普通消息发送给此聊天中的智能体，就像你亲自输入的一样。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你自己伺服器上 GPU 中的語音模型會聽取並記下你的話，每個完整句子（不少於三個字詞）都會以一般訊息的形式送給此聊天中的智能體，就像你親手打字一樣。"
+          }
+        }
+      }
+    },
+    "It does not talk back, on purpose: the model that listens is not good enough at talking, so it stays quiet, and a chime says when the agent has finished.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It does not talk back, on purpose: the model that listens is not good enough at talking, so it stays quiet, and a chime says when the agent has finished."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es antwortet absichtlich nicht: Das Modell, das zuhört, ist im Sprechen nicht gut genug, deshalb bleibt es still, und ein Signalton zeigt an, wann der Agent fertig ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No responde a propósito: el modelo que escucha no es lo bastante bueno hablando, así que permanece en silencio, y un aviso sonoro indica cuándo el agente ha terminado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il ne répond pas, et c'est voulu : le modèle qui écoute n'est pas assez bon pour parler, il reste donc silencieux, et un carillon indique quand l'agent a fini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non risponde di proposito: il modello che ascolta non è abbastanza bravo a parlare, quindi resta in silenzio, e un suono segnala quando l'agente ha finito."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "意図的に話し返しません。聞き取りを担うモデルは話すには性能が十分でないため黙っていて、エージェントの処理が終わるとチャイム音で知らせます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "의도적으로 말로 응답하지 않습니다. 듣는 모델은 말하기에는 성능이 충분하지 않아 조용히 있고, 에이전트가 작업을 마치면 차임 소리로 알려 줍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Celowo nie odpowiada głosem: model, który słucha, nie jest wystarczająco dobry w mówieniu, więc milczy, a dźwięk sygnału informuje, kiedy agent skończył."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele não responde de propósito: o modelo que ouve não é bom o bastante para falar, então fica em silêncio, e um sinal sonoro avisa quando o agente terminou."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这是刻意为之：负责听的模型说话能力不够好，所以它保持沉默，而提示音会告诉你智能体何时完成。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這是刻意設計：負責聆聽的模型說話能力還不夠好，所以它保持沉默，而提示音會告訴你智能體何時完成。"
+          }
+        }
+      }
+    },
+    "What it heard is shown as it arrives and is sometimes wrong, so the agent gets what was heard; nothing leaves your tailnet, because the audio runs from this device to your own machine and nowhere else.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What it heard is shown as it arrives and is sometimes wrong, so the agent gets what was heard; nothing leaves your tailnet, because the audio runs from this device to your own machine and nowhere else."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was es hört, wird beim Eintreffen angezeigt und ist manchmal falsch, deshalb bekommt der Agent, was gehört wurde; nichts verlässt dein Tailnet, denn das Audio läuft nur von diesem Gerät zu deinem eigenen Rechner und sonst nirgendwohin."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que oye se muestra a medida que llega y a veces es incorrecto, así que el agente recibe lo que se oyó; nada sale de tu tailnet, porque el audio va de este dispositivo a tu propia máquina y a ningún otro lugar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce qui est entendu s'affiche au fil de l'eau et peut être faux, si bien que l'agent reçoit ce qui a été entendu ; rien ne quitte votre tailnet, car l'audio passe de cet appareil à votre propre machine, et nulle part ailleurs."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ciò che sente viene mostrato man mano che arriva ed è a volte sbagliato, quindi l'agente riceve ciò che è stato sentito; nulla lascia il tuo tailnet, perché l'audio va da questo dispositivo solo alla tua macchina e da nessun'altra parte."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聞き取った内容は届くたびに表示され、ときどき誤りがあります。そのため、エージェントには聞き取られた内容がそのまま渡されます。音声はこの端末からご自身のマシンへだけ流れ、tailnet の外へは何も出ません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "들은 내용은 도착하는 대로 표시되며 가끔 틀릴 수 있고, 에이전트는 들린 내용을 그대로 받습니다. 오디오는 이 기기에서 사용자 본인의 머신으로만 전달되므로 tailnet 밖으로 나가는 것은 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To, co zostało usłyszane, pojawia się w miarę napływania i bywa błędne, więc agent dostaje to, co zostało usłyszane; nic nie opuszcza twojego tailnetu, ponieważ dźwięk biegnie od tego urządzenia do twojej własnej maszyny i nigdzie indziej."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que foi ouvido aparece conforme chega e às vezes está errado, então o agente recebe o que foi ouvido; nada sai da sua tailnet, porque o áudio vai deste dispositivo para a sua própria máquina e para mais nenhum lugar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "识别到的内容会随着到达实时显示，有时会有误，所以智能体收到的就是识别到的内容；没有任何内容离开你的 tailnet，因为音频只从这台设备传到你自己的机器，不会传到其他地方。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聽到的內容會隨著抵達即時顯示，有時會有誤，所以智能體收到的就是聽到的內容；沒有任何內容離開你的 tailnet，因為音訊只從這台裝置傳到你自己的機器，不會傳到其他地方。"
+          }
+        }
+      }
+    },
+    "Your words are typed into the chat as you speak": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your words are typed into the chat as you speak"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Worte werden beim Sprechen in den Chat getippt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus palabras se escriben en el chat mientras hablas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos mots sont tapés dans le chat au fur et à mesure que vous parlez"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le tue parole vengono scritte nella chat mentre parli"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "話した言葉がそのままチャットに入力されます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "말하는 내용이 채팅에 바로 입력됩니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twoje słowa są wpisywane w czacie w miarę mówienia"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas palavras são digitadas no chat enquanto você fala"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你说的话会实时输入到聊天中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你說的話會即時輸入到聊天中"
+          }
+        }
+      }
+    },
+    "What it heard is shown on the strip as it arrives": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What it heard is shown on the strip as it arrives"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was es hört, wird beim Eintreffen in der Leiste angezeigt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que oye se muestra en la barra a medida que llega"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce qui est entendu s'affiche dans la bande au fur et à mesure"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ciò che sente viene mostrato nella barra man mano che arriva"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聞き取った内容は届くたびにバーに表示されます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "들린 내용은 도착하는 대로 스트립에 표시됩니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To, co zostało usłyszane, pojawia się na pasku w miarę napływania"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que foi ouvido aparece na faixa conforme chega"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "识别到的内容会在状态条中实时显示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聽到的內容會在狀態條中即時顯示"
+          }
+        }
+      }
+    },
+    "A chime says when the agent has finished": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A chime says when the agent has finished"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Signalton zeigt an, wann der Agent fertig ist"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un aviso sonoro indica cuándo el agente ha terminado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un carillon indique quand l'agent a terminé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un suono avvisa quando l'agente ha finito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントが終わるとチャイム音が鳴ります"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 작업을 마치면 차임 소리가 납니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dźwięk sygnału informuje, kiedy agent skończył"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um sinal sonoro avisa quando o agente terminou"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能体完成时会响起提示音"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能體完成時會響起提示音"
+          }
+        }
+      }
+    },
+    "It mishears now and then, and the agent gets what it heard": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It mishears now and then, and the agent gets what it heard"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es hört manchmal falsch, und der Agent bekommt, was es gehört hat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De vez en cuando oye mal, y el agente recibe lo que oyó"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il lui arrive de mal entendre, et l'agent reçoit ce qu'il a entendu"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ogni tanto sente male, e l'agente riceve ciò che ha sentito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ときどき聞き間違えますが、エージェントには聞き取った内容がそのまま届きます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "가끔 잘못 알아들을 수 있으며, 에이전트는 알아들은 내용을 그대로 받습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Czasem się przesłyszy, a agent dostaje to, co usłyszał"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele ouve errado de vez em quando, e o agente recebe o que ele ouviu"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它偶尔会听错，智能体收到的就是它听到的内容"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它偶爾會聽錯，智能體收到的就是它聽到的內容"
+          }
+        }
+      }
+    },
+    "A pause in the middle of a request can split it into two messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A pause in the middle of a request can split it into two messages"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Pause mitten in einer Anfrage kann sie in zwei Nachrichten teilen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una pausa en medio de una petición puede dividirla en dos mensajes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une pause au milieu d'une demande peut la scinder en deux messages"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una pausa nel mezzo di una richiesta può dividerla in due messaggi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "依頼の途中で間が空くと、2つのメッセージに分かれることがあります"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "요청 도중에 잠깐 멈추면 요청이 메시지 두 개로 나뉠 수 있습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pauza w środku prośby może rozdzielić ją na dwie wiadomości"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma pausa no meio de um pedido pode dividi-lo em duas mensagens"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求说到一半停顿，可能会被拆分成两条消息"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請求說到一半停頓，可能會被拆成兩則訊息"
+          }
+        }
+      }
+    },
+    "It does not talk back and cannot stop the agent; use the chat for that": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It does not talk back and cannot stop the agent; use the chat for that"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es antwortet nicht und kann den Agenten nicht stoppen; dafür den Chat verwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No responde y no puede detener al agente; para eso usa el chat"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il ne répond pas et ne peut pas arrêter l'agent ; utilisez le chat pour cela"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non risponde e non può fermare l'agente; per questo usa la chat"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "話し返すことも、エージェントを止めることもできません。停止はチャットで行ってください"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "말로 응답하지 않으며 에이전트를 멈출 수도 없습니다. 그럴 때는 채팅을 사용하세요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie odpowiada głosem i nie może zatrzymać agenta; do tego służy czat"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele não responde nem pode parar o agente; para isso, use o chat"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它不会回话，也无法停止智能体；要做到这些，请使用聊天界面"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它不會回話，也無法停止智能體；要做到這些，請使用聊天介面"
+          }
+        }
+      }
+    },
+    "Needs an NVIDIA GPU with about %@ on your server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs an NVIDIA GPU with about %@ on your server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benötigt eine NVIDIA-GPU mit etwa %@ auf deinem Server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Necesita una GPU NVIDIA con unos %@ en tu servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nécessite une GPU NVIDIA avec environ %@ sur votre serveur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Richiede una GPU NVIDIA con circa %@ sul tuo server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバー上に約 %@ を搭載したNVIDIA GPUが必要です"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버에 약 %@ 용량의 NVIDIA GPU가 필요합니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wymaga NVIDIA GPU z około %@ na twoim serwerze"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Precisa de uma GPU NVIDIA com cerca de %@ no seu servidor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要服务器上配有约 %@ 的 NVIDIA GPU"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要伺服器上配有約 %@ 的 NVIDIA GPU"
+          }
+        }
+      }
+    },
+    "Speak to this chat and it types what you say": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speak to this chat and it types what you say"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprich in diesen Chat, und er tippt, was du sagst"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habla en este chat y escribe lo que dices"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parlez dans ce chat et il tape ce que vous dites"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parla in questa chat e scrive ciò che dici"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このチャットに話しかけると、話した内容を入力します"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 채팅에 말하면 말한 내용을 입력합니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mów do tego czatu, a zapisze to, co mówisz"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fale com este chat e ele digita o que você diz"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对此聊天说话，它会把你说的话打出来"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "對這個聊天說話，它會把你說的話打出來"
+          }
+        }
+      }
+    },
+    "Call this chat. It types what you say": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Call this chat. It types what you say"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diesen Chat anrufen. Es tippt, was du sagst"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama a este chat. Escribe lo que dices"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appeler ce chat. Il tape ce que vous dites"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiama questa chat. Scrive ciò che dici"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このチャットに通話します。話した内容を入力します"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 채팅으로 통화합니다. 말하는 내용을 입력합니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zadzwoń do tego czatu. Zapisuje to, co mówisz"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligue para este chat. Ele digita o que você diz"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与此聊天通话。它会把你说的话打出来"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "與這個聊天通話。它會把你說的話打出來"
+          }
+        }
+      }
+    },
+    "Speak to your chats and they type what you say. Needs an NVIDIA GPU with %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speak to your chats and they type what you say. Needs an NVIDIA GPU with %@."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprich mit deinen Chats, und sie tippen, was du sagst. Benötigt eine NVIDIA-GPU mit %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habla con tus chats y ellos escriben lo que dices. Necesita una GPU NVIDIA con %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parlez à vos chats et ils tapent ce que vous dites. Nécessite une GPU NVIDIA avec %@."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parla con le tue chat e loro scrivono ciò che dici. Richiede una GPU NVIDIA con %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットに話しかけると、話した内容が入力されます。%@ 搭載のNVIDIA GPUが必要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "채팅에 말하면 말한 내용이 입력됩니다. %@ 용량의 NVIDIA GPU가 필요합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mów do swoich czatów, a będą wpisywać to, co mówisz. Wymaga NVIDIA GPU z %@."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fale com seus chats e eles digitam o que você diz. Precisa de uma GPU NVIDIA com %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对你的聊天说话，它们会把你说的话打出来。需要配有 %@ 的 NVIDIA GPU。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "對你的聊天說話，它們會把你說的話打出來。需要配有 %@ 的 NVIDIA GPU。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

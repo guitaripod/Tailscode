@@ -16,7 +16,11 @@ struct VoiceSetupReader: SetupCapabilityReader {
     var readyActionLabel: String { Localized.text("Try a call") }
     var beta: BetaFeature? { .voiceCall }
     var addTitle: String? { Localized.text("Add voice calls") }
-    var addLine: String? { Localized.text("Talk to your chats out loud. Needs an NVIDIA GPU with 80 GB.") }
+    var addLine: String? {
+        Localized.text(
+            "Speak to your chats and they type what you say. Needs an NVIDIA GPU with %@.",
+            SetupFormat.megabytes(VoiceRequirements.gpuMemoryMB))
+    }
 
     func title(of check: SetupCheck) -> String? {
         switch check.id {

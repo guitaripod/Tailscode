@@ -45,28 +45,28 @@ public enum BetaFeature: String, Sendable, CaseIterable {
             symbol: VoiceCallEntryPoint.symbol,
             glyph: VoiceCallEntryPoint.glyph,
             title: Localized.text("Calls are in beta"),
-            lead: Localized.text(
-                "Talk to this chat out loud and hear what the agent is doing while it keeps working."),
+            lead: Localized.text("Speak to this chat and it types what you say, as you say it."),
             paragraphs: [
                 Localized.text(
-                    "A call lets you speak a task to the agent already in this chat. A voice model on your own server's GPU listens and speaks; the agent you chose does all of the work, exactly as if you had typed it."),
+                    "A voice model on your own server's GPU listens and writes down your words, and each finished sentence of three words or more goes to the agent in this chat as an ordinary message, exactly as if you had typed it."),
                 Localized.text(
-                    "Calls are new and shaped by use. The voice model is small and young, so it sometimes mishears, which is why what it heard is shown on screen as it goes to the agent."),
+                    "It does not talk back, on purpose: the model that listens is not good enough at talking, so it stays quiet, and a chime says when the agent has finished."),
                 Localized.text(
-                    "Nothing leaves your tailnet: the audio runs from this device to your own machine and nowhere else."),
+                    "What it heard is shown as it arrives and is sometimes wrong, so the agent gets what was heard; nothing leaves your tailnet, because the audio runs from this device to your own machine and nowhere else."),
             ],
             works: [
-                Localized.text("Speak a task and it is sent to the agent as an ordinary message"),
-                Localized.text("Talk over the voice at any point and it stops to listen"),
-                Localized.text("Ask what the agent is doing and hear a short answer"),
+                Localized.text("Your words are typed into the chat as you speak"),
+                Localized.text("What it heard is shown on the strip as it arrives"),
+                Localized.text("A chime says when the agent has finished"),
             ],
             rough: [
+                Localized.text("It mishears now and then, and the agent gets what it heard"),
+                Localized.text("A pause in the middle of a request can split it into two messages"),
+                Localized.text("It does not talk back and cannot stop the agent; use the chat for that"),
                 Localized.text("English only"),
-                Localized.text("Use headphones, or the model hears its own voice and answers itself"),
-                Localized.text("You cannot interrupt while it is looking up what the agent is doing"),
-                Localized.text("It cannot speak up by itself: a chime says the agent finished, then you ask"),
                 Localized.text(
-                    "A long call is reset about every minute and a half; the agent keeps its memory, the voice does not"),
+                    "Needs an NVIDIA GPU with about %@ on your server",
+                    SetupFormat.megabytes(VoiceRequirements.gpuMemoryMB)),
             ],
             changes: [],
             reportName: Localized.text("voice-bridge on that machine (journalctl --user -u voice-bridge)"))

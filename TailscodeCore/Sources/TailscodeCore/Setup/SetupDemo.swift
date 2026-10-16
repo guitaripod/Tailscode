@@ -100,7 +100,7 @@ public actor SetupDemoSource: SetupSource {
         let imageJob = runningJob("voice.pullImage", now)
         return [
             SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "NVIDIA RTX PRO 6000 Blackwell"]),
-            SetupCheck(id: "voice.vram", state: .ok, facts: ["totalMB": "97887", "needMB": "70000"]),
+            SetupCheck(id: "voice.vram", state: .ok, facts: ["totalMB": "97887", "needMB": String(VoiceRequirements.engineMemoryMB)]),
             SetupCheck(id: "voice.docker", state: .ok, facts: ["os": "arch"]),
             commandRun
                 ? SetupCheck(id: "voice.cdi", state: .ok, facts: ["toolkit": "installed"])
@@ -130,7 +130,7 @@ public actor SetupDemoSource: SetupSource {
         if now - finished < Self.blockerClears {
             return SetupCheck(
                 id: "voice.engine", state: .blocked,
-                facts: ["mode": "managed", "state": "busy", "freeMB": "2048", "needMB": "70000"])
+                facts: ["mode": "managed", "state": "busy", "freeMB": "2048", "needMB": String(VoiceRequirements.engineMemoryMB)])
         }
         return SetupCheck(id: "voice.engine", state: .ok, facts: ["mode": "managed", "state": "stopped"])
     }
@@ -171,7 +171,7 @@ public enum SetupFixtures {
             var checks = allGood()
             checks[6] = SetupCheck(
                 id: "voice.engine", state: .blocked,
-                facts: ["mode": "managed", "state": "busy", "freeMB": "2048", "needMB": "70000", "holders": "ollama"])
+                facts: ["mode": "managed", "state": "busy", "freeMB": "2048", "needMB": String(VoiceRequirements.engineMemoryMB), "holders": "ollama"])
             return SetupSnapshot(target: target, phase: .loaded, report: report(checks: checks, ready: false))
         case "downloading":
             var checks = allGood()
@@ -217,7 +217,7 @@ public enum SetupFixtures {
             let checks =
                 [
                     SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "NVIDIA GeForce RTX 4090"]),
-                    SetupCheck(id: "voice.vram", state: .unavailable, facts: ["totalMB": "24564", "needMB": "70000"]),
+                    SetupCheck(id: "voice.vram", state: .unavailable, facts: ["totalMB": "24564", "needMB": String(VoiceRequirements.engineMemoryMB)]),
                 ]
                 + ["voice.docker", "voice.cdi", "voice.model", "voice.image", "voice.engine"]
                     .map { SetupCheck(id: $0, state: .unavailable) }
@@ -252,7 +252,7 @@ public enum SetupFixtures {
     private static func allGood() -> [SetupCheck] {
         [
             SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "NVIDIA RTX PRO 6000 Blackwell"]),
-            SetupCheck(id: "voice.vram", state: .ok, facts: ["totalMB": "97887", "needMB": "70000"]),
+            SetupCheck(id: "voice.vram", state: .ok, facts: ["totalMB": "97887", "needMB": String(VoiceRequirements.engineMemoryMB)]),
             SetupCheck(id: "voice.docker", state: .ok, facts: ["os": "arch"]),
             SetupCheck(id: "voice.cdi", state: .ok, facts: ["toolkit": "installed"]),
             SetupCheck(
@@ -261,7 +261,7 @@ public enum SetupFixtures {
             SetupCheck(
                 id: "voice.image", state: .ok,
                 facts: ["bytes": String(VoiceRequirements.imageBytes), "needBytes": String(VoiceRequirements.imageBytes)]),
-            SetupCheck(id: "voice.engine", state: .ok, facts: ["mode": "managed", "state": "stopped", "freeMB": "87892", "needMB": "70000"]),
+            SetupCheck(id: "voice.engine", state: .ok, facts: ["mode": "managed", "state": "stopped", "freeMB": "87892", "needMB": String(VoiceRequirements.engineMemoryMB)]),
             SetupCheck(id: "voice.gateway", state: .ok, facts: ["version": "0.4.0"]),
         ]
     }

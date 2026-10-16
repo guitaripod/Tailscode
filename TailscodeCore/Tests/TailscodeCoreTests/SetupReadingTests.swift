@@ -41,11 +41,15 @@ struct SetupReadingTests {
         let ok = SetupCheck(id: "voice.gpu", state: .ok, facts: ["name": "NVIDIA RTX PRO 6000 Blackwell"])
         #expect(SetupReading.line(of: ok, locale: english) == "NVIDIA RTX PRO 6000 Blackwell")
         let none = SetupCheck(id: "voice.gpu", state: .unavailable, detail: "No NVIDIA GPU was found on this machine.")
-        #expect(SetupReading.line(of: none, locale: english) == "No NVIDIA GPU with 80 GB was found.")
-        #expect(SetupReading.impossibility(of: none, locale: english) == "it has no NVIDIA GPU with 80 GB")
-        let small = SetupCheck(id: "voice.vram", state: .unavailable, facts: ["totalMB": "24564", "needMB": "70000"])
-        #expect(SetupReading.line(of: small, locale: english) == "This GPU has 24 GB of memory and voice calls need a card with 80 GB.")
-        #expect(SetupReading.impossibility(of: small, locale: english) == "its GPU has 24 GB of memory and voice needs 80 GB")
+        let card = SetupFormat.megabytes(VoiceRequirements.gpuMemoryMB, locale: english)
+        #expect(card == "64 GB")
+        #expect(SetupReading.line(of: none, locale: english) == "No NVIDIA GPU with \(card) was found.")
+        #expect(SetupReading.impossibility(of: none, locale: english) == "it has no NVIDIA GPU with \(card)")
+        let small = SetupCheck(
+            id: "voice.vram", state: .unavailable,
+            facts: ["totalMB": "24564", "needMB": String(VoiceRequirements.engineMemoryMB)])
+        #expect(SetupReading.line(of: small, locale: english) == "This GPU has 24 GB of memory and voice calls need a card with \(card).")
+        #expect(SetupReading.impossibility(of: small, locale: english) == "its GPU has 24 GB of memory and voice needs \(card)")
         let unread = SetupCheck(id: "voice.vram", state: .unavailable, detail: "The card's memory size could not be read.")
         #expect(SetupReading.impossibility(of: unread, locale: english) == "The card's memory size could not be read.")
         let skipped = SetupCheck(id: "voice.docker", state: .unavailable)
@@ -55,9 +59,11 @@ struct SetupReadingTests {
     @Test("A busy engine is a fact about someone else's job, said without blame")
     func engineBusy() {
         let check = SetupCheck(
-            id: "voice.engine", state: .blocked, facts: ["state": "busy", "freeMB": "2048", "needMB": "70000", "holders": "ollama"])
+            id: "voice.engine", state: .blocked, facts: ["state": "busy", "freeMB": "2048", "needMB": String(VoiceRequirements.engineMemoryMB), "holders": "ollama"])
         let line = SetupReading.line(of: check, locale: english) ?? ""
-        #expect(line.hasPrefix("Only 2 GB of the GPU is free and the voice model needs 68 GB."))
+        let need = SetupFormat.megabytes(VoiceRequirements.engineMemoryMB, locale: english)
+        #expect(need == "62 GB")
+        #expect(line.hasPrefix("Only 2 GB of the GPU is free and the voice model needs \(need)."))
         #expect(line.contains("never stop another job"))
         let down = SetupCheck(id: "voice.engine", state: .blocked, facts: ["state": "down", "reason": "container exited"])
         #expect(SetupReading.line(of: down, locale: english) == "Not running: container exited")

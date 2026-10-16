@@ -47,6 +47,20 @@ struct BetaTests {
         #expect(BetaFeature.voiceCall.card.rough.count == 5)
     }
 
+    @Test("The call's card says it listens and types, that it does not talk back, and takes its GPU figure from the requirement")
+    func callCardIsHonest() {
+        let card = BetaFeature.voiceCall.card
+        let all = ([card.lead] + card.paragraphs + card.works + card.rough).joined(separator: " ")
+        let gpu = SetupFormat.megabytes(VoiceRequirements.gpuMemoryMB)
+        #expect(card.rough.contains("Needs an NVIDIA GPU with about \(gpu) on your server"))
+        #expect(gpu == "64 GB")
+        #expect(card.paragraphs[1].contains("does not talk back"))
+        #expect(card.rough.contains("English only"))
+        for promise in ["headphones", "hear what the agent", "Ask what the agent", "Talk over", "short answer"] {
+            #expect(!all.contains(promise), "\(promise) is a promise the model cannot keep")
+        }
+    }
+
     @Test("A mark is unseen until the card is opened, changed when something newer was said, settled otherwise")
     func freshnessTransitions() {
         let plain = card(changes: [])

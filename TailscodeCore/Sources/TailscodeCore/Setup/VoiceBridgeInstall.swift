@@ -15,8 +15,8 @@ public enum VoiceBridgeInstall {
 /// machine's own report wins wherever it carries a number; these are the figures the app quotes when
 /// it has not heard from the machine at all.
 public enum VoiceRequirements {
-    public static let gpuMemoryMB: Int64 = 80 * 1024
+    public static let gpuMemoryMB: Int64 = 64 * 1024
     public static let modelBytes: Int64 = 46_868_000_000
     public static let imageBytes: Int64 = 22_500_000_000
-    public static let engineMemoryMB: Int64 = 70_000
+    public static let engineMemoryMB: Int64 = 62 * 1024
 }
