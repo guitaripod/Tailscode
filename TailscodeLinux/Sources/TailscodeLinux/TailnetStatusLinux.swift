@@ -58,6 +58,18 @@ public struct TailnetStatusLinux: Sendable {
     }
 
     public static func read() -> TailnetStatusLinux {
+        #if DEBUG
+            switch ProcessInfo.processInfo.environment["TAILSCODE_FAKE_TAILNET"] {
+            case "up":
+                return TailnetStatusLinux(address: "100.101.102.103", peers: [])
+            case "down":
+                return TailnetStatusLinux(address: nil, peers: [], reading: .daemonDown)
+            case "loggedout":
+                return TailnetStatusLinux(address: nil, peers: [], reading: .loggedOut)
+            default:
+                break
+            }
+        #endif
         let answer = runTailscale()
         guard let data = answer.output else {
             return TailnetStatusLinux(

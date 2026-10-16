@@ -337,6 +337,11 @@ final class MainWindow: @unchecked Sendable {
                                 "OPENID missing \(argument) of \(self.visible.count): \(ids.joined(separator: ","))\n"
                                     .utf8))
                     }
+                case "openlink":
+                    self.openConnectLink(argument)
+                case "frpaste", "frchoose", "frback", "frconfirm", "frconnect", "fragent", "frhanded",
+                    "frpassword", "frretry":
+                    FirstRunDialog.drive(verb, argument)
                 case "notice":
                     if argument == "test" || argument.isEmpty {
                         Notifier.shared.sendTest()
@@ -2824,6 +2829,16 @@ final class MainWindow: @unchecked Sendable {
     func stashDrafts() {
         splitHost.eachPane { $0.stashDraft() }
         DraftStore.flush()
+    }
+
+    /// A `tailscode://connect` link from outside the window — the desktop opening it, a second
+    /// launch handing it over, a paste into the setup — brought to the checklist, which asks before
+    /// it saves anything.
+    func openConnectLink(_ text: String) {
+        raise()
+        FirstRunDialog.open(link: text, parent: window) { [weak self] in
+            Task { [weak self] in await self?.refresh() }
+        }
     }
 
     /// What a second launch gets: the window that exists, brought forward. Never a second one —
