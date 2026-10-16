@@ -220,6 +220,8 @@ enum ParityManifest {
         case .videoEstimate: return .implemented("expecting")
         case .videoLight: return .implemented("ForgeRingView")
         case .voiceCall: return .implemented("CallDockView")
+        case .setupChecklist: return .implemented("SetupChecklistViewController")
+        case .serverCapabilities: return .implemented("SetupCapabilitiesSection")
         }
     }
 }
