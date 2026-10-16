@@ -531,6 +531,65 @@ enum AppActions {
         let handle: @Sendable () -> Void
         init(_ handle: @escaping @Sendable () -> Void) { self.handle = handle }
     }
+
+    static let connectLinkName = "connect-link"
+
+    /// A link handed to the process that already holds the session bus name: a text parameter, so
+    /// the running window receives the link itself and not a request to look for one.
+    static func installConnectLink(
+        on app: UnsafeMutableRawPointer, handle: @escaping @Sendable (String) -> Void
+    ) {
+        guard let type = g_variant_type_new("s"),
+            let action = g_simple_action_new(connectLinkName, type)
+        else { return }
+        g_variant_type_free(type)
+        let box = Unmanaged.passRetained(LinkBox(handle)).toOpaque()
+        let callback:
+            @convention(c) (OpaquePointer?, OpaquePointer?, UnsafeMutableRawPointer?) -> Void = {
+                _, parameter, raw in
+                guard let raw, let parameter, let text = g_variant_get_string(parameter, nil)
+                else { return }
+                let handle = Unmanaged<LinkBox>.fromOpaque(raw).takeUnretainedValue().handle
+                let link = String(cString: text)
+                Gtk.onMain { handle(link) }
+            }
+        tailscode_connect(
+            UnsafeMutableRawPointer(action), "activate",
+            unsafeBitCast(callback, to: GCallback.self), box)
+        g_action_map_add_action(op(app), op(UnsafeMutableRawPointer(action)))
+    }
+
+    static func sendConnectLink(_ link: String, on app: UnsafeMutableRawPointer) {
+        g_action_group_activate_action(op(app), connectLinkName, g_variant_new_string(link))
+    }
+
+    /// The URIs a desktop hands an application that declared it opens them: one `open` signal
+    /// carrying every file, which for this app is only ever a `tailscode://` link.
+    static func installOpen(
+        on app: UnsafeMutableRawPointer, handle: @escaping @Sendable (String) -> Void
+    ) {
+        let box = Unmanaged.passRetained(LinkBox(handle)).toOpaque()
+        let callback:
+            @convention(c) (
+                UnsafeMutableRawPointer?, UnsafeMutablePointer<OpaquePointer?>?, Int32,
+                UnsafePointer<CChar>?, UnsafeMutableRawPointer?
+            ) -> Void = { _, files, count, _, raw in
+                guard let raw, let files else { return }
+                let handle = Unmanaged<LinkBox>.fromOpaque(raw).takeUnretainedValue().handle
+                for index in 0..<Int(count) {
+                    guard let file = files[index], let uri = g_file_get_uri(file) else { continue }
+                    let link = String(cString: uri)
+                    g_free(uri)
+                    Gtk.onMain { handle(link) }
+                }
+            }
+        tailscode_connect(app, "open", unsafeBitCast(callback, to: GCallback.self), box)
+    }
+
+    private final class LinkBox: @unchecked Sendable {
+        let handle: @Sendable (String) -> Void
+        init(_ handle: @escaping @Sendable (String) -> Void) { self.handle = handle }
+    }
 }
 
 /// GVariant's own constructors are variadic, which Swift cannot call at all, so every value this

@@ -355,6 +355,77 @@
           }
         }
       }
+    },
+    "NSCameraUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Take a photo to ask your agent about it, or scan the code your computer prints to connect."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mach ein Foto, um deinen Agenten dazu zu fragen, oder scanne den Code, den dein Rechner ausgibt, um dich zu verbinden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Haz una foto para preguntarle a tu agente, o escanea el código que imprime tu equipo para conectarte."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prenez une photo pour interroger votre agent, ou scannez le code qu'affiche votre ordinateur pour vous connecter."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scatta una foto per chiedere al tuo agente, oppure inquadra il codice che il tuo computer stampa per collegarti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写真を撮ってエージェントに質問したり、コンピュータが表示するコードを読み取って接続したりできます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사진을 찍어 에이전트에게 물어보거나, 컴퓨터가 출력하는 코드를 스캔해 연결할 수 있어요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zrób zdjęcie, aby zapytać o nie agenta, albo zeskanuj kod wyświetlony przez twój komputer, aby się połączyć."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tire uma foto para perguntar ao seu agente, ou escaneie o código que o seu computador imprime para se conectar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拍一张照片向你的智能体提问，或扫描电脑打印出的二维码来连接。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拍一張照片向你的代理提問，或掃描電腦印出的 QR Code 來連線。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

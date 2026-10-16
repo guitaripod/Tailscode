@@ -248,21 +248,26 @@ final class WelcomeViewController: UIViewController {
 
     private func pushSetup(focusingConnect: Bool) {
         guard navigationController?.topViewController === self else { return }
-        navigationController?.pushViewController(makeSetup(), animated: true)
-        if focusingConnect { setup?.startOnConnectStep = true }
+        let setup = makeSetup()
+        setup.startsOnLink = focusingConnect
+        navigationController?.pushViewController(setup, animated: true)
     }
 
-    /// `tailscode://connect?host=…&port=…` — a link the machine can print, texted
-    /// or AirDropped to the phone, so the address never has to be transcribed. It
-    /// only ever prefills; nothing is saved until the user connects.
-    func openSetup(prefilling address: String) {
+    /// `tailscode://connect?...`, a link the machine prints, texted or AirDropped to the phone, or
+    /// scanned from its code. The setup screen reads it; nothing is saved until the person
+    /// presses Connect.
+    func openSetup(link text: String) {
+        guard let navigationController else { return }
         if let setup {
-            setup.prefill(address: address)
+            if navigationController.topViewController !== setup {
+                navigationController.popToViewController(setup, animated: true)
+            }
+            setup.receive(link: text)
             return
         }
         let setup = makeSetup()
-        navigationController?.pushViewController(setup, animated: true)
-        setup.prefill(address: address)
+        navigationController.pushViewController(setup, animated: true)
+        setup.receive(link: text)
     }
 
     private var setup: ServerSetupViewController? {

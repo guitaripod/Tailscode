@@ -521,6 +521,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkFirstRun()
+            report("first run: \(checks) claims hold — the desktop entry, the link arguments and every state the window draws")
+        } catch {
+            report("first run: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try await checkVoiceAudio()
             report("voice audio: \(checks) claims hold — devices, levels, and a stop that is safe twice")
         } catch {

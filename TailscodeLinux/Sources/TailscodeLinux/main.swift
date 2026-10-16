@@ -94,7 +94,7 @@ if let stray = Arguments.flags.first(where: {
     exit(2)
 }
 
-if Connect.isRequested {
+if Connect.isRequested, LaunchLink.isHeadlessConnect(arguments: Arguments.all) {
     Task { await Connect.run() }
     dispatchMain()
 }
@@ -119,7 +119,15 @@ AppLog.write(
 /// until the toolkit has initialised, and one made at top level segfaults inside `gtk_box_new`
 /// before the app has run a line of its own.
 nonisolated(unsafe) var mainWindow: MainWindow?
-nonisolated(unsafe) let app = adw_application_new(DesktopIntegration.appID, GApplicationFlags(rawValue: 0))!
+let handlesOpen = GApplicationFlags(rawValue: 1 << 2)
+nonisolated(unsafe) let app = adw_application_new(DesktopIntegration.appID, handlesOpen)!
+
+/// A pairing link this launch was started with, or one that arrived before the window existed.
+/// It waits here until `activate` has built the window, and is read once.
+nonisolated(unsafe) var pendingConnectLink: String? = {
+    if case .link(let text) = LaunchLink.request(arguments: Arguments.all) { return text }
+    return nil
+}()
 
 /// A second launch is a request to see the window that already exists, not to build another one.
 /// This app is single-instance on the session bus, so every later launch — a `.desktop` click, a
@@ -147,7 +155,25 @@ Gtk.connect(UnsafeMutableRawPointer(app), "activate") {
         wantsAsk = false
         mainWindow?.summonQuickAsk()
     }
+    if let link = pendingConnectLink {
+        pendingConnectLink = nil
+        mainWindow?.openConnectLink(link)
+    }
 }
+
+/// A link reaches a window that may not exist yet: a desktop starting the app to open it builds
+/// the window first, and the link waits for it.
+func deliverConnectLink(_ link: String) {
+    if mainWindow == nil {
+        pendingConnectLink = link
+        g_application_activate(ptr(app))
+    } else {
+        mainWindow?.openConnectLink(link)
+    }
+}
+
+AppActions.installConnectLink(on: UnsafeMutableRawPointer(app), handle: deliverConnectLink)
+AppActions.installOpen(on: UnsafeMutableRawPointer(app), handle: deliverConnectLink)
 
 /// The one thing this app can be asked to do from outside its own window. GApplication proxies an
 /// action to the instance that already holds the session bus name, which is what lets a chord bound
@@ -168,6 +194,22 @@ if wantsAsk {
     if let registerError { g_error_free(registerError) }
     if g_application_get_is_remote(ptr(app)) != 0 {
         g_action_group_activate_action(op(UnsafeMutableRawPointer(app)), "ask", nil)
+        if let connection = g_application_get_dbus_connection(ptr(app)) {
+            g_dbus_connection_flush_sync(connection, nil, nil)
+        }
+        exit(0)
+    }
+}
+
+/// A link given on the command line to a process that is already running goes to it and the new
+/// process leaves, the way `--ask` does; one that finds the name free keeps the link for its own
+/// window.
+if let link = pendingConnectLink {
+    var registerError: UnsafeMutablePointer<GError>?
+    g_application_register(ptr(app), nil, &registerError)
+    if let registerError { g_error_free(registerError) }
+    if g_application_get_is_remote(ptr(app)) != 0 {
+        AppActions.sendConnectLink(link, on: UnsafeMutableRawPointer(app))
         if let connection = g_application_get_dbus_connection(ptr(app)) {
             g_dbus_connection_flush_sync(connection, nil, nil)
         }

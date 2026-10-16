@@ -18,6 +18,8 @@ import TailscodeCore
 final class DiscoveryPanel: @unchecked Sendable {
     private let onAdd: @Sendable (TailnetScanner.Suggestion) -> Void
     private let onChanged: @Sendable () -> Void
+    var onSighted: (@Sendable (TailnetScanner.Suggestion) -> Void)?
+    var onFinished: (@Sendable () -> Void)?
 
     let group: UnsafeMutablePointer<GtkWidget>
     private let radar = RadarView()
@@ -157,6 +159,7 @@ final class DiscoveryPanel: @unchecked Sendable {
         radar.blips.append(made)
         found.append(suggestion)
         renderResults()
+        onSighted?(suggestion)
     }
 
     /// A scan that never comes back is a spinner with extra steps. A peer that has gone to sleep
@@ -187,6 +190,7 @@ final class DiscoveryPanel: @unchecked Sendable {
         guard scanID == id else { return }
         radar.scanning = false
         renderResults()
+        defer { onFinished?() }
         let again = Self.button(Localized.text("Scan again")) { [weak self] in self?.scan() }
         if let note {
             setStatus(Localized.text("Nothing to add"), detail: note, actions: [again])

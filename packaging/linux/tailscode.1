@@ -4,20 +4,26 @@ tailscode \- drive your coding agents over Tailscale
 .SH SYNOPSIS
 .B tailscode
 .RI [ options ]
+.br
+.B tailscode
+.I tailscode://connect?\|...
 .SH DESCRIPTION
 Tailscode is a GTK4 client for the coding agents running on your other machines: Claude
 Code through claude\-bridge, oh\-my\-pi through omp\-bridge, and opencode. The agent stays
 where your code is; this is the window onto it, over your own tailnet.
 .PP
 Running it with no arguments opens the window. A second launch raises the window that
-already exists rather than starting a second app.
+already exists rather than starting a second app. A pairing link, the line an agent bridge
+prints when it finishes installing, is opened the same way: the window that exists asks
+before it adds the machine the link names, and nothing is saved until you say so.
 .SH OPTIONS
 .TP
 \fB--ask\fR
 Open the question box, raising the running window first. Bind this to a key.
 .TP
 \fB--connect\fR
-Save a server by address and open it, without touching the setup screen.
+Save a server by address and open it, without touching the setup screen. Given a
+tailscode://connect link instead of an address, it hands the link to the window.
 .TP
 \fB--demo\fR
 Open the scripted demo world: two sample servers, no tailnet, nothing real.

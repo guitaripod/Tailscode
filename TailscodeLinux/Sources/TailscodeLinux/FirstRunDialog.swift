@@ -5,12 +5,13 @@ import CodingAgentKitApple
 import Foundation
 import TailscodeCore
 
-/// First run is a checklist the app verifies, not a form: it states each requirement and proves
-/// what it can — this machine's tailnet presence, polled live, and which agent answers the typed
-/// address via the full `probeCandidates()` sweep — before asking for anything. A failed probe
-/// names its cause; a password is asked for only once a server says it wants one. Shown only
-/// when no server is configured yet.
+/// First run as a window that draws a `FirstRunPlan`. The plan is Core's: the rows, the words and
+/// the one press that moves on are the same on all three clients, and this file decides only how a
+/// row is painted and what each intent reaches for on a Linux desktop. Shown when there is no
+/// server yet, and again — as a question, not a form — when a link arrives for another machine.
 final class FirstRunDialog: @unchecked Sendable {
+    nonisolated(unsafe) private static var current: FirstRunDialog?
+
     static func presentIfNeeded(
         parent: UnsafeMutablePointer<GtkWidget>?, onSaved: @escaping @Sendable () -> Void
     ) {
@@ -19,688 +20,817 @@ final class FirstRunDialog: @unchecked Sendable {
             await ServerDirectory.shared.reload()
             guard await ServerDirectory.shared.profiles().isEmpty else { return }
             Gtk.onMain {
-                let parent = UnsafeMutableRawPointer(bitPattern: parentBits).map {
-                    raw -> UnsafeMutablePointer<GtkWidget> in ptr(raw)
-                }
-                FirstRunDialog(onSaved: onSaved).present(parent: parent)
+                guard current == nil else { return }
+                begin(mode: .firstRun, parentBits: parentBits, link: nil, onSaved: onSaved)
             }
         }
     }
 
+    /// A link that reached the app from outside: the dialog already open takes it, and otherwise
+    /// one opens — the first-run checklist when there is no server yet, the question when there is.
+    static func open(
+        link: String, parent: UnsafeMutablePointer<GtkWidget>?,
+        onSaved: @escaping @Sendable () -> Void
+    ) {
+        if let existing = current {
+            existing.raise()
+            existing.send { await $0.paste(link) }
+            return
+        }
+        let parentBits = parent.map { UInt(bitPattern: $0) } ?? 0
+        Task {
+            await ServerDirectory.shared.reload()
+            let empty = await ServerDirectory.shared.profiles().isEmpty
+            Gtk.onMain {
+                guard current == nil else {
+                    current?.raise()
+                    current?.send { await $0.paste(link) }
+                    return
+                }
+                begin(
+                    mode: empty ? .firstRun : .addition, parentBits: parentBits, link: link,
+                    onSaved: onSaved)
+            }
+        }
+    }
+
+    static func forTesting(mode: FirstRunState.Mode) -> FirstRunDialog {
+        let dialog = FirstRunDialog(mode: mode, onSaved: {})
+        dialog.build(parent: nil)
+        return dialog
+    }
+
+    func applyForTesting(_ plan: FirstRunPlan) {
+        render(plan)
+    }
+
+    func renderedTexts() -> [String] {
+        guard let window else { return [] }
+        var texts: [String] = []
+        if let child = gtk_window_get_child(ptr(window)) { collect(from: child, into: &texts) }
+        return texts
+    }
+
+    private func collect(from widget: UnsafeMutablePointer<GtkWidget>, into texts: inout [String]) {
+        guard gtk_widget_get_visible(widget) != 0 else { return }
+        let instance = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GTypeInstance.self)
+        if g_type_check_instance_is_a(instance, gtk_label_get_type()) != 0,
+            let raw = gtk_label_get_text(op(widget))
+        {
+            texts.append(String(cString: raw))
+        } else if g_type_check_instance_is_a(instance, gtk_button_get_type()) != 0,
+            let raw = gtk_button_get_label(ptr(widget))
+        {
+            texts.append(String(cString: raw))
+        }
+        var child = gtk_widget_get_first_child(widget)
+        while let current = child {
+            collect(from: current, into: &texts)
+            child = gtk_widget_get_next_sibling(current)
+        }
+    }
+
+    func isShowingPassword() -> Bool {
+        gtk_widget_get_visible(passwordBox) != 0
+    }
+
+    static func drive(_ verb: String, _ argument: String) {
+        current?.driven(verb, argument)
+    }
+
+    private static func begin(
+        mode: FirstRunState.Mode, parentBits: UInt, link: String?,
+        onSaved: @escaping @Sendable () -> Void
+    ) {
+        let parent = UnsafeMutableRawPointer(bitPattern: parentBits).map {
+            raw -> UnsafeMutablePointer<GtkWidget> in ptr(raw)
+        }
+        let dialog = FirstRunDialog(mode: mode, onSaved: onSaved)
+        current = dialog
+        dialog.present(parent: parent, link: link)
+    }
+
+    private let flow: FirstRunFlow
+    private let mode: FirstRunState.Mode
     private let onSaved: @Sendable () -> Void
     private var window: UnsafeMutablePointer<GtkWidget>?
-    private let tailnetPill = Gtk.label("", css: "row-detail", selectable: false)
-    private let tailnetDetail = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
-    private let tailnetActions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-    private let agentPill = Gtk.label("", css: "row-detail", selectable: false)
-    private let addressEntry = gtk_entry_new()!
-    private let passwordEntry = gtk_password_entry_new()!
-    private let readingLabel = Gtk.label("", css: "row-detail", selectable: false)
-    private let diagnosisLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
-    private let diagnosisActions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-    private let connectButton = gtk_button_new_with_label("")!
-    private var chosenBackend: AgentType = .claudeCode
-    private var passwordShown = false
-    private var tailnetAddress: String?
-    private var tailscale: TailscaleReading = .daemonDown
+    private var rows: [FirstRunPlan.Row.ID: RowWidgets] = [:]
+    private var plan: FirstRunPlan?
     private var closed = false
-    private var probeGeneration = 0
-    private var verified: (url: URL, agent: AgentType, version: String?)?
-    private var scan: DiscoveryPanel?
+    private var finishing = false
+    private var streamTask: Task<Void, Never>?
+    private var blocksShown: [FirstRunPlan.Row.ID: [FirstRunPlan.Block]] = [:]
+    private var tailscale: TailscaleReading?
+    private var tailnetKeys: Set<String> = []
+    private var discoveryRequested = false
+    private var watching = false
+    private var watchRounds = 0
+    private var syncing = false
 
-    /// The fourth requirement, shown only when the Mac just reached needs a grant its agents can't
-    /// give themselves — hidden until `finish(profile:)` knows there is something to ask.
+    private let intro = FirstRunDialog.wrapped("", css: "row-detail")
+    private let demoButton = gtk_button_new_with_label("")!
+    private let laterButton = gtk_button_new_with_label("")!
+    private let primaryButton = gtk_button_new_with_label("")!
+    private let backButton = gtk_button_new_with_label("")!
+    private let remedyOutput: UnsafeMutablePointer<GtkWidget> = {
+        let label = FirstRunDialog.wrapped("", css: "row-detail")
+        g_object_ref_sink(UnsafeMutableRawPointer(label))
+        return label
+    }()
     private let permissionsStepArea = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
-    private var permissionsPollPending = false
     private let permissionsStepTitle = Gtk.label("", css: "row-title", selectable: false)
-    private let permissionsDetailLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
+    private let permissionsDetailLabel = FirstRunDialog.wrapped("", css: "row-detail")
     private let permissionsBox = MachinePermissionsBox(local: false)
     private var permissionsBackend: (any PermissionReportingBackend)?
+    private var permissionsPollPending = false
 
-    /// Minted before the command is shown, so the line a person copies onto the other machine and
-    /// the password this app will send are the same string. iOS has always done this; Linux handed
-    /// over the bare installer and then asked the user to go and find what it had generated.
-    private let mintedPassword = BridgeInstall.makePassword()
+    private let waysBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+    private let pasteBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+    private let pasteEntry = gtk_entry_new()!
+    private let offerButton = gtk_button_new_with_label("")!
+    private let pasteReading = FirstRunDialog.wrapped("", css: "row-detail")
+    private let pasteMessage = FirstRunDialog.wrapped("", css: "row-detail")
+    private let installBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+    private let linkBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+    private let statusBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+    private let passwordBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+    private let passwordNote = FirstRunDialog.wrapped("", css: "row-detail")
+    private let passwordEntry = gtk_password_entry_new()!
+    private let discoveryBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+    private var discovery: DiscoveryPanel?
 
-    private init(onSaved: @escaping @Sendable () -> Void) {
-        self.onSaved = onSaved
+    private struct RowWidgets {
+        let container: UnsafeMutablePointer<GtkWidget>
+        let number: UnsafeMutablePointer<GtkWidget>
+        let title: UnsafeMutablePointer<GtkWidget>
+        let pill: UnsafeMutablePointer<GtkWidget>
+        let detail: UnsafeMutablePointer<GtkWidget>
+        let body: UnsafeMutablePointer<GtkWidget>
     }
 
-    private func present(parent: UnsafeMutablePointer<GtkWidget>?) {
-        let (window, content, actions) = Dialogs.windowWithActions(
-            title: Localized.text("Welcome"), parent: parent, width: 620)
-        self.window = window
+    private init(mode: FirstRunState.Mode, onSaved: @escaping @Sendable () -> Void) {
+        self.mode = mode
+        self.onSaved = onSaved
+        flow = FirstRunFlow(
+            platform: .linux, mode: mode,
+            environment: FirstRunEnvironment(
+                offersTailnetScan: true,
+                profiles: { await ServerDirectory.shared.profiles() },
+                save: { profile, password in
+                    do {
+                        try await ServerDirectory.shared.save(profile, password: password)
+                        return .saved
+                    } catch {
+                        return .failed(String(describing: error))
+                    }
+                },
+                log: { AppLog.write(.connection, $0) }))
+    }
 
-        gtk_box_append(
-            ptr(content),
-            Gtk.label(
-                Localized.text(
-                    "Tailscode drives coding agents on your other machines. Three things have to be true first — each one is checked for you."),
-                css: "row-detail", wrap: true, selectable: false))
+    private static func wrapped(_ text: String, css: String) -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label(text, css: css, wrap: true, selectable: false)
+        gtk_label_set_max_width_chars(op(label), 78)
+        return label
+    }
 
-        appendStep(
-            to: content, number: "1", title: Localized.text("Tailscale on this machine"),
-            pill: tailnetPill)
-        setPill(tailnetPill, text: Localized.text("Checking…"), css: "dim")
-        Gtk.margins(tailnetDetail, leading: 22)
-        gtk_widget_set_visible(tailnetDetail, 0)
-        gtk_box_append(ptr(content), tailnetDetail)
-        Gtk.margins(tailnetActions, leading: 22)
-        gtk_widget_set_visible(tailnetActions, 0)
-        gtk_box_append(ptr(content), tailnetActions)
+    private func send(_ work: @escaping @Sendable (FirstRunFlow) async -> Void) {
+        let flow = flow
+        Task { await work(flow) }
+    }
 
-        appendStep(
-            to: content, number: "2",
-            title: Localized.text("Run an agent on the machine with your code"),
-            pill: agentPill)
-        appendCommand(
-            to: content, label: "claude-bridge",
-            command: BridgeInstall.command(for: .claudeCode, password: mintedPassword),
-            note: Localized.text("Needs git and a Swift 6 toolchain on that machine."))
-        appendCommand(
-            to: content, label: "opencode",
-            command: BridgeInstall.command(for: .openCode, password: mintedPassword),
-            note: Localized.text(
-                "Installs opencode if it is missing, serves it on port 4096, and keeps its model list current."
-            ))
-        appendCommand(
-            to: content, label: "omp-bridge",
-            command: BridgeInstall.command(for: .omp, password: mintedPassword),
-            note: Localized.text(
-                "Drives oh-my-pi (install it first) on port 4099. Needs git and a Swift 6 toolchain."
-            ))
+    private func raise() {
+        if let window { gtk_window_present(ptr(window)) }
+    }
 
-        appendStep(to: content, number: "3", title: Localized.text("Connect this machine"), pill: nil)
-
-        // The scan is the road with no typing on it, and on Linux the tailnet is free to read, so
-        // it leads rather than hiding in a preferences window the person has not found yet.
-        let panel = DiscoveryPanel(
-            onAdd: { [weak self] suggestion in self?.adopt(suggestion) },
-            onChanged: {})
-        scan = panel
-        gtk_box_append(ptr(content), panel.group)
-        gtk_entry_set_placeholder_text(
-            ptr(addressEntry),
-            Localized.text("Tailnet address — 100.x.y.z, name.tailnet.ts.net, host:port"))
-        gtk_box_append(ptr(content), addressEntry)
-
-        let kindRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let claudeButton = gtk_toggle_button_new_with_label("claude-bridge · 4098")!
-        let opencodeButton = gtk_toggle_button_new_with_label("opencode · 4096")!
-        let ompButton = gtk_toggle_button_new_with_label("oh-my-pi · 4099")!
-        gtk_toggle_button_set_active(ptr(claudeButton), 1)
-        gtk_toggle_button_set_group(ptr(opencodeButton), ptr(claudeButton))
-        gtk_toggle_button_set_group(ptr(ompButton), ptr(claudeButton))
-        let claudeBits = UInt(bitPattern: claudeButton)
-        let opencodeBits = UInt(bitPattern: opencodeButton)
-        Gtk.connect(UnsafeMutableRawPointer(claudeButton), "toggled") { [self] in
-            guard let raw = UnsafeMutableRawPointer(bitPattern: claudeBits),
-                gtk_toggle_button_get_active(ptr(raw)) != 0
-            else { return }
-            chosenBackend = .claudeCode
-            Gtk.onMain { [self] in scheduleProbe(afterMilliseconds: 100) }
-        }
-        Gtk.connect(UnsafeMutableRawPointer(opencodeButton), "toggled") { [self] in
-            guard let raw = UnsafeMutableRawPointer(bitPattern: opencodeBits),
-                gtk_toggle_button_get_active(ptr(raw)) != 0
-            else { return }
-            chosenBackend = .openCode
-            Gtk.onMain { [self] in scheduleProbe(afterMilliseconds: 100) }
-        }
-        let ompBits = UInt(bitPattern: ompButton)
-        Gtk.connect(UnsafeMutableRawPointer(ompButton), "toggled") { [self] in
-            guard let raw = UnsafeMutableRawPointer(bitPattern: ompBits),
-                gtk_toggle_button_get_active(ptr(raw)) != 0
-            else { return }
-            chosenBackend = .omp
-            Gtk.onMain { [self] in scheduleProbe(afterMilliseconds: 100) }
-        }
-        gtk_box_append(ptr(kindRow), claudeButton)
-        gtk_box_append(ptr(kindRow), opencodeButton)
-        gtk_box_append(ptr(kindRow), ompButton)
-        gtk_box_append(ptr(content), kindRow)
-
-        gtk_box_append(ptr(content), readingLabel)
-        gtk_widget_set_visible(passwordEntry, 0)
-        gtk_box_append(ptr(content), passwordEntry)
-        gtk_box_append(ptr(content), diagnosisLabel)
-        gtk_widget_set_visible(diagnosisActions, 0)
-        gtk_box_append(ptr(content), diagnosisActions)
-
-        let permissionsHeader = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(ptr(permissionsHeader), Gtk.label("4 ·", css: "dim", selectable: false))
-        gtk_box_append(ptr(permissionsHeader), permissionsStepTitle)
-        gtk_box_append(ptr(permissionsStepArea), permissionsHeader)
-        Gtk.margins(permissionsDetailLabel, leading: 22)
-        gtk_box_append(ptr(permissionsStepArea), permissionsDetailLabel)
-        let permissionsWrapper = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        Gtk.margins(permissionsWrapper, top: 6, leading: 22)
-        gtk_box_append(ptr(permissionsWrapper), permissionsBox.widget)
-        gtk_box_append(ptr(permissionsStepArea), permissionsWrapper)
-        let skipPermissions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.margins(skipPermissions, top: 6, leading: 22)
-        gtk_box_append(
-            ptr(skipPermissions),
-            Gtk.button(MachinePermissionReading.skip, css: ["flat"]) { [self] in
-                Gtk.onMain { [self] in if let window = self.window { Dialogs.close(window) } }
-            })
-        gtk_box_append(ptr(permissionsStepArea), skipPermissions)
-        Gtk.margins(permissionsStepArea, top: 8)
-        gtk_widget_set_visible(permissionsStepArea, 0)
-        gtk_box_append(ptr(content), permissionsStepArea)
-        permissionsBox.onRequest = { [self] kind in requestPermission(kind) }
-
-        // The demo is the only thing that works with no infrastructure at all, so it reads as an
-        // offer rather than as a consolation: somebody who cannot finish setup tonight still gets
-        // to see the app instead of closing an empty window.
-        let demo = Gtk.button(Localized.text("Try the demo")) { [self] in
-            Gtk.onMain { [self] in self.enterDemo() }
-        }
-        gtk_widget_set_tooltip_text(demo, Localized.text("Two sample servers. Nothing real."))
-        gtk_box_append(ptr(actions), demo)
-        gtk_box_append(
-            ptr(actions),
-            Gtk.button(Localized.text("Later"), css: ["flat"]) { [self] in
-                Gtk.onMain { [self] in
-                    if let window = self.window { Dialogs.close(window) }
-                }
-            })
-        gtk_button_set_label(ptr(connectButton), Localized.text("Connect"))
-        Gtk.addClass(connectButton, "suggested-action")
-        Gtk.connect(UnsafeMutableRawPointer(connectButton), "clicked") { [self] in
-            Gtk.onMain { [self] in probe(userInitiated: true) }
-        }
-        gtk_box_append(ptr(actions), connectButton)
-
-        Gtk.connect(UnsafeMutableRawPointer(addressEntry), "changed") { [self] in
-            Gtk.onMain { [self] in
-                verified = nil
-                updateReading()
-                scheduleProbe(afterMilliseconds: 900)
+    private func present(parent: UnsafeMutablePointer<GtkWidget>?, link: String?) {
+        build(parent: parent)
+        guard let window else { return }
+        streamTask = Task { [self] in
+            for await next in await flow.plans() {
+                Gtk.onMain { [self] in render(next) }
             }
         }
-        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [self] in
-            Gtk.onMain { [self] in closed = true }
-        }
-
         pollTailnet()
+        render(FirstRunPlan.make(FirstRunState(platform: .linux, mode: mode)))
         gtk_window_present(ptr(window))
-        gtk_widget_grab_focus(addressEntry)
+        readClipboard()
+        if let link { send { await $0.paste(link) } }
+    }
+
+    private func build(parent: UnsafeMutablePointer<GtkWidget>?) {
+        let title =
+            mode == .addition ? ConnectLinkReading.addQuestion : Localized.text("Welcome")
+        let (window, content, actions) = Dialogs.windowWithActions(
+            title: title, parent: parent, width: 660)
+        self.window = window
+        gtk_window_set_default_size(ptr(window), 680, 640)
+
+        gtk_box_append(ptr(content), intro)
+        for id in FirstRunPlan.Row.ID.allCases { gtk_box_append(ptr(content), makeRow(id)) }
+        buildMachineSlots()
+        buildPermissionsStep(in: content)
+
+        gtk_box_append(ptr(actions), demoButton)
+        gtk_box_append(ptr(actions), laterButton)
+        gtk_box_append(ptr(actions), primaryButton)
+        Gtk.addClass(primaryButton, "suggested-action")
+        Gtk.addClass(laterButton, "flat")
+        Gtk.connect(UnsafeMutableRawPointer(demoButton), "clicked") { [self] in
+            Gtk.onMain { [self] in enterDemo() }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(laterButton), "clicked") { [self] in
+            Gtk.onMain { [self] in laterPressed() }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(primaryButton), "clicked") { [self] in
+            Gtk.onMain { [self] in primaryPressed() }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [self] in
+            Gtk.onMain { [self] in tearDown() }
+        }
+        Gtk.onNotify(UnsafeMutableRawPointer(window), property: "is-active") { [self] in
+            Gtk.onMain { [self] in readClipboard() }
+        }
+    }
+
+    private func tearDown() {
+        closed = true
+        streamTask?.cancel()
+        if Self.current === self { Self.current = nil }
+    }
+
+    private func close() {
+        if let window { Dialogs.close(window) }
     }
 
     private func enterDemo() {
         Task {
             await ServerDirectory.shared.enterDemoMode()
             Gtk.onMain { [self] in
-                if let window = self.window { Dialogs.close(window) }
+                close()
                 onSaved()
             }
         }
     }
 
-    private func appendStep(
-        to content: UnsafeMutablePointer<GtkWidget>, number: String, title: String,
-        pill: UnsafeMutablePointer<GtkWidget>?
-    ) {
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        Gtk.margins(row, top: 8)
-        gtk_box_append(ptr(row), Gtk.label("\(number) ·", css: "dim", selectable: false))
-        gtk_box_append(ptr(row), Gtk.label(title, css: "row-title", selectable: false))
-        if let pill {
-            let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-            gtk_widget_set_hexpand(spacer, 1)
-            gtk_box_append(ptr(row), spacer)
-            gtk_box_append(ptr(row), pill)
+    private func laterPressed() {
+        guard let plan else {
+            close()
+            return
         }
-        gtk_box_append(ptr(content), row)
+        if plan.later != nil {
+            send { await $0.skipSignIn() }
+        } else {
+            close()
+        }
+    }
+
+    private func primaryPressed() {
+        guard let intent = plan?.primary?.intent else { return }
+        switch intent {
+        case .connect: send { await $0.connect() }
+        case .openTailscale: performRemedy()
+        case .signIn: presentSignIn()
+        }
+    }
+
+    private func makeRow(_ id: FirstRunPlan.Row.ID) -> UnsafeMutablePointer<GtkWidget> {
+        let container = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        Gtk.margins(container, top: 8)
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let number = Gtk.label("", css: "dim", selectable: false)
+        let title = Gtk.label("", css: "row-title", selectable: false)
+        let pill = Gtk.label("", css: "row-detail", selectable: false)
+        let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_widget_set_hexpand(spacer, 1)
+        for part in [number, title, spacer, pill] { gtk_box_append(ptr(header), part) }
+        let detail = FirstRunDialog.wrapped("", css: "row-detail")
+        Gtk.margins(detail, leading: 22)
+        let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        Gtk.margins(body, leading: 22)
+        for part in [header, detail, body] { gtk_box_append(ptr(container), part) }
+        rows[id] = RowWidgets(
+            container: container, number: number, title: title, pill: pill, detail: detail,
+            body: body)
+        return container
+    }
+
+    private func buildPermissionsStep(in content: UnsafeMutablePointer<GtkWidget>) {
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(header), Gtk.label("4 ·", css: "dim", selectable: false))
+        gtk_box_append(ptr(header), permissionsStepTitle)
+        gtk_box_append(ptr(permissionsStepArea), header)
+        Gtk.margins(permissionsDetailLabel, leading: 22)
+        gtk_box_append(ptr(permissionsStepArea), permissionsDetailLabel)
+        let wrapper = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.margins(wrapper, top: 6, leading: 22)
+        gtk_box_append(ptr(wrapper), permissionsBox.widget)
+        gtk_box_append(ptr(permissionsStepArea), wrapper)
+        let skip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.margins(skip, top: 6, leading: 22)
+        gtk_box_append(
+            ptr(skip),
+            Gtk.button(MachinePermissionReading.skip, css: ["flat"]) { [self] in
+                Gtk.onMain { [self] in close() }
+            })
+        gtk_box_append(ptr(permissionsStepArea), skip)
+        Gtk.margins(permissionsStepArea, top: 8)
+        gtk_widget_set_visible(permissionsStepArea, 0)
+        gtk_box_append(ptr(content), permissionsStepArea)
+        permissionsBox.onRequest = { [self] kind in requestPermission(kind) }
+    }
+
+    private func buildMachineSlots() {
+        guard let machine = rows[.machine] else { return }
+        for slot in [
+            waysBox, pasteBox, installBox, linkBox, statusBox, passwordBox, discoveryBox,
+        ] {
+            gtk_box_append(ptr(machine.body), slot)
+        }
+
+        gtk_button_set_label(ptr(backButton), "")
+        Gtk.addClass(backButton, "flat")
+        gtk_widget_set_halign(backButton, GTK_ALIGN_START)
+        Gtk.connect(UnsafeMutableRawPointer(backButton), "clicked") { [self] in
+            Gtk.onMain { [self] in
+                discoveryRequested = false
+                send { await $0.back() }
+            }
+        }
+        gtk_box_prepend(ptr(machine.body), backButton)
+
+        gtk_entry_set_activates_default(ptr(pasteEntry), 0)
+        gtk_widget_set_hexpand(pasteEntry, 1)
+        gtk_box_append(ptr(pasteBox), pasteEntry)
+        gtk_box_append(ptr(pasteBox), offerButton)
+        Gtk.addClass(offerButton, "suggested-action")
+        gtk_widget_set_halign(offerButton, GTK_ALIGN_START)
+        gtk_box_append(ptr(pasteBox), pasteReading)
+        gtk_box_append(ptr(pasteBox), pasteMessage)
+        Gtk.connect(UnsafeMutableRawPointer(pasteEntry), "changed") { [self] in
+            Gtk.onMain { [self] in
+                guard !syncing else { return }
+                let text = Dialogs.entryText(pasteEntry)
+                send { await $0.paste(text) }
+            }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(offerButton), "clicked") { [self] in
+            send { await $0.useClipboardLink() }
+        }
+
+        gtk_box_append(ptr(passwordBox), passwordNote)
+        gtk_box_append(ptr(passwordBox), passwordEntry)
+        gtk_editable_set_text(op(passwordEntry), "")
+        Gtk.connect(UnsafeMutableRawPointer(passwordEntry), "changed") { [self] in
+            Gtk.onMain { [self] in
+                guard !syncing else { return }
+                let text = Dialogs.entryText(passwordEntry)
+                send { await $0.setPassword(text) }
+            }
+        }
+
+        let panel = DiscoveryPanel(
+            onAdd: { [weak self] suggestion in self?.addFromScan(suggestion) }, onChanged: {})
+        panel.onSighted = { [weak self] suggestion in self?.sighted(suggestion) }
+        panel.onFinished = { [weak self] in self?.scanFinished() }
+        discovery = panel
+        gtk_box_append(ptr(discoveryBox), panel.group)
+        for slot in [waysBox, pasteBox, installBox, linkBox, statusBox, passwordBox, discoveryBox, backButton]
+        {
+            gtk_widget_set_visible(slot, 0)
+        }
+    }
+
+    private func render(_ next: FirstRunPlan) {
+        guard !closed else { return }
+        plan = next
+        gtk_label_set_text(op(intro), mode == .firstRun ? next.intro : "")
+        gtk_widget_set_visible(intro, mode == .firstRun ? 1 : 0)
+        for id in FirstRunPlan.Row.ID.allCases {
+            guard let widgets = rows[id] else { continue }
+            let row = next.row(id)
+            gtk_widget_set_visible(widgets.container, row == nil ? 0 : 1)
+            if let row { renderRow(row, widgets) }
+        }
+        renderActions(next)
+        if next.outcome != nil {
+            send { await $0.acknowledgeOutcome() }
+            close()
+            mainWindow?.raise()
+            return
+        }
+        if next.isFinished, !finishing {
+            finishing = true
+            finish()
+        }
+    }
+
+    private func renderRow(_ row: FirstRunPlan.Row, _ widgets: RowWidgets) {
+        gtk_label_set_text(op(widgets.number), "\(row.number) ·")
+        gtk_label_set_text(op(widgets.title), row.title)
+        gtk_label_set_text(op(widgets.pill), row.pill ?? "")
+        for name in ["dim", "glyph-running", "glyph-error", "glyph-needs", "glyph-pending"] {
+            gtk_widget_remove_css_class(widgets.pill, name)
+        }
+        Gtk.addClass(widgets.pill, Self.pillStyle(row.glyph))
+        gtk_label_set_text(op(widgets.detail), row.detail ?? "")
+        gtk_widget_set_visible(widgets.detail, row.detail == nil ? 0 : 1)
+        switch row.id {
+        case .machine: renderMachine(row.blocks)
+        case .tailscale, .connected: renderGeneric(row, widgets)
+        }
+    }
+
+    private static func pillStyle(_ glyph: FirstRunPlan.Row.Glyph) -> String {
+        switch glyph {
+        case .proven: return "glyph-running"
+        case .attention: return "glyph-error"
+        case .working, .current, .waiting: return "dim"
+        }
+    }
+
+    private func renderGeneric(_ row: FirstRunPlan.Row, _ widgets: RowWidgets) {
+        guard blocksShown[row.id] != row.blocks else { return }
+        blocksShown[row.id] = row.blocks
+        Gtk.removeChildren(of: widgets.body)
+        for block in row.blocks {
+            switch block {
+            case .remedy(let reading):
+                tailscale = reading
+                appendRemedy(reading, to: widgets.body)
+            case .diagnosis(let diagnosis):
+                appendDiagnosis(diagnosis, to: widgets.body)
+            case .signIn(let card):
+                appendSignIn(card, to: widgets.body)
+            case .note(let text):
+                gtk_box_append(ptr(widgets.body), FirstRunDialog.wrapped(text, css: "row-detail"))
+            default:
+                break
+            }
+        }
+    }
+
+    private func renderActions(_ next: FirstRunPlan) {
+        let demo = next.demo
+        gtk_widget_set_visible(demoButton, demo == nil ? 0 : 1)
+        if let demo {
+            gtk_button_set_label(ptr(demoButton), demo.title)
+            gtk_widget_set_tooltip_text(demoButton, demo.detail)
+        }
+        gtk_button_set_label(ptr(laterButton), next.dismiss)
+        if let primary = next.primary {
+            gtk_widget_set_visible(primaryButton, 1)
+            gtk_button_set_label(ptr(primaryButton), primary.title)
+            gtk_widget_set_sensitive(primaryButton, primary.isEnabled ? 1 : 0)
+        } else {
+            gtk_widget_set_visible(primaryButton, 0)
+        }
+        gtk_button_set_label(ptr(backButton), next.back ?? "")
+        gtk_widget_set_visible(backButton, next.back == nil ? 0 : 1)
+    }
+
+    private func renderMachine(_ blocks: [FirstRunPlan.Block]) {
+        var ways: [FirstRunPlan.Block] = []
+        var paste: FirstRunPlan.Paste?
+        var install: [FirstRunPlan.Block] = []
+        var link: [FirstRunPlan.Block] = []
+        var status: [FirstRunPlan.Block] = []
+        var password: FirstRunPlan.PasswordField?
+        var installContext = false
+        var sawInstallWays = false
+        for block in blocks {
+            switch block {
+            case .ways:
+                if installContext {
+                    install.append(block)
+                    sawInstallWays = true
+                } else {
+                    ways.append(block)
+                }
+            case .paste(let value): paste = value
+            case .agents, .command:
+                installContext = true
+                install.append(block)
+            case .waiting:
+                if installContext && !sawInstallWays { install.append(block) } else { status.append(block) }
+            case .link: link.append(block)
+            case .diagnosis: status.append(block)
+            case .password(let value): password = value
+            case .note, .signIn, .remedy: break
+            }
+        }
+        refill(waysBox, with: ways)
+        refill(installBox, with: install)
+        refill(linkBox, with: link)
+        refill(statusBox, with: status)
+        syncPaste(paste)
+        syncPassword(password)
+        syncDiscovery(installing: installContext)
+    }
+
+    private func refill(_ box: UnsafeMutablePointer<GtkWidget>, with blocks: [FirstRunPlan.Block]) {
+        let slot = UInt(bitPattern: box)
+        guard slotContents[slot] != blocks else { return }
+        slotContents[slot] = blocks
+        Gtk.removeChildren(of: box)
+        gtk_widget_set_visible(box, blocks.isEmpty ? 0 : 1)
+        for block in blocks { append(block, to: box) }
+    }
+
+    private var slotContents: [UInt: [FirstRunPlan.Block]] = [:]
+
+    private func append(_ block: FirstRunPlan.Block, to box: UnsafeMutablePointer<GtkWidget>) {
+        switch block {
+        case .ways(let ways):
+            for way in ways { gtk_box_append(ptr(box), wayButton(way)) }
+        case .agents(let choices):
+            gtk_box_append(ptr(box), agentRow(choices))
+        case .command(let card):
+            appendCommand(card, to: box)
+        case .waiting(let text):
+            gtk_box_append(ptr(box), FirstRunDialog.wrapped(text, css: "row-detail"))
+        case .link(let card):
+            appendLink(card, to: box)
+        case .diagnosis(let diagnosis):
+            appendDiagnosis(diagnosis, to: box)
+        case .note(let text):
+            gtk_box_append(ptr(box), FirstRunDialog.wrapped(text, css: "row-detail"))
+        case .paste, .password, .signIn, .remedy:
+            break
+        }
+    }
+
+    private func wayButton(_ way: FirstRunPlan.Way) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_box_append(ptr(column), Gtk.label(way.title, css: "row-title", selectable: false))
+        gtk_box_append(
+            ptr(column), FirstRunDialog.wrapped(way.detail, css: "row-detail"))
+        gtk_button_set_child(ptr(button), column)
+        gtk_widget_set_halign(button, GTK_ALIGN_FILL)
+        let kind = way.kind
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [self] in
+            Gtk.onMain { [self] in chose(kind) }
+        }
+        return button
+    }
+
+    private func chose(_ kind: FirstRunPlan.Way.Kind) {
+        switch kind {
+        case .scan:
+            break
+        case .link:
+            send { await $0.choose(.link) }
+            gtk_widget_grab_focus(pasteEntry)
+        case .install:
+            send { await $0.choose(.install) }
+        case .tailnet:
+            discoveryRequested = true
+            gtk_widget_set_visible(discoveryBox, 1)
+            discovery?.scan()
+        }
+    }
+
+    private func agentRow(_ choices: [FirstRunPlan.AgentChoice]) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        for choice in choices {
+            let button = Gtk.button(
+                choice.title, css: choice.isSelected ? ["suggested-action"] : ["flat"]
+            ) { [self] in
+                send { await $0.selectAgent(choice.agent) }
+            }
+            gtk_widget_set_tooltip_text(button, choice.detail)
+            gtk_box_append(ptr(row), button)
+        }
+        return row
     }
 
     private func appendCommand(
-        to content: UnsafeMutablePointer<GtkWidget>, label: String, command: String,
-        note: String? = nil
+        _ card: FirstRunPlan.CommandCard, to box: UnsafeMutablePointer<GtkWidget>
     ) {
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        Gtk.margins(row, leading: 22)
-        let text = Gtk.label(command, css: "tool-line", selectable: true)
+        gtk_box_append(ptr(box), Gtk.label(card.title, css: "row-title", selectable: false))
+        gtk_box_append(ptr(box), FirstRunDialog.wrapped(card.detail, css: "row-detail"))
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let text = Gtk.label(card.command, css: "tool-line", selectable: true)
         gtk_label_set_ellipsize(op(text), PANGO_ELLIPSIZE_END)
         gtk_widget_set_hexpand(text, 1)
-        gtk_box_append(ptr(row), Gtk.label(label, css: "row-detail", selectable: false))
-        gtk_box_append(ptr(row), text)
+        gtk_box_append(ptr(line), text)
+        let command = card.command
         gtk_box_append(
-            ptr(row),
-            Gtk.button(Localized.text("Copy"), css: ["flat"]) {
+            ptr(line),
+            Gtk.button(card.copyTitle, css: ["flat"]) { [self] in
                 Gtk.copyToClipboard(command)
+                send { await $0.handedOver() }
             })
-        gtk_box_append(ptr(content), row)
-        // What that machine needs before the line can work. Silence here is what makes step 2 fail
-        // invisibly on somebody else's laptop half an hour later.
-        if let note {
-            let hint = Gtk.label(note, css: "dim", wrap: true, selectable: false)
-            Gtk.margins(hint, leading: 22)
-            gtk_box_append(ptr(content), hint)
+        gtk_box_append(ptr(box), line)
+        if let note = card.note {
+            gtk_box_append(ptr(box), FirstRunDialog.wrapped(note, css: "row-detail"))
         }
     }
 
-    /// A machine the scan found, taken as it stands — the whole point of the radar is that nothing
-    /// has to be typed. One that wants a password fills the form in and asks only for that.
-    private func adopt(_ suggestion: TailnetScanner.Suggestion) {
-        guard !suggestion.requiresAuth else {
-            gtk_editable_set_text(op(addressEntry), suggestion.baseURL.absoluteString)
-            chosenBackend = suggestion.backend
-            if suggestion.tailnetOnly {
-                gtk_label_set_text(op(diagnosisLabel), ServerAccessReading.tailnetOnlyDetail)
+    private func appendLink(_ card: FirstRunPlan.LinkCard, to box: UnsafeMutablePointer<GtkWidget>) {
+        gtk_box_append(ptr(box), Gtk.label(card.headline, css: "row-title", selectable: false))
+        for line in card.lines {
+            gtk_box_append(ptr(box), FirstRunDialog.wrapped(line, css: "row-detail"))
+        }
+        if let title = card.connectAnywayTitle {
+            let button = Gtk.button(title) { [self] in send { await $0.confirmOffTailnet() } }
+            gtk_widget_set_halign(button, GTK_ALIGN_START)
+            gtk_box_append(ptr(box), button)
+        }
+    }
+
+    private func appendDiagnosis(
+        _ diagnosis: ConnectDiagnosis, to box: UnsafeMutablePointer<GtkWidget>
+    ) {
+        gtk_box_append(
+            ptr(box),
+            FirstRunDialog.wrapped("\(diagnosis.title)\n\(diagnosis.detail)", css: "row-detail"))
+        guard let title = diagnosis.actionTitle else { return }
+        let button: UnsafeMutablePointer<GtkWidget>?
+        switch diagnosis.fix {
+        case .retryOtherPort(let url), .usePlainHTTP(let url):
+            let address = url.absoluteString
+            button = Gtk.button(title) { [self] in
+                send { await $0.typeAddress(address) }
+                send { await $0.retry() }
+            }
+        case .retry:
+            button = Gtk.button(title) { [self] in send { await $0.retry() } }
+        case .openTailscale:
+            button = Gtk.button(title) { [self] in Gtk.onMain { [self] in performRemedy() } }
+        case .revealPassword:
+            button = Gtk.button(title) { [self] in send { await $0.revealPassword() } }
+        case .copyCommand(let command):
+            button = Gtk.button(title) { Gtk.copyToClipboard(command) }
+        case .none, .openAppSettings, .seePro:
+            button = nil
+        }
+        if let button {
+            gtk_widget_set_halign(button, GTK_ALIGN_START)
+            gtk_box_append(ptr(box), button)
+        }
+    }
+
+    private func appendSignIn(_ card: FirstRunPlan.SignInCard, to box: UnsafeMutablePointer<GtkWidget>) {
+        let button = Gtk.button(card.action, css: ["suggested-action"]) { [self] in
+            Gtk.onMain { [self] in presentSignIn() }
+        }
+        gtk_widget_set_halign(button, GTK_ALIGN_START)
+        gtk_box_append(ptr(box), button)
+    }
+
+    private func presentSignIn() {
+        let flow = flow
+        Task {
+            guard let saved = await flow.saved,
+                let backend = await ServerDirectory.shared.backend(for: saved.profile)
+                    as? any AuthenticatingBackend
+            else {
+                await flow.skipSignIn()
                 return
             }
-            revealPassword()
-            gtk_label_set_text(
-                op(diagnosisLabel),
-                Localized.text(
-                    "%@ answered, so the address is right — it wants the password it was started with.",
-                    suggestion.recommendedProfileName))
-            return
-        }
-        let profile = ConnectionProfile(
-            id: UUID().uuidString, name: suggestion.recommendedProfileName,
-            backend: suggestion.backend, baseURL: suggestion.baseURL,
-            username: ProbeSweep.username(for: suggestion.backend))
-        Task { [self] in
-            do {
-                try await ServerDirectory.shared.save(profile, password: nil)
-                await finish(profile: profile)
-            } catch {
-                let text = Localized.text("Could not save: %@", String(describing: error))
-                Gtk.onMain { [self] in gtk_label_set_text(op(diagnosisLabel), text) }
+            let name = saved.profile.name
+            Gtk.onMain {
+                SignInDialog.present(parent: nil, serverName: name, backend: backend) {
+                    Task {
+                        let auth = try? await backend.authStatus()
+                        await flow.signInFinished(account: auth?.accountLabel)
+                    }
+                }
             }
         }
     }
 
-    private func revealPassword() {
-        guard !passwordShown else { return }
-        passwordShown = true
-        gtk_widget_set_visible(passwordEntry, 1)
-        // The password this app minted is the one the copied command sets, so it is already the
-        // best guess — filled in rather than demanded, and still editable for a bridge that was
-        // installed before today and kept its old one.
-        if Dialogs.entryText(addressEntry).isEmpty || chosenBackend != .openCode {
-            gtk_editable_set_text(op(passwordEntry), mintedPassword)
+    private func syncPaste(_ paste: FirstRunPlan.Paste?) {
+        gtk_widget_set_visible(pasteBox, paste == nil ? 0 : 1)
+        guard let paste else { return }
+        gtk_entry_set_placeholder_text(ptr(pasteEntry), paste.placeholder)
+        if Dialogs.entryText(pasteEntry) != paste.text {
+            syncing = true
+            gtk_editable_set_text(op(pasteEntry), paste.text)
+            gtk_editable_set_position(op(pasteEntry), -1)
+            syncing = false
         }
-        gtk_widget_grab_focus(passwordEntry)
+        gtk_widget_set_visible(offerButton, paste.offer == nil ? 0 : 1)
+        if let offer = paste.offer { gtk_button_set_label(ptr(offerButton), offer) }
+        gtk_label_set_text(op(pasteReading), paste.reading ?? "")
+        gtk_widget_set_visible(pasteReading, paste.reading == nil || paste.message != nil ? 0 : 1)
+        let message = paste.message.map { "\($0.title)\n\($0.detail)" } ?? ""
+        gtk_label_set_text(op(pasteMessage), message)
+        gtk_widget_set_visible(pasteMessage, paste.message == nil ? 0 : 1)
     }
 
-    private func setPill(_ label: UnsafeMutablePointer<GtkWidget>, text: String, css: String) {
-        gtk_label_set_text(op(label), text)
-        for name in ["dim", "glyph-running", "glyph-error", "glyph-pending"] {
-            gtk_widget_remove_css_class(label, name)
+    private func syncPassword(_ password: FirstRunPlan.PasswordField?) {
+        gtk_widget_set_visible(passwordBox, password == nil ? 0 : 1)
+        guard let password else { return }
+        gtk_label_set_text(op(passwordNote), password.note ?? "")
+        gtk_widget_set_visible(passwordNote, password.note == nil ? 0 : 1)
+        if Dialogs.entryText(passwordEntry) != password.text {
+            syncing = true
+            gtk_editable_set_text(op(passwordEntry), password.text)
+            syncing = false
         }
-        Gtk.addClass(label, css)
     }
 
-    /// This machine's tailnet presence, re-proved every few seconds while the window is open —
-    /// someone starting Tailscale mid-setup watches the step go green by itself.
+    private func syncDiscovery(installing: Bool) {
+        let visible = discoveryRequested || installing
+        gtk_widget_set_visible(discoveryBox, visible ? 1 : 0)
+        guard installing != watching else { return }
+        watching = installing
+        guard installing else { return }
+        watchRounds = 0
+        tailnetKeys = []
+        discovery?.scan()
+        scheduleWatch()
+    }
+
+    private func scheduleWatch() {
+        Gtk.after(8000) { [self] in
+            guard !closed, watching else { return }
+            if tailscale?.isUp ?? false { discovery?.scan() }
+            scheduleWatch()
+        }
+    }
+
+    private func sighted(_ suggestion: TailnetScanner.Suggestion) {
+        guard watching else { return }
+        if watchRounds == 0 {
+            tailnetKeys.insert(suggestion.dedupeKey)
+            return
+        }
+        guard !tailnetKeys.contains(suggestion.dedupeKey) else { return }
+        tailnetKeys.insert(suggestion.dedupeKey)
+        watching = false
+        send { await $0.adopt(suggestion) }
+    }
+
+    private func scanFinished() {
+        watchRounds += 1
+    }
+
+    private func addFromScan(_ suggestion: TailnetScanner.Suggestion) {
+        let flow = flow
+        Task {
+            await flow.adopt(suggestion)
+            if case .found = await flow.snapshot.machine { await flow.connect() }
+        }
+    }
+
+    private func readClipboard() {
+        guard !closed else { return }
+        let box = Unmanaged.passRetained(ClipboardBox { [weak self] text in
+            guard let self else { return }
+            self.send { await $0.clipboard(text) }
+        }).toOpaque()
+        let callback: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = {
+            text, raw in
+            guard let raw else { return }
+            let box = Unmanaged<ClipboardBox>.fromOpaque(raw).takeRetainedValue()
+            box.handler(text.map { String(cString: $0) })
+        }
+        tailscode_clipboard_read_text(callback, box)
+    }
+
+    private final class ClipboardBox {
+        let handler: (String?) -> Void
+        init(_ handler: @escaping (String?) -> Void) { self.handler = handler }
+    }
+
     private func pollTailnet() {
         Task.detached { [self] in
-            var scanned = false
             while !closed {
-                let status = TailnetStatusLinux.read()
-                let address = status.address
-                let reading = status.reading
-                let start = address != nil && !scanned
-                if start { scanned = true }
+                let reading = TailnetStatusLinux.read().reading
                 Gtk.onMain { [self] in
                     guard !closed else { return }
-                    tailnetAddress = address
                     tailscale = reading
-                    show(reading)
-                    // The radar can only ask peers once this machine has a tailnet of its own, so
-                    // the sweep starts the moment step 1 goes green rather than on a press.
-                    if start { scan?.scan() }
                 }
+                await flow.tailscale(reading)
                 try? await Task.sleep(for: .seconds(3))
             }
         }
     }
 
-    /// Step 1 as one of four states, each with the one thing that fixes it. "Not connected — run
-    /// `tailscale up`" used to stand for all four, and it is the right advice for exactly one of
-    /// them — and it is advice, which first run is not supposed to give.
-    private func show(_ reading: TailscaleReading) {
-        setPill(
-            tailnetPill, text: reading.title,
-            css: reading.isUp ? "glyph-running" : (reading.tone == .quiet ? "dim" : "glyph-error"))
-
-        let detail = reading.detail
-        gtk_label_set_text(op(tailnetDetail), detail ?? "")
-        gtk_widget_set_visible(tailnetDetail, detail == nil ? 0 : 1)
-
-        Gtk.removeChildren(of: tailnetActions)
-        guard let title = reading.actionTitle else {
-            gtk_widget_set_visible(tailnetActions, 0)
-            return
-        }
-        gtk_widget_set_visible(tailnetActions, 1)
-        switch reading.remedy {
-        case .install(let url):
-            gtk_box_append(ptr(tailnetActions), Gtk.button(title) { SignInDialog.openInBrowser(url) })
-        case .signIn(let command), .start(let command):
-            gtk_box_append(
-                ptr(tailnetActions),
-                Gtk.button(title) { [self] in
-                    Gtk.onMain { [self] in run(command) }
-                })
-            gtk_box_append(
-                ptr(tailnetActions),
-                Gtk.button(Localized.text("Copy"), css: ["flat"]) {
-                    Gtk.copyToClipboard(command)
-                })
-        case .grantHostAccess(let command):
-            gtk_box_append(
-                ptr(tailnetActions),
-                Gtk.button(Localized.text("Copy"), css: ["flat"]) {
-                    Gtk.copyToClipboard(command)
-                })
-        case .none:
-            gtk_widget_set_visible(tailnetActions, 0)
+    private func finish() {
+        let flow = flow
+        Task {
+            let saved = await flow.saved
+            onSaved()
+            await checkPermissions(saved?.profile)
         }
     }
 
-    /// A command that has to run on *this* machine is run from here, with its output on the same
-    /// screen, rather than handed over with "run it in a terminal" — which is the one thing the
-    /// first-run doctrine forbids and is also useless advice to somebody who has never opened one.
-    ///
-    /// `tailscale up` answers by printing a login URL and waiting, so the URL is watched for and
-    /// opened as it appears; anything needing root is raised through pkexec, which asks with the
-    /// desktop's own dialog. A command that cannot run says so and leaves the copyable line, which
-    /// is the honest floor rather than a silent failure.
-    private func run(_ command: String) {
-        let elevated = command.hasPrefix("sudo ")
-        let bare = elevated ? String(command.dropFirst(5)) : command
-        let usePolkit = elevated && FileManager.default.isExecutableFile(atPath: "/usr/bin/pkexec")
-        gtk_label_set_text(op(tailnetDetail), Localized.text("Running %@…", bare))
-        gtk_widget_set_visible(tailnetDetail, 1)
-
-        Task.detached { [self] in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            var arguments = bare.split(separator: " ").map(String.init)
-            if usePolkit { arguments.insert("pkexec", at: 0) }
-            if Packaging.isFlatpak { arguments.insert(contentsOf: ["flatpak-spawn", "--host"], at: 0) }
-            process.arguments = arguments
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            guard (try? process.run()) != nil else {
-                Gtk.onMain { [self] in
-                    guard !closed else { return }
-                    gtk_label_set_text(
-                        op(tailnetDetail),
-                        Localized.text(
-                            "This machine would not run %@. Copy it and run it yourself, then this "
-                                + "step turns green on its own.", bare))
-                }
-                return
-            }
-            var seen = ""
-            while let chunk = try? pipe.fileHandleForReading.read(upToCount: 4096), !chunk.isEmpty {
-                seen += String(decoding: chunk, as: UTF8.self)
-                let text = seen
-                if let url = Self.loginURL(in: text) {
-                    Gtk.onMain { SignInDialog.openInBrowser(url) }
-                    seen = ""
-                }
-                Gtk.onMain { [self] in
-                    guard !closed else { return }
-                    gtk_label_set_text(op(tailnetDetail), text.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
-            }
-            process.waitUntilExit()
-        }
-    }
-
-    /// Tailscale's own sign-in link, which is the whole point of watching the output: a person who
-    /// never sees it has no way to finish signing in.
-    private static func loginURL(in text: String) -> String? {
-        for token in text.split(whereSeparator: { $0.isWhitespace })
-        where token.hasPrefix("https://login.tailscale.com/") {
-            return String(token)
-        }
-        return nil
-    }
-
-    private func updateReading() {
-        let raw = Dialogs.entryText(addressEntry)
-        guard !raw.isEmpty else {
-            gtk_label_set_text(op(readingLabel), "")
-            return
-        }
-        let backend: AgentType = chosenBackend
-        switch HostAddress.read(raw, defaultPort: HostAddress.port(for: backend)) {
-        case .address(let address):
-            gtk_label_set_text(op(readingLabel), "→ \(address.url.absoluteString)")
-        case .bindAll:
-            gtk_label_set_text(
-                op(readingLabel),
-                Localized.text("0.0.0.0 is what a server binds to, never where it lives."))
-        case .unsupportedScheme(let scheme):
-            gtk_label_set_text(op(readingLabel), Localized.text("%@:// cannot work here.", scheme))
-        case .invalid:
-            gtk_label_set_text(op(readingLabel), Localized.text("Doesn't read as an address yet."))
-        case .empty:
-            gtk_label_set_text(op(readingLabel), "")
-        }
-    }
-
-    private func scheduleProbe(afterMilliseconds: UInt32) {
-        probeGeneration += 1
-        let generation = probeGeneration
-        Gtk.after(afterMilliseconds) { [self] in
-            guard !closed, generation == probeGeneration else { return }
-            probe(userInitiated: false)
-        }
-    }
-
-    private func probe(userInitiated: Bool) {
-        let raw = Dialogs.entryText(addressEntry)
-        let backend: AgentType = chosenBackend
-        guard case .address(let address) = HostAddress.read(
-            raw, defaultPort: HostAddress.port(for: backend))
-        else {
-            if userInitiated { updateReading() }
-            return
-        }
-        guard let passwordRaw = gtk_editable_get_text(op(passwordEntry)) else { return }
-        let password = String(cString: passwordRaw)
-        gtk_label_set_text(
-            op(diagnosisLabel), Localized.text("Probing %@…", address.displayHost))
-        probeGeneration += 1
-        let generation = probeGeneration
-        let tailnetUp = tailnetAddress != nil
-        Task { [self] in
-            let verdict = await ProbeSweep.best(
-                address: address, password: password.isEmpty ? nil : password,
-                preferring: backend,
-                policy: userInitiated ? ProbeSweep.interactivePolicy : ProbeSweep.typingPolicy,
-                retryUnreachable: userInitiated)
-            var reachability: PortReachability.Verdict?
-            if case .unreachable = verdict.outcome, let host = verdict.url.host,
-                let port = verdict.url.port
-            {
-                reachability = await PortReachability.check(host: host, port: UInt16(port))
-            }
-            let settled = reachability
-            Gtk.onMain { [self] in
-                guard !closed, generation == probeGeneration else { return }
-                consume(
-                    verdict, address: address, password: password, tailnetUp: tailnetUp,
-                    reachability: settled, userInitiated: userInitiated)
-            }
-        }
-    }
-
-    private func consume(
-        _ verdict: ProbeSweep.Verdict, address: HostAddress, password: String,
-        tailnetUp: Bool, reachability: PortReachability.Verdict?, userInitiated: Bool
-    ) {
-        switch verdict.outcome {
-        case .ok(let agent, let version):
-            verified = (verdict.url, agent, version)
-            let name = Self.bridgeName(for: agent)
-            setPill(agentPill, text: Localized.text("Answering"), css: "glyph-running")
-            gtk_label_set_text(
-                op(diagnosisLabel),
-                Localized.text("%@ %@ answered at %@.", name, version ?? "", verdict.url.absoluteString))
-            gtk_button_set_label(
-                ptr(connectButton), Localized.text("Connect to %@", address.displayHost))
-            if userInitiated { save(password: password) }
-        case .authFailed, .notAnAgentServer, .unreachable:
-            verified = nil
-            if case .authFailed(.password) = verdict.outcome { revealPassword() }
-            // The shared diagnosis, with the same words and the same one fix the Servers window
-            // gives. First run used to hand-roll eight sentences and offer no action at all, so the
-            // one screen a stranger meets was the one screen that could only dead-end.
-            let diagnosis = ConnectDiagnosis.make(
-                outcome: verdict.outcome, address: address, tailnetAddress: tailnetAddress,
-                alternatePort: Self.otherAgentPort(for: verdict.url),
-                sentPassword: !password.isEmpty, reachability: reachability,
-                deviceName: Localized.text("This machine"))
-            show(diagnosis, for: address)
-        }
-    }
-
-    private func show(_ diagnosis: ConnectDiagnosis?, for address: HostAddress) {
-        Gtk.removeChildren(of: diagnosisActions)
-        guard let diagnosis else {
-            gtk_label_set_text(op(diagnosisLabel), "")
-            gtk_widget_set_visible(diagnosisActions, 0)
-            return
-        }
-        gtk_label_set_text(op(diagnosisLabel), "\(diagnosis.title)\n\(diagnosis.detail)")
-        guard let title = diagnosis.actionTitle else {
-            gtk_widget_set_visible(diagnosisActions, 0)
-            return
-        }
-        gtk_widget_set_visible(diagnosisActions, 1)
-        switch diagnosis.fix {
-        case .retryOtherPort(let url), .usePlainHTTP(let url):
-            gtk_box_append(
-                ptr(diagnosisActions),
-                Gtk.button(title) { [self] in
-                    Gtk.onMain { [self] in
-                        gtk_editable_set_text(op(addressEntry), url.absoluteString)
-                        probe(userInitiated: true)
-                    }
-                })
-        case .retry:
-            gtk_box_append(
-                ptr(diagnosisActions),
-                Gtk.button(title) { [self] in
-                    Gtk.onMain { [self] in probe(userInitiated: true) }
-                })
-        case .openTailscale:
-            gtk_box_append(
-                ptr(diagnosisActions),
-                Gtk.button(title) { [self] in
-                    Gtk.onMain { [self] in show(tailscale) }
-                })
-        case .revealPassword:
-            gtk_box_append(
-                ptr(diagnosisActions),
-                Gtk.button(title) { [self] in Gtk.onMain { [self] in revealPassword() } })
-        case .copyCommand(let command):
-            gtk_box_append(
-                ptr(diagnosisActions),
-                Gtk.button(title) { Gtk.copyToClipboard(command) })
-        case .none, .openAppSettings, .seePro:
-            gtk_widget_set_visible(diagnosisActions, 0)
-        }
-    }
-
-    /// Saves the profile as what actually answered: the detected agent and the URL that spoke,
-    /// which quietly corrects a guessed port or a wrong toggle.
-    private func save(password: String) {
-        guard let verified else { return }
-        let profile = ConnectionProfile(
-            id: UUID().uuidString,
-            name: verified.url.host ?? verified.url.absoluteString,
-            backend: verified.agent,
-            baseURL: verified.url,
-            username: ProbeSweep.username(for: verified.agent))
-        AppLog.write(
-            .connection,
-            "first run saving \(verified.agent.rawValue) at \(verified.url.absoluteString) "
-                + "password \(AppLog.redacted(password.isEmpty ? nil : password))")
-        Task { [self] in
-            do {
-                try await ServerDirectory.shared.save(
-                    profile, password: password.isEmpty ? nil : password)
-                await finish(profile: profile)
-            } catch {
-                Gtk.onMain { [self] in
-                    gtk_label_set_text(
-                        op(diagnosisLabel),
-                        Localized.text("Could not save: %@", String(describing: error)))
-                }
-            }
-        }
-    }
-
-    /// The third requirement, which the checklist never named: the CLI on that machine has to be
-    /// signed in, or every turn comes back "Not logged in · Please run /login" and the conversation
-    /// looks broken rather than signed out. Asked here, while the person is still on the screen that
-    /// promised to check things, instead of being met as a banner half an hour later.
-    ///
-    /// A server that cannot answer the question — opencode, which has no such account, or a bridge
-    /// too old for the route — closes the dialog as before. "Cannot say" is not "signed out".
-    private static func otherAgentPort(for url: URL) -> URL? {
-        guard let port = url.port else { return nil }
-        let alternate: Int
-        switch port {
-        case HostAddress.openCodePort: alternate = HostAddress.claudeCodePort
-        case HostAddress.claudeCodePort: alternate = HostAddress.ompPort
-        case HostAddress.ompPort: alternate = HostAddress.openCodePort
-        default: return nil
-        }
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-        components.port = alternate
-        return components.url
-    }
-
-    /// What the process on the far machine is actually called, for the sentence that names what
-    /// answered: the agent label is Core's, but only opencode serves under its own name — the
-    /// other two agents answer through their bridges.
-    private static func bridgeName(for agent: AgentType) -> String {
-        switch agent {
-        case .openCode: return "opencode"
-        case .claudeCode: return "claude-bridge"
-        case .omp: return "omp-bridge"
-        }
-    }
-
-    private func finish(profile: ConnectionProfile) async {
-        let backend = await Self.signedOutBackend(profile)
-        onSaved()
-        guard let backend else {
-            await checkPermissions(profile: profile)
-            return
-        }
-        showSignedOut(backend, profile: profile)
-    }
-
-    /// The Mac just reached may need a grant its agents can't give themselves — checked once the
-    /// account step has nothing left to ask, so the checklist never stalls on two questions at
-    /// once. A server that isn't a Claude Code Mac, or one too old for the route, closes as before.
-    private func checkPermissions(profile: ConnectionProfile) async {
-        guard profile.backend == .claudeCode,
+    /// The Mac just reached may need a grant its agents can't give themselves — asked once the
+    /// account step has nothing left, so the checklist never stalls on two questions at once.
+    /// A server that isn't a Claude Code Mac, or one too old for the route, closes as before.
+    private func checkPermissions(_ profile: ConnectionProfile?) async {
+        guard let profile, profile.backend == .claudeCode,
             let backend = await ServerDirectory.shared.backend(for: profile)
                 as? any PermissionReportingBackend,
             let permissions = await Self.within(15, { try? await backend.machinePermissions() }),
             MachinePermissionReading.needsAttention(permissions)
         else {
-            Gtk.onMain { [self] in
-                guard !closed else { return }
-                if let window { Dialogs.close(window) }
-            }
+            Gtk.onMain { [self] in close() }
             return
         }
         permissionsBackend = backend
@@ -732,8 +862,6 @@ final class FirstRunDialog: @unchecked Sendable {
         }
     }
 
-    /// Asks again every `MachinePermissionReading.pollInterval` while a grant is waiting on the
-    /// switch, and stops the moment the window is gone.
     private func schedulePermissionsPoll(waiting: Bool) {
         guard waiting, !closed, !permissionsPollPending else { return }
         permissionsPollPending = true
@@ -757,16 +885,13 @@ final class FirstRunDialog: @unchecked Sendable {
         }
     }
 
-    /// The switch landed: `done` stays long enough to be read, then first run finishes by itself.
     private func closeAfterGrant() {
         Gtk.after(Gtk.milliseconds(MachinePermissionReading.doneLinger)) { [self] in
-            guard !closed, let window else { return }
-            Dialogs.close(window)
+            guard !closed else { return }
+            close()
         }
     }
 
-    /// Nothing on this screen may wait forever — the same deadline the Servers window races every
-    /// ask against.
     private static func within<T: Sendable>(
         _ seconds: Int, _ work: @escaping @Sendable () async -> T?
     ) async -> T? {
@@ -782,48 +907,118 @@ final class FirstRunDialog: @unchecked Sendable {
         }
     }
 
-    private func showSignedOut(_ backend: any AuthenticatingBackend, profile: ConnectionProfile) {
-        Gtk.onMain { [self] in
-            guard !closed else { return }
-            gtk_label_set_text(
-                op(diagnosisLabel),
-                Localized.text(
-                    "%@ is connected, but Claude is signed out there — every turn will refuse until "
-                        + "it signs in.", profile.name))
-            Gtk.removeChildren(of: diagnosisActions)
-            gtk_widget_set_visible(diagnosisActions, 1)
-            gtk_box_append(
-                ptr(diagnosisActions),
-                Gtk.button(Localized.text("Sign in to Claude")) { [self] in
-                    Gtk.onMain { [self] in
-                        if let window { Dialogs.close(window) }
-                        SignInDialog.present(
-                            parent: nil, serverName: profile.name, backend: backend) {}
-                    }
-                })
-            gtk_box_append(
-                ptr(diagnosisActions),
-                Gtk.button(Localized.text("Later"), css: ["flat"]) { [self] in
-                    Gtk.onMain { [self] in
-                        if let window { Dialogs.close(window) }
-                    }
-                })
+    private func performRemedy() {
+        guard let reading = tailscale else { return }
+        switch reading.remedy {
+        case .install(let url): SignInDialog.openInBrowser(url)
+        case .signIn(let command), .start(let command): run(command)
+        case .grantHostAccess(let command): Gtk.copyToClipboard(command)
+        case .none: break
         }
     }
 
-    /// The backend to sign in, when there is a question to ask and the answer was "signed out".
-    /// Nil covers three different things on purpose — a backend with no account, a server too old
-    /// for the route, and a machine that did not answer — because none of them is "signed out", and
-    /// only "signed out" earns a step.
-    private static func signedOutBackend(_ profile: ConnectionProfile) async
-        -> (any AuthenticatingBackend)?
-    {
-        guard profile.backend == .claudeCode else { return nil }
-        guard
-            let backend = await ServerDirectory.shared.backend(for: profile)
-                as? any AuthenticatingBackend
-        else { return nil }
-        guard let status = try? await backend.authStatus(), !status.loggedIn else { return nil }
-        return backend
+    private func appendRemedy(_ reading: TailscaleReading, to box: UnsafeMutablePointer<GtkWidget>) {
+        gtk_label_set_text(op(remedyOutput), "")
+        gtk_widget_set_visible(remedyOutput, 0)
+        guard let title = reading.actionTitle else { return }
+        let actions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        switch reading.remedy {
+        case .install(let url):
+            gtk_box_append(ptr(actions), Gtk.button(title) { SignInDialog.openInBrowser(url) })
+        case .signIn(let command), .start(let command):
+            gtk_box_append(
+                ptr(actions),
+                Gtk.button(title) { [self] in Gtk.onMain { [self] in run(command) } })
+            gtk_box_append(
+                ptr(actions),
+                Gtk.button(Localized.text("Copy"), css: ["flat"]) { Gtk.copyToClipboard(command) })
+        case .grantHostAccess(let command):
+            gtk_box_append(
+                ptr(actions),
+                Gtk.button(Localized.text("Copy"), css: ["flat"]) { Gtk.copyToClipboard(command) })
+        case .none:
+            break
+        }
+        gtk_box_append(ptr(box), actions)
+        gtk_box_append(ptr(box), remedyOutput)
+    }
+
+    /// A command that has to run on *this* machine is run from here, with its output on the same
+    /// screen, rather than handed over with "run it in a terminal" — which is the one thing the
+    /// first-run doctrine forbids and is also useless advice to somebody who has never opened one.
+    ///
+    /// `tailscale up` answers by printing a login URL and waiting, so the URL is watched for and
+    /// opened as it appears; anything needing root is raised through pkexec, which asks with the
+    /// desktop's own dialog. A command that cannot run says so and leaves the copyable line.
+    private func run(_ command: String) {
+        let elevated = command.hasPrefix("sudo ")
+        let bare = elevated ? String(command.dropFirst(5)) : command
+        let usePolkit = elevated && FileManager.default.isExecutableFile(atPath: "/usr/bin/pkexec")
+        gtk_label_set_text(op(remedyOutput), Localized.text("Running %@…", bare))
+        gtk_widget_set_visible(remedyOutput, 1)
+
+        Task.detached { [self] in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            var arguments = bare.split(separator: " ").map(String.init)
+            if usePolkit { arguments.insert("pkexec", at: 0) }
+            if Packaging.isFlatpak { arguments.insert(contentsOf: ["flatpak-spawn", "--host"], at: 0) }
+            process.arguments = arguments
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            guard (try? process.run()) != nil else {
+                Gtk.onMain { [self] in
+                    guard !closed else { return }
+                    gtk_label_set_text(
+                        op(remedyOutput),
+                        Localized.text(
+                            "This machine would not run %@. Copy it and run it yourself, then this "
+                                + "step turns green on its own.", bare))
+                }
+                return
+            }
+            var seen = ""
+            while let chunk = try? pipe.fileHandleForReading.read(upToCount: 4096), !chunk.isEmpty {
+                seen += String(decoding: chunk, as: UTF8.self)
+                let text = seen
+                if let url = Self.loginURL(in: text) {
+                    Gtk.onMain { SignInDialog.openInBrowser(url) }
+                    seen = ""
+                }
+                Gtk.onMain { [self] in
+                    guard !closed else { return }
+                    gtk_label_set_text(op(remedyOutput), text.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+            }
+            process.waitUntilExit()
+        }
+    }
+
+    private static func loginURL(in text: String) -> String? {
+        for token in text.split(whereSeparator: { $0.isWhitespace })
+        where token.hasPrefix("https://login.tailscale.com/") {
+            return String(token)
+        }
+        return nil
+    }
+
+    private func driven(_ verb: String, _ argument: String) {
+        switch verb {
+        case "frpaste": send { await $0.paste(argument) }
+        case "frchoose":
+            if let kind = FirstRunPlan.Way.Kind(rawValue: argument) { chose(kind) }
+        case "frback": send { await $0.back() }
+        case "frconfirm": send { await $0.confirmOffTailnet() }
+        case "frconnect": send { await $0.connect() }
+        case "fragent":
+            let agent: AgentType? =
+                argument == "opencode" ? .openCode : argument == "omp" ? .omp : argument == "claude" ? .claudeCode : nil
+            if let agent { send { await $0.selectAgent(agent) } }
+        case "frhanded": send { await $0.handedOver() }
+        case "frpassword": send { await $0.setPassword(argument) }
+        case "frretry": send { await $0.retry() }
+        default: break
+        }
     }
 }

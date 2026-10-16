@@ -54,7 +54,8 @@ enum DesktopIntegration {
                 try? png.write(to: raster)
             }
         }
-        write(desktopEntry(), to: entry)
+        let changed = write(desktopEntry(), to: entry)
+        if changed { registerLinkHandler() }
 
         for legacy in [
             data.appendingPathComponent("applications/tailscode.desktop"),
@@ -67,11 +68,26 @@ enum DesktopIntegration {
         }
     }
 
-    private static func write(_ content: String, to target: URL) {
-        guard (try? String(contentsOf: target, encoding: .utf8)) != content else { return }
+    @discardableResult
+    private static func write(_ content: String, to target: URL) -> Bool {
+        guard (try? String(contentsOf: target, encoding: .utf8)) != content else { return false }
         try? FileManager.default.createDirectory(
             at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? content.write(to: target, atomically: true, encoding: .utf8)
+        return true
+    }
+
+    /// Makes this the app a `tailscode://` link opens in, which is the road a pairing link takes
+    /// from a terminal, a message or a browser to the window. Done once, when the entry that
+    /// declares it is written, and by the desktop's own tool so the choice lands where the desktop
+    /// reads it.
+    private static func registerLinkHandler() {
+        let tool = Process()
+        tool.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        tool.arguments = ["xdg-mime", "default", "\(appID).desktop", "x-scheme-handler/tailscode"]
+        tool.standardOutput = FileHandle.nullDevice
+        tool.standardError = FileHandle.nullDevice
+        try? tool.run()
     }
 
     /// Points Exec at the installed binary when there is one, so a dev build refreshing the entry
@@ -81,12 +97,17 @@ enum DesktopIntegration {
             .appendingPathComponent(".local/bin/tailscode").path
         let exec = FileManager.default.isExecutableFile(atPath: installed)
             ? installed : (Arguments.all.first.map { URL(fileURLWithPath: $0).path } ?? "tailscode")
+        return entryText(exec: exec)
+    }
+
+    static func entryText(exec: String) -> String {
         return """
         [Desktop Entry]
         Type=Application
         Name=Tailscode
         Comment=Drive your coding agents over Tailscale
-        Exec=\(exec)
+        Exec=\(exec) %u
+        MimeType=x-scheme-handler/tailscode;
         Icon=\(appID)
         Terminal=false
         Categories=Development;Network;

@@ -9,6 +9,7 @@ enum TailscodeVersion {
 
           tailscode                          open the window
           tailscode --ask                    open the question box (bind this to a key)
+          tailscode <tailscode://… link>     add the machine a pairing link names (also --connect <link>)
           tailscode --demo                   open the scripted demo world (no server)
           tailscode --connect <address>      save a server (--password, --name, --opencode, --omp)
           tailscode --selftest               check the whole chain with no display
