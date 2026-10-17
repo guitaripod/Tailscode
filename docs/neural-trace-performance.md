@@ -74,6 +74,34 @@ Nothing bleeds between channels, and 6×6 stays above 47 dB on every mask channe
 
 The bundle carries the same bytes as ASTC (about 3.4 MB) in place of 0.6 MB of WebP; it also removes the decode and the 36 MB transient. The fetch count falls from 13 to 9 (interior 7 to 5, front 6 to 4).
 
+### Linux: CPU time per frame of the CPU compositor
+
+Process CPU time (`clock_gettime(CLOCK_PROCESS_CPUTIME_ID)`, every worker counted) per frame on the real layers, release build, i7-14700K, the delta frames drawn by one worker with the 16-row floor the stage sets, the full frames by four. `TailscodeCore/Tests/TailscodeCoreTests/NeuralRealAssetsTests.swift` (`cpuTimePerFrame`) prints the same measurements.
+
+| Frame | 760 × 499 before | after | 1536 × 1008 before | after |
+|---|---|---|---|---|
+| full, settled | 25.9 ms | 4.5 | 97.5 | 24.8 |
+| full, settled, one worker | 16.7 | 3.2 | 65.3 | 13.7 |
+| full, with a dive | 64.9 | 34.5 | 270 | 154 |
+| delta, working (shell zone breathing, ripple) | 9.24 | 1.26 | 36.3 | 5.2 |
+| delta, thinking | 4.64 | 0.97 | 19.0 | 3.9 |
+| delta, sweep (whole dome) | 24.6 | 3.45 | 100 | 14.4 |
+| delta, needs approval (heartbeat) | 4.29 | 0.30 | 17.5 | 1.2 |
+| delta, compacting (crunch and sweep) | 35.5 | 10.0 | 143 | 39.7 |
+| resident set, idle / after a live turn | 16 / 16 MB | 18 / 22 | 65 / 65 | 74 / 90 |
+
+What paid, in the order it was found:
+
+- **Cost follows lit pixels, not the dirty rectangle.** `NeuralLitIndex` holds, once per size, which of the twelve channels (and whether the interior has alpha) light each pixel; a delta draws the pixels of the channels that changed, clipped to the dirty region, from ascending lists built when first asked for and cached. A pixel then sums only the channels it is lit by, in channel order, so the answer is the one the every-pixel loop gives.
+- **A full render is two memcpy and the lit pixels.** The interior's rest picture existed; the front's (chassis and glass, nothing glowing) is now made once too (`frontRest`). A frame draws only the pixels a channel lights over them.
+- **The gamma encode is a lookup, not `powf`.** A log-spaced table finds the one rounding threshold a value can be next to, so the byte is `byte(powf(x, 1 / 2.2))` except where the two differ by a rounding tie (35 bytes in the 36 goldens, never by more than one level).
+- **The ripple is a table.** The sine and cosine of the distance to the active point are kept for every link pixel (the last two points), so the ripple at a pixel is two products and a subtraction; the sine and the square root are paid once per zone change.
+- **Library calls out of the loops.** `rounded(.down)` is a call on a baseline x86-64, and `SIMD3.clamped` and the generic pointwise min and max were not inlined; the floors are a truncation and a step, the clamps are written out.
+- **The crunch skips what is clear.** A flag per 8 × 8 block says whether a bilinear sample taken in it can read any of the four layers, the pixel's nearest zone is a table, and a pixel outside the box of everything lit is the rest picture.
+- **Workers cost processor time.** The same full frame costs 3.2 ms with one worker, 3.7 with two and 4.5 with four on this machine, so a pass gives a worker only when it has 100 000 pixels for it: on the stage a full frame is drawn by one worker whatever `fullWorkers` says, and at 1536 wide by up to four. The stage's `deltaWorkers` of one stays right.
+
+What did not: a vectorised `pow` for the dive (`powf` is 3.4 ns, the polynomial 13), a hand-written `exp` for the sweep (slower than `expf`), skipping blank blocks in a dive (the zoomed picture has almost none), and a branchless encode (slower on real data, which is mostly dark). A dive frame is bilinear reads of four layers and stays at about 1.8 times cheaper.
+
 ## What to do, in order
 
 1. **Run at the app's tempo.** `ActivityTuning.frameRate` is 30 (24 at the least), pinned through `CAFrameRateRange.activityTempo` for every mark, and its own comment says a swell or turn "needs no more than this many frames". Breath (1.9 s), heartbeat (1.6 s, the sharpest feature at about 70 ms a beat) and sweep (1.05 s) all fit; the largest breath step at 30 fps is 3.6 percent of the range. The mocks ran at the display rate; they now step at 30. Only a dive and a scrub use the display's rate, and they last a second.

@@ -182,6 +182,8 @@ public final class NeuralCompositor: @unchecked Sendable {
     private var lastFrame: NeuralFrame?
     private var lastDive: NeuralDive?
     private var lastTime: Float = 0
+    private let toneBlock = NeuralToneBuffer(pointer: .allocate(capacity: 8))
+    var denseOnly = false
 
     /// Holds one retain on `assets` for its lifetime, so the decoded layers stay for a resize.
     public init(assets: NeuralAssetStore, size: (width: Int, height: Int), table: NeuralToneTable) {
@@ -206,7 +208,10 @@ public final class NeuralCompositor: @unchecked Sendable {
         self.init(assets: assets, size: size, table: NeuralToneTable(palette: palette, face: face))
     }
 
-    deinit { assets.release() }
+    deinit {
+        assets.release()
+        toneBlock.pointer.deallocate()
+    }
 
     public var size: (width: Int, height: Int) {
         lock.lock()
@@ -234,6 +239,24 @@ public final class NeuralCompositor: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return layers.fibres
+    }
+
+    var sparseIndex: NeuralLitIndex {
+        lock.lock()
+        defer { lock.unlock() }
+        return layers.litIndex
+    }
+
+    var fibreRanksForTesting: NeuralPixelList {
+        lock.lock()
+        defer { lock.unlock() }
+        return layers.fibreRanks
+    }
+
+    func rippleFieldForTesting(actX: Float, actY: Float) -> NeuralRippleField {
+        lock.lock()
+        defer { lock.unlock() }
+        return layers.rippleField(actX: actX, actY: actY)
     }
 
     public func makeSurfacePair() -> NeuralSurfacePair {
@@ -290,7 +313,9 @@ public final class NeuralCompositor: @unchecked Sendable {
         defer { lock.unlock() }
         guard matches(pair) else { return }
         let whole = NeuralRegion(minX: 0, minY: 0, maxX: layers.width, maxY: layers.height)
-        draw(frame, dive: dive, time: time, region: whole, sparse: [], into: &pair)
+        draw(
+            frame, previous: nil, dive: dive, time: time, region: whole, sparse: [], fibres: false, whole: true,
+            into: &pair)
         lastFrame = frame
         lastDive = dive
         lastTime = time
@@ -310,15 +335,14 @@ public final class NeuralCompositor: @unchecked Sendable {
         if lastDive != dive {
             area = NeuralRegion(minX: 0, minY: 0, maxX: layers.width, maxY: layers.height)
         }
-        let pixels: [Int]
-        if let sparse {
-            pixels = sparse
-        } else if frame.ripple != 0 || (previous?.ripple ?? 0) != 0 {
-            pixels = layers.fibres
-        } else {
-            pixels = []
-        }
-        draw(frame, dive: dive, time: time, region: area.clamped(width: layers.width, height: layers.height), sparse: pixels, into: &pair)
+        var pixels: [Int] = sparse ?? []
+        let fibres = sparse == nil && (frame.ripple != 0 || (previous?.ripple ?? 0) != 0)
+        let clamped = area.clamped(width: layers.width, height: layers.height)
+        let covers = clamped.width == layers.width && clamped.height == layers.height
+        let everything = lastDive != dive || (previous == nil && covers)
+        draw(
+            frame, previous: previous, dive: dive, time: time, region: clamped, sparse: pixels, fibres: fibres,
+            whole: everything, into: &pair)
         lastFrame = frame
         lastDive = dive
         lastTime = time
@@ -355,7 +379,7 @@ public final class NeuralCompositor: @unchecked Sendable {
         return region.clamped(width: layers.width, height: layers.height)
     }
 
-    private static func changed(_ channel: Int, _ a: NeuralFrame, _ b: NeuralFrame) -> Bool {
+    static func changed(_ channel: Int, _ a: NeuralFrame, _ b: NeuralFrame) -> Bool {
         if value(a.intensity, channel) != value(b.intensity, channel) { return true }
         if tone(a.toneOverride, channel) != tone(b.toneOverride, channel) { return true }
         return channel == NeuralChannel.rib.rawValue && a.ribs != b.ribs
@@ -370,42 +394,103 @@ public final class NeuralCompositor: @unchecked Sendable {
     }
 
     private func draw(
-        _ frame: NeuralFrame, dive: NeuralDive, time: Float, region: NeuralRegion, sparse: [Int],
-        into pair: inout NeuralSurfacePair
+        _ frame: NeuralFrame, previous: NeuralFrame?, dive: NeuralDive, time: Float, region: NeuralRegion,
+        sparse: [Int], fibres: Bool, whole: Bool, into pair: inout NeuralSurfacePair
     ) {
-        guard !region.isEmpty || !sparse.isEmpty else { return }
-        let params = NeuralFrameParams(frame: frame, table: table, dive: dive, time: time, width: layers.width, height: layers.height)
+        guard whole || !region.isEmpty || !sparse.isEmpty || fibres else { return }
+        let params = NeuralFrameParams(frame: frame, table: table, dive: dive, time: time, width: layers.width, height: layers.height, tones: toneBlock)
+        if frame.crunch > 0 || (previous?.crunch ?? 0) > 0 { layers.prepareZones() }
         let pointers = layers.pointers
+        let plan = NeuralDrawPlan(
+            frame: frame, previous: previous, params: params, region: region, whole: whole && !denseOnly,
+            dense: denseOnly, index: layers.litIndex, crunch: layers.crunchRegion)
+        let field = plan.link ? layers.rippleField(actX: params.actX, actY: params.actY) : nil
+        let explicit = fibres && field == nil ? layers.fibres : sparse
+        let fibreRanks = fibres && field != nil ? layers.fibreRanks : nil
+        let total = layers.width * layers.height * 4
         pair.interior.bytes.withUnsafeMutableBufferPointer { interior in
             pair.front.bytes.withUnsafeMutableBufferPointer { front in
                 let interiorOut = NeuralUnsafe(interior.baseAddress!)
                 let frontOut = NeuralUnsafe(front.baseAddress!)
-                if !region.isEmpty {
-                    NeuralParallel.rows(region.minY..<region.maxY) { rows in
-                        NeuralKernels.interior(
-                            rows: rows, columns: region.minX..<region.maxX, layers: pointers, params: params,
-                            out: interiorOut.pointer)
-                    }
-                    NeuralParallel.rows(region.minY..<region.maxY) { rows in
-                        NeuralKernels.front(
-                            rows: rows, columns: region.minX..<region.maxX, layers: pointers, params: params,
-                            out: frontOut.pointer)
-                    }
-                }
-                if !sparse.isEmpty {
-                    let width = pointers.width
-                    let inside = region
-                    NeuralParallel.rows(0..<sparse.count, minimumPerChunk: 256) { range in
-                        for position in range {
-                            let index = sparse[position]
-                            let x = index % width
-                            let y = index / width
-                            if inside.contains(x: x, y: y) { continue }
-                            NeuralKernels.interiorPixel(
-                                x: x, y: y, layers: pointers, params: params, out: interiorOut.pointer)
-                        }
-                    }
-                }
+                if plan.copyInterior { interiorOut.pointer.update(from: pointers.base, count: total) }
+                if plan.copyFront { frontOut.pointer.update(from: pointers.frontRest, count: total) }
+                Self.drawInterior(
+                    plan, sparse: explicit, field: field, fibreRanks: fibreRanks, link: layers.litIndex.link,
+                    pointers: pointers, params: params, out: interiorOut)
+                Self.drawFront(plan, pointers: pointers, params: params, out: frontOut)
+            }
+        }
+    }
+
+    private static func drawInterior(
+        _ plan: NeuralDrawPlan, sparse: [Int], field: NeuralRippleField?, fibreRanks: NeuralPixelList?,
+        link: NeuralPixelList, pointers: NeuralLayerPointers, params: NeuralFrameParams,
+        out: NeuralUnsafe<UInt8>
+    ) {
+        if let rectangle = plan.interiorRectangle, !rectangle.isEmpty {
+            NeuralParallel.rows(rectangle.minY..<rectangle.maxY) { rows in
+                NeuralKernels.interior(
+                    rows: rows, columns: rectangle.minX..<rectangle.maxX, layers: pointers, params: params,
+                    out: out.pointer)
+            }
+        }
+        if let list = plan.interiorList {
+            let (span, columns) = plan.clip(list, to: plan.interiorClip, width: pointers.width)
+            NeuralParallel.rows(span, minimumPerChunk: 1024, minimumPerWorker: 100_000) { range in
+                NeuralKernels.interior(
+                    positions: range, indices: list.indices, columns: columns, layers: pointers, params: params,
+                    out: out.pointer)
+            }
+        }
+        if let field {
+            let (span, columns) = plan.clip(link, to: plan.interiorClip, width: pointers.width)
+            NeuralParallel.rows(span, minimumPerChunk: 1024, minimumPerWorker: 100_000) { range in
+                NeuralKernels.interiorRipple(
+                    positions: range, indices: link.indices, ranks: nil, outside: nil, columns: columns,
+                    field: field, layers: pointers, params: params, out: out.pointer)
+            }
+            if let fibreRanks, fibreRanks.count > 0 {
+                NeuralKernels.interiorRipple(
+                    positions: 0..<fibreRanks.count, indices: link.indices, ranks: fibreRanks.indices,
+                    outside: plan.interiorCovered, columns: nil, field: field, layers: pointers, params: params,
+                    out: out.pointer)
+            }
+        }
+        guard !sparse.isEmpty else { return }
+        let covered = plan.interiorCovered
+        let byRectangle = plan.interiorByRectangle
+        let mask = plan.interiorMask
+        let lit = NeuralConst(UnsafePointer(plan.bits))
+        let width = pointers.width
+        NeuralParallel.rows(0..<sparse.count, minimumPerChunk: 256) { range in
+            for position in range {
+                let index = sparse[position]
+                let x = index % width
+                let y = index / width
+                if covered.contains(x: x, y: y) && (byRectangle || lit.pointer[index] & mask != 0) { continue }
+                NeuralKernels.interiorPixel(
+                    index: index, x: x, y: y, layers: pointers, params: params, out: out.pointer)
+            }
+        }
+    }
+
+    private static func drawFront(
+        _ plan: NeuralDrawPlan, pointers: NeuralLayerPointers,
+        params: NeuralFrameParams, out: NeuralUnsafe<UInt8>
+    ) {
+        if let rectangle = plan.frontRectangle, !rectangle.isEmpty {
+            NeuralParallel.rows(rectangle.minY..<rectangle.maxY) { rows in
+                NeuralKernels.front(
+                    rows: rows, columns: rectangle.minX..<rectangle.maxX, layers: pointers, params: params,
+                    out: out.pointer)
+            }
+        }
+        if let list = plan.frontList {
+            let (span, columns) = plan.clip(list, to: plan.frontClip, width: pointers.width)
+            NeuralParallel.rows(span, minimumPerChunk: 1024) { range in
+                NeuralKernels.front(
+                    positions: range, indices: list.indices, columns: columns, layers: pointers, params: params,
+                    out: out.pointer)
             }
         }
     }
@@ -427,6 +512,23 @@ struct NeuralLayerPointers: @unchecked Sendable {
     let bloom1: UnsafePointer<UInt8>
     let bloom2: UnsafePointer<UInt8>
     let base: UnsafePointer<UInt8>
+    let frontRest: UnsafePointer<UInt8>
+    let bits: UnsafePointer<UInt16>
+    let blocks: UnsafePointer<UInt8>
+    let blockColumns: Int
+    let zoneOf: UnsafePointer<UInt8>?
+    let linear: UnsafePointer<Float>
+    let thresholds: UnsafePointer<Float>
+    let steps: UnsafePointer<UInt8>
+
+    @inline(__always)
+    func encode(_ value: Float) -> UInt8 {
+        let clamped = min(max(value, 0), 1)
+        guard clamped >= NeuralCodec.lowest else { return 0 }
+        let cell = Int(truncatingIfNeeded: (clamped.bitPattern >> 16) &- UInt32(107 << 7)) & 4095
+        let level = Int(steps[cell])
+        return UInt8(truncatingIfNeeded: level + (clamped >= thresholds[level + 1] ? 1 : 0))
+    }
 }
 
 /// A block of bytes the kernels read through a raw pointer.
@@ -461,10 +563,22 @@ final class NeuralLayers: @unchecked Sendable {
     let masks: [NeuralPixelBuffer]
     let blooms: [NeuralPixelBuffer]
     private(set) var base: NeuralPixelBuffer
+    let frontRest: NeuralPixelBuffer
+    private(set) var litIndex: NeuralLitIndex
+    private var zonePlane: NeuralPixelBuffer?
+    private var rankedFibres: NeuralPixelList?
+    var fibreRanks: NeuralPixelList {
+        if let rankedFibres { return rankedFibres }
+        let made = Self.ranks(of: fibres, in: litIndex.link)
+        rankedFibres = made
+        return made
+    }
+    private var fields: [NeuralRippleField] = []
     private(set) var complete = true
     private(set) var bounds: [NeuralRegion] = []
     private(set) var fibres: [Int] = []
     private(set) var domeRegion = NeuralRegion.empty
+    private(set) var crunchRegion = NeuralRegion.empty
     private(set) var eyeRegion = NeuralRegion.empty
 
     init(assets: NeuralAssetStore, width: Int, height: Int, background: NeuralRGB) {
@@ -485,13 +599,61 @@ final class NeuralLayers: @unchecked Sendable {
         blooms = [layer(.bloom0), layer(.bloom1), layer(.bloom2)]
         complete = !missing
         base = NeuralPixelBuffer(count: width * height * 4)
+        frontRest = NeuralPixelBuffer(count: width * height * 4)
+        litIndex = NeuralLitIndex(
+            width: width, height: height,
+            bits: UnsafeMutablePointer<UInt16>.allocate(capacity: max(1, width * height)))
         rebuildBase(background: background)
         measure()
+        buildFrontRest()
     }
 
     var footprint: Int {
         let layerBytes = width * height * 4
-        return layerBytes * 11 + fibres.count * MemoryLayout<Int>.stride
+        return layerBytes * 12 + fibres.count * MemoryLayout<Int>.stride + litIndex.byteCount
+            + (rankedFibres?.byteCount ?? 0) + (zonePlane?.count ?? 0) + fields.reduce(0) { $0 + $1.byteCount }
+    }
+
+    /// Which zone centre each pixel is nearest, for the crunch: made when a compaction first needs it.
+    func prepareZones() {
+        guard zonePlane == nil else { return }
+        let plane = NeuralPixelBuffer(count: width * height)
+        let output = NeuralUnsafe(plane.pointer)
+        var xs = SIMD8<Float>(repeating: 0)
+        var ys = SIMD8<Float>(repeating: 0)
+        for (position, zone) in NeuralZone.allCases.prefix(6).enumerated() {
+            xs[position] = Float(zone.center.x / NeuralDesign.width)
+            ys[position] = Float(zone.center.y / NeuralDesign.height)
+        }
+        let zoneX = xs
+        let zoneY = ys
+        let aspect = Float(width) / Float(height)
+        let invWidth = 1 / Float(width)
+        let invHeight = 1 / Float(height)
+        let w = width
+        NeuralParallel.rows(0..<height, minimumPerWorker: 256) { rows in
+            for y in rows {
+                let t = (Float(y) + 0.5) * invHeight
+                for x in 0..<w {
+                    let u = (Float(x) + 0.5) * invWidth
+                    output.pointer[y * w + x] = UInt8(
+                        NeuralKernels.nearestZone(u: u, t: t, aspect: aspect, zoneX: zoneX, zoneY: zoneY))
+                }
+            }
+        }
+        zonePlane = plane
+    }
+
+    /// The ripple's phase table for a centre, kept for the last two centres a turn has used.
+    func rippleField(actX: Float, actY: Float) -> NeuralRippleField {
+        if let hit = fields.firstIndex(where: { $0.actX == actX && $0.actY == actY }) {
+            return fields[hit]
+        }
+        let made = NeuralRippleField(
+            list: litIndex.link, width: width, height: height, actX: actX, actY: actY)
+        fields.insert(made, at: 0)
+        if fields.count > 2 { fields.removeLast() }
+        return made
     }
 
     var pointers: NeuralLayerPointers {
@@ -501,13 +663,20 @@ final class NeuralLayers: @unchecked Sendable {
             glass: UnsafePointer(glass.pointer), mask0: UnsafePointer(masks[0].pointer),
             mask1: UnsafePointer(masks[1].pointer), mask2: UnsafePointer(masks[2].pointer),
             bloom0: UnsafePointer(blooms[0].pointer), bloom1: UnsafePointer(blooms[1].pointer),
-            bloom2: UnsafePointer(blooms[2].pointer), base: UnsafePointer(base.pointer))
+            bloom2: UnsafePointer(blooms[2].pointer), base: UnsafePointer(base.pointer),
+            frontRest: UnsafePointer(frontRest.pointer), bits: UnsafePointer(litIndex.bits),
+            blocks: UnsafePointer(litIndex.blocks), blockColumns: litIndex.blockColumns,
+            zoneOf: zonePlane.map { UnsafePointer($0.pointer) },
+            linear: UnsafePointer(NeuralCodec.shared.linear),
+            thresholds: UnsafePointer(NeuralCodec.shared.thresholds),
+            steps: UnsafePointer(NeuralCodec.shared.steps))
     }
 
     func rebuildBase(background: NeuralRGB) {
         let bg = SIMD3<Float>(background.r, background.g, background.b)
         let output = NeuralUnsafe(base.pointer)
         let source = NeuralConst(UnsafePointer(interior.pointer))
+        let codec = pointers
         let w = width
         NeuralParallel.rows(0..<height) { rows in
             for y in rows {
@@ -515,17 +684,43 @@ final class NeuralLayers: @unchecked Sendable {
                     let offset = (y * w + x) * 4
                     let a = Float(source.pointer[offset + 3]) * (1.0 / 255)
                     let lin = SIMD3<Float>(
-                        NeuralKernels.linearTable[Int(source.pointer[offset])],
-                        NeuralKernels.linearTable[Int(source.pointer[offset + 1])],
-                        NeuralKernels.linearTable[Int(source.pointer[offset + 2])])
+                        codec.linear[Int(source.pointer[offset])],
+                        codec.linear[Int(source.pointer[offset + 1])],
+                        codec.linear[Int(source.pointer[offset + 2])])
                     let mixed = bg * (1 - a) + lin * a
-                    output.pointer[offset] = NeuralKernels.gammaByte(mixed.z)
-                    output.pointer[offset + 1] = NeuralKernels.gammaByte(mixed.y)
-                    output.pointer[offset + 2] = NeuralKernels.gammaByte(mixed.x)
+                    output.pointer[offset] = codec.encode(mixed.z)
+                    output.pointer[offset + 1] = codec.encode(mixed.y)
+                    output.pointer[offset + 2] = codec.encode(mixed.x)
                     output.pointer[offset + 3] = 255
                 }
             }
         }
+    }
+
+    private func buildFrontRest() {
+        let output = NeuralUnsafe(frontRest.pointer)
+        let layers = pointers
+        NeuralParallel.rows(0..<height) { rows in
+            for y in rows {
+                for x in 0..<layers.width {
+                    NeuralKernels.frontRestPixel(index: y * layers.width + x, layers: layers, out: output.pointer)
+                }
+            }
+        }
+    }
+
+    /// Where each of `pixels` (ascending, all in `list`) sits in `list`.
+    private static func ranks(of pixels: [Int], in list: NeuralPixelList) -> NeuralPixelList {
+        var found: [Int32] = []
+        found.reserveCapacity(pixels.count)
+        var position = 0
+        for pixel in pixels {
+            while position < list.count && Int(list.indices[position]) < pixel { position += 1 }
+            if position < list.count && Int(list.indices[position]) == pixel {
+                found.append(Int32(truncatingIfNeeded: position))
+            }
+        }
+        return NeuralPixelList(found)
     }
 
     private func measure() {
@@ -534,6 +729,12 @@ final class NeuralLayers: @unchecked Sendable {
         var maxX = [Int](repeating: -1, count: NeuralChannel.count)
         var maxY = maxX
         var links: [Int] = []
+        let lit = litIndex.bits
+        lit.initialize(repeating: 0, count: max(1, width * height))
+        let alpha = interior.pointer
+        for index in 0..<(width * height) where alpha[index * 4 + 3] != 0 {
+            lit[index] = NeuralLitIndex.alphaBit
+        }
         for set in 0..<3 {
             let mask = masks[set].pointer
             let bloom = blooms[set].pointer
@@ -543,6 +744,7 @@ final class NeuralLayers: @unchecked Sendable {
                     for component in 0..<4 {
                         let channel = set * 4 + component
                         if mask[offset + component] != 0 || bloom[offset + component] != 0 {
+                            lit[y * width + x] |= UInt16(1) << UInt16(channel)
                             minX[channel] = min(minX[channel], x)
                             maxX[channel] = max(maxX[channel], x)
                             minY[channel] = min(minY[channel], y)
@@ -554,6 +756,7 @@ final class NeuralLayers: @unchecked Sendable {
             }
         }
         fibres = links
+        litIndex.rebuild()
         bounds = (0..<NeuralChannel.count).map { channel in
             guard maxX[channel] >= 0 else { return .empty }
             return NeuralRegion(
@@ -574,13 +777,51 @@ final class NeuralLayers: @unchecked Sendable {
         var dome = region(xs.min() ?? 0, ys.min() ?? 0, xs.max() ?? 0, ys.max() ?? 0)
         for channel in 0..<NeuralChannel.count { dome = dome.union(bounds[channel]) }
         domeRegion = dome.clamped(width: width, height: height)
+        crunchRegion = measureCrunch(sx: sx, sy: sy)
     }
+
+    /// Where a crunched pixel can read anything: the box around every lit or opaque interior pixel
+    /// and the six zone centres the warp pulls towards, two pixels out. A pixel outside it samples
+    /// further out along the ray from its zone's centre, so it reads nothing.
+    private func measureCrunch(sx: Double, sy: Double) -> NeuralRegion {
+        var minX = width
+        var minY = height
+        var maxX = -1
+        var maxY = -1
+        let lit = litIndex.bits
+        for y in 0..<height {
+            for x in 0..<width where lit[y * width + x] & NeuralLitIndex.interiorActive != 0 {
+                minX = min(minX, x)
+                maxX = max(maxX, x)
+                minY = min(minY, y)
+                maxY = max(maxY, y)
+            }
+        }
+        for zone in NeuralZone.allCases {
+            let x = Int((zone.center.x * sx).rounded(.down))
+            let y = Int((zone.center.y * sy).rounded(.down))
+            minX = min(minX, x)
+            maxX = max(maxX, x)
+            minY = min(minY, y)
+            maxY = max(maxY, y)
+        }
+        return NeuralRegion(minX: minX - 2, minY: minY - 2, maxX: maxX + 3, maxY: maxY + 3)
+            .clamped(width: width, height: height)
+    }
+}
+
+/// The eight zone channels' tones times their intensities, in a block the compositor owns so a
+/// frame's parameters stay plain values the pixel loops copy freely.
+struct NeuralToneBuffer: @unchecked Sendable {
+    let pointer: UnsafeMutablePointer<SIMD3<Float>>
+
+    subscript(channel: Int) -> SIMD3<Float> { pointer[channel] }
 }
 
 /// Everything a frame fixes before a pixel is looked at: the tone and intensity products and the
 /// scalars the two passes read.
 struct NeuralFrameParams: Sendable {
-    var t0, t1, t2, t3, t4, t5, t6, t7: SIMD3<Float>
+    var tones: NeuralToneBuffer
     var seamGain: SIMD3<Float>
     var eyeTone: SIMD3<Float>
     var eyeGain: Float
@@ -592,6 +833,8 @@ struct NeuralFrameParams: Sendable {
     var sweepAmount: Float
     var crunch: Float
     var ripple: Float
+    var rippleSin: Float
+    var rippleCos: Float
     var actX: Float
     var actY: Float
     var aspect: Float
@@ -607,9 +850,14 @@ struct NeuralFrameParams: Sendable {
     var centerX: Float
     var centerY: Float
     var still: Bool
-    var zones: [SIMD2<Float>]
+    var needsPosition: Bool
+    var zoneX: SIMD8<Float>
+    var zoneY: SIMD8<Float>
 
-    init(frame: NeuralFrame, table: NeuralToneTable, dive: NeuralDive, time: Float, width: Int, height: Int) {
+    init(
+        frame: NeuralFrame, table: NeuralToneTable, dive: NeuralDive, time: Float, width: Int, height: Int,
+        tones buffer: NeuralToneBuffer
+    ) {
         func intensity(_ index: Int) -> Float {
             index < frame.intensity.count ? frame.intensity[index] : 0
         }
@@ -623,14 +871,8 @@ struct NeuralFrameParams: Sendable {
             return SIMD3(color.r, color.g, color.b)
         }
         func scaled(_ index: Int) -> SIMD3<Float> { tone(index) * intensity(index) }
-        t0 = scaled(0)
-        t1 = scaled(1)
-        t2 = scaled(2)
-        t3 = scaled(3)
-        t4 = scaled(4)
-        t5 = scaled(5)
-        t6 = scaled(6)
-        t7 = scaled(7)
+        tones = buffer
+        for channel in 0..<8 { buffer.pointer[channel] = scaled(channel) }
         seamGain = tone(8) * (intensity(8) * 2)
         eyeTone = tone(9)
         eyeGain = intensity(9) * 4
@@ -643,6 +885,9 @@ struct NeuralFrameParams: Sendable {
         sweepAmount = frame.sweepAmount
         crunch = frame.crunch
         ripple = frame.ripple
+        let rippleAngle = Double(time) * 3.2
+        rippleSin = Float(sin(rippleAngle))
+        rippleCos = Float(cos(rippleAngle))
         let point = frame.active ?? NeuralPoint(NeuralDesign.width / 2, NeuralDesign.height / 2)
         actX = Float(point.x / NeuralDesign.width)
         actY = Float(point.y / NeuralDesign.height)
@@ -659,243 +904,14 @@ struct NeuralFrameParams: Sendable {
         centerX = Float(dive.center.x)
         centerY = Float(dive.center.y)
         still = dive.isStill
-        zones = NeuralZone.allCases.map {
-            SIMD2(Float($0.center.x / NeuralDesign.width), Float($0.center.y / NeuralDesign.height))
+        needsPosition = frame.ripple != 0 || frame.sweepAmount > 0 || frame.crunch > 0
+        var xs = SIMD8<Float>(repeating: 0)
+        var ys = SIMD8<Float>(repeating: 0)
+        for (position, zone) in NeuralZone.allCases.prefix(6).enumerated() {
+            xs[position] = Float(zone.center.x / NeuralDesign.width)
+            ys[position] = Float(zone.center.y / NeuralDesign.height)
         }
-    }
-}
-
-/// The two shader passes, one pixel at a time.
-enum NeuralKernels {
-    static let linearTable: [Float] = (0..<256).map { Float(pow(Double($0) / 255, 2.2)) }
-
-    static let inverseGamma: Float = 1 / 2.2
-
-    @inline(__always)
-    static func gammaByte(_ value: Float) -> UInt8 {
-        byte(powf(min(max(value, 0), 1), inverseGamma))
-    }
-
-    @inline(__always)
-    static func byte(_ value: Float) -> UInt8 {
-        UInt8(min(max(value * 255 + 0.5, 0), 255))
-    }
-
-    @inline(__always)
-    static func load(_ pointer: UnsafePointer<UInt8>, _ index: Int) -> SIMD4<Float> {
-        SIMD4<Float>(UnsafeRawPointer(pointer).loadUnaligned(fromByteOffset: index * 4, as: SIMD4<UInt8>.self))
-            * (1.0 / 255)
-    }
-
-    @inline(__always)
-    static func word(_ pointer: UnsafePointer<UInt8>, _ index: Int) -> UInt32 {
-        UnsafeRawPointer(pointer).loadUnaligned(fromByteOffset: index * 4, as: UInt32.self)
-    }
-
-    @inline(__always)
-    static func sample(
-        _ pointer: UnsafePointer<UInt8>, _ layers: NeuralLayerPointers, _ u: Float, _ t: Float
-    ) -> SIMD4<Float> {
-        NeuralImage.bilinear(pointer, width: layers.width, height: layers.height, u: u, t: t)
-    }
-
-    @inline(__always)
-    static func crunchUV(u: Float, t: Float, params: NeuralFrameParams) -> SIMD2<Float> {
-        var best = params.zones[0]
-        var nearest = Float.greatestFiniteMagnitude
-        for zone in params.zones {
-            let dx = (u - zone.x) * params.aspect
-            let dy = t - zone.y
-            let distance = dx * dx + dy * dy
-            if distance < nearest {
-                nearest = distance
-                best = zone
-            }
-        }
-        let scale = 1 + 0.7 * params.crunch
-        return SIMD2(best.x + (u - best.x) * scale, best.y + (t - best.y) * scale)
-    }
-
-    @_optimize(speed)
-    static func interior(
-        rows: Range<Int>, columns: Range<Int>, layers: NeuralLayerPointers, params: NeuralFrameParams,
-        out: UnsafeMutablePointer<UInt8>
-    ) {
-        for y in rows {
-            for x in columns {
-                interiorPixel(x: x, y: y, layers: layers, params: params, out: out)
-            }
-        }
-    }
-
-    @_optimize(speed)
-    @inline(__always)
-    static func interiorPixel(
-        x: Int, y: Int, layers: NeuralLayerPointers, params: NeuralFrameParams,
-        out: UnsafeMutablePointer<UInt8>
-    ) {
-        let index = y * layers.width + x
-        let u = (Float(x) + 0.5) * layers.invWidth
-        let t = (Float(y) + 0.5) * layers.invHeight
-        var m0 = SIMD4<Float>(repeating: 0)
-        var m1 = m0
-        var b0 = m0
-        var b1 = m0
-        var lit = false
-        if params.crunch > 0 {
-            let warped = crunchUV(u: u, t: t, params: params)
-            m0 = sample(layers.mask0, layers, warped.x, warped.y)
-            m1 = sample(layers.mask1, layers, warped.x, warped.y)
-            b0 = sample(layers.bloom0, layers, warped.x, warped.y)
-            b1 = sample(layers.bloom1, layers, warped.x, warped.y)
-            lit = true
-        } else {
-            let any =
-                word(layers.mask0, index) | word(layers.mask1, index) | word(layers.bloom0, index)
-                | word(layers.bloom1, index)
-            if any != 0 {
-                lit = true
-                m0 = load(layers.mask0, index)
-                m1 = load(layers.mask1, index)
-                b0 = load(layers.bloom0, index)
-                b1 = load(layers.bloom1, index)
-            }
-        }
-        let dest = out + index * 4
-        if !lit && params.sweepAmount <= 0 {
-            UnsafeMutableRawPointer(dest).storeBytes(of: word(layers.base, index), as: UInt32.self)
-            return
-        }
-        let rgba = UnsafeRawPointer(layers.interior).loadUnaligned(fromByteOffset: index * 4, as: SIMD4<UInt8>.self)
-        let alpha = Float(rgba.w) * (1.0 / 255)
-        let linear = SIMD3<Float>(
-            linearTable[Int(rgba.x)], linearTable[Int(rgba.y)], linearTable[Int(rgba.z)])
-        let base = params.background * (1 - alpha) + linear * alpha
-        var ripple: Float = 1
-        if params.ripple != 0 && (m1.z != 0 || b1.z != 0) {
-            let dx = (u - params.actX) * params.aspect
-            let dy = t - params.actY
-            ripple = 1 + params.ripple * 0.45 * sin((dx * dx + dy * dy).squareRoot() * 38 - params.time * 3.2)
-        }
-        let w0 = m0 * 4 + b0 * 2
-        var w1 = m1 * 4 + b1 * 2
-        w1.z *= ripple
-        var glow = params.t0 * w0.x + params.t1 * w0.y + params.t2 * w0.z + params.t3 * w0.w
-        glow += params.t4 * w1.x + params.t5 * w1.y + params.t6 * w1.z + params.t7 * w1.w
-        var added = glow
-        if params.sweepAmount > 0 {
-            let luma = glow.x * 0.3 + glow.y * 0.5 + glow.z * 0.2
-            let phase = (u * 0.9 + (1 - t) * 0.35 - params.sweep) * 7
-            let band = exp(-(phase * phase))
-            added += params.sweepTone * (band * params.sweepAmount * (0.14 * alpha + min(luma * 1.2, 1)))
-        }
-        added = added / (SIMD3<Float>(repeating: 1) + added * 0.2)
-        let lifted = added.clamped(lowerBound: SIMD3(repeating: 0), upperBound: SIMD3(repeating: 1))
-        let color = SIMD3<Float>(repeating: 1) - (SIMD3<Float>(repeating: 1) - base) * (SIMD3<Float>(repeating: 1) - lifted)
-        dest[0] = gammaByte(color.z)
-        dest[1] = gammaByte(color.y)
-        dest[2] = gammaByte(color.x)
-        dest[3] = 255
-    }
-
-    @_optimize(speed)
-    static func front(
-        rows: Range<Int>, columns: Range<Int>, layers: NeuralLayerPointers, params: NeuralFrameParams,
-        out: UnsafeMutablePointer<UInt8>
-    ) {
-        for y in rows {
-            for x in columns {
-                frontPixel(x: x, y: y, layers: layers, params: params, out: out)
-            }
-        }
-    }
-
-    @_optimize(speed)
-    @inline(__always)
-    static func frontPixel(
-        x: Int, y: Int, layers: NeuralLayerPointers, params: NeuralFrameParams,
-        out: UnsafeMutablePointer<UInt8>
-    ) {
-        let index = y * layers.width + x
-        let dest = out + index * 4
-        var chassis: SIMD4<Float>
-        var glass: SIMD4<Float>
-        var packed: SIMD4<Float>
-        var u1 = (Float(x) + 0.5) * layers.invWidth
-        var t1 = (Float(y) + 0.5) * layers.invHeight
-        let chassisLinear: SIMD3<Float>
-        let glassLinear: SIMD3<Float>
-        if params.still {
-            let chassisWord = word(layers.chassis, index)
-            let glassWord = word(layers.glass, index)
-            let maskWord = word(layers.mask2, index)
-            let bloomWord = word(layers.bloom2, index)
-            if (chassisWord >> 24) == 0 && (glassWord >> 24) == 0 && maskWord == 0 && bloomWord == 0 {
-                UnsafeMutableRawPointer(dest).storeBytes(of: 0, as: UInt32.self)
-                return
-            }
-            let c = UnsafeRawPointer(layers.chassis).loadUnaligned(fromByteOffset: index * 4, as: SIMD4<UInt8>.self)
-            let g = UnsafeRawPointer(layers.glass).loadUnaligned(fromByteOffset: index * 4, as: SIMD4<UInt8>.self)
-            chassis = SIMD4<Float>(c) * (1.0 / 255)
-            glass = SIMD4<Float>(g) * (1.0 / 255)
-            chassisLinear = SIMD3(linearTable[Int(c.x)], linearTable[Int(c.y)], linearTable[Int(c.z)])
-            glassLinear = SIMD3(linearTable[Int(g.x)], linearTable[Int(g.y)], linearTable[Int(g.z)])
-            packed = load(layers.mask2, index) + load(layers.bloom2, index) * (4.0 / 3.0)
-        } else {
-            let u = u1
-            let t = t1
-            u1 = (u - params.centerX) / params.chassisScale + params.centerX
-            t1 = (t - params.centerY) / params.chassisScale + params.centerY
-            let u2 = (u - params.centerX) / params.glassScale + params.centerX
-            let t2 = (t - params.centerY) / params.glassScale + params.centerY
-            chassis = sample(layers.chassis, layers, u1, t1)
-            glass = sample(layers.glass, layers, u2, t2)
-            chassisLinear = SIMD3(
-                powf(chassis.x, 2.2), powf(chassis.y, 2.2), powf(chassis.z, 2.2))
-            glassLinear = SIMD3(powf(glass.x, 2.2), powf(glass.y, 2.2), powf(glass.z, 2.2))
-            packed = sample(layers.mask2, layers, u1, t1) + sample(layers.bloom2, layers, u1, t1) * (4.0 / 3.0)
-        }
-        var glow = SIMD3<Float>(repeating: 0)
-        if packed.x > 0 { glow += params.seamGain * packed.x }
-        if packed.y > 0 {
-            let xd = u1 * 640
-            let segment = min(max(((xd - 562) / 8.2).rounded(.down), 0), 4)
-            let lit: Float = segment < params.effort ? 1 : (params.hollow ? 0.1 : 0.14)
-            var eye = params.eyeTone
-            if params.rainbow > 0 {
-                let phase = (u1 * 5 - params.time * 0.3) * 6.2831853
-                let rainbow = SIMD3<Float>(
-                    0.5 + 0.5 * cos(phase), 0.5 + 0.5 * cos(phase + 0.33 * 6.2831853),
-                    0.5 + 0.5 * cos(phase + 0.67 * 6.2831853))
-                eye = eye + (rainbow - eye) * params.rainbow
-            }
-            glow += eye * (params.eyeGain * lit * packed.y)
-        }
-        if packed.z > 0 {
-            let yd = t1 * 420
-            let rib = min(max(((yd - 381) / 6).rounded(.down), 0), 5)
-            let lit = min(max(params.ribs - (5 - rib), 0), 1)
-            glow += params.ribGain * (lit * packed.z)
-        }
-        if packed.w > 0 { glow += params.earGain * packed.w }
-        glow *= chassis.w * (1 - params.spill) + params.spill
-        glow = glow / (SIMD3<Float>(repeating: 1) + glow * 0.2)
-        var spilled: Float = 0
-        if params.spill > 0.5 {
-            spilled = min(max(max(glow.x, max(glow.y, glow.z)), 0), 1)
-        }
-        var color = (chassisLinear * chassis.w + glow) * params.fade
-        var alpha = min(max(chassis.w + spilled, 0), 1) * params.fade
-        let glassAlpha = glass.w * (1 - 0.8 * (1 - params.fade))
-        color = color * (1 - glassAlpha) + glassLinear * glassAlpha
-        alpha = alpha * (1 - glassAlpha) + glassAlpha
-        let clamped = color.clamped(lowerBound: SIMD3(repeating: 0), upperBound: SIMD3(repeating: 1))
-        let encoded = SIMD3<Float>(
-            powf(clamped.x, inverseGamma), powf(clamped.y, inverseGamma), powf(clamped.z, inverseGamma))
-        let coverage = max(min(max(alpha, 0), 1), max(encoded.x, max(encoded.y, encoded.z)))
-        dest[0] = byte(encoded.z)
-        dest[1] = byte(encoded.y)
-        dest[2] = byte(encoded.x)
-        dest[3] = byte(coverage)
+        zoneX = xs
+        zoneY = ys
     }
 }

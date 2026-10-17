@@ -26,10 +26,17 @@ public enum NeuralParallelism {
 }
 
 enum NeuralParallel {
-    static func rows(_ rows: Range<Int>, minimumPerChunk: Int = 4, _ body: @Sendable (Range<Int>) -> Void) {
+    /// `minimumPerWorker` is how many items a worker must have to be worth waking: a pass over a few
+    /// thousand lit pixels runs on the calling thread whatever the caps allow, because every
+    /// extra worker costs more processor time than it saves.
+    static func rows(
+        _ rows: Range<Int>, minimumPerChunk: Int = 4, minimumPerWorker: Int = 0,
+        _ body: @Sendable (Range<Int>) -> Void
+    ) {
         let count = rows.count
         guard count > 0 else { return }
-        let cores = max(1, min(NeuralParallelism.maximumWorkers, ProcessInfo.processInfo.activeProcessorCount))
+        let useful = minimumPerWorker > 0 ? max(1, count / minimumPerWorker) : Int.max
+        let cores = max(1, min(useful, min(NeuralParallelism.maximumWorkers, ProcessInfo.processInfo.activeProcessorCount)))
         let chunk = max(max(minimumPerChunk, NeuralParallelism.minimumRows), (count + cores * 3) / (cores * 4))
         if cores == 1 || count <= chunk {
             body(rows)
@@ -114,20 +121,28 @@ public struct NeuralImage: Sendable, Equatable {
         }
     }
 
+    /// `floor(value)` as an integer for a finite value of modest size, from a truncation and a
+    /// step back, where `rounded(.down)` is a library call on a baseline x86-64.
+    @inline(__always)
+    static func flooredInt(_ value: Float) -> Int {
+        let truncated = Int(value)
+        return Float(truncated) > value ? truncated - 1 : truncated
+    }
+
     @inline(__always)
     static func bilinear(
         _ pixels: UnsafePointer<UInt8>, width: Int, height: Int, u: Float, t: Float
     ) -> SIMD4<Float> {
         let fx = min(max(u * Float(width) - 0.5, -1), Float(width))
         let fy = min(max(t * Float(height) - 0.5, -1), Float(height))
-        let x0f = fx.rounded(.down)
-        let y0f = fy.rounded(.down)
-        let ax = fx - x0f
-        let ay = fy - y0f
-        let xa = min(max(Int(x0f), 0), width - 1)
-        let xb = min(max(Int(x0f) + 1, 0), width - 1)
-        let ya = min(max(Int(y0f), 0), height - 1)
-        let yb = min(max(Int(y0f) + 1, 0), height - 1)
+        let x0 = flooredInt(fx)
+        let y0 = flooredInt(fy)
+        let ax = fx - Float(x0)
+        let ay = fy - Float(y0)
+        let xa = min(max(x0, 0), width - 1)
+        let xb = min(max(x0 + 1, 0), width - 1)
+        let ya = min(max(y0, 0), height - 1)
+        let yb = min(max(y0 + 1, 0), height - 1)
         let raw = UnsafeRawPointer(pixels)
         let p00 = SIMD4<Float>(raw.loadUnaligned(fromByteOffset: (ya * width + xa) * 4, as: SIMD4<UInt8>.self))
         let p10 = SIMD4<Float>(raw.loadUnaligned(fromByteOffset: (ya * width + xb) * 4, as: SIMD4<UInt8>.self))
