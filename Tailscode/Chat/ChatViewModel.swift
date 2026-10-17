@@ -872,6 +872,7 @@ final class ChatViewModel {
         if state.status == .running { optimisticThinking = false }
         pending.reconcile(userMessages: state.messages.count { $0.role == .user })
         retireDeliveredFailures(in: state)
+        dropQueueSentElsewhere()
         armResumeForWalledTurn(state)
         if optimisticThinking, !pending.hasInFlight,
             let last = state.messages.last, last.role == .assistant, !last.text.isEmpty
@@ -960,6 +961,21 @@ final class ChatViewModel {
         adoptingStoredQueue = true
         queue = SendQueueStore.queue(profileID: contextID, sessionID: session.id)
         adoptingStoredQueue = false
+    }
+
+    /// A copy of the queue that another view model on this conversation has already sent from
+    /// still draws as waiting until something here tries to drain it, which a running turn never
+    /// lets happen. The store is the one account of what is waiting, so a message it no longer
+    /// holds is dropped here the moment it is noticed. Ids are compared rather than the messages,
+    /// because this runs on every state and a picture's bytes are not worth reading each time.
+    private func dropQueueSentElsewhere() {
+        guard !queue.isEmpty else { return }
+        let stored = SendQueueStore.queue(profileID: contextID, sessionID: session.id)
+        guard stored.items.map(\.id) != queue.items.map(\.id) else { return }
+        AppLogger.chat.info(
+            "queue adopted from store session=\(session.id) held=\(queue.count) stored=\(stored.count)")
+        adoptStoredQueue()
+        onPending?()
     }
 
     var queued: [QueuedSend] { queue.items }
