@@ -18,11 +18,13 @@ extension SelfTest {
             checks += 1
         }
 
-        try checkBrainRows(expect)
-        try checkBrainFallbacks(expect)
-        try checkBrainWidget(expect)
-        try checkBrainPoster(expect)
-        try checkBrainAnchor(expect)
+        BrainView.openFallbackMilliseconds = 20_000
+        defer { BrainView.openFallbackMilliseconds = 1800 }
+        try timedBrain("rows") { try checkBrainRows(expect) }
+        try timedBrain("fallbacks") { try checkBrainFallbacks(expect) }
+        try timedBrain("widget") { try checkBrainWidget(expect) }
+        try timedBrain("poster") { try checkBrainPoster(expect) }
+        try timedBrain("anchor") { try checkBrainAnchor(expect) }
         try checkBrainSurfaces(expect)
         return checks
     }
@@ -497,7 +499,7 @@ extension SelfTest {
         var opened = brain
         opened.open = true
 
-        func run() throws -> (opening: Double, closing: Double, grew: Double) {
+        func run(slow: Bool = false) throws -> (opening: Double, closing: Double, grew: Double) {
             let host = BrainHost()
             host.sessionKey = "selftest-anchor"
             host.policy = { builder.brainPolicy }
@@ -558,6 +560,7 @@ extension SelfTest {
             let before = offset(of: "after-3")
             let upperBefore = gtk_adjustment_get_upper(adjustment)
             guard let held = BrainView.current(of: view) else { throw SelfTestFailure("brain: no view") }
+            held.holdPictureForTest = slow
             held.restate(opened)
             var trail: [String] = []
             let began = Date()
@@ -567,7 +570,7 @@ extension SelfTest {
             }
             _ = brainPump(0.6)
             let afterOpen = offset(of: "after-3")
-            if abs(afterOpen - before) > 1.5 { report("brain anchor trail \(trail.suffix(40).joined(separator: " "))") }
+            if abs(afterOpen - before) > 1.5 { report("brain anchor trail \(trail.prefix(30).joined(separator: " ")) ... \(trail.suffix(10).joined(separator: " "))") }
             let grew = gtk_adjustment_get_upper(adjustment) - upperBefore
             held.restate(closed)
             _ = brainPump(0.8)
@@ -580,6 +583,12 @@ extension SelfTest {
         }
 
         let held = try run()
+        BrainView.openFallbackMilliseconds = 400
+        let slow = try run(slow: true)
+        BrainView.openFallbackMilliseconds = 20_000
+        try expect(
+            abs(slow.opening) <= 1.5 && abs(slow.closing) <= 1.5 && slow.grew > 100,
+            "and when the renderer is too slow and the stage is taken with no move, the row above the reader is still held (\(slow.opening) px opening, \(slow.closing) closing)")
         try expect(
             held.grew > 100,
             "the stage opening above the viewport makes the page taller by its own height (\(Int(held.grew)) px)")

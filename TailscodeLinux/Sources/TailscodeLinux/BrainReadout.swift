@@ -15,8 +15,15 @@ import TailscodeCore
 /// a running turn's tail is updated in place so a selection made in it survives the stream.
 /// A brain's view held without keeping it alive, which a closure on one of its own widgets must.
 final class WeakBrainView: @unchecked Sendable {
-    weak var view: BrainView?
-    init(_ view: BrainView) { self.view = view }
+    private weak var held: BrainView?
+    init(_ view: BrainView) { held = view }
+
+    /// The view, or nil once it is gone or its widget is being disposed: a hop that arrives after
+    /// that has nothing left to act on.
+    var view: BrainView? {
+        guard let held, !held.disposed else { return nil }
+        return held
+    }
 }
 
 final class BrainReadout: @unchecked Sendable {
@@ -103,11 +110,11 @@ final class BrainReadout: @unchecked Sendable {
 
         func watchFade() {
             guard let adjustment else { return }
-            let bits = UInt(bitPattern: root)
+            let hold = Gtk.WeakWidget(root)
             let reader: @Sendable () -> Void = {
                 Gtk.onMain {
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-                    guard let held = g_object_get_data(ptr(raw), "bn-page") else { return }
+                    guard let rootWidget = hold.widget else { return }
+                    guard let held = g_object_get_data(ptr(rootWidget), "bn-page") else { return }
                     Unmanaged<Page>.fromOpaque(held).takeUnretainedValue().updateFade()
                 }
             }
@@ -132,7 +139,7 @@ final class BrainReadout: @unchecked Sendable {
     struct SubjectParts {
         let stepID: String
         var copyText: String?
-        var expandOutput: (() -> Void)?
+        var toggleOutput: (() -> Void)?
     }
 
     init(owner: BrainView) {
@@ -168,6 +175,84 @@ final class BrainReadout: @unchecked Sendable {
             widget,
             move: { [ref] _, _ in ref.view?.readoutPointer(inside: true) },
             leave: { [ref] in ref.view?.readoutPointer(inside: false) })
+        let focus = Unmanaged.passRetained(FocusBox { [ref] entered in
+            ref.view?.readoutFocusChanged(entered)
+        }).toOpaque()
+        _ = Gtk.releaseInstalled
+        tailscode_on_focus_change(
+            widget,
+            { raw in
+                guard let raw else { return }
+                Unmanaged<FocusBox>.fromOpaque(raw).takeUnretainedValue().handler(true)
+            },
+            { raw in
+                guard let raw else { return }
+                Unmanaged<FocusBox>.fromOpaque(raw).takeUnretainedValue().handler(false)
+            }, focus)
+    }
+
+    private final class FocusBox: @unchecked Sendable {
+        let handler: (Bool) -> Void
+        init(_ handler: @escaping (Bool) -> Void) { self.handler = handler }
+    }
+
+    private var fitted: (width: Int, height: Int, x: Int, y: Int, inline: Bool)?
+
+    /// Sets the panel's size and its place in the clip that holds it: a split gives it the whole
+    /// clip, an accordion the cursor row's content, inside the row's own zone edge.
+    func fit(width: Double, height: Double, at origin: (Double, Double), inline: Bool) {
+        let next = (
+            width: Int(width.rounded()), height: Int(height.rounded()), x: Int(origin.0.rounded()),
+            y: Int(origin.1.rounded()), inline: inline
+        )
+        if let fitted, fitted == next { return }
+        fitted = next
+        gtk_widget_set_size_request(widget, Int32(next.width), Int32(next.height))
+        if let parent = gtk_widget_get_parent(widget) {
+            gtk_fixed_move(ptr(parent), widget, Double(next.x), Double(next.y))
+        }
+        if inline {
+            gtk_widget_add_css_class(widget, "bn-readout-inline")
+        } else {
+            gtk_widget_remove_css_class(widget, "bn-readout-inline")
+        }
+    }
+
+    /// Moves the keyboard to the first button the panel offers; false when it offers none.
+    func focusFirstControl() -> Bool {
+        guard let page else { return false }
+        func find(_ node: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
+            if gtk_widget_get_visible(node) == 0 || gtk_widget_get_child_visible(node) == 0 { return nil }
+            let instance = UnsafeMutableRawPointer(node).assumingMemoryBound(to: GTypeInstance.self)
+            if g_type_check_instance_is_a(instance, gtk_button_get_type()) != 0,
+                gtk_widget_get_can_focus(node) != 0
+            {
+                return node
+            }
+            var child = gtk_widget_get_first_child(node)
+            while let held = child {
+                if let found = find(held) { return found }
+                child = gtk_widget_get_next_sibling(held)
+            }
+            return nil
+        }
+        guard let button = find(page.root) else { return false }
+        gtk_widget_grab_focus(button)
+        return true
+    }
+
+    /// Folds or unfolds the long output or diff of the step shown.
+    func toggleOutput() {
+        page?.subject?.toggleOutput?()
+    }
+
+    /// How tall the panel's content wants to be at `width`: its header, its body and its foot.
+    func naturalHeight(width: Double) -> Double? {
+        guard let page, shown != nil else { return nil }
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        gtk_widget_measure(page.body, GTK_ORIENTATION_VERTICAL, Int32(max(width, 1)), &minimum, &natural, nil, nil)
+        return NeuralStageMetrics.readoutHeaderHeight + Double(natural) + NeuralStageMetrics.readoutFooterHeight
     }
 
     var page: Page? { pages.isEmpty ? nil : pages[current] }
@@ -261,12 +346,21 @@ final class BrainReadout: @unchecked Sendable {
     var pageSwaps: Int { changes }
 
     func show(_ next: NeuralReadout, stamp nextStamp: Stamp, animate: Bool) {
-        if let shown, shown == next, stamp == nextStamp { return }
+        if let shown, shown == next, stamp == nextStamp {
+            swapDeferred = false
+            return
+        }
         if let shown, stamp == nextStamp, updatesInPlace(from: shown, to: next) {
+            swapDeferred = false
             self.shown = next
             applyNow(next)
             return
         }
+        guard !isFading else {
+            deferSwap()
+            return
+        }
+        swapDeferred = false
         let previousStep = shown?.step?.stepID
         let target = 1 - current
         let incoming = pages[target]
@@ -291,7 +385,56 @@ final class BrainReadout: @unchecked Sendable {
 
     private var shownOnce = false
 
+    private var swapDeferred = false
+
+    /// Whether the cross-fade between the two pages is running.
+    var isFading: Bool { gtk_stack_get_transition_running(op(stack)) != 0 }
+
+    /// Whether the page that is not showing still holds its widgets, for the harness.
+    var idlePageIsBuilt: Bool {
+        guard pages.count == 2 else { return false }
+        return gtk_widget_get_first_child(pages[1 - current].body) != nil
+    }
+
+    /// A subject that arrives while the cross-fade runs waits for it to end. The page it would be
+    /// built into is the one still fading out under the pointer, and a hover or a press is
+    /// delivered from that page's own widgets: emptying it there deletes the widget whose event
+    /// is being handled, and the toolkit's pointer bookkeeping then dereferences it. Nothing is
+    /// queued but the fact that something is owed; when the fade has ended the brain is asked
+    /// again for what the model says by then, so what finally shows is never stale.
+    private func deferSwap() {
+        guard !swapDeferred else { return }
+        swapDeferred = true
+        awaitFade(held: Gtk.WeakWidget(stack), attempt: 0)
+    }
+
+    private func awaitFade(held: Gtk.WeakWidget, attempt: Int) {
+        Gtk.after(24) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, self.swapDeferred, held.widget != nil else { return }
+                if self.isFading, attempt < 50 {
+                    self.awaitFade(held: held, attempt: attempt + 1)
+                    return
+                }
+                self.swapDeferred = false
+                guard let view = self.ref.view, !view.isSuspended else { return }
+                view.refreshReadout(animate: true)
+            }
+        }
+    }
+
+    /// Moves the keyboard out of a page that is about to be emptied, to the list, so no widget
+    /// that has focus is ever removed.
+    private func releaseFocus(in page: Page) {
+        guard let root = gtk_widget_get_root(widget),
+            let focused = gtk_root_get_focus(OpaquePointer(UnsafeMutableRawPointer(root)))
+        else { return }
+        guard focused == page.root || gtk_widget_is_ancestor(focused, page.root) != 0 else { return }
+        owner.focusList()
+    }
+
     private func clear(_ page: Page) {
+        releaseFocus(in: page)
         Gtk.removeChildren(of: page.header)
         Gtk.removeChildren(of: page.body)
         Gtk.removeChildren(of: page.foot)
@@ -416,7 +559,7 @@ final class BrainReadout: @unchecked Sendable {
         let left = BrainUI.label(Self.factsLeft(facts), "bn-fact", ellipsize: true)
         let end = BrainUI.label(right ?? facts.turnBegan ?? "", "bn-fact")
         gtk_label_set_xalign(op(end), 1)
-        let width = Double(max(owner.currentMetrics.readout.width, owner.currentMetrics.readoutExpanded.width))
+        let width = Double(owner.currentMetrics.readoutContentWidth)
         func natural(_ widget: UnsafeMutablePointer<GtkWidget>) -> Double {
             var value: Int32 = 0
             gtk_widget_measure(widget, GTK_ORIENTATION_HORIZONTAL, -1, nil, &value, nil, nil)

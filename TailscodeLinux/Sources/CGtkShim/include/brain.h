@@ -13,6 +13,9 @@ typedef void (*TailscodeCanvasDraw)(cairo_t *cr, int width, int height, void *da
 /// the widget is finalized, which is the only moment `data` is provably never drawn with again.
 GtkWidget *tailscode_canvas_new(TailscodeCanvasDraw draw, void *data, void (*destroy)(void *));
 
+/// The same canvas announced to assistive technology as a list, for the step list.
+GtkWidget *tailscode_list_canvas_new(TailscodeCanvasDraw draw, void *data, void (*destroy)(void *));
+
 /// A drawing area that paints one ARGB32 image surface the caller fills with `tailscode_layer_blit`.
 /// `opaque` replaces what is under it; otherwise the surface is laid over it, premultiplied.
 GtkWidget *tailscode_layer_new(gboolean opaque);

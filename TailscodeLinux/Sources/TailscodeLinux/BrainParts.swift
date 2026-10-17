@@ -152,14 +152,11 @@ enum BrainUI {
                 guard let raw else { return }
                 Unmanaged<CopyState>.fromOpaque(raw).release()
             })
-        let bits = UInt(bitPattern: button)
+        let hold = Gtk.WeakWidget(button)
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") {
             Gtk.onMain {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: bits),
-                    let value = text(), !value.isEmpty
-                else { return }
+                guard let button = hold.widget, let value = text(), !value.isEmpty else { return }
                 Gtk.copyToClipboard(value)
-                let button: UnsafeMutablePointer<GtkWidget> = ptr(raw)
                 guard let state = g_object_get_data(ptr(button), "bn-copy-state") else { return }
                 let held = Unmanaged<CopyState>.fromOpaque(state).takeUnretainedValue()
                 held.ticket += 1
@@ -167,7 +164,7 @@ enum BrainUI {
                 gtk_button_set_label(ptr(button), BrainWords.copied)
                 Gtk.after(1400) {
                     Gtk.onMain {
-                        guard let raw = UnsafeMutableRawPointer(bitPattern: bits),
+                        guard let raw = hold.widget,
                             let state = g_object_get_data(ptr(raw), "bn-copy-state")
                         else { return }
                         let held = Unmanaged<CopyState>.fromOpaque(state).takeUnretainedValue()

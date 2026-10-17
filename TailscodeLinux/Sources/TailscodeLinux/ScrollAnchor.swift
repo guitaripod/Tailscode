@@ -54,6 +54,14 @@ final class ScrollAnchor: @unchecked Sendable {
             }
         }
         guard held != nil else { return }
+        extendHold()
+    }
+
+    /// Holds the row for `settle` more milliseconds from now: called when the hold begins and
+    /// again every time the page's height moves, so the row is held for as long as the height can
+    /// change and for one settle after the last change, and never for a fixed time that a slow
+    /// frame could outlast.
+    private func extendHold() {
         generation += 1
         let mine = generation
         Gtk.after(Self.settle) { [weak self] in
@@ -69,6 +77,7 @@ final class ScrollAnchor: @unchecked Sendable {
     /// taken and never drawn.
     func reassert() {
         guard held != nil else { return }
+        extendHold()
         apply()
         Gtk.onMain { [weak self] in self?.apply() }
     }

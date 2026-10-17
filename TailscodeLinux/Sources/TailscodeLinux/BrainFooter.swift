@@ -193,10 +193,11 @@ final class BrainFooter: @unchecked Sendable {
         owner.scrub(to: fraction)
         scrubTicket += 1
         let ticket = scrubTicket
+        let ref = WeakBrainView(owner)
         Gtk.after(320) { [weak self] in
             Gtk.onMain { [weak self] in
-                guard let self, self.scrubTicket == ticket else { return }
-                self.owner.endScrub()
+                guard let self, let view = ref.view, self.scrubTicket == ticket else { return }
+                view.endScrub()
             }
         }
     }
@@ -266,28 +267,26 @@ final class BrainFooter: @unchecked Sendable {
             gtk_widget_set_visible(chipHost, 0)
             return
         }
-        var fixed = 80.0
-        var count = 3.0
-        for part in [replay, clock, rows, share, close] where gtk_widget_get_visible(part) != 0 {
-            fixed += Double(Self.natural(part))
-            count += 1
-        }
-        var room = width - fixed - 14 * count - 36
-        if let lead = chipLead { room -= Double(Self.natural(lead)) + 6 }
+        for chip in chips { gtk_widget_set_visible(chip, 0) }
+        gtk_widget_set_visible(chipHost, 1)
+        if let lead = chipLead { gtk_widget_set_visible(lead, 1) }
         var shownAny = false
         for chip in chips {
-            let need = Double(Self.natural(chip)) + 6
-            if need <= room {
-                gtk_widget_set_visible(chip, 1)
-                room -= need
-                shownAny = true
-            } else {
+            gtk_widget_set_visible(chip, 1)
+            if Double(Self.minimum(widget)) > width - 4 {
                 gtk_widget_set_visible(chip, 0)
-                room = -1
+                break
             }
+            shownAny = true
         }
         if let lead = chipLead { gtk_widget_set_visible(lead, shownAny ? 1 : 0) }
         gtk_widget_set_visible(chipHost, shownAny ? 1 : 0)
+    }
+
+    private static func minimum(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
+        var minimum: Int32 = 0
+        gtk_widget_measure(widget, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, nil, nil, nil)
+        return minimum
     }
 
     private static func natural(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {

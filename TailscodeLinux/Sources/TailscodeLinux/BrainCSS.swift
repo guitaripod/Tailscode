@@ -242,6 +242,42 @@ enum BrainCSS {
             box-shadow: none;
         }
         .brain-chip:hover, .brain-chip:focus-visible { background-color: alpha(\(info), 0.12); }
+        .bn-readout-inline { border-left: none; }
+        .brain-list { outline: none; background-color: transparent; }
+        .brain-filters { background-color: transparent; }
+        .bn-lr-title { \(t(.rowTitleStrong)) color: \(text); }
+        .bn-lr-arg { \(t(.toolDetail)) color: \(dim); }
+        .bn-lr-no { \(t(.rowMeta)) color: \(dim); }
+        .bn-lr-note { \(t(.thought)) color: \(dim); }
+        .bn-lr-status { \(t(.rowMeta)) color: \(dim); }
+        .bn-lr-count { \(t(.rowStamp)) color: \(dim); }
+        .bn-lr-cap { \(t(.rowStamp)) color: \(dim); }
+        .bn-lr-panel { \(t(.sectionLabel)) color: \(dim); }
+        .bn-lr-panelcount { \(t(.gauge)) color: \(text); }
+        .bn-lr-pill { \(t(.rowMeta)) color: \(text); }
+        entry.bn-search {
+            \(t(.control))
+            color: \(text);
+            background-color: \(canvas);
+            border: 1px solid \(rule2);
+            border-radius: 8px;
+            padding: 0px 10px;
+            min-height: 26px;
+            box-shadow: none;
+        }
+        entry.bn-search:focus-within { border-color: \(accent); outline: none; }
+        popover.bn-legend > contents, popover.bn-menu > contents {
+            background-color: \(raised);
+            border: 1px solid \(rule2);
+            border-radius: 10px;
+            padding: 12px 16px;
+        }
+        popover.bn-menu > contents { padding: 6px; }
+        .bn-legend-keys { \(t(.toolDetail)) color: \(text); }
+        .bn-legend-does { \(t(.rowDetail)) color: \(dim); }
+        button.bn-menu-item { min-height: 26px; padding: 2px 10px; border-radius: 6px; }
+        .bn-menu-title { \(t(.control)) color: \(text); }
+        .bn-menu-key { \(t(.rowStamp)) color: \(dim); }
         """
     }
 }

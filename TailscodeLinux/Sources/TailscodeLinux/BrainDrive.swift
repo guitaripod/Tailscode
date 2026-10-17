@@ -81,7 +81,7 @@ extension MainWindow {
         case "reading", "perf", "text", "dump":
             break
         default:
-            guard let view = pane.brainView(value: ["hover", "pin", "transition", "readout"].contains(verb) ? "" : value) else {
+            guard let view = pane.brainView(value: Self.browseVerbs.contains(verb) ? "" : value) else {
                 write("none")
                 return
             }
@@ -237,6 +237,11 @@ extension MainWindow {
             ptr(window), Int32(max(260, current + target - row)), Int32(height))
     }
 
+    static let browseVerbs: Set<String> = [
+        "hover", "pin", "transition", "readout", "key", "click", "filter", "search", "menu", "menuitem",
+        "legend", "scroll", "expand", "rowhover",
+    ]
+
     private func driveBrainView(_ view: BrainView, verb: String, value: String) {
         let steps = view.model.steps
         func step(_ text: String) -> String? {
@@ -294,6 +299,8 @@ extension MainWindow {
             view.driveChip(Int(value))
         case "double":
             if let id = step(value) { view.openSubagent(of: id) }
+        case "key", "click", "filter", "search", "menu", "menuitem", "legend", "scroll", "expand", "rowhover":
+            view.driveBrowse(verb: verb, value: value)
         case "share":
             driveShare(view, words: value.split(separator: ",").map(String.init))
         case "shareopen":

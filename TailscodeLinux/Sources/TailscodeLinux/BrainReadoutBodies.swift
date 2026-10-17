@@ -163,14 +163,12 @@ extension BrainReadout {
         gtk_box_append(ptr(box), label)
         if subject.hasMore {
             let link = BrainUI.link(NeuralReading.showAllLabel) {}
-            let linkBits = UInt(bitPattern: link)
-            let labelBits = UInt(bitPattern: label)
+            let linkHold = Gtk.WeakWidget(link)
+            let labelHold = Gtk.WeakWidget(label)
             let full = markup(lines)
             Gtk.connect(UnsafeMutableRawPointer(link), "clicked") {
                 Gtk.onMain {
-                    guard let lraw = UnsafeMutableRawPointer(bitPattern: labelBits),
-                        let braw = UnsafeMutableRawPointer(bitPattern: linkBits)
-                    else { return }
+                    guard let lraw = labelHold.widget, let braw = linkHold.widget else { return }
                     gtk_label_set_markup(op(lraw), full)
                     gtk_widget_set_visible(ptr(braw), 0)
                 }
@@ -241,14 +239,12 @@ extension BrainReadout {
         gtk_box_append(ptr(box), text)
         if why.isTruncated {
             let link = BrainUI.link(NeuralReading.showMoreLabel) {}
-            let linkBits = UInt(bitPattern: link)
-            let textBits = UInt(bitPattern: text)
+            let linkHold = Gtk.WeakWidget(link)
+            let textHold = Gtk.WeakWidget(text)
             let full = why.full
             Gtk.connect(UnsafeMutableRawPointer(link), "clicked") {
                 Gtk.onMain {
-                    guard let traw = UnsafeMutableRawPointer(bitPattern: textBits),
-                        let lraw = UnsafeMutableRawPointer(bitPattern: linkBits)
-                    else { return }
+                    guard let traw = textHold.widget, let lraw = linkHold.widget else { return }
                     gtk_label_set_text(op(traw), full)
                     gtk_widget_set_visible(ptr(lraw), 0)
                 }
@@ -319,31 +315,50 @@ extension BrainReadout {
         gtk_box_append(ptr(holder), framed)
         guard hidden > 0, let more else { return holder }
         let link = BrainUI.link(more) {}
-        let linkBits = UInt(bitPattern: link)
-        let labelBits = UInt(bitPattern: label)
-        let framedBits = UInt(bitPattern: framed)
+        let linkHold = Gtk.WeakWidget(link)
+        let framedHold = Gtk.WeakWidget(framed)
         let model = owner.model
         let failedNow = failed
-        let expand: @Sendable () -> Void = { [reader = WeakReadout(self)] in
+        let collapsed = outputMarkup(lines, failed: failed)
+        let state = OutputToggle(current: Gtk.WeakWidget(label))
+        let toggle: @Sendable () -> Void = { [reader = WeakReadout(self)] in
             Gtk.onMain {
-                guard let self = reader.value, let lraw = UnsafeMutableRawPointer(bitPattern: linkBits),
-                    let braw = UnsafeMutableRawPointer(bitPattern: labelBits),
-                    let fraw = UnsafeMutableRawPointer(bitPattern: framedBits),
-                    let step = model.step(id: stepID)
+                guard let self = reader.value, let lraw = linkHold.widget, let fraw = framedHold.widget,
+                    let currentWidget = state.current.widget, let step = model.step(id: stepID)
                 else { return }
-                let all = R.fullOutput(of: step).map { ($0.text, $0.tone) }
-                gtk_label_set_markup(op(braw), self.outputMarkup(all, failed: failedNow))
-                gtk_widget_set_visible(ptr(lraw), 0)
                 let box: UnsafeMutablePointer<GtkWidget> = ptr(fraw)
-                gtk_box_remove(ptr(box), ptr(braw))
-                let scroller = Gtk.boundedScroller(ptr(braw), minimum: 0, maximum: 280)
-                gtk_box_append(ptr(box), scroller)
+                let outer = state.scroller?.widget ?? currentWidget
+                gtk_box_remove(ptr(box), outer)
+                state.scroller = nil
+                if state.expanded {
+                    let label = BrainUI.markup(collapsed, "bn-out", selectable: true)
+                    gtk_box_append(ptr(box), label)
+                    state.current = Gtk.WeakWidget(label)
+                    gtk_widget_set_visible(ptr(lraw), 1)
+                } else {
+                    let all = R.fullOutput(of: step).map { ($0.text, $0.tone) }
+                    let label = BrainUI.markup(self.outputMarkup(all, failed: failedNow), "bn-out", selectable: true)
+                    let scroller = Gtk.boundedScroller(label, minimum: 0, maximum: 280)
+                    gtk_box_append(ptr(box), scroller)
+                    state.current = Gtk.WeakWidget(label)
+                    state.scroller = Gtk.WeakWidget(scroller)
+                    gtk_widget_set_visible(ptr(lraw), 0)
+                }
+                state.expanded.toggle()
+                reader.value?.owner.model.setBrowseOutputExpanded(state.expanded)
             }
         }
-        Gtk.connect(UnsafeMutableRawPointer(link), "clicked", expand)
+        Gtk.connect(UnsafeMutableRawPointer(link), "clicked", toggle)
         gtk_box_append(ptr(holder), link)
-        page.subject?.expandOutput = expand
+        page.subject?.toggleOutput = toggle
         return holder
+    }
+
+    private final class OutputToggle: @unchecked Sendable {
+        var current: Gtk.WeakWidget
+        var scroller: Gtk.WeakWidget?
+        var expanded = false
+        init(current: Gtk.WeakWidget) { self.current = current }
     }
 
     private func diffBlock(_ edit: R.Edit, stepID: String) -> UnsafeMutablePointer<GtkWidget> {
@@ -436,7 +451,15 @@ extension BrainReadout {
             let box = section()
             gtk_box_append(
                 ptr(box), labelRow(BrainWords.failures, right: rightLabel(String(digest.failures.count))))
-            for failure in digest.failures { gtk_box_append(ptr(box), failureRow(failure)) }
+            for failure in digest.failures.prefix(Self.digestRows) { gtk_box_append(ptr(box), failureRow(failure)) }
+            if digest.failures.count > Self.digestRows {
+                let ref = self.ref
+                gtk_box_append(
+                    ptr(box),
+                    BrainUI.link(BrainWords.moreFailures(digest.failures.count - Self.digestRows)) {
+                        ref.view?.browse(.failedToggle, grabFocus: false)
+                    })
+            }
             gtk_box_append(ptr(body), box)
         }
         if !digest.changed.isEmpty {
@@ -446,7 +469,12 @@ extension BrainReadout {
             let removed = model.steps.reduce(0) { $0 + ($1.removed ?? 0) }
             gtk_box_append(
                 ptr(box), labelRow(BrainWords.changed, right: tallyLabel(added: added, removed: removed)))
-            for change in digest.changed { gtk_box_append(ptr(box), changedRow(change)) }
+            for change in digest.changed.prefix(Self.digestRows) { gtk_box_append(ptr(box), changedRow(change)) }
+            if digest.changed.count > Self.digestRows {
+                gtk_box_append(
+                    ptr(box),
+                    BrainUI.label(BrainWords.moreFiles(digest.changed.count - Self.digestRows), "bn-fact"))
+            }
             gtk_box_append(ptr(body), box)
         }
         if let answer = digest.answer, !answer.isEmpty {
@@ -457,6 +485,10 @@ extension BrainReadout {
         }
         _ = hex
     }
+
+    /// How many failures and changed files the digest lists before saying how many more there are:
+    /// a turn of two thousand steps is not two thousand widgets.
+    static let digestRows = 6
 
     /// The headline with its last sentence in the warning colour when the turn had a failure to
     /// tell, the way the mock sets it.

@@ -11,6 +11,7 @@ import TailscodeCore
 /// handful of cards in view.
 final class BrainCard: @unchecked Sendable {
     unowned let owner: BrainView
+    private let viewRef: WeakBrainView
     let surface: UnsafeMutablePointer<GtkWidget>
     let picture: UnsafeMutablePointer<GtkWidget>
     let text: UnsafeMutablePointer<GtkWidget>
@@ -43,6 +44,7 @@ final class BrainCard: @unchecked Sendable {
     init(owner: BrainView) {
         self.owner = owner
         let ref = WeakBrainView(owner)
+        viewRef = ref
         card = owner.model.brainCard(now: Date())
         let surfaceHolder = Holder()
         let pictureHolder = Holder()
@@ -283,7 +285,7 @@ final class BrainCard: @unchecked Sendable {
         contentTicket += 1
         let ticket = contentTicket
         Gtk.onMain { [weak self] in
-            guard let self, self.contentTicket == ticket, !self.hasContent else { return }
+            guard let self, self.viewRef.view != nil, self.contentTicket == ticket, !self.hasContent else { return }
             self.buildContent()
         }
     }

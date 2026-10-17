@@ -6,7 +6,8 @@ import TailscodeCore
 /// What the window's budget lets a brain do, read where it is drawn. The governor's levels are the
 /// whole answer: calm and busy draw everything at the activity tempo, loaded slows the clock, from
 /// strained up nothing breathes (the ripple, the sweep and the crunch go, and every state is held
-/// still in its own tone), and at critical the head is a glyph and no stage is built at all.
+/// still in its own tone), and at critical nothing opens by itself: a head the person opens is
+/// still built, once, as a settled picture with no clock and no move.
 ///
 /// The verdict that the head may not be drawn has hysteresis: the level has to stay at critical for
 /// three seconds before it is entered and below it for ten before it is left, so a window hovering
@@ -48,6 +49,12 @@ enum BrainBudget {
     static func reset() {
         ticket += 1
         allowed = true
+    }
+
+    /// Holds the verdict, for a harness that looks at what a shed window does.
+    static func force(allowed value: Bool) {
+        ticket += 1
+        allowed = value
     }
 }
 
@@ -676,7 +683,7 @@ final class BrainStage: @unchecked Sendable {
         let reduce = BrainBudget.reduceMotion
         let state = currentDive(at: time)
         let frame = owner.model.frame(time: time, reduceMotion: reduce)
-        if drawing, composer != nil, !Self.debugSkip.contains("compose") {
+        if drawing || !hasDrawn, composer != nil, !Self.debugSkip.contains("compose") {
             let whole = submitted == nil || needsFull || state.dive != submittedDive
             if whole || frame != submitted || !frame.settled {
                 let interval = minimumInterval
@@ -845,7 +852,10 @@ final class BrainStage: @unchecked Sendable {
         }
         next.time = time
         next.reduceMotion = reduce
-        next.hasSelection = model.hasSelection
+        next.hasSelection = model.hovered != nil
+        next.dimmed = owner.dimmedNodes
+        next.cursor = owner.ringed(model.pinnedStep)
+        next.preview = model.browseState.hovered.flatMap { $0 == model.pinnedStep ? nil : owner.ringed($0) }
         next.usedZones = Set(model.steps.map(\.zone))
         next.zoom = scale
         let center = (zone ?? .think).center
@@ -929,22 +939,27 @@ final class BrainStage: @unchecked Sendable {
     }
 
     private func clicked(x: Double, y: Double, presses: Int, button: Int) {
-        guard button == 1, !isDiving, unit > 0 else { return }
+        guard !isDiving, unit > 0 else { return }
         gtk_widget_grab_focus(hit)
+        owner.dismissLegendOnPress()
         let point = design(x, y)
-        if let found = owner.model.hit(at: point, slop: 4 / unit / max(0.05, scene.zoom)) {
-            if presses >= 2 {
+        let found = owner.model.hit(at: point, slop: 4 / unit / max(0.05, scene.zoom))
+        if button == 3 {
+            if let found { owner.browse(.contextMenu(found), grabFocus: false, menuAt: nil) }
+            return
+        }
+        guard button == 1 else { return }
+        if let found {
+            if presses >= 2, owner.opensSubagent(found) {
                 owner.openSubagent(of: found)
             } else {
-                owner.pin(found)
+                owner.nodeClicked(found, double: presses >= 2)
             }
             return
         }
         if let zone = zoneLabel(at: point) {
             dive(into: zone)
-            return
         }
-        if owner.model.hasSelection { owner.clearSelection() }
     }
 
     private func zoneLabel(at point: NeuralPoint) -> NeuralZone? {
@@ -958,47 +973,6 @@ final class BrainStage: @unchecked Sendable {
             }
         }
         return nil
-    }
-
-    func handleKey(_ keyval: UInt32, state: UInt32) -> Bool {
-        let modifiers = state & (GDK_CONTROL_MASK.rawValue | GDK_ALT_MASK.rawValue | GDK_SUPER_MASK.rawValue)
-        guard modifiers == 0 else { return false }
-        switch Int32(keyval) {
-        case GDK_KEY_Left, GDK_KEY_Up: return walk(-1)
-        case GDK_KEY_Right, GDK_KEY_Down: return walk(1)
-        case GDK_KEY_Return, GDK_KEY_KP_Enter, GDK_KEY_space:
-            guard let selected = owner.focusedStep ?? owner.model.hovered ?? owner.model.pinned else {
-                return false
-            }
-            owner.pin(selected)
-            return true
-        case GDK_KEY_Escape:
-            return owner.escapePressed()
-        case GDK_KEY_c:
-            return owner.copySubject()
-        case GDK_KEY_o:
-            return owner.expandOutput()
-        default:
-            return false
-        }
-    }
-
-    func walkFromHarness(_ direction: Int) { _ = walk(direction) }
-
-    private func walk(_ direction: Int) -> Bool {
-        let ids = scene.draws.map(\.id)
-        guard !ids.isEmpty else { return false }
-        let current = (owner.focusedStep ?? owner.model.hovered ?? owner.model.pinned).flatMap {
-            ids.firstIndex(of: $0)
-        }
-        let next: Int
-        if let current {
-            next = min(ids.count - 1, max(0, current + direction))
-        } else {
-            next = direction > 0 ? 0 : ids.count - 1
-        }
-        owner.walk(to: ids[next])
-        return true
     }
 
     /// The model changed under an open stage: a step arrived, a status moved, a node was chosen.

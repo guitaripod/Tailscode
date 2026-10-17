@@ -148,6 +148,7 @@ extension SelfTest {
             case "clock": report("clock: \(try checkClock()) claims hold")
             case "shutdown": report("shutdown: \(try checkShutdown()) claims hold")
             case "brain": report("brain: \(try checkBrain()) claims hold")
+            case "readoutswap": report("readout swap: \(try checkBrainSwap()) claims hold")
             case "setup": report("setup: \(try checkSetup()) claims hold")
             case "diagnosis": report("self-diagnosis: \(try runBlocking { try await checkSelfDiagnosis() }) claims hold")
             case "guard": report("resource guard: \(try checkResourceGuard()) claims hold")

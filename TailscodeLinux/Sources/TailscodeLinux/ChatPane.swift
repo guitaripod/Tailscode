@@ -1002,6 +1002,13 @@ final class ChatPane: @unchecked Sendable {
         brains.policy = { [weak self] in self?.rowBuilder.brainPolicy }
         brains.onScreen = { [weak self] view in self?.brainOnScreen(view) ?? true }
         brains.revealApproval = { [weak self] in self?.scroll(toEnd: true) }
+        brains.viewport = { [weak self] in
+            guard let scroller = self?.transcriptScroller,
+                let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+            else { return nil }
+            let page = gtk_adjustment_get_page_size(adjustment)
+            return page > 0 ? page : nil
+        }
         context.openSubagent = { [weak self] key in
             Gtk.onMain { [weak self] in self?.openSubagentCard(key) }
         }

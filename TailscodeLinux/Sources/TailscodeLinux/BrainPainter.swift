@@ -20,6 +20,16 @@ struct BrainScene {
     var crowded = false
     var hotZone: NeuralZone?
     var focused = false
+    /// What the filters hide, which the head draws at 28 percent, and the two rings: the cursor's
+    /// (solid) and the previewed step's (dashed), each with the number of its step.
+    var dimmed: Set<String> = []
+    var cursor: Ring?
+    var preview: Ring?
+
+    struct Ring: Equatable {
+        let node: String
+        let number: Int
+    }
     /// How far each node has come in while a card is becoming the stage, and how much of the wires
     /// and ties and of the zone names is drawn; a stage at rest draws everything.
     var reveal: NeuralNodeReveal?
@@ -48,6 +58,9 @@ enum BrainPainter {
         wires(cr, scene: scene, inks: inks)
         for (index, node) in scene.draws.enumerated() {
             self.node(cr, node, index: index, scene: scene, inks: inks)
+        }
+        for node in scene.draws where node.id == scene.preview?.node || node.id == scene.cursor?.node {
+            rings(cr, node, scene: scene, inks: inks, scale: scale)
         }
         if scene.orbit { satellite(cr, scene: scene, inks: inks) }
         cairo_restore(cr)
@@ -343,6 +356,7 @@ enum BrainPainter {
         let unfired = lit < 1
         let dimmed = node.dimmed || unfired
         if scene.hasSelection && !node.hot { alpha *= 0.42 }
+        if scene.dimmed.contains(node.id) { alpha *= 0.28 }
         alpha *= unfired ? 0.18 + 0.82 * lit : 1
         alpha *= revealAlpha
         let radius = node.radius
@@ -421,13 +435,62 @@ enum BrainPainter {
             cairo_rel_line_to(cr, -radius * 0.7, -radius * 0.7)
             cairo_stroke(cr)
         }
-        if node.pinned {
-            cairo_set_line_width(cr, 1.2)
-            setColor(cr, inks.domeAccent, 0.9)
+        cairo_restore(cr)
+    }
+
+    /// The cursor's ring (solid, with a glow) and the previewed step's (dashed), each 7 design
+    /// units out of the node and 2.2 points wide whatever the head's size, with the step's number in
+    /// a small tag at the upper right, because at this size the numbers inside the nodes cannot be read.
+    private static func rings(
+        _ cr: OpaquePointer, _ node: NeuralNodeDraw, scene: BrainScene, inks: BrainInks, scale: Double
+    ) {
+        let isCursor = scene.cursor?.node == node.id
+        let ring = isCursor ? scene.cursor : scene.preview
+        guard let ring else { return }
+        let unit = max(scale, 0.0001)
+        let reveal = scene.reveal?.alpha(scene.draws.firstIndex(where: { $0.id == node.id }) ?? 0) ?? 1
+        guard reveal > 0.01 else { return }
+        let alpha = (scene.dimmed.contains(node.id) ? 0.5 : 1.0) * reveal
+        cairo_save(cr)
+        cairo_translate(cr, node.point.x, node.point.y)
+        let radius = node.radius + 7
+        if isCursor {
+            let glow = cairo_pattern_create_radial(0, 0, radius * 0.9, 0, 0, radius * 1.9)
+            cairo_pattern_add_color_stop_rgba(glow, 0, inks.domeAccent.red, inks.domeAccent.green, inks.domeAccent.blue, 0.35 * alpha)
+            cairo_pattern_add_color_stop_rgba(glow, 1, inks.domeAccent.red, inks.domeAccent.green, inks.domeAccent.blue, 0)
+            cairo_set_source(cr, glow)
             cairo_new_path(cr)
-            cairo_arc(cr, 0, 0, radius * 1.45 + 3, 0, 2 * .pi)
-            cairo_stroke(cr)
+            cairo_arc(cr, 0, 0, radius * 1.9, 0, 2 * .pi)
+            cairo_fill(cr)
+            cairo_pattern_destroy(glow)
         }
+        cairo_set_line_width(cr, 2.2 / unit)
+        setColor(cr, inks.domeAccent, 0.95 * alpha)
+        if !isCursor { dash(cr, [3 / unit, 2.4 / unit]) }
+        cairo_new_path(cr)
+        cairo_arc(cr, 0, 0, radius, 0, 2 * .pi)
+        cairo_stroke(cr)
+        dash(cr, [])
+        cairo_scale(cr, 1 / unit, 1 / unit)
+        let text = "\(ring.number)"
+        let size = 9.5
+        var measured = 0.0
+        var height = 0.0
+        tailscode_text_measure(text, "\(mono) Bold \(size)px", 0, 1, &measured, &height)
+        let tagWidth = max(15, measured + 8)
+        let tagHeight = 14.0
+        let offset = radius * unit * 0.72 + 2
+        let x = offset
+        let y = -offset - tagHeight
+        round(cr, x, y, tagWidth, tagHeight, 4)
+        setColor(cr, inks.panel, 0.92 * alpha)
+        cairo_fill_preserve(cr)
+        setColor(cr, inks.domeAccent, 0.95 * alpha)
+        cairo_set_line_width(cr, 1)
+        cairo_stroke(cr)
+        _ = tailscode_text_draw(
+            cr, text, "\(mono) Bold \(size)px", x, y + (tagHeight - height) / 2, tagWidth, 1, 1,
+            inks.domeAccent.red, inks.domeAccent.green, inks.domeAccent.blue, alpha)
         cairo_restore(cr)
     }
 

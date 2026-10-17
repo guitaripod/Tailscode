@@ -35,6 +35,27 @@ GtkWidget *tailscode_canvas_new(TailscodeCanvasDraw draw, void *data, void (*des
     return area;
 }
 
+typedef struct { GtkDrawingArea parent; } TailscodeListCanvas;
+typedef struct { GtkDrawingAreaClass parent_class; } TailscodeListCanvasClass;
+G_DEFINE_TYPE(TailscodeListCanvas, tailscode_list_canvas, GTK_TYPE_DRAWING_AREA)
+
+static void tailscode_list_canvas_class_init(TailscodeListCanvasClass *class) {
+    gtk_widget_class_set_accessible_role(GTK_WIDGET_CLASS(class), GTK_ACCESSIBLE_ROLE_LIST);
+}
+
+static void tailscode_list_canvas_init(TailscodeListCanvas *self) { (void)self; }
+
+GtkWidget *tailscode_list_canvas_new(TailscodeCanvasDraw draw, void *data, void (*destroy)(void *)) {
+    GtkWidget *area = g_object_new(tailscode_list_canvas_get_type(), NULL);
+    TailscodeCanvas *canvas = g_new0(TailscodeCanvas, 1);
+    canvas->draw = draw;
+    canvas->data = data;
+    canvas->destroy = destroy;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-canvas", canvas, canvas_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), canvas_draw, canvas, NULL);
+    return area;
+}
+
 typedef struct {
     cairo_surface_t *surface;
     gboolean opaque;
@@ -527,7 +548,7 @@ static void brain_row_measure(
         int width = for_size > 0 ? for_size : 600;
         int height = self->height ? self->height(width, self->data) : 1;
         if (height < 1) height = 1;
-        *minimum = height;
+        *minimum = for_size > 0 ? height : 1;
         *natural = height;
     }
     *minimum_baseline = -1;
@@ -577,13 +598,13 @@ static void brain_row_dispose(GObject *object) {
     TailscodeBrainRow *self = TAILSCODE_BRAIN_ROW(object);
     if (!self->disposed) {
         self->disposed = TRUE;
-        GtkWidget *child;
-        while ((child = gtk_widget_get_first_child(GTK_WIDGET(self))) != NULL)
-            gtk_widget_unparent(child);
         self->solve = NULL;
         self->height = NULL;
         if (self->destroy && self->data) self->destroy(self->data);
         self->data = NULL;
+        GtkWidget *child;
+        while ((child = gtk_widget_get_first_child(GTK_WIDGET(self))) != NULL)
+            gtk_widget_unparent(child);
     }
     G_OBJECT_CLASS(tailscode_brain_row_parent_class)->dispose(object);
 }

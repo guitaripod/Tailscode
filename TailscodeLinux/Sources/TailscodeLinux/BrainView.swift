@@ -35,7 +35,16 @@ final class BrainView: @unchecked Sendable {
     private(set) var card: BrainCard!
     private(set) var stage: BrainStage?
     private(set) var readout: BrainReadout?
-    private(set) var strip: BrainStrip?
+    private(set) var list: BrainList?
+    private(set) var filters: BrainFilters?
+    private(set) var readoutClip: UnsafeMutablePointer<GtkWidget>?
+    var dimmedNodes: Set<String> = []
+    var legendPopover: Gtk.WeakWidget?
+    var pendingHover: (id: String?, delay: Double)?
+    var hoverApplied: String?
+    var hoverFlushScheduled = false
+    var lastHoverApply = 0.0
+    var menuPopover: Gtk.WeakWidget?
     private(set) var footer: BrainFooter?
     var moveCanvas: UnsafeMutablePointer<GtkWidget>?
     lazy var clock = BrainClock { [weak self] time in self?.step(time) }
@@ -44,7 +53,7 @@ final class BrainView: @unchecked Sendable {
     private var replayWhenOpen = false
     var announcement: String?
 
-    private var metricsMemo: (width: Double, density: ChatDensity, value: NeuralStageMetrics)?
+    private var metricsMemo: (width: Double, density: ChatDensity, zones: Int, viewport: Int, value: NeuralStageMetrics)?
     private var lastWidth = 0.0
     private var lastDensity = ChatDensity.comfortable
     private var scaleFactor = 1
@@ -54,7 +63,6 @@ final class BrainView: @unchecked Sendable {
     var revealOverride: BrainMove.Reveal?
 
     var readoutTicket = 0
-    var focusedStep: String?
     var leaderState = BrainLeaderState()
     var contentFade: Double?
     var contentFadeStart = 0.0
@@ -69,10 +77,10 @@ final class BrainView: @unchecked Sendable {
     private var lastFooterSync = 0.0
     private var lastReadoutTick = 0.0
     private var tokenMemo: (answer: String, revision: Int, tokens: [String])?
-    var lastStackedExpanded = false
     var frozen = false
     var readoutFadingUntil = 0.0
     private(set) var stageFocused = false
+    private(set) var disposed = false
 
     struct PendingOpen {
         let started: Double
@@ -81,6 +89,16 @@ final class BrainView: @unchecked Sendable {
 
     var isOpen: Bool { row.open }
     var hasStage: Bool { stage != nil }
+
+    /// Whether this brain may build its stage: always when the person opened it, and otherwise
+    /// only while the governor allows a head to be drawn. A shed window refuses to open the latest
+    /// turn by itself; it never refuses a press.
+    var stageMayOpen: Bool { BrainBudget.stageAllowed || (host?.choices[turnID] != nil) }
+    /// A harness keeps the first picture from being ready, which is the renderer being too slow:
+    /// the open then falls back to taking the stage with no move.
+    var holdPictureForTest = false
+    /// How long an open waits for the head's first picture before taking the stage with no move.
+    nonisolated(unsafe) static var openFallbackMilliseconds: UInt32 = 1800
     var isClockRunning: Bool { clock.isRunning }
 
     static func current(of widget: UnsafeMutablePointer<GtkWidget>) -> BrainView? {
@@ -130,7 +148,9 @@ final class BrainView: @unchecked Sendable {
             }, Unmanaged.passRetained(holder).toOpaque(),
             { raw in
                 guard let raw else { return }
-                Unmanaged<RowHost>.fromOpaque(raw).release()
+                let holder = Unmanaged<RowHost>.fromOpaque(raw)
+                holder.takeUnretainedValue().view?.markDisposed()
+                holder.release()
             })!
         holder.view = self
         Gtk.addClass(widget, "brain-row")
@@ -141,7 +161,10 @@ final class BrainView: @unchecked Sendable {
         for part in card.widgets { tailscode_brain_row_add(widget, part) }
         gtk_widget_set_cursor_from_name(widget, "pointer")
         Gtk.onRelease(widget) { [weak self] in
-            Gtk.onMain { [weak self] in self?.cardPressed() }
+            Gtk.onMain { [weak self] in
+                guard let self, !self.disposed else { return }
+                self.cardPressed()
+            }
         }
         Gtk.onKey(widget) { [weak self] keyval, state in
             self?.cardKey(keyval: keyval, state: state) ?? false
@@ -169,7 +192,7 @@ final class BrainView: @unchecked Sendable {
         gtk_widget_set_focusable(widget, 1)
         gtk_widget_set_can_focus(widget, 1)
         card.refresh()
-        if row.open, BrainBudget.stageAllowed, NeuralAssetFiles.isAvailable {
+        if row.open, stageMayOpen, NeuralAssetFiles.isAvailable {
             showStage()
         } else {
             setPhase(.closed)
@@ -197,14 +220,44 @@ final class BrainView: @unchecked Sendable {
 
     deinit { teardown() }
 
+    /// The row's widget is being disposed: its children are about to be unparented and freed, so
+    /// nothing a posted hop or a timer does from here on may touch a part of it. Called by the
+    /// row itself before it lets go of any child, which is the one moment the parts are still real.
+    fileprivate func markDisposed() {
+        disposed = true
+        dropPopovers()
+        teardown()
+        readout = nil
+        list = nil
+        filters = nil
+        readoutClip = nil
+        footer = nil
+        moveCanvas = nil
+        moveState = nil
+    }
+
+    /// Whether a part of the stage may still be measured or drawn: the row is alive and sits in a
+    /// window.
+    func isLive(_ part: UnsafeMutablePointer<GtkWidget>) -> Bool {
+        !disposed && gtk_widget_get_root(part) != nil
+    }
+
     // MARK: metrics and layout
 
     var density: ChatDensity { Preferences.chatDensity }
 
     func metrics(forWidth width: Double) -> NeuralStageMetrics {
-        if let memo = metricsMemo, memo.width == width, memo.density == density { return memo.value }
-        let made = NeuralStageMetrics.make(width: width, density: density)
-        metricsMemo = (width, density, made)
+        let zones = model.browseState.list.zoneChips.count
+        let viewport = host?.viewportHeight
+        let bucket = Int((viewport ?? 0) / 8)
+        if let memo = metricsMemo, memo.width == width, memo.density == density, memo.zones == zones,
+            memo.viewport == bucket
+        {
+            return memo.value
+        }
+        let made = NeuralStageMetrics.make(
+            width: width, density: density, zonesWithSteps: max(zones, 1), viewportHeight: viewport)
+        metricsMemo = (width, density, zones, bucket, made)
         return made
     }
 
@@ -214,10 +267,8 @@ final class BrainView: @unchecked Sendable {
         return metrics(forWidth: width > 0 ? width : lastWidth > 0 ? lastWidth : 600)
     }
 
-    /// Whether a pinned step makes a stacked readout grow into the full panel.
-    var stackedExpanded: Bool {
-        currentMetrics.arrangement == .stacked && (model.pinned != nil || model.isReplaying)
-    }
+    /// How much taller an accordion is than its closed list while the cursor's row is open.
+    var accordionExtra: Double { list?.extra ?? 0 }
 
     func height(forWidth width: Int) -> Int {
         let m = metrics(forWidth: Double(max(width, 1)))
@@ -225,7 +276,7 @@ final class BrainView: @unchecked Sendable {
         case .closed:
             return Int(m.card.height.rounded())
         case .open:
-            return Int((stackedExpanded ? m.pinnedRowHeight : m.rowHeight).rounded())
+            return Int((m.rowHeight + accordionExtra).rounded())
         case .moving:
             return Int((moveState?.frame.rowHeight ?? m.rowHeight).rounded())
         }
@@ -236,7 +287,10 @@ final class BrainView: @unchecked Sendable {
         if Double(width) != lastWidth || m.density != lastDensity {
             lastWidth = Double(width)
             lastDensity = m.density
-            Gtk.onMain { [weak self] in self?.widthChanged() }
+            Gtk.onMain { [weak self] in
+                guard let self, !self.disposed else { return }
+                self.widthChanged()
+            }
         }
         switch phase {
         case .closed: placeCard(sink, m, offset: 0)
@@ -304,19 +358,49 @@ final class BrainView: @unchecked Sendable {
             return
         }
         for layer in stage.visibleLayers { place(sink, layer, m.stage) }
-        let leaderWidth = m.arrangement == .split ? m.readout.x + 6 : m.stage.width
-        let region = m.arrangement == .split ? m.readout.height : m.stage.height
-        place(sink, stage.leader, NeuralRect(x: 0, y: 0, width: leaderWidth, height: region))
+        placeLeader(sink, m, stage: stage)
         place(sink, stage.hit, m.stageHover)
-        let expanded = m.arrangement == .stacked && stackedExpanded
-        let readoutRect = expanded ? m.readoutExpanded : m.readout
-        if m.arrangement == .stacked, !expanded {
-            place(sink, strip?.widget, readoutRect)
-        } else {
-            place(sink, readout?.widget, readoutRect)
-        }
-        let shift = expanded ? m.pinnedRowHeight - m.rowHeight : 0
+        placeBrowse(sink, m, readoutRect: nil)
+        let shift = accordionExtra
         place(sink, footer?.widget, m.footer, dy: shift)
+    }
+
+    /// The leader's own canvas covers the head and the gutter, in the head's coordinates, so the
+    /// route it draws starts at the node and ends on the readout's hairline.
+    private func placeLeader(_ sink: OpaquePointer, _ m: NeuralStageMetrics, stage: BrainStage) {
+        let leaderWidth = m.arrangement == .split ? m.readout.x + 6 - m.stage.x : m.stage.width
+        let region = m.arrangement == .split ? m.readout.height : m.stage.height
+        place(
+            sink, stage.leader,
+            NeuralRect(x: m.stage.x, y: m.stage.y, width: leaderWidth, height: region))
+    }
+
+    /// The filter panel or chips, the list with its search field, and the readout: beside the list
+    /// in a split, inside the cursor's row in an accordion.
+    private func placeBrowse(_ sink: OpaquePointer, _ m: NeuralStageMetrics, readoutRect: NeuralRect?) {
+        if let rect = m.filterPanel ?? m.filterChips { place(sink, filters?.canvas, rect) }
+        guard let list else { return }
+        list.configure(metrics: m)
+        filters?.configure(metrics: m)
+        let canvasRect = NeuralRect(
+            x: m.list.x, y: m.list.y, width: list.canvasWidth, height: list.canvasHeight)
+        place(sink, list.canvas, canvasRect)
+        if list.searchOpen {
+            place(
+                sink, list.entry,
+                NeuralRect(x: m.list.x + 4, y: m.list.y + 4, width: min(240, m.list.width - 90), height: 28))
+        }
+        guard let clip = readoutClip else { return }
+        if m.arrangement == .split {
+            let rect = readoutRect ?? m.readout
+            place(sink, clip, rect)
+            readout?.fit(width: rect.width, height: rect.height, at: (0, 0), inline: false)
+        } else if let content = list.accordionRect() {
+            let viewport = list.viewportRect
+            place(sink, clip, viewport)
+            let offset = content.y - viewport.y
+            readout?.fit(width: content.width - 3, height: content.height, at: (3, offset), inline: true)
+        }
     }
 
     private func placeMoving(_ sink: OpaquePointer, _ m: NeuralStageMetrics) {
@@ -328,13 +412,10 @@ final class BrainView: @unchecked Sendable {
         placeCard(sink, m, offset: f.cardTextOffsetX)
         place(sink, moveCanvas, f.traveller)
         let target = move.openingGeometry
-        let readoutRect = target.readout
-        let stacked = m.arrangement == .stacked
-        if stacked {
-            place(sink, strip?.widget, readoutRect, dx: f.readoutOffset.x, dy: f.readoutOffset.y)
-        } else {
-            place(sink, readout?.widget, readoutRect, dx: f.readoutOffset.x, dy: f.readoutOffset.y)
-        }
+        if let stage { placeLeader(sink, m, stage: stage) }
+        placeBrowse(
+            sink, m,
+            readoutRect: target.readout.offsetBy(dx: f.readoutOffset.x, dy: f.readoutOffset.y))
         place(sink, footer?.widget, target.footer)
     }
 
@@ -347,7 +428,10 @@ final class BrainView: @unchecked Sendable {
         footer?.configure(width: m.width, running: model.turn.outcome == .running)
         footer?.rebuildChips(width: m.width)
         readout?.retheme()
+        list?.configure(metrics: m)
+        filters?.configure(metrics: m)
         refreshReadout(animate: false)
+        refreshAccordion()
         if let move = moveState, abs(move.metricsWidth - m.width) > 0.5 { finishMove(snapTo: move.opening) }
     }
 
@@ -382,6 +466,8 @@ final class BrainView: @unchecked Sendable {
             stage?.retheme()
             card.retheme()
             readout?.retheme()
+            list?.retheme()
+            filters?.retheme()
         }
         card.refresh()
         if old.open != next.open {
@@ -401,12 +487,24 @@ final class BrainView: @unchecked Sendable {
     private func refreshContextInto() {
         let brainContext = host?.context(for: turnID) ?? .none
         model.update(turn: row.turn, context: brainContext)
+        syncBrowse()
+    }
+
+    /// The steps moved under the list: it redraws, follows a running turn, and the head dims what
+    /// the filters hide.
+    func syncBrowse() {
+        let effects = model.drainBrowseEffects()
+        list?.modelChanged()
+        filters?.invalidate()
+        if model.stepList.isFiltered { refreshDimming() }
+        if !effects.isEmpty { applyBrowse(effects, grabFocus: false) }
     }
 
     /// The conversation's account of the live turn changed.
     func refreshContext() {
         let brainContext = host?.context(for: turnID) ?? .none
         model.update(turn: row.turn, context: brainContext)
+        syncBrowse()
         stage?.modelChanged()
         card.refresh()
         refreshReadout(animate: false)
@@ -420,14 +518,16 @@ final class BrainView: @unchecked Sendable {
         stage?.retheme()
         card.retheme()
         readout?.retheme()
+        list?.retheme()
+        filters?.retheme()
         refreshReadout(animate: false)
         redrawNow()
     }
 
-    var stageHasFocus: Bool { stage.map { gtk_widget_has_focus($0.hit) != 0 } ?? false }
 
     func handleKey(keyval: UInt32, state: UInt32) -> Bool {
-        stage?.handleKey(keyval, state: state) ?? false
+        guard hasBrainFocus else { return false }
+        return brainKey(keyval: keyval, state: state)
     }
 
     /// The governor's debounced verdict moved. The stage's widgets stay as they are: a head that
@@ -500,7 +600,7 @@ final class BrainView: @unchecked Sendable {
             return
         }
         guard phase == .closed else { return }
-        guard BrainBudget.stageAllowed, NeuralAssetFiles.isAvailable else { return }
+        guard stageMayOpen, NeuralAssetFiles.isAvailable else { return }
         let swapped = host?.consumeSwap(turnID) ?? false
         guard animated, canMove else {
             showStage()
@@ -511,9 +611,9 @@ final class BrainView: @unchecked Sendable {
         stage?.ensureRenderer()
         startOpeningIfReady()
         if pendingOpen != nil {
-            Gtk.after(1800) { [weak self] in
+            Gtk.after(Self.openFallbackMilliseconds) { [weak self] in
                 Gtk.onMain { [weak self] in
-                    guard let self, let pending = self.pendingOpen else { return }
+                    guard let self, !self.disposed, let pending = self.pendingOpen else { return }
                     _ = pending
                     self.pendingOpen = nil
                     self.showStage()
@@ -544,15 +644,23 @@ final class BrainView: @unchecked Sendable {
     /// Builds the stage, readout and footer without showing them: what a move needs in hand.
     func makeParts() {
         guard stage == nil else { return }
+        let listPart = BrainList(owner: self)
+        self.list = listPart
+        let filterPart = BrainFilters(owner: self)
+        filters = filterPart
+        for part in listPart.widgets { tailscode_brain_row_add(widget, part) }
+        tailscode_brain_row_add(widget, filterPart.canvas)
         let made = BrainStage(owner: self)
+        made.drawing = BrainBudget.stageAllowed
         stage = made
         for part in made.widgets { tailscode_brain_row_add(widget, part) }
         let readout = BrainReadout(owner: self)
         self.readout = readout
-        tailscode_brain_row_add(widget, readout.widget)
-        let strip = BrainStrip(owner: self)
-        self.strip = strip
-        tailscode_brain_row_add(widget, strip.widget)
+        let clip = gtk_fixed_new()!
+        gtk_widget_set_overflow(clip, GTK_OVERFLOW_HIDDEN)
+        gtk_fixed_put(ptr(clip), readout.widget, 0, 0)
+        readoutClip = clip
+        tailscode_brain_row_add(widget, clip)
         let footer = BrainFooter(owner: self)
         self.footer = footer
         tailscode_brain_row_add(widget, footer.widget)
@@ -571,20 +679,29 @@ final class BrainView: @unchecked Sendable {
         stage = nil
         held.releaseSurfaces()
         held.teardown()
+        returnFocusFromBrain()
+        dropPopovers()
         for part in held.widgets { tailscode_brain_row_remove(widget, part) }
-        if let readout { tailscode_brain_row_remove(widget, readout.widget) }
-        if let strip { tailscode_brain_row_remove(widget, strip.widget) }
+        if let list { for part in list.widgets { tailscode_brain_row_remove(widget, part) } }
+        if let filters { tailscode_brain_row_remove(widget, filters.canvas) }
+        if let readoutClip { tailscode_brain_row_remove(widget, readoutClip) }
         if let footer { tailscode_brain_row_remove(widget, footer.widget) }
         if let moveCanvas { tailscode_brain_row_remove(widget, moveCanvas) }
         readout = nil
-        strip = nil
+        list = nil
+        filters = nil
+        readoutClip = nil
+        dimmedNodes = []
+        hoverApplied = nil
+        pendingHover = nil
         footer = nil
         moveCanvas = nil
         model.clearSelection()
+        model.browse(.hoverLeft)
+        model.setBrowseFocus(.list)
         model.setProvenance(token: nil)
         model.setDiving(false)
         model.setDive(zone: nil)
-        focusedStep = nil
         leaderState = BrainLeaderState()
         if model.isReplaying { model.stopReplay() }
         announcement = nil
@@ -595,13 +712,14 @@ final class BrainView: @unchecked Sendable {
     /// The stage, readout and footer, in place with no move.
     func showStage() {
         guard stage == nil || phase != .open else { return }
-        guard BrainBudget.stageAllowed, NeuralAssetFiles.isAvailable else {
+        guard stageMayOpen, NeuralAssetFiles.isAvailable else {
             setPhase(.closed)
             return
         }
         makeParts()
         guard let made = stage else { return }
         pendingOpen = nil
+        host?.anchor?()
         setPhase(.open)
         if isSuspended { made.suspend() } else { made.ensureRenderer() }
         footer?.rebuildChips(width: currentMetrics.width)
@@ -614,6 +732,7 @@ final class BrainView: @unchecked Sendable {
         refreshReadout(animate: false)
         footer?.sync(BrainClock.now)
         refitFooterSoon()
+        applyPendingDive()
         relayout()
         updateClock()
     }
@@ -623,7 +742,9 @@ final class BrainView: @unchecked Sendable {
     func refitFooterSoon() {
         Gtk.after(160) { [weak self] in
             Gtk.onMain { [weak self] in
-                guard let self, let footer = self.footer else { return }
+                guard let self, !self.disposed, let footer = self.footer,
+                    self.isLive(footer.widget)
+                else { return }
                 let width = self.currentMetrics.width
                 footer.rebuildChips(width: width)
                 footer.configure(width: width, running: self.model.turn.outcome == .running)
@@ -633,6 +754,7 @@ final class BrainView: @unchecked Sendable {
 
     func hideStage() {
         guard stage != nil || phase != .closed else { return }
+        host?.anchor?()
         moveState = nil
         revealOverride = nil
         dropParts()
@@ -745,17 +867,15 @@ final class BrainView: @unchecked Sendable {
 
     // MARK: pointer and keyboard on the stage
 
+    /// The pointer is over a node of the head, or over none for nil: the readout previews it and
+    /// the list marks its row, and the cursor stays where it is.
     func stagePointer(over id: String?) {
-        model.pointer(over: id, at: BrainClock.now)
-        model.setHover(id)
-        afterSelection()
+        routeHover(id, delay: 0)
     }
 
     func stageFocus(_ entered: Bool) {
         stageFocused = entered
-        if !entered {
-            focusedStep = nil
-        }
+        if entered, model.browseFocus != .list { model.setBrowseFocus(.list) }
         afterSelection()
     }
 
@@ -777,9 +897,7 @@ final class BrainView: @unchecked Sendable {
     }
 
     func stripHover(_ id: String?) {
-        model.pointer(over: id, at: BrainClock.now - NeuralHoverGrace.intentDelay)
-        model.setHover(id)
-        afterSelection()
+        routeHover(id, delay: NeuralHoverGrace.intentDelay)
     }
 
     func stripScrub(toStep id: String) {
@@ -797,27 +915,19 @@ final class BrainView: @unchecked Sendable {
         stagePointer(over: id)
     }
 
+    /// Puts the cursor on a step: what a click on its row or its node does.
     func pin(_ id: String) {
-        model.togglePin(id)
-        afterSelection()
+        browse(.click(id, double: false))
     }
 
     func clearSelection() {
+        hoverApplied = nil
+        pendingHover = nil
         model.pointer(over: nil, at: BrainClock.now - 10)
+        browse(.hoverLeft, grabFocus: false)
         model.clearSelection()
         model.setProvenance(token: nil)
-        focusedStep = nil
         announcement = nil
-        afterSelection()
-    }
-
-    func walk(to id: String) {
-        if let pinned = model.pinned { model.togglePin(pinned) }
-        focusedStep = id
-        model.setHover(id)
-        if let step = model.step(id: id) {
-            announcement = NeuralReading.announcement(for: step, of: model.steps.count)
-        }
         afterSelection()
     }
 
@@ -826,35 +936,30 @@ final class BrainView: @unchecked Sendable {
         afterSelection()
     }
 
+    /// The Esc ladder, for the harness: the legend, the search, the filters, the cursor, then the
+    /// brain itself.
     func escapePressed() -> Bool {
-        if model.hasSelection || model.provenanceToken != nil || focusedStep != nil {
-            clearSelection()
-            return true
-        }
-        if stage?.diveZone != nil {
-            stage?.dive(into: nil)
-            return true
-        }
-        return false
-    }
-
-    func copySubject() -> Bool {
-        guard let text = readout?.page?.subject?.copyText, !text.isEmpty else { return false }
-        Gtk.copyToClipboard(text)
+        _ = brainKey(keyval: UInt32(GDK_KEY_Escape), state: 0)
         return true
     }
 
-    func expandOutput() -> Bool {
-        guard let expand = readout?.page?.subject?.expandOutput else { return false }
-        expand()
-        return true
-    }
-
-    private func afterSelection() {
+    func afterSelection() {
         stage?.modelChanged()
         refreshReadout(animate: true)
         redrawNow()
         updateClock()
+    }
+
+    /// Whether a double press on this node opens a sub-agent rather than only taking the cursor.
+    func opensSubagent(_ id: String) -> Bool {
+        guard let step = model.step(id: id) else { return false }
+        return step.isCard && step.zone == .delegate
+    }
+
+    /// The node that rings a step and the number its callout shows beside it.
+    func ringed(_ id: String?) -> BrainScene.Ring? {
+        guard let id, let row = model.browseState.list.row(id: id) else { return nil }
+        return BrainScene.Ring(node: model.browseState.list.nodeID(of: id), number: row.number)
     }
 
     func openSubagent(of id: String) {
@@ -905,7 +1010,7 @@ final class BrainView: @unchecked Sendable {
     }
 
     func walkStep(_ direction: Int) {
-        stage?.walkFromHarness(direction)
+        browse(.key(direction < 0 ? .up : .down))
     }
 
     func dive(_ zone: NeuralZone?) {
@@ -1002,6 +1107,8 @@ final class BrainView: @unchecked Sendable {
         lap("footer")
         readout?.tickPulses()
         lap("pulses")
+        list?.tick(time)
+        lap("list")
         tickLeader(time)
         lap("leader")
         if model.isReplaying || (model.turn.outcome == .running && time - lastReadoutTick > 0.25) {
@@ -1035,7 +1142,7 @@ final class BrainView: @unchecked Sendable {
             }
             if needsDraw, tempo == .stopped { tempo = .activity }
         }
-        let moving = moveState != nil || leaderAnimating || contentFade != nil
+        let moving = moveState != nil || leaderAnimating || contentFade != nil || (list?.isAnimating ?? false)
         if moving { tempo = .display }
         if tempo != .stopped, !moving, !isVisible { tempo = .stopped }
         clock.run(on: widget, tempo: tempo)

@@ -546,6 +546,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkBrainSwap()
+            report("readout swap: \(checks) claims hold — a subject that arrives during the cross-fade waits for it, leaves the fading page whole and is never stale")
+        } catch {
+            report("readout swap: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkShutdown()
             report("shutdown: \(checks) claims hold — nothing posted runs once the process is quitting, a held widget reads nil when it is gone and a closing window gives its backfill back")
         } catch {

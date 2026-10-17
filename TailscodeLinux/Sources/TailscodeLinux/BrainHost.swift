@@ -34,6 +34,10 @@ final class BrainHost: @unchecked Sendable {
     var onScreen: ((BrainView) -> Bool)?
     /// Scrolls to the approval or question card the readout's ask points at.
     var revealApproval: (() -> Void)?
+    /// How tall the part of the transcript the reader sees is, which sets how many list rows an
+    /// open brain asks for.
+    var viewport: (() -> Double?)?
+    var viewportHeight: Double? { viewport?() }
     /// A zone a card's chip asked to open the brain diving into, by turn.
     var pendingDive: [String: NeuralZone] = [:]
     private var swapping: Set<String> = []
@@ -145,7 +149,7 @@ final class BrainHost: @unchecked Sendable {
     /// walked with the arrows is the one thing in the window a letter or Return must not reach
     /// past. Nothing is taken when no stage has focus.
     func handleKey(keyval: UInt32, state: UInt32) -> Bool {
-        for view in liveViews where view.stageHasFocus {
+        for view in liveViews where view.hasBrainFocus {
             return view.handleKey(keyval: keyval, state: state)
         }
         return false

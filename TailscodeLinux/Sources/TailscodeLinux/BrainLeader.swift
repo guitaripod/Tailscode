@@ -50,9 +50,9 @@ extension BrainView {
 
     /// Points the leader at the step the readout is about, from a reading of it: nothing for a
     /// panel that is about no step, and nothing in a stacked row.
-    func updateLeader(for readout: NeuralReadout) {
+    func updateLeader(for readout: NeuralReadout?) {
         let metrics = currentMetrics
-        let wanted: String? = metrics.hasLeader && stage != nil && phase == .open ? readout.leaderStepID : nil
+        let wanted: String? = metrics.hasLeader && stage != nil && phase == .open ? readout?.leaderStepID : nil
         let now = BrainClock.now
         if let current = leaderState.current,
             wanted != current.stepID || current.width != metrics.width

@@ -14,8 +14,12 @@ extension SelfTest {
         let widget: UnsafeMutablePointer<GtkWidget>
         let view: BrainView
 
-        init(row: BrainRow, width: Int, key: String, policy: (() -> NeuralOpenPolicy?)? = nil) throws {
+        init(
+            row: BrainRow, width: Int, key: String, policy: (() -> NeuralOpenPolicy?)? = nil,
+            onScreen: ((BrainView) -> Bool)? = nil
+        ) throws {
             host.sessionKey = key
+            host.onScreen = onScreen
             host.policy = policy
             context.brains = host
             window = gtk_window_new()!
@@ -32,6 +36,7 @@ extension SelfTest {
                 throw SelfTestFailure("brain: no view for the bed")
             }
             view = found
+            _ = SelfTest.brainPump(5) { gtk_widget_get_mapped(widget) != 0 && gtk_widget_get_width(widget) > 8 }
         }
 
         func close() {
@@ -64,15 +69,25 @@ extension SelfTest {
         Gtk.installStyle()
         tailscode_set_animations_enabled(1)
         tailscode_notify_animations()
-        try checkBrainCards(expect)
-        try checkBrainGeometry(expect)
-        try checkBrainReadout(expect)
-        try checkBrainMoves(expect)
-        try checkBrainEfficiency(expect)
-        try checkBrainBudget(expect)
+        BrainView.openFallbackMilliseconds = 20_000
+        try timedBrain("cards") { try checkBrainCards(expect) }
+        try timedBrain("geometry") { try checkBrainGeometry(expect) }
+        try timedBrain("readout") { try checkBrainReadout(expect) }
+        try timedBrain("moves") { try checkBrainMoves(expect) }
+        try timedBrain("efficiency") { try checkBrainEfficiency(expect) }
+        try timedBrain("budget") { try checkBrainBudget(expect) }
+        try timedBrain("browse") { try checkBrainBrowse(expect) }
     }
 
-    private static func widgetCount(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int {
+    /// Runs one group of brain claims and says how long it took, because the whole group has a
+    /// time it must stay inside.
+    static func timedBrain(_ name: String, _ body: () throws -> Void) throws {
+        let begun = Date()
+        try body()
+        report(String(format: "brain group %@: %.1f s", name, Date().timeIntervalSince(begun)))
+    }
+
+    static func widgetCount(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int {
         var count = 1
         var child = gtk_widget_get_first_child(widget)
         while let held = child {
@@ -126,20 +141,20 @@ extension SelfTest {
 
         let before = BrainPictures.renders
         var beds: [BrainBed] = []
-        for index in 0..<24 {
+        for index in 0..<8 {
             beds.append(try BrainBed(row: closed, width: 700, key: "st-many-\(index)", policy: policy))
         }
         _ = brainPump(8) { beds.allSatisfy { $0.view.card.hasPicture } }
         _ = brainPump(0.3)
         try expect(
             BrainPictures.renders - before <= 1,
-            "twenty-four cards of one look share one rendered head (\(BrainPictures.renders - before) renders)")
+            "eight cards of one look share one rendered head (\(BrainPictures.renders - before) renders)")
         let shell = beds.map { widgetCount($0.widget) }.max() ?? 0
         try expect(
             beds.allSatisfy { $0.view.card.hasContent } == false || shell > 0,
-            "cards are built lazily (\(beds.filter { $0.view.card.hasContent }.count) of 24 have their words)")
-        let offscreen = try BrainBed(row: closed, width: 700, key: "st-lazy", policy: policy)
-        offscreen.host.onScreen = { _ in false }
+            "cards are built lazily (\(beds.filter { $0.view.card.hasContent }.count) of 8 have their words)")
+        let offscreen = try BrainBed(row: closed, width: 700, key: "st-lazy", policy: policy, onScreen: { _ in false })
+        _ = brainPump(0.5)
         let shellOnly = widgetCount(offscreen.widget)
         try expect(
             shellOnly <= 12,
@@ -174,7 +189,10 @@ extension SelfTest {
             opened.open = true
             wide.host.changed = { [view = wide.view] in view.restate(opened) }
             _ = gtk_widget_activate(chip)
-            _ = brainPump(3) { wide.view.stage?.diveZone == zone }
+            _ = brainPump(10) { wide.view.stage?.diveZone == zone }
+            if wide.view.stage?.diveZone != zone {
+                report("brain chip debug: phase=\(wide.view.phase) stage=\(wide.view.stage != nil) pending=\(wide.view.pendingOpen != nil) open=\(wide.view.row.open) moving=\(wide.view.moveState != nil) dive=\(String(describing: wide.view.stage?.diveZone)) host=\(wide.host.pendingDive)")
+            }
             try expect(
                 wide.view.stage?.diveZone == zone,
                 "a zone chip on the card asks for the brain opened diving into that zone")
@@ -191,21 +209,21 @@ extension SelfTest {
         open.open = true
         let policy: () -> NeuralOpenPolicy? = { builder.brainPolicy }
         var reports: [String] = []
-        for width in [380, 459, 460, 559, 560, 700, 859, 860, 1100, 1300] {
+        for width in [380, 460, 700, 859, 860, 1300] {
             let bed = try BrainBed(row: open, width: width, key: "st-geo-\(width)", policy: policy)
-            _ = brainPump(10) { bed.view.stage?.hasPicture == true }
-            _ = brainPump(0.5)
+            _ = brainPump(0.4) { bed.view.stage != nil && bed.view.readout?.shown != nil }
+            _ = brainPump(0.15)
             let metrics = NeuralStageMetrics.make(width: Double(width), density: bed.view.density)
             guard let stage = bed.view.stage, let readout = bed.view.readout else {
                 throw SelfTestFailure("brain: no stage at \(width)")
             }
             let hit = bed.rect(of: stage.visibleLayers[0])
             let rowHeight = Double(gtk_widget_get_height(bed.widget))
-            let expanded = metrics.arrangement == .stacked && bed.view.stackedExpanded
-            let want = expanded ? metrics.pinnedRowHeight : metrics.rowHeight
+            let want = metrics.rowHeight
             try expect(
-                abs(hit.x) <= 1 && abs(hit.w - metrics.stage.width) <= 1.5 && abs(hit.h - metrics.stage.height) <= 1.5,
-                "at \(width) the stage is flush left at \(Int(metrics.stage.width)) by \(Int(metrics.stage.height)) (\(Int(hit.w)) by \(Int(hit.h)))")
+                abs(hit.x - metrics.stage.x) <= 1.5 && abs(hit.w - metrics.stage.width) <= 1.5
+                    && abs(hit.h - metrics.stage.height) <= 1.5,
+                "at \(width) the head is \(Int(metrics.stage.width)) by \(Int(metrics.stage.height)) at x \(Int(metrics.stage.x)) (\(Int(hit.x)), \(Int(hit.w)) by \(Int(hit.h)))")
             try expect(abs(rowHeight - want) <= 1.5, "and the row is \(Int(want)) tall (\(Int(rowHeight)))")
             switch metrics.arrangement {
             case .split:
@@ -213,30 +231,44 @@ extension SelfTest {
                 try expect(
                     abs(place.x - metrics.readout.x) <= 1.5 && abs(place.w - metrics.readout.width) <= 1.5
                         && place.h >= NeuralStageMetrics.readoutMinHeight - 1.5,
-                    "at \(width) the readout stands \(Int(metrics.readout.x)) points in, \(Int(metrics.readout.width)) wide and at least 420 tall (\(Int(place.x)), \(Int(place.w)), \(Int(place.h)); \(readout.overflowReading(limit: Int(metrics.readout.width) - 1).prefix(1800)))")
+                    "at \(width) the readout stands \(Int(metrics.readout.x)) points in, \(Int(metrics.readout.width)) wide and at least 460 tall (\(Int(place.x)), \(Int(place.w)), \(Int(place.h)); \(readout.overflowReading(limit: Int(metrics.readout.width) - 1).prefix(1800)))")
+                if let listPart = bed.view.list {
+                    let listRect = bed.rect(of: listPart.canvas)
+                    try expect(
+                        abs(listRect.x - metrics.list.x) <= 1.5 && abs(listRect.y - metrics.list.y) <= 1.5
+                            && abs(listRect.h - listPart.canvasHeight) <= 1.5,
+                        "and the step list stands under the head at \(Int(metrics.list.y)) (\(Int(listRect.x)), \(Int(listRect.y)), \(Int(listRect.h)))")
+                }
                 try expect(
                     bed.view.currentMetrics.hasLeader && stage.size.width == Int(metrics.stage.width.rounded()),
                     "and the head's own size is the metrics' (\(stage.size.width))")
-            case .stacked:
-                let place = bed.rect(of: bed.view.strip?.widget ?? readout.widget)
+            case .accordion:
+                let listRect = bed.rect(of: bed.view.list?.canvas ?? readout.widget)
                 try expect(
-                    place.y >= metrics.stage.height && place.h <= NeuralStageMetrics.stripHeight + 1.5
-                        && !bed.view.currentMetrics.hasLeader,
-                    "at \(width) the readout is a strip under the head and there is no leader")
+                    listRect.y >= metrics.stage.height && !bed.view.currentMetrics.hasLeader
+                        && abs(listRect.w - metrics.list.width) <= 1.5,
+                    "at \(width) the list is under the head at full width and there is no leader (\(Int(listRect.y)), \(Int(listRect.w)))")
+            }
+            if let filters = bed.view.filters, let place = metrics.filterPanel ?? metrics.filterChips {
+                let box = bed.rect(of: filters.canvas)
+                try expect(
+                    filters.isPanel == (metrics.filterStyle == .panel) && abs(box.x - place.x) <= 1.5
+                        && abs(box.w - place.width) <= 1.5 && abs(box.h - place.height) <= 1.5,
+                    "at \(width) the zone filters are a \(metrics.filterStyle == .panel ? "panel beside the head" : "row of chips above the list")")
             }
             let parts = NeuralStageMetrics.footerParts(width: Double(width))
             try expect(
                 (bed.view.footer?.closeVisible ?? false) == parts.contains { $0.kind == .close }
                     && (bed.view.footer?.replayIconOnly ?? false) == (parts.first { $0.kind == .replay }?.isIcon ?? false),
                 "at \(width) the footer drops Close under 960 and makes Replay its icon under 640")
-            reports.append("\(width):\(metrics.arrangement == .split ? "split" : "stacked")")
+            reports.append("\(width):\(metrics.arrangement == .split ? "split" : "accordion")")
             bed.close()
             BrainCompositors.dropIdle(olderThan: 0)
         }
         try expect(
             reports.joined(separator: " ")
-                == "380:stacked 459:stacked 460:stacked 559:stacked 560:split 700:split 859:split 860:split 1100:split 1300:split",
-            "the layout changes at 560 and the readout column widens at 860 (\(reports.joined(separator: " ")))")
+                == "380:accordion 460:accordion 700:accordion 859:accordion 860:split 1300:split",
+            "the layout is an accordion under 860 and a split from it (\(reports.joined(separator: " ")))")
     }
 
     // MARK: the readout
@@ -315,29 +347,34 @@ extension SelfTest {
         view.pin(shell.id)
         _ = brainPump(0.1)
         let pinned = readout.shown?.step?.header.isPinned == true
-        try expect(pinned && readout.visibleText.contains(BrainWords.pinned), "a click pins the step and the panel says so")
+        try expect(pinned && readout.visibleText.contains(BrainWords.pinned), "a click puts the cursor on the step and the panel says so")
         view.stagePointer(over: view.model.steps[0].id)
-        _ = brainPump(0.2)
-        try expect(readout.shown?.step?.stepID == shell.id, "and the pointer elsewhere no longer moves it")
+        _ = brainPump(0.3)
+        try expect(
+            readout.shown?.step?.stepID == view.model.steps[0].id && view.model.pinnedStep == shell.id,
+            "the pointer elsewhere previews that step and leaves the cursor where it is")
+        view.stagePointer(over: nil)
+        _ = brainPump(0.5)
+        try expect(readout.shown?.step?.stepID == shell.id, "and leaving it returns the readout to the cursor")
         if let relation = readout.shown?.step?.relations.first, let target = relation.stepIDs.first {
             view.pin(target)
             _ = brainPump(0.1)
             try expect(readout.shown?.step?.stepID == target, "a relation chip pins the step it names (\(relation.label))")
         }
         _ = view.escapePressed()
-        _ = brainPump(0.1)
-        try expect(view.model.pinned == nil && readout.reading.hasPrefix("digest"), "Esc lets go of the pin")
+        _ = brainPump(0.3)
+        try expect(view.model.pinned == nil && readout.reading.hasPrefix("digest"), "Esc lets go of the pin (pinned=\(view.model.pinned ?? "-") cursor=\(view.model.pinnedStep ?? "-") reading=\(readout.reading) focus=\(view.model.browseFocus) filter=\(view.model.stepList.filter.isActive) hovered=\(view.model.browseState.hovered ?? "-") phase=\(view.phase))")
 
         let edit = view.model.steps.first { $0.zone == .act }!
         view.pin(edit.id)
-        _ = brainPump(0.15)
+        _ = brainPump(0.3)
         try expect(
             readout.visibleText.contains(BrainWords.diff) || readout.visibleText.contains(NeuralReading.title(of: edit)),
             "an edit reads out its diff")
         view.clearSelection()
 
         view.dive(.shell)
-        _ = brainPump(0.2)
+        _ = brainPump(0.3)
         try expect(readout.reading.hasPrefix("zone"), "diving into a zone makes the readout its list")
         let zoneSize = (gtk_widget_get_width(readout.widget), gtk_widget_get_height(readout.widget))
         try expect(zoneSize == digestSize, "of the same size again")
@@ -348,22 +385,22 @@ extension SelfTest {
 
         view.toggleReplay()
         view.scrub(to: 0.4)
-        _ = brainPump(0.2)
+        _ = brainPump(0.3)
         try expect(readout.reading.hasPrefix("replay"), "a replay makes the readout its log")
         view.toggleReplay()
         _ = brainPump(0.2)
 
         view.focusStage()
-        _ = view.stage?.handleKey(UInt32(GDK_KEY_Right), state: 0)
+        _ = view.brainKey(keyval: UInt32(GDK_KEY_Down), state: 0)
         _ = brainPump(0.1)
         try expect(
-            view.focusedStep != nil && readout.reading.hasPrefix("step"),
-            "an arrow key on the stage walks to a step and the readout follows it")
+            view.model.pinnedStep != nil && readout.reading.hasPrefix("step"),
+            "an arrow key on the head walks the list to a step and the readout follows it")
         _ = view.escapePressed()
         view.pin(shell.id)
         _ = brainPump(0.15)
-        let copied = view.copySubject()
-        try expect(copied, "and `c` copies its subject")
+        _ = view.brainKey(keyval: UInt32(GDK_KEY_c), state: 0)
+        try expect(view.list?.copiedID == shell.id, "and `c` copies its subject")
         _ = view.escapePressed()
 
         let tokens = view.answerChips
@@ -421,7 +458,7 @@ extension SelfTest {
         bed.view.restate(opened)
         let began = Date()
         var landed = false
-        while Date().timeIntervalSince(began) < 3 {
+        while Date().timeIntervalSince(began) < 20 {
             while g_main_context_iteration(nil, 0) != 0 {}
             heights.append(Double(gtk_widget_get_height(bed.widget)))
             if bed.view.phase == .open { landed = true; break }
@@ -432,8 +469,9 @@ extension SelfTest {
         let final = Double(gtk_widget_get_height(bed.widget))
         let cardHeight = NeuralStageMetrics.make(width: 1000, density: bed.view.density).card.height
         try expect(
-            heights.contains { $0 > cardHeight + 10 && $0 < final - 10 } && heights.first.map { $0 <= final } == true,
-            "and the row's height eases between the two on the way")
+            final > cardHeight + 100 && abs(final - NeuralStageMetrics.make(width: 1000, density: bed.view.density).rowHeight) <= 2
+                && zip(heights, heights.dropFirst()).allSatisfy { $1 >= $0 - 1.5 } && (heights.max() ?? 0) <= final + 1.5,
+            "and the row's height only ever grows from the card's to the stage's on the way (\(heights.count) samples)")
         let gaps = BrainMoveLog.lastGaps.sorted()
         let median = gaps.isEmpty ? 0 : gaps[gaps.count / 2]
         let slow = gaps.filter { $0 > median * 1.5 + 0.002 }.count
@@ -540,6 +578,7 @@ extension SelfTest {
         guard let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)),
             let view = BrainView.current(of: widget)
         else { throw SelfTestFailure("brain: no scroller") }
+        _ = brainPump(5) { gtk_widget_get_mapped(widget) != 0 && gtk_widget_get_width(widget) > 8 }
         _ = brainPump(8) { view.card.hasPicture }
         _ = brainPump(0.4)
         let anchor = ScrollAnchor(

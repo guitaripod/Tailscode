@@ -76,7 +76,7 @@ extension BrainView {
     var isMoving: Bool { moveState != nil }
 
     func startOpeningIfReady() {
-        guard let pending = pendingOpen, let stage, stage.hasPicture, phase == .closed else { return }
+        guard let pending = pendingOpen, let stage, stage.hasPicture, !holdPictureForTest, phase == .closed else { return }
         pendingOpen = nil
         beginMove(opening: true, swapped: pending.swapped)
     }
@@ -154,8 +154,10 @@ extension BrainView {
         gtk_widget_set_opacity(card.buttons, f.cardTextAlpha)
         gtk_widget_set_opacity(card.picture, f.cardPictureAlpha)
         if let readout { gtk_widget_set_opacity(readout.widget, f.readoutAlpha) }
-        if let strip { gtk_widget_set_opacity(strip.widget, f.readoutAlpha) }
         if let footer { gtk_widget_set_opacity(footer.widget, f.footerAlpha) }
+        if let filters { gtk_widget_set_opacity(filters.canvas, f.panelAlpha) }
+        list?.setReveal(f.listRows, headerAlpha: f.listHeaderAlpha)
+        if let list { gtk_widget_set_opacity(list.entry, f.listHeaderAlpha) }
         let labels = f.nodes.count > 0 ? f.nodes.alpha(0) : f.wireDraw
         revealOverride = BrainMove.Reveal(nodes: f.nodes, wires: f.wireDraw, ties: f.tieDraw, labels: labels)
         stage?.refreshScene(time)
@@ -175,8 +177,10 @@ extension BrainView {
             gtk_widget_set_opacity(part, 1)
         }
         if let readout { gtk_widget_set_opacity(readout.widget, 1) }
-        if let strip { gtk_widget_set_opacity(strip.widget, 1) }
         if let footer { gtk_widget_set_opacity(footer.widget, 1) }
+        if let filters { gtk_widget_set_opacity(filters.canvas, 1) }
+        list?.setReveal(nil, headerAlpha: 1)
+        if let list { gtk_widget_set_opacity(list.entry, 1) }
         recordMove(move)
         if opening {
             stage?.leaveLayered()
@@ -306,7 +310,8 @@ extension BrainView {
         if stage?.hasPicture != true, attempt < 24 {
             Gtk.after(300) { [weak self] in
                 Gtk.onMain { [weak self] in
-                    self?.freezeMove(opening: opening, at: progress, attempt: attempt + 1)
+                    guard let self, !self.disposed else { return }
+                    self.freezeMove(opening: opening, at: progress, attempt: attempt + 1)
                 }
             }
             return

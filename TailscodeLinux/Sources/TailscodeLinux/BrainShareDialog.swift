@@ -88,9 +88,9 @@ final class BrainShareDialog: @unchecked Sendable {
         let save = Gtk.button(Localized.text("Save…")) { [weak self] in
             Gtk.onMain { [weak self] in self?.savePoster() }
         }
-        let windowBits = UInt(bitPattern: made)
+        let windowHold = Gtk.WeakWidget(made)
         let close = Gtk.button(Localized.text("Close"), css: ["suggested-action"]) {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
+            guard let raw = windowHold.widget else { return }
             gtk_window_destroy(ptr(raw))
         }
         gtk_box_append(ptr(actions), copy)
@@ -99,7 +99,7 @@ final class BrainShareDialog: @unchecked Sendable {
         offers = [Localized.text("Copy"), Localized.text("Save…"), Localized.text("Close")]
         Gtk.onKey(made) { keyval, _ in
             guard keyval == Keymap.escape else { return false }
-            guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return true }
+            guard let raw = windowHold.widget else { return true }
             gtk_window_destroy(ptr(raw))
             return true
         }
@@ -114,9 +114,9 @@ final class BrainShareDialog: @unchecked Sendable {
         gtk_drop_down_set_selected(op(picker), guint(index))
         gtk_widget_set_tooltip_text(picker, Localized.text("Poster look"))
         tailscode_set_accessible_label(picker, Localized.text("Poster look"))
-        let bits = UInt(bitPattern: picker)
+        let hold = Gtk.WeakWidget(picker)
         Gtk.onNotify(UnsafeMutableRawPointer(picker), property: "selected") { [weak self] in
-            guard let self, let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+            guard let self, let raw = hold.widget else { return }
             let selected = Int(gtk_drop_down_get_selected(op(raw)))
             guard NeuralShare.looks.indices.contains(selected) else { return }
             let picked = NeuralShare.looks[selected]
@@ -130,9 +130,9 @@ final class BrainShareDialog: @unchecked Sendable {
     }
 
     private func watchAppearance() {
-        let bits = UInt(bitPattern: appearance)
+        let hold = Gtk.WeakWidget(appearance)
         Gtk.onNotify(UnsafeMutableRawPointer(appearance), property: "selected") { [weak self] in
-            guard let self, let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+            guard let self, let raw = hold.widget else { return }
             let isDark = gtk_drop_down_get_selected(op(raw)) == 0
             guard isDark != self.dark else { return }
             self.dark = isDark
@@ -191,9 +191,9 @@ final class BrainShareDialog: @unchecked Sendable {
     private func savePoster() {
         guard let made = window else { return }
         let name = BrainPoster.filename(prompt: prompt, turn: model.turn)
-        let windowBits = UInt(bitPattern: made)
+        let windowHold = Gtk.WeakWidget(made)
         withPoster { png in
-            guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
+            guard let raw = windowHold.widget else { return }
             Gtk.saveFile(parent: ptr(raw), suggestedName: name, data: png) { _ in }
         }
     }
