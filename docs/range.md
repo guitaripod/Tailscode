@@ -102,7 +102,7 @@ Tests that prove it: pace arithmetic as a table (the numbers in the mocks includ
 
 The Core was run against this machine's live bridge (a real transcript, the real quotas) before the clients were wired, and it overturned four things:
 
-- **The weekly window was the news.** Real quotas read 83% of the weekly window used with 28% of the week gone: at that pace it runs out about eighteen hours later, four and a half days before it resets. That is the case the whole design exists for, and it showed on the first read.
+- **The weekly window was the news.** Real quotas read 83% of the weekly window used with 28% of the week gone: at that pace it runs out in about ten hours, four and a half days before it resets. That is the case the whole design exists for, and it showed on the first read.
 - **Turns are few and huge in an agent chat.** A conversation of three prompts can hold 500k tokens, so waiting for four turns before saying anything said nothing; a rate is now read from three (two growths), and still only from half full.
 - **The largest slice was mislabelled.** *System & tools* came out at 33–58% of the window on real chats, because the transcript shows neither the system prompt, the tool definitions, the memory files nor the model's thinking, and the character counts' error lands in the same slice. It is named *System & other* and the sheet says what is in it.
 - **An unnamed model hears every account-wide window.** That is right for a banner and wrong for a chip, so the clock chip needs a model it can name. A runway of one day also read "1 days"; it reads hours until two days.
