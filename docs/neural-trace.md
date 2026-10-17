@@ -1,6 +1,6 @@
 # Neural trace
 
-A turn's thinking and working, drawn as one mecha brain instead of a stack of "N tools" lines. Everything the agent did before its final message is the brain; the final message is the answer below it. Design board: `.tailscode/design/neural-trace/` (A Cortex, B Lanes, C In the transcript, D The whole turn, E The hero). Screens: `docs/neural-trace-mocks/`. Pipeline: `scripts/neural-head/render.sh`.
+A turn's thinking and working, drawn as one mecha brain instead of a stack of "N tools" lines. Everything the agent did before its final message is the brain; the final message is the answer below it. Design board: `.tailscode/design/neural-trace/` (A Cortex, B Lanes, C In the transcript, D The whole turn, E The hero, F The layout). Screens: `docs/neural-trace-mocks/`. Pipeline: `scripts/neural-head/render.sh`.
 
 ## What the person sees
 
