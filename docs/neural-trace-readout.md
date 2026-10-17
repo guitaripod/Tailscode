@@ -117,6 +117,53 @@ Rules: the traveller is one surface (the settled interior and front from the com
 
 Clients draw these; they decide only how a rect is painted.
 
+## 7. Third pass: the step list, and a smaller head (from Marcus's second review)
+
+Marcus, after using the docked stage: "I want the robot to be relatively smaller than it currently is, and the list of actions that have been done should have a great way to browse through them for both mouse and keyboard. Currently you gotta hover over the numbers with the mouse and that's not great and it's not cohesive. Make this UX supreme." Reading: the head is a map, not a handle; every action the agent took needs an index you can walk without aiming at a 20 px node, and the list, the head and the readout must be one thing.
+
+### Layout
+
+The head shrinks to a map: Hs = clamp(0.27 W, 280, 340) wide (a 1280 row gives 340, a 1000 row 280; the 576 x 420 crop keeps its aspect, so 248 and 204 tall). The READOUT is R = clamp(0.5 W, 360, 640) wide at the right (640, 500 and 430 at 1280, 1000 and 860) after the 24 px gutter; the left column takes the rest, Lw = W - 24 - R (616, 476, 406). The column holds, from the top, the head flush with the gutter and, left of it, the ZONE FILTER PANEL (one row per zone: glyph, label, count bar, count, the key that toggles it; a FAILED row under a rule; this replaces the chips and the digest's bars, which were the same thing), then 8 px, then the STEP LIST (header 36, rows 28 each, 4, hint 24). The panel needs 150 px (Lw - Hs - 16); below that (860 to 900 px) it becomes a row of glyph-and-count chips above the list. The row's height is head height + 8 + the list block, never under 460, with 8 rows listed at 1000 and 9 at 1280: 500 and 572. A client may list more rows when the window is tall (rows = clamp(floor((viewport height x 0.55 - head - 80) / 28), 8, 14)) and the readout grows with the row. Under 860 the head stays on top (max 280 wide, centred), the filter chips follow it, and the list follows full width (up to 10 rows); the readout is not a column then: the cursor row EXPANDS IN PLACE (accordion) to show the readout's content under it, one expanded row at a time, so a phone and a split pane browse the same list the same way. Footer, leader and transition as before; the traveller now lands on the smaller head rect.
+
+### The list
+
+Header: a search field (a quiet "Search /" button until `/` opens it into a 240 px field) and the count "29 steps", or "5 of 29" in the accent when filtered. The zone filters and the failed toggle live in the panel beside the head (chips under 900 px). Rows are 28 px (32 on touch), in step order, virtualized:
+
+- zone edge 3 px in the zone's tone, zone glyph 18 px box (the shape fills about 13 px), the step number (tabular, right-aligned in 24 px), the title in the heading weight (60 px column), the argument on the same line in the mono role and the dim ink (a path middle-ellipsised by measured width so the directory head and the file name survive; a command cut at the end), and on the right the status: nothing for done, a danger mark for failed, a dashed-ring mark with "retried at N" for a failed step that was retried, an attention mark for waiting, the running pulse for running, a quiet mark for stopped.
+- thoughts and notes are rows too: a quote glyph and the first line in italics, so the list reads as the agent's account in order; a step that fans out (parallel calls of one message) shares a bracket on the left, 10 px wide, drawn only between rows that are neighbours in the filtered list.
+- a failed row wears a danger wash at 8 percent; the cursor row an accent wash at 14 percent, a 1 px accent ring and a 2 px accent bar inside the zone edge (the zone edge keeps its tone: replacing it with the accent lost which zone the cursor was in); the hover row a 6 percent wash and a copy button at the right edge.
+- when the turn is running new rows slide in over 120 ms at the end; the list follows the newest step until the person scrolls up or sets a cursor, then a pill "Following paused: jump to latest (End)" appears at the foot; pressing it, or End, resumes.
+
+### One selection
+
+There is exactly one cursor (what used to be the pin). Hover is a preview and never moves the cursor; leaving a hover returns the readout to the cursor, or to the digest (or Now) when there is none. A click on a row or a node sets the cursor; the head rings that node, the leader line runs from it to the readout, the list scrolls to show the row, and the readout shows the step. Hovering a row rings its node in the head and previews it in the readout, exactly as hovering the node does. Filters dim the head's other nodes to 28 percent, so the head always shows what the list shows. Esc clears in this order: the legend, the search text, the filters, the cursor, and only then (a fourth press) collapses the brain. Filtering keeps the cursor if it still matches.
+
+### Keyboard (the brain is a focus group: Tab enters the list, a visible focus ring; every key also works when focus is on the stage)
+
+| Key | Does |
+|---|---|
+| Up, Down, k, j | previous, next step in the filtered list (sets the cursor) |
+| PageUp, PageDown | 8 steps |
+| Home, End, g, G | first, last (End on a running turn also resumes following) |
+| Left, Right, h, l | previous, next step in the same zone |
+| [ and ] (or p and n) | previous, next failed step |
+| r | go to the related step (the retry of a failure, the other use of a file) |
+| 1 to 6 | toggle the zone filters (PLAN, SENSE, ACT, SHELL, DELEGATE, SAY), 0 clears them |
+| ! or x | failed only |
+| / | focus search: type to filter by title, argument and output, Enter takes the first match, Esc clears |
+| Enter | move focus into the readout (its Copy and Show all buttons), Enter again returns to the list |
+| Space | expand or collapse the long output or diff in the readout |
+| c, C | copy the step's command or path, copy its output |
+| ? | the key legend as a popover; a one-line hint (key caps and four verbs: browse, filter, copy, keys) sits under the list when there is room |
+
+### Mouse
+
+Click a row or node: cursor. Double-click a row: cursor and focus into the readout. Right-click a row or node: a menu (Copy command or path, Copy output, Copy step as Markdown, Show only this zone, Go to related, Show in Rows). Wheel: scrolls whatever is under the pointer (list, readout, transcript), kinetic and eased. Zone chip: toggles its filter, shift-click or double-click solos it. Drag across the timeline strip: scrubs. Hover a row: preview and node ring, as above. The copy button on a hovered row copies the step's subject and shows "Copied" for a second.
+
+### Model (Core, shared by all three clients)
+
+`NeuralStepList` (rows from the model's steps: kind, number, zone, title, argument with its ellipsis rule, status mark, related step, fan-out bracket, group; the filter state; the visible index; the cursor; following; `rows(visibleIn:)`) and `NeuralBrowse`, a pure reducer from (state, key or pointer action) to (state, effects), where effects are `scrollTo(row)`, `copy(subject)`, `focusReadout`, `expandOutput`, `collapse` and so on, so the three clients map their events to actions and draw the effects, and the key table above exists once. `NeuralStageMetrics` gains the list region, the filter panel and the new head size (see Design review 2 for the rule and the numbers).
+
 ## Design review
 
 Rendered and looked at on 2026-10-17 from the compositor's own output (CPU renderer, 1536 x 1008, corrected palettes), in Rosé Pine, Dawn, Tokyo Night and Phosphor. Boards: `docs/neural-trace-mocks/K-cards`, `K2-edge-tones`, `L-readout-shell`, `L2-edit-diff`, `L3-digest`, `L4-now-and-ask`, `L5-zone-list`, `L6-four-themes`, `L7-review-before-after`, `M-transition-sheet`, `M2-live`, `N-narrow` (.webp); sources in `docs/neural-trace-mocks/src/readout/`; the standalone pages are `.tailscode/design/neural-trace/K-readout.html` and `M-live.html`. Edits made to the spec above, in the order the looking found them:
@@ -134,4 +181,36 @@ Rendered and looked at on 2026-10-17 from the compositor's own output (CPU rende
 11. **Transition.** The numbers in section 3 hold up: easeOutCubic puts 78 percent of the movement in the first 128 ms (g = 0.46 at 60 ms, 0.76 at 120 ms). Two things only the frames showed: the card's danger ring scales up with the traveller and gets heavy mid-close, so on closing the lights return only after 130 ms; and the stage must be drawn inside the traveller (nodes scale with it) or they drift off the head for the first 120 ms.
 
 Open, not settled by looking: whether a repaired failure should wear a ring at all (K2 argues yes, dashed; the glyph rule in `NeuralGlyph` says no); ganglion members in a dive (L5 pins a visible node, the failed `ffmpeg mux` is inside the "+7"); how a 1000 px readout should treat a 20-line output (5 lines and a fade, or a taller row); the stacked readout's pinned height (capped at 340 px here); whether "turn began" belongs in the footer facts at all.
+
+## Design review 2
+
+Third pass rendered on 2026-10-17 from the compositor's own pictures in Rosé Pine, Dawn, Tokyo Night and Phosphor. Boards (`docs/neural-trace-mocks/`): `O-open-brain-list`, `O2-browse-174`, `P-list-anatomy`, `Q-accordion-narrow`, `R-keyboard`, `S-transition-sheet`, `S2-live`; live pages `.tailscode/design/neural-trace/O-live.html` (every key and pointer action in the section 7 table works) and `M-live.html` (the transition, now the third-pass layout). The older L, M and N boards are marked superseded in their captions; the readout content in them stands. Sources are in `docs/neural-trace-mocks/src/readout/` (`brain.js` is the list, the panel and the controller).
+
+What the looking changed in section 7 (edited above):
+
+1. **Head 280 to 340 (was 280 to 380), 0.27 W (was 0.30).** At 380 the head plus a 9-row list put the open brain at 640 px tall and left 6 rows for the list: the head was still the hero. At 340 (1280) and 280 (1000) it is still a clear map: the six wells, the eye and the nodes' shapes read; the numbers inside the nodes do not (they are 5 px) and do not need to, the list carries them. Hover and cursor rings are 7 units out, 2.2 px, with a glow, because the 1.5 px ring was lost at this size.
+2. **Zone filters are a panel beside the head, not chips in the list header.** With the readout capped at 640 the left column at 1280 is 616 wide and a 340 head left 276 px of nothing beside it; with chips in the list header the list lost a row and the header wrapped at 1000. The panel is the digest's zone bars turned into the filter (count bar, count, key 1 to 6, a FAILED row), so what a person reads and what they press are one control. It sits left of the head so the leader line, which leaves the head's right edge, never crosses it. Under 150 px of panel (860 to 900 px) and in the stacked layout it is a row of glyph-and-count chips.
+3. **Readout 360 to 640 at 0.5 W (was "what is left").** 640 at 1280 (about 80 characters of mono, comfortable), 500 at 1000, 430 at 860. The column left of it takes the rest, so the list gets the width its arguments need: at 1280 a path of 55 characters survives.
+4. **Row 28 px, zone edge 3 px, glyph box 18 px (was 14), kept.** The 14 px glyph read as a dot beside a 12.5 px title; at 18 px the shapes (circle, diamond, chipped square, hexagon, octagon, bubble) are told apart without colour. Columns, left to right: 10 bracket, 18 glyph, 24 number, 60 title, argument, status; 8 px gaps, all on the 4 px grid.
+5. **Cursor is a wash, a 1 px ring and a 2 px bar inside the zone edge (was a 2 px accent edge).** An accent edge replaced the zone edge, so the row lost its zone; and a failed row under the cursor must keep its mark: the cursor wash (14 percent accent) beats the failed wash (8 percent danger), the mark stays (P).
+6. **Rows per screen: 8 at 1000, 9 at 1280, more when tall.** A 29-step turn is one scroll; a 174-step turn is browsed with the filters (SHELL leaves 108 of 174, SHELL plus failed leaves 4), `[` and `]`, search and PageUp/Down (O2). The list block's height is a function of the rows asked for, so a client with a tall window shows up to 14 (rule in the layout paragraph).
+7. **Accordion head 280 (was 320)** and the zone chips directly under it; the expanded row carries the readout's content (relations, WHY, output, facts) inside a 3 px zone-toned left edge, one open at a time (Q).
+8. **Legend is a two-column popover, 760 wide, centred over the row** (13 rows in 7), not a tall column over the list; it names Esc's four steps. The hint line stays: four verbs, key caps at 16 px; it costs 24 px and is the only place a mouse user learns that keys exist.
+9. **Transition (S).** The picture lands on the head's small rect in the left column; the panel and the header fade in 150 to 250 ms, list rows slide in 6 px from 130 ms, 12 ms apart; readout and footer as before. Row height eases to 572 at 1280.
+
+Final numbers (W is the row width):
+
+| | 1280 | 1000 | 860 | 700 | 520 | 380 |
+|---|---|---|---|---|---|---|
+| layout | split | split | split, chips | stacked | stacked | stacked |
+| head Hs x Hh | 340 x 248 | 280 x 204 | 280 x 204 | 280 x 204 | 280 x 204 | 280 x 204 |
+| left column Lw | 616 | 476 | 406 | W | W | W |
+| filter panel | 260 | 180 | chips | chips | chips | chips |
+| readout R | 640 | 500 | 430 | in the row | in the row | in the row |
+| rows listed | 9 | 8 | 8 | 8 (up to 10) | 8 | 8 |
+| open brain height | 572 | 500 | 536 | about 540 | about 540 | about 540 |
+
+Paddings: list header 36, row 28, hint 24, panel row 28 (FAILED row 30), panel header 24, zone chip 28 high with 6 px glyph padding and 10 px right, row padding 8 right, status column right-aligned, copy button 24 high at 6 px from the edge, the list sits 12 px short of the readout gutter edge (scrollbar room). Readout paddings are unchanged (20 left, 12 right).
+
+Open, not settled by looking: whether the numbers in the 280 px head should show on the ringed node only; whether the ganglion should open in the map when the cursor is on a hidden member (O rings the "+7" and says "25 of 29" in the readout); how a touch device (32 px rows) fits 8 rows in the stacked layout; whether the filter panel is too prominent on a turn with one zone (it could collapse to the chips); and the cost of key caps in the hint line against a plain text hint.
 

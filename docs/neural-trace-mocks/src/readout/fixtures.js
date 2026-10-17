@@ -176,3 +176,26 @@ const ZONE_LABEL = { think: 'PLAN', sense: 'SENSE', act: 'ACT', shell: 'SHELL', 
 const ZORDER = ['think', 'sense', 'act', 'shell', 'delegate', 'say'];
 const ZONE_VERB = { think: 'thinking', sense: 'reading', act: 'editing', shell: 'running', delegate: 'delegating', say: 'writing' };
 const TURNS = { calm: T_CALM, fix: T_FIX, big: BIG_TURN, live: T_LIVE, wait: T_WAIT };
+
+const T_STATES = {
+  id: 'states', family: 'sonnet', effort: 3, dur: '4m 10s', outcome: 'running', prompt: 'Every row state',
+  steps: [
+    { fam: 'think', tool: 'Thinking', status: 'ok', msg: 1, at: '10:00:00', text: 'The tour is 60 fps and the capture is 30; resample once, then cut both to the riff.' },
+    { fam: 'sense', tool: 'Read', status: 'ok', msg: 2, at: '10:00:04', arg: 'out/demo/cut-list.json', out: ['12 lines read'], key: 'cut-list.json' },
+    { fam: 'sense', tool: 'Grep', status: 'ok', msg: 2, at: '10:00:04', arg: 'riff  TailscodeCore/Sources/TailscodeCore/Neural', out: ['3 matches'] },
+    { fam: 'sense', tool: 'Read', status: 'ok', msg: 2, at: '10:00:04', arg: 'TailscodeCore/Sources/TailscodeCore/Neural/NeuralTimeline.swift', out: ['212 lines read'] },
+    { fam: 'shell', tool: 'Bash', status: 'fail', recovered: true, retriedAt: 7, msg: 3, at: '10:00:20', arg: 'swift build -c release 2>&1 | tail -20', key: 'swift build', keyKind: 'cmd', out: ['error: switch must be exhaustive'] },
+    { fam: 'say', tool: 'Said', status: 'ok', msg: 4, at: '10:01:02', text: 'The build wants one more case; adding it and building again.' },
+    { fam: 'shell', tool: 'Bash', status: 'ok', msg: 5, at: '10:01:40', arg: 'swift build -c release 2>&1 | tail -20', key: 'swift build', keyKind: 'cmd', out: ['Build complete! (212.4s)'] },
+    { fam: 'shell', tool: 'Bash', status: 'fail', msg: 6, at: '10:04:55', arg: 'scripts/parity.sh --check', out: ['parity: 2 gaps'] },
+    { fam: 'shell', tool: 'Bash', status: 'stopped', msg: 7, at: '10:05:10', arg: 'scripts/install-linuxapp.sh', out: [] },
+    { fam: 'shell', tool: 'Bash', status: 'wait', msg: 8, at: '10:05:30', arg: 'rm -rf build-mac', out: [] },
+    { fam: 'shell', tool: 'Bash', status: 'run', msg: 9, at: '10:05:41', arg: 'ffmpeg -i ios-tour/walk.mov -vf fps=30 out/demo/ios-30.mp4', out: ['frame=  412'] }
+  ]
+};
+const T_HUGE = (function () {
+  const out = [];
+  for (let c = 0; c < 6; c++) T_BIG.forEach(s => { const n = Object.assign({}, s, { msg: s.msg + c * 30 }); if (c) { delete n.key; delete n.retriedAt; n.recovered = false; if (n.status === 'fail') n.status = c % 2 ? 'fail' : 'ok'; } out.push(n); });
+  return { id: 'huge', family: 'fable', effort: 4, dur: '51m 10s', outcome: 'settled', prompt: 'Rebuild every client and re-record the whole demo.', steps: out };
+})();
+TURNS.states = T_STATES; TURNS.huge = T_HUGE;

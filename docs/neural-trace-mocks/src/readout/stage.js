@@ -94,7 +94,7 @@ const ST = (function () {
     const s = turn.steps[o.hot], P = pos[o.hot];
     const gutPx = o.gutter == null ? 24 : o.gutter;
     const Tx = view.x0 + view.w + gutPx / u;
-    const H = stageEl.offsetHeight;
+    const H = o.rowH || stageEl.offsetHeight;
     const hdY = 20, lo = 40 + 16, hi = H - 32 - 16;
     let Ty;
     if (o.anchor === 'header') Ty = hdY / u;
@@ -119,8 +119,8 @@ const ST = (function () {
     g.appendChild(ring);
     svg.insertBefore(g, svg.querySelector('.n'));
     info.leader = { g, path, dot, ring, pts, Ty, Tx, best };
-    const tab = stageEl.parentElement && stageEl.parentElement.querySelector('.tab-mark');
-    if (tab) { tab.style.top = (Ty * u - 12) + 'px'; tab.style.display = o.anchor === 'header' || RO.OPT.noTab ? 'none' : 'block'; }
+    const tab = o.tab || (stageEl.parentElement && stageEl.parentElement.querySelector('.tab-mark'));
+    if (tab) { tab.style.top = (best.pts[best.pts.length - 1].y * u - 12) + 'px'; tab.style.display = o.anchor === 'header' || RO.OPT.noTab ? 'none' : 'block'; }
     return info.leader;
   }
 

@@ -8,8 +8,11 @@ function ASSET(key, kind) {
 const TH = ['rose', 'dawn', 'tokyo', 'phosphor'];
 
 function el(html) { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; }
+const SUP = new Set(['L', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'M', 'M2', 'N']);
+const SUPNOTE = ' <em style="color:#c9a25c;font-style:normal">Superseded in layout by the third pass (O, P, Q, R, S; section 7): the head is now a small map with the step list under it. The readout content shown here still stands.</em>';
 function artboard(id, title, note, builder, opt) {
   opt = opt || {};
+  if (SUP.has(id)) note = (note || '') + SUPNOTE;
   const wrap = el(`<section class="ab-wrap" id="ab-${id}"><div class="ab-cap"><b>${id}</b> · ${title}</div><div class="ab-body" style="display:flex;gap:${opt.gap || 24}px;align-items:flex-start"></div>${note ? `<p class="ab-note">${note}</p>` : ''}</section>`);
   document.getElementById('board').appendChild(wrap);
   builder(wrap.querySelector('.ab-body'));
@@ -243,10 +246,11 @@ function artM() {
       });
     }, { gap: 0 });
 }
-function liveWidget(host, theme, W) {
+function liveWidget(host, theme, W, mountFn) {
+  mountFn = mountFn || TR.mount;
   const box = el(`<div data-theme="${theme}" data-light="${PAL[theme].dark === '0' ? 1 : 0}" style="border:1px solid var(--rule);border-radius:12px;padding:20px 28px 28px;width:${W + 56}px"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;font:12px/16px var(--mono);color:var(--ink2)"><button class="pb" id="lv-open" type="button">\u25b6 Open</button><button class="pb" id="lv-close" type="button">\u25c0 Close</button><button class="pb" id="lv-slow" type="button">\u00bc speed</button><span class="sp" style="width:8px"></span><span>scrub</span><input id="lv-scrub" type="range" min="0" max="320" value="0" step="1" style="width:320px;accent-color:var(--accent)"><span id="lv-num" style="min-width:300px">t 0 ms</span></div><div id="lv-host"></div></div>`);
   host.appendChild(box);
-  const m = TR.mount(box.querySelector('#lv-host'), TURNS.fix, { W, theme });
+  const m = mountFn(box.querySelector('#lv-host'), TURNS.fix, { W, theme });
   const num = box.querySelector('#lv-num'), sc = box.querySelector('#lv-scrub');
   let dir = 'open', raf = 0, speed = 1, t0 = 0, from = 0, state = { dir: 'open', t: 0 };
   function paint(t, d) { state = { dir: d, t }; const f = m.apply(t, d); sc.max = f.duration; sc.value = t; num.textContent = `${d} \u00b7 t ${Math.round(t)} / ${f.duration} ms \u00b7 g ${f.g.toFixed(2)} \u00b7 row ${Math.round(m.row.offsetHeight)} px`; }

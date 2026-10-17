@@ -48,11 +48,16 @@ html = f"""<!doctype html>
 <script>{read(here / 'readout.js')}</script>
 <script>{read(here / 'stage.js')}</script>
 <script>{read(here / 'transition.js')}</script>
+<script>{read(here / 'brain.js')}</script>
+<script>{read(here / 'transition2.js')}</script>
+<script>{read(here / 'page2.js')}</script>
 <script>{read(here / 'page.js')}</script>
 <script>{read(here / 'boot.js')}</script>
 </body></html>"""
 out.write_text(html)
-live = html.replace("<title>K · Readout</title>", "<title>M · Transition, live</title>").replace('<script>{read(here / \'boot.js\')}</script>', "")
-live = html.replace("<title>K · Readout</title>", "<title>M · Transition, live</title>").replace("<script>(function () {\n  const q", "<script>window.__only='M2';(function () {\n  const q")
-(out.parent / "M-live.html").write_text(live)
+def variant(name, only, title):
+    v = html.replace("<title>K · Readout</title>", "<title>" + title + "</title>").replace("<script>(function () {\n  const q", "<script>window.__only='" + only + "';(function () {\n  const q")
+    (out.parent / name).write_text(v)
+variant("M-live.html", "S2", "S · Transition, live")
+variant("O-live.html", "O3", "O · Browse, live")
 print("wrote", out, round(len(html) / 1e6, 2), "MB")
