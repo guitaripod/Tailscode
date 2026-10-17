@@ -123,6 +123,10 @@ public struct NeuralBrainModel: Sendable {
     public private(set) var provenanceZones: Set<NeuralZone>?
     /// The client's dive into a node is running; it asks for the display's rate while it does.
     public private(set) var isDiving = false
+    /// The zone the head has dived into, which the readout lists; nil when it has surfaced.
+    public internal(set) var divedZone: NeuralZone?
+    /// How long the pointer has rested on a node and how long ago it left one, for the readout.
+    public internal(set) var hoverGrace = NeuralHoverGrace()
 
     var roles: [Role] = []
     var indexByID: [String: Int] = [:]

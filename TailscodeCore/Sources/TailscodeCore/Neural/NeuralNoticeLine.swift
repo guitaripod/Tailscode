@@ -60,6 +60,18 @@ public enum NeuralNoticeLine {
     /// "ran 18 commands, read 3 files, edited 2 files (+5 −2)". Nil for work that was none of
     /// these, which has only the count to say.
     public static func clauses(_ counts: NeuralNoticeCounts) -> String? {
+        let parts = clauseParts(counts)
+        guard !parts.isEmpty else { return nil }
+        var body = parts.dropFirst().reduce(parts[0]) { Localized.text("%1$@, %2$@", $0, $1) }
+        if let tally = tally(counts.added, counts.removed) {
+            body = Localized.text("%1$@ (%2$@)", body, tally)
+        }
+        return body
+    }
+
+    /// Each thing the work did as its own clause, in the order the sentence reads them: "ran 18
+    /// commands", "read 3 files". A card sets them one at a time so it can drop whole clauses.
+    public static func clauseParts(_ counts: NeuralNoticeCounts) -> [String] {
         var parts: [String] = []
         if counts.shell > 0 {
             parts.append(
@@ -89,12 +101,7 @@ public enum NeuralNoticeLine {
                     ? Localized.text("delegated 1 task")
                     : Localized.text("delegated %lld tasks", counts.delegated))
         }
-        guard !parts.isEmpty else { return nil }
-        var body = parts.dropFirst().reduce(parts[0]) { Localized.text("%1$@, %2$@", $0, $1) }
-        if let tally = tally(counts.added, counts.removed) {
-            body = Localized.text("%1$@ (%2$@)", body, tally)
-        }
-        return body
+        return parts
     }
 
     /// "25 tools"; "7 steps" for a turn that only thought or spoke.

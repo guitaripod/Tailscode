@@ -189,7 +189,7 @@ public enum NeuralTurns {
             id: id, index: index, zone: NeuralZone.zone(for: kind), status: status, group: group,
             messageID: message.id, at: message.createdAt, title: call.name,
             detail: detail(of: call, kind: kind), outputLines: outputLines(of: call), mark: mark,
-            isCard: isCard(call, kind: kind, message: message))
+            isCard: isCard(call, kind: kind, message: message), call: NeuralStepCall(call))
         if kind == .fileEdit || kind == .fileWrite {
             let tally = ToolDiff.tally([call])
             if tally.added > 0 || tally.removed > 0 {

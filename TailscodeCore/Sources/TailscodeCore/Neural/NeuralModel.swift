@@ -23,6 +23,49 @@ public enum NeuralOutcome: Sendable, Hashable {
     case answerless
 }
 
+/// The call a step was read from, so a readout can reach the whole of what it printed and the
+/// strings an edit replaced without the step copying either. A `ToolCall` is a value whose strings
+/// are shared storage, so holding it costs a few retains and never a copy of the output.
+///
+/// Equality is the call's identity at the revision a transcript fingerprint reads (the status, the
+/// length of the output and how much the input holds), never a comparison of the text, so asking
+/// whether two turns are the same stays as cheap as it was before a step held its call.
+public struct NeuralStepCall: Sendable, Hashable {
+    public let call: ToolCall
+
+    public init(_ call: ToolCall) {
+        self.call = call
+    }
+
+    public static func == (lhs: NeuralStepCall, rhs: NeuralStepCall) -> Bool {
+        lhs.call.id == rhs.call.id && lhs.call.status == rhs.call.status
+            && lhs.call.output?.utf8.count == rhs.call.output?.utf8.count
+            && weight(of: lhs.call.input) == weight(of: rhs.call.input)
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(call.id)
+        hasher.combine(call.status)
+        hasher.combine(call.output?.utf8.count)
+    }
+
+    /// How much an input holds: its fields and the length of each string among them.
+    private static func weight(of input: JSONValue?) -> Int {
+        guard let input else { return -1 }
+        guard case .object(let fields) = input else { return 0 }
+        var total = fields.count
+        for value in fields.values {
+            switch value {
+            case .string(let text): total &+= text.utf8.count
+            case .array(let items): total &+= items.count
+            case .object(let inner): total &+= inner.count
+            default: total &+= 1
+            }
+        }
+        return total
+    }
+}
+
 /// One node of the brain: a thought, a tool call, or something the agent said on the way.
 public struct NeuralStep: Identifiable, Sendable, Hashable {
     /// `"messageID:partID"`, the part's own identity, so a step survives a rebuild.
@@ -54,13 +97,16 @@ public struct NeuralStep: Identifiable, Sendable, Hashable {
     public var recovered: Bool
     /// The call also draws a card of its own (a subagent, a board), which the client keeps.
     public var isCard: Bool
+    /// The tool call the step was read from; nil for a thought or a note. The readout reads the
+    /// full output and an edit's strings from it.
+    public var call: NeuralStepCall?
 
     public init(
         id: String, index: Int, zone: NeuralZone, status: NeuralStatus = .ok, group: Int,
         messageID: String, at: Date? = nil, title: String, detail: String = "", text: String = "",
         outputLines: [String] = [], added: Int? = nil, removed: Int? = nil, tieKey: String? = nil,
         tieIsCommand: Bool = false, mark: Character? = nil, recovered: Bool = false,
-        isCard: Bool = false
+        isCard: Bool = false, call: NeuralStepCall? = nil
     ) {
         self.id = id
         self.index = index
@@ -80,6 +126,7 @@ public struct NeuralStep: Identifiable, Sendable, Hashable {
         self.mark = mark
         self.recovered = recovered
         self.isCard = isCard
+        self.call = call
     }
 }
 

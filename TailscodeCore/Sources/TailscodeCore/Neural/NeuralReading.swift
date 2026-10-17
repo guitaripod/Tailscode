@@ -228,7 +228,7 @@ public enum NeuralReading {
         return last.timeIntervalSince(first)
     }
 
-    private static func messageNumber(of step: NeuralStep, in steps: [NeuralStep]) -> Int {
+    static func messageNumber(of step: NeuralStep, in steps: [NeuralStep]) -> Int {
         Set(steps.map(\.group).filter { $0 <= step.group }).count
     }
 
