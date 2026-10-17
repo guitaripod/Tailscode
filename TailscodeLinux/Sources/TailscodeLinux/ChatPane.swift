@@ -2919,6 +2919,14 @@ final class ChatPane: @unchecked Sendable {
         renderChooser()
     }
 
+    /// The terminal moved: the row that offers its folder says the folder it is in now.
+    func followTerminal(_ folder: String?) {
+        guard var model = chooser, folder != model.terminalFolder else { return }
+        model.setTerminalFolder(folder)
+        chooser = model
+        renderChooser()
+    }
+
     /// The chooser answers the keyboard before the shortcut table does — but only for the keys it
     /// binds, so `ctrl+w` verbs, `?` and everything else still reach the window.
     func handleChooserChord(_ chord: KeyChord) -> Bool {
@@ -6113,8 +6121,15 @@ final class ChatPane: @unchecked Sendable {
     /// and `ctrl+w` left the keyboard wherever it happened to be — often on a disclosure inside
     /// the transcript it had just left. The composer is what a person types into when a pane takes
     /// the keyboard, so that is what takes it.
+    /// A pane that is asking which server, and which folder, owns the keyboard: its keys are the
+    /// answers (↑↓, j/k, 1–9, Enter), so the composer must not hold the focus, or every one of them
+    /// would be typed into a message nobody started.
     func focusTranscript() {
-        focusComposer()
+        guard chooser != nil, let scroller = transcriptScroller else {
+            focusComposer()
+            return
+        }
+        gtk_widget_grab_focus(scroller)
     }
 
     /// Everything the settings window can change that is not a colour, applied to this pane.

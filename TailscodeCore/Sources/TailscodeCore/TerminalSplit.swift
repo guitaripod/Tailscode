@@ -58,6 +58,22 @@ public enum TerminalSplit {
         return .open(profileID: chosen.profileID, directory: directory)
     }
 
+    /// The last folder of a path, which is what a row calls it: `/home/m/Dev/Tailscode` is
+    /// `Tailscode`, and the root is `/`.
+    public static func name(of path: String) -> String {
+        let last = path.split(separator: "/").last.map(String.init)
+        return last ?? "/"
+    }
+
+    /// A path as a person writes it in a shell: the home folder is `~`.
+    public static func shortened(
+        _ path: String, home: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) -> String {
+        if path == home { return "~" }
+        guard !home.isEmpty, home != "/", path.hasPrefix(home + "/") else { return path }
+        return "~" + path.dropFirst(home.count)
+    }
+
     /// What a shell's working-directory link names, or nil when the link says there is no place to
     /// start a chat: nothing, something relative, or a folder that was deleted while the shell
     /// stood in it, which the kernel reports as the old path with a suffix.

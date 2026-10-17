@@ -88,6 +88,7 @@ final class MainWindow: @unchecked Sendable {
     /// The configured servers, kept on the main context so an empty pane can ask its question in
     /// the same frame the split happens rather than after a hop through the directory actor.
     private var knownProfiles: [ConnectionProfile] = []
+    private var mintingPanes: Set<PaneID> = []
     private var servers: ServerManager?
     /// Sessions whose delete is confirmed but not yet acknowledged by the server. Every listing
     /// keeps reporting the session until the delete lands, and each report would resurrect the
@@ -1766,6 +1767,7 @@ final class MainWindow: @unchecked Sendable {
         await SessionMarkSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
         Gtk.onMain { SessionMarks.reconcile(with: entries) }
         UpdateWatch.keep(profiles)
+        _ = Self.localAddresses
         Gtk.onMain { [weak self] in
             self?.knownProfiles = profiles
             self?.ensureListStreams(profiles)
@@ -3158,6 +3160,7 @@ final class MainWindow: @unchecked Sendable {
                 await ServerDirectory.shared.reload()
             }
             let profiles = await ServerDirectory.shared.profiles()
+            _ = Self.localAddresses
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 self.knownProfiles = profiles
@@ -3244,10 +3247,21 @@ final class MainWindow: @unchecked Sendable {
         presentChooser(in: fresh, preferring: profileID)
         splitHost.focus(fresh, grabKeyboard: false)
         focused = .transcript
-        createChat(onProfileID: profileID, directory: directory, into: fresh) {
+        startChat(onProfileID: profileID, in: directory, into: fresh)
+    }
+
+    /// A chat minted in a folder the person already chose, into the pane that asked. Pressing again
+    /// while the server is still answering mints nothing more, and a failure is said where the
+    /// press was made, the chooser still standing so the other answers remain.
+    private func startChat(onProfileID profileID: String, in directory: String, into pane: ChatPane) {
+        guard mintingPanes.insert(pane.id).inserted else { return }
+        let paneID = pane.id
+        createChat(onProfileID: profileID, directory: directory, into: pane) {
             [weak self] failure in
-            guard let failure else { return }
-            Gtk.onMain { [weak self] in self?.toast(failure.title) }
+            Gtk.onMain { [weak self] in
+                self?.mintingPanes.remove(paneID)
+                if let failure { self?.toast(failure.title) }
+            }
         }
     }
 
@@ -3258,12 +3272,26 @@ final class MainWindow: @unchecked Sendable {
         presentNewChat(on: profile, into: pane)
     }
 
+    /// Where the terminal is standing, for the rows that offer it. Only a shell that stays alive
+    /// between commands has a folder to offer.
+    private var terminalFolder: String? {
+        TerminalPane.keepsAShell ? terminal.standingDirectory() : nil
+    }
+
+    /// Every open chooser says where the terminal is now, because the person walks there with the
+    /// shell while the question is still open.
+    private func followTerminal() {
+        let folder = terminalFolder
+        splitHost.eachPane { $0.followTerminal(folder) }
+    }
+
     private func chooserModel(preferredServer: String?) -> PaneChooser {
         var model = PaneChooser(
             servers: chooserServers, entries: entries, preferredServer: preferredServer)
         model.watchSummary = watchSummary
         model.offersPreview = true
         model.previewHosts = PreviewAccessStore.all()
+        model.setTerminalFolder(terminalFolder)
         checkWhatIsOn()
         return model
     }
@@ -3291,11 +3319,13 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private var chooserServers: [PaneChooserServer] {
-        knownProfiles.map { profile in
+        let localAddresses = Self.localAddresses
+        return knownProfiles.map { profile in
             PaneChooserServer(
                 profileID: profile.id, name: profile.name, backend: profile.backend,
                 address: ServerLabel.address(profile),
-                reachable: !unreachable.contains(ServerLabel.display(profile)))
+                reachable: !unreachable.contains(ServerLabel.display(profile)),
+                isLocal: Dialogs.isLocal(profile, localAddresses: localAddresses))
         }
     }
 
@@ -3323,6 +3353,8 @@ final class MainWindow: @unchecked Sendable {
         case .newChat(let profileID):
             guard let profile = knownProfiles.first(where: { $0.id == profileID }) else { return }
             presentNewChat(on: profile, into: pane)
+        case .newChatInFolder(let profileID, let directory):
+            startChat(onProfileID: profileID, in: directory, into: pane)
         case .addServer:
             presentServers()
         case .browse:
@@ -4096,6 +4128,7 @@ final class MainWindow: @unchecked Sendable {
             let context: KeyContext =
                 self.terminal.ownsFocus(in: window)
                 ? .terminal : Gtk.focusTakesText(window) ? .insert : .normal
+            if self.activePane.chooserShown { self.followTerminal() }
             if context == .normal, self.focused == .transcript, self.pendingChords.isEmpty,
                 self.activePane.handleChooserChord(chord)
             {
@@ -4571,7 +4604,9 @@ final class MainWindow: @unchecked Sendable {
         case .chats:
             gtk_widget_grab_focus(sidebarList)
             revealCursorRow()
-        case .transcript: activePane.focusTranscript()
+        case .transcript:
+            followTerminal()
+            activePane.focusTranscript()
         case .files: return
         case .terminal: terminal.takeFocus()
         }

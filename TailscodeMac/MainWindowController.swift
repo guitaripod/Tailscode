@@ -1362,7 +1362,7 @@ final class MainWindowController: NSWindowController {
             case .addMac: pane.showPreview(nil)
             }
             splitPanes.persist()
-        case .chooseServer, .allChats, .back:
+        case .chooseServer, .allChats, .back, .newChatInFolder:
             break
         }
     }

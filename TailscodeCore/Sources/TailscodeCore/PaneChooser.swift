@@ -17,15 +17,20 @@ public struct PaneChooserServer: Sendable, Equatable {
     public let backend: AgentType
     public let address: String
     public let reachable: Bool
+    /// Whether this server runs on the machine the person is sitting at, which is what makes the
+    /// folder their terminal is standing in a folder this server can start a chat in.
+    public let isLocal: Bool
 
     public init(
-        profileID: String, name: String, backend: AgentType, address: String, reachable: Bool = true
+        profileID: String, name: String, backend: AgentType, address: String, reachable: Bool = true,
+        isLocal: Bool = false
     ) {
         self.profileID = profileID
         self.name = name
         self.backend = backend
         self.address = address
         self.reachable = reachable
+        self.isLocal = isLocal
     }
 
     public var title: String { ServerLabel.display(name: name, backend: backend) }
@@ -38,6 +43,7 @@ public enum PaneChooserAction: Sendable, Equatable {
     case chooseServer(String)
     case openChat(profileID: String, sessionID: String)
     case newChat(profileID: String)
+    case newChatInFolder(profileID: String, directory: String)
     case allChats(profileID: String)
     case watch
     case browse
@@ -130,6 +136,10 @@ public struct PaneChooser: Sendable, Equatable {
     /// The Macs this device knows run a preview host, one row each. Empty with the flag open
     /// offers the one row that adds a Mac.
     public var previewHosts: [PreviewAccess] = []
+    /// The folder the terminal is standing in, when this client has a shell that keeps one. Set
+    /// from outside because it changes under the person's hands and the chooser is a value type;
+    /// nil simply leaves the row out. It is offered only on a server that runs on this machine.
+    public private(set) var terminalFolder: String?
 
     /// - Parameter preferredServer: the server the pane was already looking at, if any; it is
     ///   pre-focused rather than pre-chosen, so the question is still asked and still answerable
@@ -175,6 +185,7 @@ public struct PaneChooser: Sendable, Equatable {
                 title: Localized.text("New chat here"),
                 detail: server.address, isPrimary: true)
         ]
+        if let folderRow = terminalFolderRow(on: server) { rows.insert(folderRow, at: 0) }
         let chats = self.chats(on: server.profileID)
         let shown = showsEveryChat ? chats.count : Self.chatLimit
         rows += chats.prefix(shown).map { entry in
@@ -204,6 +215,28 @@ public struct PaneChooser: Sendable, Equatable {
         if offersDrawing { rows.append(Self.drawRow) }
         rows += previewRows
         return rows
+    }
+
+    /// The folder a person has already walked to in the shell, offered as the first answer so a
+    /// split is `ctrl+w v` and Enter instead of a directory browser. Named by its last folder, with
+    /// the whole path under it, because the pane is narrow and two projects share names.
+    private func terminalFolderRow(on server: PaneChooserServer) -> PaneChooserRow? {
+        guard server.isLocal, let folder = terminalFolder else { return nil }
+        return PaneChooserRow(
+            action: .newChatInFolder(profileID: server.profileID, directory: folder),
+            title: Localized.text("New chat in %@", TerminalSplit.name(of: folder)),
+            detail: TerminalSplit.shortened(folder), isPrimary: true)
+    }
+
+    /// Follows the shell to where it is now. A row that appears or goes shifts the ones under it,
+    /// so a cursor the person has moved stays on the row it was on; one still at the top stays at
+    /// the top, which is where the folder is when it is there — the answer Enter should take.
+    public mutating func setTerminalFolder(_ folder: String?) {
+        guard folder != terminalFolder else { return }
+        let before = rows.count
+        terminalFolder = folder
+        let shift = cursor > 0 ? rows.count - before : 0
+        cursor = max(0, min(rows.count - 1, cursor + shift))
     }
 
     /// A pane does not have to hold a conversation. The same question that asks which machine also
@@ -313,7 +346,7 @@ public struct PaneChooser: Sendable, Equatable {
         case .back:
             back()
             return nil
-        case .openChat, .newChat, .addServer, .watch, .browse, .draw, .preview:
+        case .openChat, .newChat, .newChatInFolder, .addServer, .watch, .browse, .draw, .preview:
             return action
         }
     }
@@ -343,6 +376,7 @@ public struct PaneChooser: Sendable, Equatable {
         next.offersDrawing = offersDrawing
         next.offersPreview = offersPreview
         next.previewHosts = previewHosts
+        next.setTerminalFolder(terminalFolder)
         if let serverID, servers.contains(where: { $0.profileID == serverID }) {
             _ = next.activate(.chooseServer(serverID))
             if showsEveryChat { _ = next.activate(.allChats(profileID: serverID)) }
