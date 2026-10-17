@@ -12,6 +12,9 @@ struct BrainRow: Hashable {
     /// The words of the turn's answer once it has settled, which the provenance chips are read from.
     var answer: String
     var look: String
+    /// The words of the message that began the turn, which the poster quotes; read once the turn
+    /// has settled and is the one open.
+    var prompt: String?
 
     var id: String { turn.id }
 
@@ -168,7 +171,8 @@ final class BrainLedger: @unchecked Sendable {
             pass.rows[turn.id] = BrainRow(
                 turn: turn, open: isOpen, showRows: settings.rowsShown.contains(turn.id),
                 answer: isOpen && turn.outcome != .running ? Self.answer(of: turn, in: messages) : "",
-                look: settings.look)
+                look: settings.look,
+                prompt: isOpen && turn.outcome != .running ? Self.prompt(before: turn, in: messages) : nil)
         }
         return pass
     }
@@ -180,6 +184,15 @@ final class BrainLedger: @unchecked Sendable {
         for message in record.messages where messageTurns[message] == turnID {
             messageTurns[message] = nil
         }
+    }
+
+    /// The words of the user message that began a turn: what the poster quotes.
+    private static func prompt(before turn: NeuralTurn, in messages: [ChatMessage]) -> String? {
+        guard let first = messages.lastIndex(where: { $0.id == turn.id }),
+            let asked = messages[..<first].last(where: { $0.role == .user })
+        else { return nil }
+        let words = asked.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return words.isEmpty ? nil : words
     }
 
     /// The text of the parts a turn ended on, in order.

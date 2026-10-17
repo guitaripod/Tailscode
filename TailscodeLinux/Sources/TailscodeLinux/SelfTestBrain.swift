@@ -21,6 +21,9 @@ extension SelfTest {
         try checkBrainRows(expect)
         try checkBrainFallbacks(expect)
         try checkBrainWidget(expect)
+        try checkBrainPoster(expect)
+        try checkBrainLine(expect)
+        try checkBrainAnchor(expect)
         return checks
     }
 
@@ -346,5 +349,314 @@ extension SelfTest {
         try expect(
             BrainCompositors.resident.compositors == 0 && NeuralAssetStore.shared.retainCount == 0,
             "closing the last head frees the compositor and the decoded layers")
+    }
+
+    private static func brainPump(_ seconds: Double, until done: () -> Bool = { false }) -> Bool {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            while Date() < end, g_main_context_iteration(nil, 0) != 0 {}
+            if done() { return true }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        return done()
+    }
+
+    private static func settledBrain() throws -> (row: BrainRow, builder: TranscriptRowBuilder) {
+        let messages = NeuralDemo.conversation()
+        let builder = brainBuilder(style: .brain)
+        let rows = builder.rows(state: brainState(messages))
+        let brains = rows.compactMap { row -> BrainRow? in
+            if case .brain(let brain) = row.kind { return brain }
+            return nil
+        }
+        guard let latest = brains.last else { throw SelfTestFailure("brain: no brain row") }
+        return (latest, builder)
+    }
+
+    /// The share poster: its words, its size, that the head is in the hero and not an empty box,
+    /// that the two looks and the two appearances are different pictures, and that a machine with no
+    /// layers still gets a hero.
+    private static func checkBrainPoster(_ expect: (Bool, String) throws -> Void) throws {
+        let (brain, _) = try settledBrain()
+        try expect(
+            brain.open && brain.prompt?.contains("product demonstration") == true,
+            "the open settled brain carries the words that began its turn")
+        let rows = brainBuilder(style: .brain).rows(state: brainState(NeuralDemo.conversation()))
+        let earlier = rows.compactMap { row -> BrainRow? in
+            if case .brain(let brain) = row.kind { return brain }
+            return nil
+        }.first
+        try expect(earlier?.open == false && earlier?.prompt == nil, "and a closed one reads no prompt")
+
+        let name = BrainPoster.filename(
+            prompt: "Make a product demonstration .mp4", turn: brain.turn,
+            now: Date(timeIntervalSince1970: 1_700_000_000))
+        try expect(
+            name.hasPrefix("tailscode-turn-make-a-product-demonstration-mp4-") && name.hasSuffix(".png"),
+            "a saved poster is named for the question and the day (\(name))")
+        try expect(
+            BrainPoster.filename(prompt: nil, turn: brain.turn).hasPrefix("tailscode-turn-"),
+            "a turn with no words still gets a name")
+
+        let model = NeuralBrainModel(turn: brain.turn, context: .none)
+        let card = NeuralShare.Card.make(turn: brain.turn, prompt: brain.prompt, style: .app, dark: true)
+
+        var fallback: PosterSurface?
+        let saved = ProcessInfo.processInfo.environment[NeuralAssetFiles.variable]
+        let empty = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tailscode-poster-empty-\(getpid())")
+        try? FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        setenv(NeuralAssetFiles.variable, empty.path, 1)
+        NeuralAssetFiles.forget()
+        if !NeuralAssetFiles.isAvailable {
+            BrainPoster.render(model: model, prompt: brain.prompt, style: .neural, dark: true, scale: 0.5) {
+                fallback = $0
+            }
+        }
+        if let saved { setenv(NeuralAssetFiles.variable, saved, 1) } else { unsetenv(NeuralAssetFiles.variable) }
+        NeuralAssetFiles.forget()
+        try? FileManager.default.removeItem(at: empty)
+        if let fallback {
+            let ground = fallback.pixel(x: card.hero.x + 6, y: card.hero.y + card.hero.height / 2)
+            try expect(
+                fallback.pixels(in: card.hero, notNear: ground) > 200,
+                "a machine with no layers still gets a hero: the glyph drawn large")
+        }
+
+        guard gtk_init_check() != 0, NeuralAssetFiles.isAvailable else { return }
+        BrainPoster.heroWidthOverride = 320
+        defer { BrainPoster.heroWidthOverride = nil }
+        var made: [String: PosterSurface] = [:]
+        let combos: [(String, CardStyle, Bool)] = [("app-dark", .app, true), ("neural", .neural, true)]
+        for (key, look, dark) in combos {
+            var poster: PosterSurface?
+            var done = false
+            BrainPoster.render(model: model, prompt: brain.prompt, style: look, dark: dark, scale: 1) {
+                poster = $0
+                done = true
+            }
+            _ = brainPump(60) { done }
+            guard let poster else { throw SelfTestFailure("brain: no poster for \(key)") }
+            made[key] = poster
+        }
+        guard let dark = made["app-dark"], let neural = made["neural"] else {
+            throw SelfTestFailure("brain: posters missing")
+        }
+        try expect(
+            dark.width == Int(NeuralShare.Card.width) && dark.height == Int(NeuralShare.Card.height),
+            "the poster has the card's size (\(dark.width)x\(dark.height))")
+        let png = dark.png
+        try expect(
+            (png?.count ?? 0) > 20_000 && png?.prefix(4) == Data([0x89, 0x50, 0x4E, 0x47]),
+            "and encodes as a PNG a file can hold")
+        let wholeCard = NeuralShare.Rect(0, 0, NeuralShare.Card.width, NeuralShare.Card.height)
+        for (key, poster) in made {
+            let canvas = poster.pixel(x: 3, y: 3)
+            try expect(
+                poster.pixels(in: wholeCard, notNear: canvas) > 20_000,
+                "the \(key) poster is not blank")
+            let ground = poster.pixel(x: card.hero.x + 6, y: card.hero.y + card.hero.height / 2)
+            try expect(
+                poster.pixels(in: card.hero, notNear: ground) > 15_000,
+                "the \(key) poster's hero holds the head, not an empty box")
+            if let quote = card.quote {
+                try expect(
+                    poster.pixels(in: quote.label.rect, notNear: canvas) > 60,
+                    "the \(key) poster quotes the question")
+            }
+            let meterBar = card.meters.max { $0.share < $1.share }
+            if let bar = meterBar?.bar {
+                try expect(
+                    poster.pixels(in: bar, notNear: canvas) > 200, "and draws its zone meters")
+            }
+        }
+        try expect(
+            dark.differences(from: neural) > 1_500,
+            "the two looks are different pictures (\(dark.differences(from: neural)) of the sampled pixels)")
+        let lightCard = NeuralShare.Card.make(turn: brain.turn, prompt: brain.prompt, style: .app, dark: false)
+        try expect(
+            lightCard.palette != card.palette,
+            "and the app look wears its own light and dark faces")
+
+        let remembered = BrainPoster.savedLook()
+        BrainPoster.remember(.neural)
+        defer { BrainPoster.remember(remembered) }
+        let window = gtk_window_new()!
+        gtk_window_set_default_size(ptr(window), 700, 900)
+        gtk_window_present(ptr(window))
+        let dialog = BrainShareDialog.present(
+            model: model, prompt: brain.prompt, parent: ptr(window))
+        let drawn = brainPump(60) { dialog.hasPreview }
+        try expect(drawn, "the share sheet draws the poster before it leaves")
+        try expect(
+            dialog.offers == ["Copy", "Save…", "Close"].map { Localized.text($0) },
+            "and offers Copy, Save and Close")
+        dialog.close()
+        gtk_window_destroy(ptr(window))
+        _ = brainPump(0.4)
+        BrainCompositors.dropIdle(olderThan: 0)
+    }
+
+    /// The collapsed line at two widths: what fits is shown whole, what does not is left out, and
+    /// the count, the tally, Replay and Rows stay either way.
+    private static func checkBrainLine(_ expect: (Bool, String) throws -> Void) throws {
+        guard gtk_init_check() != 0 else { return }
+        Gtk.installStyle()
+        let (brain, builder) = try settledBrain()
+        var closed = brain
+        closed.open = false
+        func reading(width: Int32) throws -> (tier: Int, failure: String, detail: String, kept: Bool, room: Int) {
+            let host = BrainHost()
+            host.sessionKey = "selftest-line-\(width)"
+            host.policy = { builder.brainPolicy }
+            let context = TranscriptContext()
+            context.brains = host
+            let window = gtk_window_new()!
+            gtk_window_set_default_size(ptr(window), width, 300)
+            let widget = BrainView.make(closed, context: context)
+            gtk_window_set_child(ptr(window), widget)
+            gtk_window_present(ptr(window))
+            guard let view = BrainView.current(of: widget) else {
+                throw SelfTestFailure("brain: no view for the line at \(width)")
+            }
+            _ = brainPump(5) { view.lineRoom > 0 && view.lineTier >= 0 }
+            _ = brainPump(0.3)
+            let result = (view.lineTier, view.lineFailure, view.lineDetail, view.requiredFieldsShown, view.lineRoom)
+            gtk_window_set_child(ptr(window), nil)
+            gtk_window_destroy(ptr(window))
+            _ = brainPump(0.2)
+            return result
+        }
+        let wide = try reading(width: 1400)
+        let middling = try reading(width: 760)
+        let narrow = try reading(width: 420)
+        let line = NeuralBrainModel(turn: closed.turn, context: .none).line(now: Date())
+        let wholes = [
+            [line.toolMix, line.duration ?? "", [line.thoughts, line.notes].compactMap { $0 }.joined(separator: " \u{00B7} ")],
+            [line.duration ?? "", [line.thoughts, line.notes].compactMap { $0 }.joined(separator: " \u{00B7} ")],
+            [line.duration ?? ""], [],
+        ].map { $0.filter { !$0.isEmpty }.joined(separator: " \u{00B7} ") }
+        try expect(
+            wide.detail == wholes[0] && wide.failure == (line.failure ?? ""),
+            "a wide line says everything: the tool mix, the time, the asides and the failure")
+        for (name, shown) in [("middling", middling), ("narrow", narrow)] {
+            try expect(
+                shown.detail.isEmpty || wholes.contains(shown.detail),
+                "a \(name) line shows a whole field or none, never one cut to a few characters (\(shown.detail))")
+            try expect(
+                shown.failure.isEmpty || shown.failure == (line.failure ?? ""),
+                "and the failure is whole or gone (\(shown.failure))")
+        }
+        try expect(
+            wide.tier <= middling.tier && middling.tier <= narrow.tier,
+            "the optional fields are given up in order as the line narrows (tiers \(wide.tier), \(middling.tier), \(narrow.tier))")
+        try expect(
+            narrow.tier > wide.tier,
+            "and gives up the optional fields from the end as it narrows (tier \(wide.tier) -> \(narrow.tier), \(wide.room) -> \(narrow.room) px)")
+        try expect(
+            !narrow.detail.contains(line.toolMix) || line.toolMix.isEmpty,
+            "the tool mix is the first thing a narrow line leaves out")
+        try expect(
+            wide.kept && middling.kept && narrow.kept,
+            "the count, the tally, Replay and Rows stay at every width")
+    }
+
+    /// A brain opening or closing above the reader's place: the row at the top of the viewport stays
+    /// where it is while the stage is built and laid out, though the page grows by the stage's height.
+    private static func checkBrainAnchor(_ expect: (Bool, String) throws -> Void) throws {
+        guard gtk_init_check() != 0, NeuralAssetFiles.isAvailable else { return }
+        Gtk.installStyle()
+        let (brain, builder) = try settledBrain()
+        var closed = brain
+        closed.open = false
+        var opened = brain
+        opened.open = true
+
+        func run() throws -> (opening: Double, closing: Double, grew: Double) {
+            let host = BrainHost()
+            host.sessionKey = "selftest-anchor"
+            host.policy = { builder.brainPolicy }
+            let context = TranscriptContext()
+            context.brains = host
+            let window = gtk_window_new()!
+            gtk_window_set_default_size(ptr(window), 900, 600)
+            let scroller = gtk_scrolled_window_new()!
+            gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+            let canvas = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+            let view = BrainView.make(closed, context: context)
+            var rows: [ScrollAnchor.Row] = []
+            func filler(_ key: String) {
+                let box = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+                gtk_widget_set_size_request(box, -1, 90)
+                gtk_box_append(ptr(box), Gtk.label(key, css: nil, selectable: false))
+                gtk_box_append(ptr(canvas), box)
+                rows.append((key, UInt(bitPattern: box)))
+            }
+            for index in 0..<3 { filler("before-\(index)") }
+            gtk_box_append(ptr(canvas), view)
+            rows.append(("brain", UInt(bitPattern: view)))
+            for index in 0..<14 { filler("after-\(index)") }
+            gtk_scrolled_window_set_child(op(scroller), canvas)
+            gtk_window_set_child(ptr(window), scroller)
+            gtk_window_present(ptr(window))
+            guard let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) else {
+                throw SelfTestFailure("brain: the scroller has no adjustment")
+            }
+            _ = brainPump(0.5)
+            let anchor = ScrollAnchor(
+                adjustment: adjustment, canvas: canvas, rows: { rows },
+                place: { gtk_adjustment_set_value(adjustment, $0) })
+            Gtk.onNotify(UnsafeMutableRawPointer(adjustment), property: "upper") { anchor.reassert() }
+            host.anchor = { anchor.capture() }
+            func offset(of key: String) -> Double {
+                guard let row = rows.first(where: { $0.key == key }),
+                    let raw = UnsafeMutableRawPointer(bitPattern: row.widget)
+                else { return .nan }
+                var x = 0.0
+                var y = 0.0
+                var w = 0.0
+                var h = 0.0
+                _ = tailscode_widget_bounds_in(ptr(raw), canvas, &x, &y, &w, &h)
+                return y - gtk_adjustment_get_value(adjustment)
+            }
+            var brainBottom = 0.0
+            if let raw = UnsafeMutableRawPointer(bitPattern: UInt(bitPattern: view)) {
+                var x = 0.0
+                var y = 0.0
+                var w = 0.0
+                var h = 0.0
+                _ = tailscode_widget_bounds_in(ptr(raw), canvas, &x, &y, &w, &h)
+                brainBottom = y + h
+            }
+            gtk_adjustment_set_value(adjustment, brainBottom + 200)
+            _ = brainPump(0.5)
+            let before = offset(of: "after-3")
+            let upperBefore = gtk_adjustment_get_upper(adjustment)
+            guard let held = BrainView.current(of: view) else { throw SelfTestFailure("brain: no view") }
+            held.restate(opened)
+            _ = brainPump(8) { held.hasStage && held.stage?.hasRenderer == true }
+            _ = brainPump(0.6)
+            let afterOpen = offset(of: "after-3")
+            let grew = gtk_adjustment_get_upper(adjustment) - upperBefore
+            held.restate(closed)
+            _ = brainPump(0.8)
+            let afterClose = offset(of: "after-3")
+            gtk_window_set_child(ptr(window), nil)
+            gtk_window_destroy(ptr(window))
+            _ = brainPump(0.4)
+            BrainCompositors.dropIdle(olderThan: 0)
+            return (afterOpen - before, afterClose - before, grew)
+        }
+
+        let held = try run()
+        try expect(
+            held.grew > 100,
+            "the stage opening above the viewport makes the page taller by its own height (\(Int(held.grew)) px)")
+        try expect(
+            abs(held.opening) <= 1.5,
+            "and the row at the top of the viewport stays put (\(held.opening) px)")
+        try expect(
+            abs(held.closing) <= 1.5,
+            "and again when it closes (\(held.closing) px)")
     }
 }

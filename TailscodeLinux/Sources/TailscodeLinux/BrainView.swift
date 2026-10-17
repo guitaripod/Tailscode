@@ -28,6 +28,8 @@ final class BrainView: @unchecked Sendable {
     private let addLabel: UnsafeMutablePointer<GtkWidget>
     private let removeLabel: UnsafeMutablePointer<GtkWidget>
     private let failureLabel: UnsafeMutablePointer<GtkWidget>
+    private let optionalBox: UnsafeMutablePointer<GtkWidget>
+    private let probe: UnsafeMutablePointer<GtkWidget>
     private let replayButton: UnsafeMutablePointer<GtkWidget>
     private let rowsButton: UnsafeMutablePointer<GtkWidget>
     private let chevron: UnsafeMutablePointer<GtkWidget>
@@ -37,9 +39,10 @@ final class BrainView: @unchecked Sendable {
     private var replayWhenOpen = false
     private var announcement: String?
     private var lineTicket = 0
-    private var lastLine = ""
-    private var lastFailure = ""
+    private var lastCount = ""
     private var lastTally = ""
+    private var parts = LinePart()
+    private var shownTier = -1
     private var context: TranscriptContext?
 
     var isOpen: Bool { row.open }
@@ -96,6 +99,8 @@ final class BrainView: @unchecked Sendable {
         addLabel = Gtk.label("", css: "diff-add", selectable: false)
         removeLabel = Gtk.label("", css: "diff-remove", selectable: false)
         failureLabel = Gtk.label("", css: "brain-failure", selectable: false)
+        optionalBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: Int32(Self.fieldGap))
+        probe = tailscode_canvas_new({ _, _, _, _ in }, nil, nil)!
         replayButton = Gtk.button(NeuralReading.replayLabel, css: ["brain-pill"]) {}
         rowsButton = Gtk.button(NeuralReading.rowsLabel, css: ["brain-pill"]) {}
         chevron = Gtk.button(Gtk.chevronShut, css: ["brain-chevron", "flat"]) {}
@@ -110,12 +115,26 @@ final class BrainView: @unchecked Sendable {
         gtk_widget_set_size_request(glyphArea, 28, Int32(NeuralGlyph.height(forWidth: 28)))
         gtk_widget_set_valign(glyphArea, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(lead), glyphArea)
-        for label in [countLabel, addLabel, removeLabel, failureLabel, detailLabel] {
-            gtk_box_append(ptr(lead), label)
-        }
+        for label in [countLabel, addLabel, removeLabel] { gtk_box_append(ptr(lead), label) }
+        gtk_widget_set_hexpand(optionalBox, 1)
+        gtk_widget_set_overflow(optionalBox, GTK_OVERFLOW_HIDDEN)
         gtk_widget_set_hexpand(detailLabel, 1)
-        gtk_label_set_ellipsize(op(detailLabel), PANGO_ELLIPSIZE_END)
-        gtk_label_set_single_line_mode(op(detailLabel), 1)
+        for label in [failureLabel, detailLabel] {
+            gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
+            gtk_label_set_single_line_mode(op(label), 1)
+            gtk_box_append(ptr(optionalBox), label)
+        }
+        let fitHost = gtk_overlay_new()!
+        gtk_widget_set_hexpand(fitHost, 1)
+        gtk_widget_set_size_request(fitHost, 1, -1)
+        gtk_overlay_set_child(op(fitHost), optionalBox)
+        gtk_overlay_add_overlay(op(fitHost), probe)
+        gtk_widget_set_can_target(probe, 0)
+        gtk_widget_set_can_focus(probe, 0)
+        gtk_box_append(ptr(lead), fitHost)
+        Gtk.onResize(probe) { [weak self] in
+            Gtk.onMain { [weak self] in self?.fitLine() }
+        }
         gtk_widget_set_visible(addLabel, 0)
         gtk_widget_set_visible(removeLabel, 0)
         gtk_widget_set_visible(failureLabel, 0)
@@ -166,6 +185,7 @@ final class BrainView: @unchecked Sendable {
             stage?.retheme()
         }
         if old.open != next.open {
+            host?.anchor?()
             if next.open { showStage() } else { hideStage() }
         }
         stage?.modelChanged()
@@ -223,15 +243,22 @@ final class BrainView: @unchecked Sendable {
             reduceMotion: BrainBudget.reduceMotion)
     }
 
+    /// What the collapsed line may say beyond its required fields, kept apart so the fit can drop
+    /// them in order.
+    private struct LinePart: Equatable {
+        var failure = ""
+        var mix = ""
+        var duration = ""
+        var asides = ""
+    }
+
+    private static let fieldGap = 8
+
     private func refreshChrome() {
         let line = model.line(now: Date())
-        let detail = [line.toolMix.isEmpty ? nil : line.toolMix, line.duration, line.thoughts, line.notes]
-            .compactMap { $0 }.joined(separator: " · ")
-        let summary = line.count + "|" + detail
-        if summary != lastLine {
-            lastLine = summary
+        if line.count != lastCount {
+            lastCount = line.count
             gtk_label_set_text(op(countLabel), line.count)
-            gtk_label_set_text(op(detailLabel), detail)
         }
         let tally = line.tally ?? ""
         if tally != lastTally {
@@ -242,10 +269,13 @@ final class BrainView: @unchecked Sendable {
             gtk_label_set_text(op(removeLabel), "\u{2212}\(line.removed)")
         }
         let failure = line.failure ?? ""
-        if failure != lastFailure {
-            lastFailure = failure
-            gtk_widget_set_visible(failureLabel, failure.isEmpty ? 0 : 1)
-            gtk_label_set_text(op(failureLabel), failure)
+        let next = LinePart(
+            failure: failure, mix: line.toolMix, duration: line.duration ?? "",
+            asides: [line.thoughts, line.notes].compactMap { $0 }.joined(separator: " \u{00B7} "))
+        if next != parts {
+            parts = next
+            shownTier = -1
+            fitLine()
         }
         let unrecovered = model.steps.contains { $0.status == .failed && !$0.recovered }
         gtk_widget_remove_css_class(failureLabel, "brain-failure-hard")
@@ -265,6 +295,97 @@ final class BrainView: @unchecked Sendable {
     }
 
     private var replayStopLabel: String { Localized.text("Stop") }
+
+    /// The optional fields from most to least, each a whole field or none: the tool mix goes first,
+    /// then the asides, then the duration, then the failure. The count, the tally, Replay and Rows
+    /// are not here; they stay whatever the width.
+    private func tiers() -> [(failure: String, detail: String)] {
+        func join(_ items: [String]) -> String {
+            items.filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
+        }
+        let candidates: [(failure: String, detail: String)] = [
+            (parts.failure, join([parts.mix, parts.duration, parts.asides])),
+            (parts.failure, join([parts.duration, parts.asides])),
+            (parts.failure, parts.duration),
+            (parts.failure, ""),
+            ("", ""),
+        ]
+        var out: [(failure: String, detail: String)] = []
+        for candidate in candidates where out.last.map({ $0 != candidate }) ?? true {
+            out.append(candidate)
+        }
+        return out
+    }
+
+    private func width(of text: String, in label: UnsafeMutablePointer<GtkWidget>) -> Double {
+        guard !text.isEmpty, let layout = gtk_widget_create_pango_layout(label, text) else { return 0 }
+        defer { g_object_unref(UnsafeMutableRawPointer(layout)) }
+        var measured: Int32 = 0
+        pango_layout_get_pixel_size(layout, &measured, nil)
+        return Double(measured)
+    }
+
+    /// Shows the most the line has room to say whole. A field that does not fit is left out rather
+    /// than cut to a few characters, so what is on the line is always readable and the full account
+    /// is in the tooltip. The room is what the line's slot is allocated, so a pane narrowing or
+    /// widening asks again.
+    func fitLine() {
+        let room = Double(gtk_widget_get_width(probe))
+        let options = tiers()
+        guard room > 0 || options.count == 1 else { return }
+        var chosen = options.count - 1
+        for (index, option) in options.enumerated() {
+            let needed =
+                width(of: option.failure, in: failureLabel)
+                + (option.failure.isEmpty || option.detail.isEmpty ? 0 : Double(Self.fieldGap))
+                + width(of: option.detail, in: detailLabel)
+            if needed <= room - 6 {
+                chosen = index
+                break
+            }
+        }
+        guard chosen != shownTier || room <= 0 else { return }
+        shownTier = chosen
+        let shown = options[chosen]
+        gtk_label_set_text(op(failureLabel), shown.failure)
+        gtk_widget_set_visible(failureLabel, shown.failure.isEmpty ? 0 : 1)
+        gtk_label_set_text(op(detailLabel), shown.detail)
+        gtk_widget_set_visible(detailLabel, shown.detail.isEmpty ? 0 : 1)
+    }
+
+    var lineRoom: Int { Int(gtk_widget_get_width(probe)) }
+    var lineTier: Int { shownTier }
+
+    var lineFailure: String {
+        gtk_widget_get_visible(failureLabel) != 0
+            ? gtk_label_get_text(op(failureLabel)).map { String(cString: $0) } ?? "" : ""
+    }
+
+    var lineDetail: String {
+        gtk_widget_get_visible(detailLabel) != 0
+            ? gtk_label_get_text(op(detailLabel)).map { String(cString: $0) } ?? "" : ""
+    }
+
+    /// Whether the fields that stay at every width are all there: the count, the tally when the turn
+    /// wrote anything, Replay when the turn can be replayed, and Rows.
+    var requiredFieldsShown: Bool {
+        let counted = gtk_label_get_text(op(countLabel)).map { !String(cString: $0).isEmpty } ?? false
+        let tallied = model.line(now: Date()).added == 0 || gtk_widget_get_visible(addLabel) != 0
+        let replayable = model.turn.outcome == .running || model.steps.count <= 1
+            || gtk_widget_get_visible(replayButton) != 0
+        return counted && tallied && replayable && gtk_widget_get_visible(rowsButton) != 0
+    }
+
+    /// What the collapsed line shows right now, for the harness: which fields survived the width.
+    var lineReading: String {
+        func shown(_ label: UnsafeMutablePointer<GtkWidget>) -> String {
+            guard gtk_widget_get_visible(label) != 0, let raw = gtk_label_get_text(op(label)) else { return "" }
+            return String(cString: raw)
+        }
+        let failure = shown(failureLabel)
+        let detail = shown(detailLabel)
+        return "line room=\(gtk_widget_get_width(probe)) tier=\(shownTier) failure=[\(failure)] detail=[\(detail)]"
+    }
 
     /// A running turn's duration moves once a second whether or not anything else does.
     private func startLineTimer() {
@@ -363,6 +484,13 @@ final class BrainView: @unchecked Sendable {
             return
         }
         context?.openSubagent?(step.id)
+    }
+
+    /// Opens the poster sheet for this turn as it stands at rest.
+    func presentShare() {
+        guard model.turn.outcome != .running, let root = gtk_widget_get_root(widget) else { return }
+        BrainShareDialog.present(
+            model: model, prompt: row.prompt, parent: ptr(UnsafeMutableRawPointer(root)))
     }
 
     func escape() {
@@ -482,6 +610,6 @@ final class BrainView: @unchecked Sendable {
             + "focus=\(stage.map { gtk_widget_has_focus($0.overlay) != 0 } ?? false) "
             + "state=\(model.state.label) running=\(model.steps.filter { $0.status == .running }.count) "
             + "outcome=\(model.turn.outcome) replay=\(model.isReplaying) frames=\(stage?.frames ?? 0) fulls=\(timings?.fulls ?? 0) "
-            + "deltas=\(timings?.deltas ?? 0)"
+            + "deltas=\(timings?.deltas ?? 0) \(lineReading) \(stage?.diveReading ?? "")"
     }
 }

@@ -133,6 +133,7 @@ final class ChatPane: @unchecked Sendable {
         }
     }
     private var isAutoScrolling = false
+    private var scrollAnchor: ScrollAnchor?
     private var isFillingInChunks = false
     private var pinCorrectorScheduled = false
     private var pendingReveal = false
@@ -447,7 +448,14 @@ final class ChatPane: @unchecked Sendable {
                 guard let self, self.canvasPromptKey == nil, self.followsBottom else { return }
                 self.schedulePinCorrector()
             }
+            if let canvas = canvasBox {
+                scrollAnchor = ScrollAnchor(
+                    adjustment: adjustment, canvas: canvas,
+                    rows: { [weak self] in self?.anchorRows() ?? [] },
+                    place: { [weak self] value in self?.placeAnchored(value) })
+            }
             Gtk.onNotify(UnsafeMutableRawPointer(adjustment), property: "upper") { [weak self] in
+                self?.scrollAnchor?.reassert()
                 Gtk.onMain { [weak self] in
                     guard let self, self.canvasPromptKey != nil else { return }
                     self.settleFreshCanvas()
@@ -982,6 +990,8 @@ final class ChatPane: @unchecked Sendable {
     private func wireContext() {
         context.brains = brains
         brains.changed = { [weak self] in self?.brainSettingsChanged() }
+        brains.anchor = { [weak self] in self?.holdScrollAnchor() }
+        brains.userToggled = { [weak self] in self?.followsBottom = false }
         brains.policy = { [weak self] in self?.rowBuilder.brainPolicy }
         context.openSubagent = { [weak self] key in
             Gtk.onMain { [weak self] in self?.openSubagentCard(key) }
@@ -4942,6 +4952,32 @@ final class ChatPane: @unchecked Sendable {
             }
         }
     }
+
+    /// The rendered rows with their widgets, in order, for the scroll anchor to find a row by key.
+    private func anchorRows() -> [ScrollAnchor.Row] {
+        guard renderedRows.count == rowWidgets.count else { return [] }
+        return zip(renderedRows, rowWidgets).map { ($0.key, $1) }
+    }
+
+    private func placeAnchored(_ value: Double) {
+        guard let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        isAutoScrolling = true
+        gtk_adjustment_set_value(adjustment, value)
+        isAutoScrolling = false
+    }
+
+    /// A brain above the reader's place is about to open or close: the row at the top of the
+    /// viewport is held where it is while the heights settle, unless the transcript is following
+    /// its end (where the pin keeps the end in view) or a fresh canvas is holding a prompt.
+    func holdScrollAnchor() {
+        guard !followsBottom, canvasPromptKey == nil, fillComplete else { return }
+        scrollAnchor?.capture()
+    }
+
+    /// The row the scroll anchor is holding, for the harness.
+    var heldAnchorKey: String? { scrollAnchor?.holdsKey }
 
     /// The gentlest scroll that shows a just-opened body: down only as far as the body's end (or
     /// the page can hold), and never past the point where the clicked header would leave the top —

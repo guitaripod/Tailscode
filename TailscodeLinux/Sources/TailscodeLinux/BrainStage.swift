@@ -33,6 +33,11 @@ final class BrainStage: @unchecked Sendable {
     private let scale: UnsafeMutablePointer<GtkWidget>
     private let chipRow: UnsafeMutablePointer<GtkWidget>
     private let diveBox: UnsafeMutablePointer<GtkWidget>
+    private lazy var shareButton: UnsafeMutablePointer<GtkWidget> = Gtk.button(
+        Localized.text("Share"), css: ["brain-pill"]
+    ) { [weak self] in
+        Gtk.onMain { [weak self] in self?.owner.presentShare() }
+    }
 
     private var compositor: NeuralCompositor?
     private var pair: NeuralSurfacePair?
@@ -160,6 +165,9 @@ final class BrainStage: @unchecked Sendable {
         Gtk.addClass(scale, "brain-scrub")
         tailscode_set_accessible_label(scale, NeuralReading.scrubLabel)
         gtk_box_append(ptr(scrubRow), scale)
+        gtk_widget_set_tooltip_text(shareButton, Localized.text("Share this turn"))
+        tailscode_set_accessible_label(shareButton, Localized.text("Share this turn"))
+        gtk_box_append(ptr(scrubRow), shareButton)
         gtk_widget_set_visible(scrubRow, 0)
         gtk_box_append(ptr(root), scrubRow)
         Gtk.connect(UnsafeMutableRawPointer(scale), "value-changed") { [weak self] in
@@ -262,6 +270,27 @@ final class BrainStage: @unchecked Sendable {
         parts.append(contentsOf: card.output)
         parts.append(card.footer)
         return parts.joined(separator: ". ")
+    }
+
+    private static func natural(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
+        var natural: Int32 = 0
+        gtk_widget_measure(
+            widget, GTK_ORIENTATION_VERTICAL, max(1, gtk_widget_get_width(widget)), nil, &natural, nil, nil)
+        return natural
+    }
+
+    /// How tall the dive's list is allocated against what it asked for, for the harness.
+    var diveReading: String {
+        let listed = gtk_widget_get_last_child(diveBox)
+        var natural: Int32 = 0
+        if let listed {
+            gtk_widget_measure(
+                listed, GTK_ORIENTATION_VERTICAL, max(1, gtk_widget_get_width(diveBox)), nil, &natural, nil, nil)
+        }
+        return "dive=\(diveZone.map { String(describing: $0) } ?? "-") box=\(gtk_widget_get_height(diveBox)) "
+            + "list=\(listed.map { gtk_widget_get_height($0) } ?? 0)/\(natural) root=\(gtk_widget_get_height(root))/\(Self.natural(root)) "
+            + "row=\(gtk_widget_get_parent(root).map { gtk_widget_get_height($0) } ?? 0)/\(gtk_widget_get_parent(root).map { Self.natural($0) } ?? 0) "
+            + "canvas=\(gtk_widget_get_parent(gtk_widget_get_parent(root)).map { gtk_widget_get_height($0) } ?? 0)/\(gtk_widget_get_parent(gtk_widget_get_parent(root)).map { Self.natural($0) } ?? 0)"
     }
 
     var cardSummary: String? {
@@ -752,7 +781,17 @@ final class BrainStage: @unchecked Sendable {
             }
             gtk_box_append(ptr(rows), line)
         }
+        gtk_widget_set_size_request(scroller, -1, Self.listHeight(of: rows))
         gtk_widget_set_visible(diveBox, 1)
+    }
+
+    /// How tall the dive's list should be: what its rows come to, up to the ceiling. The scroller's
+    /// own propagated height was measured before its rows were in and stayed that size, so the list
+    /// showed two rows and the card under it was drawn over the rest.
+    private static func listHeight(of rows: UnsafeMutablePointer<GtkWidget>) -> Int32 {
+        var natural: Int32 = 0
+        gtk_widget_measure(rows, GTK_ORIENTATION_VERTICAL, -1, nil, &natural, nil, nil)
+        return min(224, max(0, natural))
     }
 
     /// The model changed under an open stage: a step arrived, a status moved, a node was chosen.

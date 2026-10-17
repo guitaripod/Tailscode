@@ -58,6 +58,16 @@ double tailscode_markup_draw(
     cairo_t *cr, const char *markup, const char *font, double x, double y, double width, int align,
     int max_lines, double red, double green, double blue, double alpha);
 
+/// Text for a poster: the same as `tailscode_text_draw` with a line-height factor (1 is the
+/// font's own, 0 leaves it) and a letter spacing in pixels added after every glyph.
+double tailscode_poster_text(
+    cairo_t *cr, const char *text, const char *font, double x, double y, double width, int align,
+    int max_lines, double line_factor, double tracking, double red, double green, double blue,
+    double alpha);
+
+/// A cairo surface as PNG bytes, newly allocated (free with `g_free`), or NULL on failure.
+unsigned char *tailscode_surface_png(cairo_surface_t *surface, gsize *out_len);
+
 /// Whether the pointer is over `widget` or the keyboard is on it, announced once when either
 /// begins and once when both have ended. Never claimed, so the widget keeps its own behaviour.
 void tailscode_on_hover_focus(

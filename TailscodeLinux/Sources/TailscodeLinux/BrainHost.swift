@@ -22,6 +22,11 @@ final class BrainHost {
 
     /// Asks the pane to build its rows again and says what to build them with.
     var changed: (() -> Void)?
+    /// Asked just before a brain above the reader's place changes height, so the pane holds the
+    /// row at the top of the viewport where it is.
+    var anchor: (() -> Void)?
+    /// A person opened or closed a brain: a reading gesture, so the transcript stops following its end.
+    var userToggled: (() -> Void)?
     /// The open policy the last row build made, for the pane's own turns.
     var policy: (() -> NeuralOpenPolicy?)?
     var sessionKey = "none" {
@@ -88,6 +93,7 @@ final class BrainHost {
 
     func toggleOpen(turnID: String) {
         guard let policy = policy?() else { return }
+        userToggled?()
         choices = policy.toggle(turnID: turnID)
         changed?()
     }

@@ -14,7 +14,9 @@ extension MainWindow {
     /// `open|close|toggle[=turn]`, `state=<activity>`, `theme=<id>[,light|dark]`,
     /// `style=brain|lines`, `replay`, `stop`, `scrub=<0..1>`, `hover=<step>`, `pin=<step>`,
     /// `clear`, `esc`, `walk=next|previous`, `dive=<zone>`, `surface`, `chip=<n>`, `rows`,
-    /// `reduce=on|off`, `reading`, `perf`, `double=<step>`.
+    /// `reduce=on|off`, `reading`, `perf`, `double=<step>`,
+    /// `share[=dark|light][,app|neural]` (writes the poster's PNG to `TAILSCODE_BRAIN_SHARE_OUT`, a file
+    /// or a folder, or to the harness data directory), `shareopen` (the sheet itself).
     func driveBrain(_ argument: String) {
         let pane = activePane
         let parts = argument.split(separator: "=", maxSplits: 1).map(String.init)
@@ -62,7 +64,7 @@ extension MainWindow {
             driveBrainView(view, verb: verb, value: value)
         }
         let views = host.liveViews.sorted { $0.turnID < $1.turnID }
-        write(host.reading)
+        write(host.reading + " anchor=\(pane.heldAnchorKey ?? "-")")
         for view in views { write(view.reading) }
         if verb == "perf" {
             for view in views { write("perf \(view.performance)") }
@@ -108,8 +110,43 @@ extension MainWindow {
             view.driveChip(Int(value))
         case "double":
             if let id = step(value) { view.openSubagent(of: id) }
+        case "share":
+            driveShare(view, words: value.split(separator: ",").map(String.init))
+        case "shareopen":
+            view.presentShare()
         default:
             break
+        }
+    }
+
+    /// Paints the poster of a turn in a look and an appearance and writes it where the harness
+    /// can read it, saying where and how big on the line it prints.
+    private func driveShare(_ view: BrainView, words: [String]) {
+        let look = NeuralShare.looks.first { words.contains($0.id) } ?? BrainPoster.savedLook()
+        let dark = words.contains("dark") ? true : (words.contains("light") ? false : MatrixTheme.palette.isDark)
+        let scale = words.compactMap { $0.hasPrefix("x") ? Double($0.dropFirst()) : nil }.first ?? 1
+        let name = "brain-share-\(look.id)-\(dark ? "dark" : "light").png"
+        let target = ProcessInfo.processInfo.environment["TAILSCODE_BRAIN_SHARE_OUT"].flatMap {
+            $0.isEmpty ? nil : $0
+        }
+        let path: String
+        if let target, target.hasSuffix(".png") {
+            path = target
+        } else {
+            let folder = target.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? XDG.dataDirectory
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            path = folder.appendingPathComponent(name).path
+        }
+        BrainPoster.render(
+            model: view.model, prompt: view.row.prompt, style: look, dark: dark, scale: scale
+        ) { poster in
+            let line: String
+            if let poster, let png = poster.png, (try? png.write(to: URL(fileURLWithPath: path))) != nil {
+                line = "share path=\(path) size=\(poster.width)x\(poster.height) look=\(look.id) dark=\(dark)"
+            } else {
+                line = "share failed look=\(look.id) dark=\(dark)"
+            }
+            FileHandle.standardOutput.write(Data("BRAIN \(line)\n".utf8))
         }
     }
 

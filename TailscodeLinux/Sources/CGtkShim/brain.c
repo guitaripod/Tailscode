@@ -251,6 +251,40 @@ double tailscode_markup_draw(
     return draw_layout(cr, layout, x, y, red, green, blue, alpha);
 }
 
+double tailscode_poster_text(
+    cairo_t *cr, const char *text, const char *font, double x, double y, double width, int align,
+    int max_lines, double line_factor, double tracking, double red, double green, double blue,
+    double alpha) {
+    PangoLayout *layout = text_layout(cr, font, width, align, max_lines, FALSE, text);
+    if (line_factor > 0) pango_layout_set_line_spacing(layout, (float)line_factor);
+    if (tracking != 0) {
+        PangoAttrList *attributes = pango_attr_list_new();
+        pango_attr_list_insert(
+            attributes, pango_attr_letter_spacing_new((int)(tracking * PANGO_SCALE)));
+        pango_layout_set_attributes(layout, attributes);
+        pango_attr_list_unref(attributes);
+    }
+    return draw_layout(cr, layout, x, y, red, green, blue, alpha);
+}
+
+static cairo_status_t poster_png_write(void *closure, const unsigned char *data, unsigned int length) {
+    g_byte_array_append((GByteArray *)closure, data, length);
+    return CAIRO_STATUS_SUCCESS;
+}
+
+unsigned char *tailscode_surface_png(cairo_surface_t *surface, gsize *out_len) {
+    if (out_len) *out_len = 0;
+    if (!surface) return NULL;
+    GByteArray *array = g_byte_array_new();
+    cairo_status_t status = cairo_surface_write_to_png_stream(surface, poster_png_write, array);
+    if (status != CAIRO_STATUS_SUCCESS || array->len == 0) {
+        g_byte_array_free(array, TRUE);
+        return NULL;
+    }
+    if (out_len) *out_len = array->len;
+    return g_byte_array_free(array, FALSE);
+}
+
 typedef struct {
     void (*enter)(void *);
     void (*leave)(void *);

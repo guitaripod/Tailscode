@@ -58,7 +58,7 @@ Each client has its own row builder; each emits one new row per turn, `brain:<tu
 ## Away and sharing
 
 - Live Activity: the head glyph (44 pt on the Lock Screen, 38 pt expanded) replaces `PhaseIcon`'s symbol; compact and minimal stay symbols. Notification long look and `NoticeFace`: the head at 34 to 46 pt in the tone tile. Both draw `NeuralGlyph`.
-- Share a turn: a poster painted from `NeuralShare` with the hero from `NeuralCompositor` (iOS and Mac through their existing card renderers, Linux through `ShareCardDialog`).
+- Share a turn: a poster painted from `NeuralShare` with the hero from `NeuralCompositor` (iOS and Mac through their existing card renderers, Linux through `BrainShareDialog`, which paints the poster with cairo and Pango from the same geometry: the hero is the stage's own picture, the CPU compositor's full frame with `BrainPainter`'s nodes, wires and ties laid between its interior and its front).
 - Haptics: node fire plays `.step`, a waiting node `.needsYou`, settling `.received`.
 
 ## Existing code to improve

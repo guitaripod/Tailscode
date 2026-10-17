@@ -131,7 +131,7 @@ public enum SelfTest {
         do {
             let checks = try checkBrain()
             report(
-                "brain: \(checks) claims hold: rows, Lines, fallbacks, stage layout, hover, pin, replay, dive, clocks, hidden panes, release")
+                "brain: \(checks) claims hold: rows, Lines, fallbacks, stage layout, hover, pin, replay, dive, clocks, hidden panes, the share poster, the collapsed line's fit, the scroll anchor, release")
         } catch {
             report("brain: \(error)")
             failures += 1
