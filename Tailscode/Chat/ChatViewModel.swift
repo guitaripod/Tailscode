@@ -871,6 +871,8 @@ final class ChatViewModel {
     private func reconcileOptimisticState(with state: ConversationState) {
         if state.status == .running { optimisticThinking = false }
         pending.reconcile(userMessages: state.messages.count { $0.role == .user })
+        retireDeliveredFailures(in: state)
+        dropQueueSentElsewhere()
         armResumeForWalledTurn(state)
         if optimisticThinking, !pending.hasInFlight,
             let last = state.messages.last, last.role == .assistant, !last.text.isEmpty
@@ -944,11 +946,37 @@ final class ChatViewModel {
     /// want to reword once you have read another paragraph of the answer.
     private(set) var queue = SendQueue() {
         didSet {
-            guard queue != oldValue else { return }
+            guard queue != oldValue, !adoptingStoredQueue else { return }
             SendQueueStore.save(queue, profileID: contextID, sessionID: session.id)
         }
     }
     private var lastSent: QueuedSend?
+    private var adoptingStoredQueue = false
+
+    /// Reads the queue back from the store after an atomic take. Another view model on this
+    /// conversation — the one a launch wakes for a held queue, a pane on the iPad — may have sent
+    /// the head already, and this copy would otherwise send it a second time or keep drawing it
+    /// as waiting. What the store holds is not written back to it.
+    private func adoptStoredQueue() {
+        adoptingStoredQueue = true
+        queue = SendQueueStore.queue(profileID: contextID, sessionID: session.id)
+        adoptingStoredQueue = false
+    }
+
+    /// A copy of the queue that another view model on this conversation has already sent from
+    /// still draws as waiting until something here tries to drain it, which a running turn never
+    /// lets happen. The store is the one account of what is waiting, so a message it no longer
+    /// holds is dropped here the moment it is noticed. Ids are compared rather than the messages,
+    /// because this runs on every state and a picture's bytes are not worth reading each time.
+    private func dropQueueSentElsewhere() {
+        guard !queue.isEmpty else { return }
+        let stored = SendQueueStore.queue(profileID: contextID, sessionID: session.id)
+        guard stored.items.map(\.id) != queue.items.map(\.id) else { return }
+        AppLogger.chat.info(
+            "queue adopted from store session=\(session.id) held=\(queue.count) stored=\(stored.count)")
+        adoptStoredQueue()
+        onPending?()
+    }
 
     var queued: [QueuedSend] { queue.items }
 
@@ -977,7 +1005,12 @@ final class ChatViewModel {
         guard !isBusy, !queue.isEmpty, !queueHeldAfterFailure,
             SendQueueDrain.mayDrain(state)
         else { return }
-        guard let next = queue.takeFirst() else { return }
+        let next = SendQueueStore.takeFirst(profileID: contextID, sessionID: session.id)
+        adoptStoredQueue()
+        guard let next else {
+            onPending?()
+            return
+        }
         AppLogger.chat.info("queue drain session=\(session.id) left=\(queue.count)")
         if case .command(let name, let arguments) = next.kind {
             runNow(
@@ -1004,16 +1037,59 @@ final class ChatViewModel {
     /// it, it returns to the head of the queue instead, because the order somebody wrote things
     /// in outranks the row they were written on.
     private func recoverFailedSend(_ send: QueuedSend, row: UUID, reason: String) {
+        defer { retireDeliveredFailures(in: state) }
         if queue.isEmpty {
             pending.mark(id: row, .failed(reason: reason))
             queueHold = nil
         } else {
+            heldBaseline = pending.send(id: row)?.baselineUserCount
             pending.remove(id: row)
             queue.requeueAtHead(send)
             queueHeldAfterFailure = true
             queueHold = reason
         }
         onPending?()
+    }
+
+    private var heldBaseline: Int?
+
+    /// A send that errored may still have arrived, and the transcript is the witness that settles
+    /// it: a failed row or a held queue head whose words appear as a user message written after
+    /// the send began is retired instead of being offered again.
+    private func retireDeliveredFailures(in state: ConversationState) {
+        guard pending.sends.contains(where: \.isFailed) || queueHeldAfterFailure else { return }
+        let userTexts = state.messages.filter { $0.role == .user }.map(\.text)
+        var changed = false
+        for send in pending.retireArrived(userTexts: userTexts) {
+            releaseResume(for: send.id)
+            changed = true
+        }
+        if queueHeldAfterFailure, let baseline = heldBaseline, let head = queue.items.first,
+            !head.isCommand,
+            SendArrival.arrived(head.text, baselineUserCount: baseline, userTexts: userTexts)
+        {
+            _ = queue.takeFirst()
+            heldBaseline = nil
+            if queue.isEmpty {
+                queueHeldAfterFailure = false
+                queueHold = nil
+            }
+            changed = true
+        }
+        if changed {
+            AppLogger.chat.info("retired delivered failure session=\(session.id)")
+            onPending?()
+        }
+    }
+
+    /// Lets go of a plan that was holding a message for a send that turned out to have arrived, so
+    /// the window opening later cannot send the same words a second time.
+    private func releaseResume(for row: UUID) {
+        guard resume.plan(for: row) != nil else { return }
+        resume.drop(row)
+        ResumeStore.release(row)
+        onResumeChange?(nil)
+        stopResumeClockIfIdle()
     }
 
     /// Why the queue stopped draining, when it has. A queue that quietly stopped looks exactly
