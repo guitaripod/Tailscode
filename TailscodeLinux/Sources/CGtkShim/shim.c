@@ -2084,9 +2084,86 @@ void tailscode_sheen_set(GtkWidget *area, double progress, const double *rgb, do
     gtk_widget_queue_draw(area);
 }
 
+typedef struct {
+    double fraction;
+    double ink[3];
+    double stroke;
+    double track;
+    double tick;
+    int tick_approximate;
+    double tick_ink[3];
+    double outline[3];
+    double tail_end;
+    double tail_ink[3];
+} TailscodeMeter;
+
+#define TAILSCODE_METER_TICK_OVERHANG 4.0
+#define TAILSCODE_METER_TICK_WIDTH 2.0
+#define TAILSCODE_METER_HATCH_ON 2.5
+#define TAILSCODE_METER_HATCH_OFF 3.0
+#define TAILSCODE_METER_HATCH_ALPHA 0.6
+#define TAILSCODE_METER_APPROXIMATE_ALPHA 0.55
+
+static void tailscode_meter_pill(
+    cairo_t *cr, double left, double right, double top, double radius) {
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, left + radius, top + radius, radius, G_PI / 2, G_PI * 3 / 2);
+    cairo_arc(cr, right - radius, top + radius, radius, -G_PI / 2, G_PI / 2);
+    cairo_close_path(cr);
+}
+
+/// Where the fill is going if nothing changes: 45 degree stripes between the fill and the tail's
+/// end, clipped to the track so the stripes follow its rounded ends.
+static void tailscode_meter_tail(
+    cairo_t *cr, const TailscodeMeter *meter, double w, double top, double bar_height,
+    double radius, double from) {
+    double to = CLAMP(meter->tail_end, 0.0, 1.0) * w;
+    if (to - from < 1.0) return;
+    cairo_save(cr);
+    tailscode_meter_pill(cr, 0, w, top, radius);
+    cairo_clip(cr);
+    cairo_rectangle(cr, from, top, to - from, bar_height);
+    cairo_clip(cr);
+    cairo_set_source_rgba(
+        cr, meter->tail_ink[0], meter->tail_ink[1], meter->tail_ink[2],
+        TAILSCODE_METER_HATCH_ALPHA);
+    cairo_set_line_width(cr, TAILSCODE_METER_HATCH_ON);
+    double pitch = (TAILSCODE_METER_HATCH_ON + TAILSCODE_METER_HATCH_OFF) * G_SQRT2;
+    for (double x = from - bar_height; x < to + pitch; x += pitch) {
+        cairo_move_to(cr, x, top + bar_height);
+        cairo_line_to(cr, x + bar_height, top);
+    }
+    cairo_stroke(cr);
+    cairo_restore(cr);
+}
+
+static void tailscode_meter_tick(
+    cairo_t *cr, const TailscodeMeter *meter, double w, double top, double bar_height) {
+    double x = CLAMP(meter->tick, 0.0, 1.0) * w;
+    double half = TAILSCODE_METER_TICK_WIDTH / 2.0;
+    x = CLAMP(x, half + 1.0, MAX(w - half - 1.0, half + 1.0));
+    double y0 = top - TAILSCODE_METER_TICK_OVERHANG;
+    double y1 = top + bar_height + TAILSCODE_METER_TICK_OVERHANG;
+    cairo_set_source_rgb(cr, meter->outline[0], meter->outline[1], meter->outline[2]);
+    cairo_rectangle(cr, x - half - 1.0, y0 - 1.0, TAILSCODE_METER_TICK_WIDTH + 2.0, y1 - y0 + 2.0);
+    cairo_fill(cr);
+    cairo_set_source_rgba(
+        cr, meter->tick_ink[0], meter->tick_ink[1], meter->tick_ink[2],
+        meter->tick_approximate ? TAILSCODE_METER_APPROXIMATE_ALPHA : 1.0);
+    if (meter->tick_approximate) {
+        double dashes[2] = {3.0, 2.0};
+        cairo_set_dash(cr, dashes, 2, 0);
+    }
+    cairo_set_line_width(cr, TAILSCODE_METER_TICK_WIDTH);
+    cairo_move_to(cr, x, y0);
+    cairo_line_to(cr, x, y1);
+    cairo_stroke(cr);
+    cairo_set_dash(cr, NULL, 0, 0);
+}
+
 static void tailscode_meter_draw(
     GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
-    TailscodeRing *meter = raw;
+    TailscodeMeter *meter = raw;
     double bar_height = meter->stroke;
     if (bar_height <= 0) bar_height = 6.0;
     if (bar_height > height) bar_height = height;
@@ -2095,38 +2172,44 @@ static void tailscode_meter_draw(
     double w = MAX((double) width, bar_height);
     if (radius <= 0) return;
     cairo_set_source_rgba(cr, meter->ink[0], meter->ink[1], meter->ink[2], meter->track);
-    cairo_new_sub_path(cr);
-    cairo_arc(cr, radius, top + radius, radius, G_PI / 2, G_PI * 3 / 2);
-    cairo_arc(cr, w - radius, top + radius, radius, -G_PI / 2, G_PI / 2);
-    cairo_close_path(cr);
+    tailscode_meter_pill(cr, 0, w, top, radius);
     cairo_fill(cr);
     double fraction = CLAMP(meter->fraction, 0.0, 1.0);
-    if (fraction <= 0) return;
-    double span = MAX(fraction * w, bar_height);
-    cairo_set_source_rgb(cr, meter->ink[0], meter->ink[1], meter->ink[2]);
-    cairo_new_sub_path(cr);
-    cairo_arc(cr, radius, top + radius, radius, G_PI / 2, G_PI * 3 / 2);
-    cairo_arc(cr, span - radius, top + radius, radius, -G_PI / 2, G_PI / 2);
-    cairo_close_path(cr);
-    cairo_fill(cr);
+    double span = fraction > 0 ? MAX(fraction * w, bar_height) : 0;
+    if (span > 0) {
+        cairo_set_source_rgb(cr, meter->ink[0], meter->ink[1], meter->ink[2]);
+        tailscode_meter_pill(cr, 0, span, top, radius);
+        cairo_fill(cr);
+    }
+    if (meter->tail_end >= 0 && meter->tail_end > fraction) {
+        tailscode_meter_tail(cr, meter, w, top, bar_height, radius, span);
+    }
+    if (meter->tick >= 0) tailscode_meter_tick(cr, meter, w, top, bar_height);
 }
 
 GtkWidget *tailscode_meter_new(void) {
     GtkWidget *area = gtk_drawing_area_new();
-    TailscodeRing *ring = g_new0(TailscodeRing, 1);
-    ring->ink[0] = ring->ink[1] = ring->ink[2] = 0.5;
-    ring->stroke = 6.0;
-    ring->track = 0.12;
-    g_object_set_data_full(G_OBJECT(area), "tailscode-meter", ring, g_free);
-    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_meter_draw, ring, NULL);
+    TailscodeMeter *meter = g_new0(TailscodeMeter, 1);
+    meter->ink[0] = meter->ink[1] = meter->ink[2] = 0.5;
+    meter->stroke = 6.0;
+    meter->track = 0.12;
+    meter->tick = -1;
+    meter->tail_end = -1;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-meter", meter, g_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_meter_draw, meter, NULL);
     gtk_widget_set_can_target(area, FALSE);
     return area;
+}
+
+static void tailscode_meter_resize(GtkWidget *area, const TailscodeMeter *meter) {
+    double room = meter->tick >= 0 ? TAILSCODE_METER_TICK_OVERHANG * 2.0 : 0.0;
+    gtk_widget_set_size_request(area, -1, (int) (meter->stroke + room));
 }
 
 void tailscode_meter_set(
     GtkWidget *area, double fraction, const double *rgb, double track, double height) {
     if (!area) return;
-    TailscodeRing *meter = g_object_get_data(G_OBJECT(area), "tailscode-meter");
+    TailscodeMeter *meter = g_object_get_data(G_OBJECT(area), "tailscode-meter");
     if (!meter) return;
     meter->fraction = fraction;
     if (rgb) {
@@ -2136,7 +2219,25 @@ void tailscode_meter_set(
     }
     meter->track = track;
     meter->stroke = height > 0 ? height : 6.0;
-    gtk_widget_set_size_request(area, -1, (int) height);
+    tailscode_meter_resize(area, meter);
+    gtk_widget_queue_draw(area);
+}
+
+void tailscode_meter_set_pace(
+    GtkWidget *area, double tick, int tick_approximate, const double *tick_rgb,
+    const double *outline_rgb, double tail_end, const double *tail_rgb) {
+    if (!area) return;
+    TailscodeMeter *meter = g_object_get_data(G_OBJECT(area), "tailscode-meter");
+    if (!meter) return;
+    meter->tick = tick;
+    meter->tick_approximate = tick_approximate;
+    meter->tail_end = tail_end;
+    for (int index = 0; index < 3; index++) {
+        if (tick_rgb) meter->tick_ink[index] = tick_rgb[index];
+        if (outline_rgb) meter->outline[index] = outline_rgb[index];
+        if (tail_rgb) meter->tail_ink[index] = tail_rgb[index];
+    }
+    tailscode_meter_resize(area, meter);
     gtk_widget_queue_draw(area);
 }
 

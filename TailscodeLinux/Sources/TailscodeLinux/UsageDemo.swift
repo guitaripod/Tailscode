@@ -44,6 +44,10 @@ enum UsageDemo {
                     ("macbook", opencode(1.0, now: now)),
                     ("", balance(0)),
                 ], answeredAt: now, now: now)
+        case "pace":
+            return QuotaGlance.make(
+                from: RangeDemo.reports(now: now), answeredAt: now, now: now,
+                trail: RangeStore.trail)
         case "stale":
             return QuotaGlance.make(
                 from: [("arch", claude(session: 0.44, weekly: 0.52, now: now))],

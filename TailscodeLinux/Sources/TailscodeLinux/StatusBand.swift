@@ -128,7 +128,7 @@ enum StatusBand {
     /// quietest facts, and last the state of the turn itself. A segment that does not fit is hidden
     /// whole rather than shrunk to an ellipsis, so whatever remains reads in full.
     private static let keepOrder = [
-        "phase", "queued", "agents", "context", "cost", "goal", "branch", "attach",
+        "phase", "queued", "agents", "context", "wall", "cost", "goal", "branch", "cache", "attach",
     ]
 
     static func fit(_ box: UnsafeMutablePointer<GtkWidget>, state: State, width: Int32) {

@@ -94,6 +94,17 @@ final class Notifier: @unchecked Sendable {
         SettingsFile.capture()
     }
 
+    static let runningLowKey = "tailscode.notify.runningLow"
+
+    static var notifyRunningLow: Bool {
+        (SettingsFile.stored(forKey: runningLowKey) as? Bool)
+            ?? UserDefaults.standard.object(forKey: runningLowKey) as? Bool ?? true
+    }
+
+    static func setNotifyRunningLow(_ value: Bool) {
+        SettingsFile.set(value, forKey: runningLowKey)
+    }
+
     /// Names a server for the notices it raises, so a stack says which machine each came from.
     /// Any thread.
     func noteServer(profileID: String, name: String) {
@@ -339,6 +350,17 @@ final class Notifier: @unchecked Sendable {
                 identifier: identifier, sound: NotificationPlate.sound(notice.kind),
                 category: NotificationPlate.category(notice.kind), resident: waits,
                 timeout: waits ? 0 : -1, urgency: waits ? 2 : 1))
+    }
+
+    /// The one notice the range raises: a window on course to run out before it resets, in the words
+    /// Core wrote. Plain, with nothing to press, and never while a window of this app is in front.
+    func raiseRunningLow(_ notice: RunningLowNotice) {
+        guard !Self.anyWindowActive else { return }
+        publish(
+            Outgoing(
+                title: notice.title, lines: [notice.body], face: .needsApproval, picture: nil,
+                identifier: "range.\(notice.id)", sound: "message-new-instant",
+                category: "im.received", resident: false, timeout: -1, urgency: 1))
     }
 
     private func publish(_ notice: Outgoing) {

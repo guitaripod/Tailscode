@@ -2289,6 +2289,29 @@ enum MatrixTheme {
         .context-band-input { background-color: \(accent); }
         .context-band-output { background-color: \(warn); }
         .context-swatch { border-radius: 2px; }
+        .gauge-news { color: \(textDim); \(t(.gaugeCaption)) margin-bottom: 2px; }
+        .range-verdict { color: \(text); \(t(.metricLarge)) }
+        .range-verdict-attention { color: \(warn); }
+        .range-verdict-danger { color: \(danger); }
+        .range-section { color: \(textDim); \(t(.metricLabel)) margin-top: 4px; }
+        .range-slice-system { background-color: alpha(\(textDim), 0.55); }
+        .range-slice-you { background-color: \(accent); }
+        .range-slice-answers { background-color: \(info); }
+        .range-slice-tools { background-color: \(special); }
+        .range-slice-images { background-color: \(accentDim); }
+        .range-slice-summary { background-color: \(rule); }
+        .range-item { padding: 4px 6px; border-radius: 6px; background: none; border: none; box-shadow: none; }
+        .range-item:hover { background-color: alpha(currentColor, 0.08); }
+        .range-switch button { padding: 1px 10px; min-height: 0px; \(t(.pill)) }
+        .range-bar-turn { background-color: \(accent); border-radius: 2px 2px 0px 0px; }
+        .range-bar-refill { border-left: 1px dashed \(textDim); }
+        .range-bar-projected {
+            background-image: repeating-linear-gradient(45deg, \(warn) 0px, \(warn) 2px, transparent 2px, transparent 5px);
+            border-radius: 2px 2px 0px 0px;
+        }
+        .range-danger-line { border-top: 1px dashed \(danger); min-height: 0px; }
+        .range-cache-track { background-color: alpha(currentColor, 0.12); border-radius: 3px; }
+        .range-cache-fill { background-color: \(info); border-radius: 3px; }
         .spend-bar-hot { background-color: \(accent); border-radius: 2px; }
         .git-added { color: \(accent); }
         .git-removed { color: \(danger); }

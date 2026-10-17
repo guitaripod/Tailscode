@@ -569,6 +569,16 @@ enum SettingsDialog {
             })
         adw_preferences_group_add(
             ptr(alerts),
+            switchRow(
+                title: Localized.text("Running low"),
+                subtitle: Localized.text(
+                    "Tell me when a usage window is on course to run out before it resets. Account-wide windows only; once per window"),
+                value: Notifier.notifyRunningLow
+            ) { value in
+                Notifier.setNotifyRunningLow(value)
+            })
+        adw_preferences_group_add(
+            ptr(alerts),
             buttonRow(
                 Localized.text("Prove the path"),
                 subtitle: Localized.text("Sends one notification right now"),

@@ -3771,7 +3771,8 @@ final class ChatPane: @unchecked Sendable {
             attachments: attachments.count,
             context: contextFill?.rewindowed(model: activeModelID, catalog: models), quotas: quotas,
             queued: queue.count, spend: spend, git: git, model: activeModelID,
-            selection: activeSelection)
+            selection: activeSelection, trail: RangeStore.trail)
+        RangePanel.transcriptChanged()
         if identityActivity != facts.activity {
             identityActivity = facts.activity
             refreshIdentity()
@@ -3882,9 +3883,7 @@ final class ChatPane: @unchecked Sendable {
             SpendPanel.present(
                 parent: host?.windowWidget, spend: spend,
                 title: entry.map { $0.session.title } ?? Localized.text("This conversation"))
-        case .context:
-            guard let contextFill = contextFill?.rewindowed(model: activeModelID, catalog: models)
-            else { return }
+        case .range:
             var compact: (@Sendable () -> Void)?
             if backend?.capabilities.supportsCompaction != false {
                 compact = { [weak self] in
@@ -3894,14 +3893,41 @@ final class ChatPane: @unchecked Sendable {
                     }
                 }
             }
-            ContextPanel.present(
-                parent: host?.windowWidget, fill: contextFill,
+            RangePanel.present(
+                parent: host?.windowWidget,
                 title: entry.map { $0.session.title } ?? Localized.text("This conversation"),
-                compact: compact)
+                compact: compact,
+                goTo: { [weak self] messageID in
+                    Gtk.onMain { [weak self] in self?.scrollToMessage(messageID) }
+                },
+                read: { [weak self] in self?.rangeReading() })
         case .reconnect:
             guard let conversation else { return }
             Task { await conversation.reconnect() }
         }
+    }
+
+    /// Everything the Range sheet reads from this conversation, as it stands now: the transcript,
+    /// the window rewindowed for the model on the next send, the account's quotas and this device's
+    /// history of them.
+    private func rangeReading() -> RangePanel.Reading? {
+        guard let state = lastState else { return nil }
+        let fill = contextFill?.rewindowed(model: activeModelID, catalog: models)
+        let board = RangeBoard.read(
+            messages: state.messages, fill: fill, quotas: host?.quotasForStatus() ?? [],
+            model: activeModelID, selection: activeSelection,
+            isRunning: state.status == .running, trail: RangeStore.trail)
+        return RangePanel.Reading(board: board, fill: fill)
+    }
+
+    /// Takes the transcript to the first row a message drew, when that message is still among the
+    /// rows on screen.
+    private func scrollToMessage(_ messageID: String) {
+        let prefix = messageID + ":"
+        guard let index = renderedRows.firstIndex(where: { $0.key.hasPrefix(prefix) }) else {
+            return
+        }
+        scrollToRow(at: index)
     }
 
     /// The card for one named agent — matched to the tool call that spawned it — and its

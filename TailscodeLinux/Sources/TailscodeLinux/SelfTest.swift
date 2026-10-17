@@ -554,6 +554,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkRange()
+            report("range: \(checks) claims hold — the sheet's rows, the wall chip, the pace bar's tick and the sheet itself")
+        } catch {
+            report("range: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkClock()
             report("clock: \(checks) claims hold — the chip, the glance, the sheet, its alarms and the palette it draws with")
         } catch {
@@ -1939,13 +1947,13 @@ public enum SelfTest {
             "and names the window closest to mattering, with the bar to draw it")
 
         let warm = glance([
-            ("", quota("Claude", [("Weekly", 0.85), ("5-hour session", 0.3)])),
+            ("", quota("Claude", [("5-hour session", 0.85), ("Weekly", 0.3)])),
             ("", quota("Grok", [("Weekly credits", 0.7)])),
         ])
         try expect(warm.lines.count == 2, "every provider on the board reads one line")
         try expect(
             warm.lines[0].tone == .warn && warm.lines[0].trailing == "85%", "the tightest leads")
-        try expect(!warm.lines[0].text.contains("5-hour"), "a quiet window is not news")
+        try expect(!warm.lines[0].text.contains("Weekly"), "a quiet window is not news")
 
         let wall = glance([
             ("", quota("Claude", [("Weekly", 1.0), ("5-hour session", 0.2)])),
@@ -4453,7 +4461,7 @@ public enum SelfTest {
             used: 148_900, window: 200_000, model: "claude-fable-5", basis: .reported)
         guard text(idle).contains("74% · 148.9k"),
             idle.segments.contains(where: { $0.id == "context" && $0.css == "seg-warn" }),
-            idle.segments.first(where: { $0.id == "context" })?.action == .context,
+            idle.segments.first(where: { $0.id == "context" })?.action == .range,
             idle.segments.first(where: { $0.id == "context" })?.meter != nil
         else { throw SelfTestFailure("context band: \(text(idle))") }
         idle.context = ContextFill(used: 40_000, window: nil, model: "mystery", basis: .estimated)

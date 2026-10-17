@@ -17,40 +17,6 @@ final class UsagePanel: @unchecked Sendable {
     private static let windowWidth: Int32 = 780
     private static let windowHeight: Int32 = 760
 
-    /// A bar drawn against its real allocation rather than a nominal width, so a full window
-    /// reads full at whatever width the card landed on. The ink is the same one the CSS classes
-    /// carry — the brand's colour while the window is healthy, the severity's once it is not.
-    private static func meter(
-        fraction: Double, severity: String, slug: String?, height: Double
-    ) -> UnsafeMutablePointer<GtkWidget> {
-        let area = tailscode_meter_new()!
-        gtk_widget_set_hexpand(area, 1)
-        let palette = MatrixTheme.palette
-        let hex: String
-        if severity == "ok", let slug {
-            switch slug {
-            case "claude": hex = palette.brandClaude
-            case "opencode": hex = palette.brandOpencode
-            case "omp": hex = MatrixTheme.brandOmp(in: palette)
-            case "grok": hex = palette.brandGrok
-            case "deepseek": hex = palette.brandDeepseek
-            case "ollama-cloud": hex = palette.brandOllama
-            default: hex = palette.accentDim
-            }
-        } else if severity == "warn" {
-            hex = palette.warn
-        } else if severity == "danger" {
-            hex = palette.danger
-        } else {
-            hex = palette.accentDim
-        }
-        let rgb = PresenceRGB(hex: hex) ?? PresenceRGB(red: 0.5, green: 0.5, blue: 0.5)
-        [rgb.red, rgb.green, rgb.blue].withUnsafeBufferPointer {
-            tailscode_meter_set(area, fraction, $0.baseAddress, 0.12, height)
-        }
-        return area
-    }
-
     /// The open panel. A class-backed window presented from a local is dead on arrival — released
     /// while shown, its buttons do nothing — so the panel holds itself here until its window goes.
     private nonisolated(unsafe) static var open: UsagePanel?
@@ -389,6 +355,15 @@ final class UsagePanel: @unchecked Sendable {
         let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         gtk_widget_set_hexpand(spacer, 1)
         gtk_box_append(ptr(header), spacer)
+        let isBalance = QuotaBoard.isBalance(gauge)
+        let pace = PaceRow.window(
+            provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail)
+        if !isBalance, let word = PaceBar.verdictWord(pace) {
+            let verdict = Gtk.label(word, css: "usage-stale", selectable: false)
+            gtk_label_set_ellipsize(op(verdict), PANGO_ELLIPSIZE_NONE)
+            gtk_widget_set_valign(verdict, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(header), verdict)
+        }
         let percent = Gtk.label(
             Self.amount(for: gauge), css: "analytics-hero-percent", selectable: false)
         Gtk.addClass(percent, "hero-\(severity)")
@@ -396,10 +371,9 @@ final class UsagePanel: @unchecked Sendable {
         gtk_box_append(ptr(header), percent)
         gtk_box_append(ptr(card), header)
 
-        if !QuotaBoard.isBalance(gauge) {
-            gtk_box_append(
-                ptr(card),
-                Self.meter(fraction: fraction, severity: severity, slug: slug, height: 10))
+        if !isBalance {
+            gtk_box_append(ptr(card), PaceBar.make(pace, height: 10, glance: false))
+            if let news = PaceBar.newsLine(pace) { gtk_box_append(ptr(card), news) }
         }
 
         if let resets = gauge.resetsAt {
@@ -502,55 +476,31 @@ final class UsagePanel: @unchecked Sendable {
     private static func gaugeRows(
         _ gauge: UsageQuota.Gauge, slug: String?, quota: UsageQuota
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
-        let fraction = min(max(gauge.fraction, 0), 1)
-        let severity = fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
         let isBalance = QuotaBoard.isBalance(gauge)
-
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let title = Gtk.label(gauge.label, css: "usage-gauge-label", selectable: false)
-        gtk_widget_set_hexpand(title, 1)
-        gtk_label_set_xalign(op(title), 0)
-        gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
-        gtk_box_append(ptr(row), title)
-        let amountLabel = Gtk.label(amount(for: gauge), css: "gauge-\(severity)", selectable: false)
-        gtk_label_set_ellipsize(op(amountLabel), PANGO_ELLIPSIZE_NONE)
-        gtk_box_append(ptr(row), amountLabel)
-        gtk_box_append(ptr(block), row)
-
-        if !isBalance {
-            gtk_box_append(
-                ptr(block),
-                meter(
-                    fraction: fraction, severity: severity, slug: slug, height: 6))
-        }
-
+        let row =
+            isBalance
+            ? PaceRow.balance(
+                provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail)
+            : PaceRow.window(
+                provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail)
+        let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
         gtk_box_append(
-            ptr(block),
-            Gtk.label(caption(for: gauge, in: quota), css: "gauge-reset", selectable: false))
+            ptr(block), PaceBar.row(row, amount: isBalance ? amount(for: gauge) : nil))
+        if let extra = moneyCaption(for: gauge, in: quota) {
+            gtk_box_append(ptr(block), Gtk.label(extra, css: "gauge-reset", selectable: false))
+        }
         return block
     }
 
-    /// One line under the bar: the money where the window is money, and the reset where the
-    /// provider said when it comes — never two stacked lines of fine print. A prepaid balance's
-    /// caption is its own split, from the snapshot that wrote the card.
-    private static func caption(for gauge: UsageQuota.Gauge, in quota: UsageQuota) -> String {
-        if QuotaBoard.isBalance(gauge), quota.details.count == 2 {
+    /// What the money says where the window is money and the row's own words do not: the amount
+    /// against its ceiling, or a prepaid balance's own split, from the snapshot that wrote the card.
+    private static func moneyCaption(for gauge: UsageQuota.Gauge, in quota: UsageQuota) -> String? {
+        if QuotaBoard.isBalance(gauge) {
+            guard quota.details.count == 2 else { return nil }
             return "\(quota.details[0].key) \(quota.details[0].value) · \(quota.details[1].key) \(quota.details[1].value)"
         }
-        var parts: [String] = []
-        if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-            parts.append(
-                "\(DeepSeekBalance.money(used, gauge.currency)) / \(DeepSeekBalance.money(limit, gauge.currency))")
-        }
-        if let resets = gauge.resetsAt {
-            let phrasing =
-                gauge.trustedReset
-                ? Localized.text("resets in %@", countdown(to: resets))
-                : Localized.text("resets in about %@", countdown(to: resets))
-            parts.append(phrasing)
-        }
-        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
+        guard let used = gauge.usedUSD, let limit = gauge.limitUSD else { return nil }
+        return "\(DeepSeekBalance.money(used, gauge.currency)) / \(DeepSeekBalance.money(limit, gauge.currency))"
     }
 
     /// A gauge reads as the percent already used — or "Used up" when the window is at the wall.

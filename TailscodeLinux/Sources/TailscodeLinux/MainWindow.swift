@@ -851,6 +851,8 @@ final class MainWindow: @unchecked Sendable {
             FileHandle.standardOutput.write(Data("FORGE \(forge.forgeSummary)\n".utf8))
         case "beta":
             self.driveBeta(argument, parent: self.window)
+        case "range":
+            self.driveRange(argument, parent: self.window)
         case "clock":
             self.driveClock(argument)
         case "setup":
@@ -4832,10 +4834,19 @@ final class MainWindow: @unchecked Sendable {
                 self.lastQuotas = snapshot
                 self.quotasAnsweredAt = answeredAt
                 ClockWatch.shared.setHoldings(from: snapshot)
+                Self.recordRange(snapshot)
             }
             self.renderUsage(self.lastQuotas)
         }
         return true
+    }
+
+    /// Hands a fresh report to the range's history and raises the one notice it may owe. The account
+    /// is recorded once however many machines reported it.
+    private static func recordRange(_ snapshot: [(String, UsageQuota)]) {
+        let account = QuotaRollup.account(from: snapshot).map(\.quota)
+        let notices = RangeStore.observe(quotas: account, announce: Notifier.notifyRunningLow)
+        for notice in notices { Notifier.shared.raiseRunningLow(notice) }
     }
 
     /// Every quota every server can speak for, raw and per-machine, plus this device's own
@@ -4868,7 +4879,10 @@ final class MainWindow: @unchecked Sendable {
         let initial = lastQuotas
         Task {
             await UsagePanel.present(parent: sidebarPane, initial: initial) {
-                await Self.collectQuotas(profiles: await ServerDirectory.shared.profiles())
+                let fresh = await Self.collectQuotas(
+                    profiles: await ServerDirectory.shared.profiles())
+                if !fresh.isEmpty { Gtk.onMain { Self.recordRange(fresh) } }
+                return fresh
             }
         }
     }
@@ -4881,14 +4895,24 @@ final class MainWindow: @unchecked Sendable {
         let glance =
             usageDemo
             ?? QuotaGlance.make(
-                from: quotas, answeredAt: quotasAnsweredAt, board: QuotaBoardStore.current)
+                from: quotas, answeredAt: quotasAnsweredAt, board: QuotaBoardStore.current,
+                trail: RangeStore.trail)
         let signature =
             "\(usageBarsFit)|" + glance.lines.map {
-                "\($0.kind.rawValue):\($0.text):\($0.trailing):\($0.tone.rawValue):\($0.fraction.map { String(format: "%.3f", $0) } ?? ""):\($0.slug ?? "")"
+                "\($0.kind.rawValue):\($0.text):\($0.trailing):\($0.tone.rawValue):\($0.fraction.map { String(format: "%.3f", $0) } ?? ""):\($0.slug ?? ""):\(Self.paceSignature($0.row))"
             }.joined(separator: "|") + "|\(glance.tooltip)"
         guard signature != usageStripSignature else { return }
         usageStripSignature = signature
         UsageStrip.render(glance, into: usageBox, bars: usageBarsFit)
+    }
+
+    /// What of a line's pace changes what is drawn: the tick and the tail, so a strip whose words
+    /// held still is still redrawn when the pace moved.
+    private static func paceSignature(_ row: PaceRow?) -> String {
+        guard let row else { return "" }
+        let tick = row.tick.map { String(format: "%.3f", $0) } ?? ""
+        let tail = row.tailEnd.map { String(format: "%.3f", $0) } ?? ""
+        return "\(tick)/\(tail)/\(row.tailIsNews)"
     }
 
     /// The strip's bars are the first thing a narrow sidebar gives up, and the decision is the

@@ -547,6 +547,15 @@ GtkWidget *tailscode_meter_new(void);
 void tailscode_meter_set(
     GtkWidget *area, double fraction, const double *rgb, double track, double height);
 
+/// The pace marks on a meter, read against the same 0-1 axis as the fill: `tick` is where an even
+/// burn would be by now (negative for none; the bar grows 4 pixels above and below to carry it, in
+/// `tick_rgb` over a one pixel `outline_rgb` edge, dashed and dimmer when `tick_approximate`), and
+/// `tail_end` is where the fill lands at the pace so far (negative for none; drawn as 45 degree
+/// stripes in `tail_rgb` from the fill to there). Call after `tailscode_meter_set`.
+void tailscode_meter_set_pace(
+    GtkWidget *area, double tick, int tick_approximate, const double *tick_rgb,
+    const double *outline_rgb, double tail_end, const double *tail_rgb);
+
 /// The ultracode aura, drawn rather than themed: a drawing area to lay over the prompt box, whose
 /// perimeter carries the rainbow round and round under a soft glow. A CSS gradient cannot travel
 /// around a box — its angle sweeps across the whole rectangle, so the colour crosses the corners

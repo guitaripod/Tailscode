@@ -66,7 +66,11 @@ enum UsageStrip {
         gtk_box_append(ptr(row), text)
 
         if bars, let fraction = line.fraction {
-            gtk_box_append(ptr(row), track(fraction, line: line))
+            if let pace = line.row, pace.tick != nil || (pace.tailEnd != nil && pace.tailIsNews) {
+                gtk_box_append(ptr(row), pacedTrack(pace))
+            } else {
+                gtk_box_append(ptr(row), track(fraction, line: line))
+            }
         }
 
         if !line.trailing.isEmpty {
@@ -100,6 +104,17 @@ enum UsageStrip {
         gtk_widget_set_halign(fill, GTK_ALIGN_START)
         gtk_box_append(ptr(track), fill)
         return track
+    }
+
+    /// The same bar with the pace on it: the tick where an even burn would be, and the tail only
+    /// when it is news — a strip that is glanced at says only what is worth saying.
+    private static func pacedTrack(_ pace: PaceRow) -> UnsafeMutablePointer<GtkWidget> {
+        let bar = PaceBar.make(
+            pace, height: Double(trackHeight), glance: true, background: MatrixTheme.palette.canvas)
+        gtk_widget_set_hexpand(bar, 0)
+        gtk_widget_set_size_request(bar, Int32(trackWidth), Int32(trackHeight) + PaceBar.tickOverhang * 2)
+        gtk_widget_set_valign(bar, GTK_ALIGN_CENTER)
+        return bar
     }
 
     /// A healthy bar wears its provider's colour and a hot one wears the alarm — the same rule the
