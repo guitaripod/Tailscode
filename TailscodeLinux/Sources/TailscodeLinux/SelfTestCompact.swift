@@ -64,6 +64,7 @@ extension SelfTest {
         guard gtk_init_check() != 0 else { return checks }
         try checkRailWidgets(expect)
         try checkTextureCache(expect)
+        try checkDecodeGate(expect)
         return checks
     }
 
@@ -169,6 +170,40 @@ extension SelfTest {
         try expect(
             TranscriptContext.bubbleMaxDimension <= 720,
             "a transcript preview is no larger than a strip thumbnail or poster can use")
+    }
+
+    /// The decode gate holds to its width and serves what is waiting by who is asked for most
+    /// urgently: a picture somebody opened, then the newest row, then the rest.
+    private static func checkDecodeGate(_ expect: (Bool, String) throws -> Void) throws {
+        let gate = ImageDecodeGate()
+        gate.adapt(to: .loaded)
+        let release = DispatchSemaphore(value: 0)
+        let started = DispatchSemaphore(value: 0)
+        let finished = DispatchGroup()
+        let order = LandedKeys()
+        finished.enter()
+        Task {
+            _ = await gate.run {
+                started.signal()
+                release.wait()
+            }
+            finished.leave()
+        }
+        started.wait()
+        for (name, urgent, rank) in [("older", false, 1), ("newest", false, 9), ("opened", true, 0)] {
+            finished.enter()
+            Task {
+                _ = await gate.run(urgent: urgent, rank: rank) { order.add(name) }
+                finished.leave()
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.3)
+        release.signal()
+        let settled = finished.wait(timeout: .now() + 10) == .success
+        try expect(settled, "every waiting decode runs once the gate is free")
+        try expect(
+            order.keys == ["opened", "newest", "older"],
+            "the picture somebody opened goes first, then the newest row, then the rest")
     }
 
     private static func row(_ key: String, _ kind: TranscriptRow.Kind) -> TranscriptRow {

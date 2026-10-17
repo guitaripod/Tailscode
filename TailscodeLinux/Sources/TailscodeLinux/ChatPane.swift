@@ -5879,7 +5879,20 @@ final class ChatPane: @unchecked Sendable {
     /// itself, one page at a time. Asking again for a picture that is on its way, or that failed a
     /// moment ago, costs nothing, so every rebuild of every row may ask.
     private func fetchImage(_ reference: FileReference, key: String, urgent: Bool = false) {
-        PictureLoader.request(reference, key: key, backend: backend, urgent: urgent)
+        PictureLoader.request(
+            reference, key: key, backend: backend, urgent: urgent, rank: rowIndex(showing: key))
+    }
+
+    /// Where in the transcript a picture is drawn, so the decode gate serves the newest rows
+    /// first — the end of the conversation is what is on screen when a chat opens. A row not
+    /// built yet is the newest thing there is.
+    private func rowIndex(showing key: String) -> Int {
+        let at = renderedRows.lastIndex { row in
+            if row.key == key { return true }
+            guard case .pictureStrip(let pictures) = row.kind else { return false }
+            return pictures.contains { $0.key == key }
+        }
+        return at ?? .max
     }
 
     /// A picture landing in the store, from whichever pane asked for it. Landings are gathered

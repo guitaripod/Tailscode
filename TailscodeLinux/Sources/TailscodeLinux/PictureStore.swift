@@ -242,7 +242,7 @@ enum PictureLoader {
     /// left alone, so every rebuild of every row may ask without costing anything. Main thread.
     static func request(
         _ reference: FileReference, key: String, backend: (any CodingAgentBackend)?,
-        urgent: Bool = false, store: PictureStore = .shared
+        urgent: Bool = false, rank: @autoclosure () -> Int = .max, store: PictureStore = .shared
     ) {
         ImageDecodeGate.shared.adapt(to: CascadeBudget.level)
         if store.has(key) {
@@ -250,8 +250,9 @@ enum PictureLoader {
             return
         }
         guard store.claim(key, urgent: urgent, at: now) else { return }
+        let rank = rank()
         Task.detached(priority: .utility) {
-            let preview = await load(reference, backend: backend, urgent: urgent)
+            let preview = await load(reference, backend: backend, urgent: urgent, rank: rank)
             Gtk.onMain {
                 if let preview {
                     store.store(preview, forKey: key)
@@ -289,15 +290,15 @@ enum PictureLoader {
     }
 
     private static func load(
-        _ reference: FileReference, backend: (any CodingAgentBackend)?, urgent: Bool
+        _ reference: FileReference, backend: (any CodingAgentBackend)?, urgent: Bool, rank: Int
     ) async -> DecodedPreview? {
         let gate = ImageDecodeGate.shared
-        let cached = await gate.run(urgent: urgent) {
+        let cached = await gate.run(urgent: urgent, rank: rank) {
             ImageCache.load(reference).flatMap { PictureDecode.preview(of: $0) }
         }
         if let cached, let preview = cached { return preview }
         guard let backend, let data = try? await backend.attachmentData(reference) else { return nil }
-        let fetched = await gate.run(urgent: urgent) {
+        let fetched = await gate.run(urgent: urgent, rank: rank) {
             ImageCache.save(data, for: reference)
             return PictureDecode.preview(of: data)
         }
