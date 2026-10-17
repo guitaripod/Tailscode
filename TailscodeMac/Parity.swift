@@ -298,6 +298,7 @@ enum ParityManifest {
         case .designBoards: return .implemented("DesignBoardWindowController")
         case .linkEmbeds: return .implemented("LinkRailLine")
         case .chatDensity: return .implemented("ChatLayout")
+        case .neuralTrace: return .gap("in progress")
         case .supporterInvitation:
             return .varies(
                 direct: .notApplicable("the direct build is unlocked and sells nothing"),

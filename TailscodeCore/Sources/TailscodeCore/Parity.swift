@@ -194,6 +194,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case designBoards
     case linkEmbeds
     case chatDensity
+    case neuralTrace
     case reviewPrompt
     case proUnlock
     case supporterInvitation
@@ -460,6 +461,10 @@ public enum CapabilityRegistry {
             id: .chatDensity, area: "settings", title: "Chat density",
             spec:
                 "Furniture costs a line, not a card. The transcript spends its height on the answer: tool calls, thinking and subagents rest as one flat line each, compaction and the other seams as a single divider line, the pictures an agent made as a strip of thumbnails, and the gaps between rows are set per relationship — a paragraph, prose beside furniture, prose beside code, a picture strip, a new turn — rather than one number between everything. The numbers are one table in Core (ChatMetrics, with ChatMetrics.gap(from:to:) answering for any two neighbouring row classes) and each client maps them onto its own tokens, so no cell hard-codes a gap. Compact is the default and comfortable keeps the airier rhythm; the choice is the person's (ChatDensitySetting, one device-local setting under tailscode.chatDensity, found in Settings under Appearance), and changing it rebuilds an open transcript at once. Compaction takes padding, chrome and repetition, never glyphs: prose keeps its role, size and leading, and code keeps its lines. Nothing a person must see is folded — a pending permission, a question, a failure and an answerless turn stay open — and a pressable line keeps its target: 24 pt on a pointer, 32 pt full width on a touch screen, 44 pt for an opened row. Each client's furniture is its own: a card-less activity line, a divider seam and a picture strip on all three, with the code block's header revealed on hover on the desktops and kept on the phone."),
+        CapabilityDefinition(
+            id: .neuralTrace, area: "transcript", title: "Everything an agent did is one brain",
+            spec:
+                "Everything an agent did before its final message is one brain, not a stack of \"N tools\" lines. A turn's thinking, tool calls and mid-turn notes become nodes in a fixed anatomy (PLAN, SENSE, ACT, SHELL, DELEGATE, SAY), a shape per kind so tint is never the only signal, and the settled turn is one line: a head glyph, the count, the duration and +N −M. Wires appear only where the transcript shows a relation: one step after another, calls made together in one message, and a dashed tie where two steps touched the same file or ran the same command. The head's state is the ActivityKind the header, the orb and the rows already read, with the lit zone the tool family that activity names; hovering or focusing a node shows its card (tool, argument, outcome, first lines of output, which message, what it shares), and Rows lists every step for the screen reader and the touch path. The brain is drawn by Metal on the Apple clients and by a Core CPU compositor on Linux; the latest turn opens by default and only one brain is open per window. The old run rows remain as the Lines style (ActivityStyleSetting, one device-local setting under tailscode.activityStyle, Brain by default), and NeuralReading writes every word once in Core."),
         CapabilityDefinition(
             id: .compactionSeam, area: "transcript", title: "Compaction is a seam",
             spec:

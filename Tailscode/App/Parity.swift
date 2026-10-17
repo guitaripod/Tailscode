@@ -210,6 +210,7 @@ enum ParityManifest {
         case .designBoards: return .implemented("DesignBoardViewController")
         case .linkEmbeds: return .implemented("LinkRailCell")
         case .chatDensity: return .implemented("ChatSpacing")
+        case .neuralTrace: return .gap("in progress")
         case .proUnlock: return .implemented("ProStore")
         case .supporterInvitation: return .implemented("SupporterCell")
         case .reviewPrompt: return .implemented("ReviewPromptCoordinator")

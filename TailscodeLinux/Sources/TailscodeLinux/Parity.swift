@@ -190,6 +190,7 @@ enum ParityManifest {
         case .designBoards: return .implemented("DesignBoardWindow")
         case .linkEmbeds: return .implemented("LinkRailView")
         case .chatDensity: return .implemented("TranscriptGaps")
+        case .neuralTrace: return .gap("in progress")
         case .supporterInvitation: return .notApplicable("no store and no purchase on Linux — there is nothing to invite anyone to buy")
         case .proUnlock:
             return .notApplicable(

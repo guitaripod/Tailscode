@@ -362,9 +362,9 @@ def build():
     bay = prism("bay", DOME, 0.1, 2.7, center=(320, 170)); open_front(bay, 0.15); assign(bay, inner_m)
     jawbay = prism("jawbay", jaw_poly, 0.1, 0.7); open_front(jawbay, 0.15); assign(jawbay, inner_m)
     back = prism("back", DOME, 2.7, 2.72, center=(320, 170))
-    assign(back, emit_mat("backwall", "star", (0.02, 0.07, 0.06), 0.35))
+    assign(back, emit_mat("backwall", "star", (0.02, 0.07, 0.06), 0.12))
     jback = prism("jback", jaw_poly, 0.7, 0.72)
-    assign(jback, emit_mat("jback", "say", (0.02, 0.09, 0.07), 0.5))
+    assign(jback, emit_mat("jback", "say", (0.02, 0.09, 0.07), 0.15))
 
     sock_bm = {z: bmesh.new() for z in ZONES}
     for z, (cx, cy) in ZONES.items():
