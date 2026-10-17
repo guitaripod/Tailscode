@@ -11,15 +11,16 @@ MODE = opts.get("mode", "beauty")
 DEVICE = opts.get("device", "gpu")
 
 MASK = MODE.startswith("mask")
-EMIT = 1.0 if (MASK or MODE == "beauty") else float(opts.get("emit", 0.25))
+EMIT = 1.0 if (MASK or MODE == "beauty") else float(opts.get("emit", 0.12))
 BASIS = {
     "mask_i1": {"think": (1, 0, 0), "sense": (0, 1, 0), "act": (0, 0, 1)},
     "mask_i2": {"shell": (1, 0, 0), "delegate": (0, 1, 0), "say": (0, 0, 1)},
     "mask_i3": {"link": (1, 0, 0), "star": (0, 1, 0)},
     "mask_c": {"seam": (1, 0, 0), "eye": (0, 1, 0)},
+    "mask_d": {"rib": (1, 0, 0), "ear": (0, 1, 0), "visor": (0, 0, 1)},
 }
 VISIBLE = {"beauty": {"chassis", "interior", "glass"}, "chassis": {"chassis"}, "interior": {"interior"}, "glass": {"glass"},
-           "mask_i1": {"interior"}, "mask_i2": {"interior"}, "mask_i3": {"interior"}, "mask_c": {"chassis"}}[MODE]
+           "mask_i1": {"interior"}, "mask_i2": {"interior"}, "mask_i3": {"interior"}, "mask_c": {"chassis"}, "mask_d": {"chassis"}}[MODE]
 TRANSPARENT = MODE in ("chassis", "interior", "glass")
 
 S = 0.01
@@ -203,12 +204,12 @@ def metal_mat(name, base=(0.045, 0.055, 0.06), rough=0.34, edge=(0.55, 0.62, 0.6
     return m
 
 
-def emit_mat(name, chan, tone, strength):
+def emit_mat(name, chan, tone, strength, beauty=None):
     m = mat(name); e = m.node_tree.nodes.new("ShaderNodeEmission")
     if MASK:
         c = BASIS[MODE].get(chan, (0, 0, 0)); st = min(strength / 3.0, 1.0) if c != (0, 0, 0) else 0.0
     else:
-        c = tone; st = strength * EMIT
+        c = tone; st = (strength if beauty is None else beauty) * EMIT
     e.inputs["Color"].default_value = tuple(c) + (1,); e.inputs["Strength"].default_value = st
     out_node(m.node_tree, e)
     return m
@@ -316,20 +317,33 @@ def build():
         chassis_obj(bpy.context.active_object, rivet_m)
 
     seam_pts = [[(196,372),(230,356),(330,356),(384,374)],[(162,56),(190,92)],[(484,40),(470,74)],[(580,160),(546,170),(546,236),(586,254)],[(112,240),(146,240)],[(108,254),(146,254)],[(118,268),(150,268)]]
-    seam_m = emit_mat("seam", "seam", ACCENT, 3.0)
+    seam_m = emit_mat("seam", "seam", ACCENT, 3.0, 0.3)
     for k, pl in enumerate(seam_pts):
         tube(f"seam{k}", [P(x, y, -0.505) for x, y in pl], 0.006, seam_m, 2)
 
     visor = prism("visor", [(552,198),(612,196),(616,230),(558,236)], -0.30, -0.56)
     bevel(visor, 0.01, 2); assign(visor, metal_mat("visor", base=(0.004, 0.006, 0.006), rough=0.08, wear=False))
-    eye = prism("eye", [(562,208),(600,206),(603,219),(566,223)], -0.56, -0.575)
-    assign(eye, emit_mat("eye", "eye", ACCENT, 9.0))
+    backing = prism("visorglow", [(558,202),(609,200),(612,226),(561,231)], -0.545, -0.55)
+    assign(backing, emit_mat("visorglow", "visor", ACCENT, 1.0, 0.05))
+    top0, top1, bot0, bot1 = (562, 208), (600, 206), (566, 223), (603, 219)
+    for k in range(5):
+        t0, t1 = k / 5 + 0.012, (k + 1) / 5 - 0.012
+        lerp = lambda a, b, t: (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+        seg = [lerp(top0, top1, t0), lerp(top0, top1, t1), lerp(bot0, bot1, t1), lerp(bot0, bot1, t0)]
+        assign(prism(f"eye{k}", seg, -0.56, -0.575), emit_mat(f"eye{k}", "eye", ACCENT, 9.0, 0.4))
 
     neck = prism("neck", [(196,372),(196,420),(384,420),(384,374)], -0.10, 0.12)
     assign(neck, metal_mat("neck", base=(0.03, 0.035, 0.04), rough=0.5, wear=False))
+    rib_m = emit_mat("rib", "rib", ACCENT, 1.4, 0.06)
     for k in range(6):
         bpy.ops.mesh.primitive_cube_add(size=1, location=P(290, 384 + k * 6, -0.12), scale=(1.84, 0.02, 0.025))
         chassis_obj(bpy.context.active_object, plate_m)
+        bpy.ops.mesh.primitive_cube_add(size=1, location=P(290, 384 + k * 6, -0.142), scale=(1.5, 0.006, 0.026))
+        chassis_obj(bpy.context.active_object, rib_m)
+    for r in (16, 9):
+        pts = [P(340 + r * math.cos(2 * math.pi * i / 40), 336 + r * math.sin(2 * math.pi * i / 40), -0.575) for i in range(40)]
+        pts.append(pts[0])
+        tube(f"ear{r}", pts, 0.011, emit_mat(f"ear{r}", "ear", ACCENT, 1.4, 0.08), 2)
 
     GROUP["cur"] = "glass"
     bpy.ops.mesh.primitive_uv_sphere_add(segments=128, ring_count=64, radius=1.0, location=P(320, 164, 0.42), scale=(2.55, 0.95, 1.7))

@@ -16,7 +16,7 @@ render() {
 }
 
 for mode in chassis interior glass; do render "$mode" "$samples"; done
-for mode in mask_i1 mask_i2 mask_i3 mask_c; do render "$mode" 12; done
+for mode in mask_i1 mask_i2 mask_i3 mask_c mask_d; do render "$mode" 12; done
 
 python3 "$here/bake_bloom.py" "$out"
 python3 "$here/composite.py" "$out" "$out/preview.png" matrix 0.7

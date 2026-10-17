@@ -1,6 +1,6 @@
 # Neural trace
 
-A turn's thinking and working, drawn as one mecha brain instead of a stack of "N tools" lines. Everything the agent did before its final message is the brain; the final message is the answer below it. Design board: `.tailscode/design/neural-trace/` (A Cortex, B Lanes, C In the transcript, D The whole turn, E The hero, F The layout). Screens: `docs/neural-trace-mocks/`. Pipeline: `scripts/neural-head/render.sh`.
+A turn's thinking and working, drawn as one mecha brain instead of a stack of "N tools" lines. Everything the agent did before its final message is the brain; the final message is the answer below it. Design board: `.tailscode/design/neural-trace/` (A Cortex, B Lanes, C In the transcript, D The whole turn, E The hero, F The layout, G States, H State sheet, I Away, J Share a turn). Screens and sources: `docs/neural-trace-mocks/`. States, meters, the face, replay, provenance, the away surfaces and sharing are in `docs/neural-trace-states.md`. Pipeline: `scripts/neural-head/render.sh`.
 
 ## What the person sees
 
@@ -47,12 +47,13 @@ Rendered once in Blender 5.2 (Cycles, OptiX) by `scripts/neural-head/render.sh`,
 | `mask_i1` | R think, G sense, B act | none, linear |
 | `mask_i2` | R shell, G delegate, B say | none, linear |
 | `mask_i3` | R links (fibres), G stars | none, linear |
-| `mask_c` | R seams, G eye | none, linear |
+| `mask_c` | R seams, G eye (five bars) | none, linear |
+| `mask_d` | R neck ribs, G ear rings, B visor backing | none, linear |
 | `bloom_*` | the masks, pre-blurred, a quarter size, ×3 | none, linear |
 
 Draw order: interior, nodes, then chassis and glass in one pass (glass over chassis). The nodes sit between the interior and the glass, which is what puts them inside the dome. Lossless WebP/PNG for masks (lossy chroma subsampling bleeds channels); the colour layers may be lossy.
 
-At 1280 × 840 the eleven textures decode to 29.7 MB as RGBA8 (about 3.7 MB if block-compressed, an estimate that has not been measured). They load only while a brain is on screen (`PaneLifetime`).
+At 1280 × 840 the thirteen textures decode to about 32 MB as RGBA8 (about 4 MB if block-compressed, an estimate that has not been measured). They load only while a brain is on screen (`PaneLifetime`).
 
 ## Shader contract
 
