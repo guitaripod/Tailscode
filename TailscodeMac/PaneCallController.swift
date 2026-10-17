@@ -66,6 +66,15 @@ final class PaneCallController {
     var onEntryChanged: ((CallEntry?) -> Void)? {
         didSet { onEntryChanged?(shownEntry) }
     }
+    /// Told when the call's face moves, so a head that wears the call as its ear follows it at once
+    /// instead of at the next second's status read.
+    var onFaceChanged: (() -> Void)?
+
+    /// The face of the call this pane is in, nil when it is not in one or the call has ended.
+    var face: VoiceCallFace? {
+        guard let snapshot, snapshot.end == nil else { return nil }
+        return snapshot.face
+    }
 
     private let host: Host
     private let gate = MacVoiceCallGate.shared
@@ -261,7 +270,9 @@ final class PaneCallController {
 
     private func apply(_ next: VoiceCallSnapshot, from call: ActiveCall) {
         guard attached === call else { return }
+        let before = face
         snapshot = next
+        defer { if face != before { onFaceChanged?() } }
         if let end = next.end {
             finish(call, next, end)
             return
@@ -339,9 +350,11 @@ final class PaneCallController {
         }
         detach()
         attached = nil
+        let before = face
         snapshot = nil
         speaker.release()
         clearStrip()
+        if before != nil { onFaceChanged?() }
     }
 
     private static func name(of end: VoiceCallEnd) -> String {

@@ -101,6 +101,7 @@ enum TranscriptBench {
         let context = TranscriptContext()
         print("== \(name): \(messages.count) messages, \(rows.count) rows")
         print("   decode \(ms(decode))  fold \(ms(fold))")
+        tokens(Array(messages.suffix(300)))
 
         let column = TranscriptColumn()
         column.spacing = MacTheme.Spacing.m
@@ -184,6 +185,52 @@ enum TranscriptBench {
         print("   resize \(ms(narrower)) narrower · \(ms(wider)) back")
 
         return agrees(rows, context: context)
+    }
+
+    /// What one streamed token costs the rebuild: the whole transcript folded again by a builder that
+    /// already holds the conversation, which is what every state of a running turn does. Measured
+    /// without the brain, with it (the turns read into heads, the rows they consume dropped and the
+    /// head's own row put where it goes), and a pass of the row comparison the transcript makes
+    /// before it decides a state changed only the last row.
+    private static func tokens(_ window: [ChatMessage]) {
+        guard let end = window.lastIndex(where: { $0.role == .assistant }),
+            let part = window[end].parts.lastIndex(where: {
+                if case .text = $0.kind { return true }
+                return false
+            })
+        else { return }
+        func run(_ builder: TranscriptRowBuilder) -> (rebuild: Double, compare: Double, rows: Int) {
+            var grown = window
+            var previous = builder.rows(for: grown, turnOpen: true)
+            var rebuilds: [Double] = []
+            var compares: [Double] = []
+            for step in 0..<40 {
+                var message = grown[end]
+                if case .text(let words) = message.parts[part].kind {
+                    message.parts[part].kind = .text(words + " word\(step) and a few more of them")
+                }
+                grown[end] = message
+                var rows: [TranscriptRow] = []
+                rebuilds.append(time { rows = builder.rows(for: grown, turnOpen: true) })
+                let count = min(previous.count, rows.count)
+                compares.append(
+                    time {
+                        _ = previous.prefix(max(0, count - 1)).elementsEqual(
+                            rows.prefix(max(0, count - 1)))
+                    })
+                previous = rows
+            }
+            return (median(rebuilds), median(compares), previous.count)
+        }
+        let plain = run(TranscriptRowBuilder())
+        let brained = TranscriptRowBuilder()
+        let store = BrainStore()
+        brained.brains = store
+        let withBrain = run(brained)
+        print(
+            "   a streamed token: rebuild \(ms(plain.rebuild)) · row compare \(ms(plain.compare)) "
+                + "(\(plain.rows) rows) · with the brain \(ms(withBrain.rebuild)) "
+                + "(\(withBrain.rows) rows, \(store.order.count) heads)")
     }
 
     private static let rowChunk = 40

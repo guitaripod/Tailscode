@@ -225,6 +225,12 @@
                 say(main?.driveRestoreReport() ?? "RESTORE no window")
             case "resume":
                 main?.driveResume(argument)
+            case "stream":
+                StreamDemo.start(main?.transcript, hz: Int(argument) ?? 20)
+            case "streamidle":
+                StreamDemo.start(main?.transcript, hz: Int(argument) ?? 20, idleAfter: 8)
+            case "brain":
+                say(BrainDrive.perform(argument, main: main))
             case "quit":
                 NSApp.terminate(nil)
             case "kill":

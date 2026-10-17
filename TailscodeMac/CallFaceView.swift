@@ -22,6 +22,7 @@ final class CallFaceView: NSView {
     private let badge = ActivityBadgeView(pointSize: 16)
     private var face: VoiceCallFace?
     private var link: CADisplayLink?
+    private lazy var gate = DisplayGate(self) { [weak self] in self?.refreshClock() }
     private var eased = 0.0
     private var lastStamp: CFTimeInterval = 0
     private var currentScale = 1.0
@@ -64,6 +65,7 @@ final class CallFaceView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        gate.attach()
         window == nil ? stopClock() : refreshClock()
     }
 
@@ -125,7 +127,7 @@ final class CallFaceView: NSView {
     }
 
     private func refreshClock() {
-        guard animates, window != nil else {
+        guard animates, gate.isOpen else {
             stopClock()
             return
         }

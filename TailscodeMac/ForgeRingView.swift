@@ -16,6 +16,7 @@ final class ForgeRingView: NSView {
     private let track = CAShapeLayer()
     private var pool: [CAShapeLayer] = []
     private var link: CADisplayLink?
+    private lazy var gate = DisplayGate(self) { [weak self] in self?.refresh() }
     private var lastStep: CFTimeInterval?
     private var displayed: Double?
     private var fadeTicket = 0
@@ -94,6 +95,7 @@ final class ForgeRingView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        gate.attach()
         refresh()
     }
 
@@ -120,7 +122,7 @@ final class ForgeRingView: NSView {
             return
         }
         paint(at: CACurrentMediaTime())
-        guard motion.isAnimated else {
+        guard motion.isAnimated, gate.isOpen else {
             stopClock()
             return
         }

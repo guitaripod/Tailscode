@@ -28,6 +28,16 @@ enum ChatChecks {
             } catch {
                 failures.append("\(error)")
             }
+            do {
+                notes.append("\(try BrainChecks.run()) neural trace")
+            } catch {
+                failures.append("\(error)")
+            }
+            do {
+                notes.append("\(try await BrainChecks.runPoster()) poster")
+            } catch {
+                failures.append("\(error)")
+            }
             print("CHAT_NOTES \(notes.joined(separator: " + "))")
             print(failures.isEmpty ? "CHAT_OK" : "CHAT_FAILED \(failures.joined(separator: " · "))")
             exit(failures.isEmpty ? 0 : 1)

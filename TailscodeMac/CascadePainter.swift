@@ -13,6 +13,11 @@ struct CascadeTail {
     let phase: Double
     let edge: NSColor
     let spark: NSColor
+    /// The edge and the spark as the hex the blend reads, resolved once by whoever made the tail:
+    /// the accent does not change between frames, and resolving a colour under an appearance for
+    /// every glyph of every frame was most of what the wave spent.
+    var edgeHex: String?
+    var sparkHex: String?
 
     /// The row as it should look this frame. Everything past the reveal is drawn at zero alpha
     /// rather than cut off: the paragraph is measured once when it arrives and never again, so no
@@ -40,21 +45,94 @@ struct CascadeTail {
     /// The wave tints what is already there rather than replacing it: a keyword in a code block,
     /// a link, an inline code span all keep their own colour as the settled end of the blend, so a
     /// glyph leaving the wave lands on the colour it would have had if it had never been in one.
-    private func tint(_ string: NSMutableAttributedString, upTo shown: Int, settled: NSColor) {
+    func tint(_ string: NSMutableAttributedString, upTo shown: Int, settled: NSColor) {
         guard span > 0, shown > 0 else { return }
         let fallback = CascadeTint.hex(settled)
-        let leading = CascadeTint.hex(edge)
-        let burn = CascadeTint.hex(spark)
+        let leading = edgeHex ?? CascadeTint.hex(edge)
+        let burn = sparkHex ?? CascadeTint.hex(spark)
+        var resolved: [ObjectIdentifier: String] = [:]
         for distance in 0..<min(span, shown) {
             let index = shown - 1 - distance
             let range = NSRange(location: index, length: 1)
             let existing = string.attribute(.foregroundColor, at: index, effectiveRange: nil)
-            let base = (existing as? NSColor).map { CascadeTint.hex($0) } ?? fallback
+            let base: String
+            if let colour = existing as? NSColor {
+                let id = ObjectIdentifier(colour)
+                if let hit = resolved[id] {
+                    base = hit
+                } else {
+                    base = CascadeTint.hex(colour)
+                    resolved[id] = base
+                }
+            } else {
+                base = fallback
+            }
             let sample = StreamCascade.sample(distance: distance, phase: phase)
             let colour = CascadeTint.colour(sample, settled: base, edge: leading, spark: burn)
             string.addAttribute(
                 .foregroundColor, value: colour.withAlphaComponent(sample.alpha), range: range)
         }
+    }
+}
+
+/// The row being written, held as the paint it last had, so a frame changes only what moved.
+///
+/// The wave used to build a whole new attributed string for the answer on every frame: a copy of
+/// the rendering, the unread part cleared and the last glyphs tinted. Between two frames only the
+/// characters the reveal just crossed and the ones the band is on differ, so the paint is kept and
+/// those ranges are put back to what the rendering says and tinted again. The buffer is valid for
+/// one rendering of one row; a new rendering, another row or a reveal that went backwards starts it
+/// over, and the result is byte for byte what `CascadeTail.paint` makes of the same inputs.
+@MainActor
+final class CascadePaintBuffer {
+    private let rendered: NSAttributedString
+    private let key: String
+    private(set) var string: NSMutableAttributedString
+    private var shown: Int
+    private var waveLow: Int
+
+    init(rendered: NSAttributedString, key: String, revealed: Int) {
+        self.rendered = rendered
+        self.key = key
+        string = NSMutableAttributedString(attributedString: rendered)
+        shown = min(max(revealed, 0), rendered.length)
+        waveLow = shown
+        clear(from: shown)
+    }
+
+    func matches(rendered: NSAttributedString, key: String) -> Bool {
+        self.rendered === rendered && self.key == key
+    }
+
+    /// The row as the tail says it looks this frame, painted into the held string.
+    func paint(_ tail: CascadeTail, settled: NSColor) -> NSAttributedString {
+        let total = rendered.length
+        let next = min(max(tail.revealed, 0), total)
+        if next < shown {
+            string = NSMutableAttributedString(attributedString: rendered)
+            shown = next
+            waveLow = next
+            clear(from: next)
+        } else {
+            let from = max(0, min(waveLow, shown))
+            if next > from {
+                let range = NSRange(location: from, length: next - from)
+                string.replaceCharacters(in: range, with: rendered.attributedSubstring(from: range))
+            }
+            shown = next
+        }
+        tail.tint(string, upTo: shown, settled: settled)
+        waveLow = max(0, shown - tail.span)
+        return string
+    }
+
+    private func clear(from index: Int) {
+        let total = rendered.length
+        guard index < total else { return }
+        let unread = NSRange(location: index, length: total - index)
+        string.addAttribute(.foregroundColor, value: NSColor.clear, range: unread)
+        string.removeAttribute(.backgroundColor, range: unread)
+        string.removeAttribute(.strikethroughStyle, range: unread)
     }
 }
 
@@ -138,6 +216,7 @@ final class CascadePainter {
     private var link: CADisplayLink?
     private var watchdog: Timer?
     private var ultracode = false
+    private var inks: (appearance: String, theme: String, edge: String, spark: String)?
 
     /// The view whose screen sets the frame rate. Without one there is nothing to pace against, so
     /// the wave never starts and the text simply appears.
@@ -179,7 +258,7 @@ final class CascadePainter {
             onStalled?()
             return
         }
-        link?.preferredFrameRateRange = MotionBudget.cascadeRange
+        applyTempo()
     }
 
     /// Points the wave at the row the stream is writing into, with that row's fully rendered text.
@@ -197,9 +276,19 @@ final class CascadePainter {
             unwatch()
             return
         }
-        start()
-        watch()
+        if live.tempo != .stopped { start() }
+        if live.tempo != .stopped || live.owes { watch() } else { unwatch() }
     }
+
+    /// Changes whenever a frame could show something new: words arrived, the reveal moved, the band
+    /// did. A frame painted at this number is a frame of the row as it stands.
+    var paintRevision: Int { live.paintRevision }
+
+    /// How many times the words this row is revealing have changed.
+    var textRevision: Int { live.textRevision }
+
+    /// How often the wave wants a frame right now.
+    var tempo: CascadeTempo { live.tempo }
 
     func release() {
         live.focus(nil, rendered: "", sealed: true, at: CACurrentMediaTime())
@@ -236,7 +325,7 @@ final class CascadePainter {
         watchdog = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                guard self.live.isActive else {
+                guard self.live.isActive, self.live.tempo != .stopped || self.live.owes else {
                     self.unwatch()
                     return
                 }
@@ -263,9 +352,30 @@ final class CascadePainter {
     func tail(for key: String) -> CascadeTail? {
         guard live.id == key, Self.motionAllowed else { return nil }
         let edge = CascadeTint.edge(ultracode: ultracode, phase: live.phase)
-        return CascadeTail(
+        var tail = CascadeTail(
             revealed: live.revealed, span: StreamCascade.span, phase: live.phase, edge: edge,
             spark: CascadeTint.spark(for: edge))
+        let hexes = edgeInks(for: tail)
+        tail.edgeHex = hexes.edge
+        tail.sparkHex = hexes.spark
+        return tail
+    }
+
+    /// The edge and the spark as hex. The accent is the same on every frame, so it is resolved once
+    /// per appearance and theme; the rainbow of an unlocked power moves every frame and is resolved
+    /// every frame.
+    private func edgeInks(for tail: CascadeTail) -> (edge: String, spark: String) {
+        guard !ultracode else {
+            return (CascadeTint.hex(tail.edge), CascadeTint.hex(tail.spark))
+        }
+        let appearance = NSApp?.effectiveAppearance.name.rawValue ?? ""
+        let theme = ThemeSelection.themeID
+        if let inks, inks.appearance == appearance, inks.theme == theme {
+            return (inks.edge, inks.spark)
+        }
+        let fresh = (CascadeTint.hex(tail.edge), CascadeTint.hex(tail.spark))
+        inks = (appearance, theme, fresh.0, fresh.1)
+        return fresh
     }
 
     /// The one clock in this client that is deliberately not the vocabulary's tempo.
@@ -277,9 +387,13 @@ final class CascadePainter {
     /// streaming, and takes the rate `CascadeRate` gives for the number streaming and the level
     /// the window sheds at, through `MotionBudget`.
     private func start() {
-        guard link == nil, let host else { return }
+        guard link == nil else {
+            applyTempo()
+            return
+        }
+        guard let host else { return }
         let link = host.displayLink(target: self, selector: #selector(tick))
-        link.preferredFrameRateRange = MotionBudget.cascadeRange
+        link.preferredFrameRateRange = Self.range(for: live.tempo)
         link.add(to: .main, forMode: .common)
         self.link = link
     }
@@ -290,10 +404,38 @@ final class CascadePainter {
         unwatch()
     }
 
+    /// The rate a frame is wanted at. Characters being revealed are a renderer putting words on the
+    /// screen and take the panel's rate (under the level's cap); a band that is only shimmering
+    /// over a row that has caught up is a mark, and takes the activity tempo like every other.
+    private static func range(for tempo: CascadeTempo) -> CAFrameRateRange {
+        guard tempo == .activity else { return MotionBudget.cascadeRange }
+        let cap = MotionBudget.cascadeRange
+        let tempo = CAFrameRateRange.activityTempo
+        guard cap.maximum > 0, cap.maximum < tempo.maximum else { return tempo }
+        return cap
+    }
+
+    /// Moves the link to the tempo the row is at now, and lets it go altogether once the reveal has
+    /// caught up and the band has left the tail: a row that is open and has nothing more to write
+    /// holds still and costs no frames, and the next words to arrive start the clock again.
+    private func applyTempo() {
+        guard let link else { return }
+        switch live.tempo {
+        case .stopped:
+            link.invalidate()
+            self.link = nil
+        case .activity, .display:
+            link.preferredFrameRateRange = Self.range(for: live.tempo)
+        }
+    }
+
     @objc private func tick(_ link: CADisplayLink) {
-        guard live.advance(to: link.timestamp) else { return }
-        onFrame?()
-        if !live.isActive { stop() }
+        if live.advance(to: link.timestamp) { onFrame?() }
+        if !live.isActive {
+            stop()
+            return
+        }
+        applyTempo()
     }
 }
 

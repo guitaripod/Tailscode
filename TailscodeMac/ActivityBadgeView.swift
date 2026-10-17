@@ -106,7 +106,6 @@ extension CALayer {
 @MainActor
 final class ActivityPulse {
     private weak var view: NSView?
-    private var link: CADisplayLink?
     private var motion: ActivityMotion = .still
     private var cycle: [String] = []
     private var lastFrame = ""
@@ -163,8 +162,7 @@ final class ActivityPulse {
     }
 
     func stop() {
-        link?.invalidate()
-        link = nil
+        MarkClock.shared.unregister(self)
         view?.layer?.removeAnimation(forKey: Self.lightKey)
         turning?.layer?.removeAnimation(forKey: Self.turnKey)
         view?.alphaValue = 1
@@ -172,7 +170,7 @@ final class ActivityPulse {
 
     /// Whether anything is moving, for a harness that proves a settled mark holds still.
     var isMoving: Bool {
-        link != nil || view?.layer?.animation(forKey: Self.lightKey) != nil
+        MarkClock.shared.holds(self) || view?.layer?.animation(forKey: Self.lightKey) != nil
             || turning?.layer?.animation(forKey: Self.turnKey) != nil
     }
 
@@ -197,12 +195,7 @@ final class ActivityPulse {
                         meaning: motion)
                 }
             }
-            if onFrame != nil, !cycle.isEmpty {
-                let link = view.displayLink(target: self, selector: #selector(step))
-                link.runAtActivityTempo()
-                link.add(to: .current, forMode: .common)
-                self.link = link
-            }
+            if onFrame != nil, !cycle.isEmpty { MarkClock.shared.register(self) }
         case .still:
             break
         }
@@ -256,16 +249,93 @@ final class ActivityPulse {
         view?.window == nil ? stop() : start()
     }
 
-    @objc private func step(_ link: CADisplayLink) {
+    /// One frame of the sweep at `time`, for the shared clock: nothing for a mark whose view has
+    /// left its window, and the answer to whether anybody can see this one, so the clock can rest
+    /// when nobody can.
+    fileprivate func advance(at time: CFTimeInterval) -> Bool {
         guard let view, view.window != nil else {
             stop()
+            return false
+        }
+        guard DisplayGate.allows(view) else { return false }
+        if let frame = motion.frame(at: time, of: cycle), frame != lastFrame {
+            lastFrame = frame
+            onFrame?(frame)
+        }
+        return true
+    }
+}
+
+/// The one display link every sweeping text mark in the app shares.
+///
+/// A mark that sweeps is a single glyph of a cycle, and its glyphs are all one advance wide, so a
+/// frame changes a character and measures nothing. Each mark used to hold a link of its own, so a
+/// transcript of forty running tool calls held forty clocks; they step together on one, at the
+/// activity tempo, held weakly so a mark that is gone is gone from the clock, and the link rests
+/// whenever no mark is in a window anybody can see and wakes when one can be.
+@MainActor
+final class MarkClock: NSObject {
+    static let shared = MarkClock()
+
+    private let pulses = NSHashTable<ActivityPulse>.weakObjects()
+    private var link: CADisplayLink?
+
+    override private init() {
+        super.init()
+        let center = NotificationCenter.default
+        for name in [
+            NSApplication.didBecomeActiveNotification, NSApplication.didUnhideNotification,
+            NSWindow.didChangeOcclusionStateNotification, NSWindow.didDeminiaturizeNotification,
+        ] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.wake() }
+            }
+        }
+    }
+
+    func register(_ pulse: ActivityPulse) {
+        pulses.add(pulse)
+        wake()
+    }
+
+    func unregister(_ pulse: ActivityPulse) {
+        pulses.remove(pulse)
+        guard pulses.allObjects.isEmpty else { return }
+        link?.invalidate()
+        link = nil
+    }
+
+    func holds(_ pulse: ActivityPulse) -> Bool { pulses.contains(pulse) }
+
+    /// Whether the clock exists and is stepping, for the harness that proves a settled window owns
+    /// none.
+    var isRunning: Bool { link.map { !$0.isPaused } ?? false }
+
+    var count: Int { pulses.allObjects.count }
+
+    private func wake() {
+        guard !pulses.allObjects.isEmpty else { return }
+        if let link {
+            link.isPaused = false
             return
         }
-        guard let frame = motion.frame(at: link.timestamp, of: cycle), frame != lastFrame else {
+        guard let screen = NSScreen.main else { return }
+        let made = screen.displayLink(target: self, selector: #selector(step(_:)))
+        made.runAtActivityTempo()
+        made.add(to: .main, forMode: .common)
+        link = made
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        let marks = pulses.allObjects
+        guard !marks.isEmpty else {
+            link.invalidate()
+            self.link = nil
             return
         }
-        lastFrame = frame
-        onFrame?(frame)
+        var anySeen = false
+        for mark in marks where mark.advance(at: link.timestamp) { anySeen = true }
+        if !anySeen { link.isPaused = true }
     }
 }
 

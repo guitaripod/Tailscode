@@ -33,6 +33,7 @@ final class Watchdog: @unchecked Sendable {
     private var timer: DispatchSourceTimer?
     private var lastAnswer: TimeInterval = 0
     private var pinging = false
+    private var relaxed = false
     private var hint = false
     private var mainThread: thread_act_t = 0
     private var cpuAtAnswer: TimeInterval?
@@ -78,6 +79,19 @@ final class Watchdog: @unchecked Sendable {
         source.resume()
     }
 
+    /// Lengthens the ping while the app has nothing to do and nobody is looking, and takes it back
+    /// the moment it has. A stall is still found: the answer the loop owes is checked against the
+    /// same silence, and a longer ping only means the last answer is older when the check is made.
+    func setRelaxed(_ value: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let timer, value != relaxed else { return }
+        relaxed = value
+        let ping = value ? max(watch.policy.ping * 2, 1) : watch.policy.ping
+        timer.schedule(
+            deadline: .now() + ping, repeating: ping, leeway: .milliseconds(Int(ping * 100)))
+    }
+
     func stop() {
         lock.lock()
         let source = timer
@@ -117,7 +131,7 @@ final class Watchdog: @unchecked Sendable {
                     cpuSinceAnswer: max(0, sample.cpu - (cpuAtAnswer ?? sample.cpu)),
                     running: sample.running)
             }
-        } else if !watch.isStalled, now - lastAnswer < watch.policy.ping * 2 {
+        } else if !watch.isStalled, now - lastAnswer < watch.policy.ping * (relaxed ? 4 : 2) {
             cpuAtAnswer = Self.cpuState(of: mainThread)?.cpu
         }
         lock.unlock()

@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LiveShot.prepare()
         #endif
         AppLogger.lifecycle.info("launch: Tailscode \(MacCLI.version)")
+        NeuralMetalContext.warm()
         ReviewPromptPolicy.migrateIfNeeded()
         Self.typeWhatIsTyped()
         NSApp.setActivationPolicy(.regular)

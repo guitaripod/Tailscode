@@ -94,7 +94,20 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
         host ?? NSApp?.windows.first { $0.isVisible && $0.contentView != nil }?.contentView
     }
 
+    /// Whether the window the link would pace is one nobody can see: on screen but covered, minimised,
+    /// or in an app that is not in front. Such a window is not served frames, and a link left running
+    /// for it would be woken for nothing; the guard below drains what is pending on its own clock.
+    @MainActor private var pacingIsHidden: Bool {
+        guard let watching = pacing, watching.window != nil else { return false }
+        return !DisplayGate.allows(watching)
+    }
+
     @MainActor private func arm() {
+        if pacingIsHidden {
+            link?.isPaused = true
+            armGuard()
+            return
+        }
         if link == nil, let host = pacing, host.window != nil {
             let made = host.displayLink(target: self, selector: #selector(tick))
             made.preferredFrameRateRange = Self.range

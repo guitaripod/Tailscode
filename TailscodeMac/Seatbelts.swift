@@ -113,6 +113,9 @@ final class Seatbelts {
     private(set) var level: ShedLevel = .calm
     private var forced: ShedLevel?
     private var timer: Timer?
+    private var interval: TimeInterval = Seatbelts.activeInterval
+    private var quietSamples = 0
+    private var activation: NSObjectProtocol?
     private var terminate: DispatchSourceSignal?
     private var ledger: LaunchLedger?
     private var ledgerURL = LaunchLedger.defaultURL()
@@ -124,6 +127,16 @@ final class Seatbelts {
     /// waiting lets that slice age out of the two-second window. A launch that truly hangs is still
     /// caught: the watchdog writes its record and holds its hint until the first sample takes it.
     static let launchGrace: TimeInterval = 3
+
+    /// How often the sample is taken while anything is going on, and how often once nothing has
+    /// been for `quietBefore` samples in a row: a calm level, no pane streaming, a loop that is
+    /// asleep. A sample every second of a window nobody is touching wakes the main thread for a
+    /// record that says the same thing every time; the governor's clocks read absolute time, so a
+    /// slower sample loses nothing it would have decided, and anything that stirs (a turn starting,
+    /// the app coming to the front) takes the one-second beat back at once through `nudge`.
+    static let activeInterval: TimeInterval = 1
+    static let restingInterval: TimeInterval = 5
+    static let quietBefore = 5
 
     /// The window's panes, asked once a sample.
     var panes: (() -> SeatbeltPanes)?
@@ -187,16 +200,50 @@ final class Seatbelts {
                     ev: "pressure \(pressure.code)"))
         }
         pressure.start()
-        let timer = Timer(
-            fire: Date().addingTimeInterval(Self.launchGrace), interval: 1, repeats: true
+        schedule(first: Self.launchGrace, interval: Self.activeInterval)
+        activation = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { _ in
-            MainActor.assumeIsolated { Seatbelts.shared.sample() }
+            MainActor.assumeIsolated { Seatbelts.shared.nudge() }
         }
-        timer.tolerance = 0.1
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
         quitOnTerminate()
     }
+
+    /// Starts the sample's timer over at `interval`, the first one after `first`.
+    private func schedule(first: TimeInterval, interval: TimeInterval) {
+        timer?.invalidate()
+        self.interval = interval
+        let fresh = Timer(fire: Date().addingTimeInterval(first), interval: interval, repeats: true) {
+            _ in
+            MainActor.assumeIsolated { Seatbelts.shared.sample() }
+        }
+        fresh.tolerance = interval * 0.1
+        RunLoop.main.add(fresh, forMode: .common)
+        timer = fresh
+    }
+
+    /// Something stirred: the beat is a second again and a sample is taken now, so a turn that
+    /// starts, or an app brought to the front, is seen by the governor within the moment it began.
+    func nudge() {
+        quietSamples = 0
+        guard isRunning else { return }
+        watchdog?.setRelaxed(false)
+        if interval != Self.activeInterval { schedule(first: 0.05, interval: Self.activeInterval) }
+    }
+
+    /// Settles the beat after a sample: a run of quiet ones in an app nobody is using lengthens it,
+    /// and anything else keeps or restores the second.
+    private func settle(quiet: Bool) {
+        quietSamples = quiet ? quietSamples + 1 : 0
+        let resting = quietSamples >= Self.quietBefore
+        watchdog?.setRelaxed(resting && !NSApp.isActive)
+        let wanted = resting ? Self.restingInterval : Self.activeInterval
+        guard wanted != interval else { return }
+        schedule(first: wanted, interval: wanted)
+    }
+
+    /// The beat the sample is taken at, for the harness that proves an idle window slows it.
+    var beat: TimeInterval { interval }
 
     /// A `kill <pid>` asks the app to quit, and quitting is the exit path that saves drafts and
     /// marks the launch clean; left to the default, SIGTERM ends the process where it stands and
@@ -242,6 +289,8 @@ final class Seatbelts {
         guard isRunning else { return }
         timer?.invalidate()
         timer = nil
+        if let activation { NotificationCenter.default.removeObserver(activation) }
+        activation = nil
         watchdog?.stop()
         writer?.writeNow(
             FlightRecord(
@@ -301,6 +350,7 @@ final class Seatbelts {
             let relieved = MemoryRelief.shared.relieve(level: next)
             events.append("relief \(relieved.count)")
         }
+        settle(quiet: next == .calm && seen.streaming == 0 && loop.busy1 < 0.05 && events.isEmpty)
         let counts = FlightWriter.processCounts()
         var record = FlightRecord(
             t: FlightRecord.epochMilliseconds(),

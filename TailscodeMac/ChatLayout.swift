@@ -65,7 +65,7 @@ enum ChatLayout {
         case .compaction:
             return .row(.seam)
         case .interruption, .reasoning, .tool, .run, .subagent, .subagentGroup, .responseStats, .note,
-            .revertPending:
+            .revertPending, .brain:
             return .row(.furniture)
         case .turnBreak:
             return .turnBreak

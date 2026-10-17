@@ -72,6 +72,11 @@ final class TranscriptViewController: NSViewController {
 
     private let context = TranscriptContext()
     private let rowBuilder = TranscriptRowBuilder()
+    /// This pane's brains: the turns the conversation holds read into heads, and the person's
+    /// choice of which one is open.
+    let brains = BrainStore()
+    /// What the rows are given, for a harness that builds a view the way the pane does.
+    var driveContext: TranscriptContext { context }
     private let hoverBar = MessageHoverBar()
     private let railController = LinkRailController()
     private let identityLabel = NSTextField(labelWithString: "")
@@ -177,6 +182,10 @@ final class TranscriptViewController: NSViewController {
     /// The rendering the wave last painted in full. A frame that paints the same rendering again
     /// changes its colours and nothing else, so the label is repainted without being measured.
     var waveMeasured: NSAttributedString?
+    /// The paint the live row last had and what that paint was made at, so a frame changes the
+    /// characters that moved and a repaint of the same revision changes nothing.
+    var waveBuffer: CascadePaintBuffer?
+    var wavePainted: (key: String, revision: Int, view: ObjectIdentifier, rendered: ObjectIdentifier)?
     /// A row the wave gave up on. It is not taken back: restarting a reveal that already snapped to
     /// whole would rewind the answer under the reader.
     var abandoned: String?
@@ -1219,7 +1228,7 @@ final class TranscriptViewController: NSViewController {
         let tail = rowTailMessages
         let messages =
             state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
-        let rows = rowBuilder.rows(for: messages, turnOpen: state.status == .running)
+        let rows = buildRows(messages, state: state)
         apply(state: state, rows: rows)
     }
 
@@ -1321,6 +1330,7 @@ final class TranscriptViewController: NSViewController {
     private func beginLifetime() {
         guard !lifetimeArmed else { return }
         lifetimeArmed = true
+        brains.parkViews(false)
         lifetime.add { [weak self] in MainActor.assumeIsolated { self?.releaseClocks() } }
         if isViewLoaded { observeScrolling() }
     }
@@ -1329,6 +1339,7 @@ final class TranscriptViewController: NSViewController {
     /// drain slot go with the lifetime that owns them.
     private func releaseClocks() {
         lifetimeArmed = false
+        brains.parkViews(true)
         lease = nil
         drainToken = nil
         attachedKey = nil
@@ -1754,8 +1765,33 @@ final class TranscriptViewController: NSViewController {
 
     /// A state drawn as though the conversation had just emitted it, for a harness that has no
     /// server to emit one.
+    /// The rows for a conversation as it stands: the builder's, with the question or approval that
+    /// waits on the person marked on its node, so the brain can say it. The builder owns the memo
+    /// and the brain's reading of the turns, and this is the one place the state is handed to it.
+    private func buildRows(_ messages: [ChatMessage], state: ConversationState) -> [TranscriptRow] {
+        rowBuilder.rows(
+            for: messages, turnOpen: state.status == .running,
+            awaiting: brains.isActive ? BrainStore.awaiting(for: state) : .none)
+    }
+
+    /// The rows rebuilt from the state the pane holds, for a choice that changes what they are: a
+    /// brain opened or closed, its old rows listed, the style changed.
+    func rebuildRows() {
+        guard let state = lastState, !placeholderShown else { return }
+        let tail = rowTailMessages
+        let messages =
+            state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
+        apply(state: state, rows: buildRows(messages, state: state))
+    }
+
+    @objc private func activityStyleChanged() {
+        guard isViewLoaded else { return }
+        brains.clear()
+        rebuildRows()
+    }
+
     func show(state: ConversationState) {
-        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+        apply(state: state, rows: buildRows(state.messages, state: state))
     }
 
     func refreshJumpReading() { applyJumpReading() }
@@ -1788,6 +1824,18 @@ final class TranscriptViewController: NSViewController {
     /// ``revealDisclosure`` needs to show the opened body, never past the clicked header. Their
     /// own next prompt, or the jump pill, is what re-engages following.
     private func wireContext() {
+        rowBuilder.brains = brains
+        context.brains = brains
+        brains.onChange = { [weak self] in self?.rebuildRows() }
+        calls.onFaceChanged = { [weak self] in
+            guard let self, let facts = self.lastFacts else { return }
+            self.noteBrainContext(facts)
+        }
+        context.returnFocus = { [weak self] in self?.focusComposer() }
+        context.revealSubagent = { [weak self] stepID in self?.revealAgent(ofStep: stepID) }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(activityStyleChanged), name: ActivityStyleSetting.didChange,
+            object: nil)
         context.onToggle = { [weak self] key, open in
             guard let self else { return }
             self.context.expanded.set(key, open: open)
@@ -2502,7 +2550,7 @@ final class TranscriptViewController: NSViewController {
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
         let interval = Pace.signposter.beginInterval("apply")
         defer { Pace.signposter.endInterval("apply", interval) }
-        noteHapticEdges(state: state, rows: rows)
+        noteHapticEdges(state: state)
         lastState = state
         keepRead(state)
         if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
@@ -2510,7 +2558,9 @@ final class TranscriptViewController: NSViewController {
         }
         onState?(state)
         var confirmed = rows
-        confirmed.removeAll { $0.key.hasPrefix("echo:") }
+        if rows.last?.key.hasPrefix("echo:") == true {
+            confirmed.removeAll { $0.key.hasPrefix("echo:") }
+        }
         lastFullRows = confirmed
         let turnOpen = state.status == .running
         let turnEnded = context.turnOpen && !turnOpen
@@ -2833,7 +2883,7 @@ final class TranscriptViewController: NSViewController {
         let messages =
             fresh.messages.count > tail ? Array(fresh.messages.suffix(tail)) : fresh.messages
         apply(
-            state: fresh, rows: rowBuilder.rows(for: messages, turnOpen: fresh.status == .running))
+            state: fresh, rows: buildRows(messages, state: fresh))
     }
 
     /// Repaints for a revert-family press this device made. Nothing the server said has changed,
@@ -2871,15 +2921,8 @@ final class TranscriptViewController: NSViewController {
     /// a tool call landing while you wait, the turn ending, the agent stopping to ask. The cues
     /// are the waiting group's — the wait is what the app asks of someone, so the wait is what
     /// the trackpad reports.
-    private func noteHapticEdges(state: ConversationState, rows: [TranscriptRow]) {
-        let previous = Self.toolStatuses(lastFullRows)
-        if !previous.isEmpty {
-            let current = Self.toolStatuses(rows)
-            for (id, status) in previous
-            where status != .completed && current[id] == .completed {
-                MacHaptics.shared.play(.step)
-            }
-        }
+    private func noteHapticEdges(state: ConversationState) {
+        if rowBuilder.takeCompletions() > 0 { MacHaptics.shared.play(.step) }
         if wasRunningForHaptics && state.status != .running {
             MacHaptics.shared.play(.received)
             if view.window?.isKeyWindow == true, state.messages.last?.error == nil {
@@ -2924,23 +2967,6 @@ final class TranscriptViewController: NSViewController {
         return title.isEmpty ? text : "\(title). \(text)"
     }
 
-    private static func toolStatuses(_ rows: [TranscriptRow]) -> [String: ToolStatus] {
-        var map: [String: ToolStatus] = [:]
-        for row in rows {
-            switch row.kind {
-            case .tool(let call), .subagent(let call), .workflow(let call):
-                map[call.id] = call.status
-            case .subagentGroup(let fanout):
-                for member in fanout.members { map[member.call.id] = member.call.status }
-            case .run(let steps):
-                for case .tool(_, let call) in steps { map[call.id] = call.status }
-            default:
-                break
-            }
-        }
-        return map
-    }
-
     /// The band between transcript and composer: what the turn is doing, which agents are out,
     /// how much of the context is spent, what the goal is — every fact clickable, so reading the
     /// status and steering the turn are one gesture rather than two.
@@ -2960,9 +2986,20 @@ final class TranscriptViewController: NSViewController {
             queued: queue.count, spend: spend, git: git, model: composer.activeModelID,
             selection: composer.activeSelection)
         lastFacts = facts
+        noteBrainContext(facts)
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
         statusBand.render(facts: facts, notice: bandNotice)
         bandGlass?.isHidden = !statusBand.hasContent
+    }
+
+    /// What the machine is doing, how full the window is and whether a call is open, handed to the
+    /// newest brain so its head wears the same state the band says in words. The model changes and
+    /// the rows do not, so the views are restated here rather than through a rebuild.
+    private func noteBrainContext(_ facts: StatusFacts) {
+        guard brains.isActive else { return }
+        let context = NeuralBrainContext(facts: facts, call: calls.face)
+        guard brains.setContext(context) else { return }
+        brains.restateViews()
     }
 
     /// Pre-emptive used-up quota on the band while idle — a failed turn already carries the
@@ -3007,6 +3044,7 @@ final class TranscriptViewController: NSViewController {
                     guard !Task.isCancelled, let self else { return }
                     tick += 1
                     self.updateStatus()
+                    self.brains.restateLive()
                     self.updateCompactingElapsed()
                     self.advanceWorkflowClock()
                     if tick % 5 == 0 { self.refreshTurnFacts() }
@@ -3183,6 +3221,23 @@ final class TranscriptViewController: NSViewController {
         scrollToNewestAgent()
     }
 
+    /// The card of the agent a brain's Task node stands for: the node is a step, named by its part,
+    /// and the card is the row that part made, alone or among a fan-out's members.
+    private func revealAgent(ofStep stepID: String) {
+        for row in lastFullRows {
+            if row.key == stepID, let call = row.kind.spawnedCalls.first {
+                scrollToAgent(call.id)
+                return
+            }
+            if case .subagentGroup(let fanout) = row.kind,
+                let member = fanout.members.first(where: { $0.key == stepID })
+            {
+                scrollToAgent(member.call.id)
+                return
+            }
+        }
+    }
+
     func scrollToNewestAgent() {
         for (index, row) in renderedRows.enumerated().reversed() {
             guard !row.kind.spawnedCalls.isEmpty else { continue }
@@ -3300,7 +3355,7 @@ final class TranscriptViewController: NSViewController {
         let tail = rowTailMessages
         let messages =
             state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
-        apply(state: state, rows: rowBuilder.rows(for: messages, turnOpen: state.status == .running))
+        apply(state: state, rows: buildRows(messages, state: state))
     }
 
     /// An empty pane asks which server rather than captioning itself. The chooser owns the
@@ -3472,6 +3527,12 @@ final class TranscriptViewController: NSViewController {
             renderedRows.suffix(from: last + 1).elementsEqual(rows.suffix(from: last + 1))
         else { return false }
         switch (renderedRows[last].kind, rows[last].kind) {
+        case (.brain, .brain(let brain)):
+            guard let view = rowViews[last] as? BrainRowView else { return false }
+            view.restate(brain)
+            renderedRows[last] = rows[last]
+            if followsBottom { scrollToBottom() }
+            return true
         case (.agentProse, .agentProse), (.codeBlock, .codeBlock):
             let painting = cascade.isActive
             guard rows[last].key == cascade.key || !painting else { return false }
@@ -3660,7 +3721,7 @@ final class TranscriptViewController: NSViewController {
                 showPlaceholder(ChatSuggestion.headline, starting: true)
                 return
             }
-            apply(state: state, rows: rowBuilder.rows(for: messages, turnOpen: false))
+            apply(state: state, rows: buildRows(messages, state: state))
             view.layoutSubtreeIfNeeded()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 for directive in directives {
@@ -4076,6 +4137,12 @@ final class TranscriptViewController: NSViewController {
                 index < rowViews.count, let held = rowViews[index] as? PendingSendRowView
             {
                 held.restate(send: send, plan: plan, now: now)
+                continue
+            }
+            if case .brain(let brain) = rows[source].kind, index < rowViews.count,
+                let held = rowViews[index] as? BrainRowView
+            {
+                held.restate(brain)
                 continue
             }
             stale.insert(rows[source].key)
@@ -4762,6 +4829,13 @@ final class TranscriptViewController: NSViewController {
         if show { applyJumpReading() }
     }
 
+    /// What find reads in a row: its words, and for a brain the titles, arguments, thoughts and
+    /// output lines of the steps it draws, which are the words a person saw in the old rows.
+    private func searchText(of row: TranscriptRow) -> String {
+        if case .brain(let brain) = row.kind { return brains.searchText(turnID: brain.turnID) }
+        return row.searchText
+    }
+
     private func runFind(retarget: Bool) {
         let needle = findBar.query.lowercased()
         clearFindHighlight()
@@ -4771,7 +4845,7 @@ final class TranscriptViewController: NSViewController {
             return
         }
         findMatches = renderedRows.indices.filter {
-            renderedRows[$0].searchText.lowercased().contains(needle)
+            searchText(of: renderedRows[$0]).lowercased().contains(needle)
         }
         if retarget {
             findCursor = 0
@@ -4834,7 +4908,7 @@ final class TranscriptViewController: NSViewController {
         guard !needle.isEmpty else { return 0 }
         let shown = Set(renderedRows.map(\.key))
         return lastFullRows.filter {
-            !shown.contains($0.key) && $0.searchText.lowercased().contains(needle)
+            !shown.contains($0.key) && searchText(of: $0).lowercased().contains(needle)
         }.count
     }
 
@@ -5019,7 +5093,7 @@ private final class DropForwardingView: NSView {
         }
 
         func emitProbe(_ state: ConversationState) {
-            apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: true))
+            apply(state: state, rows: buildRows(state.messages, state: state))
         }
 
         var probeSnapshot: (clip: CGFloat, inset: CGFloat, page: CGFloat, last: CGFloat, glass: CGFloat) {

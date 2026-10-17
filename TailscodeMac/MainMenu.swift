@@ -375,6 +375,7 @@ final class MainMenu: NSObject {
         menu.addItem(item(Localized.text("Zoom Out"), #selector(zoomOut), "-"))
         menu.addItem(item(Localized.text("Actual Size"), #selector(zoomReset), "0"))
         menu.addItem(item(Localized.text("Type Size…"), #selector(typeSize), ""))
+        menu.addItem(item(Localized.text("Show Turns as Brains"), #selector(toggleBrain), ""))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("The month in numbers"), #selector(monthInNumbers), ""))
         menu.addItem(.separator())
@@ -591,6 +592,9 @@ final class MainMenu: NSObject {
         @objc private func toggleTerminal() { run(.toggleTerminal) }
     #endif
     @objc private func toggleArchiveView() { run(.toggleArchiveView) }
+    @objc private func toggleBrain() {
+        ActivityStyleSetting.set(MacBrain.style == .brain ? .lines : .brain)
+    }
     @objc private func videoForge() { hub.presentForge() }
     @objc private func openStudio() { hub.presentStudio() }
 
@@ -739,6 +743,10 @@ extension MainMenu: NSMenuItemValidation {
         #endif
         if menuItem.action == #selector(toggleArchiveView) {
             menuItem.state = hub.sidebar.showingArchive ? .on : .off
+        }
+        if menuItem.action == #selector(toggleBrain) {
+            menuItem.state = MacBrain.style == .brain && MacBrain.isAvailable ? .on : .off
+            return MacBrain.isAvailable
         }
         guard let action = menuItem.action, chatVerbs.contains(action) else { return true }
         if action == #selector(deleteChat), NSApp.keyWindow?.firstResponder is NSText {

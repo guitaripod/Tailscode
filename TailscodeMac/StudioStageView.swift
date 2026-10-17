@@ -55,6 +55,7 @@ final class StudioStageView: NSView, StudioStaging {
     private var backdropLoad: Task<Void, Never>?
     private var pictureRect: NSRect = .zero
     private var link: CADisplayLink?
+    private lazy var gate = DisplayGate(self) { [weak self] in self?.gateChanged() }
     private var sketchDirty = false
     private var clock: Timer?
     private var dropping = false
@@ -146,6 +147,7 @@ final class StudioStageView: NSView, StudioStaging {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        gate.attach()
         if window == nil {
             link?.invalidate()
             link = nil
@@ -208,8 +210,18 @@ final class StudioStageView: NSView, StudioStaging {
             ])
     }
 
+    /// A stage nobody can see draws no sketch and counts no seconds; the sketch that landed while it
+    /// was hidden is drawn, and the caption brought up to date, the moment it can be seen.
+    private func gateChanged() {
+        syncClock()
+        guard gate.isOpen else { return }
+        updateCaption()
+        if sketchDirty { startLink() }
+    }
+
     private func startLink() {
-        guard link == nil, window != nil else {
+        guard gate.isOpen else { return }
+        guard link == nil else {
             link?.isPaused = false
             return
         }
@@ -494,7 +506,7 @@ final class StudioStageView: NSView, StudioStaging {
     }
 
     private func syncClock() {
-        guard state.isWorking, window != nil else { return stopClock() }
+        guard state.isWorking, gate.isOpen else { return stopClock() }
         guard clock == nil else { return }
         clock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateCaption() }

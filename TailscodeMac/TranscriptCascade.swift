@@ -239,7 +239,11 @@ extension TranscriptViewController {
     func paintCascade() -> Bool {
         guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty,
             let index = renderedRows.lastIndex(where: { $0.key == key })
-        else { return false }
+        else {
+            waveBuffer = nil
+            wavePainted = nil
+            return false
+        }
         guard index < rowViews.count,
             let label = Self.streamedLabel(in: rowViews[index], kind: renderedRows[index].kind),
             let tail = cascade.tail(for: key)
@@ -250,11 +254,27 @@ extension TranscriptViewController {
         case .codeBlock(let language, let body): rendered = Self.codeRendering(body, language: language)
         default: return false
         }
+        let viewID = ObjectIdentifier(label)
+        let renderedID = ObjectIdentifier(rendered)
+        if let done = wavePainted, done.key == key, done.revision == cascade.paintRevision,
+            done.view == viewID, done.rendered == renderedID
+        {
+            cascade.landed()
+            return true
+        }
+        let buffer: CascadePaintBuffer
+        if let held = waveBuffer, held.matches(rendered: rendered, key: key) {
+            buffer = held
+        } else {
+            buffer = CascadePaintBuffer(rendered: rendered, key: key, revealed: tail.revealed)
+            waveBuffer = buffer
+        }
         let prose = label as? RowKit.ProseLabel
         prose?.holdsMeasure = rendered === waveMeasured
-        label.attributedStringValue = tail.paint(rendered, settled: MacTheme.Color.label)
+        label.attributedStringValue = buffer.paint(tail, settled: MacTheme.Color.label)
         prose?.holdsMeasure = false
         waveMeasured = rendered
+        wavePainted = (key, cascade.paintRevision, viewID, renderedID)
         cascade.landed()
         if canvasHold != nil {
             recomputeFreshCanvas()

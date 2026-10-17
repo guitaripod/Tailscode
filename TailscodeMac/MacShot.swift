@@ -339,11 +339,16 @@ enum MacShot {
 
         /// A window that was never given the keyboard draws its inactive face: grey traffic lights, a
         /// dimmed title. Taking the keyboard would take it from whoever is typing, so the windows that
-        /// are put on the display are only *reported* as key and main, which is all their drawing asks.
+        /// are put on the display are only *reported* as key, main and visible, which is all their
+        /// drawing asks.
         private static func lendKeyAppearance() {
             let pairs: [(AnyClass, Selector, Selector)] = [
                 (NSWindow.self, #selector(getter: NSWindow.isKeyWindow), #selector(NSWindow.liveShotIsKey)),
                 (NSWindow.self, #selector(getter: NSWindow.isMainWindow), #selector(NSWindow.liveShotIsMain)),
+                (
+                    NSWindow.self, #selector(getter: NSWindow.occlusionState),
+                    #selector(NSWindow.liveShotOcclusion)
+                ),
                 (NSApplication.self, #selector(getter: NSApplication.isActive),
                     #selector(NSApplication.liveShotIsActive)),
             ]
@@ -471,6 +476,13 @@ enum MacShot {
 
         @objc fileprivate func liveShotIsMain() -> Bool {
             LiveShot.lends(to: self) || liveShotIsMain()
+        }
+
+        /// A window on the virtual display is reported covered while the real display sleeps, and a
+        /// head that draws only for a window somebody can see would never draw: what is drawn on the
+        /// virtual display is what is being photographed, so it is what is visible.
+        @objc fileprivate func liveShotOcclusion() -> NSWindow.OcclusionState {
+            LiveShot.lends(to: self) ? .visible : liveShotOcclusion()
         }
     }
 

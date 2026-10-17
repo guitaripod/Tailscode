@@ -427,6 +427,16 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 options: ChatDensity.allCases.map(\.title),
                 selected: ChatDensity.allCases.firstIndex(of: ChatDensitySetting.current) ?? 0,
                 action: #selector(chatDensityChanged)))
+        column.addArrangedSubview(
+            popUpRow(
+                title: ActivityStyleSetting.title,
+                subtitle: MacBrain.isAvailable
+                    ? ActivityStyleSetting.explanation
+                    : Localized.text(
+                        "This Mac cannot draw the head, so every turn stays as flat lines."),
+                options: ActivityStyle.allCases.map(\.title),
+                selected: ActivityStyle.allCases.firstIndex(of: ActivityStyleSetting.current) ?? 0,
+                action: #selector(activityStyleChanged)))
 
         gap(column)
         let type = TypeSettingsView()
@@ -1023,6 +1033,10 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     @objc private func chatDensityChanged(_ sender: NSPopUpButton) {
         ChatDensitySetting.set(ChatDensity.allCases[sender.indexOfSelectedItem])
+    }
+
+    @objc private func activityStyleChanged(_ sender: NSPopUpButton) {
+        ActivityStyleSetting.set(ActivityStyle.allCases[sender.indexOfSelectedItem])
     }
 
     private func popUpRow(

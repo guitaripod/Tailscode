@@ -39,6 +39,10 @@ enum MacCLI {
         ]
         #if DEBUG
             options.insert("--shot-live")
+            options.insert("--neural-shot")
+            options.insert("--neural-bench")
+            options.insert("--neural-view")
+            options.insert("--neural-quad")
         #endif
         return options
     }()
@@ -130,6 +134,12 @@ if TranscriptBench.isRequested {
 if TileCanvasBench.isRequested {
     TileCanvasBench.run()
 }
+
+#if DEBUG
+    if NeuralShot.isRequested {
+        NeuralShot.run()
+    }
+#endif
 
 if SelfTest.isRequested {
     Task { await SelfTest.run() }

@@ -27,6 +27,7 @@ final class PresenceOrbView: NSView {
     }
 
     private let metalView = MTKView()
+    private lazy var gate = DisplayGate(self) { [weak self] in self?.gateChanged() }
     private var queue: MTLCommandQueue?
     private var pipeline: MTLRenderPipelineState?
     private var field: PresenceField
@@ -62,30 +63,16 @@ final class PresenceOrbView: NSView {
 
     private func configureMetal() {
         metalView.preferredFramesPerSecond = Self.tempo
-        guard let device = MTLCreateSystemDefaultDevice(),
-            let library = device.makeDefaultLibrary(),
-            let vertex = library.makeFunction(name: "orb_vertex"),
-            let fragment = library.makeFunction(name: "orb_fragment")
+        guard let context = NeuralMetalContext.shared,
+            let pipeline = context.premultipliedPipeline(
+                vertex: "orb_vertex", fragment: "orb_fragment", format: .bgra8Unorm)
         else {
             isHidden = true
             return
         }
-        queue = device.makeCommandQueue()
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = vertex
-        descriptor.fragmentFunction = fragment
-        let attachment = descriptor.colorAttachments[0]!
-        attachment.pixelFormat = .bgra8Unorm
-        attachment.isBlendingEnabled = true
-        attachment.sourceRGBBlendFactor = .one
-        attachment.sourceAlphaBlendFactor = .one
-        attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
-        attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
-        pipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
-        guard pipeline != nil else {
-            isHidden = true
-            return
-        }
+        let device = context.device
+        queue = context.queue
+        self.pipeline = pipeline
         metalView.device = device
         metalView.delegate = self
         metalView.layer?.isOpaque = false
@@ -160,15 +147,22 @@ final class PresenceOrbView: NSView {
     }
 
     private func wake() {
-        guard window != nil, !isHidden else { return }
+        guard gate.isOpen, !isHidden else { return }
         metalView.isPaused = false
+    }
+
+    /// A creature nobody can see is not drawn: behind another window, minimised, or in an app that is
+    /// not in front its clock rests, and the first moment it can be seen it wakes.
+    private func gateChanged() {
+        if gate.isOpen { wake() } else { metalView.isPaused = true }
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        gate.attach()
         if window == nil { metalView.isPaused = true } else {
             field.set(colors: inks())
-            wake()
+            gateChanged()
         }
     }
 
