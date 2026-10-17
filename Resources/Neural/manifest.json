@@ -1,0 +1,109 @@
+{
+ "channels": [
+  "think",
+  "sense",
+  "act",
+  "shell",
+  "delegate",
+  "say",
+  "link",
+  "star",
+  "seam",
+  "eye",
+  "rib",
+  "ear"
+ ],
+ "layers": {
+  "bloom0": {
+   "format": 1,
+   "height": 126,
+   "ntex": 32852,
+   "ntexSha": "96e9af38609ea106",
+   "png": 7721,
+   "pngSha": "2a602814c8384e11",
+   "srgb": false,
+   "width": 192
+  },
+  "bloom1": {
+   "format": 1,
+   "height": 126,
+   "ntex": 32852,
+   "ntexSha": "8530884dd6636a79",
+   "png": 9751,
+   "pngSha": "87fb35c30e320778",
+   "srgb": false,
+   "width": 192
+  },
+  "bloom2": {
+   "format": 1,
+   "height": 126,
+   "ntex": 32852,
+   "ntexSha": "ad86d1260cc51951",
+   "png": 3225,
+   "pngSha": "f7087deb9968b030",
+   "srgb": false,
+   "width": 192
+  },
+  "chassis": {
+   "format": 1,
+   "height": 1008,
+   "ntex": 2064992,
+   "ntexSha": "91c32d5abafea8bf",
+   "png": 707478,
+   "pngSha": "d87fefe636671c44",
+   "srgb": true,
+   "width": 1536
+  },
+  "glass": {
+   "format": 1,
+   "height": 504,
+   "ntex": 516700,
+   "ntexSha": "3d61d2d68deba895",
+   "png": 117539,
+   "pngSha": "729807e582cafb72",
+   "srgb": true,
+   "width": 768
+  },
+  "interior": {
+   "format": 2,
+   "height": 1008,
+   "ntex": 917872,
+   "ntexSha": "f20bf5fe183da0b7",
+   "png": 1088999,
+   "pngSha": "ee4326ae1e107c57",
+   "srgb": true,
+   "width": 1536
+  },
+  "mask0": {
+   "format": 2,
+   "height": 1008,
+   "ntex": 917872,
+   "ntexSha": "a5fa7f5a88bd2135",
+   "png": 193479,
+   "pngSha": "b103d94ec91783e2",
+   "srgb": false,
+   "width": 1536
+  },
+  "mask1": {
+   "format": 2,
+   "height": 1008,
+   "ntex": 917872,
+   "ntexSha": "c8a47fd1acfedd18",
+   "png": 160671,
+   "pngSha": "459290968ccec3fc",
+   "srgb": false,
+   "width": 1536
+  },
+  "mask2": {
+   "format": 2,
+   "height": 1008,
+   "ntex": 917872,
+   "ntexSha": "5080d19535c68f4e",
+   "png": 16941,
+   "pngSha": "e66c8018f5cf0818",
+   "srgb": false,
+   "width": 1536
+  }
+ },
+ "version": 1
+}
