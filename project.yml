@@ -28,6 +28,10 @@ targetTemplates:
       - path: Tailscode/Usage/UsagePushPayload.swift
       - path: Tailscode/Logging/AppLogger.swift
       - path: Tailscode/Logging/LogFileWriter.swift
+      - path: Shared/Neural
+      - path: Resources/Neural/ntex
+        type: folder
+        buildPhase: resources
       - path: Resources/Localizable.xcstrings
         buildPhase: resources
       - path: Resources/InfoPlist.xcstrings
@@ -128,6 +132,12 @@ targets:
       - path: TailscodeWidget/UsageWidget.swift
       - path: TailscodeWidget/UsageWidgetViews.swift
       - path: TailscodeWidget/UsageWidgetConfiguration.swift
+      - path: TailscodeWidget/LiveActivityViews.swift
+      - path: TailscodeWidget/NeuralGlyphView.swift
+      - path: Shared/Neural
+      - path: Resources/Neural/ntex
+        type: folder
+        buildPhase: resources
       - path: Resources/Localizable.xcstrings
         buildPhase: resources
       - path: Resources/InfoPlist.xcstrings
@@ -333,8 +343,12 @@ targets:
       - path: Tailscode/Notifications/NoticeCategories.swift
       - path: Tailscode/Notifications/NoticeBadge.swift
       - path: Tailscode/Notifications/NoticePushDresser.swift
+      - path: Tailscode/Notifications/NoticeHead.swift
       - path: TailscodeCore/Sources/TailscodeCore/NoticeWire.swift
       - path: TailscodeCore/Sources/TailscodeCore/Localized.swift
+      - path: TailscodeCore/Sources/TailscodeCore/Neural/NeuralGlyphGeometry.swift
+      - path: TailscodeCore/Sources/TailscodeCore/Neural/NeuralGlyphWire.swift
+      - path: TailscodeCore/Sources/TailscodeCore/Neural/NeuralNoticeLine.swift
     info:
       path: TailscodeNSE/Info.plist
       properties:
@@ -377,8 +391,12 @@ targets:
       - path: Resources/Localizable.xcstrings
         buildPhase: resources
       - path: Tailscode/Notifications/NoticeFace.swift
+      - path: Tailscode/Notifications/NoticeHead.swift
       - path: TailscodeCore/Sources/TailscodeCore/NoticeWire.swift
       - path: TailscodeCore/Sources/TailscodeCore/Localized.swift
+      - path: TailscodeCore/Sources/TailscodeCore/Neural/NeuralGlyphGeometry.swift
+      - path: TailscodeCore/Sources/TailscodeCore/Neural/NeuralGlyphWire.swift
+      - path: TailscodeCore/Sources/TailscodeCore/Neural/NeuralNoticeLine.swift
     info:
       path: TailscodeNotificationUI/Info.plist
       properties:
