@@ -7,14 +7,16 @@ src = Path(sys.argv[1])
 out = Path(sys.argv[2])
 W, H = 1536, 1008
 
-THEMES = ["rose", "dawn", "tokyo", "phosphor"]
+THEMES = ["rose", "dawn", "tokyo", "phosphor", "macdark", "maclight"]
 STAGE_KEYS = {
     "rose": ["sonnet3-rest", "fable4-rest", "sonnet3-settled", "sonnet3-hover-shell", "sonnet3-hover-act", "sonnet3-hover-sense", "sonnet3-hover-plan",
-             "sonnet3-working", "sonnet3-approval", "sonnet3-dive-shell", "fable4-settled", "fable4-hover-shell", "fable4-dive-shell",
+             "sonnet3-working", "sonnet3-approval", "sonnet3-dive-shell", "sonnet3-stalled", "sonnet3-failed", "sonnet3-neutral", "fable4-settled", "fable4-hover-shell", "fable4-dive-shell",
              "opus3-settled"],
-    "dawn": ["sonnet3-rest", "sonnet3-settled", "sonnet3-hover-shell", "sonnet3-hover-act", "sonnet3-working", "fable4-settled"],
+    "dawn": ["sonnet3-stalled", "sonnet3-failed", "sonnet3-neutral", "sonnet3-working", "sonnet3-approval", "sonnet3-rest", "sonnet3-settled", "sonnet3-hover-shell", "sonnet3-hover-act", "sonnet3-working", "fable4-settled"],
     "tokyo": ["sonnet3-settled", "sonnet3-hover-shell"],
     "phosphor": ["sonnet3-settled", "sonnet3-hover-shell"],
+    "macdark": ["sonnet3-settled", "sonnet3-rest", "sonnet3-hover-shell", "sonnet3-working"],
+    "maclight": ["sonnet3-settled", "sonnet3-rest", "sonnet3-hover-shell", "sonnet3-working"],
 }
 CARD_FACES = ["opus3", "sonnet3", "fable4"]
 CARD_STATE = ["rest"]
@@ -41,6 +43,8 @@ def uri(img, q):
     return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+LIVE = [f'lv-{k}' for k in ['shell-lo','shell-hi','sense-lo','sense-hi','act-lo','act-hi','wait-lo','wait-hi','retry']]
+live = {}
 stage, cards = {}, {}
 for t in THEMES:
     for k in STAGE_KEYS[t]:
@@ -49,14 +53,19 @@ for t in THEMES:
             print("missing", name); continue
         im = load(name)
         stage[name] = uri(im, 80)
+    if t in ('rose','dawn','tokyo','phosphor'):
+        for k in LIVE + ['settled', 'stalled']:
+            nm = f'{t}-sonnet3-{k}'
+            if not (src / f'{nm}-interior.bgra').exists(): continue
+            live[f'{t}-{k}'] = uri(load(nm).resize((768, 504), Image.LANCZOS), 78)
     for fc in CARD_FACES:
         for st in CARD_STATE:
             name = f"{t}-{fc}-{st}"
             im = load(name).resize((444, 291), Image.LANCZOS)
             cards[name] = uri(im, 84)
 pal = json.loads((src / "palettes.json").read_text())
-NAMES = {"rose": "Rosé Pine", "dawn": "Rosé Pine Dawn", "tokyo": "Tokyo Night", "phosphor": "Phosphor"}
+NAMES = {"rose": "Rosé Pine", "dawn": "Rosé Pine Dawn", "tokyo": "Tokyo Night", "phosphor": "Phosphor", "macdark": "System (dark)", "maclight": "System (light)"}
 for k in pal: pal[k]["name"] = NAMES[k]
-js = "const STAGE=" + json.dumps(stage) + ";\nconst CARDS=" + json.dumps(cards) + ";\nconst PAL=" + json.dumps(pal) + ";\n"
+js = "const LIVEIMG=" + json.dumps(live) + ";\nconst STAGE=" + json.dumps(stage) + ";\nconst CARDS=" + json.dumps(cards) + ";\nconst PAL=" + json.dumps(pal) + ";\n"
 out.write_text(js)
 print("assets", len(stage), "stage", len(cards), "cards", round(len(js) / 1e6, 2), "MB")

@@ -40,7 +40,8 @@ const BR = (function () {
     if (i < 0) return esc(text);
     return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
   }
-  function statusMark(s) {
+  function statusMark(s, turn) {
+    if (OPT.v5 && turn) { const v = NV.stepVerdict(turn, s); if (v.key === 'done') return '<span class="stt"></span>'; const to = v.key === 'fixed' ? (s.retriedAt || NV.fixedBy(turn, s) + 1) : 0; const w = v.key === 'fixed' ? '\u2192' + to : OPT.compactStatus ? '' : v.words.toLowerCase(); return `<span class="stt ${v.key}">${NV.GL[v.gl]}${w ? `<span>${w}</span>` : ''}</span>`; }
     const re = s.retriedAt;
     if (s.status === 'fail' && re && OPT.compactStatus) return `<span class="stt retried"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="var(--danger)" stroke-width="1.6" stroke-dasharray="3 2.2"/></svg><span>\u2192${re}</span></span>`;
     if (s.status === 'fail' && re) return `<span class="stt retried"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="var(--danger)" stroke-width="1.6" stroke-dasharray="3 2.2"/></svg><span>retried at ${re}</span></span>`;
@@ -59,7 +60,8 @@ const BR = (function () {
       br = up && dn ? 'mid' : dn ? 'first' : up ? 'last' : '';
     }
     let cls2 = '';
-    const cls = ['lr', 'f-' + row.fam, row.kind, s.status === 'fail' ? 'failed' : '', s.status === 'wait' ? 'wait' : '', s.status === 'run' ? 'run' : '', s.status === 'stopped' ? 'stopped' : '',
+    const vk = OPT.v5 ? NV.stepVerdict(turn, s).key : null;
+    const cls = ['lr', 'f-' + row.fam, row.kind, OPT.v5 ? (vk === 'failed' ? 'failed' : vk === 'fixed' ? 'fixedrow' : '') : (s.status === 'fail' ? 'failed' : ''), OPT.v5 ? 'h5' : '', s.status === 'wait' ? 'wait' : '', s.status === 'run' ? 'run' : '', s.status === 'stopped' ? 'stopped' : '',
       st.cursor === i ? 'cursor' : '', st.hover === i ? 'hover' : '', br ? 'fan ' + br : '', (OPT.said4 && row.kind === 'note') ? 'm2' : ''].filter(Boolean).join(' ');
     const q = st.query;
     let body;
@@ -67,13 +69,13 @@ const BR = (function () {
     if (m2) { cls2 = 'm2'; }
     if (row.kind === 'tool') {
       const arg = s.arg || '';
-      body = `<span class="tt">${hl(s.tool, q)}</span><span class="ar" data-arg="${esc(arg)}" data-q="${esc(q || '')}">${hl(arg, q)}</span>`;
+      body = `<span class="tt">${hl(OPT.v5 ? NH.title(turn, s) : s.tool, q)}</span><span class="ar" data-arg="${esc(arg)}" data-q="${esc(q || '')}">${hl(arg, q)}</span>`;
     } else {
       body = `<span class="tx" data-text="${esc(s.text)}">${hl(row.kind === 'note' && OPT.said4 ? s.text.replace(/`/g, '') : s.text, q)}</span>`;
     }
     const inOut = q && matches(row, q) === 'out' ? '<em class="inout">in output</em>' : '';
     const copy = st.hover === i && row.kind === 'tool' ? '<button class="cp" type="button">Copy</button>' : '';
-    return `<div class="${cls}" role="option" aria-selected="${st.cursor === i}" data-i="${i}"><span class="br"></span><span class="gl">${m2 ? '<svg width="18" height="18" viewBox="0 0 18 18"><path d="M4 12.5c0-3 1.2-4.8 3.4-5.6l.5.9c-1.3.7-1.8 1.6-1.9 2.6h1.9v3.3H4zm6.3 0c0-3 1.2-4.8 3.4-5.6l.5.9c-1.3.7-1.8 1.6-1.9 2.6h1.9v3.3h-3.9z" fill="var(--accent)"/></svg>' : Neural.shapeSvg(row.fam, 18)}</span><span class="no">${row.num}</span>${body}${inOut}${statusMark(s)}${copy}</div>`;
+    return `<div class="${cls}" role="option" aria-selected="${st.cursor === i}" data-i="${i}"><span class="br"></span><span class="gl">${m2 ? '<svg width="18" height="18" viewBox="0 0 18 18"><path d="M4 12.5c0-3 1.2-4.8 3.4-5.6l.5.9c-1.3.7-1.8 1.6-1.9 2.6h1.9v3.3H4zm6.3 0c0-3 1.2-4.8 3.4-5.6l.5.9c-1.3.7-1.8 1.6-1.9 2.6h1.9v3.3h-3.9z" fill="var(--accent)"/></svg>' : Neural.shapeSvg(row.fam, 18)}</span><span class="no">${row.num}</span>${body}${inOut}${statusMark(s, turn)}${copy}</div>`;
   }
 
   function zonePanel(turn, st, o) {

@@ -1,7 +1,7 @@
 (function () {
   const q = new URLSearchParams(location.search);
   const only = q.get('only') || window.__only;
-  const all = { K: artK, K2: artK2, L: artL, L2: artL2, L3: artL3, L4: artL4, L5: artL5, L6: artL6, L7: artL7, M: artM, M2: artMLive, N: artN, O: artO, O2: artO2, O3: artLive, P: artP, Q: artQ, R: artR, S: artS, S2: artSLive, T: artT, T2: artT2, T3: artT3, T4: artT4, T5: artT5, T6: artT6, T7: artT7, T8: artTLive };
+  const all = { K: artK, K2: artK2, L: artL, L2: artL2, L3: artL3, L4: artL4, L5: artL5, L6: artL6, L7: artL7, M: artM, M2: artMLive, N: artN, O: artO, O2: artO2, O3: artLive, P: artP, Q: artQ, R: artR, S: artS, S2: artSLive, T: artT, T2: artT2, T3: artT3, T4: artT4, T5: artT5, T6: artT6, T7: artT7, T8: artTLive, U: artU, U2: artU2, U3: artU3, U4: artU4, U5: artU5, U6: artU6, U7: artU7, V: artV, V2: artV2, W: artW, W2: artW2 };
   Object.keys(all).forEach(k => { if (!only || only.split(',').includes(k)) all[k](); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { window.__ready = true; }); else window.__ready = true;
 })();

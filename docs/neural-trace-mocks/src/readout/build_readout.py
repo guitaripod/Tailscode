@@ -51,9 +51,14 @@ html = f"""<!doctype html>
 <script>{read(here / 'brain.js')}</script>
 <script>{read(here / 'transition2.js')}</script>
 <script>{read(here / 'page2.js')}</script>
+<script>{read(here / 'verdict.js')}</script>
 <script>{read(here / 'account.js')}</script>
+<script>{read(here / 'account5.js')}</script>
 <script>{read(here / 'brain4.js')}</script>
 <script>{read(here / 'page4.js')}</script>
+<script>{read(here / 'page5.js')}</script>
+<script>{read(here / 'live6.js')}</script>
+<script>{read(here / 'page6.js')}</script>
 <script>{read(here / 'page.js')}</script>
 <script>{read(here / 'boot.js')}</script>
 </body></html>"""
@@ -61,7 +66,7 @@ out.write_text(html)
 def variant(name, only, title):
     v = html.replace("<title>K · Readout</title>", "<title>" + title + "</title>").replace("<script>(function () {\n  const q", "<script>window.__only='" + only + "';(function () {\n  const q")
     (out.parent / name).write_text(v)
-variant("M-live.html", "S2", "S · Transition, live")
+variant("M-live.html", "W2", "W · The move, live")
 variant("O-live.html", "O3", "O · Browse, live")
 variant("T-live.html", "T8", "T · The account, live")
 print("wrote", out, round(len(html) / 1e6, 2), "MB")

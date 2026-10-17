@@ -90,14 +90,16 @@ const B4 = (function () {
     const c = AC.counts(turn);
     const solo = st.zones && st.zones.size === 1 && st.zones.has('say');
     const filt = BR.filtered(st);
-    const ao = { unfold: o.unfold, showAll: o.showAll, split: M.split, arrive: o.arrive };
+    const ao = { unfold: o.unfold, showAll: o.showAll, split: M.split, arrive: o.arrive, planOpen: o.planOpen, planCompact: o.planCompact };
     const oldBox = slot.querySelector(M.split ? '.story' : '.ac-bd'); const oldTop = oldBox ? oldBox.scrollTop : null; const oldDet = slot.querySelector('.detcol'); const oldDetTop = oldDet ? oldDet.scrollTop : 0;
-    const story = AC.html(turn, st, ao);
+    const v5 = OPT.v5 ? AC.html5(turn, st, ao) : null;
+    const story = v5 ? v5.body : AC.html(turn, st, ao);
     const hdRight = st.live ? (st.following === false ? 'following paused' : 'following') : `${c.said} said · ${c.steps} steps · ${turn.dur}`;
     const hd = `<div class="ac-hd"><span class="lbl">${solo ? 'What it told you' : 'The account'}</span>${turn.outcome === 'running' ? '<span class="chip run">LIVE</span>' : '<span class="chip ok">SETTLED</span>'}${filt ? `<span class="chip filt">filtered</span>` : ''}<span class="ct">${hdRight}</span></div>`;
     const pill = st.live && st.following === false ? '<button class="follow acf" type="button">Following paused · jump to latest <kbd>End</kbd></button>' : '';
     const ft = `<div class="ac-ft"><span><kbd>s</kbd><kbd>S</kbd> said</span><span><kbd>a</kbd> ask</span><span><kbd>↑</kbd><kbd>↓</kbd> items</span><span><kbd>Enter</kbd> detail</span><span class="sp"></span><span>${turn.steps[0].at}</span></div>`;
     let body;
+    const topHtml = v5 ? `<div class="ac-top5">${v5.top}</div>` : hd;
     if (M.split) {
       const sel = selectedStep(ctl);
       let det;
@@ -105,7 +107,7 @@ const B4 = (function () {
       else { const m = RO.digestReadout(turn); det = `<div class="det digest">${m.hd.replace('class="ro-hd', 'class="dc-hd')}<div class="dc-bd">${m.bd}</div></div>`; }
       body = `<div class="ac-split" style="grid-template-columns:${M.story}px ${M.detail}px"><div class="story scrollable">${story}</div><div class="detcol scrollable">${det}</div></div>`;
     } else body = `<div class="story scrollable" style="max-width:${o.storyMax || 760}px">${story}</div>`;
-    slot.innerHTML = `${hd}<div class="ac-bd">${body}</div>${pill}${M.layout === 'split' ? ft : ''}`;
+    slot.innerHTML = `${topHtml}<div class="ac-bd">${body}</div>${pill}${M.layout === 'split' ? ft : ''}`;
     slot.classList.toggle('focus', st.focus === 'account');
     const same = ctl.lastAccCur === st.cursor && oldTop != null && !ctl.forceAcc;
     OPT.outMax = 8;

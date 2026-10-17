@@ -69,7 +69,8 @@ const RO = (function () {
 
   function relations(turn, s) {
     const st = turn.steps, out = [];
-    if (s.status === 'fail' && s.retriedAt) out.push({ kind: 'retry', label: 'retried at', ids: [s.retriedAt - 1] });
+    if (OPT.v5 && s.status === 'fail' && !s.retriedAt) { const fb = NV.fixedBy(turn, s); if (fb >= 0) out.push({ kind: 'retry', label: 'passed at', ids: [fb] }); }
+    else if (s.status === 'fail' && s.retriedAt) out.push({ kind: 'retry', label: OPT.v5 ? 'passed at' : 'retried at', ids: [s.retriedAt - 1] });
     else if (s.key && s.keyKind === 'cmd') {
       const prior = st.filter((t, j) => j < s.i && t.key === s.key && t.status === 'fail');
       if (prior.length) out.push({ kind: 'retry', label: 'retry of', ids: prior.map(t => t.i) });
@@ -117,6 +118,7 @@ const RO = (function () {
     else if (s.tool === 'Task') h += `<div class="cmd" style="font-family:var(--sans);font-size:14px">${esc(s.arg)}</div>`;
     else h += `<div class="path">${pathHtml(s.arg)}</div>`;
     h += '</div>';
+    if (OPT.v5) { const vs = NV.stepVerdict(turn, s); const first = (s.out || []).find(l => /error|fail|matches no/i.test(l)) || (s.out || [])[0] || ''; const q = first.replace(/^.*?error:\s*/i, '').replace(/^.*\/[^\s]+:\d+:\d+:\s*/, ''); const pass = vs.key === 'fixed' ? (s.retriedAt || NV.fixedBy(turn, s) + 1) : 0; if (vs.key === 'fixed') h += `<div class="vsent amber">${NV.GL.retry}<span>It failed here (\u2018${esc(q)}\u2019) and passed at <a class="vstep">step ${pass}</a>.</span></div>`; else if (vs.key === 'failed') h += `<div class="vsent danger">${NV.GL.cross}<span>It failed here (\u2018${esc(q)}\u2019) and nothing later passed.</span></div>`; else if (vs.key === 'trying') h += `<div class="vsent amber">${NV.GL.bang}<span>Hit an error here (\u2018${esc(q)}\u2019); it has not tried again yet.</span></div>`; }
     const rel = relations(turn, s);
     const relHtml = rel.length ? `<div class="sec"><div class="lbl">Relations</div><div class="rel">${rel.map(r => `<span class="rchip ${r.kind}"><span class="k">${r.label}</span> <span class="n">${r.ids.map(i => i + 1).join(', ')}</span></span>`).join('')}</div></div>` : '';
     if (OPT.relationsUp) h += relHtml;
@@ -139,6 +141,7 @@ const RO = (function () {
     return h;
   }
   function stepHeader(turn, s, pinned) {
+    if (OPT.v5) { const v = NV.stepVerdict(turn, s); const z0 = ZN[s.fam]; return `<div class="ro-hd ${tone(s)}"><span class="zg">${shape(s.fam, 18)}</span><span class="zl">${z0}</span>${NV.chipHtml(v)}${pinned ? '<span class="pin" title="Pinned">\u25cf pinned</span>' : ''}<span class="ct">${s.i + 1} of ${turn.steps.length}</span></div>`; }
     const [word, cls] = statusOf(s);
     const z = ZN[s.fam];
     return `<div class="ro-hd ${tone(s)}"><span class="zg">${shape(s.fam, 18)}</span><span class="zl">${z}</span><span class="chip ${cls}">${word}</span>${pinned ? '<span class="pin" title="Pinned">● pinned</span>' : ''}<span class="ct">${s.i + 1} of ${turn.steps.length}</span></div>`;
@@ -289,10 +292,11 @@ const RO = (function () {
       const c = ZONES[z], k = Math.min(n, 4), r = 44 + 12 * k, o = .62 + .1 * k;
       defs += `<radialGradient id="g-${id}-${z}" cx="${c[0]}" cy="${c[1]}" r="${r}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="var(--t-${z})" stop-opacity="${o.toFixed(2)}"/><stop offset=".55" stop-color="var(--t-${z})" stop-opacity="${(o * .45).toFixed(2)}"/><stop offset="1" stop-color="var(--t-${z})" stop-opacity="0"/></radialGradient>`;
       circles += `<circle cx="${c[0]}" cy="${c[1]}" r="${r}" fill="url(#g-${id}-${z})"/>`;
-      const bad = turn.steps.some(s => s.fam === z && s.status === 'fail' && !(s.retriedAt || s.recovered));
-      const healed = turn.steps.some(s => s.fam === z && s.status === 'fail' && (s.retriedAt || s.recovered));
+      const vz = OPT.v5 ? turn.steps.filter(s => s.fam === z && s.status === 'fail').map(s => NV.stepVerdict(turn, s).key) : null;
+      const bad = OPT.v5 ? vz.includes('failed') || vz.includes('trying') : turn.steps.some(s => s.fam === z && s.status === 'fail' && !(s.retriedAt || s.recovered));
+      const healed = OPT.v5 ? vz.includes('fixed') : turn.steps.some(s => s.fam === z && s.status === 'fail' && (s.retriedAt || s.recovered));
       if (bad) rings += `<circle cx="${c[0]}" cy="${c[1]}" r="${r + 10}" fill="none" stroke="var(--danger)" stroke-width="13"/>`;
-      else if (healed) rings += `<circle cx="${c[0]}" cy="${c[1]}" r="${r + 10}" fill="none" stroke="var(--danger)" stroke-width="13" stroke-dasharray="26 18" opacity=".9"/>`;
+      else if (healed) rings += `<circle cx="${c[0]}" cy="${c[1]}" r="${r + 10}" fill="none" stroke="${OPT.v5 ? 'var(--warn)' : 'var(--danger)'}" stroke-width="13" stroke-dasharray="26 18" opacity=".95"/>`;
     });
     const vb = `${v.x0} 0 ${v.w} 420`;
     return `<div class="pic" style="width:${w}px;height:${h}px">${headImgHtml(ASSET(key, 'card'), w, h)}<svg class="light" viewBox="${vb}" width="${w}" height="${h}" style="position:absolute;inset:0"><defs>${defs}</defs><g style="mix-blend-mode:screen">${circles}</g></svg><svg class="ringsvg" viewBox="${vb}" width="${w}" height="${h}" style="position:absolute;inset:0">${rings}</svg></div>`;
@@ -303,7 +307,8 @@ const RO = (function () {
     o = o || {};
     const narrow = !!o.narrow;
     const density = narrow ? 'comfortable' : (o.density || 'comfortable'), compact = density === 'compact';
-    const state = o.state || (turn.unrecovered.length ? 'failed' : 'settled');
+    const tv5 = OPT.v5 ? NV.turnVerdict(turn) : null;
+    const state = o.state || (tv5 ? ({ done: 'settled', retry: 'settled', needs: 'wait', working: 'settled', stuck: 'wait', stopped: 'stopped', silent: 'stopped', failed: 'failed' }[tv5.key]) : (turn.unrecovered.length ? 'failed' : 'settled'));
     const chips = (OPT.said4 ? BR.ZSEQ() : ZORDER).filter(z => turn.count[z]).map(z => `<span class="zc f-${z}${turn.count[z] ? ' lit' : ''}">${shape(z, compact ? 12 : 14)}<span>${ZN[z]}</span><b>${turn.count[z]}</b></span>`).join('');
     const fc = failClause(turn, true);
     const tally = turn.tally[0] || turn.tally[1] ? `<span class="tally"><span class="a">+${turn.tally[0]}</span> <span class="d">${MINUS}${turn.tally[1]}</span></span>` : '';
@@ -312,7 +317,8 @@ const RO = (function () {
     const saidStep = turn.steps.find(s => s.fam === 'say');
     const spk = turn.speaker || (turn.family.charAt(0).toUpperCase() + turn.family.slice(1));
     const dgHtml = saidStep && o.quote !== false ? `<span class="dg quote"><span class="qg">\u201c</span><span class="qs">${esc(spk)}</span><span class="qt" data-full="${esc(saidStep.text.replace(/`/g, ''))}">${esc(saidStep.text.replace(/`/g, ''))}</span></span>` : `<span class="dg">${esc(digestLine(turn))}</span>`;
-    const failHtml = stateWord ? `<span class="fail${state === 'stopped' ? '" style="color:var(--ink2)' : ''}">${stateWord}</span>` : (fc ? `<span class="fail${turn.unrecovered.length ? ' bad' : ''}">${fc}</span>` : '');
+    const v5clause = tv5 ? `<span class="vcl ${tv5.tone}">${NV.GL[tv5.gl]}<span>${tv5.clause}</span></span>` : '';
+    const failHtml = tv5 ? v5clause : stateWord ? `<span class="fail${state === 'stopped' ? '" style="color:var(--ink2)' : ''}">${stateWord}</span>` : (fc ? `<span class="fail${turn.unrecovered.length ? ' bad' : ''}">${fc}</span>` : '');
     const body = narrow
       ? `<span class="txt"><span class="hl"><span class="num">${turn.tools}</span><span class="unit">tools</span><span class="dur">${turn.dur}</span></span><span class="sub">${tally}${failHtml}</span><span class="btns2"><span class="sbtn">\u25b6 Replay</span><span class="sbtn">Rows</span></span></span>`
       : `<span class="txt"><span class="hl"><span class="num">${turn.tools}</span><span class="unit">tools</span><span class="dur">${turn.dur}</span>${tally}${failHtml}</span><span class="zs">${chips}</span>${dgHtml}</span><span class="btns"><span class="sbtn">\u25b6 Replay</span><span class="sbtn">Rows</span></span>`;

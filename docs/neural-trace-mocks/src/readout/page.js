@@ -13,7 +13,7 @@ const SUPNOTE = ' <em style="color:#c9a25c;font-style:normal">Superseded in layo
 function artboard(id, title, note, builder, opt) {
   opt = opt || {};
   if (SUP.has(id)) note = (note || '') + SUPNOTE;
-  if (['O', 'O2', 'O3', 'P', 'Q', 'R', 'S', 'S2'].includes(id)) note = (note || '') + ' <em style="color:#c9a25c;font-style:normal">The right side shown here (the step readout) is superseded by the account (T, section 8).</em>';
+  if (['O', 'O2', 'O3', 'P', 'Q', 'R', 'S', 'S2', 'T', 'T2', 'T4', 'T5', 'T6', 'T7', 'T8'].includes(id)) note = (note || '') + ' <em style="color:#c9a25c;font-style:normal">The right side shown here is superseded: the account (section 8) and then the entity\u2019s window (U, section 9), which also replaces FAILED chips and raw tool names.</em>';
   const wrap = el(`<section class="ab-wrap" id="ab-${id}"><div class="ab-cap"><b>${id}</b> · ${title}</div><div class="ab-body" style="display:flex;gap:${opt.gap || 24}px;align-items:flex-start"></div>${note ? `<p class="ab-note">${note}</p>` : ''}</section>`);
   document.getElementById('board').appendChild(wrap);
   builder(wrap.querySelector('.ab-body'));

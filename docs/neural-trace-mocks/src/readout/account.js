@@ -104,5 +104,5 @@ const AC = (function () {
     return h;
   }
   function counts(turn) { return { said: turn.steps.filter(s => s.fam === 'say').length, steps: turn.steps.length }; }
-  return { structure, html, detailCard, counts, FAMHEX };
+  return { structure, html, detailCard, counts, FAMHEX, saidItem, thoughtItem, askItem, workLine };
 })();

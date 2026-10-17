@@ -243,3 +243,63 @@ T_ACC_LIVE.id = 'acclive'; T_ACC_LIVE.speaker = 'Sonnet';
   L.splice(L.length - 1, 0, SAYS(13, '22:01:31', 'The iOS tour is 60 fps and the Linux capture is 30, so I’m resampling the tour once before cutting both to the riff.'));
 })();
 TURNS.acc = T_ACC; TURNS.accwait = T_ACC_WAIT; TURNS.acclive = T_ACC_LIVE;
+
+/* ───── fifth pass fixtures ───── */
+const T_U = JSON.parse(JSON.stringify(T_ACC));
+T_U.id = 'u'; T_U.effort = 3;
+(function () {
+  const st = T_U.steps;
+  const k = st.findIndex((s, i) => s.tool === 'Bash' && s.status === 'ok' && s.key === 'swift build');
+  st.splice(k + 1, 0, { fam: 'shell', tool: 'Bash', status: 'ok', msg: 7.5, at: '14:07:50', arg: 'swift test --filter TranscriptRowsTests', key: 'swift test', keyKind: 'cmd', exit: 0, why: 'The row factory has tests of its own; run them before the Mac client.', out: ['[1/2] Compiling TranscriptRowsTests', 'Test Suite \'TranscriptRowsTests\' passed', '     Executed 38 tests, with 0 failures (0 unexpected) in 2.4 seconds'] });
+  st.forEach(s => { delete s.retriedAt; });
+  T_U.plan = [
+    { c: 'Find every switch over the part kind', st: 'done', at: 5 },
+    { c: 'Answer the Compaction case in the Linux rows', st: 'done', at: 6 },
+    { c: 'Build the release and read what the compiler says', st: 'done', at: 8 },
+    { c: 'Answer the Note case the build names', st: 'done', at: 11 },
+    { c: 'Check the Mac manifest answers the same capability', st: 'done', at: 14 },
+    { c: 'Run the parity check, then ask a reviewer for other switches', st: 'done', at: 16 },
+    { c: 'Install the release on this machine', st: 'done', at: 18 }
+  ];
+})();
+const T_U_LIVE = JSON.parse(JSON.stringify(T_ACC_LIVE));
+T_U_LIVE.id = 'ulive'; T_U_LIVE.silentFor = '40 s';
+T_U_LIVE.plan = [
+  { c: 'Look at the film rig and the track', st: 'done', at: 6 },
+  { c: 'Map the song to a cut list', st: 'done', at: 10 },
+  { c: 'Record the Linux app in demo mode', st: 'done', at: 14 },
+  { c: 'Resample the iOS tour to 30 fps', st: 'doing', at: 99 },
+  { c: 'Cut both to the riff at 8.75 s', st: 'todo', at: 100 },
+  { c: 'Lay the track under the cut', st: 'todo', at: 101 },
+  { c: 'Check the first tap lands on the riff', st: 'todo', at: 102 }
+];
+const T_TITLES = {
+  id: 'titles', family: 'sonnet', effort: 3, dur: '9m 12s', outcome: 'settled', speaker: 'Sonnet', prompt: 'Titles', steps: (function () {
+    const S = (fam, tool, arg, o) => Object.assign({ fam, tool, arg, status: 'ok', msg: 0, at: '10:00:00', out: ['ok'] }, o);
+    return [
+      S('sense', 'Read', 'TailscodeLinux/Sources/TailscodeLinux/Chat/TranscriptRows.swift'),
+      S('sense', 'Grep', 'case .compaction  TailscodeLinux/Sources'),
+      S('shell', 'Bash', 'swift build -c release 2>&1 | tail -20', { key: 'swift build', keyKind: 'cmd', status: 'fail', out: ['error: switch must be exhaustive'] }),
+      S('act', 'Edit', 'TailscodeLinux/Sources/TailscodeLinux/Chat/TranscriptRows.swift', { diff: [2, 2] }),
+      S('shell', 'Bash', 'swift build -c release 2>&1 | tail -20', { key: 'swift build', keyKind: 'cmd' }),
+      S('shell', 'Bash', 'swift test --filter TranscriptRowsTests', { key: 'swift test', keyKind: 'cmd' }),
+      S('shell', 'Bash', 'git status --short'),
+      S('shell', 'Bash', 'git diff --stat HEAD~1'),
+      S('shell', 'Bash', 'git commit -m "linux: answer Compaction and Note in the row factory"'),
+      S('shell', 'Bash', 'git push origin master'),
+      S('shell', 'Bash', 'scripts/install-linuxapp.sh'),
+      S('shell', 'Bash', 'rg -n "TODO" TailscodeLinux/Sources'),
+      S('shell', 'Bash', 'ls -la out/demo'),
+      S('shell', 'Bash', "sed -n 1,60p scripts/film.sh"),
+      S('shell', 'Bash', 'curl -s https://api.github.com/repos/guitaripod/Tailscode/releases/latest'),
+      S('shell', 'Bash', 'ffmpeg -i ios-tour/walk.mov -vf fps=30 out/demo/ios-30.mp4'),
+      S('shell', 'Bash', 'python3 scripts/beats.py --grid 8.75 --bars 16'),
+      S('shell', 'Bash', 'scripts/parity.sh --check'),
+      S('delegate', 'Task', 'Review the diff for any switch over MessagePart.Kind that is still not exhaustive'),
+      S('delegate', 'Skill', 'frames-cli'),
+      S('act', 'Write', 'out/demo/tailscode-demo.mp4')
+    ];
+  })()
+};
+TURNS.u = T_U; TURNS.ulive = T_U_LIVE; TURNS.titles = T_TITLES;
+function variantTurn(base, f) { const t = JSON.parse(JSON.stringify(base)); f(t); t.steps.forEach(s => { delete s.retriedAt; }); return t; }
