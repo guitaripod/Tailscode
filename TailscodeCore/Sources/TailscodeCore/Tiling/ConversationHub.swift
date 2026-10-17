@@ -69,6 +69,12 @@ public final class ConversationHub: @unchecked Sendable {
     /// How long a stream outlives its last lease.
     public static let defaultGrace: TimeInterval = 5
 
+    /// How many conversations keep their last transcript after the stream is gone.
+    public static let shelfLimit = 6
+
+    /// How long a shelved transcript is still worth showing first.
+    public static let shelfLife: TimeInterval = 900
+
     /// Runs `work` after `delay` seconds on a background task; never on a main queue.
     public static let sleepScheduler: Scheduler = { delay, work in
         Task.detached(priority: .utility) {
@@ -95,6 +101,13 @@ public final class ConversationHub: @unchecked Sendable {
         var redials = 0
         var refreshPriority: RefreshPriority?
         var revision: UInt64 = 0
+        var seeded = false
+    }
+
+    private struct Shelved {
+        let state: ConversationState
+        let sequence: UInt64
+        let at: TimeInterval
     }
 
     private let open: @Sendable (LiveKey) async -> AgentConversation?
@@ -104,7 +117,10 @@ public final class ConversationHub: @unchecked Sendable {
     private let schedule: Scheduler
     private let lock = NSLock()
     private var entries: [LiveKey: Entry] = [:]
+    private var shelf: [LiveKey: Shelved] = [:]
+    private var shelfOrder: [LiveKey] = []
     private var nextID: UInt64 = 0
+    private var reliefToken: MemoryReliefToken?
 
     public init(
         open: @escaping @Sendable (LiveKey) async -> AgentConversation?,
@@ -118,6 +134,13 @@ public final class ConversationHub: @unchecked Sendable {
         self.edges = edges
         self.grace = grace
         self.schedule = schedule
+        reliefToken = MemoryRelief.shared.register(name: "shelved transcripts") {
+            [weak self] _ in self?.clearShelf()
+        }
+    }
+
+    deinit {
+        reliefToken?.cancel()
     }
 
     /// Takes an interest in a conversation. The lease is handed the newest state the hub already
@@ -131,6 +154,11 @@ public final class ConversationHub: @unchecked Sendable {
         nextID += 1
         let id = nextID
         let entry = entries[key] ?? Entry()
+        if entries[key] == nil, let shelved = takeShelved(key) {
+            entry.latest = LiveFrame(state: shelved.state, sequence: shelved.sequence)
+            entry.sequence = shelved.sequence
+            entry.seeded = true
+        }
         entries[key] = entry
         if entry.opening == nil {
             let open = self.open
@@ -306,6 +334,56 @@ public final class ConversationHub: @unchecked Sendable {
         entry.subscription = nil
         entry.opening?.cancel()
         entries[key] = nil
+        if let frame = entry.latest { shelve(key, frame) }
+    }
+
+    /// Keeps what a conversation last said once nothing is listening, as the transcript alone:
+    /// the words, none of the live facts around them. A lease taken on the key before the shelf
+    /// expires starts from them, so a chat visited again is on screen before the conversation is
+    /// rebuilt and its server asked, and what arrives then is a refinement of a page that is
+    /// already there rather than a replacement for a blank one. Called with the lock held.
+    private func shelve(_ key: LiveKey, _ frame: LiveFrame) {
+        guard frame.state.hasLoadedTranscript, !frame.state.messages.isEmpty else { return }
+        let transcript = ConversationState(
+            messages: frame.state.messages, status: .unknown, connection: .connecting,
+            hasLoadedTranscript: true)
+        shelf[key] = Shelved(state: transcript, sequence: frame.sequence, at: clock.now())
+        shelfOrder.removeAll { $0 == key }
+        shelfOrder.append(key)
+        while shelfOrder.count > Self.shelfLimit {
+            shelf[shelfOrder.removeFirst()] = nil
+        }
+    }
+
+    /// The shelved transcript for a key if it is still young enough, taken off the shelf: the next
+    /// drop puts back whatever is newest. Called with the lock held.
+    private func takeShelved(_ key: LiveKey) -> Shelved? {
+        guard let shelved = shelf.removeValue(forKey: key) else { return nil }
+        shelfOrder.removeAll { $0 == key }
+        return clock.now() - shelved.at <= Self.shelfLife ? shelved : nil
+    }
+
+    /// Whether a state from a conversation that has only just been rebuilt says anything the
+    /// shelved transcript does not: words, or a connection that has stopped being a first try.
+    /// The empty state a conversation opens with is neither, and posting it over a transcript
+    /// that is already on screen is a page going blank to be filled in again.
+    private static func isMoreThanBlank(_ state: ConversationState) -> Bool {
+        state.hasLoadedTranscript || state.lastFailure != nil || state.connection != .connecting
+    }
+
+    /// Lets go of every shelved transcript, for a host under memory pressure.
+    public func clearShelf() {
+        lock.lock()
+        shelf = [:]
+        shelfOrder = []
+        lock.unlock()
+    }
+
+    /// How many transcripts are on the shelf, for a harness.
+    public var shelved: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return shelf.count
     }
 
     private func subscribe(_ key: LiveKey, entry: Entry) {
@@ -368,6 +446,13 @@ public final class ConversationHub: @unchecked Sendable {
         else {
             lock.unlock()
             return
+        }
+        if entry.seeded {
+            guard Self.isMoreThanBlank(state) else {
+                lock.unlock()
+                return
+            }
+            entry.seeded = false
         }
         entry.sequence &+= 1
         if state.connection == .live { entry.redials = 0 }

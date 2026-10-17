@@ -158,11 +158,13 @@ final class LiveRuntime: @unchecked Sendable {
     let drain: TileDrain
     let edges = LiveEdgeService()
     let hub: ConversationHub
+    let warmer: ConversationWarmer
 
     init() {
         drain = TileDrain(clock: clock)
         clock.attach(drain)
         hub = ConversationHub(open: LiveRuntime.open, clock: clock, edges: edges)
+        warmer = ConversationWarmer(hub: hub)
         edges.hub = hub
     }
 
