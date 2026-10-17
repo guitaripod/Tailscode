@@ -3046,6 +3046,53 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// A split whose chat starts in the folder the terminal is standing in. The new half exists
+    /// before the chat does and is filled while it is made — on the pane that was split, never on
+    /// whichever pane the focus has wandered to — so a server slow to answer leaves the usual
+    /// chooser in the split rather than nothing.
+    private func splitAtTerminal(axis: SplitAxis) {
+        guard TerminalPane.keepsAShell else {
+            toast(TerminalSplit.Refusal.oneCommandAtATime.words)
+            return
+        }
+        let directory = terminal.standingDirectory()
+        let preferred = activePane.entry?.profileID
+        let unreachable = Set(self.unreachable)
+        let localAddresses = Self.localAddresses
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            let servers = profiles.map {
+                TerminalSplit.Server(
+                    profileID: $0.id, isLocal: Dialogs.isLocal($0, localAddresses: localAddresses),
+                    reachable: !unreachable.contains($0.id))
+            }
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                switch TerminalSplit.plan(
+                    directory: directory, servers: servers, preferred: preferred)
+                {
+                case .refused(let refusal):
+                    self.toast(refusal.words)
+                case .open(let profileID, let folder):
+                    self.openSplit(axis: axis, onProfileID: profileID, directory: folder)
+                }
+            }
+        }
+    }
+
+    private func openSplit(axis: SplitAxis, onProfileID profileID: String, directory: String) {
+        let edge: PaneDropEdge = axis == .horizontal ? .right : .bottom
+        guard let fresh = splitHost.split(activePane, edge: edge) else { return }
+        presentChooser(in: fresh, preferring: profileID)
+        splitHost.focus(fresh, grabKeyboard: false)
+        focused = .transcript
+        createChat(onProfileID: profileID, directory: directory, into: fresh) {
+            [weak self] failure in
+            guard let failure else { return }
+            Gtk.onMain { [weak self] in self?.toast(failure.title) }
+        }
+    }
+
     /// A pane asking for a chat on another machine, which is what picking that machine's model
     /// means.
     func startChat(on profileID: String, into pane: ChatPane) {
@@ -4000,6 +4047,8 @@ final class MainWindow: @unchecked Sendable {
         case .splitPane(let axis):
             focused = .transcript
             splitHost.splitActive(axis: axis)
+        case .splitAtTerminal(let axis):
+            splitAtTerminal(axis: axis)
         case .closeSplit:
             splitHost.closeActive()
         case .focusSplit(let direction):

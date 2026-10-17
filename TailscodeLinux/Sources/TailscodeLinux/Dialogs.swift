@@ -497,7 +497,7 @@ enum Dialogs {
 
     /// This machine answering its own tailnet address is still this machine: a profile is local
     /// when its host is a loopback, the hostname, or the address Tailscale gives this box.
-    private static func isLocal(
+    static func isLocal(
         _ profile: ConnectionProfile, localAddresses: Set<String>
     ) -> Bool {
         guard let host = profile.baseURL.host?.lowercased() else { return false }

@@ -141,6 +141,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case fileBrowser
     case gitState
     case terminalPane
+    case splitFromTerminal
     case listBesideConversation
     case splitPanes
     case newPaneChooser
@@ -784,6 +785,10 @@ public enum CapabilityRegistry {
             id: .terminalPane, area: "app", title: "A shell beside the conversation",
             spec:
                 "Run shell commands in the conversation's working directory with history, from the same window as the chat."),
+        CapabilityDefinition(
+            id: .splitFromTerminal, area: "app", title: "Split into the terminal's folder",
+            spec:
+                "The terminal is how a folder is reached, so it is also how a split is aimed: cd there, press the chord (ctrl+shift+o splits right, ctrl+alt+shift+o splits down, from any focus) and the new half is a chat started in the folder the shell is standing in. The folder is read from the shell itself (the foreground process of its pseudo-terminal), never from the folder the conversation named, so it follows every cd, pushd and jump. The shell is this machine's, so the chat goes to a server that runs on this machine (TerminalSplit.plan): the focused pane's own server when it is local, else the first local one that answers; with none, nothing splits and the refusal says why in words. A terminal that runs one command at a time has no shell standing anywhere between commands and says so rather than splitting into the conversation's own folder. The new half is filled while it is made, on the pane that was split and never on whichever pane the focus wanders to, and it opens focused on its composer."),
         CapabilityDefinition(
             id: .listBesideConversation, area: "app", title: "The chat list beside the conversation",
             spec:

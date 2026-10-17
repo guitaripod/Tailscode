@@ -182,6 +182,13 @@ enum ParityManifest {
                     "there is no pane, no Terminal menu item and no toolbar button — this copy is not a build that hides its shell, it is a build that has none"),
                 because:
                     "The pane runs a login shell against this Mac's own directories, and a copy the App Store installs is sealed in a container that may neither spawn that process nor see the folder it would run in. A shell that could only reach the app's own container is not a shell beside the conversation, and offering one would be worth less than saying so.")
+        case .splitFromTerminal:
+            return .varies(
+                direct: .gap(
+                    "the Mac's pane runs one command at a time, so a cd ends with the command that made it and no shell is standing anywhere to read. TerminalSplit.plan and its words are Core's; the port is a pane that keeps one shell alive and reads its folder"),
+                appStore: .notApplicable("this copy has no terminal pane to walk anywhere"),
+                because:
+                    "Whether there is a shell to read follows whether there is a pane, and the sandboxed copy has none.")
         case .listBesideConversation: return .implemented("NSSplitViewItem(sidebarWithViewController")
         case .paneDensity: return .implemented("GlanceTileView")
         case .paneArrangements: return .implemented("PaneMenu")

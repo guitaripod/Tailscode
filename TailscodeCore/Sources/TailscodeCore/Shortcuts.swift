@@ -450,6 +450,14 @@ public enum ShortcutRegistry {
             category: .view, action: .splitPane(.vertical), contexts: [.normal],
             defaults: ["ctrl+w s"]),
         .init(
+            id: "split.hereRight", title: Localized.text("Split right into the terminal's folder"),
+            category: .view, action: .splitAtTerminal(.horizontal),
+            contexts: [.normal, .insert, .terminal], defaults: ["ctrl+shift+o"]),
+        .init(
+            id: "split.hereDown", title: Localized.text("Split down into the terminal's folder"),
+            category: .view, action: .splitAtTerminal(.vertical),
+            contexts: [.normal, .insert, .terminal], defaults: ["ctrl+alt+shift+o"]),
+        .init(
             id: "split.close", title: Localized.text("Close this split"),
             category: .view, action: .closeSplit, contexts: [.normal],
             defaults: ["ctrl+w q"]),
@@ -807,6 +815,7 @@ public enum KeyAction: Equatable, Sendable {
     case toggleProjectScope
     case quickAsk
     case splitPane(SplitAxis)
+    case splitAtTerminal(SplitAxis)
     case closeSplit
     case focusSplit(SplitDirection)
     case zoomSplit

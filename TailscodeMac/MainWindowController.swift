@@ -740,6 +740,12 @@ final class MainWindowController: NSWindowController {
         case .splitPane(let axis):
             focused = .transcript
             splitPanes.splitActive(axis: axis)
+        case .splitAtTerminal:
+            #if TAILSCODE_MAS
+                return false
+            #else
+                toast(TerminalSplit.Refusal.oneCommandAtATime.words)
+            #endif
         case .closeSplit:
             splitPanes.closeActive()
         case .focusSplit(let direction):

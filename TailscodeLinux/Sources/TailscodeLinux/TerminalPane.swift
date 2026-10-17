@@ -83,6 +83,32 @@ final class TerminalPane: @unchecked Sendable {
         #endif
     }
 
+    /// Whether a shell stays alive between commands, which is what makes a `cd` mean anything.
+    static var keepsAShell: Bool {
+        #if HAS_VTE
+            return true
+        #else
+            return false
+        #endif
+    }
+
+    /// The folder the shell is standing in right now, read from the kernel rather than asked of
+    /// the shell: the foreground process of the terminal's pseudo-terminal owns the answer, and
+    /// `/proc` names it whatever the shell has done since it started — `cd`, `pushd`, a jump
+    /// function, a prompt that never reports its folder.
+    func standingDirectory() -> String? {
+        #if HAS_VTE
+            guard let pty = vte_terminal_get_pty(ptr(terminal)) else { return nil }
+            let group = tcgetpgrp(vte_pty_get_fd(pty))
+            guard group > 0 else { return nil }
+            return TerminalSplit.directory(
+                fromLink: try? FileManager.default.destinationOfSymbolicLink(
+                    atPath: "/proc/\(group)/cwd"))
+        #else
+            return nil
+        #endif
+    }
+
     /// A running shell is not restarted to follow the conversation: it is told to change
     /// directory, the way you would. History, environment and whatever is half-typed all survive.
     func setDirectory(_ path: String?) {
