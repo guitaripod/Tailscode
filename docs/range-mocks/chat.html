@@ -1,0 +1,148 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="mock.css">
+<style>
+.nav{height:48px;display:flex;align-items:center;padding:0 16px;position:relative}
+.nav .b{width:40px;height:40px;border-radius:20px;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:20px}
+.nav .t{position:absolute;left:0;right:0;text-align:center;pointer-events:none}
+.nav .t b{display:block;font-weight:600;font-size:16px}.nav .t span{font-size:11px;color:var(--ink2)}
+.nav .sp{flex:1}.nav .done{color:var(--accent);font-weight:600;font-size:16px}
+.msgs{padding:14px 16px;display:flex;flex-direction:column;gap:12px;height:430px;overflow:hidden}
+.me{align-self:flex-end;background:var(--accent);color:#000;border-radius:18px 18px 4px 18px;padding:9px 13px;max-width:290px;font-size:15px}
+.ai{font-size:15px;line-height:1.4;color:var(--ink)}
+.tool{display:flex;align-items:center;gap:8px;background:var(--card);border-radius:12px;padding:8px 11px;font-size:13px;color:var(--ink2);font-family:ui-monospace,Menlo,monospace}
+.tool b{color:var(--ink);font-weight:600;font-family:-apple-system,Inter,system-ui,sans-serif}
+.facts{padding:0 16px 10px;display:flex;gap:8px}
+.composer{margin:0 12px;height:52px;border-radius:26px;background:var(--card);display:flex;align-items:center;padding:0 18px;color:var(--ink3);font-size:16px}
+.states{width:560px;display:flex;flex-direction:column;gap:16px}
+.srow .lab{font-size:12.5px;color:var(--ink2);margin:0 0 8px 2px;line-height:1.35;width:auto;position:static}
+.srow .lab b{color:var(--ink);font-weight:600;display:inline;margin:0}
+.srow .lab::after{display:none}
+.srow .strip{background:var(--bg);border-radius:16px;padding:10px 12px;display:flex;gap:8px;border:1px solid var(--hair)}
+.chip.cold .d{--gc:var(--ink2)}
+.sheet{height:auto}
+.verdict{padding:18px 18px 16px}
+.verdict .big{font:600 22px/1.2 -apple-system,Inter,system-ui,sans-serif;letter-spacing:-.01em}
+.verdict .big em{font-style:normal;color:var(--warn)}
+.verdict p{margin-top:8px;color:var(--ink2);font-size:14px;line-height:1.4}
+.sec{font-size:11px;font-weight:600;letter-spacing:.07em;color:var(--ink2);text-transform:uppercase;margin:6px 6px 0}
+.cache{display:flex;gap:14px;align-items:center}
+.cache .r{width:52px;height:52px;border-radius:50%;flex:none;background:conic-gradient(var(--accent) 68%,rgba(128,128,128,.28) 0);-webkit-mask:radial-gradient(circle,transparent 19px,#000 20px);mask:radial-gradient(circle,transparent 19px,#000 20px)}
+.cache .w{font:600 16px -apple-system,Inter,system-ui,sans-serif}
+.cache p{color:var(--ink2);font-size:13px;line-height:1.35;margin-top:3px}
+.comp{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px;margin:10px 0 10px}
+.comp i{display:block;height:100%}
+.leg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--ink2)}
+.leg span{display:flex;align-items:center;gap:6px}.leg s{display:inline-block;width:9px;height:9px;border-radius:2px}
+.items{margin-top:12px}.item{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--hair);font-size:13.5px}
+.item b{font-weight:500}.item span{color:var(--ink2);font-size:12px}.item em{margin-left:auto;font-style:normal;font-weight:600;font-feature-settings:"tnum"}.item u{text-decoration:none;color:var(--ink3);margin-left:4px}
+.spark{display:flex;align-items:flex-end;gap:4px;height:92px;position:relative;margin-top:12px}
+.spark i{flex:1;border-radius:2px;background:var(--accent);opacity:.85;position:relative}
+.spark i.pit{background:none;opacity:1}
+.spark i.pit::after{content:"";position:absolute;left:50%;bottom:0;top:-6px;border-left:1.5px dashed var(--ink3)}
+.spark i.proj{background:repeating-linear-gradient(135deg,var(--warn) 0 2.5px,transparent 2.5px 5.5px);opacity:.7}
+.spark .line{position:absolute;left:0;right:0;border-top:1px dashed var(--danger);opacity:.7}
+.spark .ll{position:absolute;right:0;font-size:10px;color:var(--danger);transform:translateY(-14px)}
+.axis{display:flex;justify-content:space-between;font-size:11px;color:var(--ink3);margin-top:6px}
+.btn{height:50px;border-radius:25px;background:var(--accent);color:#000;font-weight:600;font-size:16px;display:flex;align-items:center;justify-content:center;margin:2px 0}
+.btn.q{background:var(--card2);color:var(--ink)}
+.foot{color:var(--ink3);font-size:12px;line-height:1.4;padding:0 8px}
+.dim{opacity:.62}
+</style></head><body>
+<h1>Range — the chat chrome and the sheet behind it</h1>
+<div class="sub">The context chip keeps its one meaning and its place in the facts row, and says the same thing it says today while there is room. When the pace says the window will not last, it changes what it says — turns left instead of a share — and a second chip appears only for a quota window that governs this chat's model and will run out first. Both open one sheet.</div>
+<div class="row">
+ <div>
+  <div class="cap">Chat · context is the news</div>
+  <div class="phone" style="height:780px">
+   <div class="status">9:41</div>
+   <div class="nav"><div class="b">‹</div><div class="t"><b>Fix the quota parser</b><span>Idle · Sonnet 5.5 · high</span></div><div class="sp"></div></div>
+   <div class="msgs">
+    <div class="me">why does the quota parser drop the second window?</div>
+    <div class="tool"><b>Read</b> UsageAnalytics.swift <span style="margin-left:auto">1,247 lines</span></div>
+    <div class="ai">The second window arrives under <code>weekly_scoped</code>, and <code>QuotaBinding.scope(of:)</code> strips every plumbing word from its label, so a window named only by its model collapses into the account scope and is folded away.</div>
+    <div class="tool"><b>Bash</b> swift test --filter QuotaBinding <span style="margin-left:auto">21k</span></div>
+    <div class="ai">Two failures, both in the scoped path. I'll keep the model words and stop deduplicating on the label.</div>
+   </div>
+   <div class="facts">
+    <div class="chip warn"><i class="g" style="--p:74"></i>~8 turns</div>
+    <div class="chip">$4.12</div>
+    <div class="chip"><u>⎇</u>master <u>~3</u></div>
+   </div>
+   <div class="composer">Message</div>
+  </div>
+ </div>
+ <div class="states">
+  <div class="cap">The facts row in five states</div>
+  <div class="srow"><div class="lab"><b>1 · Room to spare</b> — exactly as shipped. Share first, count after, accent ring. No second chip.</div>
+   <div class="strip"><div class="chip quiet"><i class="g" style="--p:41"></i>41% · 82k</div><div class="chip">$1.20</div><div class="chip"><u>⎇</u>master</div></div></div>
+  <div class="srow"><div class="lab"><b>2 · The window will not last</b> — the ring keeps the fill, the words become what is useful: turns left at the last five turns' pace. Shown from 50% full once three turns of history exist.</div>
+   <div class="strip"><div class="chip warn"><i class="g" style="--p:74"></i>~8 turns</div><div class="chip">$4.12</div><div class="chip"><u>⎇</u>master</div></div></div>
+  <div class="srow"><div class="lab"><b>3 · A window that governs this model will run out first</b> — a clock chip, only while the tail reaches the limit before the reset. Wears the wall's time, not a percentage.</div>
+   <div class="strip"><div class="chip quiet"><i class="g" style="--p:41"></i>41% · 82k</div><div class="chip warn"><i class="d"></i>Wall 19:22</div><div class="chip">$4.12</div></div></div>
+  <div class="srow"><div class="lab"><b>4 · The cache has gone cold</b> — appears when an idle chat outlives its cache; the next send re-reads everything at full price. Quiet tone, never an alarm, gone after the next send.</div>
+   <div class="strip"><div class="chip quiet"><i class="g" style="--p:74"></i>74% · 148k</div><div class="chip cold"><i class="d"></i>Cache cold</div><div class="chip">$4.12</div></div></div>
+  <div class="srow"><div class="lab"><b>5 · Full</b> — unchanged: danger ring, “Full · compact”, and the banner contract from the chat design.</div>
+   <div class="strip"><div class="chip danger"><i class="g" style="--p:100"></i>Full</div><div class="chip">$6.80</div></div></div>
+ </div>
+ <div>
+  <div class="cap">The sheet</div>
+  <div class="phone sheet">
+   <div class="status">9:41</div>
+   <div class="nav"><div class="t" style="left:0"><b>Range</b><span>Fix the quota parser · Sonnet 5.5</span></div><div class="sp"></div><div class="done">Done</div></div>
+   <div class="stack">
+    <div class="card verdict">
+     <div class="big">This chat has room for <em>about 8 more turns</em>.</div>
+     <p>Your 5-hour session is on course to run out in 1h 22m, before it resets. Your week is on pace.</p>
+    </div>
+    <div class="sec">Tanks that govern this chat</div>
+    <div class="card">
+     <div class="win"><div class="wl"><b>Context</b><s>Sonnet · 200k</s><em>74%</em></div>
+      <div class="pace"><div class="track"><i class="fill" style="width:74%;--c:var(--accent)"></i><i class="tail" style="left:74%;width:13%;--t:var(--warn)"></i></div></div>
+      <div class="news warn"><i>~8 turns</i><span>at the last five turns' pace (about 6.5k each). Your biggest read, 38k, is 73% of what is left.</span></div></div>
+     <div class="win"><div class="wl"><b>5-hour session</b><s>resets in 2h 47m</s><em>62%</em></div>
+      <div class="pace"><div class="track"><i class="fill" style="width:62%;--c:var(--warn)"></i><i class="tail" style="left:62%;width:38%;--t:var(--warn)"></i></div><b class="tick" style="left:44.3%"></b></div>
+      <div class="news warn"><i>Wall</i><span>in 1h 22m — 1h 25m before it resets</span></div></div>
+     <div class="win"><div class="wl"><b>Weekly · all models</b><s>resets Sat 09:00</s><em>38%</em></div>
+      <div class="pace"><div class="track"><i class="fill" style="width:38%"></i><i class="tail" style="left:38%;width:22.8%"></i></div><b class="tick" style="left:62.5%"></b></div></div>
+     <div class="win dim"><div class="wl"><b>Weekly · Opus</b><s>not this model</s><em>71%</em></div>
+      <div class="news warn" style="margin-top:4px"><i>Wall</i><span>about Fri 13:00, if you switch to Opus</span></div></div>
+    </div>
+    <div class="sec">Cache</div>
+    <div class="card" style="padding:12px 16px">
+     <div class="wl"><b style="font-weight:500">Warm</b><s>the next send reads it from the cache</s><em style="font-size:14px">41 min</em></div>
+     <div class="pace"><div class="track"><i class="fill" style="width:68%;--c:var(--accent)"></i></div></div>
+     <div class="news quiet"><span>Past that, a send re-reads all 148k tokens at full price. This line grows into a sentence only when under ten minutes are left or the cache has lapsed.</span></div>
+    </div>
+    <div class="sec">What is in the window</div>
+    <div class="card">
+     <div class="hl" style="margin-bottom:0">148k tokens · estimated shares of a measured total</div>
+     <div class="comp"><i style="width:12%;background:#636366"></i><i style="width:6%;background:#64d2ff"></i><i style="width:21%;background:#0a84ff"></i><i style="width:55%;background:#bf5af2"></i><i style="width:6%;background:#30b0c7"></i></div>
+     <div class="leg"><span><s style="background:#636366"></s>System &amp; tools 12%</span><span><s style="background:#64d2ff"></s>You 6%</span><span><s style="background:#0a84ff"></s>Answers 21%</span><span><s style="background:#bf5af2"></s>Tool output 55%</span><span><s style="background:#30b0c7"></s>Images 6%</span></div>
+     <div class="items">
+      <div class="item"><div><b>Read</b> UsageAnalytics.swift<br><span>turn 7 · 38k</span></div><em>26%</em><u>›</u></div>
+      <div class="item"><div><b>Bash</b> swift test<br><span>turn 14 · 21k</span></div><em>14%</em><u>›</u></div>
+      <div class="item"><div><b>Read</b> ContextWindow.swift<br><span>turn 9 · 9k</span></div><em>6%</em><u>›</u></div>
+     </div>
+    </div>
+    <div class="sec">Footprint per turn</div>
+    <div class="card">
+     <div class="spark" id="spark"></div>
+     <div class="axis"><span>first turn</span><span>compaction</span><span>now</span><span>+3 at this pace</span></div>
+    </div>
+    <div class="btn">Compact…</div>
+    <div class="foot">Reported by the server from the last request the model was sent. Shares of the window by content are estimated from the transcript and scaled to that total. Projections are at the pace so far and change as you work.</div>
+   </div>
+  </div>
+ </div>
+</div>
+<script>
+const pre=[8,13,19,26,34,43,53,64,78], post=[7,12,31,36,41,46,51,56,61,64,67,70.5,74], proj=[77.3,80.5,83.8];
+const sp=document.getElementById('spark');let h='';
+pre.forEach(v=>h+=`<i style="height:${v*0.92}px"></i>`);
+h+=`<i class="pit" style="height:92px"></i>`;
+post.forEach(v=>h+=`<i style="height:${v*0.92}px"></i>`);
+proj.forEach(v=>h+=`<i class="proj" style="height:${v*0.92}px"></i>`);
+h+=`<div class="line" style="bottom:${80*0.92}px"></div><span class="ll" style="bottom:${80*0.92}px">80%</span>`;
+sp.innerHTML=h;
+</script>
+</body></html>

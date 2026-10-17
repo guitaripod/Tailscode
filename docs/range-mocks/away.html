@@ -1,0 +1,86 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="mock.css">
+<style>
+.homehead{display:flex;gap:14px;align-items:center}
+.lead{width:46px;height:46px;border-radius:14px;background:rgba(255,159,10,.16);display:flex;align-items:center;justify-content:center;color:var(--warn);font-size:28px;flex:none}
+.hb{font:600 20px -apple-system,Inter,system-ui,sans-serif}.hs{color:var(--ink2);font-size:13px;margin-top:2px}
+.hs.warn{color:var(--warn)}
+.q{display:flex;align-items:center;gap:10px;padding:10px 0}.q+.q{border-top:1px solid var(--hair)}
+.q .dot{width:9px;height:9px;border-radius:5px;flex:none}
+.q .n{width:92px;flex:none}.q .n b{font-weight:600;font-size:14.5px;display:block}.q .n span{font-size:11.5px;color:var(--ink2)}
+.q .m{flex:1}.q .m .pace{margin:0}
+.q .m .t{font-size:12px;margin-top:6px;color:var(--ink2)}.q .m .t.warn{color:var(--warn)}
+.q em{font:700 14px -apple-system,Inter,system-ui,sans-serif;font-style:normal;width:46px;text-align:right}
+.wgt{border-radius:26px;background:var(--card);padding:14px;position:relative}
+.small{width:170px;height:170px}.medium{width:360px;height:170px}
+.wh{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink2)}.wh .live{margin-left:auto;width:6px;height:6px;border-radius:3px;background:var(--ok)}
+.ring{width:54px;height:54px;position:relative;flex:none}.ring::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(var(--warn) 62%,rgba(128,128,128,.25) 0);-webkit-mask:radial-gradient(circle,transparent 21px,#000 22px);mask:radial-gradient(circle,transparent 21px,#000 22px)}
+.rt{position:absolute;left:0;top:0;width:54px;height:54px;display:flex;align-items:center;justify-content:center;font:700 15px -apple-system,Inter,system-ui,sans-serif}
+.small .body{display:flex;gap:10px;align-items:center;margin-top:12px}
+.small .tx b{display:block;font-size:13px;font-weight:600}.small .tx span{font-size:11px;color:var(--ink2)}
+.small .v{margin-top:12px;font-size:12.5px;font-weight:600;color:var(--warn)}.small .v span{display:block;color:var(--ink2);font-weight:400;font-size:11px;margin-top:2px}
+.wr{display:flex;align-items:center;gap:8px;margin-top:11px;font-size:12.5px}
+.wr .dot{width:7px;height:7px;border-radius:4px;flex:none}.wr>b{font-weight:500;width:112px;flex:none}.wr .pace{flex:1;margin:0;height:6px}.wr em{font:700 12.5px -apple-system,Inter,system-ui,sans-serif;font-style:normal;width:34px;text-align:right}
+.wr i.a{font-style:normal;font-size:11px;color:var(--warn);width:70px;text-align:right}
+.lock{background:linear-gradient(160deg,#35506b,#1d2b3a);border-radius:26px;padding:22px;width:360px}
+.lock .time{font:200 70px -apple-system,Inter,system-ui,sans-serif;text-align:center;color:#fff;letter-spacing:-2px}
+.lock .date{text-align:center;color:rgba(255,255,255,.8);font-size:15px;margin-bottom:18px}
+.acc{background:rgba(255,255,255,.14);border-radius:14px;padding:9px 12px;color:#fff;width:176px}
+.acc .l1{display:flex;justify-content:space-between;font-size:12.5px;font-weight:600}.acc .l2{font-size:11px;opacity:.85;margin-top:3px}
+.acc .pace{margin:7px 0 0;height:5px}.acc .track{background:rgba(255,255,255,.28)}.acc .fill{background:#fff}.acc .tail{background:repeating-linear-gradient(135deg,#fff 0 2px,transparent 2px 4.5px);opacity:.6}.acc .tick{background:#fff;box-shadow:none;top:-3px;bottom:-3px}
+.banner{width:380px;border-radius:24px;background:rgba(44,44,46,.92);padding:13px 15px;display:flex;gap:12px;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.banner .ic{width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,#1e6fd0,#0a3a7a);flex:none}
+.banner b{font-size:14.5px;display:block;font-weight:600;color:#fff}.banner p{font-size:13.5px;color:rgba(255,255,255,.86);margin-top:2px;line-height:1.3}.banner .when{margin-left:auto;font-size:12px;color:rgba(255,255,255,.55)}
+.sw{display:flex;align-items:center;gap:12px;padding:12px 0}.sw+.sw{border-top:1px solid var(--hair)}.sw div b{font-weight:500;font-size:15px;display:block}.sw div span{font-size:12.5px;color:var(--ink2);line-height:1.35;display:block;margin-top:2px}
+.tg{margin-left:auto;width:50px;height:30px;border-radius:15px;background:var(--ok);position:relative;flex:none}.tg::after{content:"";position:absolute;right:3px;top:3px;width:24px;height:24px;border-radius:12px;background:#fff}.tg.off{background:var(--track)}.tg.off::after{right:auto;left:3px}
+.note{color:var(--ink3);font-size:12px;margin-top:10px;line-height:1.4;max-width:420px}
+</style></head><body>
+<h1>Range — away from the chat</h1>
+<div class="sub">The same grammar on every surface that is glanced at rather than opened: Home's one-line summary and its strip, the widgets, the Lock Screen, and a single notification when a window is on course to run out before it resets. Each says one thing and says it only when there is something to say.</div>
+<div class="row">
+ <div style="width:420px">
+  <div class="cap">Home</div>
+  <div class="phone" style="padding-bottom:14px">
+   <div class="status">9:41</div>
+   <div class="stack">
+    <div class="card"><div class="homehead"><div class="lead">◔</div><div><div class="hb">2 working</div><div class="hs">1 finished today · all machines up</div><div class="hs warn" style="margin-top:4px">Claude's 5-hour session runs out at 19:22</div></div></div></div>
+    <div class="card" style="padding:6px 16px">
+     <div class="q"><i class="dot" style="background:var(--claude)"></i><div class="n"><b>Claude</b><span>5-hour</span></div><div class="m"><div class="pace"><div class="track"><i class="fill" style="width:62%;--c:var(--warn)"></i><i class="tail" style="left:62%;width:38%;--t:var(--warn)"></i></div><b class="tick" style="left:44.3%"></b></div><div class="t warn">Wall 19:22 · resets 20:47</div></div><em>62%</em></div>
+     <div class="q"><i class="dot" style="background:#e8e8eb"></i><div class="n"><b>Grok</b><span>Weekly</span></div><div class="m"><div class="pace"><div class="track"><i class="fill" style="width:12%;--c:#e8e8eb"></i></div><b class="tick" style="left:62.5%"></b></div><div class="t">On pace</div></div><em>12%</em></div>
+     <div class="q"><i class="dot" style="background:var(--ds)"></i><div class="n"><b>DeepSeek</b><span>Balance</span></div><div class="m"><div class="t" style="margin:0">Lasts about 33 days at $3.10 a day</div></div><em style="width:64px">$104</em></div>
+    </div>
+   </div>
+  </div>
+  <div class="note">The summary line speaks only when a window is on course to run out before it resets, and only for the earliest one. The strip keeps its order — the board is the person's — and every provider keeps its line; the tick is added to the bar it already had, and the tail only where it carries news.</div>
+ </div>
+ <div>
+  <div class="cap">Widgets</div>
+  <div class="row" style="gap:20px;align-items:flex-start">
+   <div class="wgt small"><div class="wh">Claude <i class="live"></i></div>
+    <div class="body"><div class="ring"><div class="rt">62</div></div><div class="tx"><b>5-hour</b><span>resets 20:47</span></div></div>
+    <div class="v">Wall 19:22<span>before it resets</span></div></div>
+   <div class="wgt medium"><div class="wh">Usage <span style="margin-left:6px;color:var(--warn)">Claude 5-hour: wall 19:22</span><i class="live"></i></div>
+    <div class="wr"><i class="dot" style="background:var(--claude)"></i><b>5-hour</b><div class="pace"><div class="track"><i class="fill" style="width:62%;--c:var(--warn)"></i><i class="tail" style="left:62%;width:38%;--t:var(--warn)"></i></div><b class="tick" style="left:44.3%"></b></div><em>62%</em></div>
+    <div class="wr"><i class="dot" style="background:var(--claude)"></i><b>Weekly · all</b><div class="pace"><div class="track"><i class="fill" style="width:38%"></i></div><b class="tick" style="left:62.5%"></b></div><em>38%</em></div>
+    <div class="wr"><i class="dot" style="background:#e8e8eb"></i><b>Grok · weekly</b><div class="pace"><div class="track"><i class="fill" style="width:12%;--c:#e8e8eb"></i></div><b class="tick" style="left:62.5%"></b></div><em>12%</em></div>
+   </div>
+  </div>
+  <div class="note" style="margin-top:12px">The widget is the screen's row at small size, as before: one tick more, and a tail only when it is news. A small widget swaps its sub-line for the wall's time only when there is one; a snapshot nobody could refresh still says so before it says anything else.</div>
+  <div style="height:26px"></div>
+  <div class="cap">Lock Screen · accessoryRectangular, one ink</div>
+  <div class="lock"><div class="date">Wednesday 17 October</div><div class="time">17:58</div>
+   <div class="acc"><div class="l1"><span>Claude 5-hour</span><span>62%</span></div><div class="pace"><div class="track"><i class="fill" style="width:62%"></i><i class="tail" style="left:62%;width:38%"></i></div><b class="tick" style="left:44.3%"></b></div><div class="l2">Wall 19:22 · resets 20:47</div></div></div>
+ </div>
+ <div style="width:420px">
+  <div class="cap">The one notification</div>
+  <div class="banner"><div class="ic"></div><div><b>Claude's 5-hour session</b><p>At this pace it runs out at 19:22, 1h 25m before it resets.</p></div><div class="when">now</div></div>
+  <div class="note" style="margin-top:14px">Plain category, no buttons: there is nothing a button could do that opening the chat does not. Tapping opens the Range sheet for the chat in front, or the usage board. Once per window per crossing, and re-armed only after the projection has been back under 90% of the limit for a while, so a rate that wobbles around the line does not ring twice.</div>
+  <div style="height:26px"></div>
+  <div class="cap">Settings ▸ Notifications</div>
+  <div class="card" style="padding:4px 16px">
+   <div class="sw"><div><b>Running low</b><span>Tell me when a usage window is on course to run out before it resets. Account-wide windows only; once per window.</span></div><i class="tg"></i></div>
+   <div class="sw"><div><b>Finished turns</b><span>unchanged</span></div><i class="tg"></i></div>
+  </div>
+ </div>
+</div>
+</body></html>
