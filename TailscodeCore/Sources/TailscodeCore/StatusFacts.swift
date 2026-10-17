@@ -92,6 +92,11 @@ public struct StatusFacts: Sendable {
     /// How full the model's window is, when the transcript can say. The band wears the share and
     /// the count, coloured by how close a compaction is, and clicking it opens the whole window.
     public var context: ContextFill?
+    /// Where the context window, the quota windows that govern this chat and the prompt cache are
+    /// heading, read cheaply on every state. The band wears it only when it is news: turns left in
+    /// place of the share, a clock chip for a window that will run out before it resets, and a
+    /// note that the cache has gone cold.
+    public var range: RangeGlance?
     public var lastCostUSD: Double?
     /// What the whole conversation has cost, when the server can account for it. The band shows
     /// this in place of the last turn's price — a turn's cost is a curiosity, a session's is a
@@ -162,7 +167,7 @@ public struct StatusFacts: Sendable {
         usage: AgentUsage?, attachments: Int, context: ContextFill? = nil,
         quotas: [UsageQuota] = [], queued: Int = 0, spend: SessionSpend? = nil,
         git: GitState? = nil, model: String? = nil, selection: ModelSelection? = nil,
-        now: Date = Date()
+        trail: QuotaTrail? = nil, now: Date = Date()
     ) -> StatusFacts {
         var facts = StatusFacts()
         facts.readAt = now
@@ -210,6 +215,9 @@ public struct StatusFacts: Sendable {
         facts.git = git
         facts.agents = agents
         facts.context = context
+        facts.range = RangeGlance.read(
+            messages: state.messages, fill: context, quotas: quotas, model: model,
+            selection: selection, isRunning: state.status == .running, trail: trail, now: now)
         facts.lastCostUSD = usage?.costUSD
         facts.lastTurnTokens = usage?.tokens
         if let goal = state.goal {
@@ -373,16 +381,29 @@ public struct StatusFacts: Sendable {
         }
 
         if let context {
+            let tone = max(context.tone, range?.burn?.tone ?? .quiet)
             let css: String
-            switch context.tone {
+            switch tone {
             case .quiet: css = "seg-dim"
             case .attention: css = "seg-warn"
             case .danger: css = "seg-error"
             }
             result.append(
                 Segment(
-                    id: "context", text: context.badge, css: css, kind: .act(.context),
-                    meter: context.fraction))
+                    id: "context", text: range?.contextWords ?? context.badge, css: css,
+                    kind: .act(.range), meter: context.fraction))
+        }
+        if let range, let words = range.wallWords() {
+            result.append(
+                Segment(
+                    id: "wall", text: StatusMark.clock + " " + words, css: "seg-warn",
+                    kind: .act(.range)))
+        }
+        if let range, let words = range.coldWords {
+            result.append(
+                Segment(
+                    id: "cache", text: StatusMark.cold + " " + words, css: "seg-dim",
+                    kind: .act(.range)))
         }
         if let spend, !spend.isEmpty {
             result.append(
@@ -587,7 +608,7 @@ public struct StatusFacts: Sendable {
     public enum Action: Equatable, Sendable {
         case stop
         case spend
-        case context
+        case range
         case git
         case compact
         case goal

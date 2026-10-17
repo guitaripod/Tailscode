@@ -305,6 +305,10 @@ public enum StatusMark {
     /// One column for "this is a branch", so a band segment reads as a repository rather than as
     /// another number. Text clients have no symbol set to fall back on.
     public static let branch = "⑂"
+    /// A clock face for a moment ahead — when a window will run out.
+    public static let clock = "◷"
+    /// A snowflake for a prompt cache that has lapsed.
+    public static let cold = "❅"
 }
 
 extension ToolStatus {

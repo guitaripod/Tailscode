@@ -49,12 +49,21 @@ struct QuotaGlanceTests {
         #expect(line.slug == "claude")
     }
 
+    @Test("Where the pace is known the dot follows where the window lands, not how full it is")
+    func paceTone() {
+        let onPace = glance([("arch", quota("Claude", [("Weekly", 0.85)], resetsIn: 7_200))])
+        #expect(onPace.lines[0].tone == .ok)
+        #expect(onPace.lines[0].row?.tailIsNews == true)
+        let running = glance([("arch", quota("Claude", [("Session", 0.62)], resetsIn: 10_020))])
+        #expect(running.lines[0].tone == .warn)
+    }
+
     @Test("Every provider on the board has a line, warm ones in the attention tone")
     func warm() {
         let strip = glance([
-            ("arch", quota("Claude", [("Weekly", 0.85), ("Session", 0.2)])),
-            ("arch", quota("Grok", [("Weekly credits", 0.72)])),
-            ("arch", quota("Ollama Cloud", [("Weekly", 0.24), ("Session", 0.02)])),
+            ("arch", quota("Claude", [("Weekly", 0.85), ("Session", 0.2)], resetsIn: nil)),
+            ("arch", quota("Grok", [("Weekly credits", 0.72)], resetsIn: nil)),
+            ("arch", quota("Ollama Cloud", [("Weekly", 0.24), ("Session", 0.02)], resetsIn: nil)),
         ])
         #expect(strip.lines.count == 3)
         #expect(strip.lines.map(\.slug) == ["claude", "grok", "ollama-cloud"], "the board's order")

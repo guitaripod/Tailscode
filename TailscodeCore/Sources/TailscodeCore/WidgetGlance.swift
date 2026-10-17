@@ -1,3 +1,4 @@
+import CodingAgentKit
 import Foundation
 
 /// A quota as a widget receives it — the stored snapshot's own shape, with no backend behind it.
@@ -174,6 +175,12 @@ public struct WidgetGlance: Sendable, Equatable {
         /// spending the failure colour on something that has not failed.
         public let isCritical: Bool
         public let isLive: Bool
+        /// Where the window is heading — its tick, its tail and the line of words it owes when its
+        /// pace is news. Nil for a balance. A widget is a glance, so a tail is drawn only when
+        /// `pace.tailIsNews`.
+        public let pace: PaceRow?
+        /// "Wall 19:22", present only while the window will run out before it resets.
+        public let wallChip: String?
         /// The whole row in one sentence, for a screen reader that gets no columns.
         public let spoken: String
     }
@@ -279,6 +286,7 @@ public struct WidgetGlance: Sendable, Equatable {
             }
             return "\(who) \(hero.value)"
         case .warn:
+            if let wall = hero.wallChip { return "\(who) · \(wall)" }
             return "\(who) \(hero.value)"
         case .ok, .balance, .quiet:
             return Localized.text("All clear")
@@ -295,7 +303,9 @@ public struct WidgetGlance: Sendable, Equatable {
     public var inlineText: String {
         guard let hero else { return Self.emptyTitle }
         var text = "\(hero.providerShort) \(hero.value)"
-        if let resetsAt = hero.resetsAt, resetsAt > updatedAt {
+        if let wall = hero.wallChip {
+            text += " · " + wall
+        } else if let resetsAt = hero.resetsAt, resetsAt > updatedAt {
             text += " · " + QuotaSurface.countdown(to: resetsAt, now: updatedAt)
         }
         return text
@@ -345,7 +355,7 @@ public struct WidgetGlance: Sendable, Equatable {
         let exhausted = gauge.fraction >= QuotaSurface.exhaustedFloor && standing
         let kind: Kind = gauge.isBalance ? .balance : .window
         let value: String
-        let tone: Tone
+        var tone: Tone
         if kind == .balance {
             value = exhausted
                 ? Localized.text("Empty") : QuotaGlance.money(gauge.usedUSD ?? 0, gauge.currency)
@@ -360,6 +370,28 @@ public struct WidgetGlance: Sendable, Equatable {
                 tone = .warn
             } else {
                 tone = .ok
+            }
+        }
+        var pace: PaceRow?
+        var wallChip: String?
+        if kind == .window {
+            let usage = Self.usageGauge(gauge)
+            let paced = PaceRow.window(
+                provider: quota.providerName, slug: slug, gauge: usage, now: now)
+            if paced.tick != nil {
+                pace = paced
+                if !exhausted {
+                    switch paced.tone {
+                    case .quiet: tone = .ok
+                    case .attention: tone = .warn
+                    case .danger: tone = .danger
+                    }
+                }
+                if case .willRunOut(let at)? = QuotaPace.read(
+                    usage, provider: quota.providerName, now: now)?.verdict
+                {
+                    wallChip = RangeWords.wallChip(at, now: now, clock: .current)
+                }
             }
         }
         return Row(
@@ -379,9 +411,19 @@ public struct WidgetGlance: Sendable, Equatable {
             tone: tone,
             isCritical: kind == .window && gauge.fraction >= criticalFloor,
             isLive: quota.isLive,
+            pace: pace,
+            wallChip: wallChip,
             spoken: spoken(
                 provider: short, label: gauge.label, value: value, kind: kind, exhausted: exhausted,
-                resetsAt: standing ? gauge.resetsAt : nil, now: now))
+                resetsAt: standing ? gauge.resetsAt : nil, now: now)
+                + (pace?.news.map { ". \($0.lead) \($0.body)" } ?? ""))
+    }
+
+    private static func usageGauge(_ gauge: WidgetQuota.Gauge) -> UsageQuota.Gauge {
+        UsageQuota.Gauge(
+            key: "", label: gauge.label, fraction: gauge.fraction, resetsAt: gauge.resetsAt,
+            trustedReset: gauge.trustedReset, usedUSD: gauge.usedUSD, limitUSD: gauge.limitUSD,
+            currency: gauge.currency)
     }
 
     private static func money(for gauge: WidgetQuota.Gauge) -> String {

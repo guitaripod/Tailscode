@@ -170,7 +170,7 @@ struct ContextWindowTests {
         let segment = facts.segments.first { $0.id == "context" }
         #expect(segment?.text == "10% · 20.0k")
         #expect(segment?.css == "seg-dim")
-        #expect(segment?.action == .context)
+        #expect(segment?.action == .range)
         #expect(abs((segment?.meter ?? 0) - 0.1) < 0.001)
     }
     @Test("A slice smaller than the rounding reads under one percent, not zero")

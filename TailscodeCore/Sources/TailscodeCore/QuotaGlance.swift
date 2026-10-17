@@ -43,10 +43,14 @@ public struct QuotaGlance: Sendable, Equatable {
         public let tone: Tone
         public let fraction: Double?
         public let slug: String?
+        /// The window as a pace row — its tick, its tail and the line of words it owes when its
+        /// pace is news — for a window line; nil for a notice or a balance. A strip draws the tail
+        /// only when `row.tailIsNews`: a glance is for what changed, not for what is fine.
+        public let row: PaceRow?
 
         public init(
             kind: Kind, text: String, trailing: String = "", tone: Tone, fraction: Double? = nil,
-            slug: String? = nil
+            slug: String? = nil, row: PaceRow? = nil
         ) {
             self.kind = kind
             self.text = text
@@ -54,6 +58,7 @@ public struct QuotaGlance: Sendable, Equatable {
             self.tone = tone
             self.fraction = fraction
             self.slug = slug
+            self.row = row
         }
     }
 
@@ -83,8 +88,10 @@ public struct QuotaGlance: Sendable, Equatable {
     /// to them. What the chat says about a wall is decided elsewhere and never hidden.
     public static func make(
         from reports: [(String, UsageQuota)], answeredAt: Date?, now: Date = Date(),
-        board: QuotaBoardPreferences = .default
+        board: QuotaBoardPreferences = .default, trail: QuotaTrail? = nil,
+        clock: RangeClock = .current
     ) -> QuotaGlance {
+        let reading = Reading(now: now, trail: trail, clock: clock)
         let holdings = QuotaRollup.account(from: reports).filter {
             !board.isHidden(QuotaBoard.key($0))
         }
@@ -111,7 +118,7 @@ public struct QuotaGlance: Sendable, Equatable {
             .sorted { soonest($0.1) < soonest($1.1) }
 
         if !walls.isEmpty {
-            lines += walls.prefix(maxWindows).map { line(for: $0.0, $0.1, tone: .danger, now: now) }
+            lines += walls.prefix(maxWindows).map { line(for: $0.0, $0.1, tone: .danger, reading: reading) }
             if walls.count > maxWindows {
                 lines.append(
                     Line(
@@ -121,9 +128,9 @@ public struct QuotaGlance: Sendable, Equatable {
                         tone: .danger))
             }
             lines += relief(
-                among: windows, walls: walls, holdings: holdings, board: board, now: now)
+                among: windows, walls: walls, holdings: holdings, board: board, reading: reading)
         } else {
-            lines += standing(among: windows, holdings: holdings, board: board, now: now)
+            lines += standing(among: windows, holdings: holdings, board: board, reading: reading)
         }
 
         if let money = balance(in: holdings) {
@@ -136,8 +143,9 @@ public struct QuotaGlance: Sendable, Equatable {
     /// it is at on the right. The countdown needs no verb — beside a quota window it can only ever
     /// mean the reset.
     private static func line(
-        for holding: QuotaHolding, _ gauge: UsageQuota.Gauge, tone: Tone, now: Date
+        for holding: QuotaHolding, _ gauge: UsageQuota.Gauge, tone: Tone, reading: Reading
     ) -> Line {
+        let now = reading.now
         var text = "\(holding.providerName) \(gauge.label)"
         if let resets = gauge.resetsAt, resets > now {
             let remaining = QuotaSurface.countdown(to: resets, now: now)
@@ -147,7 +155,51 @@ public struct QuotaGlance: Sendable, Equatable {
         }
         return Line(
             kind: .window, text: text, trailing: percent(gauge), tone: tone,
-            fraction: clamped(gauge.fraction), slug: holding.slug)
+            fraction: clamped(gauge.fraction), slug: holding.slug,
+            row: reading.row(holding, gauge))
+    }
+
+    /// The tone a window's dot wears: where its pace is known, by where the fill lands; where it
+    /// is not, by how full it is, as it always has been.
+    private static func tone(
+        of holding: QuotaHolding, _ gauge: UsageQuota.Gauge, reading: Reading
+    ) -> Tone {
+        let row = reading.row(holding, gauge)
+        guard row.tick != nil else { return gauge.fraction >= warmFloor ? .warn : .ok }
+        switch row.tone {
+        case .quiet: return .ok
+        case .attention: return .warn
+        case .danger: return .danger
+        }
+    }
+
+    /// What reads one window: the moment, what the device has seen the window do, and the clock a
+    /// time of day is written in.
+    private struct Reading {
+        let now: Date
+        let trail: QuotaTrail?
+        let clock: RangeClock
+
+        func row(_ holding: QuotaHolding, _ gauge: UsageQuota.Gauge) -> PaceRow {
+            PaceRow.window(
+                provider: holding.providerName, slug: holding.slug, gauge: gauge, now: now,
+                trail: trail, clock: clock)
+        }
+
+        /// How much a window is news, for choosing the one a provider's line is about: a window
+        /// that will run out before it resets outranks one that is merely fuller.
+        func urgency(_ holding: QuotaHolding, _ gauge: UsageQuota.Gauge) -> (Int, TimeInterval, Double) {
+            guard
+                let pace = QuotaPace.read(
+                    gauge, provider: holding.providerName, now: now, trail: trail,
+                    calendar: clock.calendar)
+            else { return (0, 0, gauge.fraction) }
+            switch pace.verdict {
+            case .willRunOut(let at): return (2, -at.timeIntervalSince(now), gauge.fraction)
+            case .closeToTheLine: return (1, 0, gauge.fraction)
+            default: return (0, 0, gauge.fraction)
+            }
+        }
     }
 
     /// The lines a wall is only useful with: where there is still room. A provider is only shut out
@@ -162,14 +214,14 @@ public struct QuotaGlance: Sendable, Equatable {
     private static func relief(
         among windows: [(QuotaHolding, UsageQuota.Gauge)],
         walls: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding],
-        board: QuotaBoardPreferences, now: Date
+        board: QuotaBoardPreferences, reading: Reading
     ) -> [Line] {
         let blocked = Set(
             walls.filter { QuotaBinding.scope(of: $0.1) == .account }.map { key($0.0) })
         let open = windows.filter {
             !blocked.contains(key($0.0)) && $0.1.fraction < QuotaSurface.exhaustedFloor
         }
-        let picks = tightestPerProvider(open, holdings: holdings, board: board)
+        let picks = tightestPerProvider(open, holdings: holdings, board: board, reading: reading)
         guard let roomiest = picks.min(by: { $0.1.fraction < $1.1.fraction }) else {
             if let money = balance(in: holdings), money.1.fraction < QuotaSurface.exhaustedFloor {
                 return [
@@ -185,13 +237,14 @@ public struct QuotaGlance: Sendable, Equatable {
         return picks.map { holding, gauge in
             guard key(holding) == key(roomiest.0), gauge.label == roomiest.1.label else {
                 return line(
-                    for: holding, gauge, tone: gauge.fraction >= warmFloor ? .warn : .ok, now: now)
+                    for: holding, gauge, tone: tone(of: holding, gauge, reading: reading),
+                    reading: reading)
             }
             return Line(
                 kind: .window,
                 text: Localized.text("%@ %@ still open", holding.providerName, gauge.label),
                 trailing: percent(gauge), tone: .ok, fraction: clamped(gauge.fraction),
-                slug: holding.slug)
+                slug: holding.slug, row: reading.row(holding, gauge))
         }
     }
 
@@ -200,15 +253,15 @@ public struct QuotaGlance: Sendable, Equatable {
     /// which the person chose to see.
     private static func standing(
         among windows: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding],
-        board: QuotaBoardPreferences, now: Date
+        board: QuotaBoardPreferences, reading: Reading
     ) -> [Line] {
-        let picks = tightestPerProvider(windows, holdings: holdings, board: board)
+        let picks = tightestPerProvider(windows, holdings: holdings, board: board, reading: reading)
         guard !picks.isEmpty else {
             return balance(in: holdings) == nil
                 ? [Line(kind: .notice, text: Localized.text("Quotas clear"), tone: .ok)] : []
         }
         return picks.map {
-            line(for: $0.0, $0.1, tone: $0.1.fraction >= warmFloor ? .warn : .ok, now: now)
+            line(for: $0.0, $0.1, tone: tone(of: $0.0, $0.1, reading: reading), reading: reading)
         }
     }
 
@@ -217,11 +270,15 @@ public struct QuotaGlance: Sendable, Equatable {
     /// of them reads as the others having gone.
     private static func tightestPerProvider(
         _ windows: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding],
-        board: QuotaBoardPreferences
+        board: QuotaBoardPreferences, reading: Reading
     ) -> [(QuotaHolding, UsageQuota.Gauge)] {
         QuotaBoard.arrange(holdings, preferences: board).compactMap { holding in
             windows.filter { key($0.0) == key(holding) }
-                .max { $0.1.fraction < $1.1.fraction }
+                .max {
+                    let a = reading.urgency($0.0, $0.1)
+                    let b = reading.urgency($1.0, $1.1)
+                    return a < b
+                }
         }
     }
 

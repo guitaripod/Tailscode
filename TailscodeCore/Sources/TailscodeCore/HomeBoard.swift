@@ -14,23 +14,31 @@ public struct HomeStatus: Equatable, Sendable {
     /// work is going on, quiet when nothing is. It follows the activity vocabulary, so the light
     /// breathes, knocks or holds still exactly as every other badge does.
     public let tone: ActivityTone
+    /// The one thing the account's quotas have to say, present only when a window is on course to
+    /// run out before it resets (`RangeHome.line`). It is its own line because it is a different
+    /// kind of news from the board's: not what the machines are doing but what they will be able
+    /// to keep doing.
+    public let range: String?
 
-    public init(sentence: String, detail: String, tone: ActivityTone) {
+    public init(sentence: String, detail: String, tone: ActivityTone, range: String? = nil) {
         self.sentence = sentence
         self.detail = detail
         self.tone = tone
+        self.range = range
     }
 
     /// The whole reading in one breath, for a screen reader that cannot see the light.
     public var spoken: String {
-        detail.isEmpty ? sentence : "\(sentence). \(detail)"
+        let head = detail.isEmpty ? sentence : "\(sentence). \(detail)"
+        guard let range else { return head }
+        return "\(head). \(range)"
     }
 
     /// - Parameter rows: every conversation Home can see, archived ones already left out.
     /// - Parameter offline: the names of servers that did not answer the last listing; a machine
     ///   that is down is a fact about the whole board, not about one of its rows.
     public static func reading(
-        rows: [SessionRowModel], offline: [String] = [], now: Date = Date(),
+        rows: [SessionRowModel], offline: [String] = [], range: String? = nil, now: Date = Date(),
         calendar: Calendar = .current
     ) -> HomeStatus {
         let waiting = rows.filter { $0.state.needsYou }.count
@@ -79,7 +87,8 @@ public struct HomeStatus: Equatable, Sendable {
         case 1: parts.append(Localized.text("%@ is offline", offline[0]))
         default: parts.append(Localized.text("%d servers offline", offline.count))
         }
-        return HomeStatus(sentence: sentence, detail: parts.joined(separator: " · "), tone: tone)
+        return HomeStatus(
+            sentence: sentence, detail: parts.joined(separator: " · "), tone: tone, range: range)
     }
 }
 

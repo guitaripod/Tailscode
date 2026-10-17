@@ -82,7 +82,9 @@ struct WidgetGlanceTests {
         #expect(clear.headline == "All clear")
         #expect(!clear.heroIsWalled)
 
-        let tight = glance([quota("Claude", [("5-hour", 0.9)]), quota("Grok", [("Chat", 0.1)])])
+        let tight = glance([
+            quota("Claude", [("5-hour", 0.9)], resetsIn: nil), quota("Grok", [("Chat", 0.1)]),
+        ])
         #expect(tight.headline.hasPrefix("Claude"))
         #expect(tight.headline.contains("90%"))
 
@@ -98,7 +100,7 @@ struct WidgetGlanceTests {
         let walled = glance([quota("Claude", [("5-hour", 1.0)])])
         #expect(walled.title == "Claude")
         #expect(walled.headline == "5-hour used up")
-        let tight = glance([quota("Claude", [("5-hour", 0.9)])])
+        let tight = glance([quota("Claude", [("5-hour", 0.9)], resetsIn: nil)])
         #expect(tight.headline == "5-hour 90%")
     }
 
