@@ -139,3 +139,24 @@ Not found in Apple's documentation, so not relied on: that `half` arithmetic is 
 ## To measure next
 
 On the iPhone Air in Xcode's Metal System Trace: GPU time per frame for the interior and the front, with the assets as ASTC and mipmapped; energy over a minute of a live turn at the activity tempo against 60 fps; time to first picture on a cold open. On Linux, CPU time per frame of the delta compositor and the resident set across a long turn.
+
+## Applied: what the audit found in the existing clients and what was done (2026-10-17)
+
+The three clients were read for clocks that ignore settled, hidden or occluded, per-frame allocation, work per streamed token and the orb's CPU cost. Each item below was changed in the same change as the brain.
+
+| Finding | Change | Measured |
+|---|---|---|
+| LiveCascade repainted the whole answer on every display frame for the whole turn (iOS, Mac) | Core `CascadeTempo` (`.stopped`, `.activity`, `.display`), `LiveCascade.tempo/isResting/textRevision/paintRevision/restPhase`: the band finishes its pass at the activity tempo and the row rests; clients key repaints on the revision and repaint the tail | iOS demo send: 70 + 52 ticks over a turn's writing bursts against about 60 a second; Mac 20 s of a streaming turn 4.30 s CPU before, 1.93 s after (Lines), 2.77 s with the brain |
+| Linux reveal read text every frame (`reveal.c`, `ChatPaneCascade`, `CascadePainter`) | the frame fast path reads no text, the label's base render node is cached, the clock follows Core's tempo | the reveal runs at the display rate while calm (about 2 points of a core on a 60 Hz harness; `TAILSCODE_REVEAL_RATE=30` restores the old rate) |
+| Linux `noteDoubledRows` hashed bodies per token | `DoubledRowWatch` hashes only the row whose length changed | |
+| Transcript rebuild and diff scaled with the conversation (iOS `ChatViewController`, Mac `TranscriptViewController`) | rows remembered per message by revision (iOS `SegmentRowMemo` extended, Mac `TranscriptRowBuilder`), the turn cache keeps 4,096 turns, `keepRead` fires only when the newest message changed | iOS one streamed token: 28.0 to 7.4 ms of rows at 2,400 messages, 75 to 21 ms at 6,000; Mac 1.5 to 0.6 ms at 703 rows |
+| Per-badge `CADisplayLink`s (iOS, Mac) | `CAKeyframeAnimation` on the render server locked to absolute time | no app CPU for a breathing badge |
+| Display links gated on the window only (Mac call face, forge ring, studio stage, tile runtime, orb) | one `DisplayGate`: window occluded or app inactive stops them | |
+| Linux orb: per-pixel eight blobs with `expf` and `atan2f` | zero weights skipped, bytes identical but one level | 0.32 to 0.20 ms a frame at 1x, 1.17 to 0.78 at 2x; the orb's cost on a live turn about 1.6 points of a core to about 0.1 |
+| Linux aura: 384 `cairo_stroke` a frame | segments cached and batched by colour; gradient strokes are smooth where round caps drew a bead at every joint | 0.81 to 0.28 ms a frame |
+| Per-orb Metal devices (orb, aurora) | one process-wide `NeuralMetalContext` (device, queue, library, pipelines) warmed off the main thread and shared | |
+| `Theme.Ramp.font` had no cache; Aurora built colours every frame | fonts memoised per role, colours resolved once per theme change | |
+| Full-size image decode on the main thread (`ImageBubbleCell`), Game Center at launch, a 100 ms stall monitor forever | ImageIO thumbnails off main with the full bytes kept for the viewer, Game Center at idle, the monitor backs off to 250 ms after 5 s without a touch | |
+| Always-on one-second timers (Mac Seatbelts, Watchdog) | stop when nothing changes | |
+
+Not done: the iOS data-source diff is not tail-only, a single 90-message turn costs 3.4 to 3.9 ms a token on the Mac because the turn is re-read whole (an incremental turn read in `NeuralTurnCache` would fix it), the Linux Seatbelts one-second tick and the Linux cascade's chained entrance timeouts were not revisited, and nothing was measured on a phone (Metal System Trace on the iPhone Air is still the next measurement).
