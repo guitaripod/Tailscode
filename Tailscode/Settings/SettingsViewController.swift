@@ -35,7 +35,8 @@ final class SettingsViewController: UIViewController {
         case autoExpandThinking, sendOnReturn, promptEnhancement, compactActivity, responseStats
         case linkEmbeds
         case autoResume
-        case notifyTurnComplete, notifyApprovals, notifyUsage, serverPush, liveActivities
+        case notifyTurnComplete, notifyApprovals, notifyUsage, notifyRunningLow, serverPush
+        case liveActivities
         case presenceOrb
 
         var title: String {
@@ -50,6 +51,7 @@ final class SettingsViewController: UIViewController {
             case .notifyTurnComplete: return String(localized: "Turn finished")
             case .notifyApprovals: return String(localized: "Approvals and questions")
             case .notifyUsage: return String(localized: "Usage warnings")
+            case .notifyRunningLow: return String(localized: "Running low")
             case .serverPush: return String(localized: "Push from servers")
             case .liveActivities: return String(localized: "Live Activities")
             case .presenceOrb: return String(localized: "Presence orb")
@@ -76,6 +78,11 @@ final class SettingsViewController: UIViewController {
                 return String(localized: "When an agent stops to ask permission or a question")
             case .notifyUsage:
                 return String(localized: "Once per window when a plan limit passes 90%")
+            case .notifyRunningLow:
+                return String(
+                    localized:
+                        "Tell me when a usage window is on course to run out before it resets. Account-wide windows only; once per window"
+                )
             case .serverPush:
                 return String(
                     localized:
@@ -102,6 +109,7 @@ final class SettingsViewController: UIViewController {
             case .notifyTurnComplete: return "checkmark.bubble"
             case .notifyApprovals: return "hand.raised"
             case .notifyUsage: return "gauge.with.needle"
+            case .notifyRunningLow: return "clock"
             case .serverPush: return "antenna.radiowaves.left.and.right"
             case .liveActivities: return "rectangle.inset.filled.badge.record"
             case .presenceOrb: return "circle.hexagongrid.circle"
@@ -120,6 +128,7 @@ final class SettingsViewController: UIViewController {
             case .notifyTurnComplete: return Theme.Color.success
             case .notifyApprovals: return Theme.Color.warning
             case .notifyUsage: return Theme.Color.info
+            case .notifyRunningLow: return Theme.Color.warning
             case .serverPush: return Theme.Color.accent
             case .liveActivities: return Theme.Color.special
             case .presenceOrb: return Theme.Color.special
@@ -138,6 +147,7 @@ final class SettingsViewController: UIViewController {
             case .notifyTurnComplete: return AppPreferences.notifyTurnComplete
             case .notifyApprovals: return AppPreferences.notifyApprovals
             case .notifyUsage: return AppPreferences.notifyUsageWarnings
+            case .notifyRunningLow: return AppPreferences.notifyRunningLow
             case .serverPush: return AppPreferences.pushAlertsEnabled
             case .liveActivities: return AppPreferences.liveActivitiesEnabled
             case .presenceOrb: return PresenceOrbSetting.isEnabled
@@ -157,6 +167,7 @@ final class SettingsViewController: UIViewController {
             case .notifyTurnComplete: AppPreferences.notifyTurnComplete = value
             case .notifyApprovals: AppPreferences.notifyApprovals = value
             case .notifyUsage: AppPreferences.notifyUsageWarnings = value
+            case .notifyRunningLow: AppPreferences.notifyRunningLow = value
             case .serverPush:
                 AppPreferences.pushAlertsEnabled = value
                 PushRegistrar.applyPreference()
@@ -1052,8 +1063,8 @@ final class SettingsViewController: UIViewController {
 
         var notificationItems: [Item] = [
             .notificationPermission, .backgroundRefresh, .toggle(.notifyTurnComplete),
-            .toggle(.notifyApprovals), .toggle(.notifyUsage), .toggle(.liveActivities),
-            .toggle(.serverPush),
+            .toggle(.notifyApprovals), .toggle(.notifyUsage), .toggle(.notifyRunningLow),
+            .toggle(.liveActivities), .toggle(.serverPush),
         ]
         notificationItems += pushCapableProfiles.map { Item.pushState($0.id) }
         notificationItems.append(.testNotification)

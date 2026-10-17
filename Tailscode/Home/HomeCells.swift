@@ -550,6 +550,7 @@ final class HomeStatusCell: UICollectionViewCell {
     private let lead = UIStackView()
     private let sentenceLabel = UILabel()
     private let detailLabel = UILabel()
+    private let rangeLabel = UILabel()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -563,6 +564,12 @@ final class HomeStatusCell: UICollectionViewCell {
         detailLabel.numberOfLines = 0
         detailLabel.adjustsFontForContentSizeCategory = true
 
+        rangeLabel.font = Theme.Ramp.font(.statusLine)
+        rangeLabel.textColor = Theme.Color.warning
+        rangeLabel.numberOfLines = 0
+        rangeLabel.adjustsFontForContentSizeCategory = true
+        rangeLabel.isHidden = true
+
         light.setContentHuggingPriority(.required, for: .horizontal)
         light.translatesAutoresizingMaskIntoConstraints = false
 
@@ -571,7 +578,7 @@ final class HomeStatusCell: UICollectionViewCell {
         lead.alignment = .center
         lead.spacing = Theme.Spacing.s + 2
 
-        let column = UIStackView(arrangedSubviews: [lead, detailLabel])
+        let column = UIStackView(arrangedSubviews: [lead, detailLabel, rangeLabel])
         column.axis = .vertical
         column.spacing = 2
         column.translatesAutoresizingMaskIntoConstraints = false
@@ -611,6 +618,8 @@ final class HomeStatusCell: UICollectionViewCell {
         sentenceLabel.text = status.sentence
         detailLabel.text = status.detail
         detailLabel.isHidden = status.detail.isEmpty
+        rangeLabel.text = status.range
+        rangeLabel.isHidden = status.range == nil
         light.show(Self.icon(for: status.tone), spoken: nil)
         accessibilityLabel = status.spoken
     }

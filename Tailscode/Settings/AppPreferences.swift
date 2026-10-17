@@ -124,6 +124,13 @@ enum AppPreferences {
         set { defaults.set(newValue, forKey: "pref.notify.usage") }
     }
 
+    /// A ping when a usage window is on course to run out before it resets, once per window.
+    /// On unless the person turns it off: the warning is worth most before the wall.
+    static var notifyRunningLow: Bool {
+        get { flag("pref.notify.runningLow", default: true) }
+        set { defaults.set(newValue, forKey: "pref.notify.runningLow") }
+    }
+
     /// Whether this device stays registered with claude-bridge for server-sent
     /// pushes. Off unregisters the APNs token, which is the only thing that
     /// actually stops a server pushing — a local preference cannot suppress an

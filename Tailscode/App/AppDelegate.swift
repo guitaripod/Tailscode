@@ -78,7 +78,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         AppLogger.connection.info("push: silent notification applied \(applied) usage snapshot(s)")
         if applied > 0 {
             let providers = UsagePushPayload.providers(from: userInfo)
-            Task { @MainActor in UsageWarnings.evaluate(providers: providers) }
+            Task { @MainActor in
+                UsageWarnings.evaluate(providers: providers)
+                let names = Set(providers.map(\.providerName))
+                RangeRecorder.observe(
+                    quotas: UsageWidgetStore.cachedQuotas().filter { names.contains($0.providerName) })
+            }
         }
         completionHandler(applied > 0 ? .newData : .noData)
     }

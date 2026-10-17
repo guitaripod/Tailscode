@@ -127,6 +127,11 @@ final class ChatViewController: UIViewController {
     private let backgroundChip = ChatChip(kind: .live)
     private let goalChip = ChatChip(kind: .live)
     private let contextChip = ChatChip(kind: .fact)
+    private let wallChip = ChatChip(kind: .fact)
+    private let cacheChip = ChatChip(kind: .fact)
+    private var rangeQuotas: [UsageQuota] = []
+    private var rangeClock: Task<Void, Never>?
+    private weak var rangeSheet: RangeViewController?
     /// What the whole conversation has cost, beside its size — the two facts a long chat is
     /// judged by. Tapping opens the account behind the number.
     private let spendChip = ChatChip(kind: .fact)
@@ -143,7 +148,8 @@ final class ChatViewController: UIViewController {
     /// chip row the chat has, so a row that scrolls sideways never hides it.
     private let previewChip = ChatChip(kind: .control)
     private lazy var factsRow = ChatFactsRow(chips: [
-        previewChip, agentsChip, backgroundChip, goalChip, contextChip, spendChip, gitChip,
+        previewChip, agentsChip, backgroundChip, goalChip, contextChip, wallChip, cacheChip,
+        spendChip, gitChip,
     ])
     private let factsScrim = FadeScrimView(fade: CGFloat(ChatChrome.transcriptToChrome))
     private let findBar = UIView()
@@ -273,6 +279,7 @@ final class ChatViewController: UIViewController {
         configureAgentsChip()
         configureGoalChip()
         configureContextChip()
+        configureRangeChips()
         configureSpendChip()
         configureGitChip()
         configurePreviewChip()
@@ -356,6 +363,12 @@ final class ChatViewController: UIViewController {
                         })
                     else { return }
                     self.toggleRail(id)
+                }
+            }
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_RANGE"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.presentRange()
                 }
             }
             if let which = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_COMPACT"] {
@@ -493,6 +506,7 @@ final class ChatViewController: UIViewController {
         if !composer.isEditing { becomeFirstResponder() }
         refreshSpend()
         refreshGit()
+        startRangeClock()
     }
 
     private var announcedIdentity = false
@@ -582,6 +596,8 @@ final class ChatViewController: UIViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         AppActivityController.shared.hidden(self)
+        rangeClock?.cancel()
+        rangeClock = nil
         cascade.release()
         flushDraft()
         if !setAsideUnread { SessionSeenStore.markSeen(viewModel.session.id) }
@@ -2468,7 +2484,7 @@ final class ChatViewController: UIViewController {
             guard let self else { return }
             self.updateNavControls()
             self.updateBanner(for: self.viewModel.state)
-            self.updateContextChip()
+            self.updateNavStatus(for: self.viewModel.state, messagesMoved: false)
         }
         viewModel.onCommandsChange = { [weak self] in
             guard let self, !self.commandPalette.isHidden else { return }
@@ -3306,9 +3322,11 @@ final class ChatViewController: UIViewController {
     ) {
         turnStartedAt = StatusFacts.turnStart(in: state)
         if messagesMoved, given == nil { refreshTranscriptFill(state) }
-        updateContextChip()
-        updateSpendChip()
         let facts = given ?? makeFacts(state)
+        updateContextChip(range: facts.range)
+        updateRangeChips(facts.range)
+        rangeSheet?.refresh()
+        updateSpendChip()
         updateBackgroundChip(for: facts)
         refreshAgentsChip()
         var text: String?
@@ -3389,7 +3407,9 @@ final class ChatViewController: UIViewController {
         var facts = StatusFacts.from(
             state: state, agents: viewModel.trackedSubagents,
             usage: nil, attachments: pendingAttachments.count, context: contextFill,
-            queued: viewModel.queued.count)
+            quotas: rangeQuotas, queued: viewModel.queued.count,
+            model: viewModel.displayedModel?.modelID, selection: viewModel.displayedModel,
+            trail: RangeStore.trail)
         #if DEBUG
             if ProcessInfo.processInfo.environment["TAILSCODE_DEMO_AGENTS"] == "background" {
                 facts.phase = .background(tasks: 2)
@@ -3539,9 +3559,9 @@ final class ChatViewController: UIViewController {
     /// How full the model's window is, always visible above the composer once the transcript can
     /// say — the same share, count and ring the desktop bands wear, one tap from the whole window.
     private func configureContextChip() {
-        contextChip.accessibilityHint = String(localized: "Opens the context window.")
+        contextChip.accessibilityHint = String(localized: "Opens the range.")
         contextChip.addAction(
-            UIAction { [weak self] _ in self?.presentContextWindow() }, for: .touchUpInside)
+            UIAction { [weak self] _ in self?.presentRange() }, for: .touchUpInside)
     }
 
     /// The conversation's price, once the server can account for it. It opens the whole account —
@@ -3697,50 +3717,141 @@ final class ChatViewController: UIViewController {
         }
     }
 
-    private var shownContextFill: ContextFill?
+    private var shownContext: (fill: ContextFill, words: String?, tone: ContextFill.Tone)?
 
-    private func updateContextChip() {
+    private func updateContextChip(range: RangeGlance?) {
         defer { factsRow.refresh(); syncFactsScrim() }
         guard let contextFill else {
             contextChip.isHidden = true
-            shownContextFill = nil
+            shownContext = nil
             return
         }
         contextChip.isHidden = false
-        guard shownContextFill != contextFill else { return }
-        shownContextFill = contextFill
+        let words = range?.contextWords
+        let tone = max(contextFill.tone, range?.burn?.tone ?? .quiet)
+        if let shownContext, shownContext.fill == contextFill, shownContext.words == words,
+            shownContext.tone == tone
+        {
+            return
+        }
+        shownContext = (contextFill, words, tone)
         let ink: UIColor
-        switch contextFill.tone {
+        switch tone {
         case .quiet: ink = Theme.Color.secondaryLabel
         case .attention: ink = Theme.Color.warning
         case .danger: ink = Theme.Color.danger
         }
-        contextChip.text = contextFill.badge
+        contextChip.text = words ?? contextFill.badge
         if let fraction = contextFill.fraction {
             contextChip.setImage(
                 ContextRing.image(fraction: fraction, ink: ink, diameter: 12, stroke: 2))
         } else {
             contextChip.setSymbol("cylinder.split.1x2")
         }
-        contextChip.accessibilityLabel = contextFill.accessibilityLabel
+        contextChip.accessibilityLabel =
+            words.map { "\(contextFill.accessibilityLabel), \($0)" } ?? contextFill.accessibilityLabel
     }
 
-    /// The whole window behind the chip's one ring, as a sheet, with Compact as the one thing it
-    /// offers to do — through the chat's ordinary preflight.
-    private func presentContextWindow() {
-        guard let contextFill else { return }
+    /// The two readings the range adds beside the context's own: the clock a quota window that
+    /// governs this chat will run out at, only while that is news, and the cache gone cold. Each
+    /// opens the same sheet the context chip does.
+    private func configureRangeChips() {
+        wallChip.setSymbol("clock", tone: .attention)
+        wallChip.accessibilityHint = String(localized: "Opens the range.")
+        wallChip.addAction(
+            UIAction { [weak self] _ in self?.presentRange() }, for: .touchUpInside)
+        cacheChip.setSymbol("snowflake")
+        cacheChip.accessibilityHint = String(localized: "Opens the range.")
+        cacheChip.addAction(
+            UIAction { [weak self] _ in self?.presentRange() }, for: .touchUpInside)
+    }
+
+    private func updateRangeChips(_ range: RangeGlance?) {
+        defer { factsRow.refresh(); syncFactsScrim() }
+        if let wall = range?.wallWords() {
+            wallChip.text = wall
+            wallChip.accessibilityLabel = String(localized: "Runs out \(wall)")
+            wallChip.isHidden = false
+        } else {
+            wallChip.isHidden = true
+        }
+        if let cold = range?.coldWords {
+            cacheChip.text = cold
+            cacheChip.accessibilityLabel = cold
+            cacheChip.isHidden = false
+        } else {
+            cacheChip.isHidden = true
+        }
+    }
+
+    /// The quotas this chat spends against, as the app last landed them. Read from the shared
+    /// snapshot on a beat of its own rather than on every state, which arrives for every token.
+    private func refreshRangeQuotas() {
+        rangeQuotas = QuotaSurface.relevantQuotas(
+            for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
+    }
+
+    /// The countdowns the range holds — a wall's clock, the cache's lifetime — move with the
+    /// time and not with the transcript, so an idle chat reads them again once in a while.
+    private func startRangeClock() {
+        rangeClock?.cancel()
+        refreshRangeQuotas()
+        rangeClock = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard let self, !Task.isCancelled else { return }
+                self.refreshRangeQuotas()
+                self.updateNavStatus(for: self.viewModel.state, messagesMoved: false)
+            }
+        }
+    }
+
+    /// The range behind the chips — which tank runs out first, the windows that govern this chat,
+    /// the cache, what is in the window, how it has grown — as a sheet, with Compact as the one
+    /// thing it offers to do through the chat's ordinary preflight.
+    private func presentRange() {
+        guard contextFill != nil || !rangeQuotas.isEmpty else { return }
         Theme.Haptics.tap()
-        let panel = ContextViewController(
-            fill: contextFill, title: title ?? viewModel.session.title,
+        refreshRangeQuotas()
+        let panel = RangeViewController(
+            title: title ?? viewModel.session.title,
+            read: { [weak self] in self?.rangeReading() },
             compact: viewModel.supportsCompaction
                 ? { [weak self] in
                     self?.dismiss(animated: true) { self?.presentCompactPreflight() }
-                } : nil)
+                } : nil,
+            reveal: { [weak self] item in
+                self?.dismiss(animated: true) {
+                    self?.revealInTranscript(id: item.id, messageID: item.messageID)
+                }
+            })
+        rangeSheet = panel
         let nav = UINavigationController(rootViewController: panel)
         nav.modalPresentationStyle = .pageSheet
         nav.sheetPresentationController?.detents = [.medium(), .large()]
         nav.sheetPresentationController?.prefersGrabberVisible = true
         present(nav, animated: true)
+    }
+
+    private func rangeReading() -> RangeViewController.Reading {
+        let selection = viewModel.displayedModel
+        let state = viewModel.state
+        let board = RangeBoard.read(
+            messages: state.messages, fill: contextFill, quotas: rangeQuotas,
+            model: selection?.modelID, selection: selection, isRunning: state.status == .running,
+            trail: RangeStore.trail)
+        return RangeViewController.Reading(board: board, billing: contextFill)
+    }
+
+    /// A tapped item in the window's composition: the row it is, or failing that the first row of
+    /// the message it belongs to, brought to the top like any jump inside the conversation.
+    private func revealInTranscript(id: String, messageID: String) {
+        let target =
+            dataSource.snapshot().indexOfItem(id) != nil
+            ? id : orderedIDs.first { rowsByID[$0]?.messageID == messageID }
+        guard let target else { return }
+        userScrolledUp = true
+        scrollTo(id: target)
     }
 
     /// A transcript that names the same row twice is a trap for the diffable data source and for

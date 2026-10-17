@@ -10,13 +10,14 @@ enum NotificationManager {
     /// Every alert the app raises itself, each behind its own preference so a
     /// user who only wants approval pings isn't opted into the rest.
     enum Kind {
-        case turnComplete, approval, question, usage
+        case turnComplete, approval, question, usage, runningLow
 
         var isEnabled: Bool {
             switch self {
             case .turnComplete: return AppPreferences.notifyTurnComplete
             case .approval, .question: return AppPreferences.notifyApprovals
             case .usage: return AppPreferences.notifyUsageWarnings
+            case .runningLow: return AppPreferences.notifyRunningLow
             }
         }
 
@@ -25,7 +26,7 @@ enum NotificationManager {
             case .turnComplete: return .turnEnded
             case .approval: return .needsApproval
             case .question: return .needsAnswer
-            case .usage: return .usage
+            case .usage, .runningLow: return .usage
             }
         }
 
@@ -34,7 +35,7 @@ enum NotificationManager {
             case .turnComplete: return activity == .turnFailed ? .failed : .done
             case .approval: return .approval
             case .question: return .question
-            case .usage: return .usage
+            case .usage, .runningLow: return .usage
             }
         }
 
@@ -43,7 +44,7 @@ enum NotificationManager {
         /// thing it is about has a screen, so it opens it.
         var route: String? {
             switch self {
-            case .usage: return "usage"
+            case .usage, .runningLow: return "usage"
             case .turnComplete, .approval, .question: return nil
             }
         }

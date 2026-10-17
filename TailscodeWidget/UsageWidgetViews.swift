@@ -124,20 +124,77 @@ struct WidgetPalette {
 
 /// The bar a window's fullness fills. A window with almost nothing spent still shows a sliver, so a
 /// row never reads as a missing bar; a wall fills it outright.
+///
+/// With a pace it also carries the range's marks: a tick where an even burn would be by now, and —
+/// only when it is news, because a widget is a glance — the hatched tail where the fill lands. The
+/// tick reaches past the bar so it reads over the fill.
 struct GaugeBar: View {
     let fraction: Double
     let color: Color
     var track: Color = Color.primary.opacity(0.13)
+    var pace: PaceRow?
+    var tail: Color?
+    var tickInk: Color = .primary
+
+    private static let tickOverhang: CGFloat = 3
+    private static let tickWidth: CGFloat = 2
+
+    private var filled: CGFloat { CGFloat(min(1, max(0.035, fraction))) }
+
+    private var tailEnd: CGFloat? {
+        guard let pace, pace.tailIsNews, let end = pace.tailEnd, CGFloat(end) > filled else {
+            return nil
+        }
+        return CGFloat(min(1, end))
+    }
 
     var body: some View {
         GeometryReader { geometry in
+            let width = geometry.size.width
             ZStack(alignment: .leading) {
-                Capsule().fill(track)
-                Capsule()
-                    .fill(color)
-                    .frame(width: geometry.size.width * CGFloat(min(1, max(0.035, fraction))))
+                ZStack(alignment: .leading) {
+                    Capsule().fill(track)
+                    if let end = tailEnd {
+                        HatchFill(color: (tail ?? color).opacity(0.6))
+                            .frame(width: width * (end - filled))
+                            .offset(x: width * filled)
+                    }
+                    Capsule()
+                        .fill(color)
+                        .frame(width: width * filled)
+                }
+                .clipShape(Capsule())
+                if let tick = pace?.tick {
+                    Rectangle()
+                        .fill(tickInk.opacity(pace?.tickApproximate == true ? 0.55 : 1))
+                        .frame(
+                            width: Self.tickWidth,
+                            height: geometry.size.height + Self.tickOverhang * 2
+                        )
+                        .offset(x: min(max(width * CGFloat(tick), 1), width - 1) - Self.tickWidth / 2)
+                }
             }
         }
+    }
+}
+
+/// Diagonal stripes, drawn rather than tiled so they stay crisp at any size.
+struct HatchFill: View {
+    let color: Color
+
+    var body: some View {
+        Canvas { context, size in
+            var path = Path()
+            let step = 5.5 * 2.0.squareRoot()
+            var x = -size.height
+            while x < size.width + size.height {
+                path.move(to: CGPoint(x: x, y: size.height))
+                path.addLine(to: CGPoint(x: x + size.height, y: 0))
+                x += step
+            }
+            context.stroke(path, with: .color(color), lineWidth: 2.5)
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -244,7 +301,9 @@ struct QuotaRowView: View {
                     .foregroundStyle(color)
             }
             if let fraction = row.fraction {
-                GaugeBar(fraction: fraction, color: color, track: palette.track)
+                GaugeBar(
+                    fraction: fraction, color: color, track: palette.track, pace: row.pace,
+                    tail: palette.color(.warn, slug: row.slug))
                     .frame(height: barHeight)
             }
             if showsCaption, !row.caption.isEmpty {
@@ -284,7 +343,9 @@ struct QuotaRowGrid: View {
                         .gridColumnAlignment(.leading)
                     Group {
                         if let fraction = row.fraction {
-                            GaugeBar(fraction: fraction, color: color, track: palette.track)
+                            GaugeBar(
+                                fraction: fraction, color: color, track: palette.track,
+                                pace: row.pace, tail: palette.color(.warn, slug: row.slug))
                                 .frame(height: barHeight)
                         } else if !abbreviated {
                             /// A balance has no bar, so the column its bar would have taken says
@@ -382,6 +443,30 @@ struct ResetClock: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .accessibilityLabel(Text(Localized.text("resets in %@", QuotaSurface.countdown(to: resetsAt, now: asOf))))
+        }
+    }
+}
+
+/// What the small widget says under the window's name: the clock the window will run out at while
+/// it will run out before it resets, and the reset clock otherwise.
+struct WallOrReset: View {
+    let row: WidgetGlance.Row
+    let asOf: Date
+    let palette: WidgetPalette
+    var font: Font = .caption2
+
+    var body: some View {
+        if let chip = row.wallChip {
+            HStack(spacing: 3) {
+                Image(systemName: "clock")
+                Text(chip).monospacedDigit()
+            }
+            .font(font.weight(.semibold))
+            .foregroundStyle(palette.color(.warn, slug: row.slug))
+            .lineLimit(1)
+            .accessibilityLabel(Text(chip))
+        } else {
+            ResetClock(row: row, asOf: asOf, font: font)
         }
     }
 }

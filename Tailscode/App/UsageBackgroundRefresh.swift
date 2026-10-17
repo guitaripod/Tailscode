@@ -42,6 +42,7 @@ enum UsageBackgroundRefresh {
             if !quotas.isEmpty {
                 UsageWidgetStore.writeLive(quotas, reload: false)
                 UsageWarnings.evaluate(quotas: quotas)
+                RangeRecorder.observe(quotas: quotas)
             }
             if let deepseek = UsageWidgetStore.read()?.providers
                 .first(where: { $0.providerName == DeepSeekBalance.providerName })

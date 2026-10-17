@@ -34,6 +34,7 @@ enum DiagnosticsReport {
         lines.append("Turn complete: \(AppPreferences.notifyTurnComplete)")
         lines.append("Approvals: \(AppPreferences.notifyApprovals)")
         lines.append("Usage warnings: \(AppPreferences.notifyUsageWarnings)")
+        lines.append("Running low: \(AppPreferences.notifyRunningLow)")
         lines.append("Server pushes: \(AppPreferences.pushAlertsEnabled)")
         lines.append("Live Activities: \(AppPreferences.liveActivitiesEnabled)")
         lines.append("APNs token: \(PushRegistrar.hasToken ? "received" : "not received")")

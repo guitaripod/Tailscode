@@ -1088,6 +1088,7 @@ final class HomeViewController: UIViewController {
         quotasAnsweredAt = Date()
         UsageWidgetStore.writeLive(fetched)
         UsageWarnings.evaluate(quotas: fetched)
+        RangeRecorder.observe(quotas: quotas)
         if let deepseek = UsageWidgetStore.read()?.providers
             .first(where: { $0.providerName == DeepSeekBalance.providerName })
         {
@@ -1197,14 +1198,17 @@ final class HomeViewController: UIViewController {
 
         var snapshot = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
         if hasLoadedOnce, !servers.isEmpty {
-            let status = HomeStatus.reading(rows: rows, offline: down.map(\.name))
+            let status = HomeStatus.reading(
+                rows: rows, offline: down.map(\.name),
+                range: RangeHome.line(
+                    quotas: quotas, board: QuotaBoardStore.current, trail: RangeStore.trail))
             snapshot.appendSections([.status])
             snapshot.appendItems([.status(HomeStatusCard(status: status))], toSection: .status)
         }
         if !showsQuotaCards, !quotas.isEmpty {
             let glance = QuotaGlance.make(
                 from: quotas.map { ("", $0) }, answeredAt: quotasAnsweredAt,
-                board: QuotaBoardStore.current)
+                board: QuotaBoardStore.current, trail: RangeStore.trail)
             if !glance.isEmpty {
                 snapshot.appendSections([.glance])
                 snapshot.appendItems([.glance(QuotaGlanceCard(glance: glance))], toSection: .glance)

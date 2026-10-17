@@ -8,6 +8,10 @@ struct GaugeVM {
     let percentText: String
     let caption: String
     let isBalance: Bool
+    let pace: PaceRow?
+
+    /// Whether the row has a pace to speak of: a window with a clock and enough of it gone to read.
+    var isPaced: Bool { pace.map { $0.kind == .window && $0.tick != nil && $0.note == nil } ?? false }
 }
 
 func rampColor(for fraction: Double, accent: UIColor) -> UIColor {
@@ -322,8 +326,30 @@ final class HeroCard: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    private static func pacedColor(_ tone: ContextFill.Tone, accent: UIColor) -> UIColor {
+        switch tone {
+        case .quiet: return accent
+        case .attention: return Theme.Color.warning
+        case .danger: return Theme.Color.danger
+        }
+    }
+
+    /// The word the pill says: the pace's verdict where there is a pace, the level's where there
+    /// is only a level.
+    private static func verdict(for gauge: GaugeVM) -> (word: String, tone: ContextFill.Tone)? {
+        guard gauge.isPaced, let row = gauge.pace else { return nil }
+        guard let news = row.news else { return (String(localized: "On pace"), .quiet) }
+        if news.tone == .danger { return (String(localized: "Used up"), .danger) }
+        return row.tailIsNews
+            ? (String(localized: "Will run out"), .attention)
+            : (String(localized: "Mind the pace"), .attention)
+    }
+
     func apply(provider: String, gauge: GaugeVM, accent: UIColor) {
-        let color = rampColor(for: gauge.fraction, accent: accent)
+        let paced = Self.verdict(for: gauge)
+        let color =
+            gauge.pace.flatMap { _ in paced.map { Self.pacedColor($0.tone, accent: accent) } }
+            ?? rampColor(for: gauge.fraction, accent: accent)
         ring.configure(fraction: gauge.fraction, color: color, percentText: gauge.percentText)
         titleLabel.text = "\(provider) · \(gauge.name)"
         captionLabel.text = gauge.caption
@@ -332,10 +358,10 @@ final class HeroCard: UIView {
         var verdictText = ""
         if !gauge.isBalance {
             let pressure = QuotaSurface.Pressure(fraction: gauge.fraction)
-            verdictText = pressure.title
+            verdictText = paced?.word ?? pressure.title
+            let quiet = paced.map { $0.tone == .quiet } ?? (pressure == .roomToSpare)
             let pill = UsageStyle.pill(
-                pressure.title,
-                color: pressure == .roomToSpare ? Theme.Color.secondaryLabel : color)
+                verdictText, color: quiet ? Theme.Color.secondaryLabel : color)
             pill.translatesAutoresizingMaskIntoConstraints = false
             verdictHost.addSubview(pill)
             NSLayoutConstraint.activate([
@@ -475,19 +501,29 @@ final class ProviderCard: UIView {
         let color = rampColor(for: gauge.fraction, accent: accent)
         let line = UIStackView(arrangedSubviews: [
             Self.nameLabel(gauge.name, clause: gauge.caption),
-            Self.valueLabel(gauge.percentText, fraction: gauge.fraction),
+            Self.valueLabel(gauge.percentText, fraction: gauge.fraction, pace: gauge.pace),
         ])
         line.axis = .horizontal
         line.alignment = .firstBaseline
         line.spacing = Theme.Spacing.s
 
-        let row = UIStackView(arrangedSubviews: [
-            line, UsageStyle.bar(fraction: gauge.fraction, color: color),
-        ])
+        var views: [UIView] = [line]
+        if let pace = gauge.pace {
+            let bar = PaceBar()
+            bar.speaks = false
+            bar.configure(pace)
+            views.append(bar)
+            if let words = PaceWords.line(for: pace, opened: true) { views.append(words) }
+        } else {
+            views.append(UsageStyle.bar(fraction: gauge.fraction, color: color))
+        }
+        let row = UIStackView(arrangedSubviews: views)
         row.axis = .vertical
         row.spacing = 7
         row.isAccessibilityElement = true
-        row.accessibilityLabel = "\(gauge.name), \(gauge.percentText), \(gauge.caption)"
+        row.accessibilityLabel =
+            gauge.pace.map { "\(gauge.name), \(gauge.percentText), \(gauge.caption), \($0.news.map { "\($0.lead) \($0.body)" } ?? $0.note ?? "")" }
+            ?? "\(gauge.name), \(gauge.percentText), \(gauge.caption)"
         return row
     }
 
@@ -506,11 +542,20 @@ final class ProviderCard: UIView {
         caption.textColor = Theme.Color.secondaryLabel
         caption.numberOfLines = 2
 
-        let row = UIStackView(arrangedSubviews: [line, caption])
+        var views: [UIView] = [line, caption]
+        if let note = gauge.pace?.note {
+            let runway = UILabel()
+            runway.attributedText = PaceWords.note(note)
+            runway.numberOfLines = 0
+            views.append(runway)
+        }
+        let row = UIStackView(arrangedSubviews: views)
         row.axis = .vertical
         row.spacing = Theme.Spacing.xs
         row.isAccessibilityElement = true
-        row.accessibilityLabel = "\(gauge.name), \(gauge.percentText), \(gauge.caption)"
+        row.accessibilityLabel =
+            "\(gauge.name), \(gauge.percentText), \(gauge.caption)"
+            + (gauge.pace?.note.map { ", " + $0 } ?? "")
         return row
     }
 
@@ -538,9 +583,25 @@ final class ProviderCard: UIView {
 
     private enum ValueSize { case row, balance }
 
-    private static func valueLabel(_ text: String, fraction: Double, size: ValueSize = .row)
-        -> UILabel
-    {
+    /// A window's figure wears the register of where it lands when it has a pace, and of how full
+    /// it is when it has only a level.
+    private static func valueColor(
+        fraction: Double, pressure: QuotaSurface.Pressure, pace: PaceRow?
+    ) -> UIColor {
+        if let pace, pace.kind == .window, pace.tick != nil, pace.note == nil {
+            switch pace.tone {
+            case .quiet: return Theme.Color.label
+            case .attention: return Theme.Color.warning
+            case .danger: return Theme.Color.danger
+            }
+        }
+        return pressure == .roomToSpare
+            ? Theme.Color.label : rampColor(for: fraction, accent: Theme.Color.label)
+    }
+
+    private static func valueLabel(
+        _ text: String, fraction: Double, size: ValueSize = .row, pace: PaceRow? = nil
+    ) -> UILabel {
         let label = UILabel()
         label.text = text
         label.font = Theme.Ramp.font(size == .balance ? .metricLarge : .metricValue)
@@ -548,7 +609,7 @@ final class ProviderCard: UIView {
         label.textColor =
             size == .balance
             ? (QuotaSurface.isExhausted(fraction) ? Theme.Color.danger : Theme.Color.label)
-            : (pressure == .roomToSpare ? Theme.Color.label : rampColor(for: fraction, accent: Theme.Color.label))
+            : valueColor(fraction: fraction, pressure: pressure, pace: pace)
         label.textAlignment = .right
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)

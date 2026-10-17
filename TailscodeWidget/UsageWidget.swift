@@ -255,8 +255,9 @@ struct SmallUsageView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                if entry.showsReset {
-                    ResetClock(row: hero, asOf: entry.date, font: .system(size: 10))
+                if entry.showsReset || hero.wallChip != nil {
+                    WallOrReset(
+                        row: hero, asOf: entry.date, palette: palette, font: .system(size: 10))
                 }
             }
             Spacer(minLength: 0)
@@ -556,7 +557,7 @@ struct AccessoryRectangularView: View {
                     if let fraction = row.fraction {
                         GaugeBar(
                             fraction: fraction, color: .primary,
-                            track: Color.primary.opacity(0.25)
+                            track: Color.primary.opacity(0.25), pace: row.pace, tail: .primary
                         )
                         .frame(width: 40, height: 4)
                     }

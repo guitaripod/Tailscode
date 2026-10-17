@@ -73,7 +73,7 @@ final class QuotaCardCell: ContentCardCell {
                 continue
             }
             row.isHidden = false
-            row.apply(gauges[index])
+            row.apply(gauges[index], provider: card.quota.providerName)
         }
         accessibilityLabel = card.quota.providerName
         accessibilityValue = card.quota.gauges.prefix(3)
@@ -107,9 +107,7 @@ final class QuotaCardCell: ContentCardCell {
 private final class GaugeRow: UIStackView {
     private let label = UILabel()
     private let percent = UILabel()
-    private let track = UIView()
-    private let fill = UIView()
-    private var fillWidth: NSLayoutConstraint?
+    private let bar = PaceBar()
 
     init() {
         super.init(frame: .zero)
@@ -124,29 +122,20 @@ private final class GaugeRow: UIStackView {
         top.axis = .horizontal
         top.spacing = Theme.Spacing.s
 
-        track.backgroundColor = Theme.Color.reasoningBackground
-        track.layer.cornerRadius = 3
-        track.translatesAutoresizingMaskIntoConstraints = false
-        track.heightAnchor.constraint(equalToConstant: 6).isActive = true
-
-        fill.layer.cornerRadius = 3
-        fill.translatesAutoresizingMaskIntoConstraints = false
-        track.addSubview(fill)
-        NSLayoutConstraint.activate([
-            fill.topAnchor.constraint(equalTo: track.topAnchor),
-            fill.bottomAnchor.constraint(equalTo: track.bottomAnchor),
-            fill.leadingAnchor.constraint(equalTo: track.leadingAnchor),
-        ])
+        bar.trackColor = Theme.Color.reasoningBackground
+        bar.speaks = false
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.heightAnchor.constraint(equalToConstant: PaceBar.height).isActive = true
 
         axis = .vertical
         spacing = 4
         addArrangedSubview(top)
-        addArrangedSubview(track)
+        addArrangedSubview(bar)
     }
 
     @available(*, unavailable) required init(coder: NSCoder) { fatalError() }
 
-    func apply(_ gauge: UsageQuota.Gauge) {
+    func apply(_ gauge: UsageQuota.Gauge, provider: String) {
         label.text = UsageGaugeFormat.gaugeLabel(gauge.label)
         if let money = gauge.usedUSD, gauge.limitUSD == nil {
             let symbol = (gauge.currency ?? "USD").uppercased() == "CNY" ? "¥" : "$"
@@ -154,23 +143,21 @@ private final class GaugeRow: UIStackView {
             percent.textColor =
                 gauge.fraction >= QuotaSurface.exhaustedFloor
                 ? Theme.Color.danger : Theme.Color.label
-            track.isHidden = true
+            bar.isHidden = true
             return
         }
-        track.isHidden = false
+        bar.isHidden = false
+        let row = PaceRow.window(
+            provider: provider, slug: ProviderBrand.brand(provider), gauge: gauge,
+            trail: RangeStore.trail)
         let raw = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
         percent.text = QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: raw)
-        percent.textColor = gauge.fraction > 0.85 ? Theme.Color.danger : Theme.Color.label
-        fill.backgroundColor =
-            gauge.fraction > 0.85
-            ? Theme.Color.danger : (gauge.fraction > 0.6 ? Theme.Color.warning : Theme.Color.accent)
-        let width = max(0.02, min(1, gauge.fraction))
-        guard fillWidth?.multiplier != CGFloat(width) else { return }
-        fillWidth?.isActive = false
-        let constraint = fill.widthAnchor.constraint(
-            equalTo: track.widthAnchor, multiplier: CGFloat(width))
-        constraint.isActive = true
-        fillWidth = constraint
+        if row.tone == .danger {
+            percent.textColor = Theme.Color.danger
+        } else {
+            percent.textColor = row.tailIsNews ? Theme.Color.warning : Theme.Color.label
+        }
+        bar.configure(row, glance: true)
     }
 }
 

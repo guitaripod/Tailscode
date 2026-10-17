@@ -267,7 +267,10 @@ final class UsageViewController: UIViewController {
         } else if hasClaudeProfile, fetched.isEmpty {
             AppLogger.session.info("usage: bridges did not answer; keeping the last figures")
         }
-        if !fetched.isEmpty { lastRefreshed = Date() }
+        if !fetched.isEmpty {
+            lastRefreshed = Date()
+            RangeRecorder.observe(quotas: QuotaRollup.account(from: allReports()).map(\.quota))
+        }
         refreshUpdatedLabel()
         refresher.endRefreshing()
         render()
@@ -438,13 +441,14 @@ final class UsageViewController: UIViewController {
         navigationItem.rightBarButtonItem = BoardBar.arrangeItem(
             preferences: preferences, change: applyChange)
 
+        let trail = RangeStore.trail
         let visible = QuotaBoard.arrange(holdings, preferences: preferences)
         let keys = visible.map(QuotaBoard.key)
         if let lead = QuotaBoard.lead(visible, preferences: preferences) {
             heroCard.isHidden = false
             heroCard.apply(
                 provider: lead.holding.providerName,
-                gauge: Self.gaugeVM(lead.gauge, in: lead.holding.quota),
+                gauge: Self.gaugeVM(lead.gauge, in: lead.holding.quota, trail: trail),
                 accent: Self.accent(for: QuotaBoard.key(lead.holding)))
         } else {
             heroCard.isHidden = true
@@ -465,7 +469,7 @@ final class UsageViewController: UIViewController {
             let key = QuotaBoard.key(holding)
             let card = ProviderCard(
                 holding: holding, accent: Self.accent(for: key),
-                gauges: holding.gauges.map { Self.gaugeVM($0, in: holding.quota) })
+                gauges: holding.gauges.map { Self.gaugeVM($0, in: holding.quota, trail: trail) })
             card.onMenu = { [weak self] in
                 self?.cardMenu(for: key, position: index, of: keys) ?? UIMenu()
             }
@@ -517,18 +521,18 @@ final class UsageViewController: UIViewController {
     }
 
     private static func accent(for key: String) -> UIColor {
-        switch key {
-        case "claude": return Theme.Color.claude
-        case "grok": return Theme.Color.grok
-        case "opencode": return Theme.Color.opencode
-        case "deepseek": return Theme.Color.modelFamily(.deepseek)
-        case "ollama-cloud": return Theme.Color.ollamaCloud
-        default: return Theme.Color.accent
-        }
+        PaceBar.brand(slug: key)
     }
 
-    private static func gaugeVM(_ gauge: UsageQuota.Gauge, in quota: UsageQuota) -> GaugeVM {
+    private static func gaugeVM(
+        _ gauge: UsageQuota.Gauge, in quota: UsageQuota, trail: QuotaTrail
+    ) -> GaugeVM {
         let isBalance = QuotaBoard.isBalance(gauge)
+        let slug = ProviderBrand.brand(quota.providerName)
+        let pace =
+            isBalance
+            ? PaceRow.balance(provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
+            : PaceRow.window(provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
         let percent: String
         if isBalance {
             percent =
@@ -542,7 +546,8 @@ final class UsageViewController: UIViewController {
         }
         return GaugeVM(
             name: UsageGaugeFormat.gaugeLabel(gauge.label), fraction: gauge.fraction,
-            percentText: percent, caption: caption(gauge, in: quota), isBalance: isBalance)
+            percentText: percent, caption: caption(gauge, in: quota), isBalance: isBalance,
+            pace: pace)
     }
 
     /// One line under the bar: the money where the window is money, and the reset where the
