@@ -27,6 +27,7 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 DISPLAY_NUM=${TAILSCODE_DEV_DISPLAY_NUM:-77}
 DEV_DISPLAY=":$DISPLAY_NUM"
 GEOMETRY=${TAILSCODE_DEV_GEOM:-1600x1000x24}
+SELFTEST_GEOMETRY=2560x1440x24
 STATE=${TAILSCODE_DEV_STATE:-${XDG_RUNTIME_DIR:-/tmp}/tailscode-dev/$DISPLAY_NUM}
 CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/tailscode-dev
 LOG=$STATE/app.log
@@ -340,9 +341,21 @@ cmd_do() {
     for verb in "$@"; do printf '%s\n' "$verb" >>"$STATE/drive.txt"; done
 }
 
+# The selftest lays a 2560x1400 window out (the Studio sheet's frame at a large size), and a window
+# larger than the screen it is on is clamped to it, so it needs a display that holds one. A harness
+# already up at its working size is not resized under whoever is using it: the selftest says so and
+# stops, and a display number of its own (TAILSCODE_DEV_DISPLAY_NUM) is the way round.
 cmd_selftest() {
+    GEOMETRY=${TAILSCODE_DEV_GEOM:-$SELFTEST_GEOMETRY}
     build "${1:-debug}"
     harness_env
+    "$(xvenv)" - "$DEV_DISPLAY" "${GEOMETRY%x*}" <<'PY' ||
+import sys
+from Xlib import display
+screen = display.Display(sys.argv[1]).screen()
+sys.exit(0 if f"{screen.width_in_pixels}x{screen.height_in_pixels}" == sys.argv[2] else 1)
+PY
+        die "the selftest needs a ${GEOMETRY%x*} display and $DEV_DISPLAY is not one — stop it (stop) or pick another TAILSCODE_DEV_DISPLAY_NUM"
     "${HARNESS_ENV[@]}" "$(binary "${1:-debug}")" --selftest
 }
 
