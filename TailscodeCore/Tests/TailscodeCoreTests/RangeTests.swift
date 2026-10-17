@@ -498,3 +498,47 @@ struct RangeSurfacesTests {
         #expect(status.spoken == "All quiet. Nothing running. Claude 5-hour session runs out in 1h 21m")
     }
 }
+
+@Suite("The words every client shares")
+struct RangeSharedWordsTests {
+    private func row(_ gauge: UsageQuota.Gauge) -> PaceRow {
+        PaceRow.window(provider: "Claude", slug: "claude", gauge: gauge, now: now, clock: clock)
+    }
+
+    @Test("A lead's pill is the pace's verdict, and the level's own word where there is no pace")
+    func statusWords() throws {
+        let running = try #require(row(gauge("session", "5-hour session", used: 0.62, resetsIn: 2 * hour + 47 * 60)).status)
+        #expect(running.word == "Will run out" && running.tone == .attention)
+        let calm = try #require(row(gauge("weekly_all", "Weekly · all models", used: 0.38, resetsIn: 63 * hour)).status)
+        #expect(calm.word == "On pace" && calm.tone == .quiet)
+        let close = try #require(row(gauge("weekly", "Weekly", used: 0.5, resetsIn: 84 * hour)).status)
+        #expect(close.word == "Mind the pace" && close.tone == .attention)
+        let wall = try #require(row(gauge("session", "5-hour session", used: 1.0, resetsIn: hour)).status)
+        #expect(wall.word == "Used up" && wall.tone == .danger)
+
+        let unpaced = try #require(row(gauge("rolling", "5-hour", used: 0.62, resetsIn: 2 * hour)).status)
+        #expect(unpaced.word == "Getting tight" && unpaced.tone == .attention)
+        let young = try #require(row(gauge("session", "5-hour session", used: 0.04, resetsIn: 4 * hour + 48 * 60)).status)
+        #expect(young.word == "Room to spare" && young.tone == .quiet)
+
+        let context = PaceRow.context(fill: fill(100_000), burn: nil)
+        #expect(context.status == nil)
+    }
+
+    @Test("The sheet's headings and the chart's captions come from Core")
+    func headingsAndCaptions() throws {
+        #expect(RangeSheetWords.title(chat: "") == "Range")
+        #expect(RangeSheetWords.title(chat: "Fix the parser") == "Range · Fix the parser")
+        #expect(RangeSheetWords.turn(7, size: "38.0k") == "turn 7 · 38.0k")
+        #expect(RangeSheetWords.projected(3) == "+3 at this pace")
+
+        let messages = conversation([100_000, 110_000, 120_000, 130_000, 20_000, 30_000, 40_000, 50_000, 60_000])
+        let board = RangeBoard.read(messages: messages, fill: fill(60_000, window: 100_000), quotas: [], model: "claude-sonnet-5-5", now: now, clock: clock)
+        let chart = try #require(board.footprint)
+        #expect(chart.captions == [
+            "Each bar is the window after a turn.", "Dashed rule: a compaction.",
+            "Hatched: the next turns at the recent pace.", "Dashed line: 80% of the window.",
+        ])
+        #expect(chart.projectedTurns == 3)
+    }
+}

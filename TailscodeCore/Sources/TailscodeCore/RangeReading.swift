@@ -125,6 +125,15 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
         public let tone: ContextFill.Tone
     }
 
+    /// Where a window is heading, as one of the words a lead's pill wears. Nil on a row with no
+    /// pace to read (a context window, a balance, a window that has barely begun).
+    public enum Verdict: Sendable, Equatable {
+        case onPace
+        case mindThePace
+        case willRunOut
+        case usedUp
+    }
+
     public let id: String
     public let kind: Kind
     /// The provider's brand slug, for the colour a quiet fill wears.
@@ -141,10 +150,27 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
     public let tone: ContextFill.Tone
     public let tailTone: ContextFill.Tone
     public let news: News?
+    public let verdict: Verdict?
     /// A quiet remark that is not news: the window is too young to read, or a balance's runway.
     public let note: String?
     /// The window is not the one this conversation's model spends against.
     public let dimmed: Bool
+
+    /// The word a lead's pill wears and the register it is drawn in: the pace's verdict where
+    /// there is one, and for a window with only a level the four words every client has always
+    /// used for how hard it is pressing. Nil for a row that is neither a window nor a balance's.
+    public var status: (word: String, tone: ContextFill.Tone)? {
+        switch verdict {
+        case .usedUp: return (Localized.text("Used up"), .danger)
+        case .willRunOut: return (Localized.text("Will run out"), .attention)
+        case .mindThePace: return (Localized.text("Mind the pace"), .attention)
+        case .onPace: return (Localized.text("On pace"), .quiet)
+        case nil:
+            guard kind == .window else { return nil }
+            let pressure = QuotaSurface.Pressure(fraction: fill)
+            return (pressure.title, Self.levelTone(fill))
+        }
+    }
 
     public var accessibilityLabel: String {
         var words = [title, amount]
@@ -167,25 +193,30 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
         var tone = level
         var news: News?
         var note: String?
+        var verdict: Verdict?
         if let pace {
             switch pace.verdict {
             case .wall:
+                verdict = .usedUp
                 tone = .danger
                 news = News(
                     lead: Localized.text("Used up"), body: RangeWords.resumes(pace, now: now),
                     tone: .danger)
             case .willRunOut(let wallAt):
+                verdict = .willRunOut
                 tone = .attention
                 news = News(
                     lead: Localized.text("Wall"),
                     body: RangeWords.wallBody(pace, wallAt: wallAt, now: now, clock: clock),
                     tone: .attention)
             case .closeToTheLine:
+                verdict = .mindThePace
                 tone = .quiet
                 news = News(
                     lead: Localized.text("Close"), body: RangeWords.landing(pace.landing ?? 1),
                     tone: .attention)
             case .onPace:
+                verdict = .onPace
                 tone = .quiet
             case .tooEarly:
                 note = Localized.text("Too early to tell the pace")
@@ -198,8 +229,8 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
             amount: QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent),
             fill: fill, tick: pace?.elapsed, tickApproximate: pace?.approximate ?? false,
             tailEnd: pace?.tailEnd, tailIsNews: pace?.isNews ?? false, tone: tone,
-            tailTone: pace?.isNews == true ? .attention : .quiet, news: news, note: note,
-            dimmed: dimmed)
+            tailTone: pace?.isNews == true ? .attention : .quiet, news: news, verdict: verdict,
+            note: note, dimmed: dimmed)
     }
 
     /// The conversation's own window, with its tail the next five turns at the recent pace.
@@ -232,8 +263,8 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
             amount: fill.percent.map { "\($0)%" } ?? StatusFacts.tokens(fill.used),
             fill: fill.fraction ?? 0, tick: nil, tickApproximate: false, tailEnd: tailEnd,
             tailIsNews: burn?.isNews ?? false, tone: max(fill.tone, burn?.tone ?? .quiet),
-            tailTone: burn?.isNews == true ? .attention : .quiet, news: news, note: nil,
-            dimmed: false)
+            tailTone: burn?.isNews == true ? .attention : .quiet, news: news, verdict: nil,
+            note: nil, dimmed: false)
     }
 
     /// A prepaid balance: a figure and, once the trail has watched it long enough, a runway.
@@ -255,7 +286,7 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
             id: QuotaTrail.identity(provider: provider, gauge: gauge), kind: .balance, slug: slug,
             title: gauge.label, detail: "", amount: QuotaGlance.money(dollars, gauge.currency),
             fill: 0, tick: nil, tickApproximate: false, tailEnd: nil, tailIsNews: false,
-            tone: .quiet, tailTone: .quiet, news: nil, note: note, dimmed: false)
+            tone: .quiet, tailTone: .quiet, news: nil, verdict: nil, note: note, dimmed: false)
     }
 
     private static func runway(_ days: Double) -> String {
@@ -264,7 +295,7 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
         return Localized.text("months")
     }
 
-    private static func levelTone(_ fraction: Double) -> ContextFill.Tone {
+    fileprivate static func levelTone(_ fraction: Double) -> ContextFill.Tone {
         switch QuotaSurface.Pressure(fraction: fraction) {
         case .roomToSpare: return .quiet
         case .gettingTight: return .attention
