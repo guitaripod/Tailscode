@@ -199,3 +199,47 @@ const T_HUGE = (function () {
   return { id: 'huge', family: 'fable', effort: 4, dur: '51m 10s', outcome: 'settled', prompt: 'Rebuild every client and re-record the whole demo.', steps: out };
 })();
 TURNS.states = T_STATES; TURNS.huge = T_HUGE;
+
+const SAYS = (m, at, text) => ({ fam: 'say', tool: 'Said', status: 'ok', msg: m, at, text });
+const T_ACC = {
+  id: 'acc', family: 'sonnet', effort: 3, dur: '6m 29s', outcome: 'settled', speaker: 'Sonnet',
+  prompt: 'Fix the Linux build: it stops in TranscriptRows.',
+  answer: ['Fixed. The build stopped on two switches that did not answer the new Compaction and Note cases. Both do now, the Mac manifest answers the same capability, and the parity check reports no gaps.', 'Tailscode 1.79 is installed on this machine (pid 41872).'],
+  provenance: ['TranscriptRows.swift', 'Parity.swift', 'parity.sh'],
+  steps: (function () {
+    const f = JSON.parse(JSON.stringify(T_FIX.steps));
+    const st = [];
+    st.push(f[0]);
+    st.push(SAYS(1, '14:02:16', 'I’ll start by finding every place that already names the Compaction case, so I don’t add a second answer to a switch that has one.'));
+    st.push(f[1], f[2], f[3], f[4]);
+    st.push(SAYS(4, '14:02:48', 'That covers Compaction as a divider. Building the release now to see whether the compiler wants anything else before I touch the Mac client.'));
+    st.push(f[5], f[6]);
+    st.push(SAYS(6, '14:03:41', 'The build stops on `.note`, which my first edit did not cover. Notes read like prose with a quieter tone, so rather than give them an arm of their own I’m folding them into the prose case and letting the tone follow the part kind. That keeps the rows identical for every other client and means the Mac manifest needs only one new answer. I’m making the edit now and building again; the release build takes about three and a half minutes on this machine, so while it runs I’ll read the Mac manifest, because it answers the same capability in its own file and I would rather find out now that it needs a case than after the install. If the second build is clean I will run the parity check, ask a reviewer to look for any other switch over the part kind, and install.'));
+    st.push(f[7], f[8], f[9], f[10], f[11], f[12], f[13]);
+    st.forEach(s => { delete s.retriedAt; });
+    return st;
+  })()
+};
+(function () {
+  let m = 0, last = null;
+  T_ACC.steps.forEach(s => { if (s.msg !== last) { m++; last = s.msg; } });
+})();
+const T_ACC_WAIT = JSON.parse(JSON.stringify(T_ACC));
+T_ACC_WAIT.id = 'accwait'; T_ACC_WAIT.outcome = 'running'; T_ACC_WAIT.dur = '6m 05s'; delete T_ACC_WAIT.answer; delete T_ACC_WAIT.provenance;
+(function () {
+  const L = T_ACC_WAIT.steps;
+  const last = L[L.length - 1];
+  last.status = 'wait'; last.at = '14:08:36'; last.out = [];
+  last.why = 'Everything builds and parity is clean, so I’d like to install the release over the running app. It restarts Tailscode, which is why I’m asking first.';
+  L.splice(L.length - 1, 0, SAYS(12, '14:08:34', 'Both builds are green and the parity check reports 0 undeclared. I’d like to install the release over the app that is running; it restarts Tailscode, so I’m asking first.'));
+})();
+const T_ACC_LIVE = JSON.parse(JSON.stringify(T_LIVE));
+T_ACC_LIVE.id = 'acclive'; T_ACC_LIVE.speaker = 'Sonnet';
+(function () {
+  const L = T_ACC_LIVE.steps;
+  L.splice(1, 0, SAYS(1, '21:54:20', 'The film rig already records the Linux app in demo mode and cuts the iOS tour, so I’ll reuse it rather than build a new one.'));
+  L.splice(8, 0, SAYS(7, '21:57:12', 'The track is 115 BPM in half time and the first riff lands at 8.75 s. Everything else is cut to that.'));
+  const run = L[L.length - 1];
+  L.splice(L.length - 1, 0, SAYS(13, '22:01:31', 'The iOS tour is 60 fps and the Linux capture is 30, so I’m resampling the tour once before cutting both to the riff.'));
+})();
+TURNS.acc = T_ACC; TURNS.accwait = T_ACC_WAIT; TURNS.acclive = T_ACC_LIVE;

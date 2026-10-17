@@ -51,6 +51,9 @@ html = f"""<!doctype html>
 <script>{read(here / 'brain.js')}</script>
 <script>{read(here / 'transition2.js')}</script>
 <script>{read(here / 'page2.js')}</script>
+<script>{read(here / 'account.js')}</script>
+<script>{read(here / 'brain4.js')}</script>
+<script>{read(here / 'page4.js')}</script>
 <script>{read(here / 'page.js')}</script>
 <script>{read(here / 'boot.js')}</script>
 </body></html>"""
@@ -60,4 +63,5 @@ def variant(name, only, title):
     (out.parent / name).write_text(v)
 variant("M-live.html", "S2", "S · Transition, live")
 variant("O-live.html", "O3", "O · Browse, live")
+variant("T-live.html", "T8", "T · The account, live")
 print("wrote", out, round(len(html) / 1e6, 2), "MB")

@@ -2,6 +2,7 @@
 const BR = (function () {
   const ZN = ZONE_LABEL, MINUS = '−';
   const esc = RO.esc, clamp = RO.clamp;
+  const ZSEQ = () => OPT.said4 ? ['say', 'think', 'sense', 'act', 'shell', 'delegate'] : ZORDER;
   const ROW = 28, ZKEYS = { think: '1', sense: '2', act: '3', shell: '4', delegate: '5', say: '6' };
 
   function rowsOf(turn) {
@@ -41,8 +42,9 @@ const BR = (function () {
   }
   function statusMark(s) {
     const re = s.retriedAt;
+    if (s.status === 'fail' && re && OPT.compactStatus) return `<span class="stt retried"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="var(--danger)" stroke-width="1.6" stroke-dasharray="3 2.2"/></svg><span>\u2192${re}</span></span>`;
     if (s.status === 'fail' && re) return `<span class="stt retried"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="var(--danger)" stroke-width="1.6" stroke-dasharray="3 2.2"/></svg><span>retried at ${re}</span></span>`;
-    if (s.status === 'fail') return `<span class="stt failed"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="var(--danger)" stroke-width="1.8" stroke-linecap="round"/></svg><span>failed</span></span>`;
+    if (s.status === 'fail') return OPT.compactStatus ? `<span class="stt failed"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="var(--danger)" stroke-width="1.8" stroke-linecap="round"/></svg></span>` : `<span class="stt failed"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="var(--danger)" stroke-width="1.8" stroke-linecap="round"/></svg><span>failed</span></span>`;
     if (s.status === 'wait') return `<span class="stt wait"><i class="pulse attn"></i><span>waiting</span></span>`;
     if (s.status === 'run') return `<span class="stt run"><i class="pulse"></i><span>running</span></span>`;
     if (s.status === 'stopped') return `<span class="stt stopped"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" fill="none" stroke="var(--ink2)" stroke-width="1.4" stroke-dasharray="2.5 2"/></svg><span>stopped</span></span>`;
@@ -56,19 +58,22 @@ const BR = (function () {
       const up = prev && prev.msg === row.msg, dn = next && next.msg === row.msg;
       br = up && dn ? 'mid' : dn ? 'first' : up ? 'last' : '';
     }
+    let cls2 = '';
     const cls = ['lr', 'f-' + row.fam, row.kind, s.status === 'fail' ? 'failed' : '', s.status === 'wait' ? 'wait' : '', s.status === 'run' ? 'run' : '', s.status === 'stopped' ? 'stopped' : '',
-      st.cursor === i ? 'cursor' : '', st.hover === i ? 'hover' : '', br ? 'fan ' + br : ''].filter(Boolean).join(' ');
+      st.cursor === i ? 'cursor' : '', st.hover === i ? 'hover' : '', br ? 'fan ' + br : '', (OPT.said4 && row.kind === 'note') ? 'm2' : ''].filter(Boolean).join(' ');
     const q = st.query;
     let body;
+    const m2 = OPT.said4 && row.kind === 'note';
+    if (m2) { cls2 = 'm2'; }
     if (row.kind === 'tool') {
       const arg = s.arg || '';
       body = `<span class="tt">${hl(s.tool, q)}</span><span class="ar" data-arg="${esc(arg)}" data-q="${esc(q || '')}">${hl(arg, q)}</span>`;
     } else {
-      body = `<span class="tx" data-text="${esc(s.text)}">${hl(s.text, q)}</span>`;
+      body = `<span class="tx" data-text="${esc(s.text)}">${hl(row.kind === 'note' && OPT.said4 ? s.text.replace(/`/g, '') : s.text, q)}</span>`;
     }
     const inOut = q && matches(row, q) === 'out' ? '<em class="inout">in output</em>' : '';
     const copy = st.hover === i && row.kind === 'tool' ? '<button class="cp" type="button">Copy</button>' : '';
-    return `<div class="${cls}" role="option" aria-selected="${st.cursor === i}" data-i="${i}"><span class="br"></span><span class="gl">${Neural.shapeSvg(row.fam, 18)}</span><span class="no">${row.num}</span>${body}${inOut}${statusMark(s)}${copy}</div>`;
+    return `<div class="${cls}" role="option" aria-selected="${st.cursor === i}" data-i="${i}"><span class="br"></span><span class="gl">${m2 ? '<svg width="18" height="18" viewBox="0 0 18 18"><path d="M4 12.5c0-3 1.2-4.8 3.4-5.6l.5.9c-1.3.7-1.8 1.6-1.9 2.6h1.9v3.3H4zm6.3 0c0-3 1.2-4.8 3.4-5.6l.5.9c-1.3.7-1.8 1.6-1.9 2.6h1.9v3.3h-3.9z" fill="var(--accent)"/></svg>' : Neural.shapeSvg(row.fam, 18)}</span><span class="no">${row.num}</span>${body}${inOut}${statusMark(s)}${copy}</div>`;
   }
 
   function zonePanel(turn, st, o) {
@@ -76,7 +81,7 @@ const BR = (function () {
     const fails = turn.fails.length;
     const on = z => st.zones && st.zones.has(z);
     let h = `<div class="fp${o && o.tight ? ' tight' : ''}"><div class="fp-h"><span class="lbl">Filter</span><span class="k">keys 1–6</span></div>`;
-    ZORDER.filter(z => cnt[z]).forEach(z => {
+    ZSEQ().filter(z => cnt[z]).forEach(z => {
       h += `<button class="fz f-${z}${on(z) ? ' on' : ''}" type="button" aria-pressed="${!!on(z)}" data-z="${z}"><span class="gl">${Neural.shapeSvg(z, 18)}</span><span class="zn">${ZN[z]}</span><span class="zb"><i style="width:${Math.round(cnt[z] / max * 100)}%"></i></span><b>${cnt[z]}</b><kbd>${ZKEYS[z]}</kbd></button>`;
     });
     if (fails) h += `<button class="fz failedtog${st.failed ? ' on' : ''}" type="button" aria-pressed="${!!st.failed}" data-failed="1"><span class="gl"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="var(--danger)" stroke-width="1.8" stroke-linecap="round"/></svg></span><span class="zn">FAILED</span><span class="zb"></span><b>${fails}</b><kbd>!</kbd></button>`;
@@ -84,7 +89,7 @@ const BR = (function () {
   }
   function zoneChips(turn, st) {
     const cnt = turn.count, on = z => st.zones && st.zones.has(z);
-    return `<div class="zchips2">${ZORDER.filter(z => cnt[z]).map(z => `<button class="zf f-${z}${on(z) ? ' on' : ''}" type="button" data-z="${z}">${Neural.shapeSvg(z, 18)}<b>${cnt[z]}</b></button>`).join('')}${turn.fails.length ? `<button class="zf failedtog${st.failed ? ' on' : ''}" type="button" data-failed="1"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="var(--danger)" stroke-width="1.8" stroke-linecap="round"/></svg><b>${turn.fails.length}</b></button>` : ''}</div>`;
+    return `<div class="zchips2">${ZSEQ().filter(z => cnt[z]).map(z => z === 'say' && OPT.said4 ? `<button class="zf saidchip f-say${on(z) ? ' on' : ''}" type="button" data-z="${z}">${Neural.shapeSvg(z, 18)}<span class="zl">SAID</span><b>${cnt[z]}</b></button>` : `<button class="zf f-${z}${on(z) ? ' on' : ''}" type="button" data-z="${z}">${Neural.shapeSvg(z, 18)}<b>${cnt[z]}</b></button>`).join('')}${turn.fails.length && !OPT.said4 ? `<button class="zf failedtog${st.failed ? ' on' : ''}" type="button" data-failed="1"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="var(--danger)" stroke-width="1.8" stroke-linecap="round"/></svg><b>${turn.fails.length}</b></button>` : ''}</div>`;
   }
   function listHeader(turn, st, vis) {
     const total = turn.steps.length;
@@ -92,7 +97,8 @@ const BR = (function () {
     const search = st.searchOpen || st.query
       ? `<span class="srch open"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 9l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="q">${esc(st.query || '')}<i class="caret"></i></span><kbd>esc</kbd></span>`
       : `<button class="srch" type="button"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 9l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Search</span><kbd>/</kbd></button>`;
-    return `<div class="lh">${search}<span class="sp"></span>${count}</div>`;
+    const ft = OPT.said4 && turn.fails.length ? `<button class="zf failedtog${st.failed ? ' on' : ''}" type="button" data-failed="1" style="height:24px"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="var(--danger)" stroke-width="1.8" stroke-linecap="round"/></svg><b>${turn.fails.length}</b><span style="font:500 11px/16px var(--sans);color:var(--ink2)">failed</span></button>` : '';
+    return `<div class="lh">${search}${ft}<span class="sp"></span>${count}</div>`;
   }
   function emptyHtml(turn, st) {
     const parts = [];
@@ -126,6 +132,7 @@ const BR = (function () {
         const build = n => { const a = Math.ceil(n / 2), b = Math.floor(n / 2); return dir.slice(0, a) + '…' + (b ? dir.slice(dir.length - b) : '') + fn; };
         while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (cv.measureText(build(mid)).width <= w) lo = mid; else hi = mid - 1; }
         out = build(lo);
+        if (cv.measureText(out).width > w) { let k = full.length; while (k > 6 && cv.measureText('\u2026' + full.slice(full.length - k)).width > w) k--; out = '\u2026' + full.slice(full.length - k); }
       } else {
         let n = full.length; while (n > 4 && cv.measureText(full.slice(0, n) + '…').width > w) n--;
         out = full.slice(0, n) + '…';
@@ -207,11 +214,12 @@ const BR = (function () {
     if (rows) {
       const cur = st.expanded >= 0 ? st.expanded : st.cursor;
       const k = ctl.vis.findIndex(r => r.i === cur);
-      const maxTop = Math.max(0, ctl.vis.length * ROW - M.rowsH);
+      const maxTop = Math.max(0, rows.scrollHeight - rows.clientHeight);
+      const el = k >= 0 ? rows.querySelector(`.lr[data-i="${cur}"]`) : null;
       if (o.scrollTo != null) rows.scrollTop = o.scrollTo;
       else if (ctl.lastCur === undefined || ctl.lastCur !== cur) {
         const prev = ctl.lastTop || 0;
-        if (k >= 0 && (ctl.lastCur === undefined || k * ROW < prev || k * ROW > prev + M.rowsH - ROW)) rows.scrollTop = Math.round(clamp(k * ROW - (M.rowsH - ROW) / 2, 0, maxTop) / ROW) * ROW;
+        if (el && (ctl.lastCur === undefined || el.offsetTop < prev || el.offsetTop + el.offsetHeight > prev + M.rowsH)) rows.scrollTop = clamp(el.offsetTop - (M.rowsH - el.offsetHeight) / 2, 0, maxTop);
         else rows.scrollTop = prev;
       } else rows.scrollTop = ctl.lastTop || 0;
       if (st.live && st.following) rows.scrollTop = rows.scrollHeight;
@@ -308,6 +316,6 @@ const BR = (function () {
     ctl.row.appendChild(el);
   }
 
-  return { mount, metrics, rowsOf, visible, listBlock, rowHtml, fitArgs, zonePanel, zoneChips, hl, ROW, filtered, statusMark, render };
+  return { head, ZSEQ, mount, metrics, rowsOf, visible, listBlock, rowHtml, fitArgs, zonePanel, zoneChips, hl, ROW, filtered, statusMark, render };
 })();
 const OPT2 = window.OPT2 = window.OPT2 || { headK: .27, headMax: 340 };

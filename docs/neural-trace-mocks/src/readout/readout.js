@@ -123,7 +123,7 @@ const RO = (function () {
     if (s.why) h += `<div class="sec"><div class="why"><div class="lbl">Why</div><p>${esc(s.why)}</p></div></div>`;
     if (s.fam === 'shell') {
       const n = (s.out || []).length;
-      h += `<div class="sec"><div class="lbl">Output<span class="r">${s.exit != null ? 'exit ' + s.exit + ' · ' : ''}${n} line${n === 1 ? '' : 's'}</span></div>${outBlock(s)}</div>`;
+      h += s.status === 'run' ? `<div class="sec"><div class="lbl">Output<span class="r">live · last 8 lines</span></div>${outBlock(Object.assign({}, s, { out: (s.out || []).slice(-8) }), { all: true, caret: true })}</div>` : `<div class="sec"><div class="lbl">Output<span class="r">${s.exit != null ? 'exit ' + s.exit + ' · ' : ''}${n} line${n === 1 ? '' : 's'}</span></div>${outBlock(s)}</div>`;
     } else if (s.fam === 'act') {
       h += `<div class="sec"><div class="lbl">Diff<span class="r stat"><span class="a">+${s.diff[0]}</span> <span class="d">${MINUS}${s.diff[1]}</span></span></div>${diffBlock(s)}</div>`;
     } else if (s.tool === 'Read') {
@@ -304,17 +304,33 @@ const RO = (function () {
     const narrow = !!o.narrow;
     const density = narrow ? 'comfortable' : (o.density || 'comfortable'), compact = density === 'compact';
     const state = o.state || (turn.unrecovered.length ? 'failed' : 'settled');
-    const chips = ZORDER.filter(z => turn.count[z]).map(z => `<span class="zc f-${z}${turn.count[z] ? ' lit' : ''}">${shape(z, compact ? 12 : 14)}<span>${ZN[z]}</span><b>${turn.count[z]}</b></span>`).join('');
+    const chips = (OPT.said4 ? BR.ZSEQ() : ZORDER).filter(z => turn.count[z]).map(z => `<span class="zc f-${z}${turn.count[z] ? ' lit' : ''}">${shape(z, compact ? 12 : 14)}<span>${ZN[z]}</span><b>${turn.count[z]}</b></span>`).join('');
     const fc = failClause(turn, true);
     const tally = turn.tally[0] || turn.tally[1] ? `<span class="tally"><span class="a">+${turn.tally[0]}</span> <span class="d">${MINUS}${turn.tally[1]}</span></span>` : '';
     const pic = narrow ? cardPicture(turn, o.theme, 'compact') : cardPicture(turn, o.theme, density);
     const stateWord = { wait: 'Waiting for you', stopped: 'Stopped' }[state];
+    const saidStep = turn.steps.find(s => s.fam === 'say');
+    const spk = turn.speaker || (turn.family.charAt(0).toUpperCase() + turn.family.slice(1));
+    const dgHtml = saidStep && o.quote !== false ? `<span class="dg quote"><span class="qg">\u201c</span><span class="qs">${esc(spk)}</span><span class="qt" data-full="${esc(saidStep.text.replace(/`/g, ''))}">${esc(saidStep.text.replace(/`/g, ''))}</span></span>` : `<span class="dg">${esc(digestLine(turn))}</span>`;
     const failHtml = stateWord ? `<span class="fail${state === 'stopped' ? '" style="color:var(--ink2)' : ''}">${stateWord}</span>` : (fc ? `<span class="fail${turn.unrecovered.length ? ' bad' : ''}">${fc}</span>` : '');
     const body = narrow
       ? `<span class="txt"><span class="hl"><span class="num">${turn.tools}</span><span class="unit">tools</span><span class="dur">${turn.dur}</span></span><span class="sub">${tally}${failHtml}</span><span class="btns2"><span class="sbtn">\u25b6 Replay</span><span class="sbtn">Rows</span></span></span>`
-      : `<span class="txt"><span class="hl"><span class="num">${turn.tools}</span><span class="unit">tools</span><span class="dur">${turn.dur}</span>${tally}${failHtml}</span><span class="zs">${chips}</span><span class="dg">${esc(digestLine(turn))}</span></span><span class="btns"><span class="sbtn">\u25b6 Replay</span><span class="sbtn">Rows</span></span>`;
+      : `<span class="txt"><span class="hl"><span class="num">${turn.tools}</span><span class="unit">tools</span><span class="dur">${turn.dur}</span>${tally}${failHtml}</span><span class="zs">${chips}</span>${dgHtml}</span><span class="btns"><span class="sbtn">\u25b6 Replay</span><span class="sbtn">Rows</span></span>`;
     return `<button class="card ${density}${narrow ? ' narrow' : ''} ${state}${o.hover ? ' hover' : ''}" type="button" data-turn="${turn.id}" style="height:${compact ? 84 : 112}px" aria-label="${turn.tools} tools, ${turn.dur}. Open the brain.">${pic}${body}</button>`;
   }
 
-  return { OPT, VIEW, picSize, headImgHtml, zoneChipsHtml, stripHtml, esc, clamp, prep, sentence, digestLine, failClause, relations, stepReadout, digestReadout, zoneReadout, nowReadout, readoutHtml, metrics, cardHtml, cardPicture, faceKey, dirfile, pathHtml, changedFiles, timelineHtml, zoneBarsHtml, zoneRows, MINUS, shape };
+  let qcv;
+  function fitQuotes(root) {
+    qcv = qcv || document.createElement('canvas').getContext('2d');
+    root.querySelectorAll('.qt').forEach(el => {
+      const full = el.dataset.full, cs = getComputedStyle(el); qcv.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const p = el.parentElement, used = [...p.children].filter(c => c !== el).reduce((a, c) => a + c.getBoundingClientRect().width + 8, 0);
+      const w = p.clientWidth - used - 6;
+      if (qcv.measureText(full).width <= w) { el.textContent = full; return; }
+      const words = full.split(' '); let n = words.length;
+      while (n > 3 && qcv.measureText(words.slice(0, n).join(' ') + ' \u2026').width > w) n--;
+      el.textContent = words.slice(0, n).join(' ').replace(/[,;:\u2014-]$/, '') + ' \u2026';
+    });
+  }
+  return { fitQuotes, OPT, VIEW, picSize, headImgHtml, zoneChipsHtml, stripHtml, esc, clamp, prep, sentence, digestLine, failClause, relations, stepReadout, digestReadout, zoneReadout, nowReadout, readoutHtml, metrics, cardHtml, cardPicture, faceKey, dirfile, pathHtml, changedFiles, timelineHtml, zoneBarsHtml, zoneRows, MINUS, shape };
 })();
