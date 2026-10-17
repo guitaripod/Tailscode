@@ -428,15 +428,16 @@ public struct NeuralReadout: Sendable, Equatable {
     public static let summaryShown = 6
     public static let argumentLimit = 120
 
-    /// The subject the panel takes: a pinned step, then the step the pointer was entered on, then
-    /// a replay, a dived zone, and last what the turn itself calls for, which is Now while it runs
-    /// (the ask when a step waits on the person) and the digest once it settled. `hover` is the
+    /// The subject the panel takes: the step the pointer was entered on, which is a preview and
+    /// never moves the cursor; when the hover ends, the cursor (the pinned step); then a replay, a
+    /// dived zone, and last what the turn itself calls for, which is Now while it runs (the ask
+    /// when a step waits on the person) and the digest once it settled. `hover` is the
     /// node `NeuralBrainModel.hoverIntent` resolved; a client that never drove the hover grace
     /// gets the model's own hovered node.
     public static func mode(for model: NeuralBrainModel, hover: String?) -> Mode {
-        if let id = model.pinnedStep, model.step(id: id) != nil { return .step(id) }
         let followed = hover ?? (model.hoverGrace.isDriven ? nil : model.hovered)
         if let id = followed, model.step(id: id) != nil { return .step(id) }
+        if let id = model.pinnedStep, model.step(id: id) != nil { return .step(id) }
         if model.isReplaying { return .replay }
         if let zone = model.divedZone { return .zone(zone) }
         if model.turn.outcome == .running {

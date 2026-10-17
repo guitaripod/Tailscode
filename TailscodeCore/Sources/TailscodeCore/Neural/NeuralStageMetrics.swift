@@ -38,25 +38,46 @@ public struct NeuralRect: Sendable, Equatable {
 }
 
 /// Where everything of a brain's row goes at a given row width: the collapsed card, and the open
-/// stage with its readout and footer. Pure arithmetic from the width and the density, so the
+/// brain with its three regions (the head and the step list in a left column, the readout beside
+/// it) and its footer. Pure arithmetic from the width, the density and the input, so the
 /// breakpoints exist once and a client only lays out the rectangles it is handed.
 ///
-/// A row is `width` wide and as tall as `rowHeight`; every rectangle is in the row's coordinates.
-/// The stage shows the head trimmed to its own bounds, design x 64 to 640 over the full 420
-/// height (`designCrop`, an aspect of 576:420, held exactly), so the chassis is flush with the
-/// column's left edge and nothing of the head is cut. Every place a design point meets the stage or
-/// the card's picture goes through `designCrop`. The readout is beside the stage when there is
-/// room (`split`) and under it as a strip when there is not.
+/// A row is `width` wide; every rectangle is in the row's coordinates. The head is a map: it shows
+/// the head trimmed to its own bounds, design x 64 to 640 over the full 420 height (`designCrop`,
+/// an aspect of 576:420, held exactly), 280 to 340 points wide. From 860 the brain is a `split`:
+/// a left column of `Lw = W - 24 - R` holding the zone filter panel and the head side by side (the
+/// head flush with the gutter, so the leader never crosses the panel) with the step list under
+/// them, and the readout, R = clamp(0.5 W, 360, 640) wide, beside it. Under 860 it is an
+/// `accordion`: the head on top, centred, the zone chips under it and the list at full width,
+/// where the cursor row expands in place to carry the readout's content.
 public struct NeuralStageMetrics: Sendable, Equatable {
     public enum Arrangement: Sendable, Equatable {
         case split
-        case stacked
+        /// Narrow rows: head, chips, list; the readout expands inside the cursor's row.
+        case accordion
+
+        /// The older name of the narrow arrangement.
+        public static let stacked = Arrangement.accordion
     }
 
-    /// The readout's type: one step down in the middle band, where the column is narrower.
+    /// How the zone filters are drawn: a panel of one row per zone beside the head, or a row of
+    /// glyph-and-count chips above the list.
+    public enum FilterStyle: Sendable, Equatable {
+        case panel
+        case chips
+    }
+
+    /// The readout's type: one step down in a column under 440.
     public enum ReadoutType: Sendable, Equatable {
         case regular
         case stepDown
+    }
+
+    /// How the account beside the head is laid out: one column with the open step's card unfolded
+    /// under its row, or two, the story on the left and the card on the right.
+    public enum AccountLayout: Sendable, Equatable {
+        case single
+        case split
     }
 
     /// How a card sets its picture and its two small buttons: the wide card has them beside the
@@ -112,17 +133,15 @@ public struct NeuralStageMetrics: Sendable, Equatable {
         public let isIcon: Bool
     }
 
-    /// The part of the head's design space the stage and the card's picture show.
+    /// The part of the head's design space the head and the card's picture show.
     public static let designCrop = NeuralRect(
         x: 64, y: 0, width: NeuralDesign.width - 64, height: NeuralDesign.height)
     public static let designWidth = designCrop.width
     public static let designHeight = designCrop.height
     public static let aspect = designCrop.height / designCrop.width
 
-    /// At this width and up the stage and the readout sit side by side at their full size.
-    public static let wideBreakpoint = 860.0
-    /// At this width and up the stage and the readout sit side by side at all.
-    public static let splitBreakpoint = 560.0
+    /// From this width the brain is a split; under it, an accordion.
+    public static let splitBreakpoint = 860.0
     /// A card narrower than this is the narrow layout and drops its zone strip; its digest goes
     /// below `cardDigestMinWidth`.
     public static let cardZoneStripMinWidth = 460.0
@@ -132,17 +151,17 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     public static let footerCloseMinWidth = 960.0
     public static let footerCompactWidth = 640.0
 
-    public static let stageShare = 0.54
-    public static let stageMidShare = 0.5
-    public static let stageMin = 420.0
-    public static let stageSplitMax = 720.0
-    public static let stageCap = 760.0
+    /// The head's width is `headShare` of the row between these, and 280 at most in an accordion.
+    public static let headShare = 0.27
+    public static let headMin = 280.0
+    public static let headMax = 340.0
     public static let gutter = 24.0
-    public static let readoutMax = 560.0
-    /// The readout is never narrower than this beside the stage.
-    public static let readoutMin = 300.0
-    /// The readout is never shorter than this beside the stage, and so neither is the row.
-    public static let readoutMinHeight = 420.0
+    /// The readout is `readoutShare` of the row between these.
+    public static let readoutShare = 0.5
+    public static let readoutMin = 360.0
+    public static let readoutMax = 640.0
+    /// The open brain is never shorter than this, and the readout with it.
+    public static let readoutMinHeight = 460.0
     /// A readout narrower than this shows five lines of output instead of eight.
     public static let readoutNarrowWidth = 480.0
     public static let outputLinesWide = 8
@@ -157,61 +176,167 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     public static let tabSize = (width: 3.0, height: 24.0)
     /// How far the readout travels while it slides into place.
     public static let readoutTravel = 24.0
-    /// The stacked readout's two-line strip, and how tall it grows to when something is pinned.
-    public static let stripHeight = 56.0
-    public static let stackedPinnedHeight = 340.0
+
+    /// The filter panel needs this much width beside the head, and the row this much width to
+    /// have one at all; a turn with fewer zones than `panelMinZones` has chips.
+    public static let panelMinWidth = 150.0
+    public static let panelMinRowWidth = 900.0
+    public static let panelMinZones = 3
+    public static let panelGap = 16.0
+    public static let chipsHeight = 28.0
+    /// The air between the regions of the column.
+    public static let regionGap = 8.0
+
+    /// The left column (the head, the filter chips and the list) is `columnShare` of the row
+    /// between these, and the head is as wide as the column.
+    public static let columnShare = 0.27
+    public static let columnMin = 320.0
+    public static let columnMax = 360.0
+    /// The account takes everything the left column leaves, and is never narrower than this.
+    public static let accountMin = 360.0
+    /// From an account this wide it is two columns: the story, then the open step's card.
+    public static let storyMin = 440.0
+    public static let detailMin = 460.0
+    public static let splitAccountMin = storyMin + gutter + detailMin
+    public static let storyShare = 0.42
+    public static let storySplitMax = 680.0
+    /// In one column the story is held to this width and the rest stays quiet canvas.
+    public static let storyMax = 760.0
+    /// Prose stops at 36 em, 540 points at the answer's 15, which is about 78 characters.
+    public static let proseMeasure = 540.0
+    public static let proseMeasureCharacters = 78
+    /// The zone chips and the air under them, which is what the list starts below.
+    public static let chipsBlock = 34.0
+    /// The card under the cursor row hangs off it: its left margin, which narrows it in one column.
+    public static let cardHang = 36.0
+    /// Rows a split lists by default.
+    public static let rowsSplit = 9
+    public static let rowsAccordion = 8
+
+    public static let listHeaderHeight = 36.0
+    public static let listHintHeight = 24.0
+    public static let listFootPadding = 4.0
+    /// The list sits this far short of the readout's gutter, which is scrollbar room.
+    public static let listScrollbarRoom = 12.0
+    /// The hint line under the list is hidden in a row narrower than this.
+    public static let hintMinWidth = 520.0
+    public static let rowsMin = 8
+    public static let rowsMax = 14
+    /// An accordion's expanded row: its content is at most this tall, inside a 3 pt zone edge.
+    public static let accordionContentMaxHeight = 340.0
+    public static let accordionContentInset = 16.0
+
+    /// A list row's height: 28 for a pointer, 32 for a finger.
+    public static func listRowHeight(input: ChatInput) -> Double { input == .touch ? 32 : 28 }
+
+    /// The most the list's rows may take of an accordion: 300 for a pointer, 340 for a finger,
+    /// which is about ten rows of either.
+    public static func listMaxHeight(input: ChatInput) -> Double { input == .touch ? 340 : 300 }
 
     public let width: Double
     public let density: ChatDensity
+    public let input: ChatInput
     public let arrangement: Arrangement
+    public let filterStyle: FilterStyle
     public let readoutType: ReadoutType
     public let card: Card
-    /// The stage: the open head, flush to the row's left edge and the top.
+    /// The head: in a split flush with the gutter, in an accordion on top and centred.
     public let stage: NeuralRect
-    /// Where a pointer counts as over the stage: the stage and, beside a readout, the gutter, so
+    /// Where a pointer counts as over the head: the head and, beside a readout, the gutter, so
     /// moving from a node toward the readout never crosses a dead strip.
     public let stageHover: NeuralRect
-    /// The readout; the two-line strip when stacked.
+    /// The left column of a split, the whole row of an accordion.
+    public let column: NeuralRect
+    /// The zone filter panel left of the head; nil when the filters are chips.
+    public let filterPanel: NeuralRect?
+    /// The row of zone chips above the list; nil when the filters are a panel.
+    public let filterChips: NeuralRect?
+    /// The step list: header, rows, foot padding and hint.
+    public let list: NeuralRect
+    public let listHeader: NeuralRect
+    public let listRows: NeuralRect
+    /// The key-cap hint under the list; nil in a row under 520.
+    public let listHint: NeuralRect?
+    public let listRowHeight: Double
+    /// How many rows the list shows.
+    public let rowsShown: Int
+    /// The readout; zero in an accordion, where the cursor's row carries it. In a split it is the
+    /// whole account beside the column, whether one column or two.
     public let readout: NeuralRect
-    /// The readout as it grows when something is pinned in a stacked row, capped at 340; the same
-    /// rectangle when the readout is beside the stage.
-    public let readoutExpanded: NeuralRect
+    /// One column or two.
+    public let accountLayout: AccountLayout
+    /// The account's region: beside the left column in a split, the list itself in an accordion.
+    public let account: NeuralRect
+    /// The story: the notes, the thoughts, the work lines; where the cursor's card unfolds in
+    /// place when there is no detail column.
+    public let story: NeuralRect
+    /// The open step's card, in its own column; nil unless the account splits.
+    public let detail: NeuralRect?
     public let footer: NeuralRect
-    /// The height of the open row: the stage and readout region, the gap and the footer.
+    /// The height of the open brain without its footer: the larger of 460 and the column's.
+    public let brainHeight: Double
+    /// The height of the open row: the brain, the gap and the footer.
     public let rowHeight: Double
     /// The height of the collapsed row.
     public var cardHeight: Double { card.height }
-    /// What one unit of the head's design space is in points on the stage.
+    /// What one unit of the head's design space is in points on the head.
     public var designScale: Double { stage.width / Self.designWidth }
 
     public var footerHeight: Double { footer.height }
     public var gutterWidth: Double { Self.gutter }
     public var readoutMinHeight: Double { Self.readoutMinHeight }
 
+    /// The head, by its other name.
+    public var head: NeuralRect { stage }
+
     /// Whether a leader line ties the node being read to the readout: only beside it.
     public var hasLeader: Bool { arrangement == .split }
+
+    /// The most the list's rows may take of this layout's input in an accordion.
+    public var listMaxHeight: Double { Self.listMaxHeight(input: input) }
+
+    /// How wide the readout's content is: the readout, or an expanded accordion row's content.
+    public var readoutContentWidth: Double {
+        arrangement == .split
+            ? (detail?.width ?? max(story.width - Self.cardHang, 0)) : accordionContentWidth
+    }
+
+    /// The width prose is set to: the story's, held to 36 em.
+    public var proseWidth: Double { min(story.width, Self.proseMeasure) }
+
+    /// The width of an expanded accordion row's content: the list's, less the zone edge and the
+    /// padding.
+    public var accordionContentWidth: Double {
+        max(list.width - 3 - Self.accordionContentInset, 0)
+    }
+
+    /// The tallest an expanded accordion row's content grows, which the row takes from the list.
+    public var accordionContentMaxHeight: Double { Self.accordionContentMaxHeight }
 
     /// How many lines of output the readout shows before "N more lines": five in a column under 480
     /// points wide, eight otherwise. A client passes it to `NeuralReadout.make`.
     public var outputLinesShown: Int {
-        readout.width < Self.readoutNarrowWidth ? Self.outputLinesNarrow : Self.outputLinesWide
+        readoutContentWidth < Self.readoutNarrowWidth ? Self.outputLinesNarrow : Self.outputLinesWide
     }
 
     /// The row as the collapsed card: the picture is the head's resting place on the card.
     public var cardGeometry: NeuralTransition.Geometry {
-        NeuralTransition.Geometry(picture: card.picture, rowHeight: card.height)
+        NeuralTransition.Geometry(
+            picture: card.picture, rowHeight: card.height, list: .zero, panel: .zero)
     }
 
-    /// The row as the open stage: the head, and where the readout and the footer stand.
+    /// The row as the open brain: the head, the column's list and panel, and where the readout and
+    /// the footer stand.
     public var stageGeometry: NeuralTransition.Geometry {
         NeuralTransition.Geometry(
             picture: stage, rowHeight: rowHeight, readout: readout, footer: footer,
             readoutTravel: arrangement == .split
-                ? NeuralPoint(Self.readoutTravel, 0) : NeuralPoint(0, Self.readoutTravel))
+                ? NeuralPoint(Self.readoutTravel, 0) : NeuralPoint(0, Self.readoutTravel),
+            list: list, panel: filterPanel ?? filterChips ?? .zero)
     }
 
     /// Where a node of the head's design space is drawn in the row: the crop's origin is the
-    /// stage's.
+    /// head's.
     public func point(forDesign point: NeuralPoint) -> NeuralPoint {
         NeuralPoint(
             stage.x + (point.x - Self.designCrop.x) * designScale,
@@ -237,7 +362,7 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     }
 
     /// Where the leader ends, in the head's design space: on the readout's hairline, on the node's
-    /// own row. Nil in a stacked row, which has no leader.
+    /// own row. Nil in an accordion, which has no leader.
     public func leaderAnchor(forNodeAt design: NeuralPoint) -> NeuralPoint? {
         guard hasLeader else { return nil }
         let scale = designScale
@@ -277,63 +402,136 @@ public struct NeuralStageMetrics: Sendable, Equatable {
 
     public func footerParts() -> [FooterPart] { Self.footerParts(width: width) }
 
-    public static func make(width rawWidth: Double, density: ChatDensity) -> NeuralStageMetrics {
+    /// The left column's width at a row width: 27 percent of it between 320 and 360.
+    public static func columnWidth(rowWidth width: Double) -> Double {
+        min(max((width * columnShare).rounded(), columnMin), columnMax)
+    }
+
+    /// The head's width at a row width: as wide as the left column in a split, 280 at most in an
+    /// accordion.
+    public static func headWidth(rowWidth width: Double) -> Double {
+        if width < splitBreakpoint { return min(headMin, width) }
+        return columnWidth(rowWidth: width)
+    }
+
+    /// The account's width in a split: what the left column and the gutter leave.
+    public static func readoutWidth(rowWidth width: Double) -> Double {
+        max(width - gutter - columnWidth(rowWidth: width), accountMin)
+    }
+
+    /// One column below an account of 924, two from it.
+    public static func accountLayout(accountWidth: Double) -> AccountLayout {
+        accountWidth >= splitAccountMin ? .split : .single
+    }
+
+    /// The story's width: 42 percent of the account between 440 and 680 when it splits, otherwise
+    /// the account held to 760.
+    public static func storyWidth(accountWidth: Double) -> Double {
+        switch accountLayout(accountWidth: accountWidth) {
+        case .split: return min(max((accountWidth * storyShare).rounded(), storyMin), storySplitMax)
+        case .single: return min(accountWidth, storyMax)
+        }
+    }
+
+    /// How many list rows a viewport of this height asks for: the rule
+    /// `clamp(floor((height x 0.55 - head - 80) / row), 8, 14)`.
+    public static func rows(
+        forViewportHeight height: Double, head: Double, rowHeight: Double = 28
+    ) -> Int {
+        let asked = Int(((height * 0.55 - head - 80) / rowHeight).rounded(.down))
+        return min(max(asked, rowsMin), rowsMax)
+    }
+
+    /// - Parameters:
+    ///   - input: touch lists have 32 point rows and a taller accordion list.
+    ///   - zonesWithSteps: how many zones the turn has steps in; under three the filters are
+    ///     chips rather than a panel.
+    ///   - rows: the number of list rows to show; by default 8, or 9 from a 1200 row, or the
+    ///     viewport rule when `viewportHeight` is given.
+    public static func make(
+        width rawWidth: Double, density: ChatDensity, input: ChatInput = .pointer,
+        zonesWithSteps: Int = NeuralZone.allCases.count, rows: Int? = nil,
+        viewportHeight: Double? = nil
+    ) -> NeuralStageMetrics {
         let width = max(rawWidth, 0)
         let card = makeCard(width: width, density: density)
+        let rowHeight = listRowHeight(input: input)
         let footerHeight: Double = density == .compact ? 30 : 36
         let footerGap: Double = density == .compact ? 6 : 8
-        if width >= splitBreakpoint {
-            let stageWidth = splitStageWidth(for: width)
-            let stageHeight = stageWidth * aspect
-            let readoutWidth = max(
-                min(width - stageWidth - gutter, readoutMax), min(readoutMin, width))
-            let region = max(stageHeight, readoutMinHeight)
-            let stage = NeuralRect(x: 0, y: 0, width: stageWidth, height: stageHeight)
-            let readout = NeuralRect(
-                x: stageWidth + gutter, y: 0, width: readoutWidth, height: region)
-            let footer = NeuralRect(
-                x: 0, y: region + footerGap, width: width, height: footerHeight)
-            return NeuralStageMetrics(
-                width: width, density: density, arrangement: .split,
-                readoutType: width >= wideBreakpoint ? .regular : .stepDown, card: card,
-                stage: stage,
-                stageHover: NeuralRect(x: 0, y: 0, width: stageWidth + gutter, height: stageHeight),
-                readout: readout, readoutExpanded: readout, footer: footer,
-                rowHeight: footer.maxY)
+        let split = width >= splitBreakpoint
+        let headWidth = headWidth(rowWidth: width)
+        let headHeight = headWidth * aspect
+        let gap = regionGap
+
+        var shown = rows ?? viewportHeight.map {
+            Self.rows(forViewportHeight: $0, head: headHeight, rowHeight: rowHeight)
+        } ?? (split ? rowsSplit : rowsAccordion)
+        let hintShown = width >= hintMinWidth
+        if !split {
+            shown = min(shown, Int((listMaxHeight(input: input) / rowHeight).rounded(.down)))
         }
-        let stageWidth = min(width, stageCap)
-        let stageHeight = stageWidth * aspect
-        let stage = NeuralRect(x: 0, y: 0, width: stageWidth, height: stageHeight)
-        let strip = NeuralRect(
-            x: 0, y: stageHeight + footerGap, width: stageWidth, height: stripHeight)
-        let expanded = NeuralRect(
-            x: 0, y: stageHeight + footerGap, width: stageWidth, height: stackedPinnedHeight)
-        let footer = NeuralRect(x: 0, y: strip.maxY + footerGap, width: width, height: footerHeight)
+        shown = max(shown, 1)
+
+        let columnWidth: Double
+        let readoutWidth: Double
+        if split {
+            readoutWidth = Self.readoutWidth(rowWidth: width)
+            columnWidth = max(width - gutter - readoutWidth, 0)
+        } else {
+            readoutWidth = 0
+            columnWidth = width
+        }
+        let headX = split ? 0 : max((width - headWidth) / 2, 0)
+        let head = NeuralRect(x: headX, y: 0, width: headWidth, height: headHeight)
+        let style = FilterStyle.chips
+        let panel: NeuralRect? = nil
+        var cursor = headHeight + gap
+        let chips = NeuralRect(x: 0, y: cursor, width: columnWidth, height: chipsHeight)
+        cursor += chipsBlock
+        let listWidth = split ? max(columnWidth - listScrollbarRoom, 0) : columnWidth
+        let header = NeuralRect(x: 0, y: cursor, width: listWidth, height: listHeaderHeight)
+        let rowsRect = NeuralRect(
+            x: 0, y: header.maxY, width: listWidth, height: Double(shown) * rowHeight)
+        let hintHeight = hintShown ? listHintHeight : 0
+        let blockHeight = listHeaderHeight + rowsRect.height + listFootPadding + hintHeight
+        let list = NeuralRect(x: 0, y: cursor, width: listWidth, height: blockHeight)
+        let hint = hintShown
+            ? NeuralRect(
+                x: 0, y: rowsRect.maxY + listFootPadding, width: listWidth, height: listHintHeight)
+            : nil
+        let brain = split ? max(list.maxY, readoutMinHeight) : list.maxY
+        let footer = NeuralRect(
+            x: 0, y: brain + footerGap, width: width, height: footerHeight)
+        let readout = split
+            ? NeuralRect(x: columnWidth + gutter, y: 0, width: readoutWidth, height: brain) : .zero
+        let region = split ? readout : NeuralRect(x: 0, y: list.y, width: list.width, height: list.height)
+        let layout = split ? accountLayout(accountWidth: region.width) : AccountLayout.single
+        let storyRect = NeuralRect(
+            x: region.x, y: region.y,
+            width: split ? storyWidth(accountWidth: region.width) : region.width,
+            height: region.height)
+        let detailRect: NeuralRect? = layout == .split
+            ? NeuralRect(
+                x: storyRect.maxX + gutter, y: region.y,
+                width: region.width - storyRect.width - gutter, height: region.height)
+            : nil
         return NeuralStageMetrics(
-            width: width, density: density, arrangement: .stacked, readoutType: .regular,
-            card: card, stage: stage, stageHover: stage, readout: strip, readoutExpanded: expanded,
-            footer: footer, rowHeight: footer.maxY)
+            width: width, density: density, input: input, arrangement: split ? .split : .accordion,
+            filterStyle: style, readoutType: split && readoutWidth < 440 ? .stepDown : .regular,
+            card: card, stage: head,
+            stageHover: split
+                ? NeuralRect(x: head.x, y: 0, width: head.width + gutter, height: head.height) : head,
+            column: NeuralRect(x: 0, y: 0, width: columnWidth, height: brain), filterPanel: panel,
+            filterChips: chips, list: list, listHeader: header, listRows: rowsRect, listHint: hint,
+            listRowHeight: rowHeight, rowsShown: shown, readout: readout, accountLayout: layout,
+            account: region, story: storyRect, detail: detailRect, footer: footer,
+            brainHeight: brain, rowHeight: footer.maxY)
     }
 
-    /// The row height when a stacked readout has grown to hold what is pinned; a split row is the
-    /// same height either way.
+    /// The row height while an accordion row is expanded to its content's largest; a split row is
+    /// the same height either way.
     public var pinnedRowHeight: Double {
-        guard arrangement == .stacked else { return rowHeight }
-        return readoutExpanded.maxY + (footer.y - readout.maxY) + footer.height
-    }
-
-    /// The stage's width in a split: 54 percent of the row between 420 and 720, growing to take
-    /// the room a readout would leave over its 560 maximum, up to 760; in the middle band half
-    /// the row, never leaving the readout under 300.
-    private static func splitStageWidth(for width: Double) -> Double {
-        if width < wideBreakpoint {
-            return min(width * stageMidShare, width - gutter - readoutMin)
-        }
-        let base = min(max(width * stageShare, stageMin), stageSplitMax)
-        if width - base - gutter > readoutMax {
-            return min(width - gutter - readoutMax, stageCap)
-        }
-        return base
+        arrangement == .split ? rowHeight : rowHeight + accordionContentMaxHeight
     }
 
     private static func makeCard(width: Double, density: ChatDensity) -> Card {

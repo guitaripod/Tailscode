@@ -232,7 +232,7 @@ extension NeuralZone {
         case .act: return 24
         case .shell: return 34
         case .delegate: return 48
-        case .say: return 24
+        case .say: return 28
         }
     }
 
@@ -245,4 +245,23 @@ extension NeuralZone {
     }
 
     public static var labelRects: [NeuralRect] { allCases.map(\.labelRect) }
+}
+
+extension NeuralZone {
+    /// What the zone is called where it names the agent's voice: the filters, the chips and the
+    /// bars say SAID where the head's label says SAY; every other zone keeps its verb.
+    public var voiceLabel: String {
+        self == .say ? Localized.text("SAID") : label
+    }
+
+    /// The order the filter keys and the chips take the zones in: SAID first, because the voice is
+    /// the one a person looks for, then PLAN, SENSE, ACT, SHELL and DELEGATE. Key `1` is the first.
+    public static let filterOrder: [NeuralZone] = [.say, .think, .sense, .act, .shell, .delegate]
+
+    /// The digit that toggles this zone's filter, `1` for SAID to `6` for DELEGATE.
+    public var filterKey: Int { (Self.filterOrder.firstIndex(of: self) ?? 0) + 1 }
+
+    /// The label a filter, a chip or a bar wears: `voiceLabel`, which is `label` for every zone but
+    /// the voice.
+    public var displayLabel: String { voiceLabel }
 }

@@ -54,11 +54,17 @@ public struct NeuralTransition: Sendable, Equatable {
         public var footer: NeuralRect
         /// Where the readout slides in from, relative to where it stands.
         public var readoutTravel: NeuralPoint
+        /// The step list and the filter panel (or chips) that fade in beside and under the head.
+        public var list: NeuralRect
+        public var panel: NeuralRect
 
         public init(
             picture: NeuralRect, rowHeight: Double, readout: NeuralRect = .zero,
-            footer: NeuralRect = .zero, readoutTravel: NeuralPoint = NeuralPoint(0, 0)
+            footer: NeuralRect = .zero, readoutTravel: NeuralPoint = NeuralPoint(0, 0),
+            list: NeuralRect = .zero, panel: NeuralRect = .zero
         ) {
+            self.list = list
+            self.panel = panel
             self.picture = picture
             self.rowHeight = rowHeight
             self.readout = readout
@@ -86,6 +92,8 @@ public struct NeuralTransition: Sendable, Equatable {
     public let to: Geometry
     /// How many nodes are drawn: the stagger is spread over them.
     public let nodeCount: Int
+    /// How many list rows are drawn: their slide is staggered over them.
+    public let rowCount: Int
     public let reduceMotion: Bool
     public let level: ShedLevel
 
@@ -99,9 +107,10 @@ public struct NeuralTransition: Sendable, Equatable {
     /// A move from `from` to `to`: for an opening the card to the stage, for a closing the stage
     /// to the card.
     public init(
-        direction: Direction, from: Geometry, to: Geometry, nodeCount: Int = 0,
+        direction: Direction, from: Geometry, to: Geometry, nodeCount: Int = 0, rowCount: Int = 0,
         reduceMotion: Bool = false, level: ShedLevel = .calm
     ) {
+        self.rowCount = max(rowCount, 0)
         self.direction = direction
         self.from = from
         self.to = to
@@ -118,6 +127,7 @@ public struct NeuralTransition: Sendable, Equatable {
         from = other.from
         to = other.to
         nodeCount = other.nodeCount
+        rowCount = other.rowCount
         reduceMotion = other.reduceMotion
         level = other.level
         table = other.table
@@ -203,8 +213,8 @@ extension NeuralTransition {
         let stage = metrics.stageGeometry
         return NeuralTransition(
             direction: direction, from: direction.isOpening ? card : stage,
-            to: direction.isOpening ? stage : card, nodeCount: nodeCount, reduceMotion: reduceMotion,
-            level: level)
+            to: direction.isOpening ? stage : card, nodeCount: nodeCount,
+            rowCount: metrics.rowsShown, reduceMotion: reduceMotion, level: level)
     }
 }
 
@@ -252,6 +262,38 @@ public struct NeuralNodeReveal: Sendable, Equatable {
     }
 }
 
+/// One list row's arrival: it slides in a few points while it fades, a little after the one above.
+public struct NeuralRowReveal: Sendable, Equatable {
+    /// How far a row slides, in points.
+    public static let travel = 6.0
+
+    public let count: Int
+    let clock: Double
+    let start: Double
+    let stagger: Double
+    let length: Double
+    let closing: Bool
+    let uniform: Double?
+
+    /// How far row `index` has arrived, `0...1`.
+    public func progress(_ index: Int) -> Double {
+        if let uniform { return uniform }
+        guard count > 0, index >= 0, index < count else { return 0 }
+        let reached = NeuralTransition.clamp((clock - start - stagger * Double(index)) / length)
+        return closing ? 1 - reached : reached
+    }
+
+    /// How far the row still has to slide down into place, `6...0`.
+    public func offset(_ index: Int) -> Double {
+        uniform != nil ? 0 : Self.travel * (1 - NeuralTransition.easeOutCubic(progress(index)))
+    }
+
+    public func alpha(_ index: Int) -> Double { progress(index) }
+
+    /// How many rows have begun to arrive.
+    public var revealed: Int { (0..<count).reduce(0) { $0 + (progress($1) > 0 ? 1 : 0) } }
+}
+
 /// Every element of the row at one instant of a transition.
 public struct NeuralTransitionFrame: Sendable, Equatable {
     /// The move's own progress, `0...1`, on the timeline of the move this frame was cut from.
@@ -294,6 +336,11 @@ public struct NeuralTransitionFrame: Sendable, Equatable {
     /// How much of every wire is drawn, and of every tie.
     public var wireDraw: Double
     public var tieDraw: Double
+    /// The zone filter panel (or chips) and the list's header: they fade in from 150 to 250 ms.
+    public var panelAlpha: Double
+    public var listHeaderAlpha: Double
+    /// The list's rows, each sliding in 6 points, 12 ms after the one above, from 130 ms.
+    public var listRows: NeuralRowReveal
     /// How far the readout still has to slide, and how visible it is.
     public var readoutOffset: NeuralPoint
     public var readoutAlpha: Double
@@ -350,7 +397,11 @@ extension NeuralTransition {
                 nodes: NeuralNodeReveal(
                     count: move.nodeCount, clock: 0, start: 0, stagger: 0, length: 1,
                     closing: !opening, uniform: shown),
-                wireDraw: shown, tieDraw: shown, readoutOffset: NeuralPoint(0, 0),
+                wireDraw: shown, tieDraw: shown, panelAlpha: shown, listHeaderAlpha: shown,
+                listRows: NeuralRowReveal(
+                    count: move.rowCount, clock: 0, start: 0, stagger: 0, length: 1,
+                    closing: !opening, uniform: shown),
+                readoutOffset: NeuralPoint(0, 0),
                 readoutAlpha: shown, footerAlpha: shown)
         }
 
@@ -381,6 +432,12 @@ extension NeuralTransition {
                     closing: false, uniform: nil),
                 wireDraw: NeuralTransition.easeOutCubic(window(t, 140, 300)),
                 tieDraw: NeuralTransition.easeOutCubic(window(t, 240, 320)),
+                panelAlpha: window(t, 150, 250), listHeaderAlpha: window(t, 150, 250),
+                listRows: NeuralRowReveal(
+                    count: move.rowCount, clock: t, start: 130,
+                    stagger: move.isStrained || move.rowCount < 2
+                        ? 0 : min(12, 110 / Double(move.rowCount - 1)),
+                    length: 80, closing: false, uniform: nil),
                 readoutOffset: NeuralPoint(travel.x * (1 - readoutWindow), travel.y * (1 - readoutWindow)),
                 readoutAlpha: readoutWindow,
                 footerAlpha: NeuralTransition.easeOutCubic(window(t, 240, 320)))
@@ -402,6 +459,10 @@ extension NeuralTransition {
                     stagger: move.isStrained ? 0 : 70, length: move.isStrained ? 110 : 40,
                     closing: true, uniform: nil),
                 wireDraw: 1 - window(t, 20, 140), tieDraw: 1 - window(t, 0, 60),
+                panelAlpha: 1 - outWindow, listHeaderAlpha: 1 - outWindow,
+                listRows: NeuralRowReveal(
+                    count: move.rowCount, clock: t, start: 0, stagger: 0, length: 100,
+                    closing: true, uniform: nil),
                 readoutOffset: NeuralPoint(travel.x * slide, travel.y * slide),
                 readoutAlpha: 1 - outWindow, footerAlpha: 1 - outWindow)
         }

@@ -406,7 +406,7 @@ struct NeuralReadoutBuilder {
             let count = counts[zone.rawValue]
             guard count > 0 else { return nil }
             return R.ZoneBar(
-                zone: zone, label: zone.label, count: count, fraction: Double(count) / Double(busiest))
+                zone: zone, label: zone.displayLabel, count: count, fraction: Double(count) / Double(busiest))
         }
         let firstAnswerLine = answer.map { NeuralReadoutText.firstLine($0) }.flatMap {
             $0.isEmpty ? nil : NeuralReadoutText.capped($0, limit: 200).text
@@ -528,7 +528,7 @@ struct NeuralReadoutBuilder {
 
     func zone(_ zone: NeuralZone) -> R.ZoneList {
         R.ZoneList(
-            zone: zone, label: zone.label,
+            zone: zone, label: zone.displayLabel,
             rows: steps.indices.filter { steps[$0].zone == zone }.map(row(at:)))
     }
 

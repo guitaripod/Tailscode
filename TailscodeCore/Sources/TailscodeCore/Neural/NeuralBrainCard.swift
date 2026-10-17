@@ -95,6 +95,14 @@ public struct NeuralBrainCard: Sendable, Equatable {
         }
     }
 
+    /// The agent's own first words, which are the card's third line when it said anything.
+    public struct Quote: Sendable, Equatable {
+        /// The model's family name: "Fable".
+        public let speaker: String
+        /// Its first note on one line, whole: `quoteLine(fittingChars:)` cuts it.
+        public let words: String
+    }
+
     /// The lights rise by this much while the pointer is on the card.
     public static let hoverLift = 1.15
 
@@ -109,6 +117,26 @@ public struct NeuralBrainCard: Sendable, Equatable {
     public let edge: Edge
     /// What the sentence a screen reader says for the whole card.
     public let spoken: String
+    /// What the agent said first, nil for a turn that said nothing.
+    public let quote: Quote?
+
+    public var hasQuote: Bool { quote != nil }
+
+    /// The speaker and the agent's first words, cut at a word to fit `characters`, with an
+    /// ellipsis: "Fable: Building it from the existing film rig\u{2026}". Nil for a turn that said
+    /// nothing.
+    public func quoteLine(fittingChars characters: Int) -> String? {
+        guard let quote else { return nil }
+        let room = max(characters - quote.speaker.count - 2, 8)
+        return Localized.text(
+            "%1$@: %2$@", quote.speaker, NeuralAccount.quote(of: quote.words, maxChars: room))
+    }
+
+    /// The card's third line: the agent's own words when it said anything, the generated
+    /// sentence of what it did otherwise.
+    public func thirdLine(fittingChars characters: Int) -> String {
+        quoteLine(fittingChars: characters) ?? digest(fitting: characters)
+    }
 
     /// The tone of the 3 pt edge: accent for a settled turn, danger for a failed one, attention
     /// for one waiting on the person, quiet for one that was stopped.
@@ -157,7 +185,7 @@ public struct NeuralBrainCard: Sendable, Equatable {
     public func fit(width: Double) -> Set<Part> {
         var parts: Set<Part> = [.picture, .headline, .replay, .rows]
         if width >= NeuralStageMetrics.cardZoneStripMinWidth, !chips.isEmpty { parts.insert(.zoneStrip) }
-        if width >= NeuralStageMetrics.cardDigestMinWidth, !digestClauses.isEmpty {
+        if width >= NeuralStageMetrics.cardDigestMinWidth, !digestClauses.isEmpty || quote != nil {
             parts.insert(.digest)
         }
         return parts
@@ -192,6 +220,11 @@ public struct NeuralBrainCard: Sendable, Equatable {
         self.eyeTone = eyeTone
         edge = Self.makeEdge(turn, census: census)
         spoken = NeuralReading.spoken(turn, now: now)
+        quote = NeuralAccount.firstSaid(in: turn.steps).map {
+            Quote(
+                speaker: NeuralAccount.speakerName(modelID: turn.modelID),
+                words: NeuralReadoutText.oneLine($0.text, limit: 240))
+        }
     }
 
     private static func sentence(_ clauses: [String]) -> String {
@@ -252,12 +285,12 @@ public struct NeuralBrainCard: Sendable, Equatable {
             default: break
             }
         }
-        return NeuralZone.allCases.compactMap { zone in
+        return NeuralZone.filterOrder.compactMap { zone in
             let count = counts[zone.rawValue]
             guard count > 0 else { return nil }
             let tone: NeuralNodeTone =
                 failed.contains(zone) ? .danger : waiting.contains(zone) ? .attention : .zone
-            return ZoneChip(zone: zone, label: zone.label, count: count, tone: tone)
+            return ZoneChip(zone: zone, label: zone.displayLabel, count: count, tone: tone)
         }
     }
 

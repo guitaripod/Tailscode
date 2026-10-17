@@ -106,10 +106,19 @@ struct NeuralTransitionTests {
     @Test("every position of the head moves one way, edge by edge")
     func travelEdges() {
         let open = move(.open)
-        var previous = open.frame(at: 0).traveller
+        let first = open.frame(at: 0).traveller
+        let last = open.frame(at: 1).traveller
+        var previous = first
         for p in samples.dropFirst() {
             let rect = open.frame(at: p).traveller
-            #expect(rect.x <= previous.x + 1e-9 && rect.maxX >= previous.maxX - 1e-9)
+            let edges: [(Double, Double, Double, Double)] = [
+                (previous.x, rect.x, first.x, last.x), (previous.maxX, rect.maxX, first.maxX, last.maxX),
+                (previous.y, rect.y, first.y, last.y), (previous.maxY, rect.maxY, first.maxY, last.maxY),
+            ]
+            for (before, now, from, to) in edges {
+                let sign: Double = to >= from ? 1 : -1
+                #expect(sign * (now - before) >= -1e-9)
+            }
             previous = rect
         }
     }
@@ -361,6 +370,79 @@ struct NeuralTransitionTests {
             #expect(frame.traveller.contains(point))
             previous = frame.designScale
         }
-        #expect(start.travellerScale > 0.2 && start.travellerScale < 0.25)
+        #expect(abs(start.travellerScale - metrics.card.picture.width / metrics.stage.width) < 1e-12)
+        #expect(end.travellerScale == 1)
+    }
+}
+
+@Suite("Neural transition of the third pass")
+struct NeuralTransitionListTests {
+    typealias T = NeuralTransition
+
+    private let metrics = NeuralStageMetrics.make(width: 1280, density: .comfortable)
+
+    private func move(_ direction: T.Direction = .open, reduce: Bool = false) -> T {
+        T.make(direction, metrics: metrics, nodeCount: 29, reduceMotion: reduce)
+    }
+
+    @Test("the picture lands on the head's small rect in the left column")
+    func lands() {
+        let open = move()
+        #expect(open.frame(at: 1).traveller == metrics.stage)
+        #expect(metrics.stage.x == 0 && metrics.stage.width == 346)
+        #expect(open.to.list == metrics.list && open.to.panel == metrics.filterChips)
+        let narrow = NeuralStageMetrics.make(width: 600, density: .comfortable)
+        let accordion = T.make(.open, metrics: narrow, nodeCount: 5)
+        #expect(accordion.frame(at: 1).traveller == narrow.stage)
+        #expect(accordion.frame(at: 1).traveller.x == 160)
+    }
+
+    @Test("the panel and the list header fade in from 150 to 250 ms")
+    func panel() {
+        let open = move()
+        func at(_ ms: Double) -> NeuralTransitionFrame { open.frame(at: ms / 320) }
+        #expect(at(149).panelAlpha == 0 && at(149).listHeaderAlpha == 0)
+        #expect(at(151).panelAlpha > 0)
+        #expect(at(200).panelAlpha > 0.4 && at(200).panelAlpha < 0.6)
+        #expect(at(250).panelAlpha == 1 && at(250).listHeaderAlpha == 1)
+        #expect(open.frame(at: 0).panelAlpha == 0 && open.frame(at: 1).panelAlpha == 1)
+    }
+
+    @Test("rows slide in 6 points from 130 ms, 12 ms apart, and are all in by the end")
+    func rows() {
+        let open = move()
+        func at(_ ms: Double) -> NeuralRowReveal { open.frame(at: ms / 320).listRows }
+        #expect(at(129).revealed == 0)
+        #expect(at(131).revealed == 1)
+        #expect(at(143).revealed == 2)
+        #expect(at(0).offset(0) == 6)
+        #expect(at(320).revealed == 9)
+        for index in 0..<9 { #expect(at(320).offset(index) == 0 && at(320).alpha(index) == 1) }
+        let mid = at(160)
+        #expect(mid.offset(0) < 6 && mid.offset(0) > 0)
+        let offsets = (0..<9).map { mid.offset($0) }
+        #expect(offsets == offsets.sorted())
+        #expect(NeuralRowReveal.travel == 6)
+    }
+
+    @Test("a tall list still lands every row by the end of the move")
+    func tallRows() {
+        let tall = NeuralStageMetrics.make(width: 1280, density: .comfortable, rows: 14)
+        let open = T.make(.open, metrics: tall, nodeCount: 5)
+        let end = open.frame(at: 1).listRows
+        #expect(end.count == 14)
+        #expect((0..<14).allSatisfy { end.progress($0) == 1 })
+    }
+
+    @Test("closing takes the panel and rows out with the readout, and reduced motion crossfades them")
+    func closing() {
+        let close = move(.close)
+        #expect(close.frame(at: 0).panelAlpha == 1 && close.frame(at: 100.0 / 220).panelAlpha == 0)
+        #expect(close.frame(at: 1).listRows.revealed == 0)
+        #expect(close.frame(at: 0).listRows.revealed == 9)
+        let fade = move(.open, reduce: true)
+        #expect(fade.frame(at: 0.5).panelAlpha == 0.5)
+        #expect(fade.frame(at: 0.5).listRows.offset(0) == 0)
+        #expect(fade.frame(at: 0.5).listRows.alpha(3) == 0.5)
     }
 }

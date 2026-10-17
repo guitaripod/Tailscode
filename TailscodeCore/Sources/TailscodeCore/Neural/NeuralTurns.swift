@@ -123,7 +123,7 @@ public enum NeuralTurns {
                 }
             }
         }
-        if running, answers.isEmpty, let tail = steps.last, tail.zone == .think {
+        if running, answers.isEmpty, let tail = steps.last, tail.zone == .think, tail.status == .ok {
             steps[steps.count - 1].status = .running
         }
         markRecovered(&steps)

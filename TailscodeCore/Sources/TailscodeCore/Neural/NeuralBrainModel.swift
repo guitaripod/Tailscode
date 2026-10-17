@@ -114,8 +114,8 @@ public struct NeuralBrainModel: Sendable {
     public private(set) var mode: Mode = .live
     /// Counts the changes a layout reads; a client keys what it memoises on it.
     public private(set) var revision: Int = 0
-    public private(set) var hovered: String?
-    public private(set) var pinned: String?
+    public internal(set) var hovered: String?
+    public internal(set) var pinned: String?
     /// The member of a ganglion that was asked for when the ganglion was pinned from the zone
     /// list; the readout shows that member while the ganglion is what is pinned.
     var pinnedMember: String?
@@ -128,6 +128,12 @@ public struct NeuralBrainModel: Sendable {
     public private(set) var isDiving = false
     /// The zone the head has dived into, which the readout lists; nil when it has surfaced.
     public internal(set) var divedZone: NeuralZone?
+    /// The step list, its filters and the keyboard's focus; its cursor is this model's pin. Drive
+    /// it through `browse(_:)`.
+    public internal(set) var browseState = NeuralBrowse.State(steps: [])
+    var pendingBrowseEffects: [NeuralBrowse.Effect] = []
+    /// The account this model last read; see `account(now:tz:answer:)`.
+    let accountCache = NeuralAccountCache()
     /// How long the pointer has rested on a node and how long ago it left one, for the readout.
     public internal(set) var hoverGrace = NeuralHoverGrace()
 
@@ -159,6 +165,8 @@ public struct NeuralBrainModel: Sendable {
         face = Self.makeFace(for: turn, context: context)
         meters = NeuralMeters(fill: context.fill, call: context.call)
         refreshState()
+        browseState = NeuralBrowse.State(steps: turn.steps, live: turn.outcome == .running)
+        syncGanglia()
     }
 
     /// Brings the model to the turn as the transcript now has it.
@@ -185,6 +193,7 @@ public struct NeuralBrainModel: Sendable {
         }
         if !structural && old.outcome != newTurn.outcome { refreshAttention() }
         refreshState()
+        refreshBrowse(previousCount: old.steps.count)
     }
 
     public var steps: [NeuralStep] { turn.steps }
@@ -630,7 +639,7 @@ public struct NeuralBrainModel: Sendable {
             waitingZone: waitingZone ?? (failing ? failureZone : nil))
     }
 
-    private mutating func refreshSelection() {
+    mutating func refreshSelection() {
         guard let id = selected, indexByID[id] != nil else {
             hotSteps = []
             hotRoutes = []

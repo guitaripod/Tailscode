@@ -71,14 +71,15 @@ struct NeuralReadoutModeTests {
         #expect(waiting.step(id: id)?.status == .waitingApproval)
     }
 
-    @Test("a pinned step outranks a hovered one, which outranks everything the turn calls for")
+    @Test("a hovered step is a preview that outranks the cursor, which outranks everything the turn calls for")
     func pinnedThenHovered() {
         var model = ReadoutFixtures.model()
         let first = model.steps[1].id
         let second = model.steps[2].id
         #expect(NeuralReadout.mode(for: model, hover: second) == .step(second))
         model.togglePin(first)
-        #expect(NeuralReadout.mode(for: model, hover: second) == .step(first))
+        #expect(NeuralReadout.mode(for: model, hover: second) == .step(second))
+        #expect(NeuralReadout.mode(for: model, hover: nil) == .step(first))
         model.togglePin(first)
         model.startReplay(now: 0)
         model.setDive(zone: .shell)
@@ -757,13 +758,13 @@ struct NeuralHoverGraceTests {
         #expect(live.readoutSubject(now: 2.6) == .now)
     }
 
-    @Test("a pinned step holds the readout whatever the pointer does")
+    @Test("the cursor holds the readout when the pointer is away, and a hover previews over it")
     func pinnedHolds() {
         var model = ReadoutFixtures.model()
         let pinned = model.steps[1].id
         model.togglePin(pinned)
         model.pointer(over: model.steps[3].id, at: 0)
-        #expect(model.readoutSubject(now: 1) == .step(pinned))
+        #expect(model.readoutSubject(now: 1) == .step(model.steps[3].id))
         model.pointer(over: nil, at: 2)
         #expect(model.readoutSubject(now: 9) == .step(pinned))
     }
@@ -893,8 +894,8 @@ struct NeuralReadoutReviewTests {
             NeuralTurnFixtures.user(0),
             NeuralTurnFixtures.message(1, [NeuralTurnFixtures.tool("Bash", ["command": .string("seq")], out: [F.longOutput(20)])]),
         ]))
-        let wide = NeuralStageMetrics.make(width: 1300, density: .comfortable)
-        let narrow = NeuralStageMetrics.make(width: 1000, density: .comfortable)
+        let wide = NeuralStageMetrics.make(width: 1920, density: .comfortable)
+        let narrow = NeuralStageMetrics.make(width: 380, density: .comfortable)
         #expect(wide.outputLinesShown == 8)
         #expect(narrow.outputLinesShown == 5)
         for (metrics, count) in [(wide, 8), (narrow, 5)] {
