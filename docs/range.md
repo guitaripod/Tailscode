@@ -50,11 +50,11 @@ Principles:
 - **`RangeBoard`**: for one conversation, the context tank, every window `QuotaBinding.governs` for the model on the next send (the others listed dimmed as *not this model*, with what would happen if you switched), and the cache; `earliest` is the first to run out. For the account: every provider's windows. `RangeReading` writes the words (headline, chip texts, the notification, the widget sub-line) in one place, as `ContextFill` and `QuotaSurface` already do.
 - **`QuotaTrail`** (phase 3): device-local samples per gauge (`tailscode.quotaTrail`, `SettingsFile` prefix on Linux), coalesced to one per five minutes for seven days. Gives `.recent` pace — a week's average hides a bursty Monday.
 
-### Wire (small, additive, optional — an older server just gets less)
+### Wire
 
-- claude-bridge / omp-bridge: `windowSeconds` on each gauge; the cache TTL on the message's context (`3600` or `300`, from `cache_creation`). The context window needs nothing: the Kit's own Claude table already states 1M for `fable`, `opus` and `sonnet`, and `ContextWindow.fromCatalog` matches an alias inside a dated id.
-- Kit: `UsageQuota.Gauge.windowSeconds: TimeInterval?` (decodes absent), `ChatMessage.cacheTTL: TimeInterval?`.
-- Phase 4: the bridge keeps the trail (`GET /usage/trail`), because a quota is the account's and every desk should agree on its pace — the same reasoning as session marks.
+No bridge change was needed. The window's length is read from the gauge's key and label (`QuotaWindowSpan`, so every server already speaks it), and claude-bridge already sends the two cache-write lifetimes apart on a message's `context`; the Kit was adding them back together. Kit 0.42.0 keeps the lifetime (`MessageUsage.cacheLifetime`, optional and additive: an older bridge or a saved transcript decodes with it absent), and `Kit.version` in `TailscodeCore/Package.swift` is 0.42.0 with it. The context window needs nothing: the Kit's own Claude table already states 1M for `fable`, `opus` and `sonnet`.
+
+Still open: the bridges keeping the trail (`GET /usage/trail`), because a quota is the account's and every desk should agree on its pace — the same reasoning as session marks. Until then each device paces from what it has seen itself, and a device that has watched nothing paces from the window's average.
 
 ### Surfaces
 
@@ -83,12 +83,12 @@ New `AppCapability.range` (area `status`). iOS, Mac and Linux each answer it; ch
 
 ## Order of work
 
-1. **Core pace math + tests** (`QuotaPace`, `ContextBurn`, `RangeBoard`, `RangeReading`), then chips, sheet and board on the three clients in parallel from specs that cite this document. No wire change.
-2. **Cache and composition**: Kit fields, bridge forwarding, `CacheWarmth`, `ContextComposition`.
-3. **`QuotaTrail`, the notification, the widget tick.**
-4. **Server-held trail** (cross-repo).
+1. **Core pace math + tests, then the clients** — built (`QuotaPace`, `ContextBurn`, `RangeBoard`, `RangeGlance`, `RangeReading`; the Range sheet, chips, usage board, strip, Home line on iOS/Mac/Linux).
+2. **Cache and composition** — built (`CacheWarmth`, `ContextComposition`, Kit 0.42.0).
+3. **`QuotaTrail`, the notification, the widget tick** — built (`RangeStore`, `RunningLow`, `WidgetGlance.Row.pace`).
+4. **Server-held trail** (cross-repo) — open.
 
-Tests that prove it: pace arithmetic as a table (the numbers in the mocks included), every gate above as a negative case, an on-pace row that stays exactly two lines, composition shares summing to the measured footprint, `ContextBurn` resetting at a seam, and a verdict that wobbles around a threshold never ringing twice.
+Tests that prove it: pace arithmetic as a table (the numbers in the mocks included), every gate above as a negative case, an on-pace row that stays exactly two lines, composition shares summing to the measured footprint, `ContextBurn` resetting at a seam, a verdict that wobbles around a threshold never ringing twice, and each client's selftest building the sheet from a fixture.
 
 ## Mocks, and what looking at them changed
 
@@ -98,8 +98,19 @@ Tests that prove it: pace arithmetic as a table (the numbers in the mocks includ
 - **The cache line carries tokens, not dollars** (the switching-cost rule), which also keeps the sheet free of a second money figure to argue with the spend sheet.
 - Fixed in the mocks, nothing to do with the design: the anatomy's labels collided, and the widget ring lost its figure to a CSS mask over the whole element (the same trap the usage remaster hit).
 
-## Open for Marcus
+## Built, and what real data changed
 
-- *Running low*: on by default for account-wide windows (the mock), or off until asked?
-- Phase 4 puts the trail on the bridges. Worth the cross-repo change, or is a per-device pace enough?
-- The sheet's name: *Range* (the car's word, used here) or *Pace*.
+The Core was run against this machine's live bridge (a real transcript, the real quotas) before the clients were wired, and it overturned four things:
+
+- **The weekly window was the news.** Real quotas read 83% of the weekly window used with 28% of the week gone: at that pace it runs out about eighteen hours later, four and a half days before it resets. That is the case the whole design exists for, and it showed on the first read.
+- **Turns are few and huge in an agent chat.** A conversation of three prompts can hold 500k tokens, so waiting for four turns before saying anything said nothing; a rate is now read from three (two growths), and still only from half full.
+- **The largest slice was mislabelled.** *System & tools* came out at 33–58% of the window on real chats, because the transcript shows neither the system prompt, the tool definitions, the memory files nor the model's thinking, and the character counts' error lands in the same slice. It is named *System & other* and the sheet says what is in it.
+- **An unnamed model hears every account-wide window.** That is right for a banner and wrong for a chip, so the clock chip needs a model it can name. A runway of one day also read "1 days"; it reads hours until two days.
+
+The clients each looked at their own build (the iOS simulator in demo mode, the Linux harness on a private display, the Mac only by selftest) and are recorded in their commits; the deviations they reported from the mocks are small (the verdict tinted as one sentence, the legend as rows, the usage board stating *too early to tell the pace* on a young window).
+
+## Decided
+
+- *Running low* is on by default, for account-wide windows only (`AppPreferences.notifyRunningLow`, and the desktops' equivalents).
+- The sheet is *Range*.
+- The trail is per device until the bridges keep it.
