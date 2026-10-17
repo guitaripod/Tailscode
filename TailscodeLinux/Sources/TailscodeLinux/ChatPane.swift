@@ -4110,7 +4110,7 @@ final class ChatPane: @unchecked Sendable {
     private static let gitFactsInterval: TimeInterval = 60
 
     private func tickTurnFacts() {
-        guard needsTicker else { return }
+        guard needsTicker, BackgroundGate.shared.isVisible else { return }
         let now = Date()
         let networkDue =
             lastNetworkFactsAt.map { now.timeIntervalSince($0) >= Self.networkFactsInterval }

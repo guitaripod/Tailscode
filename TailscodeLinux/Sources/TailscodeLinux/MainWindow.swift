@@ -1659,8 +1659,9 @@ final class MainWindow: @unchecked Sendable {
     private func startRefreshing() {
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
+                await BackgroundGate.shared.untilVisible()
                 await self?.refresh()
-                try? await Task.sleep(for: .seconds(10))
+                await BackgroundGate.shared.sleep(10)
             }
         }
     }
