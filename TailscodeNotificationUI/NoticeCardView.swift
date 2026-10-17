@@ -23,8 +23,21 @@ final class NoticeCardModel: ObservableObject {
     }
 }
 
+/// The card as the long look hosts it: pinned to the top of whatever height the system has given
+/// so far, so a look that is still growing to the card's size shows its start, not its middle.
+struct NoticeLongLookView: View {
+    @ObservedObject var model: NoticeCardModel
+    var onHeight: (CGFloat) -> Void
+
+    var body: some View {
+        NoticeCardView(model: model, onHeight: onHeight)
+            .frame(maxHeight: .infinity, alignment: .top)
+    }
+}
+
 struct NoticeCardView: View {
     @ObservedObject var model: NoticeCardModel
+    var onHeight: (CGFloat) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -40,6 +53,8 @@ struct NoticeCardView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }, action: onHeight)
     }
 
     private var presentation: NoticePresentation {
@@ -88,8 +103,9 @@ struct NoticeCardView: View {
         }
     }
 
+    /// The headline alone over a finished turn, whose facts the tiles below it already show.
     private func kindLabel(_ wire: NoticeWire, _ reading: NoticeReading) -> some View {
-        Text(reading.lead.uppercased())
+        Text((wire.kind == .done ? reading.headline : reading.lead).uppercased())
             .font(.system(.footnote, design: .monospaced).weight(.bold))
             .foregroundStyle(tint)
             .tracking(0.8)
@@ -130,7 +146,7 @@ struct NoticeCardView: View {
                     .font(.system(.footnote, design: .monospaced))
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 14))
+                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
             }
         case .question:
             Text(reading.passage).font(.title3.weight(.semibold))

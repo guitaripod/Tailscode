@@ -68,6 +68,8 @@ The notification service reads `notice`, writes the subtitle and body in the pho
 
 A notification content extension draws the card in the mock: the face, the chat's name and the server and agent it came from; a kind line in the tone's colour; for a finished turn four stat tiles (time, tools, added, removed) over up to nine lines of the answer; for a failure the error in a tinted block and what was asked; for an approval the command in a code block; for a question the question in large type over every option with the reason the agent gave for it. The default content is hidden because the card carries its own header. It reads only the notification, so it appears at once, offline, with no launch.
 
+The system opens the look at `UNNotificationExtensionInitialContentSizeRatio` of the width and grows it to the extension's `preferredContentSize`. The card reports its own height (`onGeometryChange` under `fixedSize`, so the proposal cannot shorten it) every time its content or width changes, and the controller sets `preferredContentSize` from that. A height measured once in `didReceive` left the first build's look stuck at the opening size with the stat tiles cut off. `--notice-long-look <sample>` in a debug build hosts the real `NotificationViewController` in a clipped card that opens at the ratio and follows `preferredContentSize` like the notification centre, and reproduced the clipping before the fix.
+
 ### The badge
 
 `NoticeBadge` mirrors the Missed list's count into the app group. The app sets the icon badge whenever the list changes; the service, which cannot see the list, counts up from the mirror when it badges a push, and the app's next look puts it right.
