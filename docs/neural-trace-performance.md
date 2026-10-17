@@ -4,10 +4,10 @@ What the head costs, what can be taken away without taking anything from the pic
 
 ## The answer
 
-- **Metal on iOS and the Mac, yes. OpenGL on Linux. Never the CPU.**
+- **Metal on iOS and the Mac. On Linux, the CPU: a delta compositor in Core. Not OpenGL.**
   - On iOS a layer cannot carry the per-channel tint this look is built on: `CALayer.filters`, `backgroundFilters` and `compositingFilter` are documented "not supported on layers in iOS". Without a shader the choices are one pre-tinted picture per theme and state, or thirteen masked layers (offscreen passes on every frame). Core Image kernels are Metal underneath.
   - It is the path the orb already takes (`PresenceOrbView` is an `MTKView` that pauses when its frame is `settled` and when it has no window), so the lifecycle, the `isPaused` discipline and the tempo (`CAFrameRateRange.activityTempo`) already exist.
-  - On Linux the orb is a **CPU cairo rasteriser** (`tailscode_orb_draw` fills an ARGB32 surface pixel by pixel). That cannot carry an 860 × 560 head at the panel's scale. The player already uses `GtkGLArea` with epoxy and `gtk_gl_area_queue_render`, so the brain goes on a `GtkGLArea` too, rendering on demand.
+  - Linux cannot use a `GtkGLArea`. `shim.c` records why the orb left it: on the vendor's EGL stack "an animating GL area leaks about seventy megabytes a minute, whatever the render callback does", and the orb is the reason the app draws its creature on the CPU. A brain that animates for the whole of a turn on that stack is out. The Linux client composites on the CPU: the rest picture of the head is composited once per theme and size, and each frame only the pixels that move are recomputed (the active zone's rectangle, the eye, and a sparse list of fibre pixels for the ripple), across cores, into a cairo surface. The same pure-Swift compositor in Core is the reference for the shader, the golden for the tests and the painter for share posters on every client.
 - **The fill cost is not the problem.** On an RTX PRO 6000 the whole head is 16 µs a frame at 1280 × 840. A phone GPU is a small fraction of that card, so the absolute figure does not carry over; what carries over is the ratios below. The costs that matter on a phone are frames drawn while nothing changes, memory and wake-ups, and those are policy, not shader work.
 
 ## Measured
@@ -86,7 +86,7 @@ The bundle carries the same bytes as ASTC (about 3.4 MB) in place of 0.6 MB of W
 8. **Let the render server run the nodes.** A waiting node's heartbeat and a running node's breath are `CAKeyframeAnimation`s pinned with `runAtActivityTempo()` (the app already does this for its marks), so they cost no app CPU. Past about 60 nodes the layers give way to instanced SDF shapes in the same pass.
 9. **Incremental layout.** `NeuralLayout.append` is O(1) per tool part (a per-zone counter for the slot, an edge to the previous group, a via dot when both sides fan); a transcript is rebuilt on every streamed token, so the brain's input changes only when a tool part appears or changes status, and never per token. Edges are de-duplicated by path (this brought a 174-step turn from about 170 wires to a few dozen).
 10. **Function constants for the variants** (light-theme spill, ripple, sweep, crunch, rainbow): the pipeline is specialised at creation so a state that does not use a term pays nothing for it.
-11. **Linux**: `GtkGLArea` on demand (`auto-render` off, `gtk_gl_area_queue_render`), the tick at the activity tempo through `gtk_widget_add_tick_callback`, the nodes as widgets. The static colours can be one `GdkTexture`.
+11. **Linux**: the Core CPU compositor behind three overlaid drawing areas (interior, nodes, front), the tick at the activity tempo through `gtk_widget_add_tick_callback`, a frame only when something moves, work split over cores with `concurrentPerform`, no GL area anywhere.
 12. **Governor**: `TileGovernor.animation(level:reducedMotion:)` already decides what a level may animate; calm draws everything, strained drops the ripple, sweep and crunch, critical keeps the glyph. Low-power mode counts as strained (the client reads `isLowPowerModeEnabled`; Core has no setting).
 
 ## Worth doing only if a phone profile asks for it
@@ -104,10 +104,10 @@ The bundle carries the same bytes as ASTC (about 3.4 MB) in place of 0.6 MB of W
 
 ## Verified, refuted, not found
 
-From the platform documentation: layer filters unsupported on iOS (verified); `maximumDrawableCount` 2 or 3, default 3, but from iOS 11.2 not 13 (corrected); `MTKView` on-demand drawing (verified); `preferredFrameRateRange` iOS 15 and macOS 14, `NSView.displayLink` macOS 14 (verified); ASTC on Apple2 and later, BC on Apple9 only with some Apple7 and Apple8 iPad parts (verified); sRGB conversion on sample and write in hardware (verified); function constants specialise at pipeline creation (verified); `GtkGLArea` `auto-render` and `queue_render` (verified).
+From the platform documentation: layer filters unsupported on iOS (verified); `maximumDrawableCount` 2 or 3, default 3, but from iOS 11.2 not 13 (corrected); `MTKView` on-demand drawing (verified); `preferredFrameRateRange` iOS 15 and macOS 14, `NSView.displayLink` macOS 14 (verified); ASTC on Apple2 and later, BC on Apple9 only with some Apple7 and Apple8 iPad parts (verified); sRGB conversion on sample and write in hardware (verified); function constants specialise at pipeline creation (verified). `GtkGLArea` has `auto-render` and `queue_render`, but is not used: see the Linux note above.
 
-Not found in Apple's documentation, so not relied on: that `half` arithmetic is faster (an unsourced rule of thumb; measure with Metal System Trace), that OpenGL 3.3 core is what `GtkGLArea` should request, and that GTK4 has no Vulkan widget.
+Not found in Apple's documentation, so not relied on: that `half` arithmetic is faster (an unsourced rule of thumb; measure with Metal System Trace).
 
 ## To measure next
 
-On the iPhone Air in Xcode's Metal System Trace: GPU time per frame for the interior and the front, with the assets as ASTC and mipmapped; energy over a minute of a live turn at the activity tempo against 60 fps; time to first picture on a cold open. On Linux, the same with a GPU timer query in the `GtkGLArea`.
+On the iPhone Air in Xcode's Metal System Trace: GPU time per frame for the interior and the front, with the assets as ASTC and mipmapped; energy over a minute of a live turn at the activity tempo against 60 fps; time to first picture on a cold open. On Linux, CPU time per frame of the delta compositor and the resident set across a long turn.

@@ -103,7 +103,7 @@ Shader uniforms (both programs): `uTone[13]`, `uInt[13]`, `uTime`, `uRipple`, `u
 2. **Assets**: re-render at 1536 with `scripts/neural-head/render.sh` (about 20 minutes, one pass at a time; set `NEURAL_DEVICE=cpu` when the GPU is busy), choose the compression per platform, one catalog per client.
 3. **iOS**: two `CAMetalLayer`s, the node layer between them, the run-line glyph, `PhaseIcon` replacement on the Lock Screen and expanded island, `NoticeFace` drawing, the share painter. Marcus installs and checks on the iPhone Air.
 4. **Mac**: the same renderers, installed with `scripts/install-macapp.sh`.
-5. **Linux**: two `GtkGLArea`s with epoxy, the nodes as widgets between, installed with `scripts/install-linuxapp.sh`.
+5. **Linux**: the Core CPU compositor in overlaid drawing areas, the nodes as widgets between, installed with `scripts/install-linuxapp.sh`.
 6. **Kit and bridge, optional**: stamp `tool_use` and `tool_result` times so a card can say how long a step took.
 
 ## Mocks, and what looking at them changed

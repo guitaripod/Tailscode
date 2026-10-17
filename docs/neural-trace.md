@@ -68,11 +68,11 @@ Two passes, no render-to-texture chain: a fullscreen triangle for the interior a
 
 ## Per client
 
-Core (toolkit-free, never `@MainActor`): `NeuralLayout` (slots, groups, edges, ties, ganglia), `NeuralReading` (every word), `TurnAnswer`, an `AppCapability` case with all three manifests answering. iOS and the Mac: two `CAMetalLayer`s and the nodes as layers between them. Linux: two `GtkGLArea`s (epoxy, GLSL ES 3.00 ports to GL 3.3 core) with the node widgets between. `TileGovernor` sheds it to the glyph at level 2 and above. A client decides only how a node is painted.
+Core (toolkit-free, never `@MainActor`): `NeuralLayout` (slots, groups, edges, ties, ganglia), `NeuralReading` (every word), `TurnAnswer`, an `AppCapability` case with all three manifests answering. iOS and the Mac: two `CAMetalLayer`s and the nodes as layers between them. Linux: a CPU delta compositor in Core drawn into overlaid drawing areas with the node widgets between (no GL area: the vendor EGL stack leaks while one animates). `TileGovernor` sheds it to the glyph at level 2 and above. A client decides only how a node is painted.
 
 ## Budget and honesty
 
-- Performance has its own document, `docs/neural-trace-performance.md`: Metal on the Apple clients and a `GtkGLArea` on Linux, the GPU timings on a real GPU, what each layer can lose, block compression, memory (35.7 MB now, about 4.5 MB proposed) and the ordered list of changes. A working frame is 16 µs on an RTX PRO 6000 at 1280 × 840; the phone's absolute figure is not measured.
+- Performance has its own document, `docs/neural-trace-performance.md`: Metal on the Apple clients and a CPU delta compositor on Linux (the vendor EGL stack leaks while a GL area animates), the GPU timings on a real GPU, what each layer can lose, block compression, memory (35.7 MB now, about 4.5 MB proposed) and the ordered list of changes. A working frame is 16 µs on an RTX PRO 6000 at 1280 × 840; the phone's absolute figure is not measured.
 - `ToolCall` has no per-call duration; only per-message times exist, so nothing is timed or sized by a duration. A "took 4 s" line needs the bridge to stamp `tool_use` and `tool_result` times from the JSONL.
 - The nested head in the mock is a still of the composite during the dive and is swapped for the live brain at the end; the real clients re-render the same layers at the smaller size.
 - Light themes are covered in `docs/neural-trace-states.md` (Rosé Pine Dawn is the reference).
