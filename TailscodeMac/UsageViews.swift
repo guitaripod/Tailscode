@@ -8,18 +8,6 @@ import TailscodeCore
 /// what 87% means.
 @MainActor
 enum UsageFormat {
-    static func severity(_ fraction: Double) -> String {
-        fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
-    }
-
-    static func severityColor(_ severity: String) -> NSColor {
-        switch severity {
-        case "danger": return MacTheme.Color.danger
-        case "warn": return MacTheme.Color.warning
-        default: return MacTheme.Color.secondaryLabel
-        }
-    }
-
     /// The strip's tones, which are meanings rather than severities: relief is the accent, money
     /// is ordinary ink, and a sentence about the reading is quieter than the numbers it qualifies.
     static func glanceColor(_ tone: QuotaGlance.Tone) -> NSColor {
@@ -58,68 +46,35 @@ enum UsageFormat {
         }
     }
 
-    /// The bar carries the severity, and only a healthy bar wears its provider's color — amber
-    /// past 60%, red near the wall, exactly `ProviderBrand.fillClass`.
-    static func fillColor(severity: String, slug: String?) -> NSColor {
-        guard severity == "ok" else { return severityColor(severity) }
-        return brandColor(slug) ?? MacTheme.Color.accent
+    /// The tank a gauge is, as Core reads it: a window with its pace, or a balance with its runway.
+    static func paceRow(
+        _ gauge: UsageQuota.Gauge, in quota: UsageQuota, slug: String?, trail: QuotaTrail
+    ) -> PaceRow {
+        isBalance(gauge)
+            ? PaceRow.balance(provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
+            : PaceRow.window(
+                provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
     }
 
-    static func gaugeBar(fraction: Double, width: CGFloat, height: CGFloat, fill: NSColor)
-        -> NSView
-    {
-        let clamped = min(max(fraction, 0), 1)
-        let track = NSView()
-        track.wantsLayer = true
-        track.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
-        track.layer?.cornerRadius = height / 2
-        track.translatesAutoresizingMaskIntoConstraints = false
-        let bar = NSView()
-        bar.wantsLayer = true
-        bar.layer?.backgroundColor = fill.cgColor
-        bar.layer?.cornerRadius = height / 2
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        track.addSubview(bar)
-        NSLayoutConstraint.activate([
-            track.widthAnchor.constraint(equalToConstant: width),
-            track.heightAnchor.constraint(equalToConstant: height),
-            bar.leadingAnchor.constraint(equalTo: track.leadingAnchor),
-            bar.trailingAnchor.constraint(lessThanOrEqualTo: track.trailingAnchor),
-            bar.topAnchor.constraint(equalTo: track.topAnchor),
-            bar.bottomAnchor.constraint(equalTo: track.bottomAnchor),
-            bar.widthAnchor.constraint(equalToConstant: (clamped * width).rounded()),
-        ])
-        return track
+    /// The word a lead wears: where a pace exists the register of its tail, and where it does not
+    /// the four words every client has always used for how hard a window is pressing.
+    static func verdict(of row: PaceRow, gauge: UsageQuota.Gauge) -> String {
+        guard row.tick != nil else { return QuotaSurface.Pressure(fraction: gauge.fraction).title }
+        switch row.tone {
+        case .danger: return Localized.text("Used up")
+        case .attention: return Localized.text("Will run out")
+        case .quiet: return Localized.text(row.news == nil ? "On pace" : "Mind the pace")
+        }
     }
 
-    /// The hero's bar: as wide as whatever holds it, filled by proportion rather than by a fixed
-    /// constant, on a visible track — the hero sits on a raised card, so a raised-coloured track
-    /// would vanish into it.
-    static func fullWidthBar(fraction: Double, height: CGFloat, fill: NSColor) -> NSView {
-        let clamped = min(max(fraction, 0), 1)
-        let track = NSView()
-        track.wantsLayer = true
-        track.layer?.backgroundColor = MacTheme.Color.separator.cgColor
-        track.layer?.cornerRadius = height / 2
-        track.translatesAutoresizingMaskIntoConstraints = false
-        let bar = NSView()
-        bar.wantsLayer = true
-        bar.layer?.backgroundColor = fill.cgColor
-        bar.layer?.cornerRadius = height / 2
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        track.addSubview(bar)
-        let proportional = bar.widthAnchor.constraint(
-            equalTo: track.widthAnchor, multiplier: clamped)
-        proportional.priority = MacTheme.Layout.belowWindowSize
-        NSLayoutConstraint.activate([
-            track.heightAnchor.constraint(equalToConstant: height),
-            bar.leadingAnchor.constraint(equalTo: track.leadingAnchor),
-            bar.topAnchor.constraint(equalTo: track.topAnchor),
-            bar.bottomAnchor.constraint(equalTo: track.bottomAnchor),
-            proportional,
-            bar.widthAnchor.constraint(greaterThanOrEqualToConstant: height),
-        ])
-        return track
+    /// The ink an amount wears: the register of the tank, with a quiet one left to the caller's
+    /// own ordinary ink.
+    static func amountInk(_ tone: ContextFill.Tone, quiet: NSColor) -> NSColor {
+        switch tone {
+        case .quiet: return quiet
+        case .attention: return MacTheme.Color.warning
+        case .danger: return MacTheme.Color.danger
+        }
     }
 
     /// Money without a ceiling is a prepaid balance rather than a window: nothing fills, nothing
@@ -212,7 +167,8 @@ final class UsageFooterView: NSView {
             folded = folded + [("", OllamaCloud.snapshot(for: reading))]
         }
         let glance = QuotaGlance.make(
-            from: folded, answeredAt: answeredAt, board: QuotaBoardStore.current)
+            from: folded, answeredAt: answeredAt, board: QuotaBoardStore.current,
+            trail: RangeStore.trail)
         isHidden = glance.isEmpty
         toolTip = glance.tooltip.isEmpty ? nil : glance.tooltip
         for line in glance.lines {
@@ -280,12 +236,16 @@ final class UsageFooterView: NSView {
         text.setContentCompressionResistancePriority(.init(200), for: .horizontal)
 
         var views: [NSView] = [dot, text, RowKit.spacer()]
-        if let fraction = line.fraction {
+        if let row = line.row {
             views.append(
-                UsageFormat.gaugeBar(
-                    fraction: fraction, width: 44, height: 4,
-                    fill: UsageFormat.fillColor(
-                        severity: Self.severity(of: line.tone), slug: line.slug)))
+                PaceBarView(
+                    row: row, surface: .glance, height: 4, width: 44,
+                    fillTone: Self.fillTone(of: line.tone), surround: MacTheme.Color.canvas))
+        } else if let fraction = line.fraction {
+            views.append(
+                PaceBarView(
+                    fraction: fraction, slug: line.slug, tone: Self.fillTone(of: line.tone),
+                    height: 4, width: 44))
         }
         if !line.trailing.isEmpty {
             let value = RowKit.label(
@@ -305,11 +265,11 @@ final class UsageFooterView: NSView {
 
     /// The bar wears the severity of the tone the dot and the number already wear, because the
     /// fraction alone calls anything above 85% danger while the glance keeps danger for the wall.
-    private static func severity(of tone: QuotaGlance.Tone) -> String {
+    private static func fillTone(of tone: QuotaGlance.Tone) -> ContextFill.Tone {
         switch tone {
-        case .danger: return "danger"
-        case .warn: return "warn"
-        default: return "ok"
+        case .danger: return .danger
+        case .warn: return .attention
+        default: return .quiet
         }
     }
 
@@ -676,12 +636,19 @@ final class UsagePanelViewController: NSViewController {
     private func heroCard(_ holding: QuotaHolding, _ gauge: UsageQuota.Gauge) -> NSView {
         let quota = holding.quota
         let slug = holding.slug
-        let fraction = min(max(gauge.fraction, 0), 1)
-        let severity = UsageFormat.severity(fraction)
+        let row = UsageFormat.paceRow(gauge, in: quota, slug: slug, trail: RangeStore.trail)
 
         let caption = RowKit.label(
             Localized.text("Tightest window"), font: MacTheme.Ramp.font(.metricLabel),
             color: MacTheme.Color.tertiaryLabel)
+        let verdict = RowKit.label(
+            UsageFormat.verdict(of: row, gauge: gauge).uppercased(),
+            font: MacTheme.Ramp.font(.metricLabel),
+            color: UsageFormat.amountInk(row.tone, quiet: MacTheme.Color.secondaryLabel))
+        verdict.setContentHuggingPriority(.required, for: .horizontal)
+        let captionRow = NSStackView(views: [caption, RowKit.spacer(), verdict])
+        captionRow.orientation = .horizontal
+        captionRow.alignment = .firstBaseline
         let name = RowKit.label(
             "\(quota.providerName) · \(gauge.label)", font: MacTheme.Ramp.font(.cardTitle),
             color: UsageFormat.brandColor(slug) ?? MacTheme.Color.label)
@@ -689,20 +656,18 @@ final class UsagePanelViewController: NSViewController {
         let amount = RowKit.label(
             UsageFormat.amount(for: gauge),
             font: MacTheme.Ramp.font(.metricLarge),
-            color: severity == "ok"
-                ? MacTheme.Color.label : UsageFormat.severityColor(severity))
+            color: UsageFormat.amountInk(row.tone, quiet: MacTheme.Color.label))
         amount.setContentHuggingPriority(.required, for: .horizontal)
         let nameRow = NSStackView(views: [name, RowKit.spacer(), amount])
         nameRow.orientation = .horizontal
         nameRow.alignment = .firstBaseline
         nameRow.spacing = MacTheme.Spacing.s
 
-        var views: [NSView] = [caption, nameRow]
+        var views: [NSView] = [captionRow, nameRow]
         if !UsageFormat.isBalance(gauge) {
             views.append(
-                UsageFormat.fullWidthBar(
-                    fraction: fraction, height: 9,
-                    fill: UsageFormat.fillColor(severity: severity, slug: slug)))
+                PaceBarView(
+                    row: row, surface: .opened, height: 9, track: MacTheme.Color.separator))
         }
         if let resets = gauge.resetsAt {
             let phrasing =
@@ -714,6 +679,7 @@ final class UsagePanelViewController: NSViewController {
                     phrasing, font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
+        if let words = PaceWords.line(for: row, opened: true) { views.append(words) }
         let hero = Self.cardStack()
         hero.layer?.borderWidth = 1
         hero.layer?.borderColor = MacTheme.Color.accent.withAlphaComponent(0.35).cgColor
@@ -747,8 +713,11 @@ final class UsagePanelViewController: NSViewController {
         header.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(header)
 
+        let trail = RangeStore.trail
         for gauge in quota.gauges {
-            card.addArrangedSubview(Self.gaugeBlock(gauge, slug: slug))
+            card.addArrangedSubview(
+                Self.gaugeBlock(
+                    gauge, row: UsageFormat.paceRow(gauge, in: quota, slug: slug, trail: trail)))
         }
 
         if !quota.details.isEmpty {
@@ -817,9 +786,7 @@ final class UsagePanelViewController: NSViewController {
     /// One gauge, and one exception to it: money with no ceiling is drawn as the number itself.
     /// A bar under a balance would have to invent the cap it fills against, and the card's own
     /// details already say what the money is made of — topped up, and granted.
-    private static func gaugeBlock(_ gauge: UsageQuota.Gauge, slug: String?) -> NSView {
-        let fraction = min(max(gauge.fraction, 0), 1)
-        let severity = UsageFormat.severity(fraction)
+    private static func gaugeBlock(_ gauge: UsageQuota.Gauge, row paceRow: PaceRow) -> NSView {
         let isBalance = UsageFormat.isBalance(gauge)
         let block = FillingStack()
         block.spacing = 3
@@ -831,7 +798,8 @@ final class UsagePanelViewController: NSViewController {
             UsageFormat.amount(for: gauge),
             font: MacTheme.Ramp.font(isBalance ? .metricValue : .panelFootnote),
             color: isBalance
-                ? UsageFormat.balanceColor(gauge) : UsageFormat.severityColor(severity))
+                ? UsageFormat.balanceColor(gauge)
+                : UsageFormat.amountInk(paceRow.tone, quiet: MacTheme.Color.secondaryLabel))
         let row = NSStackView(views: [title, RowKit.spacer(), amount])
         row.orientation = .horizontal
         row.spacing = MacTheme.Spacing.s
@@ -839,9 +807,7 @@ final class UsagePanelViewController: NSViewController {
 
         if !isBalance {
             block.addArrangedSubview(
-                UsageFormat.fullWidthBar(
-                    fraction: fraction, height: 6,
-                    fill: UsageFormat.fillColor(severity: severity, slug: slug)))
+                PaceBarView(row: paceRow, surface: .opened, height: 6))
         }
 
         if let resets = gauge.resetsAt {
@@ -852,6 +818,9 @@ final class UsagePanelViewController: NSViewController {
             block.addArrangedSubview(
                 RowKit.label(
                     phrasing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+        }
+        if let words = PaceWords.line(for: paceRow, opened: true) {
+            block.addArrangedSubview(words)
         }
         return block
     }

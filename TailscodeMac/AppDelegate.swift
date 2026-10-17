@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MacNotifier.shared.onOpen = { [weak controller] sessionID in
             controller?.openSession(withID: sessionID)
         }
+        MacNotifier.shared.onOpenUsage = { [weak controller] in controller?.presentUsageWindow() }
         FirstRunWindow.hooks = FirstRunWindow.Hooks(
             saved: { [weak controller] in
                 Task { [weak controller] in await controller?.sidebar.refresh() }

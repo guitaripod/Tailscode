@@ -55,6 +55,8 @@ final class MainWindowController: NSWindowController {
     private var usageWindow: UsageWindowController?
     private var spendPopover: NSPopover?
     private var contextPopover: NSPopover?
+    private weak var rangePanel: RangePanelViewController?
+    private weak var rangePane: TranscriptViewController?
     private var gitPopover: NSPopover?
     /// Diff windows outlive the popover that opened them, so the controller holds them: a window
     /// controller nobody retains closes itself the moment the stack unwinds.
@@ -816,8 +818,8 @@ final class MainWindowController: NSWindowController {
             pane.scrollToAgent(id)
         case .spend:
             presentSpend(for: pane)
-        case .context:
-            presentContext(for: pane)
+        case .range:
+            presentRange(for: pane)
         case .git:
             presentGit(for: pane)
         case .reconnect:
@@ -840,25 +842,33 @@ final class MainWindowController: NSWindowController {
         spendPopover = popover
     }
 
-    /// The whole window behind the band's one ring, off the band itself, with Compact as the one
-    /// thing it offers to do — through the pane's ordinary preflight.
-    private func presentContext(for pane: TranscriptViewController) {
-        guard let fill = pane.contextFill else { return }
+    /// The range of the conversation, off the band itself: which tank runs out first and the tanks
+    /// behind it, with Compact as the one thing it offers to do — through the pane's ordinary
+    /// preflight — and a press on what fills the window taking the transcript to it.
+    private func presentRange(for pane: TranscriptViewController) {
+        guard let snapshot = pane.rangeSnapshot() else { return }
         contextPopover?.close()
         let canCompact = pane.canCompact
-        let panel = ContextPanelViewController(
-            fill: fill, title: pane.currentEntry?.session.title ?? Localized.text("This conversation"),
+        let panel = RangePanelViewController(
+            title: pane.currentEntry?.session.title ?? Localized.text("This conversation"),
+            snapshot: snapshot, read: { [weak pane] in pane?.rangeSnapshot() },
             compact: canCompact
                 ? { [weak self, weak pane] in
                     self?.contextPopover?.close()
                     pane?.presentCompactPreflight()
-                } : nil)
+                } : nil,
+            reveal: { [weak self, weak pane] item in
+                self?.contextPopover?.close()
+                pane?.scrollToMessage(item.messageID, part: item.id)
+            })
         let popover = NSPopover()
         popover.behavior = .transient
         popover.ground(panel)
         let anchor = pane.bandAnchor
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         contextPopover = popover
+        rangePanel = panel
+        rangePane = pane
     }
 
     /// The repository behind the branch on the band, in a popover off the band itself. A path or a
@@ -1663,10 +1673,22 @@ final class MainWindowController: NSWindowController {
         } else {
             lastQuotas = snapshot
             quotasAnsweredAt = Date()
+            observeRange(snapshot)
         }
         sidebar.renderUsage(lastQuotas, answeredAt: quotasAnsweredAt)
         publishWidgetSnapshot()
         return true
+    }
+
+    /// What the account's windows did, written down for the pace to be read from, and the ones on
+    /// course to run out before they reset said once. A provider two servers report is one account,
+    /// so the sample is taken from the rollup rather than from each report.
+    private func observeRange(_ reports: [(String, UsageQuota)]) {
+        guard !reports.isEmpty else { return }
+        let notices = RangeStore.observe(
+            quotas: QuotaRollup.account(from: reports).map(\.quota),
+            announce: MacNotifier.notifyRunningLow)
+        for notice in notices { MacNotifier.shared.raiseRunningLow(notice) }
     }
 
     /// The quotas outlive the window they were fetched in. Every poll that came back with numbers
@@ -1735,11 +1757,15 @@ final class MainWindowController: NSWindowController {
 
     /// The usage board, one window per app, held in a property because a window presented from a
     /// local is dead on arrival — released while shown, its buttons do nothing.
-    private func presentUsageWindow() {
+    func presentUsageWindow() {
         if usageWindow == nil {
             usageWindow = UsageWindowController(
                 initial: lastQuotas,
-                refresh: { await Self.collectQuotas(profiles: ServerDirectory.shared.profiles) },
+                refresh: { [weak self] in
+                    let fresh = await Self.collectQuotas(profiles: ServerDirectory.shared.profiles)
+                    self?.observeRange(fresh)
+                    return fresh
+                },
                 onAnalytics: { [weak self] in self?.presentAnalytics() })
         }
         usageWindow?.present()
@@ -2602,7 +2628,10 @@ extension MainWindowController: PaneHost {
     func paneToast(_ text: String) { toast(text) }
     func paneDialToast(_ text: String) { dialToast(text) }
     func paneAuraChanged() { sidebar.refreshOrb() }
-    func paneStateChanged(_ pane: TranscriptViewController) { sidebar.notePresenceChanged() }
+    func paneStateChanged(_ pane: TranscriptViewController) {
+        sidebar.notePresenceChanged()
+        if rangePane === pane { rangePanel?.stateChanged() }
+    }
     func paneSlotChanged(_ pane: TranscriptViewController) { splitPanes.persist() }
 
     func pane(_ pane: TranscriptViewController, pressedBand action: StatusFacts.Action) {

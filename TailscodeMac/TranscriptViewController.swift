@@ -2984,7 +2984,7 @@ final class TranscriptViewController: NSViewController {
             state: state, agents: agents, usage: usage,
             attachments: composer.attachmentCount, context: contextFill, quotas: quotas,
             queued: queue.count, spend: spend, git: git, model: composer.activeModelID,
-            selection: composer.activeSelection)
+            selection: composer.activeSelection, trail: RangeStore.trail)
         lastFacts = facts
         noteBrainContext(facts)
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
@@ -3236,6 +3236,18 @@ final class TranscriptViewController: NSViewController {
                 return
             }
         }
+    }
+
+    /// The row a message made, found by the part the row carries in its key when there is one and
+    /// by the message alone when the part was folded into another row. A message the window does
+    /// not hold has no row, and nothing moves.
+    func scrollToMessage(_ messageID: String, part itemID: String) {
+        let index =
+            renderedRows.firstIndex { $0.key == itemID }
+            ?? renderedRows.firstIndex { $0.key.hasPrefix(itemID) }
+            ?? renderedRows.firstIndex { $0.key.hasPrefix("\(messageID):") }
+        guard let index else { return }
+        scrollToRow(at: index)
     }
 
     func scrollToNewestAgent() {

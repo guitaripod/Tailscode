@@ -160,7 +160,7 @@ final class StatusBandView: NSView {
     }
 
     private func update(_ view: NSView, segment: StatusFacts.Segment) {
-        write(segment.text, to: view, css: segment.css, parts: segment.parts)
+        write(Self.words(segment), to: view, css: segment.css, parts: segment.parts)
         name(view, for: segment)
         ring(segment, on: view)
         animate(segment)
@@ -175,8 +175,37 @@ final class StatusBandView: NSView {
     }
 
     private static func spoken(_ segment: StatusFacts.Segment) -> String {
-        let text = segment.icon == nil ? segment.text : String(segment.text.dropFirst())
+        let text =
+            segment.icon == nil && symbol(for: segment) == nil
+            ? segment.text : String(segment.text.dropFirst())
         return text.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The SF Symbol a segment wears in place of the character Core leads its words with, for the
+    /// two range chips whose glyphs the text clients draw as characters.
+    private static func symbol(for segment: StatusFacts.Segment) -> String? {
+        switch segment.id {
+        case "wall": return "clock"
+        case "cache": return "snowflake"
+        default: return nil
+        }
+    }
+
+    /// What a segment's button says: its words, less the leading character when a symbol is
+    /// drawn in front of them instead.
+    private static func words(_ segment: StatusFacts.Segment) -> String {
+        guard symbol(for: segment) != nil else { return segment.text }
+        return String(segment.text.dropFirst()).trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func symbolImage(_ name: String, ink: NSColor) -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(
+            pointSize: MacTheme.Ramp.font(.segment).pointSize, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [ink]))
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
+        image?.isTemplate = false
+        return image
     }
 
     /// A segment about how full something is wears a ring filled that far, in its own ink, drawn
@@ -184,6 +213,12 @@ final class StatusBandView: NSView {
     /// before the words the way the activity icon does on a live segment.
     private func ring(_ segment: StatusFacts.Segment, on view: NSView) {
         guard let button = view as? BandButton else { return }
+        if let name = Self.symbol(for: segment) {
+            button.image = Self.symbolImage(name, ink: Self.color(for: segment.css))
+            button.imagePosition = .imageLeading
+            button.imageHugsTitle = true
+            return
+        }
         guard let fraction = segment.meter else {
             button.image = nil
             return
@@ -236,7 +271,7 @@ final class StatusBandView: NSView {
         switch segment.kind {
         case .plain:
             let label = RowKit.label(
-                segment.text, font: MacTheme.Ramp.font(.segment),
+                Self.words(segment), font: MacTheme.Ramp.font(.segment),
                 color: Self.color(for: segment.css))
             if let parts = segment.parts { label.attributedStringValue = Self.tinted(parts) }
             label.setContentCompressionResistancePriority(.init(700), for: .horizontal)
@@ -251,7 +286,8 @@ final class StatusBandView: NSView {
                 self.perform?(action)
             }
             button.attributedTitle =
-                segment.parts.map(Self.tinted) ?? Self.title(segment.text, css: segment.css)
+                segment.parts.map(Self.tinted)
+                ?? Self.title(Self.words(segment), css: segment.css)
             ring(segment, on: button)
             button.setAccessibilityRole(.button)
             button.setAccessibilityHelp(Localized.text("Opens details"))

@@ -85,6 +85,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try RangeChecks.run()
+            report("range: \(checks) claims hold — every tank a row, a bar as tall as a plain one, words only as news")
+        } catch {
+            report("range: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkCompletion()
             report("completion: \(checks) queries rank and gate")
         } catch {

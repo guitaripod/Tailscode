@@ -539,6 +539,12 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 subtitle: Localized.text(
                     "An approval to give or a question to answer; withdrawn once it is answered"),
                 value: MacNotifier.notifyNeedsYou, action: #selector(notifyNeedsChanged)))
+        column.addArrangedSubview(
+            switchRow(
+                title: Localized.text("Running low"),
+                subtitle: Localized.text(
+                    "A usage window is on course to run out before it resets. Account-wide windows only, once per window"),
+                value: MacNotifier.notifyRunningLow, action: #selector(notifyRunningLowChanged)))
         let test = NSButton(
             title: Localized.text("Test"), target: self, action: #selector(sendTestNotification))
         column.addArrangedSubview(
@@ -822,6 +828,10 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     @objc private func notifyNeedsChanged(_ sender: NSButton) {
         MacNotifier.setNotifyNeedsYou(sender.state == .on)
+    }
+
+    @objc private func notifyRunningLowChanged(_ sender: NSButton) {
+        MacNotifier.setNotifyRunningLow(sender.state == .on)
     }
 
     @objc private func sendTestNotification() {

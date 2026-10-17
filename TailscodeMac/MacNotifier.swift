@@ -11,6 +11,7 @@ final class MacNotifier: NSObject {
     static let shared = MacNotifier()
 
     var onOpen: ((String) -> Void)?
+    var onOpenUsage: (() -> Void)?
     private var watch = ActivityWatch()
 
     static var notifyTurnComplete: Bool {
@@ -19,6 +20,14 @@ final class MacNotifier: NSObject {
 
     static var notifyNeedsYou: Bool {
         UserDefaults.standard.object(forKey: "pref.notify.approvals") as? Bool ?? true
+    }
+
+    static var notifyRunningLow: Bool {
+        UserDefaults.standard.object(forKey: "pref.notify.runningLow") as? Bool ?? true
+    }
+
+    static func setNotifyRunningLow(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: "pref.notify.runningLow")
     }
 
     static func setNotifyTurnComplete(_ value: Bool) {
@@ -147,6 +156,22 @@ final class MacNotifier: NSObject {
             content.attachments = [attachment]
         }
         deliver(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+    }
+
+    /// A usage window on course to run out before it resets, said once. It answers to its own switch
+    /// and only while the app is in the background, carries no buttons because there is nothing a
+    /// button could do that opening the usage window does not, and a click brings that window up.
+    func raiseRunningLow(_ notice: RunningLowNotice) {
+        guard !NSApp.isActive, Self.notifyRunningLow else { return }
+        let content = UNMutableNotificationContent()
+        content.title = notice.title
+        content.body = notice.body
+        content.sound = .default
+        content.threadIdentifier = "range"
+        content.userInfo = ["opens": "usage"]
+        deliver(
+            UNNotificationRequest(
+                identifier: "range:\(notice.id)", content: content, trigger: nil))
     }
 
     /// A time the person asked to be told about. It answers to neither notification switch and is
@@ -303,6 +328,7 @@ extension MacNotifier: UNUserNotificationCenterDelegate {
         let payload = content.userInfo["permission"] as? String
         let profileID = content.userInfo["profileID"] as? String
         let sessionID = content.userInfo["sessionID"] as? String
+        let opensUsage = content.userInfo["opens"] as? String == "usage"
         let identifier = response.notification.request.identifier
         let action = response.actionIdentifier
         nonisolated(unsafe) let complete = completionHandler
@@ -316,6 +342,9 @@ extension MacNotifier: UNUserNotificationCenterDelegate {
                 if let sessionID {
                     NSApp.activate(ignoringOtherApps: true)
                     MacNotifier.shared.onOpen?(sessionID)
+                } else if opensUsage {
+                    NSApp.activate(ignoringOtherApps: true)
+                    MacNotifier.shared.onOpenUsage?()
                 }
             }
             complete()
