@@ -41,8 +41,10 @@ public struct ContextBurn: Sendable, Equatable {
     public let biggest: Addition?
 
     public static let recentTurns = 5
-    /// Three growths are the least a rate is read from.
-    public static let minTurns = 4
+    /// Two growths are the least a rate is read from: an agent's turn is a whole piece of work,
+    /// so a conversation that has run three of them has told us a good deal about what the next
+    /// costs.
+    public static let minTurns = 3
     public static let minFill = 0.5
     /// Beyond this many turns there is nothing to say, so nothing is said.
     public static let newsworthyTurns = 20

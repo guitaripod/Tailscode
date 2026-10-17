@@ -50,8 +50,10 @@ public struct RangeGlance: Sendable, Equatable {
         trail: QuotaTrail? = nil, now: Date = Date(), calendar: Calendar = .current
     ) -> RangeGlance {
         var wall: Wall?
+        let known = model != nil || selection != nil || name != nil
         for window in RangeWindows.read(
-            quotas: quotas, model: model, named: name, selection: selection) where window.governs
+            quotas: quotas, model: model, named: name, selection: selection)
+        where known && window.governs
         {
             guard
                 let pace = QuotaPace.read(

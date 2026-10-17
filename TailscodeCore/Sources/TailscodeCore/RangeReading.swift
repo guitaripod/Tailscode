@@ -259,7 +259,7 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
     }
 
     private static func runway(_ days: Double) -> String {
-        if days < 1 { return Localized.text("%d hours", max(1, Int((days * 24).rounded()))) }
+        if days < 2 { return Localized.text("%d hours", max(2, Int((days * 24).rounded()))) }
         if days < 100 { return Localized.text("%d days", Int(days.rounded())) }
         return Localized.text("months")
     }

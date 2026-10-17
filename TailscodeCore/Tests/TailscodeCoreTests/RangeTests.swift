@@ -90,9 +90,13 @@ struct ContextBurnTests {
         #expect(roomy.growth == 10_000)
         #expect(roomy.turnsLeft == nil)
         let young = try #require(
-            ContextBurn.read(messages: conversation([100_000, 120_000, 148_000]), fill: fill(148_000)))
+            ContextBurn.read(messages: conversation([120_000, 148_000]), fill: fill(148_000)))
         #expect(young.growth == nil)
         #expect(young.turnsLeft == nil)
+        let agentic = try #require(
+            ContextBurn.read(messages: conversation([100_000, 120_000, 148_000]), fill: fill(148_000)))
+        #expect(agentic.growth == 24_000)
+        #expect(agentic.turnsLeft == 2)
     }
 
     @Test("A footprint that falls is a refill: nothing before it is carried into the rate")
@@ -219,6 +223,18 @@ struct ContextCompositionTests {
         #expect(top.turn == 1)
     }
 
+    @Test("Whatever the transcript does not show is named for what it is")
+    func unseenIsNamed() throws {
+        let messages = [
+            user("u0", text: "q"),
+            assistant("a0", footprint: 90_000, at: 5, parts: [MessagePart(id: "t", kind: .text("a"))]),
+        ]
+        let composition = try #require(ContextComposition.read(messages: messages, fill: fill(90_000)))
+        #expect(composition.slices.map(\.label) == ["System & other"])
+        #expect(composition.slices.first?.share == 1)
+        #expect(ContextComposition.note.contains("thinking"))
+    }
+
     @Test("Only a measured fill is divided")
     func needsAMeasuredTotal() {
         let estimated = ContextFill(used: 50_000, window: 200_000, model: nil, basis: .estimated)
@@ -261,6 +277,8 @@ struct RangeGlanceTests {
         #expect(wall.window == "5-hour session")
         #expect(abs(wall.wallAt.timeIntervalSince(now) - 4891) < 2)
         #expect(sonnet.wallWords(clock: clock) == "Wall 09:21")
+
+        #expect(RangeGlance.read(messages: [], fill: nil, quotas: [busyAccount], model: nil, now: now).wall == nil)
 
         let opusOnly = claude([gauge("weekly_scoped", "Weekly · Opus", used: 0.71, resetsIn: 63 * hour)])
         #expect(RangeGlance.read(messages: [], fill: nil, quotas: [opusOnly], model: "claude-sonnet-5-5", now: now).wall == nil)

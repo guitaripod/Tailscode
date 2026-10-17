@@ -10,8 +10,10 @@ import Foundation
 /// total**: a character count is a rough weight and the sum of rough weights is not to be trusted,
 /// but the total is, so the shares are a way of dividing a measured thing and are always marked as
 /// estimates of it. What the transcript cannot account for — the system prompt, tool definitions
-/// and memory files, which are in every request and in no message — is read from the first request
-/// of this life of the window: what it was handed minus what the first turn's words weigh.
+/// and memory files, and the model's own thinking, which are in every request and in no message — is
+/// read from the first turn of this life of the window: what it was handed minus what the first
+/// turn's visible words weigh. It is named for what it is, *System & other*, because it holds every
+/// error the character counts make as well.
 public struct ContextComposition: Sendable, Equatable {
     public struct Slice: Sendable, Equatable, Identifiable {
         public let id: String
@@ -36,6 +38,15 @@ public struct ContextComposition: Sendable, Equatable {
     public let total: Int
     public let slices: [Slice]
     public let items: [Item]
+
+    /// What the largest slice is made of, said once beside the chart: the system prompt, the tool
+    /// definitions, memory files and the model's own thinking are in every request and in no
+    /// message a person can see, so they land in *System & other* with whatever the character
+    /// counts get wrong.
+    public static var note: String {
+        Localized.text(
+            "System prompt, tool definitions, memory files and the model's thinking are in every request and in no message you can see. Shares are estimated from the transcript and scaled to the measured total.")
+    }
 
     /// Rough tokens per character of text, code and prose together.
     private static let charsPerToken = 4
@@ -137,7 +148,7 @@ public struct ContextComposition: Sendable, Equatable {
         let scale = estimate == 0 ? 0 : Double(total - systemTokens) / Double(estimate)
 
         var rows: [(id: String, label: String, tokens: Int)] = [
-            ("system", Localized.text("System & tools"), systemTokens),
+            ("system", Localized.text("System & other"), systemTokens),
             ("you", Localized.text("You"), Int((Double(weights.you) * scale).rounded())),
             ("answers", Localized.text("Answers"), Int((Double(weights.answers) * scale).rounded())),
             ("tools", Localized.text("Tool output"), Int((Double(weights.tools) * scale).rounded())),
