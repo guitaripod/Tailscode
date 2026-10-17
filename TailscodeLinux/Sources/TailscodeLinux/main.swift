@@ -8,6 +8,7 @@ import TailscodeCore
 /// Read before anything asks a preference: the durable copy of the app's own state lives in a
 /// file, not in the executable-keyed defaults store a reinstall abandons.
 tailscode_malloc_tune()
+_ = tailscode_crash_logger_install(AppLog.current.path, TailscodeVersion.current)
 Trace.stamp("main")
 SettingsFile.load()
 

@@ -116,4 +116,17 @@ struct SelfDiagnosisTests {
         #expect(BackgroundCadence.period(15, level: .critical) == 90)
         #expect(BackgroundCadence.period(15, level: .loaded) == 15)
     }
+
+    @Test("A crash is a capture the reader groups with its stack")
+    func crashCapture() {
+        let log = """
+            2026-10-17T20:21:42.000Z [lifecycle] launch 1.78
+            2026-10-17T20:21:45.000Z [lifecycle] watchdog: crash signal 11 at 0x18 · build 1.78
+            2026-10-17T20:21:45.000Z [lifecycle] watchdog: stack 1/1 · main: libgtk-4.so.1+0x1a4127 tailscode+0x6ecdae
+            """
+        let groups = StackReport.captures(in: log, last: 3)
+        #expect(groups.count == 1)
+        #expect(groups.first?.count == 2)
+        #expect(groups.first?.first?.contains("crash signal 11") == true)
+    }
 }

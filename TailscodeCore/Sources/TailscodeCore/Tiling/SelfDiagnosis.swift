@@ -147,7 +147,7 @@ public enum StackReport {
             if body.hasPrefix("stack ") {
                 guard !groups.isEmpty else { continue }
                 groups[groups.count - 1].append(String(line))
-            } else if body.hasPrefix("sustained busy") || body.hasPrefix("loop silent") {
+            } else if body.hasPrefix("sustained busy") || body.hasPrefix("loop silent") || body.hasPrefix("crash") {
                 groups.append([String(line)])
             }
         }

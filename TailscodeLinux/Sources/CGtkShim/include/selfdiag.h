@@ -25,4 +25,10 @@ int tailscode_stack_sample_main(int timeout_ms, uintptr_t *out, int capacity);
 /// which case `module` is "?" and the offset is the address itself.
 int tailscode_stack_resolve(uintptr_t address, char *module, size_t capacity, uint64_t *offset);
 
+/// Replaces the runtime's crash reporter with one that writes the faulting thread's frames to the
+/// app log (and stderr) at once and lets the default action write the core. Call once, on the main
+/// thread, early; `build` is the version the frames resolve against. Returns how many signals it
+/// took over.
+int tailscode_crash_logger_install(const char *log_path, const char *build);
+
 #endif
