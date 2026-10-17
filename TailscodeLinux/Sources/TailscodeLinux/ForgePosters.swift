@@ -105,4 +105,10 @@ final class ForgePosterLibrary: @unchecked Sendable {
         textures = [:]
         wanted = []
     }
+
+    deinit {
+        for bits in textures.values {
+            if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
+        }
+    }
 }

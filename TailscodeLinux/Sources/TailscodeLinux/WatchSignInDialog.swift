@@ -37,10 +37,10 @@ enum WatchSignInDialog {
         gtk_box_append(ptr(content), buttons)
 
         let bits = Bits(
-            window: UInt(bitPattern: window), heading: UInt(bitPattern: heading),
-            detail: UInt(bitPattern: detail), instruction: UInt(bitPattern: instruction),
-            code: UInt(bitPattern: code), note: UInt(bitPattern: note),
-            buttons: UInt(bitPattern: buttons))
+            window: Gtk.WeakWidget(window), heading: Gtk.WeakWidget(heading),
+            detail: Gtk.WeakWidget(detail), instruction: Gtk.WeakWidget(instruction),
+            code: Gtk.WeakWidget(code), note: Gtk.WeakWidget(note),
+            buttons: Gtk.WeakWidget(buttons))
 
         /// The flow is polled for as long as the window is up and no longer. GTK gives no
         /// destroy-with-a-Swift-value hook, so the window's own signal cancels it — a sheet closed
@@ -125,20 +125,20 @@ enum WatchSignInDialog {
         if case .granted = flow.step { onFinished() }
     }
 
-    /// Widget pointers cross a `@Sendable` boundary as bit patterns, the way every other async
-    /// refill in this client does — a raw pointer is not Sendable and a captured one outlives the
-    /// widget it named.
+    /// Widgets cross a `@Sendable` boundary as weak holds, the way every other async refill in
+    /// this client does — a raw pointer is not Sendable and a captured one outlives the widget it
+    /// named; a hold reads nil once the window is gone.
     private struct Bits: Sendable {
-        let window: UInt
-        let heading: UInt
-        let detail: UInt
-        let instruction: UInt
-        let code: UInt
-        let note: UInt
-        let buttons: UInt
+        let window: Gtk.WeakWidget
+        let heading: Gtk.WeakWidget
+        let detail: Gtk.WeakWidget
+        let instruction: Gtk.WeakWidget
+        let code: Gtk.WeakWidget
+        let note: Gtk.WeakWidget
+        let buttons: Gtk.WeakWidget
 
-        func widget(_ value: UInt) -> UnsafeMutablePointer<GtkWidget>? {
-            UnsafeMutableRawPointer(bitPattern: value).map { ptr($0) }
+        func widget(_ hold: Gtk.WeakWidget) -> UnsafeMutablePointer<GtkWidget>? {
+            hold.widget
         }
     }
 

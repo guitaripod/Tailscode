@@ -42,7 +42,18 @@ struct TileResourceLimitsTests {
         #expect(own.path.hasPrefix("/user.slice/"))
         #expect(own.isOwn)
         #expect(CgroupUnit(path: "/", name: "app-io.github.guitaripod.Tailscode-7.service").isOwn)
+        let instance = "app-io.github.guitaripod.Tailscode@c3bde4b1845c46d69b6bcec0aaba9e0c.service"
+        #expect(CgroupUnit(path: "/x/" + instance, name: instance).isOwn)
+        #expect(CgroupUnit(path: "/x/a.scope", name: "app-io.github.guitaripod.Tailscode@0f3a.scope").isOwn)
+        #expect(CgroupUnit(path: "/x/a.service", name: "app-io.github.guitaripod.Tailscode.service").isOwn)
         for foreign in [
+            "app-ghostty-surface-transient-502496.scope",
+            "app-io.github.guitaripod.Tailscode@.service",
+            "app-io.github.guitaripod.Tailscode@xyz.service",
+            "app-io.github.guitaripod.Tailscode.scope",
+            "app-io.github.guitaripod.Tailscode@c3bd.slice",
+            "app-io.github.guitaripod.TailscodeX@c3bd.service",
+            "app-io.github.guitaripod.Tailscode-1234@c3bd.service",
             "app-org.kde.konsole-1234.scope", "app-io.github.guitaripod.Tailscode-.scope",
             "app-io.github.guitaripod.Tailscode-12a.scope", "app-io.github.guitaripod.Tailscode-12.slice",
             "vte-spawn-1234.scope", "app-flatpak-io.github.guitaripod.Tailscode-99.scope",
@@ -85,6 +96,22 @@ struct TileResourceLimitsTests {
         #expect(
             ResourceGuardDecision.decide(unit: nil, currentMemoryMax: nil, environment: [:], plan: plan)
                 == .skipUnavailable(reason: "no unified cgroup"))
+        let instance = CgroupUnit(
+            path: "/a/app-io.github.guitaripod.Tailscode@c3bde4b1845c46d69b6bcec0aaba9e0c.service",
+            name: "app-io.github.guitaripod.Tailscode@c3bde4b1845c46d69b6bcec0aaba9e0c.service")
+        #expect(
+            ResourceGuardDecision.decide(unit: instance, currentMemoryMax: .max, environment: [:], plan: plan)
+                == .apply(unit: instance.name, plan: plan))
+        #expect(
+            ResourceGuardDecision.decide(
+                unit: instance, currentMemoryMax: .max, environment: [:], plan: plan, holdsProcess: false)
+                == .skipForeignScope(unit: instance.name))
+        let ghostty = CgroupUnit(
+            path: "/a/app-ghostty-surface-transient-502496.scope",
+            name: "app-ghostty-surface-transient-502496.scope")
+        #expect(
+            ResourceGuardDecision.decide(unit: ghostty, currentMemoryMax: .max, environment: [:], plan: plan)
+                == .skipForeignScope(unit: ghostty.name))
         #expect(ResourceGuardDecision.skipOptOut.summary.contains("TAILSCODE_NO_LIMITS"))
         #expect(ResourceGuardDecision.apply(unit: "u", plan: plan).summary.contains("MemorySwapMax=0"))
     }

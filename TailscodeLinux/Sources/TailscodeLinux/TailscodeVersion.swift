@@ -15,6 +15,7 @@ enum TailscodeVersion {
           tailscode --selftest               check the whole chain with no display
           tailscode --flight [minutes]       print the flight recorder, newest last
           tailscode --limits                 apply and print this launch's resource limits
+          tailscode --stacks [count]         print the watchdog's last freeze captures, resolved
           tailscode --version
         """
 }

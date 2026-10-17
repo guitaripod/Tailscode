@@ -40,6 +40,7 @@ final class ClockWatch: @unchecked Sendable {
     private var listeners: [Int: @Sendable () -> Void] = [:]
     private var nextToken = 0
     private var started = false
+    private(set) var stopped = false
 
     var now: Date { clock() }
 
@@ -143,10 +144,17 @@ final class ClockWatch: @unchecked Sendable {
     /// Tells every surface the theme moved, so each repaints with the palette's new inks.
     func themeChanged() { changed() }
 
+    /// The window that drew the surfaces is going: the minute clock is not armed again.
+    func stop() { stopped = true }
+
     private func schedule() {
+        guard !stopped else { return }
         let wait = max(0.25, WorldClockReading.nextMinute(after: now).timeIntervalSince(now))
         Gtk.after(UInt32(wait * 1000) + 120) {
-            Gtk.onMain { ClockWatch.shared.tick() }
+            Gtk.onMain {
+                guard !ClockWatch.shared.stopped else { return }
+                ClockWatch.shared.tick()
+            }
         }
     }
 

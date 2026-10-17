@@ -36,11 +36,11 @@ final class ChatRowVerbStrip: @unchecked Sendable {
             Gtk.addClass(button, "row-verb")
             gtk_widget_set_focusable(button, 0)
             gtk_widget_set_focus_on_click(button, 0)
-            let bits = UInt(bitPattern: button)
+            let buttonHold = Gtk.WeakWidget(button)
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
-                    guard let raw = UnsafeMutablePointer<GtkWidget>(bitPattern: bits) else { return }
-                    self?.press?(verb, raw)
+                    guard let held = buttonHold.widget else { return }
+                    self?.press?(verb, held)
                 }
             }
             gtk_box_append(ptr(widget), button)

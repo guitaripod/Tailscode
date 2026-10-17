@@ -50,8 +50,8 @@ enum SummonRows {
         adw_preferences_group_add(ptr(group), ptr(commandRow))
 
         let held = SummonRowsHeld(
-            chordRow: UInt(bitPattern: chordRow), chordButton: UInt(bitPattern: chordButton),
-            commandRow: UInt(bitPattern: commandRow))
+            chordRow: Gtk.WeakWidget(chordRow), chordButton: Gtk.WeakWidget(chordButton),
+            commandRow: Gtk.WeakWidget(commandRow))
         held.render()
         let watch = SummonWatch()
         watch.token = NotificationCenter.default.addObserver(
@@ -148,11 +148,11 @@ enum SummonRows {
 /// The rows the summon group owns, so the state the portal reports later lands on the rows that
 /// are already on screen rather than on a group that has to be rebuilt.
 final class SummonRowsHeld: @unchecked Sendable {
-    private let chordRow: UInt
-    private let chordButton: UInt
-    private let commandRow: UInt
+    private let chordRow: Gtk.WeakWidget
+    private let chordButton: Gtk.WeakWidget
+    private let commandRow: Gtk.WeakWidget
 
-    init(chordRow: UInt, chordButton: UInt, commandRow: UInt) {
+    init(chordRow: Gtk.WeakWidget, chordButton: Gtk.WeakWidget, commandRow: Gtk.WeakWidget) {
         self.chordRow = chordRow
         self.chordButton = chordButton
         self.commandRow = commandRow
@@ -160,18 +160,18 @@ final class SummonRowsHeld: @unchecked Sendable {
 
     func render() {
         let state = Summon.shared.state
-        if let raw = UnsafeMutableRawPointer(bitPattern: chordRow) {
+        if let held = chordRow.widget {
             adw_action_row_set_subtitle(
-                ptr(raw),
+                ptr(held),
                 [state.line(on: .linux), state.detail(on: .linux)]
                     .compactMap { $0 }.joined(separator: " · "))
         }
-        if let raw = UnsafeMutableRawPointer(bitPattern: chordButton) {
-            gtk_button_set_label(ptr(raw), SummonSettings.chord.display(on: .linux))
+        if let held = chordButton.widget {
+            gtk_button_set_label(ptr(held), SummonSettings.chord.display(on: .linux))
         }
-        if let raw = UnsafeMutableRawPointer(bitPattern: commandRow) {
+        if let held = commandRow.widget {
             let recipe = Summon.shared.recipe
-            adw_action_row_set_subtitle(ptr(raw), "\(recipe.binding) — \(recipe.instruction)")
+            adw_action_row_set_subtitle(ptr(held), "\(recipe.binding) — \(recipe.instruction)")
         }
     }
 }

@@ -15,13 +15,13 @@ final class FirstRunDialog: @unchecked Sendable {
     static func presentIfNeeded(
         parent: UnsafeMutablePointer<GtkWidget>?, onSaved: @escaping @Sendable () -> Void
     ) {
-        let parentBits = parent.map { UInt(bitPattern: $0) } ?? 0
+        let parentHold = parent.map { Gtk.WeakWidget($0) }
         Task {
             await ServerDirectory.shared.reload()
             guard await ServerDirectory.shared.profiles().isEmpty else { return }
             Gtk.onMain {
                 guard current == nil else { return }
-                begin(mode: .firstRun, parentBits: parentBits, link: nil, onSaved: onSaved)
+                begin(mode: .firstRun, parentHold: parentHold, link: nil, onSaved: onSaved)
             }
         }
     }
@@ -37,7 +37,7 @@ final class FirstRunDialog: @unchecked Sendable {
             existing.send { await $0.paste(link) }
             return
         }
-        let parentBits = parent.map { UInt(bitPattern: $0) } ?? 0
+        let parentHold = parent.map { Gtk.WeakWidget($0) }
         Task {
             await ServerDirectory.shared.reload()
             let empty = await ServerDirectory.shared.profiles().isEmpty
@@ -48,7 +48,7 @@ final class FirstRunDialog: @unchecked Sendable {
                     return
                 }
                 begin(
-                    mode: empty ? .firstRun : .addition, parentBits: parentBits, link: link,
+                    mode: empty ? .firstRun : .addition, parentHold: parentHold, link: link,
                     onSaved: onSaved)
             }
         }
@@ -99,12 +99,10 @@ final class FirstRunDialog: @unchecked Sendable {
     }
 
     private static func begin(
-        mode: FirstRunState.Mode, parentBits: UInt, link: String?,
+        mode: FirstRunState.Mode, parentHold: Gtk.WeakWidget?, link: String?,
         onSaved: @escaping @Sendable () -> Void
     ) {
-        let parent = UnsafeMutableRawPointer(bitPattern: parentBits).map {
-            raw -> UnsafeMutablePointer<GtkWidget> in ptr(raw)
-        }
+        let parent = parentHold?.widget
         let dialog = FirstRunDialog(mode: mode, onSaved: onSaved)
         current = dialog
         dialog.present(parent: parent, link: link)
@@ -245,7 +243,7 @@ final class FirstRunDialog: @unchecked Sendable {
             Gtk.onMain { [self] in primaryPressed() }
         }
         Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [self] in
-            Gtk.onMain { [self] in tearDown() }
+            tearDown()
         }
         Gtk.onNotify(UnsafeMutableRawPointer(window), property: "is-active") { [self] in
             Gtk.onMain { [self] in readClipboard() }
@@ -259,7 +257,8 @@ final class FirstRunDialog: @unchecked Sendable {
     }
 
     private func close() {
-        if let window { Dialogs.close(window) }
+        guard !closed, let window else { return }
+        Dialogs.close(window)
     }
 
     private func enterDemo() {

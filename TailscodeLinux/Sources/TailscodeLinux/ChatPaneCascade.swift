@@ -32,9 +32,9 @@ extension ChatPane {
         }
         let safe = cascade.renderable(
             row: live.key, source, sealed: !running, markdown: live.streamsMarkdown)
-        var paced = rows
         let row = safe == source ? live : live.truncated(to: safe)
-        paced[liveIndex] = row
+        var paced = rows
+        if safe != source { paced[liveIndex] = row }
         guard let markup = Self.cascadeMarkup(for: row) else {
             cascade.release()
             if let released { handOver(released, in: rows) }

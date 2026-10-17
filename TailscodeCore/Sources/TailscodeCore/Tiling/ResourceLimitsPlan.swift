@@ -58,15 +58,24 @@ public struct CgroupUnit: Sendable, Equatable {
     /// The last path component: `app-io.github.guitaripod.Tailscode-1234.scope`.
     public var name: String
 
-    /// Whether the unit is the app's own: `app-<appID>-<n>.scope` or `.service`. KDE names launcher
-    /// scopes that way and the install script relaunches into one; a terminal launch lands in the
-    /// terminal's scope, which must never be touched.
+    /// Whether the unit is named the way the app's own are: `app-<appID>-<n>.scope` or `.service`
+    /// (KDE's launcher scopes and the install script's relaunch) and `app-<appID>@<hash>.service`
+    /// or `.scope` (the instance units a desktop launcher starts for a D-Bus activated app). A
+    /// terminal launch lands in the terminal's scope, which must never be touched, so the name is
+    /// the first gate and ``ResourceGuardDecision/decide`` adds the unit's membership as the second.
     public var isOwn: Bool {
         for suffix in [".scope", ".service"] where name.hasSuffix(suffix) {
-            let prefix = "app-\(Self.appID)-"
+            let prefix = "app-\(Self.appID)"
             guard name.hasPrefix(prefix) else { continue }
-            let middle = name.dropFirst(prefix.count).dropLast(suffix.count)
-            return !middle.isEmpty && middle.allSatisfy(\.isASCII) && middle.allSatisfy(\.isNumber)
+            let rest = name.dropFirst(prefix.count).dropLast(suffix.count)
+            guard let separator = rest.first else { return suffix == ".service" }
+            let tail = rest.dropFirst()
+            guard !tail.isEmpty, tail.allSatisfy(\.isASCII) else { return false }
+            switch separator {
+            case "-": return tail.allSatisfy(\.isNumber)
+            case "@": return tail.allSatisfy(\.isHexDigit)
+            default: return false
+            }
         }
         return false
     }
@@ -104,14 +113,18 @@ public enum ResourceGuardDecision: Sendable, Equatable {
     /// - Parameter currentMemoryMax: the unit's `MemoryMax` as systemd reports it, `UInt64.max`
     ///   for infinity, nil when it could not be read (treated as unset). A value equal to the plan's
     ///   own is this app's earlier launch in the same unit and is applied again.
+    /// - Parameter holdsProcess: whether the unit's own `cgroup.procs` lists this process. A name
+    ///   alone can be borrowed by anything started in a directory that looks like the app's, and a
+    ///   limit set on a unit that does not hold the process throttles somebody else; the caller
+    ///   passes false when the list was read and did not name this process.
     public static func decide(
         unit: CgroupUnit?, currentMemoryMax: UInt64?, environment: [String: String],
-        plan: ResourceLimitsPlan
+        plan: ResourceLimitsPlan, holdsProcess: Bool = true
     ) -> ResourceGuardDecision {
         if let flag = environment[optOutVariable], !flag.isEmpty, flag != "0" { return .skipOptOut }
         if environment["FLATPAK_ID"] != nil { return .skipUnavailable(reason: "flatpak") }
         guard let unit else { return .skipUnavailable(reason: "no unified cgroup") }
-        guard unit.isOwn else { return .skipForeignScope(unit: unit.name) }
+        guard unit.isOwn, holdsProcess else { return .skipForeignScope(unit: unit.name) }
         if let current = currentMemoryMax, current != UInt64.max, current != plan.memoryMax {
             return .skipAdminLimited(unit: unit.name, memoryMax: current)
         }

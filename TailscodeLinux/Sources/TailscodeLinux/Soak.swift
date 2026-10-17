@@ -86,9 +86,9 @@ enum Soak {
         guard isOn, let widget else { return }
         if tailscode_soak_watch_frames(widget) != 0 { return }
         guard attempts > 0 else { return }
-        let address = UInt(bitPattern: widget)
+        let hold = Gtk.WeakWidget(widget)
         Gtk.after(250) {
-            watchFrames(of: UnsafeMutablePointer(bitPattern: address), attempts: attempts - 1)
+            watchFrames(of: hold.widget, attempts: attempts - 1)
         }
     }
 

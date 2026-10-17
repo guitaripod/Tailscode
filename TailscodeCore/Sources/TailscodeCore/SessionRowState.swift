@@ -193,7 +193,7 @@ public struct SessionRowModel: Equatable, Sendable {
     ///   Nil leaves the row on this device's clock, which is right for a server that is answering.
     public init(
         entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool, pinned: Bool = false,
-        presence: SessionPresence = .unobserved, observedAt: Date? = nil
+        presence: SessionPresence = .unobserved, observedAt: Date? = nil, now: Date = Date()
     ) {
         self.entry = entry
         self.unread = unread
@@ -209,7 +209,7 @@ public struct SessionRowModel: Equatable, Sendable {
         self.backendName = ServerLabel.agent(entry.backendType)
         self.age = Self.age(
             of: entry.session.updatedAt,
-            asOf: unreachable ? (observedAt ?? Date()) : Date())
+            asOf: unreachable ? (observedAt ?? now) : now)
         self.detail = [
             project, ServerLabel.display(name: entry.profileName, backend: entry.backendType), age,
         ].compactMap { $0 }.joined(separator: " · ")
@@ -347,13 +347,9 @@ public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [S
             ? key($0) < key($1) : $0.entry.session.createdAt > $1.entry.session.createdAt
     }
     seen.formUnion(working.map(key))
+    let ranks = rows.contains { $0.pinned } ? SessionPinStore.ranks() : [:]
     let pinned = rows.filter { $0.pinned && !seen.contains(key($0)) }.sorted {
-        guard
-            let a = SessionPinStore.rank(
-                profileID: $0.entry.profileID, sessionID: $0.entry.session.id),
-            let b = SessionPinStore.rank(
-                profileID: $1.entry.profileID, sessionID: $1.entry.session.id)
-        else { return false }
+        guard let a = ranks[key($0)], let b = ranks[key($1)] else { return false }
         return a < b
     }
     seen.formUnion(pinned.map(key))

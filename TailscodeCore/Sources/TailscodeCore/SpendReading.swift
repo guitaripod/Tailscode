@@ -21,6 +21,7 @@ public struct SpendReading: Sendable, Equatable {
     private var reported: SessionSpend?
     private var derived: SessionSpend?
     private var signature: String = ""
+    private var settled = SettledTurns()
 
     public init() {}
 
@@ -49,7 +50,9 @@ public struct SpendReading: Sendable, Equatable {
         let fresh = Self.signature(of: messages)
         guard fresh != signature else { return false }
         signature = fresh
-        guard let recomputed = SessionSpend(messages: messages) else { return false }
+        guard let recomputed = SessionSpend(folded: settled.turns(of: messages)) else {
+            return false
+        }
         let before = value
         derived = recomputed
         return before != value
@@ -63,10 +66,56 @@ public struct SpendReading: Sendable, Equatable {
         reported = nil
         derived = nil
         signature = ""
+        settled = SettledTurns()
     }
 
     private static func signature(of messages: [ChatMessage]) -> String {
         guard let last = messages.last else { return "0" }
         return "\(messages.count)/\(last.id)/\(last.completedAt?.timeIntervalSince1970 ?? 0)"
+    }
+}
+
+/// The turns of a transcript that a later prompt has closed, kept so that a new message folds the
+/// turn it belongs to and not the whole conversation again. The turns before the latest prompt
+/// cannot change when something is added after it, so they are folded once and extended a prompt
+/// at a time; a transcript that no longer starts the way the kept turns did is folded from the
+/// beginning.
+struct SettledTurns: Sendable, Equatable {
+    private var turns: [SessionSpendReport.Turn] = []
+    private var through = 0
+    private var anchor: String?
+    private var first: String?
+
+    mutating func turns(of messages: [ChatMessage]) -> [SessionSpendReport.Turn] {
+        guard let latest = messages.lastIndex(where: { $0.role == .user }) else {
+            reset()
+            return SessionSpend.fold(messages[...])
+        }
+        if !stands(in: messages) || latest < through { reset() }
+        if latest > through {
+            turns += SessionSpend.fold(messages[through..<latest])
+            through = latest
+            anchor = messages[latest].id
+            first = messages.first?.id
+        } else if anchor == nil {
+            turns += SessionSpend.fold(messages[..<latest])
+            through = latest
+            anchor = messages[latest].id
+            first = messages.first?.id
+        }
+        return turns + SessionSpend.fold(messages[latest...])
+    }
+
+    private func stands(in messages: [ChatMessage]) -> Bool {
+        guard let anchor else { return true }
+        return through < messages.count && messages[through].id == anchor
+            && messages.first?.id == first
+    }
+
+    private mutating func reset() {
+        turns = []
+        through = 0
+        anchor = nil
+        first = nil
     }
 }

@@ -373,7 +373,9 @@ enum SidebarRow {
     /// row's own button is found by its class rather than by position, because a remembered split
     /// carries its members' lines under the same holder.
     static func setFocused(_ holder: UnsafeMutablePointer<GtkWidget>, _ focused: Bool) {
-        guard let button = rowButton(in: holder) else { return }
+        guard gtk_widget_get_parent(holder) != nil, let button = rowButton(in: holder) else {
+            return
+        }
         if focused {
             gtk_widget_add_css_class(button, "row-focused")
         } else {

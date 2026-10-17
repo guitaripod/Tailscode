@@ -53,6 +53,11 @@ final class Watchdog: @unchecked Sendable {
     private var running = false
     private var watch = StallWatch()
     private var lastTick: TimeInterval = -.infinity
+    private var slowFired = false
+
+    /// How long the main loop may stay silent before the watchdog thread asks it where it is,
+    /// well inside the three seconds a stall record waits for.
+    static let slowAfter: TimeInterval = 1
 
     /// Monotonic seconds, on the same clock the shim stamps answers with.
     static var now: TimeInterval { Double(g_get_monotonic_time()) / 1_000_000 }
@@ -62,8 +67,11 @@ final class Watchdog: @unchecked Sendable {
 
     /// Starts the thread. `onStall` runs on it for each stall event with the main thread's state;
     /// `onTick` runs on it once a second, and at once after a ``poke()``, with whether it was poked.
+    /// `onSlow` runs on it once per silence of ``slowAfter`` seconds, with how long the loop has
+    /// been silent and the state of the main thread, while the thread is still stuck in it.
     func start(
         onStall: @escaping @Sendable (StallWatch.Event, MainThreadState?) -> Void,
+        onSlow: @escaping @Sendable (_ silent: TimeInterval, MainThreadState?) -> Void,
         onTick: @escaping @Sendable (_ now: TimeInterval, _ poked: Bool) -> Void
     ) {
         condition.lock()
@@ -75,7 +83,7 @@ final class Watchdog: @unchecked Sendable {
         condition.unlock()
         tailscode_watchdog_ping()
         let thread = Thread { [self] in
-            self.loop(onStall: onStall, onTick: onTick)
+            self.loop(onStall: onStall, onSlow: onSlow, onTick: onTick)
         }
         thread.stackSize = 512 * 1024
         thread.start()
@@ -92,6 +100,7 @@ final class Watchdog: @unchecked Sendable {
 
     private func loop(
         onStall: @Sendable (StallWatch.Event, MainThreadState?) -> Void,
+        onSlow: @Sendable (TimeInterval, MainThreadState?) -> Void,
         onTick: @Sendable (TimeInterval, Bool) -> Void
     ) {
         tailscode_name_thread("tailscode.watch")
@@ -105,6 +114,15 @@ final class Watchdog: @unchecked Sendable {
 
             let now = Self.now
             tailscode_watchdog_ping()
+            let silent = now - Self.lastAnswer
+            if silent >= Self.slowAfter {
+                if !slowFired {
+                    slowFired = true
+                    onSlow(silent, MainThreadState.read())
+                }
+            } else if silent < Self.slowAfter / 2 {
+                slowFired = false
+            }
             if let event = watch.check(lastAnswer: Self.lastAnswer, now: now) {
                 let state: MainThreadState?
                 switch event {

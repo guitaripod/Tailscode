@@ -31,17 +31,14 @@ enum CommandCatalog {
         gtk_widget_set_vexpand(scroller, 1)
         gtk_box_append(ptr(content), scroller)
 
-        let listBits = UInt(bitPattern: list)
-        let searchBits = UInt(bitPattern: search)
-        let windowBits = UInt(bitPattern: window)
+        let listHold = Gtk.WeakWidget(list)
+        let searchHold = Gtk.WeakWidget(search)
+        let windowHold = Gtk.WeakWidget(window)
         let commandsCopy = commands
 
         let rebuild: @Sendable () -> Void = {
-            guard let listRaw = UnsafeMutableRawPointer(bitPattern: listBits),
-                let searchRaw = UnsafeMutableRawPointer(bitPattern: searchBits)
+            guard let listWidget = listHold.widget, let searchWidget = searchHold.widget
             else { return }
-            let listWidget: UnsafeMutablePointer<GtkWidget> = ptr(listRaw)
-            let searchWidget: UnsafeMutablePointer<GtkWidget> = ptr(searchRaw)
             Gtk.removeChildren(of: listWidget)
             let query = Dialogs.entryText(searchWidget)
             let sections = CommandCatalogGrouping.sections(commands: commandsCopy, query: query)
@@ -84,8 +81,8 @@ enum CommandCatalog {
                     Gtk.connect(UnsafeMutableRawPointer(button), "clicked") {
                         onPick(picked)
                         Gtk.onMain {
-                            if let raw = UnsafeMutableRawPointer(bitPattern: windowBits) {
-                                Dialogs.close(ptr(raw))
+                            if let held = windowHold.widget {
+                                Dialogs.close(held)
                             }
                         }
                     }

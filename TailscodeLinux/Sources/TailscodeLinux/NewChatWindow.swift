@@ -47,7 +47,7 @@ final class NewChatWindow: @unchecked Sendable {
     private let list: UnsafeMutablePointer<GtkWidget>
     private let scroller: UnsafeMutablePointer<GtkWidget>
     private var buttons: UnsafeMutablePointer<GtkWidget>!
-    private var rowWidgets: [UInt] = []
+    private var rowWidgets: [Gtk.WeakWidget] = []
 
     /// - Parameter onBrowse: how this client opens its native folder picker, given the server's
     ///   profile id, what has been typed so far — the picker opens where the field points when that
@@ -148,8 +148,8 @@ final class NewChatWindow: @unchecked Sendable {
             guard let self else { return false }
             return self.key(keyval: keyval, state: state)
         }
-        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") {
-            Gtk.onMain { NewChatWindow.open = nil }
+        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
+            if let self, NewChatWindow.open === self { NewChatWindow.open = nil }
         }
 
         render()
@@ -490,7 +490,7 @@ final class NewChatWindow: @unchecked Sendable {
         }
         for (index, row) in chooser.rows.enumerated() {
             let widget = make(row, index: index)
-            rowWidgets.append(UInt(bitPattern: widget))
+            rowWidgets.append(Gtk.WeakWidget(widget))
             gtk_box_append(ptr(list), widget)
         }
         revealCursor()
@@ -612,17 +612,16 @@ final class NewChatWindow: @unchecked Sendable {
     /// you type a path into cannot hand the caret to the list every time the cursor moves.
     private func revealCursor() {
         guard chooser.cursor < rowWidgets.count else { return }
-        let rowBits = rowWidgets[chooser.cursor]
-        let listBits = UInt(bitPattern: list)
-        let scrollerBits = UInt(bitPattern: scroller)
+        let rowHold = rowWidgets[chooser.cursor]
+        let listHold = Gtk.WeakWidget(list)
+        let scrollerHold = Gtk.WeakWidget(scroller)
         Gtk.after(1) {
-            guard let rowRaw = UnsafeMutableRawPointer(bitPattern: rowBits),
-                let listRaw = UnsafeMutableRawPointer(bitPattern: listBits),
-                let scrollerRaw = UnsafeMutableRawPointer(bitPattern: scrollerBits),
-                let adjustment = gtk_scrolled_window_get_vadjustment(op(scrollerRaw))
+            guard let widget = rowHold.widget,
+                let listWidget = listHold.widget,
+                let scrollerWidget = scrollerHold.widget,
+                let adjustment = gtk_scrolled_window_get_vadjustment(op(scrollerWidget))
             else { return }
-            let widget: UnsafeMutablePointer<GtkWidget> = ptr(rowRaw)
-            let offset = tailscode_widget_offset_y(widget, ptr(listRaw))
+            let offset = tailscode_widget_offset_y(widget, ptr(listWidget))
             guard offset >= 0 else { return }
             let page = gtk_adjustment_get_page_size(adjustment)
             let height = Double(gtk_widget_get_height(widget))

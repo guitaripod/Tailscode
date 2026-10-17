@@ -57,7 +57,14 @@ final class DrawLibrary: @unchecked Sendable {
         }
         textures = [:]
         wanted = []
+        kept = []
         pendingThumbnails = []
+    }
+
+    deinit {
+        for bits in textures.values {
+            if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
+        }
     }
 
     /// Asks the machine what it has made, newest first. The cached listing is shown the moment

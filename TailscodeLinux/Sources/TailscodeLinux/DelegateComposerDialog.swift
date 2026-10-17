@@ -461,11 +461,11 @@ final class DelegateComposerDialog: @unchecked Sendable {
                 gtk_toggle_button_set_active(ptr(button), 1)
             }
             let id = option.id
-            let bits = UInt(bitPattern: button)
+            let buttonHold = Gtk.WeakWidget(button)
             Gtk.connect(UnsafeMutableRawPointer(button), "toggled") { [weak self] in
                 Gtk.onMain { [weak self] in
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(raw)
+                    guard let held = buttonHold.widget else { return }
+                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(held)
                     guard gtk_toggle_button_get_active(toggle) != 0 else { return }
                     assign(id)
                     self?.renderStatus()
@@ -487,11 +487,11 @@ final class DelegateComposerDialog: @unchecked Sendable {
                 lead = button
             }
             if mode == draft.mode { gtk_toggle_button_set_active(ptr(button), 1) }
-            let bits = UInt(bitPattern: button)
+            let buttonHold = Gtk.WeakWidget(button)
             Gtk.connect(UnsafeMutableRawPointer(button), "toggled") { [weak self] in
                 Gtk.onMain { [weak self] in
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(raw)
+                    guard let held = buttonHold.widget else { return }
+                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(held)
                     guard gtk_toggle_button_get_active(toggle) != 0 else { return }
                     self?.draft.mode = mode
                     self?.renderStatus()
@@ -519,11 +519,11 @@ final class DelegateComposerDialog: @unchecked Sendable {
                 gtk_toggle_button_set_active(ptr(button), 1)
             }
             let id = option.id
-            let bits = UInt(bitPattern: button)
+            let buttonHold = Gtk.WeakWidget(button)
             Gtk.connect(UnsafeMutableRawPointer(button), "toggled") { [weak self] in
                 Gtk.onMain { [weak self] in
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(raw)
+                    guard let held = buttonHold.widget else { return }
+                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(held)
                     guard gtk_toggle_button_get_active(toggle) != 0 else { return }
                     self?.draft.effort = id
                     self?.renderStatus()

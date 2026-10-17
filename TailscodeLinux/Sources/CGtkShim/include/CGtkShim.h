@@ -20,6 +20,14 @@ void tailscode_box_release_call(void *data);
 /// `data` and releases it inside the handler.
 void tailscode_on_main(void (*handler)(void *), void *data);
 
+/// Marks the process as ending (or, for a selftest, as running again). While set, every callback
+/// the shim owns — posted work, timed work, between-frames work, widget clocks and the tiling
+/// drain — frees its own box and returns without calling into Swift, so nothing touches a widget
+/// the toolkit is tearing down. The Swift closure a skipped callback held is left to the process
+/// exit.
+void tailscode_set_quitting(gboolean quitting);
+gboolean tailscode_is_quitting(void);
+
 /// What the tiling soak reads from the main context: closures posted by `tailscode_on_main` and
 /// not yet run (and the deepest that queue got since the last read), how late a 100 ms timeout
 /// fired over the window, and running totals of reveal markup parses, cache hits, frame-clock
@@ -94,6 +102,16 @@ GdkTexture *tailscode_texture_from_bytes(const void *data, gsize len);
 /// decodable image; the caller owns the returned reference.
 GdkTexture *tailscode_texture_scaled(
     const void *data, gsize len, int max_dim, int *out_orig_w, int *out_orig_h);
+
+/// Whether anything besides the caller's own reference holds the texture — a picture widget
+/// drawing it, say. A cache uses it to spare a preview that is on screen: dropping the cache's
+/// reference to one frees nothing.
+gboolean tailscode_texture_held_elsewhere(GdkTexture *texture);
+
+/// Tells the picture widgets which renderer the window got: a GPU renderer draws a preview as a
+/// texture node it uploads once, the cairo renderer replays a cached cairo surface instead. Any
+/// renderer name that is not a cairo one is a GPU renderer; NULL is cairo.
+void tailscode_set_picture_renderer(const char *name);
 
 /// A picture widget over a texture, sized to fit its own allocation. `GDK_PAINTABLE` is a macro,
 /// which is why the cast lives here.
@@ -669,6 +687,16 @@ void tailscode_watchdog_ping(void);
 /// When the main loop last answered a ping, in monotonic microseconds; 0 before the first ping.
 gint64 tailscode_watchdog_answered(void);
 
+/// Whether the window is mapped and neither minimised nor suspended by the compositor, which is
+/// when nothing it draws can be seen.
+gboolean tailscode_window_is_visible(GtkWidget *window);
+
+/// Calls `handler(visible, data)` on the main thread each time ``tailscode_window_is_visible``
+/// changes for `window`, which must already be realised. The window is held weakly, so a change
+/// during teardown finds nothing. Registered once per window for the life of the process.
+void tailscode_window_watch_visibility(
+    GtkWidget *window, void (*handler)(int visible, void *data), void *data);
+
 /// The GSK renderer the realised window actually draws with, as its GObject type name
 /// (`GskNglRenderer`, `GskVulkanRenderer`, `GskCairoRenderer`); NULL before it is realised.
 const char *tailscode_renderer_name(GtkWidget *window);
@@ -740,3 +768,4 @@ long tailscode_soak_rows(void);
 #include "previewlens.h"
 #include "meridian.h"
 #include "brain.h"
+#include "selfdiag.h"

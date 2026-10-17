@@ -34,7 +34,7 @@ final class ModelChooserWindow: @unchecked Sendable {
     /// One width for every row's capability marks, so what a model reads forms a column rather than
     /// a ragged edge that moves with the length of the name beside it.
     private var markColumns: [UnsafeMutableRawPointer] = []
-    private var rowWidgets: [UInt] = []
+    private var rowWidgets: [Gtk.WeakWidget] = []
     /// Where the list must land once GTK knows how tall the rebuilt box is. A scroller whose
     /// children were replaced this frame reports the old height — often one screenful — so a
     /// position set before that is clamped to the top and then stays there. Held until the
@@ -149,8 +149,8 @@ final class ModelChooserWindow: @unchecked Sendable {
             guard let self else { return false }
             return self.key(keyval: keyval, state: state)
         }
-        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") {
-            Gtk.onMain { ModelChooserWindow.open = nil }
+        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
+            if let self, ModelChooserWindow.open === self { ModelChooserWindow.open = nil }
         }
 
         if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
@@ -365,11 +365,12 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_scrolled_window_set_propagate_natural_width(op(scroller), 1)
         gtk_scrolled_window_set_child(op(scroller), column)
         gtk_popover_set_child(ptr(popover), scroller)
-        let bits = UInt(bitPattern: popover)
+        let popoverHold = Gtk.WeakWidget(popover)
         Gtk.connect(UnsafeMutableRawPointer(popover), "closed") {
             Gtk.onMain {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-                gtk_widget_unparent(ptr(raw) as UnsafeMutablePointer<GtkWidget>)
+                guard let held = popoverHold.widget, gtk_widget_get_parent(held) != nil
+                else { return }
+                gtk_widget_unparent(held)
             }
         }
         gtk_popover_popup(ptr(popover))
@@ -572,7 +573,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             }
             for row in section.rows {
                 let widget = make(row, index: index)
-                rowWidgets.append(UInt(bitPattern: widget))
+                rowWidgets.append(Gtk.WeakWidget(widget))
                 gtk_box_append(ptr(list), widget)
                 index += 1
             }
@@ -740,17 +741,16 @@ final class ModelChooserWindow: @unchecked Sendable {
         holdScroll(at: held)
         guard revealingCursor, chooser.cursor < rowWidgets.count else { return }
         holdScroll(at: nil)
-        let rowBits = rowWidgets[chooser.cursor]
-        let listBits = UInt(bitPattern: list)
-        let scrollerBits = UInt(bitPattern: scroller)
+        let rowHold = rowWidgets[chooser.cursor]
+        let listHold = Gtk.WeakWidget(list)
+        let scrollerHold = Gtk.WeakWidget(scroller)
         Gtk.after(1) {
-            guard let rowRaw = UnsafeMutableRawPointer(bitPattern: rowBits),
-                let listRaw = UnsafeMutableRawPointer(bitPattern: listBits),
-                let scrollerRaw = UnsafeMutableRawPointer(bitPattern: scrollerBits),
-                let adjustment = gtk_scrolled_window_get_vadjustment(op(scrollerRaw))
+            guard let widget = rowHold.widget,
+                let listWidget = listHold.widget,
+                let scrollerWidget = scrollerHold.widget,
+                let adjustment = gtk_scrolled_window_get_vadjustment(op(scrollerWidget))
             else { return }
-            let widget: UnsafeMutablePointer<GtkWidget> = ptr(rowRaw)
-            let offset = tailscode_widget_offset_y(widget, ptr(listRaw))
+            let offset = tailscode_widget_offset_y(widget, ptr(listWidget))
             guard offset >= 0 else { return }
             let page = gtk_adjustment_get_page_size(adjustment)
             let height = Double(gtk_widget_get_height(widget))

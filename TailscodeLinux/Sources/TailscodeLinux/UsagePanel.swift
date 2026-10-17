@@ -60,24 +60,24 @@ final class UsagePanel: @unchecked Sendable {
     private var refreshing = false
     /// Whether an opencode server is connected — the one place the metered doors could matter.
     private var fronted: Bool
-    private let windowBits: UInt
-    private let boardBits: UInt
-    private let columnBits: UInt
+    private let windowHold: Gtk.WeakWidget
+    private let boardHold: Gtk.WeakWidget
+    private let columnHold: Gtk.WeakWidget
 
     static func present(
         parent: UnsafeMutablePointer<GtkWidget>?,
         initial: [(String, UsageQuota)],
         refresh: @escaping @Sendable () async -> [(String, UsageQuota)]
     ) async {
-        if let open, let raw = UnsafeMutableRawPointer(bitPattern: open.windowBits) {
-            gtk_window_present(ptr(raw))
+        if let open, let held = open.window {
+            gtk_window_present(ptr(held))
             return
         }
         let fronted = await ServerDirectory.shared.profiles().contains { $0.backend == .openCode }
-        let parentBits = UInt(bitPattern: parent)
+        let parentHold = parent.map { Gtk.WeakWidget($0) }
         Gtk.onMain {
             let panel = UsagePanel(
-                parent: UnsafeMutableRawPointer(bitPattern: parentBits).map { ptr($0) },
+                parent: parentHold?.widget,
                 initial: initial, fronted: fronted, refresh: refresh)
             open = panel
             panel.render()
@@ -95,15 +95,15 @@ final class UsagePanel: @unchecked Sendable {
         let (window, content) = Dialogs.window(
             title: Localized.text("Usage"), parent: parent, width: Self.windowWidth)
         gtk_window_set_default_size(ptr(window), Self.windowWidth, Self.windowHeight)
-        windowBits = UInt(bitPattern: window)
+        windowHold = Gtk.WeakWidget(window)
 
         let board = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         Gtk.addClass(board, "usage-board")
         gtk_box_append(ptr(content), board)
-        boardBits = UInt(bitPattern: board)
+        boardHold = Gtk.WeakWidget(board)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 12)
-        columnBits = UInt(bitPattern: column)
+        columnHold = Gtk.WeakWidget(column)
         let scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
         gtk_widget_set_vexpand(scroller, 1)
@@ -122,16 +122,16 @@ final class UsagePanel: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.startRefresh() }
         }
         gtk_box_append(ptr(actions), again)
-        let closing = windowBits
+        let closing = windowHold
         let dismiss = Gtk.button(Localized.text("Close"), css: ["suggested-action"]) {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: closing) else { return }
-            gtk_window_destroy(ptr(raw))
+            guard let held = closing.widget else { return }
+            gtk_window_destroy(ptr(held))
         }
         gtk_box_append(ptr(actions), dismiss)
         gtk_box_append(ptr(content), actions)
 
-        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") {
-            Gtk.onMain { UsagePanel.open = nil }
+        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
+            if let self, UsagePanel.open === self { UsagePanel.open = nil }
         }
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(dismiss)
@@ -158,15 +158,15 @@ final class UsagePanel: @unchecked Sendable {
     }
 
     private var column: UnsafeMutablePointer<GtkWidget>? {
-        UnsafeMutableRawPointer(bitPattern: columnBits).map { ptr($0) }
+        columnHold.widget
     }
 
     private var board: UnsafeMutablePointer<GtkWidget>? {
-        UnsafeMutableRawPointer(bitPattern: boardBits).map { ptr($0) }
+        boardHold.widget
     }
 
     private var window: UnsafeMutablePointer<GtkWidget>? {
-        UnsafeMutableRawPointer(bitPattern: windowBits).map { ptr($0) }
+        windowHold.widget
     }
 
     private func change(_ edit: (inout QuotaBoardPreferences) -> Void) {
@@ -270,11 +270,11 @@ final class UsagePanel: @unchecked Sendable {
                     ? Localized.text("Hidden — press to show %@", choice.name)
                     : Localized.text("Shown — press to hide %@", choice.name))
             let key = choice.key
-            let chipBits = UInt(bitPattern: chip)
+            let chipHold = Gtk.WeakWidget(chip)
             Gtk.connect(UnsafeMutableRawPointer(chip), "toggled") { [weak self] in
                 Gtk.onMain { [weak self] in
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: chipBits) else { return }
-                    let shown = gtk_toggle_button_get_active(ptr(raw)) != 0
+                    guard let held = chipHold.widget else { return }
+                    let shown = gtk_toggle_button_get_active(ptr(held)) != 0
                     self?.change { $0.setHidden(key, !shown) }
                 }
             }
@@ -302,11 +302,11 @@ final class UsagePanel: @unchecked Sendable {
         let lead = gtk_check_button_new_with_label(Localized.text("Lead with the tightest"))!
         Gtk.addClass(lead, "usage-lead")
         gtk_check_button_set_active(ptr(lead), preferences.leadsWithTightest ? 1 : 0)
-        let leadBits = UInt(bitPattern: lead)
+        let leadHold = Gtk.WeakWidget(lead)
         Gtk.connect(UnsafeMutableRawPointer(lead), "toggled") { [weak self] in
             Gtk.onMain { [weak self] in
-                guard let raw = UnsafeMutableRawPointer(bitPattern: leadBits) else { return }
-                let on = gtk_check_button_get_active(ptr(raw)) != 0
+                guard let held = leadHold.widget else { return }
+                let on = gtk_check_button_get_active(ptr(held)) != 0
                 guard on != QuotaBoardStore.current.leadsWithTightest else { return }
                 self?.change { $0.leadsWithTightest = on }
             }
@@ -348,13 +348,12 @@ final class UsagePanel: @unchecked Sendable {
         let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         gtk_widget_set_halign(buttons, GTK_ALIGN_END)
         let title = hasKey ? Localized.text("Edit key…") : Localized.text("Add key…")
-        let parentBits = windowBits
+        let parentHold = windowHold
         gtk_box_append(
             ptr(buttons),
             Gtk.button(title, css: ["suggested-action"]) { [weak self] in
                 Gtk.onMain { [weak self] in
-                    let parent: UnsafeMutablePointer<GtkWidget>? =
-                        UnsafeMutableRawPointer(bitPattern: parentBits).map { ptr($0) }
+                    guard let parent = parentHold.widget else { return }
                     let changed: @Sendable () -> Void = { [weak self] in
                         Gtk.onMain { [weak self] in self?.startRefresh() }
                     }

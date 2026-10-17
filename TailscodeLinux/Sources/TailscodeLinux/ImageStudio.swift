@@ -663,4 +663,13 @@ final class ImageStudio: @unchecked Sendable, HelperHost {
         if let libraryObserver { NotificationCenter.default.removeObserver(libraryObserver) }
         libraryObserver = nil
     }
+
+    /// A fetch or a render that lands after ``release()`` still decodes into this studio; whatever
+    /// it left is let go of with the studio rather than kept for good.
+    deinit {
+        dropPreview()
+        for bits in textures.values {
+            if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
+        }
+    }
 }

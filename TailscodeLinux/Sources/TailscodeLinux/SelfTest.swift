@@ -129,6 +129,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkApplyPath()
+            report("apply path: \(checks) claims hold: builder reachable mid-build, doubled-row watch incremental")
+        } catch {
+            report("apply path: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkBrain()
             report(
                 "brain: \(checks) claims hold: rows, Lines, fallbacks, stage layout, hover, pin, replay, dive, clocks, hidden panes, the share poster, the collapsed line's fit, the scroll anchor, release")
@@ -394,6 +402,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try await checkSelfDiagnosis()
+            report("self-diagnosis: \(checks) claims hold — a pinned thread is sampled and the polls wait for a window")
+        } catch {
+            report("self-diagnosis: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkRestorePlan()
             report("safe restore: \(checks) launches decided and woken in order")
         } catch {
@@ -530,10 +546,26 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkShutdown()
+            report("shutdown: \(checks) claims hold — nothing posted runs once the process is quitting, a held widget reads nil when it is gone and a closing window gives its backfill back")
+        } catch {
+            report("shutdown: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkClock()
             report("clock: \(checks) claims hold — the chip, the glance, the sheet, its alarms and the palette it draws with")
         } catch {
             report("clock: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkSidebar()
+            report("sidebar: \(checks) claims hold — a burst of draws is two, the last request is drawn, a row with no parent is left alone")
+        } catch {
+            report("sidebar: \(error)")
             failures += 1
         }
 
@@ -1585,7 +1617,7 @@ public enum SelfTest {
     }
 
     /// The guard's decision for the units a launch can land in, from the files as text.
-    private static func checkResourceGuard() throws -> Int {
+    static func checkResourceGuard() throws -> Int {
         var checks = 0
         func expect(_ condition: Bool, _ label: String) throws {
             guard condition else { throw SelfTestFailure("resource guard: \(label)") }
@@ -1594,17 +1626,34 @@ public enum SelfTest {
         let slice = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/"
         let total: UInt64 = 62 * ResourceLimits.gib
         let plan = ResourceLimits.plan(memTotalBytes: total)
-        func decide(_ unit: String?, max: String? = "max", env: [String: String] = [:])
-            -> ResourceGuardDecision
-        {
+        func decide(
+            _ unit: String?, max: String? = "max", env: [String: String] = [:], procs: String? = nil,
+            pid: Int32 = getpid()
+        ) -> ResourceGuardDecision {
             ResourceGuard.decide(
                 procSelfCgroup: unit.map { $0.hasPrefix("0::") ? $0 : slice + $0 + "\n" },
-                memoryMax: max, memTotalBytes: total, environment: env)
+                memoryMax: max, memTotalBytes: total, environment: env, procs: procs, pid: pid)
         }
         let scope = "app-io.github.guitaripod.Tailscode-1234.scope"
         try expect(decide(scope) == .apply(unit: scope, plan: plan), "the launcher's scope is limited")
         let service = "app-io.github.guitaripod.Tailscode-77.service"
         try expect(decide(service) == .apply(unit: service, plan: plan), "a service is limited")
+        let instance = "app-io.github.guitaripod.Tailscode@c3bde4b1845c46d69b6bcec0aaba9e0c.service"
+        try expect(
+            decide(instance) == .apply(unit: instance, plan: plan), "the launcher's instance service is limited")
+        try expect(
+            decide(instance, procs: "4242\n4243\n", pid: 4242) == .apply(unit: instance, plan: plan),
+            "an instance service that lists this process is limited")
+        try expect(
+            decide(instance, procs: "4243\n", pid: 4242) == .skipForeignScope(unit: instance),
+            "an instance service that does not list this process is foreign")
+        try expect(
+            decide("app-io.github.guitaripod.Tailscode@zz.service")
+                == .skipForeignScope(unit: "app-io.github.guitaripod.Tailscode@zz.service"),
+            "an instance whose name is not a hash is foreign")
+        try expect(
+            ResourceGuard.holds(procs: nil, pid: 7) && !ResourceGuard.holds(procs: "", pid: 7),
+            "an unreadable list is no evidence, an empty one is")
         try expect(
             decide("app-ghostty-surface-transient-14171.scope")
                 == .skipForeignScope(unit: "app-ghostty-surface-transient-14171.scope"),
@@ -1649,6 +1698,61 @@ public enum SelfTest {
         ].map(\.code)
         try expect(codes == ["dbus", "failed", "skip-foreign"], "the header's codes")
         try expect(codes.allSatisfy { $0.count <= FlightHeader.limitsWidth }, "every code fits the header")
+        return checks
+    }
+
+    /// The watchdog's stack sample of a thread that is busy, and the gate the background polls wait
+    /// at: a spinning thread answers with frames inside this binary, and a poll parked on a hidden
+    /// window is released by the window becoming visible and by its own cancellation.
+    static func checkSelfDiagnosis() async throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("self-diagnosis: \(label)") }
+            checks += 1
+        }
+        let spin = SpinningThread()
+        spin.start()
+        defer { spin.stop() }
+        try expect(spin.waitUntilInstalled(), "the sampler installs on the thread to sample")
+        var frames: [String] = []
+        for _ in 0..<5 where frames.isEmpty {
+            var addresses = [UInt](repeating: 0, count: Int(TAILSCODE_STACK_DEPTH))
+            let count = addresses.withUnsafeMutableBufferPointer {
+                tailscode_stack_sample_main(500, $0.baseAddress, Int32($0.count))
+            }
+            for index in 0..<max(0, Int(count)) {
+                var module = [CChar](repeating: 0, count: 96)
+                var offset: UInt64 = 0
+                _ = tailscode_stack_resolve(addresses[index], &module, module.count, &offset)
+                frames.append(StackReport.frame(module: String(cString: module), offset: offset))
+            }
+        }
+        try expect(frames.count >= 3, "a spinning thread answers with its stack")
+        try expect(
+            frames.allSatisfy { StackReport.parseFrame(Substring($0)) != nil }, "every frame reads back")
+        try expect(!frames.contains { $0.hasPrefix("?+") }, "every frame names its module")
+
+        let gate = BackgroundGate()
+        gate.setVisible(false)
+        try expect(!gate.isVisible, "the gate closes with the window")
+        let released = Task { await gate.untilVisible() }
+        try await Task.sleep(for: .milliseconds(50))
+        gate.setVisible(true)
+        await released.value
+        try expect(gate.isVisible, "the window becoming visible releases a parked poll")
+        gate.setVisible(false)
+        let cancelled = Task { await gate.untilVisible() }
+        try await Task.sleep(for: .milliseconds(50))
+        cancelled.cancel()
+        await cancelled.value
+        try expect(!gate.isVisible, "a cancelled poll is released while the window is hidden")
+        var owed = 0
+        gate.onShown { owed += 1 }
+        gate.setVisible(true)
+        gate.setVisible(true)
+        try expect(owed == 1, "the redraw owed to a hidden window runs once when it is seen")
+        gate.setLevel(.strained)
+        try expect(gate.shedLevel == .strained, "the gate holds the level it is told")
         return checks
     }
 
@@ -4910,5 +5014,57 @@ extension SelfTest {
         tray.fold(true)
         expect(tray.isFolded, "a short pane folds them into Settings")
         return failures
+    }
+}
+
+
+/// A thread that installs the stack sampler on itself and burns CPU until told to stop, so the
+/// self-test has a busy thread to sample that is not the one doing the asking.
+private final class SpinningThread: @unchecked Sendable {
+    private let lock = NSLock()
+    private var installed = false
+    private var stopping = false
+    private var sink = 0.0
+
+    func start() {
+        let thread = Thread { [self] in
+            _ = tailscode_stack_sampler_install()
+            lock.lock()
+            installed = true
+            lock.unlock()
+            while !isStopping { sink += Self.work(20_000) }
+        }
+        thread.stackSize = 512 * 1024
+        thread.start()
+    }
+
+    @inline(never)
+    private static func work(_ count: Int) -> Double {
+        var total = 0.0
+        for index in 0..<count { total += Double(index).squareRoot() }
+        return total
+    }
+
+    private var isStopping: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return stopping
+    }
+
+    func waitUntilInstalled() -> Bool {
+        for _ in 0..<200 {
+            lock.lock()
+            let ready = installed
+            lock.unlock()
+            if ready { return true }
+            usleep(5_000)
+        }
+        return false
+    }
+
+    func stop() {
+        lock.lock()
+        stopping = true
+        lock.unlock()
     }
 }

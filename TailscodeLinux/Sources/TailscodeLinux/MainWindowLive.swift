@@ -33,7 +33,7 @@ extension MainWindow {
     func watchedPresenceChanged(_ key: LiveKey, _ reading: SessionPresence) {
         guard watchLeases[key.pinKey] != nil else { return }
         backgroundPresence[key.pinKey] = reading
-        renderSidebar()
+        scheduleSidebarRender()
         let held = !SendQueueStore.queue(profileID: key.profileID, sessionID: key.sessionID).isEmpty
         if reading == .unobserved, !held { stopWatching(key.pinKey) }
     }
@@ -194,6 +194,6 @@ extension MainWindow {
         splitHost.panes[first]?.open(entry)
         let rest = Array(pairs.dropFirst())
         guard !rest.isEmpty, let root = splitHost.panes[first]?.frame else { return }
-        FillTurns.take(on: root) { [weak self] in self?.openInTurns(rest) }
+        FillTurns.take(on: root, essential: true) { [weak self] in self?.openInTurns(rest) }
     }
 }

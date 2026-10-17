@@ -40,6 +40,7 @@ final class Seatbelts: @unchecked Sendable {
     /// governor's own budget. At strained and above the governor caps it whatever it says.
     private(set) var liveBudget: LiveBudget = .auto
     private var started = false
+    private var stopped = false
     private var ledger: LaunchLedger?
     private var paneCount = 0
     private var header: FlightHeader?
@@ -54,8 +55,15 @@ final class Seatbelts: @unchecked Sendable {
 
     let pressure = PressureSensor()
     private let watchdog = Watchdog()
+    private let sampler = BusySampler()
+    private var sustained = SustainedBusy()
+    private var busyRising = false
+    private var busyCapture: TimeInterval?
+    private var lastSlowCapture: TimeInterval = -.infinity
 
     var isStarted: Bool { started }
+
+    var isStopped: Bool { stopped }
 
     static let liveBudgetKey = "tailscode.liveBudget"
 
@@ -108,14 +116,18 @@ final class Seatbelts: @unchecked Sendable {
         started = true
         self.panes = panes
         header = Self.header(window: window)
+        tailscode_set_picture_renderer(header?.renderer)
         if let header {
             AppLog.write(
                 .lifecycle,
                 "renderer \(header.renderer ?? "unknown") · gl \(header.glVendor ?? "none")")
         }
         meter.install()
+        sampler.install()
+        BackgroundGate.shared.watch(window: window)
         watchdog.start(
             onStall: { [weak self] event, state in self?.stalled(event, state) },
+            onSlow: { [weak self] silent, state in self?.slow(silent, state) },
             onTick: { [weak self] now, poked in self?.recorderTick(now: now, poked: poked) })
         scheduleTick()
     }
@@ -166,16 +178,26 @@ final class Seatbelts: @unchecked Sendable {
     }
 
     private func scheduleTick() {
+        guard !stopped else { return }
         Gtk.after(1000) { [weak self] in
-            guard let self else { return }
+            guard let self, !self.stopped else { return }
             self.tick()
             self.scheduleTick()
         }
     }
 
+    /// The window is going: the governor stops reading panes and telling them anything, and the
+    /// once-a-second tick is not armed again. The watchdog thread and the ring keep going until
+    /// ``exitClean()``, because they touch no widget. Safe to repeat.
+    func stop() {
+        stopped = true
+        panes = nil
+        onDecision = nil
+    }
+
     /// One governor evaluation from this second's sensors, and its effects.
     private func tick() {
-        guard started else { return }
+        guard started, !stopped else { return }
         let reading = meter.take()
         let snapshot = pressure.snapshot
         let watchdogHint = takeStallHint()
@@ -188,6 +210,7 @@ final class Seatbelts: @unchecked Sendable {
         }
         touched = touched.filter { entry in facts.contains { $0.id == entry.key } }
         let reducedMotion = tailscode_animations_enabled() == 0
+        let busyRun = sustained.record(busy: reading.loop.busy1, now: reading.now)
         let sample = GovernorSample(
             loopBusy: reading.loop.busy2, worstStall: reading.worstSinceLast, host: snapshot.host,
             ownMemory: snapshot.ownMemory, reducedMotion: reducedMotion, watchdog: watchdogHint)
@@ -205,9 +228,11 @@ final class Seatbelts: @unchecked Sendable {
             if effective > level, MemoryRelief.depth(for: effective) != nil {
                 let relieved = MemoryRelief.shared.relieve(level: effective)
                 if !relieved.isEmpty { fresh.append("relief \(relieved.count)") }
+                Self.returnFreedMemory()
             }
             level = effective
         }
+        BackgroundGate.shared.setLevel(effective)
         CascadeBudget.apply(
             TileGovernor.animation(level: effective, reducedMotion: reducedMotion), level: effective)
         var shown = decision
@@ -225,8 +250,20 @@ final class Seatbelts: @unchecked Sendable {
         publication.mailbox = drained.ready
         publication.drainP95Ms = drained.passes > 0 ? (drained.p95 * 10_000).rounded() / 10 : nil
         events += fresh
+        busyRising = sustained.isRising
+        if let busyRun { busyCapture = busyRun }
         lock.unlock()
-        if !fresh.isEmpty { watchdog.poke() }
+        if !fresh.isEmpty || busyRun != nil { watchdog.poke() }
+    }
+
+    /// Hands the free tails of every malloc arena back to the system once the caches that were
+    /// just emptied have had a moment to free: a cache that gives its entries up to the allocator
+    /// does nothing for the resident size until the allocator gives the pages up to the kernel.
+    /// Off the main thread, because trimming a gigabyte heap is not instant.
+    private static func returnFreedMemory() {
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.5) {
+            _ = tailscode_heap_trim()
+        }
     }
 
     private func enqueue(_ event: String) {
@@ -255,6 +292,7 @@ final class Seatbelts: @unchecked Sendable {
             lock.unlock()
         case .deep(let silent):
             text = "deep \(Int(silent * 1000))ms \(state?.line ?? "?")"
+            writeCapture(reason: "loop silent \(Self.seconds(silent)) s", state: state)
         case .recovered(let lasted):
             text = "stall over \(Int(lasted * 1000))ms"
         }
@@ -262,9 +300,45 @@ final class Seatbelts: @unchecked Sendable {
         enqueue(text)
     }
 
+    /// Watchdog thread: the loop has been silent for ``Watchdog/slowAfter`` and is still in
+    /// whatever it is doing, which is the moment its stack means something. Once in fifteen
+    /// seconds, because a loop that stalls every other second has said it already.
+    private func slow(_ silent: TimeInterval, _ state: MainThreadState?) {
+        let now = Watchdog.now
+        guard now - lastSlowCapture >= 15 else { return }
+        lastSlowCapture = now
+        writeCapture(reason: "loop silent \(Self.seconds(silent)) s", state: state)
+    }
+
+    /// Watchdog thread: the busy run the governor tick saw, once the stacks and thread times are
+    /// read. The summary also goes to the ring as a short event so `--flight` points at the log.
+    private func busyTick(now: TimeInterval) {
+        lock.lock()
+        let rising = busyRising
+        let owed = busyCapture
+        busyCapture = nil
+        lock.unlock()
+        if rising { sampler.remember(now: now) } else { sampler.forget() }
+        guard let owed else { return }
+        writeCapture(
+            reason: "sustained busy \(Self.seconds(owed)) s", state: MainThreadState.read())
+    }
+
+    private func writeCapture(reason: String, state: MainThreadState?) {
+        for line in sampler.capture(reason: reason, now: Watchdog.now, main: state) {
+            AppLog.write(.lifecycle, line)
+        }
+        enqueue("capture \(reason.prefix(24)) \(state?.line ?? "?")")
+    }
+
+    private static func seconds(_ value: TimeInterval) -> String {
+        String(format: "%.1f", value)
+    }
+
     /// Watchdog thread, once a second and on every poke: one record per waiting event, or one
     /// plain record when nothing happened.
     private func recorderTick(now: TimeInterval, poked: Bool) {
+        busyTick(now: now)
         if !poked { pressure.sample() }
         guard let writer = openWriter() else { return }
         lock.lock()

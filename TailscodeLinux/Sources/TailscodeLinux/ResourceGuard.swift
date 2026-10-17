@@ -6,10 +6,12 @@ import TailscodeCore
 /// killed as one app instead of freezing the desktop it runs on.
 ///
 /// Only a unit the app owns is touched — `app-io.github.guitaripod.Tailscode-<n>.scope` or
-/// `.service`, which is what KDE's launcher and the install script start it in. A terminal launch
-/// lives in the terminal's scope and is left alone, as is a unit an administrator already capped;
-/// the in-process governor still applies to both. The decision is Core's; this reads the files it
-/// needs and makes the call.
+/// `.service`, which is what KDE's launcher and the install script start it in, and
+/// `app-io.github.guitaripod.Tailscode@<hash>.service`, the instance unit a desktop launcher makes
+/// for each launch. The name is not trusted alone: the unit's own `cgroup.procs` must list this
+/// process. A terminal launch lives in the terminal's scope and is left alone, as is a unit an
+/// administrator already capped; the in-process governor still applies to both. The decision is
+/// Core's; this reads the files it needs and makes the call.
 enum ResourceGuard {
     enum Method: String, Sendable {
         case dbus
@@ -52,12 +54,21 @@ enum ResourceGuard {
     /// The decision from the files as text, so the selftest can put any cgroup name through it.
     static func decide(
         procSelfCgroup: String?, memoryMax: String?, memTotalBytes: UInt64,
-        environment: [String: String]
+        environment: [String: String], procs: String? = nil, pid: Int32 = getpid()
     ) -> ResourceGuardDecision {
         ResourceGuardDecision.decide(
             unit: procSelfCgroup.flatMap { CgroupUnit.parse(procSelfCgroup: $0) },
             currentMemoryMax: memoryMax.flatMap(parseMax), environment: environment,
-            plan: ResourceLimits.plan(memTotalBytes: memTotalBytes))
+            plan: ResourceLimits.plan(memTotalBytes: memTotalBytes),
+            holdsProcess: holds(procs: procs, pid: pid))
+    }
+
+    /// Whether a unit's `cgroup.procs` names `pid`. A list that could not be read is no evidence
+    /// against the name, which the kernel already put in this process's own cgroup line; a list
+    /// that was read and does not name the process is.
+    static func holds(procs: String?, pid: Int32) -> Bool {
+        guard let procs else { return true }
+        return procs.split(whereSeparator: \.isNewline).contains { Int32($0) == pid }
     }
 
     /// A cgroup limit file: `max` is no limit at all, a number is bytes, anything else unknown.
@@ -78,7 +89,8 @@ enum ResourceGuard {
             .map { $0.totalKiB * 1024 } ?? 0
         let decision = decide(
             procSelfCgroup: cgroup, memoryMax: directory.flatMap { ProcFile.read($0 + "/memory.max") },
-            memTotalBytes: memTotal, environment: environment)
+            memTotalBytes: memTotal, environment: environment,
+            procs: directory.flatMap { ProcFile.read($0 + "/cgroup.procs") })
         var method: Method?
         var failure: String?
         if case .apply(let unitName, let plan) = decision {

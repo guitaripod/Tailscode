@@ -154,22 +154,7 @@ public struct StatusFacts: Sendable {
     /// One answer for every band, ticker and row; no client keeps a stopwatch of its own.
     public static func turnStart(in state: ConversationState) -> Date? {
         guard state.status == .running || state.compaction?.isRunning == true else { return nil }
-        var opener: ChatMessage?
-        for message in state.messages.reversed() {
-            if message.role == .assistant, Self.isSettled(message, before: opener) { break }
-            if message.role == .user { opener = message }
-        }
-        return (opener ?? state.messages.last(where: { $0.role == .user }))?.createdAt
-    }
-
-    /// Whether an assistant message closed its turn. A stamped `completedAt` says so outright; a
-    /// backend that never stamps one (claude-bridge) leaves nil on every message it ever sent,
-    /// so there a message that is not streaming and already has a later prompt after it is the
-    /// end of an earlier turn rather than the one still running — otherwise every clock would
-    /// count from the first prompt in the chat.
-    private static func isSettled(_ message: ChatMessage, before later: ChatMessage?) -> Bool {
-        if message.completedAt != nil { return true }
-        return !message.isStreaming && later != nil
+        return TurnScan.read(state.messages, wantsStart: true).turnStart
     }
 
     public static func from(
@@ -212,13 +197,15 @@ public struct StatusFacts: Sendable {
         if state.connectionChangedAt > .distantPast {
             facts.connectionFor = now.timeIntervalSince(state.connectionChangedAt)
         }
-        facts.activity = Self.activity(for: facts.phase, in: state, agents: agents)
-        if let startedAt = Self.turnStart(in: state) {
+        let working = state.status == .running || state.compaction?.isRunning == true
+        let scan = TurnScan.read(state.messages, wantsStart: working)
+        facts.activity = Self.activity(for: facts.phase, in: state, agents: agents, scan: scan)
+        if let startedAt = scan.turnStart {
             facts.elapsed = max(0, now.timeIntervalSince(startedAt))
         }
-        facts.runningTool = Self.runningTool(in: state)
+        facts.runningTool = scan.runningCall?.name
         facts.queued = queued
-        facts.lastPromptAt = state.messages.last(where: { $0.role == .user })?.createdAt
+        facts.lastPromptAt = scan.lastPromptAt
         facts.spend = spend
         facts.git = git
         facts.agents = agents
@@ -238,7 +225,7 @@ public struct StatusFacts: Sendable {
     /// tool in flight is the wrong answer: a `Task` call that spawned six agents is six agents
     /// working, and saying "Task" would hide the only number the reader wants.
     private static func activity(
-        for phase: Phase, in state: ConversationState, agents: [SubagentSummary]
+        for phase: Phase, in state: ConversationState, agents: [SubagentSummary], scan: TurnScan
     ) -> ActivityKind? {
         switch phase {
         case .idle: return nil
@@ -253,7 +240,7 @@ public struct StatusFacts: Sendable {
         case .stalled(let tasks): return .stalled(tasks: tasks)
         case .working:
             let active = SubagentPresence(agents: agents, hold: .going).liveCount
-            guard let kind = ActivityKind.inFlight(in: state) else {
+            guard let kind = ActivityKind.inFlight(in: state, running: scan.runningCall) else {
                 return active > 0 ? .delegating(active: active) : .working
             }
             if active > 0, case .usingTool(_, let tool) = kind,
@@ -263,16 +250,6 @@ public struct StatusFacts: Sendable {
             }
             return kind
         }
-    }
-
-    private static func runningTool(in state: ConversationState) -> String? {
-        for message in state.messages.reversed() {
-            for part in message.parts.reversed() {
-                if case .tool(let call) = part.kind, call.status == .running { return call.name }
-            }
-            if message.role == .user { break }
-        }
-        return nil
     }
 
     /// What one fact on the band is: a glyph and a number, plus what happens when it is clicked —

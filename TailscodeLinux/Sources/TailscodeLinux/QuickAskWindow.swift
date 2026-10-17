@@ -298,8 +298,8 @@ final class QuickAskWindow: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.pick(at: digit - 1) }
             return true
         }
-        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") {
-            Gtk.onMain { QuickAskWindow.open = nil }
+        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
+            if let self, QuickAskWindow.open === self { QuickAskWindow.open = nil }
         }
 
         /// The desktop answers about the chord seconds after the app starts, which is often after
@@ -369,11 +369,11 @@ final class QuickAskWindow: @unchecked Sendable {
                 lead = button
             }
             if index == targetIndex { gtk_toggle_button_set_active(ptr(button), 1) }
-            let bits = UInt(bitPattern: button)
+            let buttonHold = Gtk.WeakWidget(button)
             Gtk.connect(UnsafeMutableRawPointer(button), "toggled") {
                 Gtk.onMain {
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(raw)
+                    guard let held = buttonHold.widget else { return }
+                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(held)
                     guard gtk_toggle_button_get_active(toggle) != 0,
                         let window = QuickAskWindow.open, !window.asking
                     else { return }

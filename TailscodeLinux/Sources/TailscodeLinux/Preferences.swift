@@ -351,7 +351,7 @@ enum SettingsDialog {
 
         if DemoMode.isActive {
             let demo = group(Localized.text("Demo"), on: page)
-            let windowBits = UInt(bitPattern: window)
+            let windowHold = Gtk.WeakWidget(window)
             adw_preferences_group_add(
                 ptr(demo),
                 buttonRow(Localized.text("Leave the demo world")) {
@@ -360,8 +360,8 @@ enum SettingsDialog {
                         await ServerDirectory.shared.reload()
                         Gtk.onMain {
                             onLayoutChanged()
-                            if let raw = UnsafeMutableRawPointer(bitPattern: windowBits) {
-                                gtk_window_close(ptr(raw))
+                            if let held = windowHold.widget {
+                                gtk_window_close(ptr(held))
                             }
                         }
                     }
@@ -586,9 +586,9 @@ enum SettingsDialog {
                 "The full quota picture lives at the foot of the chat list; the Ollama Cloud and DeepSeek keys are the account facts this machine keeps."))
         let deepseekRow = DeepSeekRowHeld()
         let refreshDeepseekRow: @Sendable () -> Void = {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: deepseekRow.bits) else { return }
+            guard let held = deepseekRow.hold?.widget else { return }
             adw_action_row_set_subtitle(
-                ptr(raw),
+                ptr(held),
                 DeepSeekCredentials.hasToken
                     ? Localized.text("Saved in the app's secret store")
                     : Localized.text("Not set"))
@@ -607,14 +607,14 @@ enum SettingsDialog {
                 onDeepSeekChanged()
             }
         }
-        deepseekRow.bits = UInt(bitPattern: deepseek)
+        deepseekRow.hold = Gtk.WeakWidget(deepseek)
         adw_preferences_group_add(ptr(usage), deepseek)
 
         let ollamaRow = OllamaRowHeld()
         let refreshOllamaRow: @Sendable () -> Void = {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: ollamaRow.bits) else { return }
+            guard let held = ollamaRow.hold?.widget else { return }
             adw_action_row_set_subtitle(
-                ptr(raw),
+                ptr(held),
                 OllamaCredentials.hasToken
                     ? Localized.text("Saved in the app's secret store")
                     : Localized.text("Not set"))
@@ -632,7 +632,7 @@ enum SettingsDialog {
                 onDeepSeekChanged()
             }
         }
-        ollamaRow.bits = UInt(bitPattern: ollama)
+        ollamaRow.hold = Gtk.WeakWidget(ollama)
         adw_preferences_group_add(ptr(usage), ollama)
 
 
@@ -695,14 +695,13 @@ enum SettingsDialog {
         }
         added.rows = []
 
-        let groupBits = UInt(bitPattern: group)
-        let parentBits = UInt(bitPattern: parent)
+        let groupHold = Gtk.WeakWidget(group)
+        let parentHold = Gtk.WeakWidget(parent)
         let refill: @Sendable () -> Void = {
             Gtk.onMain {
-                guard let groupRaw = UnsafeMutableRawPointer(bitPattern: groupBits),
-                    let parentRaw = UnsafeMutableRawPointer(bitPattern: parentBits)
+                guard let heldGroup = groupHold.widget, let heldParent = parentHold.widget
                 else { return }
-                renderWatchAccounts(into: ptr(groupRaw), parent: ptr(parentRaw), added: added)
+                renderWatchAccounts(into: heldGroup, parent: heldParent, added: added)
             }
         }
         for row in WatchAccounts.rows() {
@@ -713,11 +712,9 @@ enum SettingsDialog {
                 switch row.action {
                 case .signIn:
                     Gtk.onMain {
-                        guard let raw = UnsafeMutableRawPointer(bitPattern: parentBits) else {
-                            return
-                        }
+                        guard let held = parentHold.widget else { return }
                         WatchSignInDialog.present(
-                            parent: ptr(raw), source: source, onFinished: refill)
+                            parent: held, source: source, onFinished: refill)
                     }
                 case .signOut:
                     MediaAccounts.signOut(source)
@@ -725,10 +722,8 @@ enum SettingsDialog {
                     refill()
                 case .configure:
                     Gtk.onMain {
-                        guard let raw = UnsafeMutableRawPointer(bitPattern: parentBits) else {
-                            return
-                        }
-                        YouTubeSetupDialog.present(parent: ptr(raw), onSaved: refill)
+                        guard let held = parentHold.widget else { return }
+                        YouTubeSetupDialog.present(parent: held, onSaved: refill)
                     }
                 }
             }
@@ -823,11 +818,11 @@ final class WatchRowsHeld: @unchecked Sendable {
 /// The DeepSeek key row's pointer, so the subtitle can restate the key's presence after the editor
 /// changes it — the settings window is built once and the row must answer honestly in place.
 final class DeepSeekRowHeld: @unchecked Sendable {
-    var bits: UInt = 0
+    var hold: Gtk.WeakWidget?
 }
 
 /// The Ollama Cloud key row's pointer, so the subtitle can restate the key's presence after the
 /// editor changes it — the settings window is built once and the row must answer honestly in place.
 final class OllamaRowHeld: @unchecked Sendable {
-    var bits: UInt = 0
+    var hold: Gtk.WeakWidget?
 }

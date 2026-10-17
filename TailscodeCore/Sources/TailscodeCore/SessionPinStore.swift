@@ -21,6 +21,20 @@ public enum SessionPinStore {
         all().contains(key(profileID, sessionID))
     }
 
+    /// Every pin at once, for a list that judges hundreds of rows in one pass: one read of the
+    /// store instead of one per row.
+    public static func snapshot() -> Set<String> {
+        Set(all())
+    }
+
+    /// Where every pin sits in pin order, by key, read once. A key listed twice keeps its first
+    /// place, as ``rank(profileID:sessionID:)`` answers.
+    public static func ranks() -> [String: Int] {
+        var ranks: [String: Int] = [:]
+        for (index, pin) in all().enumerated() where ranks[pin] == nil { ranks[pin] = index }
+        return ranks
+    }
+
     /// Where the pin sits in pin order, nil when it is not pinned.
     public static func rank(profileID: String, sessionID: String) -> Int? {
         all().firstIndex(of: key(profileID, sessionID))

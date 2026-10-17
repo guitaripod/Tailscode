@@ -36,7 +36,7 @@ final class FolderBrowserWindow: @unchecked Sendable {
     private let summary: UnsafeMutablePointer<GtkWidget>
     private let hint: UnsafeMutablePointer<GtkWidget>
     private let choose: UnsafeMutablePointer<GtkWidget>
-    private var rowWidgets: [UInt] = []
+    private var rowWidgets: [Gtk.WeakWidget] = []
 
     /// - Parameters:
     ///   - servers: the machines that can list their folders; more than one puts a switcher in the
@@ -142,8 +142,8 @@ final class FolderBrowserWindow: @unchecked Sendable {
             guard let self else { return false }
             return self.key(keyval: keyval, state: state)
         }
-        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") {
-            Gtk.onMain { FolderBrowserWindow.open = nil }
+        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
+            if let self, FolderBrowserWindow.open === self { FolderBrowserWindow.open = nil }
         }
 
         render()
@@ -353,10 +353,10 @@ final class FolderBrowserWindow: @unchecked Sendable {
             }
             gtk_box_append(ptr(crumbBar), button)
         }
-        let scrollerBits = UInt(bitPattern: crumbScroller)
+        let scrollerHold = Gtk.WeakWidget(crumbScroller)
         Gtk.after(1) {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: scrollerBits),
-                let adjustment = gtk_scrolled_window_get_hadjustment(op(raw))
+            guard let held = scrollerHold.widget,
+                let adjustment = gtk_scrolled_window_get_hadjustment(op(held))
             else { return }
             gtk_adjustment_set_value(
                 adjustment,
@@ -420,7 +420,7 @@ final class FolderBrowserWindow: @unchecked Sendable {
         }
         for (index, row) in browser.rows.enumerated() {
             let widget = make(row, index: index)
-            rowWidgets.append(UInt(bitPattern: widget))
+            rowWidgets.append(Gtk.WeakWidget(widget))
             gtk_box_append(ptr(list), widget)
         }
         revealCursor()
@@ -549,17 +549,16 @@ final class FolderBrowserWindow: @unchecked Sendable {
 
     private func revealCursor() {
         guard browser.cursor < rowWidgets.count else { return }
-        let rowBits = rowWidgets[browser.cursor]
-        let listBits = UInt(bitPattern: list)
-        let scrollerBits = UInt(bitPattern: scroller)
+        let rowHold = rowWidgets[browser.cursor]
+        let listHold = Gtk.WeakWidget(list)
+        let scrollerHold = Gtk.WeakWidget(scroller)
         Gtk.after(1) {
-            guard let rowRaw = UnsafeMutableRawPointer(bitPattern: rowBits),
-                let listRaw = UnsafeMutableRawPointer(bitPattern: listBits),
-                let scrollerRaw = UnsafeMutableRawPointer(bitPattern: scrollerBits),
-                let adjustment = gtk_scrolled_window_get_vadjustment(op(scrollerRaw))
+            guard let widget = rowHold.widget,
+                let listWidget = listHold.widget,
+                let scrollerWidget = scrollerHold.widget,
+                let adjustment = gtk_scrolled_window_get_vadjustment(op(scrollerWidget))
             else { return }
-            let widget: UnsafeMutablePointer<GtkWidget> = ptr(rowRaw)
-            let offset = tailscode_widget_offset_y(widget, ptr(listRaw))
+            let offset = tailscode_widget_offset_y(widget, ptr(listWidget))
             guard offset >= 0 else { return }
             let page = gtk_adjustment_get_page_size(adjustment)
             let height = Double(gtk_widget_get_height(widget))

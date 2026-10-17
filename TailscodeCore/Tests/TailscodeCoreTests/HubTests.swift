@@ -252,6 +252,22 @@ struct HubTests {
         lease.cancel()
     }
 
+    @Test("The strongest interest in a conversation decides where its refetches stand")
+    func refetchPriorityFollowsInterest() async {
+        #expect(ConversationHub.refreshPriority(for: [.watching]) == .background)
+        #expect(ConversationHub.refreshPriority(for: [.watching, .glance]) == .normal)
+        #expect(ConversationHub.refreshPriority(for: [.glance, .full, .watching]) == .foreground)
+        let world = World()
+        let watch = world.hub.lease(key, interest: .watching) {}
+        let conversation = await watch.conversation()
+        #expect(await eventually { await conversation?.refreshPriority == .background })
+        let pane = world.hub.lease(key, interest: .full) {}
+        #expect(await eventually { await conversation?.refreshPriority == .foreground })
+        pane.cancel()
+        #expect(await eventually { await conversation?.refreshPriority == .background })
+        watch.cancel()
+    }
+
     @Test("Concurrent leases and cancels leave nothing behind")
     func concurrentLeases() async {
         let world = World()

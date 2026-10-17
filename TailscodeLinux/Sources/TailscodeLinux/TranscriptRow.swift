@@ -29,12 +29,12 @@ final class TranscriptContext: @unchecked Sendable {
     /// The row is updated in place instead, and a body opened afterwards reads the current text
     /// from here rather than the one its closure was built with.
     var liveReasoning: [String: String] = [:]
-    /// Preview textures and their original bytes and pixel size. The preview is downsampled to
-    /// `bubbleMaxDimension` so a transcript full of agent screenshots stays out of VRAM; the
-    /// bytes are kept for the gallery's 1:1 page and the save, and the size for the caption.
-    var textures: [String: UInt] = [:]
-    var imageData: [String: Data] = [:]
-    var imageDimensions: [String: (Int32, Int32)] = [:]
+    /// The decoded previews, which are the device's rather than this transcript's: one store
+    /// serves every pane. A preview is downsampled to `bubbleMaxDimension` so a transcript full
+    /// of agent screenshots stays small; the original bytes are the disk cache's, read when the
+    /// gallery's 1:1 page or a save wants them.
+    let pictures: PictureStore
+    private var pictureObserver: Int?
     var subagentRows: [String: [TranscriptRow]] = [:]
     /// Live facts for the agents of the running fan-out, keyed by spawning tool-use id — what an
     /// inline agent card shows for progress while its transcript is still being written.
@@ -98,9 +98,24 @@ final class TranscriptContext: @unchecked Sendable {
     /// server answers.
     var restoreRevert: (@Sendable () -> Void)?
     /// The gallery's ear while it is open: a page whose texture was still being fetched repaints
-    /// the moment ``store(textureBits:data:forKey:)`` lands it.
+    /// the moment a preview lands, or the original behind it is back on disk.
     var onImageStored: (@Sendable (String) -> Void)?
-    private var textureOrder: [String] = []
+    /// The pane's ear for a preview landing in the store, whoever asked for it: it gathers the
+    /// keys and redraws the rows that show them once.
+    var onPictureLanded: (@Sendable (String) -> Void)?
+
+    init(pictures: PictureStore = .shared) {
+        self.pictures = pictures
+        pictureObserver = pictures.addObserver { [weak self] key, restored in
+            guard let self else { return }
+            self.onImageStored?(key)
+            if !restored { self.onPictureLanded?(key) }
+        }
+    }
+
+    deinit {
+        if let pictureObserver { pictures.removeObserver(pictureObserver) }
+    }
 
     /// A run reads as open when any step inside it is, so folding a step into a run carries the
     /// reader's decision in with it rather than collapsing it.
@@ -116,64 +131,19 @@ final class TranscriptContext: @unchecked Sendable {
     /// strip flickered between its pictures and a "loading…" line on every streamed arrival.
     static let bubbleMaxDimension: Int32 = 720
 
-    var textureByteCap = 256 * 1024 * 1024
-    private var previewBytes: [String: Int] = [:]
-    private var cachedBytes = 0
+    /// The decoded preview for a picture, and a mark that a row is using it now. Zero when it is
+    /// not decoded.
+    func texture(forKey key: String) -> UInt { pictures.texture(forKey: key) }
 
-    /// Decoded pictures are kept across chat switches, bounded: past the cap the least recently
-    /// decoded is released — its bytes are still on disk, one frame away. The bound is on
-    /// preview texture bytes, not a count, because what it protects is VRAM: one giant
-    /// screenshot and one small logo are not the same cost.
-    func store(textureBits: UInt, data: Data, dimensions: (Int32, Int32), forKey key: String) {
-        if let existing = textures[key], existing != 0,
-            let stale = OpaquePointer(bitPattern: Int(bitPattern: existing))
-        {
-            g_object_unref(UnsafeMutableRawPointer(stale))
-        }
-        textures[key] = textureBits
-        imageData[key] = data
-        imageDimensions[key] = dimensions
-        let preview = Self.previewBytes(dimensions)
-        previewBytes[key] = preview
-        cachedBytes += preview
-        onImageStored?(key)
-        textureOrder.removeAll { $0 == key }
-        textureOrder.append(key)
-        while cachedBytes > textureByteCap, let evicted = textureOrder.first {
-            textureOrder.removeFirst()
-            if let bits = textures[evicted], bits != 0,
-                let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
-            {
-                g_object_unref(UnsafeMutableRawPointer(texture))
-            }
-            textures[evicted] = nil
-            imageData[evicted] = nil
-            imageDimensions[evicted] = nil
-            cachedBytes -= previewBytes[evicted] ?? 0
-            previewBytes[evicted] = nil
-        }
-    }
+    func dimensions(forKey key: String) -> (Int32, Int32)? { pictures.dimensions(forKey: key) }
 
-    /// The decoded preview for a picture, and a mark that a row is using it now. The order the
-    /// cache sheds in is the order pictures were last drawn, not the order they were decoded, so a
-    /// rebuild — which draws the pictures in view last — can never have the pictures in view
-    /// evicted by the ones above them. Zero when it is not decoded.
-    func texture(forKey key: String) -> UInt {
-        guard let bits = textures[key], bits != 0 else { return 0 }
-        if textureOrder.last != key {
-            textureOrder.removeAll { $0 == key }
-            textureOrder.append(key)
-        }
-        return bits
-    }
-
-    /// What a preview of `dimensions` costs in VRAM at `bubbleMaxDimension`.
-    private static func previewBytes(_ dimensions: (Int32, Int32)) -> Int {
-        let scale =
-            min(1, Double(bubbleMaxDimension) / Double(max(1, max(dimensions.0, dimensions.1))))
-        let width = max(1, Int(Double(dimensions.0) * scale))
-        let height = max(1, Int(Double(dimensions.1) * scale))
-        return width * height * 4
+    /// Decodes `data` here and now into the store, and files the original where the gallery reads
+    /// it from. For pictures that are already on this machine — the demo's — so a decode on the
+    /// main thread is the price of having no network to wait for.
+    func storePreview(of data: Data, original reference: FileReference, forKey key: String) {
+        ImageCache.save(data, for: reference)
+        guard let preview = PictureDecode.preview(of: data) else { return }
+        pictures.store(preview, forKey: key)
     }
 }
 
@@ -187,21 +157,37 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     private var cache: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
     private var look = ""
     private let brains = BrainLedger()
+    private let published = NSLock()
     private var brainSettings = BrainBuildSettings()
+    private var publishedPolicy: NeuralOpenPolicy?
 
     /// How the brains are drawn this build: the style, which one the person opened and which one
-    /// lists its rows. Set from the main loop whenever one changes, read under the lock.
+    /// lists its rows. Set from the main loop whenever one changes. It has a lock of its own,
+    /// never the build's, so the main loop does not wait for a build that may take its time.
     func setBrains(_ settings: BrainBuildSettings) {
-        lock.lock()
+        published.lock()
         brainSettings = settings
-        lock.unlock()
+        published.unlock()
     }
 
     /// The open policy the last build made, which is what a press on a head's chevron toggles.
+    /// Published at the point a build makes it, under the same small lock as the settings.
     var brainPolicy: NeuralOpenPolicy? {
-        lock.lock()
-        defer { lock.unlock() }
-        return brains.policy
+        published.lock()
+        defer { published.unlock() }
+        return publishedPolicy
+    }
+
+    private var currentBrainSettings: BrainBuildSettings {
+        published.lock()
+        defer { published.unlock() }
+        return brainSettings
+    }
+
+    private func publish(policy: NeuralOpenPolicy?) {
+        published.lock()
+        publishedPolicy = policy
+        published.unlock()
     }
 
     /// How many turns the brains have read from their messages, for the harness.
@@ -240,7 +226,9 @@ final class TranscriptRowBuilder: @unchecked Sendable {
             look = current
         }
         var brain = brains.pass(
-            messages: messages, running: turnOpen, awaiting: awaiting, settings: brainSettings)
+            messages: messages, running: turnOpen, awaiting: awaiting,
+            settings: currentBrainSettings)
+        publish(policy: brains.policy)
         var all: [TranscriptRow] = []
         var next: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
         next.reserveCapacity(messages.count)
@@ -1213,7 +1201,7 @@ struct TranscriptRow: Hashable {
                 open?(key, name)
             }
             gtk_box_append(ptr(column), opener)
-            let dims = context.imageDimensions[key] ?? (width, height)
+            let dims = context.dimensions(forKey: key) ?? (width, height)
             gtk_box_append(
                 ptr(column),
                 Gtk.label("\(name) · \(dims.0)×\(dims.1)", css: "row-detail", selectable: false))

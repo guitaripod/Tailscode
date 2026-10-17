@@ -27,6 +27,16 @@ final class MainWindow: @unchecked Sendable {
     private let searchEntry = gtk_search_entry_new()!
 
     private var sidebarLimit = 60
+    /// Draws of the chat list are spaced by this, so a burst of presence changes, list pushes and
+    /// refreshes is one draw and the one that closes it. The row models of the last draw are kept
+    /// beside it, and the keys whose model moved since the widgets were last made wait in
+    /// `sidebarDirtyKeys` for a draw that can be seen.
+    private var sidebarCoalescer = RenderCoalescer()
+    private var sidebarRowCache = SessionRowModelCache()
+    private var sidebarDirtyKeys: Set<String> = []
+    private var sidebarTornDown = false
+    private var pendingListChanges: [(change: SessionListChange, profile: ConnectionProfile)] = []
+    private var listGatherQueued = false
     /// The first-class way into video, kept so its promise and its mark can be rewritten whenever
     /// a renderer is chosen or a render starts.
     private var videoButton: UnsafeMutablePointer<GtkWidget>?
@@ -100,8 +110,9 @@ final class MainWindow: @unchecked Sendable {
     private var sidebarScrollTarget: Double?
     private var sidebarScrollRestore: Double?
     /// The row widgets on screen, in the order they were appended, so the accent can move between
-    /// two of them without rebuilding the list around them. Cleared before every teardown: a
-    /// pointer here must never outlive the row it names.
+    /// two of them without rebuilding the list around them. Each is held weakly and the array is
+    /// emptied before every teardown and when the window is destroyed: a pointer here must never
+    /// outlive the row it names.
     private var sidebarRows: [SidebarRowWidget] = []
     private var sidebarReveal: String?
     private var visible: [ChatListItem] = []
@@ -159,7 +170,15 @@ final class MainWindow: @unchecked Sendable {
     private var restoreWake = RestoreWake(order: [])
     private var wakeScheduled = false
     private var restoreBanner: RestoreBanner?
-    private(set) var liveChip: UnsafeMutablePointer<GtkWidget>?
+    private var liveChipHold: Gtk.WeakWidget?
+    private var tornDown = false
+
+    /// The live chip, or nil once the toolkit has disposed it: timers and hops read it long after
+    /// the window it hangs in may have gone.
+    var liveChip: UnsafeMutablePointer<GtkWidget>? { liveChipHold?.widget }
+
+    /// Whether the window is still standing, for the window's own periodic work.
+    var isStanding: Bool { !tornDown && !Gtk.isQuitting }
     private(set) var liveChipText = ""
 
     var windowWidget: UnsafeMutablePointer<GtkWidget>? { window }
@@ -244,13 +263,12 @@ final class MainWindow: @unchecked Sendable {
         toastOverlay = overlay
         let root = gtk_overlay_new()!
         gtk_overlay_set_child(op(root), overlay)
-        let headerBits = UInt(bitPattern: contentHeader)
+        let headerHold = contentHeader.map { Gtk.WeakWidget($0) }
         let rootWindow = window
         studioSheet = StudioSheet(
             overlay: root, content: overlay, window: rootWindow,
             titlebar: {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: headerBits) else { return 0 }
-                let header: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+                guard let header = headerHold?.widget else { return 0 }
                 return Double(gtk_widget_get_height(header))
             })
         studioSheet?.onRise = { [weak self] in self?.pendingChords = [] }
@@ -264,9 +282,13 @@ final class MainWindow: @unchecked Sendable {
         splitHost.eachPane { $0.rebuildHelpOverlay() }
         installKeymap(on: window)
         installPressRouting(on: window)
+        installSidebarLifecycle(on: window)
         Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { [weak self] in
             VoiceCallRunner.shared.hangUp()
             self?.stashDrafts()
+        }
+        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
+            self?.windowDestroyed()
         }
         Notifier.shared.attach(
             app: app,
@@ -1352,7 +1374,7 @@ final class MainWindow: @unchecked Sendable {
         }
         gtk_widget_set_visible(chip, 0)
         adw_header_bar_pack_end(op(header), chip)
-        liveChip = chip
+        liveChipHold = Gtk.WeakWidget(chip)
         adw_toolbar_view_add_top_bar(op(toolbar), header)
         contentHeader = header
 
@@ -1397,7 +1419,7 @@ final class MainWindow: @unchecked Sendable {
     /// The live chip: how many chats are whole out of how many are open, drawn only once there are
     /// two to count.
     func updateLiveChip() {
-        guard let chip = liveChip, let tile = splitHost as? TileHost else { return }
+        guard isStanding, let chip = liveChip, let tile = splitHost as? TileHost else { return }
         let counts = tile.liveCounts
         let shown = counts.chats > 1
         if gtk_widget_get_visible(chip) != (shown ? 1 : 0) {
@@ -1511,10 +1533,6 @@ final class MainWindow: @unchecked Sendable {
 
     func rememberedRows(for sessionID: String) -> [TranscriptRow]? {
         sessionRows[sessionID]
-    }
-
-    func scheduleSidebarRender() {
-        renderSidebar()
     }
 
     /// A pane changed which conversation it holds. The layout on disk carries the sessions, so a
@@ -1652,6 +1670,7 @@ final class MainWindow: @unchecked Sendable {
     /// by profile and opened once the directory actually has machines — a cold start with an empty
     /// list used to start nothing and never try again.
     private func ensureListStreams(_ profiles: [ConnectionProfile]) {
+        guard !tornDown else { return }
         let wanted = Set(profiles.map(\.id))
         for (id, task) in listStreamTasks where !wanted.contains(id) {
             task.cancel()
@@ -1680,30 +1699,57 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// List pushes are gathered for a moment and folded into one merge and one draw, the way the
+    /// phone folds them: a server that moves forty chats at once is one pass over the list.
     private func applyListChange(_ change: SessionListChange, profile: ConnectionProfile) {
-        switch change {
-        case .upsert(let session):
-            let entry = SessionEntry(
-                profileID: profile.id, profileName: profile.name,
-                host: profile.baseURL.host ?? profile.name,
-                backendType: profile.backend, session: session)
-            var next = entries.filter {
-                !($0.profileID == profile.id && $0.session.id == session.id)
-            }
-            next.append(entry)
-            next.sort { $0.session.updatedAt > $1.session.updatedAt }
-            entries = next
-            if !next.isEmpty { Soak.timeListSave { SessionListCache.enqueueSave(next) } }
-            SessionMarks.reconcile(with: [entry])
-            renderSidebar()
-            splitHost.eachPane { pane in
-                if pane.sessionID == session.id { pane.refreshPills() }
-            }
-        case .remove(let id):
-            entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
-            renderSidebar()
-        case .invalidated:
+        guard !sidebarTornDown else { return }
+        if case .invalidated = change {
             Task { [weak self] in await self?.refresh() }
+            return
+        }
+        pendingListChanges.append((change, profile))
+        guard !listGatherQueued else { return }
+        listGatherQueued = true
+        Gtk.after(UInt32(SidebarCadence.listGather * 1000)) { [weak self] in
+            guard let self else { return }
+            self.listGatherQueued = false
+            self.flushListChanges()
+        }
+    }
+
+    private func flushListChanges() {
+        guard !sidebarTornDown, !pendingListChanges.isEmpty else { return }
+        let batch = pendingListChanges
+        pendingListChanges = []
+        if !SessionListOrder.isNewestFirst(entries) {
+            entries.sort { $0.session.updatedAt > $1.session.updatedAt }
+        }
+        var touched: [SessionEntry] = []
+        for (change, profile) in batch {
+            switch change {
+            case .upsert(let session):
+                let entry = SessionEntry(
+                    profileID: profile.id, profileName: profile.name,
+                    host: profile.baseURL.host ?? profile.name,
+                    backendType: profile.backend, session: session)
+                SessionListOrder.upsert(entry, into: &entries)
+                touched.append(entry)
+            case .remove(let id):
+                SessionListOrder.remove(profileID: profile.id, sessionID: id, from: &entries)
+            case .invalidated:
+                break
+            }
+        }
+        if !touched.isEmpty {
+            let saved = entries
+            Soak.timeListSave { SessionListCache.enqueueSave(saved) }
+            SessionMarks.reconcile(with: touched)
+        }
+        scheduleSidebarRender()
+        guard !touched.isEmpty else { return }
+        let touchedIDs = Set(touched.map(\.session.id))
+        splitHost.eachPane { pane in
+            if let id = pane.sessionID, touchedIDs.contains(id) { pane.refreshPills() }
         }
     }
 
@@ -1748,7 +1794,7 @@ final class MainWindow: @unchecked Sendable {
             }
         }
         resolvePendingBindings()
-        renderSidebar()
+        scheduleSidebarRender()
         restateChoosers()
         let active = activePane
         guard active.sessionID == nil, pendingBindings[active.id] == nil,
@@ -1937,40 +1983,132 @@ final class MainWindow: @unchecked Sendable {
                 orbKinds, ultracode: splitHost.panes.values.contains { $0.auraActive }))
     }
 
+    /// The monotonic clock the draw spacing is measured on.
+    private static var sidebarClock: TimeInterval { ProcessInfo.processInfo.systemUptime }
+
+    /// Whether anybody could see the list: the window exists and the compositor has not said it is
+    /// minimised, on another workspace or covered whole.
+    private var sidebarWindowVisible: Bool {
+        guard !sidebarTornDown, let window else { return false }
+        return gtk_window_is_suspended(ptr(window)) == 0
+    }
+
+    private var sidebarInterval: TimeInterval {
+        SidebarCadence.interval(at: CascadeBudget.level, visible: sidebarWindowVisible)
+    }
+
+    /// Asks for the list to be drawn. The first request after a quiet spell is drawn at once; the
+    /// rest of a burst is one more draw at the end of the interval, which reads whatever is true
+    /// by then, so the last state is always the one drawn.
+    func scheduleSidebarRender() {
+        guard !sidebarTornDown, !Gtk.isQuitting else { return }
+        switch sidebarCoalescer.request(at: Self.sidebarClock, interval: sidebarInterval) {
+        case .runNow:
+            drawSidebar()
+        case .covered:
+            break
+        case .wait(let delay, let token):
+            Gtk.after(UInt32(max(1, (delay * 1000).rounded(.up)))) { [weak self] in
+                guard let self, !self.sidebarTornDown,
+                    self.sidebarCoalescer.fire(token: token, at: Self.sidebarClock)
+                else { return }
+                self.drawSidebar()
+            }
+        }
+    }
+
+    /// Draws the list now, whatever is waiting: what a press on a row asked for must show under the
+    /// pointer, not a tenth of a second after.
+    func renderSidebar() {
+        guard !sidebarTornDown else { return }
+        sidebarCoalescer.flush(at: Self.sidebarClock)
+        drawSidebar()
+    }
+
+    /// The window can be seen again, or has been mapped for the first time: whatever the list
+    /// owed while nobody was looking is drawn now.
+    private func sidebarVisibilityChanged() {
+        guard sidebarWindowVisible else { return }
+        renderSidebar()
+    }
+
+    /// The window is going: nothing in the list may be touched again, and the row widgets this
+    /// window was holding are no longer anybody's to name.
+    private func sidebarTeardown() {
+        sidebarTornDown = true
+        sidebarRows = []
+        sidebarCoalescer.reset()
+        pendingListChanges = []
+    }
+
+    private func installSidebarLifecycle(on window: UnsafeMutablePointer<GtkWidget>) {
+        let root = UnsafeMutableRawPointer(window)
+        Gtk.onNotify(root, property: "suspended") { [weak self] in
+            self?.sidebarVisibilityChanged()
+        }
+        Gtk.observe(root, "destroy") { [weak self] in
+            self?.sidebarTeardown()
+        }
+    }
+
     /// Rebuilding two hundred rows of widgets is a visible stutter — nothing is touched unless
     /// what the list would say actually differs from what it says now, and only the first
-    /// screenful or two are built.
-    func renderSidebar() {
+    /// screenful or two are built. A list nobody can see keeps its models and its side effects (the
+    /// notices and the orb read them) and leaves its widgets alone until it can be seen.
+    private func drawSidebar() {
+        guard !sidebarTornDown, !Gtk.isQuitting else { return }
         if sidebarPointerHeld {
             sidebarRenderHeld = true
             return
         }
-        defer { scheduleRowVerbsRefresh() }
+        let canDraw = sidebarWindowVisible
+        defer { if canDraw { scheduleRowVerbsRefresh() } }
         Trace.mark("renderSidebar begin \(entries.count) entries")
         defer { Trace.mark("renderSidebar end") }
         let selectedID = activePane.sessionID
         let savedChats = SavedChatStore.all()
         let saved = Set(savedChats.map(\.sessionID))
         let unread = SessionSeenStore.unreadEvaluator()
+        let pinned = SessionPinStore.snapshot()
+        let archivedKeys = ArchivedChatStore.all()
         let needle = filter.lowercased()
         let presence = observedPresence()
-        var rows = entries.filter {
-            !pendingDeletes.contains(SessionPinStore.key($0.profileID, $0.session.id))
-        }.map {
-            SessionRowModel(
-                entry: $0,
-                unreachable: unreachable.contains(
-                    ServerLabel.display(name: $0.profileName, backend: $0.backendType)),
-                unread: unread($0.session.id, $0.session.updatedAt),
-                saved: saved.contains($0.session.id),
-                pinned: SessionPinStore.contains(
-                    profileID: $0.profileID, sessionID: $0.session.id),
-                presence: presence[SessionPinStore.key($0.profileID, $0.session.id)]
-                    ?? .unobserved,
-                observedAt: lastHeard[
-                    ServerLabel.display(name: $0.profileName, backend: $0.backendType)])
+        let now = Date()
+        sidebarRowCache.beginPass()
+        var servers: [String: (unreachable: Bool, observedAt: Date?)] = [:]
+        var rows: [SessionRowModel] = []
+        rows.reserveCapacity(entries.count)
+        for entry in entries {
+            let key = SessionPinStore.key(entry.profileID, entry.session.id)
+            if !pendingDeletes.isEmpty, pendingDeletes.contains(key) { continue }
+            let serverKey = "\(entry.profileID)|\(entry.profileName)"
+            let server: (unreachable: Bool, observedAt: Date?)
+            if let known = servers[serverKey] {
+                server = known
+            } else {
+                let label = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
+                server = (unreachable.contains(label), lastHeard[label])
+                servers[serverKey] = server
+                Notifier.shared.noteServer(profileID: entry.profileID, name: entry.profileName)
+            }
+            rows.append(
+                sidebarRowCache.model(
+                    for: entry, key: key, unreachable: server.unreachable,
+                    unread: unread(entry.session.id, entry.session.updatedAt),
+                    saved: saved.contains(entry.session.id), pinned: pinned.contains(key),
+                    presence: presence[key] ?? .unobserved, observedAt: server.observedAt,
+                    now: now))
         }
+        sidebarRowCache.sweep()
+        sidebarDirtyKeys.formUnion(sidebarRowCache.takeRebuilt())
+        let listedCount = rows.count
         rows += Self.orphanedSavedRows(savedChats, listed: entries)
+        for orphan in rows[listedCount...] {
+            Notifier.shared.noteServer(
+                profileID: orphan.entry.profileID, name: orphan.entry.profileName)
+            sidebarDirtyKeys.insert(
+                SessionPinStore.key(orphan.entry.profileID, orphan.entry.session.id))
+        }
         orbTarget =
             rows.first { $0.state == .awaitingApproval }?.entry
             ?? rows.first { $0.state == .live }?.entry
@@ -1982,36 +2120,44 @@ final class MainWindow: @unchecked Sendable {
                 title: $0.title, isActive: $0.entry.session.isActive == true,
                 updatedAt: $0.entry.session.updatedAt)
         }
-        for row in rows {
-            Notifier.shared.noteServer(profileID: row.entry.profileID, name: row.entry.profileName)
-        }
         Notifier.shared.observeListing(
             observations, openSessionID: selectedID, windowActive: windowIsActive)
         ActivityInbox.reconcile(
             observations,
             authoritativeProfileIDs: listedFromNetwork
                 ? Set(observations.map(\.profileID)) : [])
-        let archivedKeys = ArchivedChatStore.all()
-        let isArchived: (SessionRowModel) -> Bool = {
-            archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))
+        let candidates: [(row: SessionRowModel, archived: Bool)] = rows.map {
+            (
+                $0,
+                archivedKeys.contains(
+                    ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))
+            )
         }
-        let scoped = projectScope.map { scope in rows.filter { scope.matches($0.entry) } } ?? rows
-        let archivedTotal = scoped.filter(isArchived).count
-        let matching = scoped.filter {
-            needle.isEmpty || $0.title.lowercased().contains(needle)
-                || $0.detail.lowercased().contains(needle)
-                || ($0.snippet?.lowercased().contains(needle) ?? false)
-        }
-        let active = matching.filter { !isArchived($0) || $0.isUnfinished }
+        let scoped =
+            projectScope.map { scope in candidates.filter { scope.matches($0.row.entry) } }
+            ?? candidates
+        let archivedTotal = scoped.count { $0.archived }
+        let matching =
+            needle.isEmpty
+            ? scoped
+            : scoped.filter {
+                $0.row.title.lowercased().contains(needle)
+                    || $0.row.detail.lowercased().contains(needle)
+                    || ($0.row.snippet?.lowercased().contains(needle) ?? false)
+            }
         let grouped: [(String, [SessionRowModel])] =
             showingArchive
-            ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
-            : groupIntoSections(active).map { ($0.0.title, $0.1) }
+            ? [(Localized.text("ARCHIVED"), matching.filter { $0.archived }.map { $0.row })]
+                .filter { !$0.1.isEmpty }
+            : groupIntoSections(
+                matching.filter { !$0.archived || $0.row.isUnfinished }.map { $0.row }
+            ).map { ($0.0.title, $0.1) }
         let sections = SplitTabGrouping.apply(
             to: grouped, tab: showingArchive ? nil : SplitTab(snapshot: splitHost.snapshot()))
         visible = sections.flatMap(\.1)
-        marks.prune(to: visibleEntries)
+        if !marks.isEmpty { marks.prune(to: visibleEntries) }
         syncCursorToSelection()
+        guard canDraw else { return }
 
         let missed = ActivityInbox.ordered(limit: 5)
         let vocabulary = ChatListVocabulary(rows: rows)
@@ -2021,8 +2167,10 @@ final class MainWindow: @unchecked Sendable {
         )
         let previous = lastVisible
         lastVisible = visible
+        let changed = sidebarDirtyKeys
+        sidebarDirtyKeys = []
         if let last = lastSidebar, last == snapshot {
-            refreshChangedSidebarRows(from: previous, vocabulary: vocabulary)
+            refreshChangedSidebarRows(from: previous, vocabulary: vocabulary, changed: changed)
             markFocusedRow(selectedID)
             return
         }
@@ -2648,15 +2796,16 @@ final class MainWindow: @unchecked Sendable {
     /// whose words moved gets a fresh widget in that slot and every other row keeps the one the
     /// reader may be pressing on.
     private func refreshChangedSidebarRows(
-        from previous: [ChatListItem], vocabulary: ChatListVocabulary
+        from previous: [ChatListItem], vocabulary: ChatListVocabulary, changed: Set<String>
     ) {
         guard previous.count == visible.count else { return }
         for (index, item) in visible.enumerated() {
-            guard index < sidebarRows.count, sidebarRows[index].key == item.key,
-                previous[index] != item
+            guard index < sidebarRows.count else { break }
+            if changed.isEmpty, !item.isTab { continue }
+            guard sidebarRows[index].key == item.key, changed.contains(item.key) || item.isTab,
+                previous[index] != item, let old = sidebarRows[index].widget
             else { continue }
             let fresh = makeSidebarItem(item, vocabulary: vocabulary)
-            let old = sidebarRows[index].widget
             gtk_box_insert_child_after(ptr(sidebarList), fresh, old)
             gtk_box_remove(ptr(sidebarList), old)
             sidebarRows[index] = SidebarRowWidget(
@@ -2681,9 +2830,10 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func markFocusedRow(_ selectedID: String?) {
+        guard !sidebarTornDown else { return }
         for row in sidebarRows {
-            SidebarRow.setFocused(
-                row.widget, selectedID.map(row.sessionIDs.contains) ?? false)
+            guard let widget = row.widget else { continue }
+            SidebarRow.setFocused(widget, selectedID.map(row.sessionIDs.contains) ?? false)
         }
     }
 
@@ -2706,11 +2856,12 @@ final class MainWindow: @unchecked Sendable {
 
     private func applySidebarReveal() {
         guard let target = sidebarReveal,
-            let row = sidebarRows.first(where: { $0.key == target }), let sidebarScroller,
+            let widget = sidebarRows.first(where: { $0.key == target })?.widget,
+            let sidebarScroller,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(sidebarScroller))
         else { return }
-        let height = Double(gtk_widget_get_height(row.widget))
-        let top = tailscode_widget_offset_y(row.widget, sidebarList)
+        let height = Double(gtk_widget_get_height(widget))
+        let top = tailscode_widget_offset_y(widget, sidebarList)
         guard height > 0, top >= 0 else { return }
         let page = gtk_adjustment_get_page_size(adjustment)
         let value = gtk_adjustment_get_value(adjustment)
@@ -3536,7 +3687,55 @@ final class MainWindow: @unchecked Sendable {
         SettingsFile.flush()
         SessionListCache.flushEnqueuedSave()
         Seatbelts.shared.exitClean()
+        Gtk.markQuitting()
+        tearDown()
         g_application_quit(ptr(app))
+    }
+
+    /// The main window is being destroyed. The application holds nothing open of its own, so the
+    /// last window going is the process ending: the loop is told to run nothing more for Swift.
+    /// With another window still up the process lives on, and only this window's work stops.
+    private func windowDestroyed() {
+        tearDown()
+        guard !otherWindowsStanding() else { return }
+        Gtk.markQuitting()
+    }
+
+    private func otherWindowsStanding() -> Bool {
+        let own = window.map { UnsafeMutableRawPointer($0) }
+        var node = gtk_application_get_windows(ptr(UnsafeMutableRawPointer(app)))
+        while let current = node {
+            if let data = current.pointee.data, data != own { return true }
+            node = current.pointee.next
+        }
+        return false
+    }
+
+    /// Ends everything the window started that would otherwise keep running into widgets that are
+    /// going: the polling tasks, the list streams, the quota and update and clock clocks, the
+    /// governor's tick, every pane's clock and the first-fill backfill. Safe to repeat, and safe
+    /// after the widgets are gone, because it touches none.
+    func tearDown() {
+        guard !tornDown else { return }
+        tornDown = true
+        refreshTask?.cancel()
+        refreshTask = nil
+        usageTask?.cancel()
+        usageTask = nil
+        searchTask?.cancel()
+        searchTask = nil
+        watchCheck?.cancel()
+        watchCheck = nil
+        for task in listStreamTasks.values { task.cancel() }
+        listStreamTasks.removeAll()
+        Seatbelts.shared.stop()
+        UpdateWatch.stop()
+        ClockWatch.shared.stop()
+        if let tile = splitHost as? TileHost {
+            tile.onDensityChanged = nil
+            tile.eachPane { $0.quiesce() }
+        }
+        FillTurns.cancelAll()
     }
 
     /// The window is kept here as well as by the manager's own registry, so a second ask raises
@@ -4546,23 +4745,39 @@ final class MainWindow: @unchecked Sendable {
     private func startUsagePolling() {
         usageTask = Task { [weak self] in
             while !Task.isCancelled {
+                await BackgroundGate.shared.untilVisible()
                 let settled = await self?.refreshUsage() ?? true
-                try? await Task.sleep(for: .seconds(settled ? 120 : 15))
+                await BackgroundGate.shared.sleep(settled ? 120 : 15)
             }
         }
-        startUsageTick()
+        BackgroundGate.shared.onShown { [weak self] in
+            guard let self, self.isStanding else { return }
+            self.renderUsage(self.lastQuotas)
+        }
+        startUsageTick(skipped: 0)
     }
 
     /// The numbers move on the poll's cadence; the words about them move on their own. A reset
     /// counted down two minutes at a time reads as a clock that has stopped, and an age that only
     /// grows when a fetch succeeds is exactly the age that cannot be trusted — so the strip is
     /// redrawn from what it already knows every minute, which costs one relayout of five rows.
-    private func startUsageTick() {
+    ///
+    /// A minute nobody can see is not drawn, and a loop the governor is shedding draws one minute
+    /// in ``BackgroundCadence/factor(for:)``; the strip is redrawn the moment the window is seen
+    /// again (``BackgroundGate/onShown``), so neither is ever read.
+    private func startUsageTick(skipped: Int) {
         Gtk.after(60_000) { [weak self] in
             Gtk.onMain { [weak self] in
-                guard let self else { return }
+                guard let self, self.isStanding else { return }
+                let owed = skipped + 1
+                guard BackgroundGate.shared.isVisible,
+                    owed >= BackgroundCadence.factor(for: BackgroundGate.shared.shedLevel)
+                else {
+                    self.startUsageTick(skipped: BackgroundGate.shared.isVisible ? owed : 0)
+                    return
+                }
                 self.renderUsage(self.lastQuotas)
-                self.startUsageTick()
+                self.startUsageTick(skipped: 0)
             }
         }
     }
@@ -4669,7 +4884,16 @@ private struct SidebarRowWidget {
     /// Every conversation the row stands for: a remembered split wears the accent when any of the
     /// chats inside it is the one on screen.
     let sessionIDs: [String]
-    let widget: UnsafeMutablePointer<GtkWidget>
+    private let holder: Gtk.WeakWidget
+
+    init(key: String, sessionIDs: [String], widget: UnsafeMutablePointer<GtkWidget>) {
+        self.key = key
+        self.sessionIDs = sessionIDs
+        holder = Gtk.WeakWidget(widget)
+    }
+
+    /// The row's widget, or nil once GTK has disposed of it.
+    var widget: UnsafeMutablePointer<GtkWidget>? { holder.widget }
 }
 
 extension MainWindow {
@@ -4815,7 +5039,9 @@ extension MainWindow {
             return
         }
         let bounds: (Int) -> (y: Double, height: Double, right: Double)? = { [sidebarRows] index in
-            guard let box = Gtk.bounds(of: sidebarRows[index].widget, in: overlay) else {
+            guard let widget = sidebarRows[index].widget,
+                let box = Gtk.bounds(of: widget, in: overlay)
+            else {
                 return nil
             }
             return (box.y, box.height, box.x + box.width)

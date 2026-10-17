@@ -70,7 +70,7 @@ final class MediaImageCache: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.inFlight.remove(address) }
                 return
             }
-            let bits = Self.decode(data)
+            let bits = await ImageDecodeGate.shared.run { Self.decode(data) } ?? 0
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 self.inFlight.remove(address)

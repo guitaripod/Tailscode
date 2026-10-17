@@ -17,7 +17,8 @@ enum UpdateWatch {
 
     /// How long a launch waits before asking again, and how quickly it retries while the server
     /// list has not been read yet. `UpdateDriver.needsCheck` is the real gate; this is only how
-    /// often the question is put to it.
+    /// often the question is put to it. A hidden window does not ask at all until it is seen, and
+    /// a loop the governor is shedding asks less often (``BackgroundGate``).
     private static let cadence = 900
     private static let unseeded = 15
 
@@ -66,11 +67,19 @@ enum UpdateWatch {
         watch.loop = Task {
             await driver.resume()
             while !Task.isCancelled {
+                await BackgroundGate.shared.untilVisible()
                 await driver.checkIfDue()
                 let empty = await ServerDirectory.shared.profiles().isEmpty
-                try? await Task.sleep(for: .seconds(empty ? unseeded : cadence))
+                await BackgroundGate.shared.sleep(TimeInterval(empty ? unseeded : cadence))
             }
         }
+    }
+
+    /// The window is going: the periodic check ends. A running self-update is left to finish,
+    /// because it is what asks the window to quit.
+    static func stop() {
+        watch.loop?.cancel()
+        watch.loop = nil
     }
 
     /// Everything asked again, because somebody asked. The only other thing that consults a

@@ -251,6 +251,7 @@ public enum ActivityInbox {
         now: Date = Date()
     ) {
         let current = all()
+        guard !current.isEmpty else { return }
         let isUnread = SessionSeenStore.unreadEvaluator()
         guard
             let next = reconciled(

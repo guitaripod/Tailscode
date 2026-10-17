@@ -597,12 +597,20 @@ public enum ActivityKind: Sendable, Equatable {
     /// started arriving. Nil when nothing is running — a settled conversation has no activity, and
     /// saying "idle" in a badge is worse than saying nothing.
     public static func inFlight(in state: ConversationState) -> ActivityKind? {
+        inFlight(in: state, running: runningCall(in: state))
+    }
+
+    /// The same reading for a caller that has already walked back through the turn and holds the
+    /// tool it found, so the walk is made once and only for a turn that is running.
+    static func inFlight(
+        in state: ConversationState, running call: @autoclosure () -> ToolCall?
+    ) -> ActivityKind? {
         if state.compaction?.isRunning == true { return .compacting }
         if !state.pendingPermissions.isEmpty { return .needsApproval }
         if !state.pendingQuestions.isEmpty { return .needsAnswer }
         guard state.status == .running else { return nil }
         if let retry = state.retry { return .retrying(attempt: retry.attempt) }
-        if let call = runningCall(in: state) {
+        if let call = call() {
             return .usingTool(name: call.name, kind: call.summaryKind)
         }
         if let last = state.messages.last, last.role == .assistant, last.completedAt == nil,
@@ -616,12 +624,6 @@ public enum ActivityKind: Sendable, Equatable {
     /// The tool that is open at this moment, searched back only as far as the last thing the
     /// person said — a call still marked running from three turns ago is a stale record, not work.
     private static func runningCall(in state: ConversationState) -> ToolCall? {
-        for message in state.messages.reversed() {
-            for part in message.parts.reversed() {
-                if case .tool(let call) = part.kind, call.status == .running { return call }
-            }
-            if message.role == .user { return nil }
-        }
-        return nil
+        TurnScan.read(state.messages, wantsStart: false).runningCall
     }
 }

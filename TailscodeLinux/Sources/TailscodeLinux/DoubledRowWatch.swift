@@ -37,21 +37,15 @@ struct DoubledRowWatch {
 
     mutating func read(_ rows: [TranscriptRow]) -> [Found] {
         var found: [Found] = []
-        var seen = Set<String>()
-        seen.reserveCapacity(rows.count)
+        var long = 0
         for row in rows {
-            let body: String
-            switch row.kind {
-            case .agentProse(let text, _): body = text
-            case .codeBlock(_, let code): body = code
-            default: continue
-            }
+            guard let body = Self.passage(of: row) else { continue }
             let bytes = body.utf8.count
             guard bytes >= Self.floor else {
                 forget(row.key)
                 continue
             }
-            seen.insert(row.key)
+            long += 1
             if let held = readings[row.key], held.bytes == bytes { continue }
             forget(row.key)
             let hash = body.hashValue
@@ -62,10 +56,30 @@ struct DoubledRowWatch {
                 owners[hash] = row.key
             }
         }
-        if readings.count > seen.count {
-            for key in readings.keys where !seen.contains(key) { forget(key) }
-        }
+        if readings.count > long { forgetRowsGone(from: rows) }
         return found
+    }
+
+    /// Every long row of this pass holds a reading and no row holds two, so more readings than
+    /// long rows means rows left the transcript, and only then is the set of keys it still holds
+    /// worth building: a pass that streamed into one row and removed none never hashes a key.
+    private mutating func forgetRowsGone(from rows: [TranscriptRow]) {
+        var seen = Set<String>()
+        seen.reserveCapacity(readings.count)
+        for row in rows {
+            if let body = Self.passage(of: row), body.utf8.count >= Self.floor {
+                seen.insert(row.key)
+            }
+        }
+        for key in readings.keys where !seen.contains(key) { forget(key) }
+    }
+
+    private static func passage(of row: TranscriptRow) -> String? {
+        switch row.kind {
+        case .agentProse(let text, _): return text
+        case .codeBlock(_, let code): return code
+        default: return nil
+        }
     }
 
     private mutating func forget(_ key: String) {

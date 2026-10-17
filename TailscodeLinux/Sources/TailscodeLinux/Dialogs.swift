@@ -479,13 +479,11 @@ enum Dialogs {
                 canBrowse: true,
                 isLocal: local.contains(profile.id))
         }
-        let parentBits = parent.map { UInt(bitPattern: $0) } ?? 0
+        let parentHold = parent.map { Gtk.WeakWidget($0) }
         NewChatWindow.present(
             servers: servers, entries: entries, preferredServer: preferredServer, parent: parent,
             onBrowse: { _, typed, deliver in
-                let host = UnsafeMutableRawPointer(bitPattern: parentBits).map {
-                    raw -> UnsafeMutablePointer<GtkWidget> in ptr(raw)
-                }
+                let host = parentHold?.widget
                 Gtk.selectFolder(parent: host, initial: browseSeed(typed)) { picked in
                     guard let picked else { return }
                     deliver(picked)

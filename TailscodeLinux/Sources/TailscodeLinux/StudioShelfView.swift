@@ -232,11 +232,11 @@ final class StudioShelfView: @unchecked Sendable {
                 gtk_box_append(ptr(list), made.revealer)
                 if populated && Gtk.animationsAllowed {
                     gtk_revealer_set_reveal_child(op(made.revealer), 0)
-                    let bits = UInt(bitPattern: made.revealer)
+                    let revealerHold = Gtk.WeakWidget(made.revealer)
                     Gtk.after(16) {
                         Gtk.onMain {
-                            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-                            gtk_revealer_set_reveal_child(op(raw), 1)
+                            guard let held = revealerHold.widget else { return }
+                            gtk_revealer_set_reveal_child(op(held), 1)
                         }
                     }
                 }
@@ -429,10 +429,10 @@ final class StudioShelfView: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
             Gtk.onMain { [weak self] in self?.onChoose?(id) }
         }
-        let bits = UInt(bitPattern: button)
+        let buttonHold = Gtk.WeakWidget(button)
         Gtk.onRightClick(button) { [weak self] x, y in
             Gtk.onMain { [weak self] in
-                guard let widget = UnsafeMutablePointer<GtkWidget>(bitPattern: bits) else { return }
+                guard let widget = buttonHold.widget else { return }
                 self?.onMenu?(id, widget, x, y)
             }
         }

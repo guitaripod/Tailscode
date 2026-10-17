@@ -47,6 +47,7 @@ final class ChatPane: @unchecked Sendable {
     private var agents: [SubagentSummary] = []
     private var workflowRuns: [WorkflowRun] = []
     private let workflowFold = WorkflowRunFold()
+    private var userTally = UserMessageTally()
     private var usage: AgentUsage?
     /// What the whole conversation has cost. The server's own account when it keeps one, else what
     /// the transcript itself says — and never erased by a poll that came back with nothing, which
@@ -175,6 +176,10 @@ final class ChatPane: @unchecked Sendable {
     /// prompt as the last thing the person said, and a canvas that rose to that one would be the
     /// wrong page.
     private var canvasFloor = 0
+    /// The first row whose top margin has to be set again, and the density the margins were last
+    /// set for; see ``applyGaps()``.
+    var gapsDirtyFrom = 0
+    var gapDensity: ChatDensity?
     /// Whether the prompt is still being kept at the top. It is put there and held there, because
     /// every reason the one motion misses — room that lands a frame late, a row measured after it
     /// is drawn, the server's own rows replacing this device's — happens after the motion is over.
@@ -231,7 +236,8 @@ final class ChatPane: @unchecked Sendable {
     private var currentPlaceholder: String?
     private var chooser: PaneChooser?
     private var freshlyCreatedID: String?
-    private var inFlightImages: Set<String> = []
+    private var landedPictures: Set<String> = []
+    private var landingFlushPending = false
     private var inFlightSubagents: Set<String> = []
     private var lastRecordedDraft = ""
     /// A press on the cut-off card this device is still waiting on an answer to.
@@ -1020,6 +1026,9 @@ final class ChatPane: @unchecked Sendable {
         context.requestImage = { [weak self] reference, key in
             Gtk.onMain { [weak self] in self?.fetchImage(reference, key: key) }
         }
+        context.onPictureLanded = { [weak self] key in
+            Gtk.onMain { [weak self] in self?.pictureLanded(key) }
+        }
         context.requestSubagent = { [weak self] call in
             Gtk.onMain { [weak self] in self?.fetchSubagent(call) }
         }
@@ -1655,7 +1664,7 @@ final class ChatPane: @unchecked Sendable {
         ImageGallery.present(
             items: items, startKey: key, parent: host?.windowWidget, context: context,
             fetch: { [weak self] reference, key in
-                Gtk.onMain { [weak self] in self?.fetchImage(reference, key: key) }
+                Gtk.onMain { [weak self] in self?.fetchImage(reference, key: key, urgent: true) }
             },
             notice: { [weak self] text in
                 Gtk.onMain { [weak self] in self?.setNotice(text) }
@@ -1749,7 +1758,7 @@ final class ChatPane: @unchecked Sendable {
         context.liveReasoning = [:]
         context.agentFacts = [:]
         context.workflowRuns = [:]
-        inFlightImages = []
+        landedPictures = []
         inFlightSubagents = []
         attachments = []
         pastedImageCount = 0
@@ -2040,6 +2049,7 @@ final class ChatPane: @unchecked Sendable {
         if let entry, presence.isInFlight { host?.keepWatching(entry) }
         leaveFreshCanvas()
         releaseStream()
+        FillTurns.cancel(owner: self)
         chatLife.cancelAll()
         lifetime.cancelAll()
         cascade.release()
@@ -2066,6 +2076,13 @@ final class ChatPane: @unchecked Sendable {
 
     /// Set once the pane has been closed: nothing may take a lease or a clock for it again.
     private(set) var isShutDown = false
+
+    /// What a window closing takes off a pane without touching its widgets: the once-a-second
+    /// clock and any backfill hops still queued. Safe to repeat.
+    func quiesce() {
+        updateTicker(running: false, quietly: true)
+        FillTurns.cancel(owner: self)
+    }
 
     /// Everything worth knowing about the session besides its transcript, fetched once per open:
     /// the models the server offers, the commands it resolves, and whether its Claude is signed in.
@@ -2181,13 +2198,14 @@ final class ChatPane: @unchecked Sendable {
     private var wasRunningWhenMarked = false
 
     /// How often the chat in front of the reader is marked read as it grows.
-    private static let readMarkInterval: TimeInterval = 2.5
+    private static let readMarkInterval: TimeInterval = 6
 
     /// A chat being watched is a chat being read, and the servers keep that mark for every other
     /// device: one left unmarked until the reader walks away shows as unread on the phone while its
     /// answer is streaming onto this screen. So whatever arrives in the active pane of the window
-    /// the reader is working in is marked as it arrives — at most every couple of seconds, and
-    /// once more when the turn ends.
+    /// the reader is working in is marked as it arrives — at most every few seconds, each mark a
+    /// rewrite of the whole seen ledger and a read mark to deliver, and once more when the turn
+    /// ends.
     private func keepRead(_ state: ConversationState) {
         let running = state.status == .running
         defer { wasRunningWhenMarked = running }
@@ -2223,9 +2241,9 @@ final class ChatPane: @unchecked Sendable {
         // hand that memo straight back in. Taking them off first is what makes this idempotent:
         // without it a re-entrant apply appends a second copy and every consumer downstream, which
         // assumes one row per key, tears.
-        var rows = rows.filter { !Self.dockedKey($0.key) }
+        var rows = Self.withoutDocked(rows)
         dockRevert(&rows, state: state)
-        pending.reconcile(userMessages: state.messages.count { $0.role == .user })
+        pending.reconcile(userMessages: userTally.users(in: state.messages))
         armResumeForWalledTurn(state)
         if !pending.isEmpty {
             if !rows.isEmpty {
@@ -2847,6 +2865,15 @@ final class ChatPane: @unchecked Sendable {
         return true
     }
 
+    /// The rows the server reported, without what this device docked after them. Everything docked
+    /// is appended at the end, so the walk stops at the first row that is the server's and a
+    /// transcript with nothing docked — nearly every state — is handed back as it is, not copied.
+    private static func withoutDocked(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+        var end = rows.count
+        while end > 0, dockedKey(rows[end - 1].key) { end -= 1 }
+        return end == rows.count ? rows : Array(rows[..<end])
+    }
+
     /// Whether a row is one this device docks at the end rather than one the server reported.
     private static func dockedKey(_ key: String) -> Bool {
         key.hasPrefix("echo:") || key.hasPrefix("pending:") || key.hasPrefix("queued:")
@@ -3033,15 +3060,19 @@ final class ChatPane: @unchecked Sendable {
 
         var start = 0
         if !renderedRows.isEmpty {
-            var indexByKey = [String: Int](minimumCapacity: rows.count)
-            for (index, row) in rows.enumerated() where indexByKey[row.key] == nil {
-                indexByKey[row.key] = index
-            }
             var anchor: (rendered: Int, row: Int)?
-            for (rendered, row) in renderedRows.enumerated() {
-                if let index = indexByKey[row.key] {
-                    anchor = (rendered, index)
-                    break
+            if let head = renderedRows.first?.key, let index = rows.firstIndex(where: { $0.key == head }) {
+                anchor = (0, index)
+            } else {
+                var indexByKey = [String: Int](minimumCapacity: rows.count)
+                for (index, row) in rows.enumerated() where indexByKey[row.key] == nil {
+                    indexByKey[row.key] = index
+                }
+                for (rendered, row) in renderedRows.enumerated() {
+                    if let index = indexByKey[row.key] {
+                        anchor = (rendered, index)
+                        break
+                    }
                 }
             }
             if let anchor {
@@ -3061,7 +3092,7 @@ final class ChatPane: @unchecked Sendable {
 
         let tailDone = start + renderedRows.count >= rows.count
         if tailDone, start > 0 {
-            let from = max(0, start - Self.historyChunk)
+            let from = max(0, start - FillTurns.chunk(level: CascadeBudget.level))
             var previous: UnsafeMutablePointer<GtkWidget>?
             var bits: [UInt] = []
             for row in rows[from..<start] {
@@ -3072,6 +3103,7 @@ final class ChatPane: @unchecked Sendable {
             }
             renderedRows.insert(contentsOf: rows[from..<start], at: 0)
             rowWidgets.insert(contentsOf: bits, at: 0)
+            markGaps(from: 0)
             enteredRows.formUnion(rows[from..<start].lazy.map(\.key))
             start = from
         }
@@ -3083,7 +3115,7 @@ final class ChatPane: @unchecked Sendable {
             if stick { followsBottom = true }
             if !isFillingInChunks {
                 isFillingInChunks = true
-                FillTurns.take(on: root) { [weak self] in
+                FillTurns.take(on: root, owner: self) { [weak self] in
                     guard let self else { return }
                     self.isFillingInChunks = false
                     guard !self.isParked else { return }
@@ -3127,10 +3159,6 @@ final class ChatPane: @unchecked Sendable {
     /// the release: a click always lands on the row it was aimed at, and the transcript catches up
     /// a tenth of a second later.
     private(set) var pointerHeld = false
-    /// Rows put back above the tail per hop of a first fill. Each hop is laid out in a frame of its
-    /// own, and a row of markdown, a table or a code block costs one to two milliseconds to lay out
-    /// on a software renderer, so twenty keeps a hop's frame well inside the stall budget.
-    private static let historyChunk = 20
     private var heldRows: [TranscriptRow]?
     /// Rows a cache arrival asked to redraw while the pointer was down, redrawn on the release.
     private var heldReplacements: Set<String> = []
@@ -3151,11 +3179,16 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func reconcileRows(with rows: [TranscriptRow], from start: Int) {
-        let window = Array(rows[start...])
-        let plan = RowDiff.plan(from: renderedRows.map(\.key), to: window.map(\.key))
-        if !plan.isOrderPreserving {
-            for index in plan.removals.reversed() { removeRowWidget(at: index) }
-            for index in plan.insertions { insertRowWidget(window[index], at: index) }
+        let window = start == 0 ? rows : Array(rows[start...])
+        let steady =
+            renderedRows.count == window.count
+            && zip(renderedRows, window).allSatisfy { $0.key == $1.key }
+        if !steady {
+            let plan = RowDiff.plan(from: renderedRows.map(\.key), to: window.map(\.key))
+            if !plan.isOrderPreserving {
+                for index in plan.removals.reversed() { removeRowWidget(at: index) }
+                for index in plan.insertions { insertRowWidget(window[index], at: index) }
+            }
         }
         guard renderedRows.count == window.count else {
             tearDownAllRows()
@@ -3163,6 +3196,7 @@ final class ChatPane: @unchecked Sendable {
             return
         }
         for index in renderedRows.indices where renderedRows[index] != window[index] {
+            if renderedRows[index].chatClass != window[index].chatClass { markGaps(from: index) }
             renderedRows[index] = window[index]
             if restatedPending(at: index) || restatedBrain(at: index) { continue }
             rebuildRow(at: index)
@@ -3189,6 +3223,7 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func appendRowWidgets(_ rows: ArraySlice<TranscriptRow>) {
+        markGaps(from: renderedRows.count)
         for row in rows {
             let widget = row.makeWidget(context: context)
             gtk_box_append(ptr(transcriptBox), widget)
@@ -3210,6 +3245,7 @@ final class ChatPane: @unchecked Sendable {
         gtk_box_insert_child_after(ptr(transcriptBox), widget, previous)
         rowWidgets.insert(UInt(bitPattern: widget), at: index)
         renderedRows.insert(row, at: index)
+        markGaps(from: index)
         noteEntrance(of: widget, for: row)
     }
 
@@ -3226,6 +3262,7 @@ final class ChatPane: @unchecked Sendable {
         }
         rowWidgets.remove(at: index)
         renderedRows.remove(at: index)
+        markGaps(from: index)
     }
 
     /// One row's widget remade where it stands, which is the whole answer to a row whose value
@@ -3252,6 +3289,7 @@ final class ChatPane: @unchecked Sendable {
         let widget = renderedRows[index].makeWidget(context: context)
         gtk_box_insert_child_after(ptr(transcriptBox), widget, previous)
         rowWidgets[index] = UInt(bitPattern: widget)
+        markGaps(from: index)
         if let carried { beginEntrance(of: widget, for: key, delay: 0, from: carried) }
     }
 
@@ -3324,6 +3362,7 @@ final class ChatPane: @unchecked Sendable {
         hoverOwners.removeAll(keepingCapacity: true)
         renderedRows = []
         rowWidgets = []
+        gapsDirtyFrom = 0
         highlightedRow = 0
         enteredRows.removeAll(keepingCapacity: true)
         entranceInFlight.removeAll(keepingCapacity: true)
@@ -3762,7 +3801,7 @@ final class ChatPane: @unchecked Sendable {
     /// a change is reported: a running turn applies state many times a second, and rebuilding two
     /// hundred sidebar rows per lump is the stutter the list spent a rewrite removing.
     private func notePresenceChange() {
-        let now = presence
+        let now = presence.sidebarReading
         guard now != lastPresence else { return }
         lastPresence = now
         Gtk.onMain { [weak self] in self?.host?.scheduleSidebarRender() }
@@ -4049,7 +4088,7 @@ final class ChatPane: @unchecked Sendable {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))
                     Gtk.onMain { [weak self] in
-                        guard let self else { return }
+                        guard let self, !self.isShutDown, self.tickerTask != nil else { return }
                         self.updateStatus()
                         self.updateCompactingElapsed()
                         self.updatePendingCaptions()
@@ -4631,7 +4670,7 @@ final class ChatPane: @unchecked Sendable {
         let key = Self.pendingKey(id)
         canvasPromptKey = key
         canvasPromptTop = nil
-        canvasFloor = renderedRows.firstIndex { $0.key == key } ?? renderedRows.count
+        canvasFloor = renderedRows.lastIndex { $0.key == key } ?? renderedRows.count
         canvasPinned = false
         canvasRising = true
         // Following stays on until there is something to rise to. The row this send just appended
@@ -4688,7 +4727,7 @@ final class ChatPane: @unchecked Sendable {
     /// to the words rests under the top edge rather than one row above it.
     private func canvasPrompt() -> (top: Double, height: Double)? {
         guard let key = canvasPromptKey, let canvas = canvasBox else { return nil }
-        var index = renderedRows.firstIndex { $0.key == key }
+        var index = renderedRows.lastIndex { $0.key == key }
         if index == nil, key.hasPrefix("pending:"),
             let last = renderedRows.lastIndex(where: {
                 if case .userText = $0.kind { return true }
@@ -5834,61 +5873,41 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// Disk first, tailnet second: a picture this machine has ever shown comes back in one frame.
-    /// The decode happens off the main context, and the texture is downsampled — the transcript
-    /// shows a reference, not the original, and the original costs megabytes of VRAM a bubble has
-    /// no use for. The gallery decodes the original itself, one page at a time.
-    private func fetchImage(_ reference: FileReference, key: String) {
-        guard !inFlightImages.contains(key) else { return }
-        inFlightImages.insert(key)
-        let backend = backend
-        let sessionID = self.sessionID
-        track(Task { [weak self] in
-            var data = ImageCache.load(reference)
-            if data == nil, let backend {
-                data = try? await backend.attachmentData(reference)
-                if let data { ImageCache.save(data, for: reference) }
-            }
-            guard let data else {
-                Gtk.onMain { [weak self] in self?.inFlightImages.remove(key) }
-                return
-            }
-            let decoded: (bits: UInt, width: Int32, height: Int32) = data.withUnsafeBytes { buffer in
-                guard let base = buffer.baseAddress else { return (0, 0, 0) }
-                var width: Int32 = 0
-                var height: Int32 = 0
-                guard
-                    let texture = tailscode_texture_scaled(
-                        base, gsize(buffer.count), TranscriptContext.bubbleMaxDimension,
-                        &width, &height)
-                else { return (0, 0, 0) }
-                return (UInt(bitPattern: texture), width, height)
-            }
-            guard decoded.bits != 0 else {
-                Gtk.onMain { [weak self] in self?.inFlightImages.remove(key) }
-                return
-            }
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                self.inFlightImages.remove(key)
-                self.adoptImage(decoded, data: data, key: key, from: sessionID)
-            }
-        })
+    /// The read and the decode go through the device-wide gate and land in the device-wide store
+    /// (`PictureLoader`), downsampled — the transcript shows a reference, not the original, and the
+    /// original costs megabytes of VRAM a bubble has no use for. The gallery decodes the original
+    /// itself, one page at a time. Asking again for a picture that is on its way, or that failed a
+    /// moment ago, costs nothing, so every rebuild of every row may ask.
+    private func fetchImage(_ reference: FileReference, key: String, urgent: Bool = false) {
+        PictureLoader.request(reference, key: key, backend: backend, urgent: urgent)
     }
 
-    /// A decoded picture landing after the pane may have moved on, which is two halves with two
-    /// owners. The cache belongs to the device — `TranscriptContext.store` is deliberately kept
-    /// across a chat switch, LRU-bounded by VRAM, so a picture already decoded comes back in one
-    /// frame and the store must happen whatever the pane is showing now. The rows belong to the
-    /// session that asked, so only a pane still on that session may be told to repaint one.
-    private func adoptImage(
-        _ decoded: (bits: UInt, width: Int32, height: Int32), data: Data, key: String,
-        from sessionID: String?
-    ) {
-        context.store(
-            textureBits: decoded.bits, data: data,
-            dimensions: (decoded.width, decoded.height), forKey: key)
-        guard self.sessionID == sessionID else { return }
-        replaceRows { $0.key == key || $0.holdsPicture(key) }
+    /// A picture landing in the store, from whichever pane asked for it. Landings are gathered
+    /// and the rows that show them are redrawn once, because a transcript of a hundred pictures
+    /// opening used to rebuild the whole page once per picture: one pass over the union costs the
+    /// same however many landed in the window, and a row with several pictures is built once.
+    private func pictureLanded(_ key: String) {
+        landedPictures.insert(key)
+        guard !landingFlushPending else { return }
+        landingFlushPending = true
+        let window: UInt32 = CascadeBudget.level >= .loaded ? 160 : 50
+        Gtk.after(window) { [weak self] in
+            Gtk.onMain { [weak self] in self?.flushLandedPictures() }
+        }
+    }
+
+    private func flushLandedPictures() {
+        landingFlushPending = false
+        let keys = landedPictures
+        landedPictures = []
+        guard !keys.isEmpty, !placeholderShown else { return }
+        let shows: (TranscriptRow) -> Bool = { row in
+            if keys.contains(row.key) { return true }
+            guard case .pictureStrip(let pictures) = row.kind else { return false }
+            return pictures.contains { keys.contains($0.key) }
+        }
+        guard renderedRows.contains(where: shows) else { return }
+        replaceRows(where: shows)
     }
 
     /// A workflow's runs, rebuilt from the transcript and the live fan-out. Only the cards whose
@@ -6418,22 +6437,10 @@ final class ChatPane: @unchecked Sendable {
                 kind: .file(FileReference(path: path, mime: "image/png", filename: name)))
             parts.append(part)
             let key = "demo-furn-answer:pic\(index)"
-            guard context.textures[key] == nil, let data = try? Data(contentsOf: URL(fileURLWithPath: path))
+            guard !context.pictures.has(key),
+                let data = try? Data(contentsOf: URL(fileURLWithPath: path))
             else { continue }
-            var width: Int32 = 0
-            var height: Int32 = 0
-            let texture = data.withUnsafeBytes { buffer -> UInt in
-                guard let base = buffer.baseAddress,
-                    let texture = tailscode_texture_scaled(
-                        base, gsize(buffer.count), TranscriptContext.bubbleMaxDimension, &width,
-                        &height)
-                else { return 0 }
-                return UInt(bitPattern: texture)
-            }
-            if texture != 0 {
-                context.store(
-                    textureBits: texture, data: data, dimensions: (width, height), forKey: key)
-            }
+            context.storePreview(of: data, original: FileReference(path: path), forKey: key)
         }
         parts.append(
             MessagePart(
@@ -6835,55 +6842,143 @@ private final class ObserverToken: @unchecked Sendable {
 /// leaves the rest of the loop to whatever else is happening, which is also why it slows down
 /// by itself while a turn streams.
 enum FillTurns {
-    nonisolated(unsafe) private static var waiting: [@Sendable () -> Void] = []
+    private struct Entry {
+        let owner: ObjectIdentifier?
+        let essential: Bool
+        let widget: Gtk.WeakWidget
+        let hop: @Sendable () -> Void
+    }
+
+    nonisolated(unsafe) private static var waiting: [Entry] = []
     nonisolated(unsafe) private static var scheduled = false
     nonisolated(unsafe) private static var lastHop: (wall: Double, cpu: Double)?
+    nonisolated(unsafe) private static var generation = 0
 
     /// The share of the main thread a backfill may take over the time since its last hop.
     static let duty = 0.4
     /// The longest a hop is held back, so a very busy loop still makes progress.
     static let longestRest = 0.4
+    /// The same two at `loaded` and above, where the loop is already behind and a backfill is the
+    /// first thing that can wait.
+    static let strainedDuty = 0.15
+    static let strainedLongestRest = 1.0
+    /// How often a paused backfill looks at the governor again.
+    static let pausedLook = 1.0
+    /// Rows put back above the tail per hop of a first fill. Each hop is laid out in a frame of its
+    /// own, and a row of markdown, a table or a code block costs one to two milliseconds to lay out
+    /// on a software renderer, so twenty keeps a hop's frame well inside the stall budget.
+    static let calmChunk = 20
+    static let strainedChunk = 8
 
+    /// A hop that fills history from the top-up of an opened chat is `idle` work: it stretches at
+    /// `loaded` and waits at `critical`. A hop that carries out something the person asked for
+    /// (the rest of a set of chats opening) is `essential` and only ever stretches.
+    ///
+    /// `owner` lets a closing pane take its own entries back; the widget is held weakly, because
+    /// the pane that supplied it can be gone before the hop's turn.
     static func take(
-        on widget: UnsafeMutablePointer<GtkWidget>, _ hop: @escaping @Sendable () -> Void
+        on widget: UnsafeMutablePointer<GtkWidget>, owner: AnyObject? = nil, essential: Bool = false,
+        _ hop: @escaping @Sendable () -> Void
     ) {
-        waiting.append(hop)
-        schedule(on: widget)
+        waiting.append(
+            Entry(
+                owner: owner.map(ObjectIdentifier.init), essential: essential,
+                widget: Gtk.WeakWidget(widget), hop: hop))
+        schedule()
     }
+
+    /// Takes back every hop a closing pane queued, so none of them runs for a pane that is gone.
+    static func cancel(owner: AnyObject) {
+        let identity = ObjectIdentifier(owner)
+        waiting.removeAll { $0.owner == identity }
+    }
+
+    /// Drops everything, for a window that is closing.
+    static func cancelAll() {
+        waiting.removeAll()
+        generation += 1
+        scheduled = false
+        lastHop = nil
+    }
+
+    static var pending: Int { waiting.count }
 
     /// Seconds to wait before the next hop so that the work since the last one stays within the
     /// duty.
-    static func rest(wall: Double, cpu: Double, since last: (wall: Double, cpu: Double)?) -> Double {
+    static func rest(
+        wall: Double, cpu: Double, since last: (wall: Double, cpu: Double)?,
+        level: ShedLevel = .calm
+    ) -> Double {
         guard let last else { return 0 }
+        let share = level >= .loaded ? strainedDuty : duty
+        let ceiling = level >= .loaded ? strainedLongestRest : longestRest
         let spent = cpu - last.cpu
-        let needed = spent / duty - (wall - last.wall)
-        return min(longestRest, max(0, needed))
+        let needed = spent / share - (wall - last.wall)
+        return min(ceiling, max(0, needed))
     }
 
-    private static func schedule(on widget: UnsafeMutablePointer<GtkWidget>) {
+    /// Rows added by one top-up hop: fewer while the loop is behind.
+    static func chunk(level: ShedLevel) -> Int {
+        level >= .loaded ? strainedChunk : calmChunk
+    }
+
+    /// Whether a top-up waits for the level to relax rather than taking its turn.
+    static func pausesIdleWork(at level: ShedLevel) -> Bool { level >= .critical }
+
+    private static func nextIndex(level: ShedLevel) -> Int? {
+        guard !waiting.isEmpty else { return nil }
+        guard pausesIdleWork(at: level) else { return 0 }
+        return waiting.firstIndex { $0.essential }
+    }
+
+    private static func schedule() {
         guard !scheduled, !waiting.isEmpty else { return }
         scheduled = true
-        let bits = UInt(bitPattern: widget)
-        Gtk.betweenFrames(of: widget) {
-            let wait = rest(wall: wallClock(), cpu: mainThreadCPU(), since: lastHop)
+        let epoch = generation
+        let anchor = waiting.lazy.compactMap { $0.widget.widget }.first
+        Gtk.betweenFrames(of: anchor) {
+            guard epoch == generation else { return }
+            let level = CascadeBudget.level
+            guard !waiting.isEmpty else {
+                scheduled = false
+                lastHop = nil
+                return
+            }
+            guard nextIndex(level: level) != nil else {
+                pause(epoch: epoch)
+                return
+            }
+            let wait = rest(wall: wallClock(), cpu: mainThreadCPU(), since: lastHop, level: level)
             if wait > 0 {
-                Gtk.after(UInt32((wait * 1000).rounded(.up))) { run(bits) }
+                Gtk.after(UInt32((wait * 1000).rounded(.up))) {
+                    guard epoch == generation else { return }
+                    run()
+                }
             } else {
-                run(bits)
+                run()
             }
         }
     }
 
-    private static func run(_ bits: UInt) {
+    private static func pause(epoch: Int) {
+        Gtk.after(UInt32(pausedLook * 1000)) {
+            guard epoch == generation else { return }
+            scheduled = false
+            schedule()
+        }
+    }
+
+    private static func run() {
         scheduled = false
-        guard !waiting.isEmpty else {
-            lastHop = nil
+        guard let index = nextIndex(level: CascadeBudget.level) else {
+            if waiting.isEmpty { lastHop = nil }
+            schedule()
             return
         }
-        let hop = waiting.removeFirst()
+        let entry = waiting.remove(at: index)
         lastHop = (wallClock(), mainThreadCPU())
-        hop()
-        if let raw = UnsafeMutableRawPointer(bitPattern: bits) { schedule(on: ptr(raw)) }
+        entry.hop()
+        schedule()
     }
 
     private static func wallClock() -> Double { seconds(CLOCK_MONOTONIC) }

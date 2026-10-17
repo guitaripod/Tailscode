@@ -63,6 +63,17 @@ enum TranscriptGaps {
         return result
     }
 
+    /// The top margin of the row at `index`, which is the entry ``margins(for:metrics:)`` holds for
+    /// it. A margin is decided by the row and the one before it and by nothing further back, so a
+    /// transcript that changed in one place is re-set from that place and not from the top.
+    static func margin(at index: Int, in rows: [TranscriptRow], metrics: ChatMetrics) -> Double {
+        let row = rows[index]
+        if case .turnBreak = row.kind { return index == 0 ? 0 : metrics.turnGap / 2 }
+        if index > 0, case .turnBreak = rows[index - 1].kind { return metrics.turnGap / 2 }
+        guard let next = row.chatClass else { return 0 }
+        return metrics.gap(from: index > 0 ? rows[index - 1].chatClass : nil, to: next)
+    }
+
     /// The numbers every pointer transcript is laid out with.
     static var metrics: ChatMetrics {
         ChatMetrics.metrics(for: Preferences.chatDensity, input: .pointer)

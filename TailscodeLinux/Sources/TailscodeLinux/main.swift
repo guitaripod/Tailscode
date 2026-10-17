@@ -68,6 +68,12 @@ if Arguments.contains("--flight") {
     exit(FlightWriter.printRing(minutes: Arguments.value(after: "--flight").flatMap(Double.init)))
 }
 
+/// What the watchdog wrote down when the main thread was pinned: the log's last captures, their
+/// stacks resolved against this binary. Answered without a window.
+if Arguments.contains("--stacks") {
+    exit(StackReader.printCaptures(count: Arguments.value(after: "--stacks").flatMap(Int.init) ?? 3))
+}
+
 /// What this launch would put on its own systemd unit, applied and read back.
 if Arguments.contains("--limits") {
     exit(ResourceGuard.printLimits())
@@ -88,7 +94,7 @@ if Arguments.contains("--themes") {
 let knownOptions: Set<String> = [
     "--selftest", "--probe-newchat", "--connect", "--password", "--name", "--opencode", "--omp",
     "--version", "--help", "-h", "--themes", "--force-desktop", "--demo", "--ask",
-    "--gapplication-service", "--flight", "--limits",
+    "--gapplication-service", "--flight", "--limits", "--stacks",
 ]
 if let stray = Arguments.flags.first(where: {
     $0.hasPrefix("-") && !knownOptions.contains($0)
@@ -224,6 +230,8 @@ if let link = pendingConnectLink {
 /// the composers still exist to be read; this is the backstop for every other way the loop ends,
 /// and it touches no widget because by here there may be none left.
 Gtk.connect(UnsafeMutableRawPointer(app), "shutdown") {
+    Gtk.markQuitting()
+    mainWindow?.tearDown()
     DraftStore.flush()
     SettingsFile.flush()
     SessionListCache.flushEnqueuedSave()

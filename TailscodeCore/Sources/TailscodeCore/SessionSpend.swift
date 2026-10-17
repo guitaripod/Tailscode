@@ -115,6 +115,14 @@ public struct SessionSpend: Sendable, Equatable {
     /// message per step still bills one turn for them), and the token tiers are the ones each
     /// message reported, where it reported any.
     public init?(messages: [ChatMessage]) {
+        self.init(folded: Self.fold(messages[...]))
+    }
+
+    /// The turns the messages in `slice` bill, folded from the first of them. A fold that starts
+    /// at a prompt reads exactly as the whole transcript's fold does from that prompt on, because a
+    /// prompt closes whatever turn was open and leaves nothing else behind: that is what lets a
+    /// reading keep the turns before the latest prompt and fold only what follows it.
+    static func fold(_ slice: ArraySlice<ChatMessage>) -> [SessionSpendReport.Turn] {
         var turns: [SessionSpendReport.Turn] = []
         var open: SessionSpendReport.Turn?
         var prompt: String?
@@ -123,7 +131,7 @@ public struct SessionSpend: Sendable, Equatable {
             if let turn = open { turns.append(turn) }
             open = nil
         }
-        for message in messages {
+        for message in slice {
             if message.role == .user {
                 close()
                 prompt = message.parts.compactMap(\.text).first.map { String($0.prefix(160)) }
@@ -150,6 +158,11 @@ public struct SessionSpend: Sendable, Equatable {
             open = turn
         }
         close()
+        return turns
+    }
+
+    /// From turns already folded; nil when none of them was billed.
+    init?(folded turns: [SessionSpendReport.Turn]) {
         guard !turns.isEmpty else { return nil }
         var byModel: [String: SessionSpendReport.ModelShare] = [:]
         var total = SessionSpendReport.Tokens()

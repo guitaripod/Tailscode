@@ -25,9 +25,9 @@ enum ImageGallery {
         let pages = items.map { item in
             MediaViewer.Item(
                 key: item.key, name: item.name, facts: nil, tooltip: nil,
-                texture: { context.textures[item.key] ?? 0 },
-                dimensions: { context.imageDimensions[item.key] },
-                original: { context.imageData[item.key] },
+                texture: { context.texture(forKey: item.key) },
+                dimensions: { context.dimensions(forKey: item.key) },
+                original: { original(of: item, fetch: fetch) },
                 fetch: { fetch(item.reference, item.key) },
                 release: {}, actions: [])
         }
@@ -41,5 +41,16 @@ enum ImageGallery {
                 }
                 return { context.onImageStored = previous }
             }, notice: notice)
+    }
+
+    /// The server's own bytes for a page, from the disk cache. A preview the store still holds
+    /// can outlive its original there — the cache keeps the newest few hundred files — so a miss
+    /// asks for the original to be fetched again and says nothing is there yet.
+    private static func original(
+        of item: Item, fetch: @Sendable (FileReference, String) -> Void
+    ) -> Data? {
+        if let data = ImageCache.load(item.reference) { return data }
+        fetch(item.reference, item.key)
+        return nil
     }
 }

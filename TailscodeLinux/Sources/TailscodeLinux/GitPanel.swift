@@ -138,7 +138,7 @@ enum GitPanel {
         gtk_box_append(ptr(heading), count)
         gtk_box_append(ptr(card), heading)
 
-        let parentBits = UInt(bitPattern: parent)
+        let parentHold = Gtk.WeakWidget(parent)
         for entry in section.rows {
             let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
             Gtk.addClass(row, "git-row")
@@ -161,9 +161,9 @@ enum GitPanel {
             }
             Gtk.onRelease(row) {
                 Gtk.onMain {
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: parentBits) else { return }
+                    guard let held = parentHold.widget else { return }
                     GitDiffWindow.present(
-                        parent: raw.assumingMemoryBound(to: GtkWidget.self), title: entry.name,
+                        parent: held, title: entry.name,
                         subtitle: entry.path, load: { await patch(entry) })
                 }
             }
@@ -182,7 +182,7 @@ enum GitPanel {
         gtk_label_set_xalign(op(title), 0)
         gtk_box_append(ptr(card), title)
 
-        let parentBits = UInt(bitPattern: parent)
+        let parentHold = Gtk.WeakWidget(parent)
         for entry in state.commits.prefix(20) {
             let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
             Gtk.addClass(row, "git-row")
@@ -204,9 +204,9 @@ enum GitPanel {
             gtk_widget_set_tooltip_text(row, tip.joined(separator: " · "))
             Gtk.onRelease(row) {
                 Gtk.onMain {
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: parentBits) else { return }
+                    guard let held = parentHold.widget else { return }
                     GitDiffWindow.present(
-                        parent: raw.assumingMemoryBound(to: GtkWidget.self), title: entry.subject,
+                        parent: held, title: entry.subject,
                         subtitle: "\(entry.short) · \(entry.author) · \(entry.age)",
                         load: { await commit(entry) })
                 }
@@ -293,13 +293,13 @@ enum GitDiffWindow {
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(dismiss)
 
-        let bodyBits = UInt(bitPattern: body)
+        let bodyHold = Gtk.WeakWidget(body)
         Task {
             let patch = await load()
             let markup = patch.map(Self.markup) ?? Localized.text("This server could not produce a diff for that.")
             Gtk.onMain {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: bodyBits) else { return }
-                gtk_label_set_markup(op(raw.assumingMemoryBound(to: GtkWidget.self)), markup)
+                guard let held = bodyHold.widget else { return }
+                gtk_label_set_markup(op(held), markup)
             }
         }
     }

@@ -93,6 +93,8 @@ public final class ConversationHub: @unchecked Sendable {
         var releaseDue: TimeInterval?
         var graceID: UInt64 = 0
         var redials = 0
+        var refreshPriority: RefreshPriority?
+        var revision: UInt64 = 0
     }
 
     private let open: @Sendable (LiveKey) async -> AgentConversation?
@@ -135,6 +137,7 @@ public final class ConversationHub: @unchecked Sendable {
             entry.opening = Task { await open(key) }
         }
         entry.leases[id] = LeaseRecord(mailbox: mailbox, dirty: dirty, interest: interest)
+        entry.revision &+= 1
         let held = entry.latest
         lock.unlock()
         if let held, mailbox.post(held) { dirty() }
@@ -194,6 +197,7 @@ public final class ConversationHub: @unchecked Sendable {
             return
         }
         entry.leases[id]?.interest = interest
+        entry.revision &+= 1
         lock.unlock()
         reconcile(key)
     }
@@ -204,6 +208,7 @@ public final class ConversationHub: @unchecked Sendable {
             lock.unlock()
             return
         }
+        entry.revision &+= 1
         lock.unlock()
         reconcile(key)
     }
@@ -217,7 +222,15 @@ public final class ConversationHub: @unchecked Sendable {
             return
         }
         let interests = entry.leases.values.map(\.interest)
+        let revision = entry.revision
+        let priority = Self.refreshPriority(for: interests)
+        let changed = !interests.isEmpty && entry.refreshPriority != priority
+        if changed { entry.refreshPriority = priority }
+        let opening = changed ? entry.opening : nil
         lock.unlock()
+        if let opening {
+            Task { await opening.value?.setRefreshPriority(priority) }
+        }
         let wants: Bool
         if interests.contains(where: { $0 >= .glance }) {
             wants = true
@@ -229,6 +242,12 @@ public final class ConversationHub: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard let current = entries[key], current === entry else { return }
+        guard current.revision == revision else {
+            lock.unlock()
+            reconcile(key)
+            lock.lock()
+            return
+        }
         if wants {
             current.releaseDue = nil
             current.graceID &+= 1
@@ -241,6 +260,14 @@ public final class ConversationHub: @unchecked Sendable {
         }
         guard current.releaseDue == nil else { return }
         armGrace(key, entry: current, delay: grace)
+    }
+
+    /// Where a conversation's transcript refetches stand when several wait: the one a full pane
+    /// shows goes first, one only a glance or a watch holds goes last.
+    static func refreshPriority(for interests: [LiveInterest]) -> RefreshPriority {
+        if interests.contains(.full) { return .foreground }
+        if interests.contains(.glance) { return .normal }
+        return .background
     }
 
     private func armGrace(_ key: LiveKey, entry: Entry, delay: TimeInterval) {

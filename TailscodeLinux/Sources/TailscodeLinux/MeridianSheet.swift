@@ -47,10 +47,6 @@ struct MeridianStructure: Equatable {
     }
 }
 
-private func widgetFrom(_ bits: UInt) -> UnsafeMutablePointer<GtkWidget>? {
-    UnsafeMutableRawPointer(bitPattern: bits).map { ptr($0) }
-}
-
 private final class MeridianCallback: @unchecked Sendable {
     let work: (Int32, Double) -> Void
     init(_ work: @escaping (Int32, Double) -> Void) { self.work = work }
@@ -59,14 +55,14 @@ private final class MeridianCallback: @unchecked Sendable {
 /// Whether a lane's controls are showing: while the pointer is over the lane or keyboard focus is
 /// anywhere inside it, so they can be found by the mouse and reached by Tab.
 private final class LaneReveal: @unchecked Sendable {
-    let cluster: UInt
+    let cluster: Gtk.WeakWidget
     var hover = false
     var focus = false
 
-    init(cluster: UnsafeMutablePointer<GtkWidget>) { self.cluster = UInt(bitPattern: cluster) }
+    init(cluster: UnsafeMutablePointer<GtkWidget>) { self.cluster = Gtk.WeakWidget(cluster) }
 
     func apply() {
-        guard let widget = widgetFrom(cluster) else { return }
+        guard let widget = cluster.widget else { return }
         gtk_widget_set_opacity(widget, hover || focus ? 1 : 0)
     }
 }
@@ -761,10 +757,10 @@ final class MeridianSheet: @unchecked Sendable {
             watchLane(row, reveal: reveal)
         }
         if lane.isRemovable {
-            let rowBits = UInt(bitPattern: row)
+            let rowHold = Gtk.WeakWidget(row)
             Gtk.onRightClick(row) { [weak self] x, y in
                 Gtk.onMain { [weak self] in
-                    guard let row = widgetFrom(rowBits) else { return }
+                    guard let row = rowHold.widget else { return }
                     self?.laneMenu(for: lane, row: row, x: x, y: y)
                 }
             }
@@ -1009,11 +1005,11 @@ final class MeridianSheet: @unchecked Sendable {
     }
 
     private func revealPlaces() {
-        let scroller = bodyScroller.map { UInt(bitPattern: $0) } ?? 0
-        let ghostBits = UInt(bitPattern: ghost)
-        let bodyBits = UInt(bitPattern: body)
+        let scrollerHold = bodyScroller.map { Gtk.WeakWidget($0) }
+        let ghostHold = Gtk.WeakWidget(ghost)
+        let bodyHold = Gtk.WeakWidget(body)
         Gtk.betweenFrames(of: window) {
-            guard let scroller = widgetFrom(scroller), let ghost = widgetFrom(ghostBits), let body = widgetFrom(bodyBits),
+            guard let scroller = scrollerHold?.widget, let ghost = ghostHold.widget, let body = bodyHold.widget,
                 let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
             else { return }
             var bounds = graphene_rect_t()
@@ -1178,10 +1174,10 @@ final class MeridianSheet: @unchecked Sendable {
         Gtk.addClass(entry.title, "clock-copied")
         let ticket = (copyTickets[kind] ?? 0) + 1
         copyTickets[kind] = ticket
-        let bits = UInt(bitPattern: entry.title)
+        let titleHold = Gtk.WeakWidget(entry.title)
         Gtk.after(1200) { [weak self] in
             Gtk.onMain { [weak self] in
-                guard let self, self.copyTickets[kind] == ticket, let raw = widgetFrom(bits) else { return }
+                guard let self, self.copyTickets[kind] == ticket, let raw = titleHold.widget else { return }
                 gtk_label_set_text(op(raw), Localized.text(kind.title))
                 gtk_widget_remove_css_class(raw, "clock-copied")
             }
@@ -1196,10 +1192,10 @@ final class MeridianSheet: @unchecked Sendable {
         notifyTicket += 1
         let ticket = notifyTicket
         gtk_button_set_label(ptr(notify), Localized.text("Already set"))
-        let bits = UInt(bitPattern: notify)
+        let notifyHold = Gtk.WeakWidget(notify)
         Gtk.after(1200) { [weak self] in
             Gtk.onMain { [weak self] in
-                guard let self, self.notifyTicket == ticket, let raw = widgetFrom(bits) else { return }
+                guard let self, self.notifyTicket == ticket, let raw = notifyHold.widget else { return }
                 gtk_button_set_label(ptr(raw), self.board.notifyLabel)
             }
         }

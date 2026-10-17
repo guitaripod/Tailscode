@@ -69,29 +69,37 @@ extension SelfTest {
 
     private static let tinyPicture = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFElEQVR4nGM8oaHBgA0wYRUdtBIA4DgBKJ8lCQoAAAAASUVORK5CYII="
 
-    /// The decoded-picture cache sheds the picture drawn longest ago, not the one decoded first,
-    /// and keeps previews small enough that a long session's screenshots fit it whole.
+    /// The device-wide picture store sheds the picture drawn longest ago and never one a widget is
+    /// showing, is shared by every transcript, gives relief when asked, remembers a failure, and
+    /// keeps previews small enough that a long session's screenshots fit it whole.
     private static func checkTextureCache(_ expect: (Bool, String) throws -> Void) throws {
         let png = Data(base64Encoded: tinyPicture) ?? Data()
-        func decode() -> UInt {
-            png.withUnsafeBytes { buffer in
-                var width: Int32 = 0
-                var height: Int32 = 0
-                guard let base = buffer.baseAddress,
-                    let texture = tailscode_texture_scaled(
-                        base, gsize(buffer.count), TranscriptContext.bubbleMaxDimension, &width, &height)
-                else { return 0 }
-                return UInt(bitPattern: texture)
+        func decode() -> DecodedPreview? { PictureDecode.preview(of: png) }
+        func stored(_ store: PictureStore, _ key: String) throws {
+            guard let preview = decode() else {
+                try expect(false, "the stand-in picture decodes")
+                return
             }
+            store.store(preview, forKey: key)
         }
-        let context = TranscriptContext()
-        context.textureByteCap = 3 * 8 * 8 * 4 + 16
-        for key in ["p0", "p1", "p2"] {
-            context.store(textureBits: decode(), data: png, dimensions: (8, 8), forKey: key)
-        }
-        try expect(png.count > 0, "the stand-in picture decodes")
+        try expect(png.count > 0 && decode() != nil, "the stand-in picture decodes")
+
+        let store = PictureStore(byteCap: 3 * 8 * 8 * 4 + 16, grace: 0)
+        let context = TranscriptContext(pictures: store)
+        let sibling = TranscriptContext(pictures: store)
+        let landed = LandedKeys()
+        sibling.onPictureLanded = { landed.add($0) }
+        for key in ["p0", "p1", "p2"] { try stored(store, key) }
         try expect(context.texture(forKey: "p0") != 0, "a picture just stored reads back")
-        context.store(textureBits: decode(), data: png, dimensions: (8, 8), forKey: "p3")
+        try expect(
+            sibling.texture(forKey: "p0") == context.texture(forKey: "p0"),
+            "two transcripts read the same preview from the one store")
+        try expect(
+            landed.keys == ["p0", "p1", "p2"],
+            "a picture landing is told to every transcript, whoever asked for it")
+        try expect(
+            context.dimensions(forKey: "p0")?.0 == 8, "the original's pixel size is kept for the caption")
+        try stored(store, "p3")
         try expect(
             context.texture(forKey: "p0") != 0, "the picture drawn most recently outlives one decoded earlier")
         try expect(
@@ -99,6 +107,65 @@ extension SelfTest {
         try expect(
             context.texture(forKey: "p2") != 0 && context.texture(forKey: "p3") != 0,
             "the rest stay")
+        try expect(
+            store.cachedBytes == 3 * 8 * 8 * 4, "the bytes counted are the bytes the previews hold")
+
+        let shownTexture = OpaquePointer(bitPattern: Int(context.texture(forKey: "p2")))
+        let shown = shownTexture.flatMap { tailscode_picture_for_texture($0) }
+        try expect(
+            shown != nil && shownTexture.map { tailscode_texture_held_elsewhere($0) != 0 } == true,
+            "a picture widget holds a reference to the preview, not a copy of it")
+        try stored(store, "p4")
+        try expect(
+            context.texture(forKey: "p2") != 0,
+            "a preview a widget is showing is never shed, however long ago it was drawn")
+        try expect(store.count == 3, "what is shed instead is something nothing shows")
+
+        store.relieve(.all)
+        try expect(
+            context.texture(forKey: "p2") != 0, "relief at the critical level spares what is on screen")
+        try expect(
+            context.texture(forKey: "p4") == 0 && context.texture(forKey: "p0") == 0,
+            "relief at the critical level empties what nothing shows")
+        try expect(store.count == 1, "only the shown preview is left after relief")
+        if let shown {
+            g_object_ref_sink(UnsafeMutableRawPointer(shown))
+            g_object_unref(UnsafeMutableRawPointer(shown))
+        }
+
+        let steady = PictureStore(byteCap: 1 << 20, grace: 60)
+        try stored(steady, "fresh")
+        steady.relieve(.all)
+        try expect(
+            steady.texture(forKey: "fresh") != 0,
+            "a picture that landed a moment ago is not shed before its row has been built")
+
+        let failing = PictureStore(byteCap: 1 << 20, grace: 0)
+        try expect(failing.claim("x", urgent: false, at: 0), "a picture nobody asked for is asked for")
+        try expect(!failing.claim("x", urgent: false, at: 0), "one on its way is not asked for twice")
+        failing.fail("x", at: 10)
+        try expect(!failing.claim("x", urgent: false, at: 20), "a failure is left alone for a while")
+        try expect(failing.claim("x", urgent: false, at: 71), "and asked for again once it has waited")
+        failing.fail("x", at: 71)
+        try expect(failing.claim("x", urgent: false, at: 140), "the second retry is allowed")
+        failing.fail("x", at: 140)
+        try expect(!failing.claim("x", urgent: false, at: 1000), "a picture that failed three times is let be")
+        try expect(failing.claim("x", urgent: true, at: 1000), "unless a person asks for it by hand")
+        try stored(failing, "x")
+        try expect(failing.has("x") && !failing.claim("x", urgent: false, at: 2000), "arrival ends the asking")
+
+        var width: Int32 = 0
+        var height: Int32 = 0
+        let reduced = png.withUnsafeBytes { buffer in
+            buffer.baseAddress.flatMap {
+                tailscode_texture_scaled($0, gsize(buffer.count), 4, &width, &height)
+            }
+        }
+        try expect(
+            reduced.map { tailscode_texture_width($0) == 4 && tailscode_texture_height($0) == 4 } == true
+                && width == 8 && height == 8,
+            "a preview is made at its final size and the original's size is reported")
+        if let reduced { g_object_unref(UnsafeMutableRawPointer(reduced)) }
         try expect(
             TranscriptContext.bubbleMaxDimension <= 720,
             "a transcript preview is no larger than a strip thumbnail or poster can use")
@@ -772,5 +839,22 @@ extension TranscriptRow.Kind {
             .linkRail(urls: ["https://a.example"]), .pictureStrip([]), .turnBreak,
             .compaction(Compaction(trigger: .manual)),
         ]
+    }
+}
+
+private final class LandedKeys: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: [String] = []
+
+    func add(_ key: String) {
+        lock.lock()
+        seen.append(key)
+        lock.unlock()
+    }
+
+    var keys: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return seen
     }
 }

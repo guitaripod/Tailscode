@@ -65,6 +65,67 @@ enum Gtk {
         init(_ work: @escaping @Sendable () -> Void) { self.work = work }
     }
 
+    /// Tells the shim the process is ending: every posted, timed, between-frames, clock and drain
+    /// callback it owns is dropped from here on without calling into Swift. Set on the paths that
+    /// really end the process, never on a window closing while something else keeps the
+    /// application alive.
+    static func markQuitting() {
+        tailscode_set_quitting(1)
+    }
+
+    /// Lifts the gate again, for a selftest that has to keep running after proving it.
+    static func markNotQuitting() {
+        tailscode_set_quitting(0)
+    }
+
+    /// Whether ``markQuitting()`` has been called.
+    static var isQuitting: Bool {
+        tailscode_is_quitting() != 0
+    }
+
+    /// A widget a long-lived property, timer or hop needs to find again without keeping it alive
+    /// or trusting it to still exist. GObject clears the record when the widget is disposed, so
+    /// `widget` is nil from then on rather than a pointer into freed memory.
+    final class WeakWidget: @unchecked Sendable {
+        private let lock = NSLock()
+        private var raw: UnsafeMutablePointer<GtkWidget>?
+
+        init(_ widget: UnsafeMutablePointer<GtkWidget>) {
+            raw = widget
+            g_object_weak_ref(
+                UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self),
+                Self.notify, Unmanaged.passUnretained(self).toOpaque())
+        }
+
+        /// One function for both `g_object_weak_ref` and `g_object_weak_unref`, which match a
+        /// registration by the notify's address.
+        private static let notify: GWeakNotify = { data, _ in
+            guard let data else { return }
+            Unmanaged<WeakWidget>.fromOpaque(data).takeUnretainedValue().cleared()
+        }
+
+        deinit {
+            if let raw {
+                g_object_weak_unref(
+                    UnsafeMutableRawPointer(raw).assumingMemoryBound(to: GObject.self),
+                    Self.notify, Unmanaged.passUnretained(self).toOpaque())
+            }
+        }
+
+        /// The widget, or nil once it has been disposed.
+        var widget: UnsafeMutablePointer<GtkWidget>? {
+            lock.lock()
+            defer { lock.unlock() }
+            return raw
+        }
+
+        private func cleared() {
+            lock.lock()
+            raw = nil
+            lock.unlock()
+        }
+    }
+
     /// How a connected closure is let go of: GObject hands it back when the handler is
     /// disconnected or the object it was on is finalized, and that is the one moment at which the
     /// handler can never run again. Installed once, before the first connection.
@@ -1065,6 +1126,7 @@ enum Gtk {
         var rect = GdkRectangle(x: gint(x), y: gint(y), width: 1, height: 1)
         gtk_popover_set_pointing_to(ptr(popover), &rect)
         let popoverBits = UInt(bitPattern: popover)
+        let popoverHold = WeakWidget(popover)
         let column = box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         for row in rows {
             let item = gtk_button_new()!
@@ -1089,10 +1151,9 @@ enum Gtk {
         connect(UnsafeMutableRawPointer(popover), "closed") {
             onMain {
                 onClosed?()
-                guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits),
-                    gtk_widget_get_parent(ptr(raw)) != nil
+                guard let held = popoverHold.widget, gtk_widget_get_parent(held) != nil
                 else { return }
-                gtk_widget_unparent(ptr(raw))
+                gtk_widget_unparent(held)
             }
         }
         gtk_popover_popup(ptr(popover))
