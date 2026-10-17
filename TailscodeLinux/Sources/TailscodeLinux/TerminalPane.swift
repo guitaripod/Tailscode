@@ -93,20 +93,36 @@ final class TerminalPane: @unchecked Sendable {
     }
 
     /// The folder the shell is standing in right now, read from the kernel rather than asked of
-    /// the shell: the foreground process of the terminal's pseudo-terminal owns the answer, and
-    /// `/proc` names it whatever the shell has done since it started — `cd`, `pushd`, a jump
-    /// function, a prompt that never reports its folder.
+    /// the shell, so `cd`, `pushd`, a jump function and a prompt that never reports its folder all
+    /// count. The shell is the pty's session leader; a job it is running is only asked when the
+    /// shell itself cannot be read, because a foreground program may have changed folder on its
+    /// own and `sudo` makes its process unreadable.
     func standingDirectory() -> String? {
         #if HAS_VTE
             guard let pty = vte_terminal_get_pty(ptr(terminal)) else { return nil }
-            let group = tcgetpgrp(vte_pty_get_fd(pty))
-            guard group > 0 else { return nil }
-            return TerminalSplit.directory(
-                fromLink: try? FileManager.default.destinationOfSymbolicLink(
-                    atPath: "/proc/\(group)/cwd"))
+            let fd = vte_pty_get_fd(pty)
+            return [tcgetsid(fd), tcgetpgrp(fd)].lazy.compactMap { Self.workingDirectory(ofProcess: $0) }.first
         #else
             return nil
         #endif
+    }
+
+    private static func workingDirectory(ofProcess pid: pid_t) -> String? {
+        guard pid > 0 else { return nil }
+        return TerminalSplit.directory(
+            fromLink: try? FileManager.default.destinationOfSymbolicLink(
+                atPath: "/proc/\(pid)/cwd"))
+    }
+
+    /// Whether the shell is already in that folder, symlinks resolved on both sides: telling it to
+    /// `cd` where it stands would type a command over whatever is half-written on its line, or
+    /// into the program it is running.
+    private func stands(in path: String) -> Bool {
+        guard let here = standingDirectory() else { return false }
+        func resolved(_ path: String) -> String {
+            URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        }
+        return resolved(here) == resolved(path)
     }
 
     /// A running shell is not restarted to follow the conversation: it is told to change
@@ -119,7 +135,7 @@ final class TerminalPane: @unchecked Sendable {
                 respawn()
                 return
             }
-            if let path {
+            if let path, !stands(in: path) {
                 let line = "cd \(path.replacingOccurrences(of: "'", with: "'\\''"))\n"
                 vte_terminal_feed_child(ptr(terminal), line, gssize(line.utf8.count))
             }

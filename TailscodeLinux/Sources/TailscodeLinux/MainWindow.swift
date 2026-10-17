@@ -3056,11 +3056,12 @@ final class MainWindow: @unchecked Sendable {
             return
         }
         let directory = terminal.standingDirectory()
-        let preferred = activePane.entry?.profileID
+        let source = activePane
+        let preferred = source.entry?.profileID
         let unreachable = Set(self.unreachable)
-        let localAddresses = Self.localAddresses
         Task { [weak self] in
             let profiles = await ServerDirectory.shared.profiles()
+            let localAddresses = Self.localAddresses
             let servers = profiles.map {
                 TerminalSplit.Server(
                     profileID: $0.id, isLocal: Dialogs.isLocal($0, localAddresses: localAddresses),
@@ -3074,15 +3075,20 @@ final class MainWindow: @unchecked Sendable {
                 case .refused(let refusal):
                     self.toast(refusal.words)
                 case .open(let profileID, let folder):
-                    self.openSplit(axis: axis, onProfileID: profileID, directory: folder)
+                    self.openSplit(
+                        source, axis: axis, onProfileID: profileID, directory: folder)
                 }
             }
         }
     }
 
-    private func openSplit(axis: SplitAxis, onProfileID profileID: String, directory: String) {
+    private func openSplit(
+        _ source: ChatPane, axis: SplitAxis, onProfileID profileID: String, directory: String
+    ) {
         let edge: PaneDropEdge = axis == .horizontal ? .right : .bottom
-        guard let fresh = splitHost.split(activePane, edge: edge) else { return }
+        guard splitHost.layout.contains(source.id),
+            let fresh = splitHost.split(source, edge: edge)
+        else { return }
         presentChooser(in: fresh, preferring: profileID)
         splitHost.focus(fresh, grabKeyboard: false)
         focused = .transcript
@@ -3368,6 +3374,7 @@ final class MainWindow: @unchecked Sendable {
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Trace.mark("createChat begin")
+        let askedForPane = pane != nil
         Task { [weak self, weak pane] in
             guard let backend = await ServerDirectory.shared.backend(for: profile) else {
                 done(NewChatDiagnosis.noCredentials(server: Self.newChatServer(profile)))
@@ -3399,7 +3406,10 @@ final class MainWindow: @unchecked Sendable {
                 self.freshlyCreated = entry
                 self.lastSidebar = nil
                 self.renderSidebar()
-                let target = pane ?? self.activePane
+                guard let target = pane ?? (askedForPane ? nil : self.activePane) else {
+                    done(nil)
+                    return
+                }
                 if let firstMessage {
                     target.queueFirstMessage(
                         firstMessage, attachments: attachments, forSession: entry.session.id)

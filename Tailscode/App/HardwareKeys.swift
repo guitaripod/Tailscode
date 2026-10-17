@@ -157,9 +157,10 @@ final class KeyBridge {
     static func handledOnIOS(_ action: KeyAction) -> Bool {
         switch action {
         case .focus, .cycleForward, .cycleBackward, .toggleFiles,
-            .toggleTerminal, .zoomIn, .zoomOut, .zoomReset, .splitPane, .closeSplit,
-            .focusSplit, .zoomSplit, .equalizeSplits, .exchangeSplit, .cycleSplit, .promoteSplit,
-            .rotateSplits, .moveSplitToEdge, .resizeSplit, .arrangeSplits, .pinSplit, .parkSplit:
+            .toggleTerminal, .zoomIn, .zoomOut, .zoomReset, .splitPane, .splitAtTerminal,
+            .closeSplit, .focusSplit, .zoomSplit, .equalizeSplits, .exchangeSplit, .cycleSplit,
+            .promoteSplit, .rotateSplits, .moveSplitToEdge, .resizeSplit, .arrangeSplits, .pinSplit,
+            .parkSplit:
             return false
         default:
             return true
