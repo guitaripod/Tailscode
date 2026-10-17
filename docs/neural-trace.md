@@ -72,10 +72,10 @@ Core (toolkit-free, never `@MainActor`): `NeuralLayout` (slots, groups, edges, t
 
 ## Budget and honesty
 
-- Measured here, on Chromium's software GL: a full-screen draw submits in about 0.1 to 0.2 ms, and an idle brain draws nothing. Phone numbers are not measured; the draw is two texture-bound triangles with a handful of lookups per pixel.
+- Performance has its own document, `docs/neural-trace-performance.md`: Metal on the Apple clients and a `GtkGLArea` on Linux, the GPU timings on a real GPU, what each layer can lose, block compression, memory (35.7 MB now, about 4.5 MB proposed) and the ordered list of changes. A working frame is 16 µs on an RTX PRO 6000 at 1280 × 840; the phone's absolute figure is not measured.
 - `ToolCall` has no per-call duration; only per-message times exist, so nothing is timed or sized by a duration. A "took 4 s" line needs the bridge to stamp `tool_use` and `tool_result` times from the JSONL.
 - The nested head in the mock is a still of the composite during the dive and is swapped for the live brain at the end; the real clients re-render the same layers at the smaller size.
-- Light themes are not designed yet: the head is a dark object and the mocks show three dark themes.
+- Light themes are covered in `docs/neural-trace-states.md` (Rosé Pine Dawn is the reference).
 - Wire fixtures to look at: `TURN` (29 steps, a failed command retried, two notes, a subagent) and `TURN_BIG` (174 steps) in the mock's data.
 
 ## Mocks, and what looking at them changed

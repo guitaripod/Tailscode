@@ -978,8 +978,11 @@ function applyFrame(t){
   }
   return st.motion!=='still'&&!reduce||!!ctx.call&&['listening','connecting'].includes(ctx.call);
 }
+let lastDraw=0;
 function frame(now){
-  raf=0;const t=(now-t0)/1000;
+  raf=0;
+  if(now-lastDraw<30&&lastDraw){raf=requestAnimationFrame(frame);return;}
+  lastDraw=now;const t=(now-t0)/1000;
   const moving=applyFrame(t);hero.draw();
   const dt=now-lastF;if(dt>0&&dt<500)fps=fps*.8+(1000/dt)*.2;lastF=now;
   loop=moving;if(moving)raf=requestAnimationFrame(frame);else fps=0;

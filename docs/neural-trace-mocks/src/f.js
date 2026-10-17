@@ -125,8 +125,11 @@ function currentState(now){
   }
   return {st:stateById(t.outcome==='failed'?'failed':'settled'),t:(now-workStart)/1000};
 }
+let lastDraw=0;
 function frame(now){
   raf=0;if(!hero||openIdx<0){loopRunning=false;renderPerf();return;}
+  if(!diveAnim&&mode!=='scrub'&&now-lastDraw<30){raf=requestAnimationFrame(frame);return;}
+  lastDraw=now;
   const t=TURNS[openIdx];
   const cs=currentState(now);
   if(mode==='working'&&cs.t>nv.endT+.3)finishLive();

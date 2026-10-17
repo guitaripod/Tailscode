@@ -197,5 +197,5 @@ function effortSpec(e){
   if(e==='ember')return {effort:1,hollow:0,rainbow:0};
   return {effort:Math.max(1,Math.min(5,e)),hollow:0,rainbow:0};
 }
-return {create,THEMES,FAMILIES,STATES,MOTION,frameFor,effortSpec,tones,hex,lin,ZC,ZORD};
+return {create,THEMES,FAMILIES,STATES,MOTION,frameFor,effortSpec,tones,hex,lin,ZC,ZORD,SHADERS:{VS,FS_INT,FS_FRONT}};
 })();
