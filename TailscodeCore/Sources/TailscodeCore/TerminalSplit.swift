@@ -67,7 +67,7 @@ public enum TerminalSplit {
 
     /// A path as a person writes it in a shell: the home folder is `~`.
     public static func shortened(
-        _ path: String, home: String = FileManager.default.homeDirectoryForCurrentUser.path
+        _ path: String, home: String = NSHomeDirectory()
     ) -> String {
         if path == home { return "~" }
         guard !home.isEmpty, home != "/", path.hasPrefix(home + "/") else { return path }
