@@ -97,6 +97,11 @@ final class RangeViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_RANGE"] == "bottom" {
+                scrollToBottomForVerification()
+            }
+        #endif
         clock?.cancel()
         clock = Task { [weak self] in
             while !Task.isCancelled {
@@ -106,6 +111,17 @@ final class RangeViewController: UIViewController {
             }
         }
     }
+
+    #if DEBUG
+        private func scrollToBottomForVerification() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let scroll = self?.scroll else { return }
+                scroll.layoutIfNeeded()
+                let bottom = scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom
+                scroll.setContentOffset(CGPoint(x: 0, y: max(0, bottom)), animated: false)
+            }
+        }
+    #endif
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
@@ -644,6 +660,6 @@ final class FootprintChartView: UIView {
             string: StatusFacts.share(danger),
             attributes: [.font: Theme.Ramp.font(.panelFootnote), .foregroundColor: red])
         let size = text.size()
-        text.draw(at: CGPoint(x: bounds.width - size.width, y: max(0, y - size.height - 1)))
+        text.draw(at: CGPoint(x: 0, y: max(0, y - size.height - 1)))
     }
 }

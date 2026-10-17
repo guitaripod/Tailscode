@@ -63,6 +63,7 @@ final class AppCoordinator: NSObject {
         }
         #if DEBUG
             seedDebugConnectionIfNeeded()
+            if DemoWorld.rangeDemoEnabled { seedDemoQuotasForRange() }
         #endif
         route(animated: false)
         window.makeKeyAndVisible()
@@ -168,6 +169,18 @@ final class AppCoordinator: NSObject {
                 while let presented = top?.presentedViewController { top = presented }
                 guard let top else { return }
                 PreviewDemo.presentIfAsked(from: top)
+            }
+        }
+
+        /// The demo world's quotas live on its backend, and the chat reads the widget snapshot, so a
+        /// range demo lands them there the way the live fetcher lands a real server's.
+        private func seedDemoQuotasForRange() {
+            Task {
+                let backend = DemoWorld.claude
+                var quotas: [UsageQuota] = []
+                if let primary = try? await backend.usageQuota() { quotas.append(primary) }
+                if let extra = try? await backend.additionalUsageQuotas() { quotas += extra }
+                UsageWidgetStore.writeLive(quotas, reload: false)
             }
         }
 

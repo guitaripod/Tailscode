@@ -3830,6 +3830,11 @@ final class ChatViewController: UIViewController {
         nav.modalPresentationStyle = .pageSheet
         nav.sheetPresentationController?.detents = [.medium(), .large()]
         nav.sheetPresentationController?.prefersGrabberVisible = true
+        #if DEBUG
+            if ["large", "bottom"].contains(ProcessInfo.processInfo.environment["TAILSCODE_OPEN_RANGE"]) {
+                nav.sheetPresentationController?.selectedDetentIdentifier = .large
+            }
+        #endif
         present(nav, animated: true)
     }
 

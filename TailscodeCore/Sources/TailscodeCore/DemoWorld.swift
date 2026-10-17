@@ -44,7 +44,7 @@ public enum DemoWorld {
             "demo-c4": claudeExplainerScript,
             "demo-c5": claudeDesignScript,
             "demo-c6": claudeNeuralScript,
-        ],
+        ].merging(rangeScripts) { current, _ in current },
         replyTurns: [claudeReplyA, claudeReplyB],
         interactive: true,
         sessions: [
@@ -69,7 +69,7 @@ public enum DemoWorld {
                 id: "demo-c4", agentType: .claudeCode, title: "Explain the auth token refresh flow",
                 directory: "/Users/demo/dev/pulse-server", createdAt: ago(95_500), updatedAt: ago(94_000),
                 model: "claude-haiku-4-5", reasoningEffort: "low"),
-        ],
+        ] + rangeSessions,
         models: [
             ModelInfo(
                 id: "claude-fable-5", name: "Fable 5", providerID: "anthropic",
@@ -1040,13 +1040,135 @@ public enum DemoWorld {
     private static func assistant(
         _ id: String, _ type: AgentType, at date: Date, streaming: Bool = false,
         error: String? = nil, model: String? = nil, parts: [MessagePart] = [],
-        cost: Double? = nil, tokens: Int? = nil, context: MessageUsage? = nil
+        cost: Double? = nil, tokens: Int? = nil, context: MessageUsage? = nil,
+        duration: TimeInterval? = nil
     ) -> ChatMessage {
         ChatMessage(
             id: id, role: .assistant, agentType: type, parts: parts, createdAt: date,
             completedAt: streaming ? nil : date.addingTimeInterval(45),
             isStreaming: streaming, error: error, costUSD: cost,
             providerID: type == .openCode ? "opencode-go" : "anthropic",
-            modelID: model, totalTokens: tokens, context: context)
+            modelID: model, totalTokens: tokens, context: context, duration: duration)
+    }
+}
+
+extension DemoWorld {
+    /// `TAILSCODE_DEMO_RANGE=1` adds one long Claude chat whose context is three quarters full
+    /// and whose cache is still warm, so the Range sheet has every section to draw. Unset, the
+    /// demo world holds exactly what it always did.
+    public static let rangeDemoEnabled =
+        ProcessInfo.processInfo.environment["TAILSCODE_DEMO_RANGE"] != nil
+
+    public static let rangeSessionID = "demo-c7"
+
+    private static var rangeSessions: [AgentSession] {
+        guard rangeDemoEnabled else { return [] }
+        return [
+            AgentSession(
+                id: rangeSessionID, agentType: .claudeCode, title: "Fix the quota parser",
+                directory: "/Users/demo/dev/pulse-server", createdAt: ago(5_000),
+                updatedAt: ago(915), model: "claude-haiku-4-5", reasoningEffort: "low")
+        ]
+    }
+
+    private static var rangeScripts: [String: [MockScriptStep]] {
+        guard rangeDemoEnabled else { return [:] }
+        return [rangeSessionID: rangeScript]
+    }
+
+    static var rangeScript: [MockScriptStep] {
+        rangeTurns.enumerated().flatMap { index, turn -> [MockScriptStep] in
+            let number = index + 1
+            let finished = TimeInterval(915 + (rangeTurns.count - number) * 540)
+            let footprint = turn.footprint
+            return [
+                step(user("c7u\(number)", .claudeCode, turn.prompt, at: ago(finished + 75))),
+                step(assistant(
+                    "c7a\(number)", .claudeCode, at: ago(finished + 45),
+                    model: "claude-haiku-4-5",
+                    parts: [
+                        MessagePart(id: "t1", kind: .tool(ToolCall(
+                            id: "c7t\(number)", name: turn.tool, status: .completed,
+                            input: .object([turn.inputKey: .string(turn.target)]),
+                            output: rangeOutput(characters: turn.outputCharacters, seed: number),
+                            title: "\(turn.tool) \(turn.target)"))),
+                        MessagePart(id: "t2", kind: .text(turn.answer)),
+                    ],
+                    context: MessageUsage(
+                        input: 600, output: 900, cacheRead: footprint - 3_600,
+                        cacheWrite: 3_000, cacheLifetime: 3_600),
+                    duration: TimeInterval(30 + number * 3))),
+            ]
+        } + [step(.status(.idle))]
+    }
+
+    private struct RangeTurn {
+        let prompt: String
+        let tool: String
+        let inputKey: String
+        let target: String
+        let outputCharacters: Int
+        let answer: String
+        let footprint: Int
+    }
+
+    private static var rangeTurns: [RangeTurn] {
+        [
+            RangeTurn(
+                prompt: "The quota parser drops the second window when a model is named only by its scope. Where does that happen?",
+                tool: "Read", inputKey: "file_path", target: "Sources/Pulse/Quota/QuotaBinding.swift",
+                outputCharacters: 4_200,
+                answer: "`scope(of:)` strips every plumbing word from a label, so a window named only by its model collapses into the account scope and is folded away.",
+                footprint: 96_000),
+            RangeTurn(
+                prompt: "Which callers rely on that collapse?",
+                tool: "Bash", inputKey: "command", target: "rg -n 'scope(of:' Sources Tests",
+                outputCharacters: 3_100,
+                answer: "Three: the board rollup, the chip reading and the widget glance. Only the rollup depends on the folding.",
+                footprint: 104_000),
+            RangeTurn(
+                prompt: "Show me the rollup so I can see what it assumes.",
+                tool: "Read", inputKey: "file_path", target: "Sources/Pulse/Quota/UsageAnalytics.swift",
+                outputCharacters: 40_000,
+                answer: "It keys holdings by provider and scope and merges equal keys, which is why the scoped window disappears.",
+                footprint: 112_000),
+            RangeTurn(
+                prompt: "Run the quota tests so we know where we start.",
+                tool: "Bash", inputKey: "command", target: "swift test --filter QuotaBindingTests",
+                outputCharacters: 3_600,
+                answer: "Two failures, both in the scoped path. Everything else is green.",
+                footprint: 119_000),
+            RangeTurn(
+                prompt: "Read the window model too, the fix may belong there.",
+                tool: "Read", inputKey: "file_path", target: "Sources/Pulse/Quota/QuotaWindow.swift",
+                outputCharacters: 5_400,
+                answer: "The model is fine. The label is the only thing that decides the scope, so the fix belongs in the binding.",
+                footprint: 126_000),
+            RangeTurn(
+                prompt: "Make the change and show me the diff.",
+                tool: "Bash", inputKey: "command", target: "git diff --stat && git diff",
+                outputCharacters: 9_000,
+                answer: "The binding now keeps a window's own scope and only strips plumbing words when nothing else names it.",
+                footprint: 135_000),
+            RangeTurn(
+                prompt: "Run the whole suite and tell me what is left.",
+                tool: "Bash", inputKey: "command", target: "swift test 2>&1 | tail -80",
+                outputCharacters: 11_000,
+                answer: "All green except one snapshot that still expects the folded window. I will update it next.",
+                footprint: 148_000),
+        ]
+    }
+
+    private static func rangeOutput(characters: Int, seed: Int) -> String {
+        var lines: [String] = []
+        var length = 0
+        var index = 0
+        while length < characters {
+            let line = "    \(index + 1)  let window\(seed)_\(index) = binding.scope(of: label\(index), account: \(index % 7)) ?? .account"
+            lines.append(line)
+            length += line.count + 1
+            index += 1
+        }
+        return lines.joined(separator: "\n")
     }
 }
