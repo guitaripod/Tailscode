@@ -53,6 +53,9 @@ public struct NeuralReadout: Sendable, Equatable {
         public let kind: ChipKind
         public let word: String
         public let tone: NeuralTone
+
+        /// A chip sits on the canvas: the theme's corrected palette.
+        public var toneSet: NeuralToneSet { NeuralToneSet.set(for: .chip) }
     }
 
     /// The row at the top of a step: the zone, the status, where the step stands in the turn.
@@ -141,6 +144,8 @@ public struct NeuralReadout: Sendable, Equatable {
         public let moreLabel: String?
 
         public var hiddenCount: Int { max(0, total - lines.count) }
+        /// More lies below: the readout fades the foot of the block by 16 points.
+        public var fades: Bool { hiddenCount > 0 }
     }
 
     public enum DiffKind: Sendable, Equatable {
@@ -233,15 +238,29 @@ public struct NeuralReadout: Sendable, Equatable {
         public let clock: String?
         /// "started 21:52:22".
         public let started: String?
+        /// "turn began 21:52:02": an extra a client may drop, since the footer is short and the
+        /// clock of the message already says when.
+        public let turnBegan: String?
+    }
+
+    /// The sections of a step, top to bottom: the relations sit directly under the subject, above
+    /// WHY, so "retried at 9" is never below the fold on the step it is for.
+    public enum StepSection: Sendable, CaseIterable {
+        case header
+        case subject
+        case relations
+        case why
+        case result
+        case facts
     }
 
     public struct Step: Sendable, Equatable {
         public let stepID: String
         public let header: Header
         public let subject: Subject
+        public let relations: [Relation]
         public let why: Why?
         public let result: Result?
-        public let relations: [Relation]
         public let facts: Facts
         /// The steps a ganglion gathers, when the node is one; empty for any other.
         public let gathered: [String]
@@ -274,6 +293,8 @@ public struct NeuralReadout: Sendable, Equatable {
         public let path: String
         public let directory: String
         public let fileName: String
+        /// The last directory after an ellipsis, dimmed: "\u{2026}/Chat/".
+        public let shortDirectory: String
         public let added: Int
         public let removed: Int
         public let tally: String?
@@ -291,19 +312,33 @@ public struct NeuralReadout: Sendable, Equatable {
         public let label: String
     }
 
+    /// The digest's sections, top to bottom: the zone bars with the timeline strip fused under them
+    /// as one block, then Failures (the thing a person came to find), then Changed, then Answer.
+    public enum DigestSection: Sendable, CaseIterable {
+        case headline
+        case barsAndTimeline
+        case failures
+        case changed
+        case answer
+    }
+
     public struct Digest: Sendable, Equatable {
         public let headline: String
         public let zoneBars: [ZoneBar]
-        /// One per step, in order; empty in a compact digest.
+        /// One per step, in order, fused under the bars.
         public let ticks: [Tick]
         /// Where the answer begins on the strip: the number of ticks, nil for a turn with none.
         public let answerBegins: Int?
-        public let changed: [Changed]
         public let failures: [Failure]
+        public let changed: [Changed]
         /// The final message's first line, when the client passed the text.
         public let answer: String?
-        /// The "So far" under Now: the headline and the bars and nothing else.
-        public let isCompact: Bool
+    }
+
+    /// The "So far" under Now: the headline and one row of the card's zone chips.
+    public struct SoFar: Sendable, Equatable {
+        public let headline: String
+        public let chips: [NeuralBrainCard.ZoneChip]
     }
 
     /// What the running turn's output has printed lately.
@@ -319,7 +354,7 @@ public struct NeuralReadout: Sendable, Equatable {
         public let step: Step?
         /// The last eight lines the step's call printed.
         public let tail: Tail
-        public let digest: Digest
+        public let soFar: SoFar
     }
 
     public struct Ask: Sendable, Equatable {
@@ -375,14 +410,15 @@ public struct NeuralReadout: Sendable, Equatable {
     }
 
     public var digest: Digest? {
-        switch body {
-        case .digest(let digest): return digest
-        case .now(let now): return now.digest
-        default: return nil
-        }
+        if case .digest(let digest) = body { return digest }
+        return nil
     }
 
-    public static let outputShown = 8
+    /// The step the leader line is drawn to: the one the panel shows, which in Now is the running
+    /// node, and nothing for the digest or a zone list.
+    public var leaderStepID: String? { step?.stepID }
+
+    public static let outputShown = NeuralStageMetrics.outputLinesWide
     public static let diffShown = 14
     public static let tailShown = 8
     public static let whyLimit = 240
@@ -398,7 +434,7 @@ public struct NeuralReadout: Sendable, Equatable {
     /// node `NeuralBrainModel.hoverIntent` resolved; a client that never drove the hover grace
     /// gets the model's own hovered node.
     public static func mode(for model: NeuralBrainModel, hover: String?) -> Mode {
-        if let id = model.pinned, model.step(id: id) != nil { return .step(id) }
+        if let id = model.pinnedStep, model.step(id: id) != nil { return .step(id) }
         let followed = hover ?? (model.hoverGrace.isDriven ? nil : model.hovered)
         if let id = followed, model.step(id: id) != nil { return .step(id) }
         if model.isReplaying { return .replay }
@@ -420,23 +456,24 @@ public struct NeuralReadout: Sendable, Equatable {
     /// playhead is read against; `answer` is the final message's text.
     public static func make(
         model: NeuralBrainModel, subject: Mode, now: Date = Date(), tz: TimeZone = .current,
-        clock: Double = 0, answer: String? = nil
+        clock: Double = 0, answer: String? = nil, outputLines: Int = NeuralReadout.outputShown
     ) -> NeuralReadout {
-        let builder = NeuralReadoutBuilder(model: model, now: now, tz: tz, answer: answer)
+        let builder = NeuralReadoutBuilder(
+            model: model, now: now, tz: tz, answer: answer, outputShown: max(outputLines, 1))
         let steps = model.steps
         switch subject {
         case .step(let id):
             guard let index = model.indexOf(id) else {
                 return make(
                     model: model, subject: defaultMode(for: model), now: now, tz: tz, clock: clock,
-                    answer: answer)
+                    answer: answer, outputLines: outputLines)
             }
             let step = builder.step(at: index)
             return NeuralReadout(
                 mode: .step(id), body: .step(step),
                 announcement: NeuralReading.announcement(for: steps[index], of: steps.count))
         case .digest:
-            let digest = builder.digest(compact: false)
+            let digest = builder.digest()
             return NeuralReadout(
                 mode: .digest, body: .digest(digest),
                 announcement: NeuralReading.spoken(model.turn, now: now))
@@ -463,7 +500,7 @@ public struct NeuralReadout: Sendable, Equatable {
             guard let index = model.indexOf(id), let ask = builder.ask(at: index) else {
                 return make(
                     model: model, subject: defaultMode(for: model), now: now, tz: tz, clock: clock,
-                    answer: answer)
+                    answer: answer, outputLines: outputLines)
             }
             return NeuralReadout(
                 mode: .ask(id), body: .ask(ask), announcement: ask.sentence)
@@ -492,4 +529,13 @@ public struct NeuralReadout: Sendable, Equatable {
 
 extension NeuralBrainModel {
     func indexOf(_ id: String) -> Int? { indexByID[id] }
+}
+
+extension NeuralReadout {
+    /// A path split for the Changed list: the last directory dimmed after an ellipsis, then the file
+    /// name emphasised, as "\u{2026}/Chat/" and "TranscriptRows.swift".
+    public static func shortPath(_ path: String) -> (directory: String, fileName: String) {
+        let parts = NeuralReadoutText.split(path: path)
+        return (NeuralReadoutText.shortDirectory(parts.directory), parts.file)
+    }
 }

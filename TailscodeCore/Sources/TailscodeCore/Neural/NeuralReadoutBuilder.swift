@@ -12,8 +12,13 @@ struct NeuralReadoutBuilder {
     let now: Date
     let tz: TimeZone
     let answer: String?
+    let outputShown: Int
 
-    init(model: NeuralBrainModel, now: Date, tz: TimeZone, answer: String?) {
+    init(
+        model: NeuralBrainModel, now: Date, tz: TimeZone, answer: String?,
+        outputShown: Int = NeuralReadout.outputShown
+    ) {
+        self.outputShown = outputShown
         self.model = model
         steps = model.steps
         self.now = now
@@ -25,8 +30,9 @@ struct NeuralReadoutBuilder {
         let step = steps[index]
         return R.Step(
             stepID: step.id, header: header(at: index), subject: Self.subject(of: step),
-            why: why(at: index), result: Self.result(for: step), relations: relations(at: index),
-            facts: facts(of: step), gathered: model.ganglionMembers[step.id] ?? [])
+            relations: relations(at: index), why: why(at: index),
+            result: Self.result(for: step, shown: outputShown), facts: facts(of: step),
+            gathered: model.ganglionMembers[step.id] ?? [])
     }
 
     func header(at index: Int) -> R.Header {
@@ -34,7 +40,7 @@ struct NeuralReadoutBuilder {
         return R.Header(
             zone: step.zone, label: step.zone.label, chip: Self.chip(for: step),
             counter: NeuralReading.counter(index + 1, of: steps.count), number: index + 1,
-            total: steps.count, isPinned: model.pinned == step.id, mark: step.mark)
+            total: steps.count, isPinned: model.pinnedStep == step.id, mark: step.mark)
     }
 
     static func chip(for step: NeuralStep) -> R.Chip {
@@ -66,9 +72,12 @@ struct NeuralReadoutBuilder {
 
     func facts(of step: NeuralStep) -> R.Facts {
         let clock = step.at.map { NeuralReading.clock($0, timeZone: tz) }
+        let began = (model.turn.startedAt ?? steps.compactMap(\.at).min()).map {
+            NeuralReading.turnBegan(NeuralReading.clock($0, timeZone: tz))
+        }
         return R.Facts(
             message: NeuralReading.messageFact(of: step, in: steps), clock: clock,
-            started: clock.map(NeuralReading.started))
+            started: clock.map(NeuralReading.started), turnBegan: began)
     }
 
     private func input(_ call: ToolCall?, _ keys: String...) -> String? {
@@ -187,22 +196,22 @@ struct NeuralReadoutBuilder {
         return nil
     }
 
-    static func result(for step: NeuralStep) -> R.Result? {
+    static func result(for step: NeuralStep, shown: Int = R.outputShown) -> R.Result? {
         if NeuralReading.isThought(step) || NeuralReading.isNote(step) {
             return .text(
                 R.Text(
                     text: step.text, lineCount: max(NeuralReadoutText.rawLineCount(step.text), 1)))
         }
         let hasOutput = hasOutput(step)
-        if step.status == .failed && hasOutput { return .shell(output(of: step)) }
+        if step.status == .failed && hasOutput { return .shell(output(of: step, shown: shown)) }
         switch subjectKind(of: step) {
         case .command, .url, .other:
-            return hasOutput ? .shell(output(of: step)) : nil
+            return hasOutput ? .shell(output(of: step, shown: shown)) : nil
         case .path:
             if step.zone == .act {
                 let edit = edit(of: step)
                 if !edit.lines.isEmpty || edit.tally != nil { return .edit(edit) }
-                return hasOutput ? .shell(output(of: step)) : nil
+                return hasOutput ? .shell(output(of: step, shown: shown)) : nil
             }
             return .read(read(of: step))
         case .pattern:
@@ -226,8 +235,8 @@ struct NeuralReadoutBuilder {
         return step.outputLines.count
     }
 
-    static func output(of step: NeuralStep) -> R.Output {
-        let lines = outputLines(of: step, limit: R.outputShown)
+    static func output(of step: NeuralStep, shown: Int = R.outputShown) -> R.Output {
+        let lines = outputLines(of: step, limit: shown)
         let total = max(totalLines(of: step), lines.count)
         return R.Output(
             lines: lines, total: total,
@@ -388,7 +397,7 @@ struct NeuralReadoutBuilder {
         return out
     }
 
-    func digest(compact: Bool) -> R.Digest {
+    func digest() -> R.Digest {
         let headline = NeuralReading.headline(for: model.turn, now: now)
         var counts = [Int](repeating: 0, count: NeuralZone.allCases.count)
         for step in steps { counts[step.zone.rawValue] += 1 }
@@ -399,19 +408,20 @@ struct NeuralReadoutBuilder {
             return R.ZoneBar(
                 zone: zone, label: zone.label, count: count, fraction: Double(count) / Double(busiest))
         }
-        guard !compact else {
-            return R.Digest(
-                headline: headline, zoneBars: bars, ticks: [], answerBegins: nil, changed: [],
-                failures: [], answer: nil, isCompact: true)
-        }
         let firstAnswerLine = answer.map { NeuralReadoutText.firstLine($0) }.flatMap {
             $0.isEmpty ? nil : NeuralReadoutText.capped($0, limit: 200).text
         }
         let hasAnswer = !model.turn.answerPartIDs.isEmpty || firstAnswerLine != nil
         return R.Digest(
             headline: headline, zoneBars: bars, ticks: ticks(hasAnswer: hasAnswer),
-            answerBegins: hasAnswer ? steps.count : nil, changed: changed(), failures: failures(),
-            answer: firstAnswerLine, isCompact: false)
+            answerBegins: hasAnswer ? steps.count : nil, failures: failures(), changed: changed(),
+            answer: firstAnswerLine)
+    }
+
+    func soFar() -> R.SoFar {
+        R.SoFar(
+            headline: NeuralReading.headline(for: model.turn, now: now),
+            chips: NeuralBrainCard.makeChips(steps))
     }
 
     private func ticks(hasAnswer: Bool) -> [R.Tick] {
@@ -442,7 +452,8 @@ struct NeuralReadoutBuilder {
             let parts = NeuralReadoutText.split(path: path)
             return R.Changed(
                 stepID: first, stepIDs: entry.ids, path: path, directory: parts.directory,
-                fileName: parts.file, added: entry.added, removed: entry.removed,
+                fileName: parts.file, shortDirectory: NeuralReadoutText.shortDirectory(parts.directory),
+                added: entry.added, removed: entry.removed,
                 tally: NeuralReading.tally(entry.added, entry.removed))
         }
     }
@@ -493,7 +504,7 @@ struct NeuralReadoutBuilder {
         }
         return R.Now(
             label: NeuralReading.nowLabel, tone: tone == .identity ? .live : tone,
-            step: current.map(step(at:)), tail: tail, digest: digest(compact: true))
+            step: current.map(step(at:)), tail: tail, soFar: soFar())
     }
 
     func ask(at index: Int) -> R.Ask? {

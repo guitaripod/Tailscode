@@ -1,49 +1,91 @@
 import Foundation
 
-/// The line that ties the node being read to the readout beside the head, routed on the same 45
-/// degree roads as the wires: a short stub, a diagonal, then horizontal into the readout's anchor.
-/// It goes up or down around the cluster, whichever way leaves fewer nodes near the path, and
-/// never passes within a node's radius and 4 units of another node. All of it is in the head's
-/// design space; the anchor may lie to the right of the head, past x = 640, where the readout is.
+/// The line that ties the node being read to the readout beside the head. It leaves the node, runs
+/// on the same 45 degree roads as the wires, and ends on the node's own row at the readout's
+/// hairline, where a 3 by 24 tab marks the landing; a node low in the head is not tied to the
+/// header by a diagonal through every zone between. The way there is chosen among lanes up to 90
+/// units above or below the node, the cheapest by length, node hits and zone-label hits, with an
+/// octilinear search as the fallback for a crowded head. A line never passes within a node's radius
+/// and 4 units of another node or through a zone's label box. All of it is in the head's design
+/// space; the anchor lies to the right of the head, past x = 640, where the readout is.
 public enum NeuralLeader {
+    /// A leader ready to draw: the route in design space, and the landing in the row's points.
+    public struct Line: Sendable, Equatable {
+        /// The polyline from the node to the hairline, in the head's design space.
+        public let route: [NeuralPoint]
+        /// The 3 by 24 tab on the hairline, in the row's points.
+        public let tab: NeuralRect
+        /// The dot the line ends in, in the row's points: on the hairline, on the tab's centre.
+        public let dot: NeuralPoint
+        /// The row the line ends on, in the row's points.
+        public let row: Double
+
+        /// The leader and its tab sit on the canvas: the corrected palette, never the lifted tones.
+        public var toneSet: NeuralToneSet { NeuralToneSet.set(for: .leader) }
+        public var length: Double { NeuralLeader.length(route) }
+    }
+
     /// How far a node's own circle is kept clear: its radius and 4 units.
     public static let clearance = NeuralDesign.nodeRadius + 4
-    /// The stub's shortest length: out of the node's own circle.
+    /// The stub's length: out of the node's own circle.
     public static let stub = NeuralDesign.nodeRadius + 4
     /// The horizontal run kept before the anchor, so the line enters the readout level.
     public static let runIn = 12.0
+    /// How far above or below the node a lane may lie.
+    public static let lanes: [Double] = [0, -16, 16, -32, 32, -48, 48, -64, 64, -90, 90]
+    /// A label box is not entered; a node is not touched.
+    public static let labelMargin = 0.0
 
-    private static let stubs: [Double] = [stub, 22, 30, 40, 52, 66]
     static let epsilon = 1e-6
+    private static let hitWeight = 500.0
+    private static let labelWeight = 1000.0
+    private static let pointWeight = 5.0
+    private static let laneWeight = 2.0
+
+    /// The leader for the node at `design`, tied to the readout of `metrics`: nil in a stacked row,
+    /// which has no leader. `nodes` are every node's centre in design space.
+    public static func line(
+        forNodeAt design: NeuralPoint, in metrics: NeuralStageMetrics, around nodes: [NeuralPoint],
+        labels: [NeuralRect] = NeuralZone.labelRects
+    ) -> Line? {
+        guard let anchor = metrics.leaderAnchor(forNodeAt: design),
+            let tab = metrics.leaderTab(forNodeAt: design)
+        else { return nil }
+        let road = route(from: design, to: anchor, around: nodes, labels: labels)
+        let row = metrics.leaderRow(forNodeAt: design)
+        return Line(
+            route: road, tab: tab, dot: NeuralPoint(metrics.readout.x + 0.5, row), row: row)
+    }
 
     /// The polyline from `node` to `anchor` around `nodes` (every node's centre; the one at
-    /// `node` is ignored). The first point is `node` and the last is `anchor`, every segment is
-    /// level, upright or at 45 degrees, and no other node is within `clearance` of it where the
-    /// head's layout allows: when every road is crowded the one that clears most is taken.
+    /// `node` is ignored) and the zone `labels` (the node's own is ignored). The first point is
+    /// `node` and the last is `anchor`, every segment is level, upright or at 45 degrees, and no
+    /// other node is within `clearance` of it where the head's layout allows; when every road
+    /// is crowded the cheapest lane is taken.
     public static func route(
         from node: NeuralPoint, to anchor: NeuralPoint, around nodes: [NeuralPoint],
-        clearance: Double = NeuralLeader.clearance
+        labels: [NeuralRect] = NeuralZone.labelRects, clearance: Double = NeuralLeader.clearance
     ) -> [NeuralPoint] {
         let others = nodes.filter { abs($0.x - node.x) > 0.5 || abs($0.y - node.y) > 0.5 }
-        var best: (route: [NeuralPoint], near: Int, length: Double)?
-        var crowded: (route: [NeuralPoint], gap: Double)?
-        for candidate in candidates(from: node, to: anchor, others: others, clearance: clearance) {
-            let room = gap(of: candidate, others: others)
-            if room >= clearance - epsilon {
-                let near = nearCount(of: candidate, others: others, within: clearance * 2)
-                let run = length(candidate)
-                if best == nil || near < best!.near || (near == best!.near && run < best!.length - epsilon) {
-                    best = (candidate, near, run)
-                }
-            } else if crowded == nil || room > crowded!.gap {
-                crowded = (candidate, room)
+        let boxes = labels.filter { distance(from: node, toRect: $0) > clearance + 2 }
+        var best: (route: [NeuralPoint], cost: Double, hits: Int)?
+        for candidate in laneRoutes(from: node, to: anchor) {
+            let hits = hitCount(of: candidate.points, others: others, labels: boxes, clearance: clearance)
+            let cost =
+                length(candidate.points) + Double(hits.nodes) * hitWeight
+                + Double(hits.labels) * labelWeight + Double(candidate.points.count) * pointWeight
+                + abs(candidate.offset) * laneWeight
+            if best == nil || cost < best!.cost {
+                best = (candidate.points, cost, hits.nodes + hits.labels)
             }
         }
-        if let best { return best.route }
-        if let searched = search(from: node, to: anchor, others: others, clearance: clearance) {
+        if let best, best.hits == 0 { return best.route }
+        if let searched = search(
+            from: node, to: anchor, others: others, labels: boxes, clearance: clearance)
+        {
             return searched
         }
-        return crowded?.route ?? [node, anchor]
+        return best?.route ?? [node, anchor]
     }
 
     /// The length of the polyline.
@@ -120,16 +162,6 @@ public enum NeuralLeader {
         return least
     }
 
-    private static func nearCount(
-        of points: [NeuralPoint], others nodes: [NeuralPoint], within reach: Double
-    ) -> Int {
-        nodes.filter { node in
-            (1..<max(points.count, 1)).contains { index in
-                distance(from: node, toSegment: points[index - 1], points[index]) < reach
-            }
-        }.count
-    }
-
     static func distance(
         from point: NeuralPoint, toSegment a: NeuralPoint, _ b: NeuralPoint
     ) -> Double {
@@ -141,58 +173,80 @@ public enum NeuralLeader {
         return hypot(point.x - (a.x + dx * along), point.y - (a.y + dy * along))
     }
 
-    /// Every road worth trying: a stub of a few lengths, a diagonal up or down, and either a
-    /// straight run at the anchor's level or one along a lane beyond the cluster with a second
-    /// diagonal back to the anchor.
-    private static func candidates(
-        from node: NeuralPoint, to anchor: NeuralPoint, others: [NeuralPoint], clearance: Double
-    ) -> [[NeuralPoint]] {
-        var out: [[NeuralPoint]] = []
-        let ys = others.map(\.y) + [node.y]
-        for side in [-1.0, 1.0] {
-            let beyond = side < 0 ? (ys.min() ?? node.y) - clearance - 8 : (ys.max() ?? node.y) + clearance + 8
-            for length in stubs {
-                let first = NeuralPoint(node.x + length, node.y)
-                if let direct = direct(node: node, first: first, anchor: anchor, side: side) {
-                    out.append(direct)
-                }
-                for extra in [0.0, 16, 32] {
-                    if let road = lane(
-                        node: node, first: first, anchor: anchor, side: side,
-                        laneY: beyond + side * extra)
-                    {
-                        out.append(road)
+    /// Every road worth trying: a stub, a horizontal run on the node's row, a diagonal to a lane
+    /// above or below, the lane, a diagonal back to the anchor's row, and a run into the anchor.
+    private static func laneRoutes(
+        from node: NeuralPoint, to anchor: NeuralPoint
+    ) -> [(points: [NeuralPoint], offset: Double)] {
+        var out: [(points: [NeuralPoint], offset: Double)] = []
+        let entry = anchor.x - runIn > node.x + stub ? NeuralPoint(anchor.x - runIn, anchor.y) : anchor
+        let first = node.x + stub
+        for offset in lanes {
+            let laneY = min(max(node.y + offset, 6), NeuralDesign.height - 6)
+            let climb = abs(laneY - node.y)
+            let fall = abs(entry.y - laneY)
+            let latest = entry.x - climb - fall
+            guard latest >= first - 0.5 else { continue }
+            for leave in [first, (first + latest) / 2, latest] {
+                for back in [leave + climb, entry.x - fall] {
+                    guard back >= leave + climb - 0.5, back <= entry.x - fall + 0.5 else { continue }
+                    var points = [node, NeuralPoint(first, node.y)]
+                    if leave > first + 0.5 { points.append(NeuralPoint(leave, node.y)) }
+                    if climb > 0.5 { points.append(NeuralPoint(leave + climb, laneY)) }
+                    if back > points[points.count - 1].x + 0.5 || climb <= 0.5 {
+                        points.append(NeuralPoint(back, laneY))
                     }
+                    if fall > 0.5 { points.append(NeuralPoint(back + fall, entry.y)) }
+                    points.append(entry)
+                    if entry != anchor { points.append(anchor) }
+                    out.append((simplified(points), offset))
                 }
             }
         }
-        if abs(anchor.y - node.y) < epsilon { out.append(simplified([node, anchor])) }
         return out
     }
 
-    private static func direct(
-        node: NeuralPoint, first: NeuralPoint, anchor: NeuralPoint, side: Double
-    ) -> [NeuralPoint]? {
-        let rise = anchor.y - first.y
-        guard rise * side > epsilon else {
-            return abs(rise) < epsilon && first.x <= anchor.x ? simplified([node, first, anchor]) : nil
+    private static func hitCount(
+        of points: [NeuralPoint], others: [NeuralPoint], labels: [NeuralRect], clearance: Double
+    ) -> (nodes: Int, labels: Int) {
+        var nodes = 0
+        var boxes = 0
+        guard points.count > 1 else { return (0, 0) }
+        for index in 1..<points.count {
+            for other in others
+            where distance(from: other, toSegment: points[index - 1], points[index]) < clearance - epsilon {
+                nodes += 1
+            }
+            for box in labels where segmentCrosses(points[index - 1], points[index], box) { boxes += 1 }
         }
-        let corner = NeuralPoint(first.x + abs(rise), anchor.y)
-        guard corner.x <= anchor.x - epsilon else { return nil }
-        return simplified([node, first, corner, anchor])
+        return (nodes, boxes)
     }
 
-    private static func lane(
-        node: NeuralPoint, first: NeuralPoint, anchor: NeuralPoint, side: Double, laneY: Double
-    ) -> [NeuralPoint]? {
-        let climb = laneY - first.y
-        guard climb * side > epsilon else { return nil }
-        let leave = NeuralPoint(first.x + abs(climb), laneY)
-        let fall = anchor.y - laneY
-        let enter = NeuralPoint(anchor.x - runIn, anchor.y)
-        let turn = NeuralPoint(enter.x - abs(fall), laneY)
-        guard turn.x >= leave.x - epsilon else { return nil }
-        return simplified([node, first, leave, turn, enter, anchor])
+    /// Whether the segment passes through the inside of the rectangle.
+    static func segmentCrosses(_ a: NeuralPoint, _ b: NeuralPoint, _ rect: NeuralRect) -> Bool {
+        var low = 0.0
+        var high = 1.0
+        let dx = b.x - a.x
+        let dy = b.y - a.y
+        let edges: [(Double, Double)] = [
+            (-dx, a.x - rect.x), (dx, rect.maxX - a.x), (-dy, a.y - rect.y), (dy, rect.maxY - a.y),
+        ]
+        for (direction, room) in edges {
+            if abs(direction) < 1e-12 {
+                if room <= 0 { return false }
+            } else {
+                let ratio = room / direction
+                if direction < 0 { low = max(low, ratio) } else { high = min(high, ratio) }
+            }
+        }
+        return high - low > 1e-9
+    }
+
+    /// The least distance from a point to a rectangle; zero inside it.
+    static func distance(from point: NeuralPoint, toRect rect: NeuralRect) -> Double {
+        let dx = max(rect.x - point.x, 0, point.x - rect.maxX)
+        let dy = max(rect.y - point.y, 0, point.y - rect.maxY)
+        return hypot(dx, dy)
     }
 
     /// The points without repeats and without a point that lies on the line between its

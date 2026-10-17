@@ -116,6 +116,9 @@ public struct NeuralBrainModel: Sendable {
     public private(set) var revision: Int = 0
     public private(set) var hovered: String?
     public private(set) var pinned: String?
+    /// The member of a ganglion that was asked for when the ganglion was pinned from the zone
+    /// list; the readout shows that member while the ganglion is what is pinned.
+    var pinnedMember: String?
     public private(set) var hotSteps: [String] = []
     public private(set) var hotRoutes: [NeuralLayout.Route] = []
     public private(set) var provenanceToken: String?
@@ -217,16 +220,36 @@ public struct NeuralBrainModel: Sendable {
         refreshSelection()
     }
 
-    /// Pins a node, or lets go of it when it is the one pinned.
+    /// Pins a node, or lets go of it when it is the one pinned. A member of a ganglion pins the
+    /// ganglion and is the step the readout shows; asking for another member of the ganglion
+    /// that is pinned moves the readout to it and keeps the pin.
     public mutating func togglePin(_ id: String) {
         guard let node = representative(id) else { return }
-        pinned = pinned == node ? nil : node
+        if pinned == node, (pinnedMember ?? node) != id {
+            pinnedMember = id == node ? nil : id
+        } else if pinned == node {
+            pinned = nil
+            pinnedMember = nil
+        } else {
+            pinned = node
+            pinnedMember = id == node ? nil : id
+        }
         refreshSelection()
+    }
+
+    /// The step a pin is about: the ganglion member that was asked for, or the pinned node.
+    public var pinnedStep: String? {
+        guard let node = pinned else { return nil }
+        if let member = pinnedMember, indexByID[member] != nil, representative(member) == node {
+            return member
+        }
+        return node
     }
 
     public mutating func clearSelection() {
         hovered = nil
         pinned = nil
+        pinnedMember = nil
         refreshSelection()
     }
 
@@ -581,7 +604,10 @@ public struct NeuralBrainModel: Sendable {
         visibleNodeCount = steps.count - hidden
         refreshAttention()
         if let id = hovered, indexByID[id] == nil { hovered = nil }
-        if let id = pinned, indexByID[id] == nil { pinned = nil }
+        if let id = pinned, indexByID[id] == nil {
+            pinned = nil
+            pinnedMember = nil
+        }
         refreshSelection()
     }
 

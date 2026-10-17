@@ -172,3 +172,90 @@ struct NeuralBrainCardTests {
         #expect(card(model).turnID == model.turn.id)
     }
 }
+
+
+@Suite("Neural brain card design review")
+struct NeuralBrainCardReviewTests {
+    typealias F = ReadoutFixtures
+
+    private let now = Date(timeIntervalSince1970: 1_000_100)
+
+    private func repairedThenFailed() -> NeuralTurn {
+        let call = { (id: String, command: String, status: ToolStatus) in
+            MessagePart.Kind.tool(
+                ToolCall(
+                    id: id, name: "Bash", status: status, input: .object(["command": .string(command)]),
+                    output: status == .error ? "error: no" : "ok"))
+        }
+        return F.turn([
+            NeuralTurnFixtures.user(0),
+            NeuralTurnFixtures.message(1, [call("a", "make", .error)]),
+            NeuralTurnFixtures.message(2, [call("b", "make", .completed)]),
+            NeuralTurnFixtures.message(3, [
+                .tool(ToolCall(id: "c", name: "Read", status: .error, input: .object(["file_path": .string("x")]), output: "error: missing"))
+            ]),
+        ])
+    }
+
+    @Test("a repaired failure wears a dashed ring and the settled edge, an unrepaired one a full ring and the danger edge")
+    func ringStyles() {
+        let repaired = F.turn([
+            NeuralTurnFixtures.user(0),
+            NeuralTurnFixtures.message(1, [.tool(ToolCall(id: "a", name: "Bash", status: .error, input: .object(["command": .string("make")]), output: "error: no"))]),
+            NeuralTurnFixtures.message(2, [.tool(ToolCall(id: "b", name: "Bash", status: .completed, input: .object(["command": .string("make")]), output: "ok"))]),
+        ])
+        let card = F.model(repaired).brainCard(now: now)
+        #expect(card.edge == .settled)
+        #expect(card.lights.map(\.ringStyle) == [.repairedDashed])
+        #expect(card.repairedZones == [.shell])
+        #expect(card.ringZones.isEmpty)
+        #expect(card.lights[0].ring?.radius == card.lights[0].radius + NeuralGlyph.failureRingGrowth)
+        #expect(card.lights[0].failureRing == nil)
+
+        let mixed = F.model(repairedThenFailed()).brainCard(now: now)
+        #expect(mixed.edge == .failed)
+        let styles = Dictionary(uniqueKeysWithValues: mixed.lights.map { ($0.zone, $0.ringStyle) })
+        #expect(styles[.shell] == .repairedDashed)
+        #expect(styles[.sense] == .failedSolid)
+        #expect(mixed.ringZones == [.sense])
+        #expect(mixed.repairedZones == [.shell])
+        let clean = F.model().brainCard(now: now)
+        #expect(clean.lights.filter { $0.ringStyle == .repairedDashed }.map(\.zone) == [.shell])
+        #expect(clean.lights.filter { $0.ringStyle == .none }.count == 4)
+    }
+
+    @Test("waiting and stopped say so in the headline's clause, in place of a failure")
+    func stateClause() {
+        let (waiting, _) = F.waitingTurn()
+        let waitingCard = F.model(waiting).brainCard(now: now)
+        let clause = waitingCard.headline.piece(.state)
+        #expect(clause?.text == "waiting for you")
+        #expect(clause?.tone == .attention)
+        #expect(waitingCard.headline.piece(.failure) == nil)
+        let stopped = F.turn([
+            NeuralTurnFixtures.user(0),
+            NeuralTurnFixtures.message(1, [NeuralTurnFixtures.bash("sleep 9", status: .stopped)], finish: "abort"),
+        ])
+        let stoppedCard = F.model(stopped).brainCard(now: now)
+        #expect(stoppedCard.headline.piece(.state)?.text == "stopped")
+        #expect(stoppedCard.headline.piece(.state)?.tone == .quiet)
+        #expect(F.model().brainCard(now: now).headline.piece(.state) == nil)
+    }
+
+    @Test("lights and the eye wear the lifted tones, the edge and chips the corrected ones")
+    func toneSets() {
+        let card = F.model().brainCard(now: now)
+        #expect(card.lights.allSatisfy { $0.toneSet == .lifted })
+        #expect(card.eyeToneSet == .lifted)
+        #expect(card.edgeToneSet == .corrected)
+        #expect(card.chips.allSatisfy { $0.toneSet == .corrected })
+    }
+
+    @Test("the card's layout follows the row's width")
+    func layout() {
+        #expect(NeuralStageMetrics.cardLayout(width: 380) == .narrow)
+        #expect(NeuralStageMetrics.cardLayout(width: 460) == .wide)
+        let card = F.model().brainCard(now: now)
+        #expect(card.fit(width: 380).isSuperset(of: [.replay, .rows, .picture, .headline]))
+    }
+}

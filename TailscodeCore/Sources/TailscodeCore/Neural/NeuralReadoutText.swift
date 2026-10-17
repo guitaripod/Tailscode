@@ -158,4 +158,13 @@ enum NeuralReadoutText {
         let next = path.index(after: slash)
         return (String(path[..<next]), String(path[next...]))
     }
+
+    /// A directory (with its trailing slash) shortened to its last directory after an ellipsis:
+    /// "TailscodeLinux/Sources/Chat/" becomes "\u{2026}/Chat/". A directory of one level, or none,
+    /// is left whole.
+    static func shortDirectory(_ directory: String) -> String {
+        let parts = directory.split(separator: "/", omittingEmptySubsequences: true)
+        guard parts.count > 1, let last = parts.last else { return directory }
+        return "\u{2026}/\(last)/"
+    }
 }

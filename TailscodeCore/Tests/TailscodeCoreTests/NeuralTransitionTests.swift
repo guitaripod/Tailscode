@@ -316,4 +316,51 @@ struct NeuralTransitionTests {
         #expect(open.frame(at: -1) == open.frame(at: 0))
         #expect(open.frame(at: 3) == open.frame(at: 1))
     }
+
+    @Test("a closing brings the card's lights back only after 130 ms, and an opening draws them inside the traveller")
+    func cardLights() {
+        let close = move(.close)
+        #expect(close.frame(at: 0).cardLightsAlpha == 0)
+        #expect(close.frame(at: 129.0 / 220).cardLightsAlpha == 0)
+        #expect(close.frame(at: 131.0 / 220).cardLightsAlpha > 0)
+        #expect(close.frame(at: 1).cardLightsAlpha == 1)
+        var previous = 0.0
+        for p in samples {
+            let alpha = close.frame(at: p).cardLightsAlpha
+            #expect(alpha >= previous - 1e-9)
+            previous = alpha
+        }
+        let open = move(.open)
+        #expect(samples.allSatisfy { open.frame(at: $0).cardLightsAlpha == 0 })
+        let fade = move(.close, reduceMotion: true)
+        #expect(fade.frame(at: 0.5).cardLightsAlpha == 0.5)
+        #expect(fade.frame(at: 1).cardLightsAlpha == 1)
+        let strained = move(.close, level: .strained)
+        #expect(strained.frame(at: 1).cardLightsAlpha == 1)
+    }
+
+    @Test("the stage is drawn inside the traveller: its design scale and points follow the head")
+    func insideTraveller() {
+        let design = NeuralPoint(300, 200)
+        let open = move(.open)
+        let start = open.frame(at: 0)
+        let end = open.frame(at: 1)
+        #expect(abs(start.designScale - metrics.card.picture.width / 576) < 1e-12)
+        #expect(abs(end.designScale - metrics.designScale) < 1e-12)
+        let atCard = start.point(forDesign: design)
+        let onCard = metrics.card.point(forDesign: design)
+        #expect(abs(atCard.x - onCard.x) < 1e-9 && abs(atCard.y - onCard.y) < 1e-9)
+        let atStage = end.point(forDesign: design)
+        let onStage = metrics.point(forDesign: design)
+        #expect(abs(atStage.x - onStage.x) < 1e-9 && abs(atStage.y - onStage.y) < 1e-9)
+        var previous = start.designScale
+        for p in samples.dropFirst() {
+            let frame = open.frame(at: p)
+            #expect(frame.designScale >= previous - 1e-12)
+            let point = frame.point(forDesign: design)
+            #expect(frame.traveller.contains(point))
+            previous = frame.designScale
+        }
+        #expect(start.travellerScale > 0.2 && start.travellerScale < 0.25)
+    }
 }

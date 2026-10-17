@@ -39,6 +39,11 @@ extension NeuralReading {
         Localized.text("started %@", clock)
     }
 
+    /// "turn began 21:52:02".
+    public static func turnBegan(_ clock: String) -> String {
+        Localized.text("turn began %@", clock)
+    }
+
     /// "same file as 3, 5, 22".
     public static func sameFile(_ numbers: [Int]) -> String {
         Localized.text("same file as %@", numbers.map(String.init).joined(separator: ", "))

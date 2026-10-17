@@ -29,7 +29,8 @@ extension NeuralLeader {
     /// The lattice is fitted so the anchor's row is on it and the road ends level with the
     /// anchor. Nil where nothing reaches the anchor.
     static func search(
-        from node: NeuralPoint, to anchor: NeuralPoint, others: [NeuralPoint], clearance: Double
+        from node: NeuralPoint, to anchor: NeuralPoint, others: [NeuralPoint],
+        labels: [NeuralRect] = [], clearance: Double
     ) -> [NeuralPoint]? {
         let rise = anchor.y - node.y
         let pitch = abs(rise) < 1 ? 4.0 : abs(rise) / max(1, (abs(rise) / 4).rounded())
@@ -44,7 +45,7 @@ extension NeuralLeader {
         let width = goalColumn - minColumn + 1
         let height = maxRow - minRow + 1
         guard width > 1, height > 1, width * height <= 400_000 else { return nil }
-        let index = NodeIndex(others)
+        let index = NodeIndex(others, labels: labels)
 
         func point(_ column: Int, _ row: Int) -> NeuralPoint {
             NeuralPoint(node.x + Double(column) * pitch, node.y + Double(row) * pitch)
@@ -117,8 +118,10 @@ extension NeuralLeader {
     private struct NodeIndex {
         private static let cell = 40.0
         private var buckets: [Int: [NeuralPoint]] = [:]
+        private let labels: [NeuralRect]
 
-        init(_ nodes: [NeuralPoint]) {
+        init(_ nodes: [NeuralPoint], labels: [NeuralRect]) {
+            self.labels = labels
             for node in nodes {
                 buckets[Self.key(Int((node.x / Self.cell).rounded(.down)), Int((node.y / Self.cell).rounded(.down))), default: []].append(node)
             }
@@ -137,7 +140,7 @@ extension NeuralLeader {
                     }
                 }
             }
-            return true
+            return !labels.contains { NeuralLeader.segmentCrosses(a, b, $0) }
         }
     }
 

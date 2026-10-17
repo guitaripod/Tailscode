@@ -34,6 +34,8 @@ public struct NeuralBrainCard: Sendable, Equatable {
             case duration
             case tally
             case failure
+            /// A turn that is waiting on the person or was stopped says so where a failure would.
+            case state
         }
 
         public let kind: Kind
@@ -51,6 +53,14 @@ public struct NeuralBrainCard: Sendable, Equatable {
         public func piece(_ kind: Piece.Kind) -> Piece? { pieces.first { $0.kind == kind } }
     }
 
+    /// How a zone's ring is drawn: none, dashed for a failure that was repaired, solid for one
+    /// nobody repaired.
+    public enum RingStyle: Sendable, Equatable {
+        case none
+        case repairedDashed
+        case failedSolid
+    }
+
     /// A zone the turn used. `tone` is `.zone` unless the zone holds a failure nobody recovered
     /// or a step waiting on the person.
     public struct ZoneChip: Sendable, Equatable {
@@ -58,6 +68,9 @@ public struct NeuralBrainCard: Sendable, Equatable {
         public let label: String
         public let count: Int
         public let tone: NeuralNodeTone
+
+        /// A chip sits on the canvas: the corrected palette.
+        public var toneSet: NeuralToneSet { NeuralToneSet.set(for: .chip) }
     }
 
     /// A soft light centred on a zone's well.
@@ -67,8 +80,14 @@ public struct NeuralBrainCard: Sendable, Equatable {
         public let radius: Double
         public let strength: Double
         public let count: Int
+        /// The ring on a zone with a failure: solid when nobody repaired it, dashed when a later
+        /// step did. Both share the glyph's geometry.
+        public let ring: NeuralGlyph.Ring?
+        public let ringStyle: RingStyle
+        /// The head is dark in every theme: the lights wear the lifted tones.
+        public var toneSet: NeuralToneSet { NeuralToneSet.set(for: .cardLight) }
         /// The ring on a zone with a failure nobody recovered.
-        public let failureRing: NeuralGlyph.Ring?
+        public var failureRing: NeuralGlyph.Ring? { ringStyle == .failedSolid ? ring : nil }
 
         /// The strength with the pointer on the card: 15 percent more, never past full.
         public func strength(hovered: Bool) -> Double {
@@ -102,8 +121,17 @@ public struct NeuralBrainCard: Sendable, Equatable {
         }
     }
 
-    /// The zones that carry a failure ring.
-    public var ringZones: [NeuralZone] { lights.filter { $0.failureRing != nil }.map(\.zone) }
+    /// The zones that carry the full danger ring: a failure nobody repaired.
+    public var ringZones: [NeuralZone] { lights.filter { $0.ringStyle == .failedSolid }.map(\.zone) }
+
+    /// The zones that carry the dashed ring: a failure a later step repaired.
+    public var repairedZones: [NeuralZone] {
+        lights.filter { $0.ringStyle == .repairedDashed }.map(\.zone)
+    }
+
+    /// The card's left edge sits on the canvas, the eye on the dark head.
+    public var edgeToneSet: NeuralToneSet { NeuralToneSet.set(for: .edge) }
+    public var eyeToneSet: NeuralToneSet { NeuralToneSet.set(for: .eye) }
 
     public var hasFailure: Bool { edge == .failed }
 
@@ -139,13 +167,27 @@ public struct NeuralBrainCard: Sendable, Equatable {
         let census = NeuralReading.Census(turn.steps)
         let line = NeuralReading.line(for: turn, now: now)
         turnID = turn.id
-        headline = Self.makeHeadline(line, census: census, steps: turn.steps.count)
+        headline = Self.makeHeadline(
+            line, census: census, steps: turn.steps.count, state: Self.stateClause(turn))
         chips = Self.makeChips(turn.steps)
         digestClauses = Self.makeClauses(census, steps: turn.steps.count)
+        var repaired = Set<NeuralZone>()
+        for step in turn.steps where step.status == .failed && step.recovered {
+            repaired.insert(step.zone)
+        }
         lights = glyph.dots.map { dot in
-            Light(
+            let style: RingStyle =
+                dot.failureRing != nil ? .failedSolid : repaired.contains(dot.zone) ? .repairedDashed : .none
+            let ring =
+                dot.failureRing
+                ?? (style == .repairedDashed
+                    ? NeuralGlyph.Ring(
+                        radius: dot.radius + NeuralGlyph.failureRingGrowth,
+                        strokeWidth: NeuralGlyph.failureRingStroke)
+                    : nil)
+            return Light(
                 zone: dot.zone, center: dot.center, radius: dot.radius, strength: dot.opacity,
-                count: dot.count, failureRing: dot.failureRing)
+                count: dot.count, ring: ring, ringStyle: style)
         }
         self.eyeTone = eyeTone
         edge = Self.makeEdge(turn, census: census)
@@ -164,8 +206,23 @@ public struct NeuralBrainCard: Sendable, Equatable {
         return first.uppercased() + text.dropFirst()
     }
 
+    /// What a waiting or stopped turn says in the headline's clause, in place of a failure's.
+    private static func stateClause(_ turn: NeuralTurn) -> Piece? {
+        let waiting = turn.steps.first { $0.status == .waitingApproval || $0.status == .waitingAnswer }
+        if waiting != nil {
+            return Piece(
+                kind: .state, text: NeuralReading.statusWord(.waitingApproval), tone: .attention)
+        }
+        switch turn.outcome {
+        case .stopped, .interrupted, .answerless:
+            return Piece(kind: .state, text: NeuralReading.statusWord(.stopped), tone: .quiet)
+        case .running, .settled, .failed:
+            return nil
+        }
+    }
+
     private static func makeHeadline(
-        _ line: NeuralReading.Line, census: NeuralReading.Census, steps: Int
+        _ line: NeuralReading.Line, census: NeuralReading.Census, steps: Int, state: Piece?
     ) -> Headline {
         var pieces = [Piece(kind: .count, text: line.count, tone: nil)]
         if let duration = line.duration {
@@ -174,14 +231,16 @@ public struct NeuralBrainCard: Sendable, Equatable {
         if let tally = line.tally {
             pieces.append(Piece(kind: .tally, text: tally, tone: .live))
         }
-        if let failure = line.failure {
+        if let state {
+            pieces.append(state)
+        } else if let failure = line.failure {
             pieces.append(
                 Piece(kind: .failure, text: failure, tone: census.failed > 0 ? .danger : .attention))
         }
         return Headline(number: census.tools > 0 ? census.tools : steps, pieces: pieces)
     }
 
-    private static func makeChips(_ steps: [NeuralStep]) -> [ZoneChip] {
+    static func makeChips(_ steps: [NeuralStep]) -> [ZoneChip] {
         var counts = [Int](repeating: 0, count: NeuralZone.allCases.count)
         var failed = Set<NeuralZone>()
         var waiting = Set<NeuralZone>()

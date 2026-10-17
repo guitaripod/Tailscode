@@ -222,3 +222,27 @@ public enum NeuralDome {
         return points
     }
 }
+
+extension NeuralZone {
+    /// Half the width of the zone's label box in design space: half the text's width and 4 units.
+    public var labelHalfWidth: Double {
+        switch self {
+        case .think: return 26
+        case .sense: return 34
+        case .act: return 24
+        case .shell: return 34
+        case .delegate: return 48
+        case .say: return 24
+        }
+    }
+
+    /// Where the zone's name (PLAN, SENSE, ACT, SHELL, DELEGATE, SAY) is drawn in design space: a
+    /// box centred above the zone's well, 20 units tall. A leader keeps out of it.
+    public var labelRect: NeuralRect {
+        let c = center
+        let top = c.y - well.ry - 17
+        return NeuralRect(x: c.x - labelHalfWidth, y: top, width: labelHalfWidth * 2, height: 20)
+    }
+
+    public static var labelRects: [NeuralRect] { allCases.map(\.labelRect) }
+}

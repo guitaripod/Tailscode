@@ -223,6 +223,7 @@ struct NeuralReadoutStepTests {
         #expect(step.facts.message == "3 calls in one message")
         #expect(step.facts.clock == "13:46:42")
         #expect(step.facts.started == "started 13:46:42")
+        #expect(step.facts.turnBegan == "turn began 13:46:41")
         let lone = F.step(model, 4)
         #expect(lone.facts.message == "message 3")
         let mirror = Mirror(reflecting: step.facts)
@@ -491,7 +492,6 @@ struct NeuralReadoutDigestTests {
         let digest = try readDigest(model)
         #expect(digest.headline.hasPrefix("12 tools"))
         #expect(digest.headline.contains("ran 4 commands"))
-        #expect(!digest.isCompact)
     }
 
     @Test("zone bars run from the busiest zone and leave out the empty ones")
@@ -585,9 +585,9 @@ struct NeuralReadoutOtherModeTests {
         #expect(now.tail.lines.first?.text == "out 12")
         #expect(now.tail.lines.last?.text == "out 19")
         #expect(now.tail.total == 20)
-        #expect(now.digest.isCompact)
-        #expect(now.digest.ticks.isEmpty)
-        #expect(!now.digest.zoneBars.isEmpty)
+        #expect(now.soFar.headline.hasPrefix("1 tool"))
+        #expect(now.soFar.chips.map(\.zone) == [.think, .shell])
+        #expect(now.soFar.chips.map(\.count) == [1, 1])
     }
 
     @Test("Now reads the output that has grown since, without the layout changing")
@@ -598,7 +598,7 @@ struct NeuralReadoutOtherModeTests {
         ] }
         var model = F.model(F.turn(messages(10), running: true))
         let revision = model.revision
-        #expect(F.readout(model, .now).digest != nil)
+        #expect(F.readout(model, .now).digest == nil)
         model.update(turn: F.turn(messages(40), running: true), context: .none)
         #expect(model.revision == revision)
         guard case .now(let now) = F.readout(model, .now).body else {
@@ -836,5 +836,136 @@ struct NeuralStepCallTests {
         #expect(NeuralReadoutText.firstLines("\n\na\r\nb\n", 5) == ["a", "b"])
         #expect(NeuralReadoutText.rawLineCount("a\nb\n") == 2)
         #expect(NeuralReadoutText.rawLineCount("a\nb") == 2)
+    }
+}
+
+
+@Suite("Neural readout design review")
+struct NeuralReadoutReviewTests {
+    typealias F = ReadoutFixtures
+
+    @Test("a step reads header, subject, relations, WHY, result, facts, in that order")
+    func stepOrder() {
+        #expect(NeuralReadout.StepSection.allCases == [.header, .subject, .relations, .why, .result, .facts])
+        let labels = Mirror(reflecting: F.step(F.model(), 5)).children.compactMap(\.label)
+        let order = labels.filter { ["header", "subject", "relations", "why", "result", "facts"].contains($0) }
+        #expect(order == ["header", "subject", "relations", "why", "result", "facts"])
+    }
+
+    @Test("the digest reads bars with the timeline, then failures, then changed, then the answer")
+    func digestOrder() {
+        #expect(NeuralReadout.DigestSection.allCases == [.headline, .barsAndTimeline, .failures, .changed, .answer])
+        let digest = F.readout(F.model(), .digest).digest!
+        let labels = Mirror(reflecting: digest).children.compactMap(\.label)
+        let order = labels.filter { ["zoneBars", "ticks", "failures", "changed", "answer"].contains($0) }
+        #expect(order == ["zoneBars", "ticks", "failures", "changed", "answer"])
+    }
+
+    @Test("a changed file shortens to an ellipsis, its last directory and the file name")
+    func shortPath() {
+        let digest = F.readout(F.model(), .digest).digest!
+        #expect(digest.changed[0].shortDirectory == "\u{2026}/Chat/")
+        #expect(digest.changed[0].fileName == "TranscriptRows.swift")
+        #expect(digest.changed[1].shortDirectory == "\u{2026}/Sources/")
+        let one = NeuralReadout.shortPath("dir/b.txt")
+        #expect(one.directory == "dir/" && one.fileName == "b.txt")
+        let bare = NeuralReadout.shortPath("b.txt")
+        #expect(bare.directory == "" && bare.fileName == "b.txt")
+        let deep = NeuralReadout.shortPath("/a/b/c/d.swift")
+        #expect(deep.directory == "\u{2026}/c/" && deep.fileName == "d.swift")
+    }
+
+    @Test("Now's So far is the headline and the card's zone chips, in zone order")
+    func soFar() throws {
+        let model = F.model(BrainFixtures.turn(running: true))
+        guard case .now(let now) = F.readout(model, .now).body else {
+            Issue.record("expected Now")
+            return
+        }
+        let card = model.brainCard(now: Date())
+        #expect(now.soFar.chips == card.chips)
+        #expect(now.soFar.chips.map(\.zone) == card.chips.map(\.zone))
+    }
+
+    @Test("a 20-line output shows eight lines wide and five narrow, and fades where more lies below")
+    func narrowOutput() throws {
+        let model = F.model(F.turn([
+            NeuralTurnFixtures.user(0),
+            NeuralTurnFixtures.message(1, [NeuralTurnFixtures.tool("Bash", ["command": .string("seq")], out: [F.longOutput(20)])]),
+        ]))
+        let wide = NeuralStageMetrics.make(width: 1300, density: .comfortable)
+        let narrow = NeuralStageMetrics.make(width: 1000, density: .comfortable)
+        #expect(wide.outputLinesShown == 8)
+        #expect(narrow.outputLinesShown == 5)
+        for (metrics, count) in [(wide, 8), (narrow, 5)] {
+            let read = NeuralReadout.make(
+                model: model, subject: .step(model.steps[0].id), now: Date(timeIntervalSince1970: 1_000_100),
+                tz: F.utc, outputLines: metrics.outputLinesShown)
+            guard case .shell(let output)? = read.step?.result else {
+                Issue.record("expected output")
+                return
+            }
+            #expect(output.lines.count == count)
+            #expect(output.total == 20)
+            #expect(output.fades)
+            #expect(output.moreLabel == "\(20 - count) more lines")
+        }
+        let short = F.model(F.turn([
+            NeuralTurnFixtures.user(0),
+            NeuralTurnFixtures.message(1, [NeuralTurnFixtures.tool("Bash", ["command": .string("seq")], out: [F.longOutput(3)])]),
+        ]))
+        guard case .shell(let few)? = F.step(short, 0).result else {
+            Issue.record("expected output")
+            return
+        }
+        #expect(!few.fades)
+    }
+
+    @Test("pinning a ganglion member pins the ganglion and shows that member's readout")
+    func ganglionMember() throws {
+        var model = F.model(BrainFixtures.turn())
+        let ganglion = try #require(model.layout.ganglia.first { $0.zone == .shell })
+        let member = ganglion.members[3]
+        model.setDive(zone: .shell)
+        guard case .zone(let list) = F.readout(model, model.readoutSubject(now: 0)).body else {
+            Issue.record("expected the zone list")
+            return
+        }
+        #expect(Set(list.rows.map(\.stepID)).isSuperset(of: Set(ganglion.members)))
+        model.togglePin(member)
+        #expect(model.pinned == ganglion.leader)
+        #expect(model.pinnedStep == member)
+        let read = F.readout(model, model.readoutSubject(now: 0))
+        #expect(read.mode == .step(member))
+        #expect(read.step?.stepID == member)
+        #expect(read.step?.header.isPinned == true)
+        model.togglePin(ganglion.members[5])
+        #expect(model.pinned == ganglion.leader)
+        #expect(F.readout(model, model.readoutSubject(now: 0)).step?.stepID == ganglion.members[5])
+        model.togglePin(ganglion.members[5])
+        #expect(model.pinned == nil)
+        #expect(model.pinnedStep == nil)
+        model.togglePin(ganglion.leader)
+        #expect(model.pinnedStep == ganglion.leader)
+    }
+
+    @Test("the leader goes to the step the panel shows, and the digest has none")
+    func leaderTarget() {
+        let model = F.model()
+        #expect(F.readout(model, .digest).leaderStepID == nil)
+        #expect(F.readout(model, .step(model.steps[3].id)).leaderStepID == model.steps[3].id)
+        let live = F.model(BrainFixtures.turn(running: true))
+        #expect(F.readout(live, .now).leaderStepID == live.steps.last?.id)
+    }
+
+    @Test("chips and the leader sit on the canvas in the corrected tones, the head wears the lifted ones")
+    func toneSets() {
+        let chip = F.step(F.model(), 5).header.chip
+        #expect(chip.toneSet == .corrected)
+        #expect(NeuralToneSet.set(for: .node) == .lifted)
+        #expect(NeuralToneSet.set(for: .cardLight) == .lifted)
+        #expect(NeuralToneSet.set(for: .leader) == .corrected)
+        #expect(NeuralToneSet.set(for: .leaderTab) == .corrected)
+        #expect(NeuralToneSet.set(for: .text) == .corrected)
     }
 }

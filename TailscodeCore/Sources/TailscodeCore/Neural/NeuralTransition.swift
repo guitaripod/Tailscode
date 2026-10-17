@@ -264,10 +264,27 @@ public struct NeuralTransitionFrame: Sendable, Equatable {
     /// The card's own picture; zero through a move, because the traveller is the picture. Only a
     /// crossfade fades it.
     public var cardPictureAlpha: Double
+    /// The card's zone lights and rings. A closing keeps them off for the first 130 ms and brings
+    /// them in with the card, because the ring scales up with the traveller and would be heavy
+    /// mid-move; an opening draws them inside the traveller, so they are off.
+    public var cardLightsAlpha: Double
     public var cardTextAlpha: Double
     public var cardTextOffsetX: Double
     public var cardSurfaceAlpha: Double
     public var rowHeight: Double
+    /// How many points one design unit is inside the traveller: the stage is drawn inside it, so
+    /// nodes, wires and the leader scale with the head from the first frame and never drift off it.
+    public var designScale: Double { traveller.width / NeuralStageMetrics.designWidth }
+
+    /// Where a point of the head's design space is in the row at this frame: inside the traveller,
+    /// cropped the way the stage and the card's picture are.
+    public func point(forDesign point: NeuralPoint) -> NeuralPoint {
+        let crop = NeuralStageMetrics.designCrop
+        return NeuralPoint(
+            traveller.x + (point.x - crop.x) * traveller.width / crop.width,
+            traveller.y + (point.y - crop.y) * traveller.height / crop.height)
+    }
+
     /// The sweep band's envelope, `0...1`, and where it is on its one crossing.
     public var sweepAmount: Double
     public var sweepPhase: Double
@@ -327,7 +344,7 @@ extension NeuralTransition {
             }
             return NeuralTransitionFrame(
                 progress: p, traveller: rect, travellerScale: scale(of: rect), travellerAlpha: shown,
-                cardPictureAlpha: card, cardTextAlpha: card, cardTextOffsetX: 0,
+                cardPictureAlpha: card, cardLightsAlpha: card, cardTextAlpha: card, cardTextOffsetX: 0,
                 cardSurfaceAlpha: card, rowHeight: height(at: p), sweepAmount: 0, sweepPhase: 0,
                 zoneLift: shown,
                 nodes: NeuralNodeReveal(
@@ -352,7 +369,7 @@ extension NeuralTransition {
             let travel = stage.readoutTravel
             return NeuralTransitionFrame(
                 progress: p, traveller: rect, travellerScale: scale(of: rect), travellerAlpha: 1,
-                cardPictureAlpha: 0, cardTextAlpha: 1 - out,
+                cardPictureAlpha: 0, cardLightsAlpha: 0, cardTextAlpha: 1 - out,
                 cardTextOffsetX: -NeuralTransition.cardTextSlide * out, cardSurfaceAlpha: 1 - out,
                 rowHeight: height(at: p),
                 sweepAmount: sweeping && sweepWindow > 0 && sweepWindow < 1 ? sin(Double.pi * sweepWindow) : 0,
@@ -376,7 +393,7 @@ extension NeuralTransition {
             let slide = NeuralTransition.easeInCubic(outWindow)
             return NeuralTransitionFrame(
                 progress: p, traveller: rect, travellerScale: scale(of: rect), travellerAlpha: 1,
-                cardPictureAlpha: 0, cardTextAlpha: back,
+                cardPictureAlpha: 0, cardLightsAlpha: window(t, 130, 220), cardTextAlpha: back,
                 cardTextOffsetX: -NeuralTransition.cardTextSlide * (1 - back), cardSurfaceAlpha: back,
                 rowHeight: height(at: p), sweepAmount: 0, sweepPhase: 0,
                 zoneLift: 1 - window(t, 0, 220),

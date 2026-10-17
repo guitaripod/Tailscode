@@ -147,12 +147,13 @@ extension NeuralBrainModel {
     /// The readout at this moment. `clock` is the client's monotonic seconds, which the hover
     /// grace and a replay's playhead are read against; `now` is the wall clock a running turn's
     /// elapsed time is read from; `answer` is the final message's text, which the model does not
-    /// hold.
+    /// hold; `outputLines` is how many lines of output to show, `NeuralStageMetrics.outputLinesShown`.
     public func readout(
-        now: Date = Date(), tz: TimeZone = .current, clock: Double = 0, answer: String? = nil
+        now: Date = Date(), tz: TimeZone = .current, clock: Double = 0, answer: String? = nil,
+        outputLines: Int = NeuralReadout.outputShown
     ) -> NeuralReadout {
         NeuralReadout.make(
             model: self, subject: readoutSubject(now: clock), now: now, tz: tz, clock: clock,
-            answer: answer)
+            answer: answer, outputLines: outputLines)
     }
 }
