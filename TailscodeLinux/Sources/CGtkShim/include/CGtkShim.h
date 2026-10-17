@@ -406,6 +406,16 @@ int tailscode_label_reveal(
     GtkWidget *label, gpointer holder, const char *markup, int visible, int wave,
     const unsigned int *rgb, const unsigned short *alpha);
 
+/// The same frame for a label whose arrival has already been handed over: `revision` names the
+/// arrival (the one given to `tailscode_label_reveal_revision` after `tailscode_label_reveal`
+/// landed it), and a frame of that arrival reads neither the markup nor the label's text, so its
+/// cost does not grow with the answer. Returns the rendered length, or -1 when the arrival is not
+/// the one the label holds, which is the caller's cue to hand the markup over again.
+void tailscode_label_reveal_revision(GtkWidget *label, unsigned int revision);
+int tailscode_label_reveal_frame(
+    GtkWidget *label, unsigned int revision, int visible, int wave, const unsigned int *rgb,
+    const unsigned short *alpha);
+
 /// What a frame at `visible` characters would draw, as numbers, so the geometry can be checked
 /// without a screen. Writes `[fallback, empty, clipCount, unitCount]`, then two clip rectangles
 /// and then one `[x, y, width, height, firstChar, charCount]` per tinted cluster, all in widget
@@ -729,3 +739,4 @@ long tailscode_soak_rows(void);
 #include "tile.h"
 #include "previewlens.h"
 #include "meridian.h"
+#include "brain.h"

@@ -129,6 +129,15 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkBrain()
+            report(
+                "brain: \(checks) claims hold: rows, Lines, fallbacks, stage layout, hover, pin, replay, dive, clocks, hidden panes, release")
+        } catch {
+            report("brain: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkReplaceChildren()
             report("reorder: \(checks) claims hold: a kept row survives being moved, a dropped one is freed")
         } catch {

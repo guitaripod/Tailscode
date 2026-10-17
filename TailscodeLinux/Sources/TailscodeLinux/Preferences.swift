@@ -204,6 +204,34 @@ enum Preferences {
         ChatDensitySetting.set(value)
     }
 
+    /// How a turn's thinking and working is drawn: one head, or the flat rows. The choice is Core's
+    /// (`ActivityStyleSetting`, one key on every client); `TAILSCODE_ACTIVITY_STYLE` is the
+    /// harness's override of it so a style can be shot or asserted without a click.
+    static var activityStyle: ActivityStyle {
+        if let raw = ProcessInfo.processInfo.environment["TAILSCODE_ACTIVITY_STYLE"],
+            let style = ActivityStyle(rawValue: raw)
+        {
+            return style
+        }
+        return ActivityStyleSetting.current
+    }
+
+    /// What the transcript actually draws: the choice, unless the layers the head is made of are
+    /// not on this machine, in which case the lines stand in and the log says so once.
+    static var effectiveActivityStyle: ActivityStyle {
+        guard activityStyle == .brain else { return .lines }
+        guard NeuralAssetFiles.isAvailable else {
+            NeuralAssetFiles.reportMissingOnce()
+            return .lines
+        }
+        return .brain
+    }
+
+    static func setActivityStyle(_ value: ActivityStyle) {
+        write(value.rawValue, forKey: ActivityStyleSetting.key)
+        ActivityStyleSetting.set(value)
+    }
+
     /// The old "Tighter rows" switch becomes the density setting once, at launch. All it ever said
     /// was "tighter", which is now the default, so whatever it held — on, off or never touched —
     /// arrives at the density Core says (`ChatDensitySetting.migrate`) unless the person has
@@ -378,6 +406,17 @@ enum SettingsDialog {
                 selected: densities.firstIndex(of: Preferences.chatDensity) ?? 0
             ) { index in
                 Preferences.setChatDensity(densities[index])
+            })
+        let styles = ActivityStyle.allCases
+        adw_preferences_group_add(
+            ptr(appearance),
+            comboRow(
+                title: ActivityStyleSetting.title,
+                subtitle: ActivityStyleSetting.explanation,
+                options: styles.map(\.title),
+                selected: styles.firstIndex(of: Preferences.activityStyle) ?? 0
+            ) { index in
+                Preferences.setActivityStyle(styles[index])
             })
 
         let type = group(

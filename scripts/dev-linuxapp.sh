@@ -13,7 +13,8 @@
 #   scripts/dev-linuxapp.sh click 640 400    real input, through the X server
 #   scripts/dev-linuxapp.sh key ctrl+w v
 #   scripts/dev-linuxapp.sh type 'hello'
-#   scripts/dev-linuxapp.sh drive 'splits'   the app's own TAILSCODE_DRIVE verbs
+#   scripts/dev-linuxapp.sh drive 'splits'   the app's own TAILSCODE_DRIVE verbs (restarts the app)
+#   scripts/dev-linuxapp.sh do 'brain=pin=4' the same verbs, into the app already running
 #   scripts/dev-linuxapp.sh log -f
 #   scripts/dev-linuxapp.sh status | stop | restart
 #   scripts/dev-linuxapp.sh run <cmd…>       any command inside the harness display and bus
@@ -114,17 +115,32 @@ harness_env() {
         LIBGL_ALWAYS_SOFTWARE=1
         NO_AT_BRIDGE=1
     )
+    HARNESS_ENV+=(TAILSCODE_DRIVE_FILE="$STATE/drive.txt")
+    [ -n "${TAILSCODE_ACTIVITY_STYLE:-}" ] && HARNESS_ENV+=(TAILSCODE_ACTIVITY_STYLE="$TAILSCODE_ACTIVITY_STYLE")
+    if [ -n "${TAILSCODE_NEURAL_DIR:-}" ]; then
+        HARNESS_ENV+=(TAILSCODE_NEURAL_DIR="$TAILSCODE_NEURAL_DIR")
+    elif [ -d "$REPO/Resources/Neural/png" ]; then
+        HARNESS_ENV+=(TAILSCODE_NEURAL_DIR="$REPO/Resources/Neural/png")
+    fi
+    return 0
+}
+
+# Where SwiftPM keeps the build. A checkout builds in its own `.build`; a session that must keep
+# build output off the checkout's disk names another place with TAILSCODE_BUILD_PATH.
+build_root() {
+    echo "${TAILSCODE_BUILD_PATH:-$REPO/TailscodeLinux/.build}"
 }
 
 binary() {
     local flavour=${1:-debug}
-    echo "$REPO/TailscodeLinux/.build/$flavour/tailscode"
+    echo "$(build_root)/$flavour/tailscode"
 }
 
 build() {
     local flavour=${1:-debug}
     local args=(swift build --manifest-cache none)
     [ "$flavour" = release ] && args+=(-c release)
+    [ -n "${TAILSCODE_BUILD_PATH:-}" ] && args+=(--scratch-path "$TAILSCODE_BUILD_PATH")
     (cd "$REPO/TailscodeLinux" && "${args[@]}" 2>&1 |
         grep -E "error:|Build complete" || true)
     [ -x "$(binary "$flavour")" ] || die "no binary at $(binary "$flavour")"
@@ -176,12 +192,15 @@ cmd_start() {
     [ "$nobuild" = yes ] || build "$flavour"
     stop_app
     harness_env
+    : >"$STATE/drive.txt"
     XPYTHON=$(xvenv)
     [ -n "$drive" ] && HARNESS_ENV+=(TAILSCODE_DRIVE="$drive")
     [ -n "${TAILSCODE_HOST:-}" ] && HARNESS_ENV+=(TAILSCODE_HOST="$TAILSCODE_HOST")
     [ -n "${TAILSCODE_PASSWORD:-}" ] && HARNESS_ENV+=(TAILSCODE_PASSWORD="$TAILSCODE_PASSWORD")
     [ -n "${TAILSCODE_TRACE:-}" ] && HARNESS_ENV+=(TAILSCODE_TRACE="$TAILSCODE_TRACE")
     [ -n "${TAILSCODE_ORB:-}" ] && HARNESS_ENV+=(TAILSCODE_ORB="$TAILSCODE_ORB")
+    [ -n "${TAILSCODE_REVEAL_RATE:-}" ] && HARNESS_ENV+=(TAILSCODE_REVEAL_RATE="$TAILSCODE_REVEAL_RATE")
+    [ -n "${TAILSCODE_NEURAL_WORKERS:-}" ] && HARNESS_ENV+=(TAILSCODE_NEURAL_WORKERS="$TAILSCODE_NEURAL_WORKERS")
     [ -n "${TAILSCODE_STATS:-}" ] && HARNESS_ENV+=(TAILSCODE_STATS="$TAILSCODE_STATS")
     [ -n "${TAILSCODE_SOAK:-}" ] && HARNESS_ENV+=(TAILSCODE_SOAK="$TAILSCODE_SOAK")
     [ -n "${TAILSCODE_IMAGE_ENDPOINT:-}" ] && HARNESS_ENV+=(TAILSCODE_IMAGE_ENDPOINT="$TAILSCODE_IMAGE_ENDPOINT")
@@ -312,6 +331,15 @@ cmd_run() {
     "${HARNESS_ENV[@]}" "$@"
 }
 
+# One drive verb into the app that is already running, through the file it watches, so a look at a
+# state does not cost a restart: `do 'brain=hover=4'`, then `shot`.
+cmd_do() {
+    require_running
+    [ $# -gt 0 ] || die "usage: do VERB[=ARG] [VERB[=ARG] …]"
+    local verb
+    for verb in "$@"; do printf '%s\n' "$verb" >>"$STATE/drive.txt"; done
+}
+
 cmd_selftest() {
     build "${1:-debug}"
     harness_env
@@ -329,6 +357,7 @@ shot) cmd_shot "$@" ;;
 log) tail "${@:--n40}" "$LOG" ;;
 click | move | drag | scroll | key | type) cmd_input "$VERB" "$@" ;;
 drive) cmd_start --fresh --drive "$1" ;;
+do) cmd_do "$@" ;;
 windows) window_count ;;
 run) cmd_run "$@" ;;
 selftest) cmd_selftest "$@" ;;

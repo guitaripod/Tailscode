@@ -7,6 +7,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+REPO_ROOT=$PWD
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
@@ -94,6 +95,13 @@ for pid in $OLD_PIDS; do kill -9 "$pid" 2>/dev/null || true; done
 
 mkdir -p "$BIN_DIR" "$APPS_DIR"
 install -m 0755 "$BUILT" "$BIN_DIR/tailscode"
+
+# The head the neural trace draws is nine PNG layers beside the binary's data, in the same place a
+# package puts them, so the installed app finds them without knowing where it was built.
+NEURAL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/tailscode/neural"
+for layer in bloom0 bloom1 bloom2 chassis glass interior mask0 mask1 mask2; do
+    install -Dm0644 "$REPO_ROOT/Resources/Neural/png/$layer.png" "$NEURAL_DIR/$layer.png"
+done
 
 # The binary is installed away from the checkout that built it, so the running program has no way to
 # walk back to its source. This is the only link, and the app believes it only after checking it

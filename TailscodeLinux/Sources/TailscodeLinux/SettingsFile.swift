@@ -32,7 +32,7 @@ enum SettingsFile {
         "tailscode.archived.", "tailscode.pinned.", "tailscode.marks.", "tailscode.activity.missed", "tailscode.watch.",
         "tailscode.quickask.", "tailscode.updates.", "tailscode.commandCatalog.",
         "tailscode.slash.recents", "tailscode.forge.", "tailscode.image.", "tailscode.usageWindow",
-        "tailscode.shareCardStyle", "tailscode.quotaBoard", "tailscode.chatDensity", "tailscode.beta.seen.",
+        "tailscode.shareCardStyle", "tailscode.quotaBoard", "tailscode.chatDensity", "tailscode.activityStyle", "tailscode.beta.seen.",
         "tailscode.preview.", "tailscode.worldClock",
     ]
 

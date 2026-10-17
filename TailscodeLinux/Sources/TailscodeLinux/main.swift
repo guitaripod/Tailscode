@@ -35,6 +35,9 @@ MediaAccounts.install(FileSecretStore())
 /// handed over once, so the press can be answered from this desk and delivered a second later.
 SessionMarkSync.shared.configure { await ServerDirectory.shared.backend(forProfileID: $0) }
 
+/// The head's layers are read by a loader this client supplies; Core only asks for them by name.
+NeuralAssetFiles.install()
+
 if SelfTest.isRequested {
     Task { await SelfTest.run() }
     dispatchMain()

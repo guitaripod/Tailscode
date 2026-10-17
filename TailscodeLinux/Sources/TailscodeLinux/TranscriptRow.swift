@@ -20,6 +20,10 @@ final class TranscriptContext: @unchecked Sendable {
     /// Whether the turn these rows belong to is still open. A tool call the record still says is
     /// running only moves while it is; once the turn has ended the same record is a stale mark.
     var turnOpen = false
+    /// The pane's brains, which a brain row's widget reports to and asks the open question of.
+    weak var brains: BrainHost?
+    /// Opens the card a Task node stands for, by the step's own key.
+    var openSubagent: (@Sendable (String) -> Void)?
     /// The newest text of a thought that is still being written. A reasoning row's header counts
     /// its words, so it changes on every arrival — and rebuilding the row for that is a flicker.
     /// The row is updated in place instead, and a body opened afterwards reads the current text
@@ -182,6 +186,40 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     private let lock = NSLock()
     private var cache: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
     private var look = ""
+    private let brains = BrainLedger()
+    private var brainSettings = BrainBuildSettings()
+
+    /// How the brains are drawn this build: the style, which one the person opened and which one
+    /// lists its rows. Set from the main loop whenever one changes, read under the lock.
+    func setBrains(_ settings: BrainBuildSettings) {
+        lock.lock()
+        brainSettings = settings
+        lock.unlock()
+    }
+
+    /// The open policy the last build made, which is what a press on a head's chevron toggles.
+    var brainPolicy: NeuralOpenPolicy? {
+        lock.lock()
+        defer { lock.unlock() }
+        return brains.policy
+    }
+
+    /// How many turns the brains have read from their messages, for the harness.
+    var brainReadings: (partitions: Int, reuses: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (brains.turnPartitions, brains.turnReuses)
+    }
+
+    /// Rows for a state, with the conversation's own account of what it is waiting on.
+    func rows(
+        state: ConversationState, messages: [ChatMessage]? = nil,
+        modelName: (ModelSelection) -> String? = { _ in nil }
+    ) -> [TranscriptRow] {
+        rows(
+            for: messages ?? state.messages, turnOpen: state.status == .running,
+            awaiting: BrainAwaiting.read(state), modelName: modelName)
+    }
 
     /// - Parameter turnOpen: whether the conversation is mid-turn. The newest message of an open
     ///   turn is still being written even on a backend that stamps nothing on the record itself
@@ -189,7 +227,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     /// - Parameter modelName: threaded to ``TranscriptRow/rows(for:prompt:cacheMarkup:sealed:modelName:)``
     ///   for a note's own model naming; not part of the memo key; see that function's doc.
     func rows(
-        for messages: [ChatMessage], turnOpen: Bool = false,
+        for messages: [ChatMessage], turnOpen: Bool = false, awaiting: NeuralAwaiting = .none,
         modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [TranscriptRow] {
         lock.lock()
@@ -201,13 +239,15 @@ final class TranscriptRowBuilder: @unchecked Sendable {
             cache.removeAll(keepingCapacity: true)
             look = current
         }
+        var brain = brains.pass(
+            messages: messages, running: turnOpen, awaiting: awaiting, settings: brainSettings)
         var all: [TranscriptRow] = []
         var next: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
         next.reserveCapacity(messages.count)
         let writing = messages.last?.id
         var prompt: ChatMessage?
         for message in messages {
-            let rows: [TranscriptRow]
+            var rows: [TranscriptRow]
             // The seal is part of what the rows are, so it is part of what the cache remembers:
             // the message that stops being written is byte-identical to the one that was.
             let sealed = MessageSegment.isSealed(
@@ -222,6 +262,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
             }
             if message.role == .user { prompt = message }
             next[message.id] = (message, sealed, rows)
+            if brain != nil { rows = brain!.apply(to: rows, of: message) }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
                 all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
@@ -327,6 +368,9 @@ struct TranscriptRow: Hashable {
         /// A revert standing on the conversation, where the messages it set aside used to be.
         /// `restoring` is this device's own press, worn by the button until the server answers.
         case revertBanner(RevertBanner, restoring: Bool)
+        /// Everything a turn did before it answered, as one head: the line and, while it is open,
+        /// the stage. The member parts' own rows are not built unless the person asked for Rows.
+        case brain(BrainRow)
         case turnBreak
     }
 
@@ -817,6 +861,10 @@ struct TranscriptRow: Hashable {
             return "\(banner.title) \(banner.detail)"
         case .interruption:
             return "interrupted"
+        case .brain(let brain):
+            return brain.turn.steps.map { step in
+                [step.title, step.detail, step.text].filter { !$0.isEmpty }.joined(separator: " ")
+            }.joined(separator: " ")
         case .turnBreak:
             return ""
         }
@@ -891,6 +939,8 @@ struct TranscriptRow: Hashable {
             return Self.providerRetry(card)
         case .revertBanner(let banner, let restoring):
             return Self.revertBanner(banner, restoring: restoring, context: context)
+        case .brain(let row):
+            return BrainView.make(row, context: context)
         case .turnBreak:
             return Gtk.hairline()
         }

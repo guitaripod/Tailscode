@@ -115,7 +115,7 @@ final class PaneFeed: @unchecked Sendable {
         let started = Date()
         let profileID = context.profileID
         let rows = builder.rows(
-            for: messages, turnOpen: state.status == .running,
+            state: state, messages: messages,
             modelName: { selection in
                 ModelCatalogStore.cached(profileID).first { $0.selection == selection }?.name
             })

@@ -253,6 +253,22 @@ typedef struct {
     guint edge_generation;
     int edge_chars;
     int edge_bytes;
+    /// The parse the label's words came from and the arrival it stood for. A frame that names the
+    /// same arrival reads neither the markup nor the label's text again.
+    TailscodeRevealCache *source;
+    guint revision;
+    int text_bytes;
+    /// The label's own drawing of the whole arrived paragraph, kept between frames and made again
+    /// only when the layout, the label's size, its state or its selection changes.
+    GskRenderNode *base;
+    PangoLayout *base_layout;
+    guint base_serial;
+    guint base_context_serial;
+    GtkStateFlags base_flags;
+    int base_select_start;
+    int base_select_end;
+    int base_width;
+    int base_height;
 } TailscodeRevealState;
 
 static gint tailscode_reveal_label_offset = 0;
@@ -267,10 +283,18 @@ static void tailscode_reveal_label_measure(
     GtkWidget *widget, GtkOrientation orientation, int for_size, int *minimum, int *natural,
     int *minimum_baseline, int *natural_baseline);
 
+static void tailscode_reveal_label_finalize(GObject *object) {
+    TailscodeRevealState *self = tailscode_reveal_state(object);
+    if (self->base) gsk_render_node_unref(self->base);
+    self->base = NULL;
+    G_OBJECT_CLASS(tailscode_reveal_label_parent_class)->finalize(object);
+}
+
 static void tailscode_reveal_label_class_init(gpointer klass, gpointer data) {
     (void)data;
     tailscode_reveal_label_parent_class = g_type_class_peek_parent(klass);
     g_type_class_adjust_private_offset(klass, &tailscode_reveal_label_offset);
+    G_OBJECT_CLASS(klass)->finalize = tailscode_reveal_label_finalize;
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
     widget_class->snapshot = tailscode_reveal_label_snapshot;
     widget_class->measure = tailscode_reveal_label_measure;
@@ -446,6 +470,40 @@ static void tailscode_reveal_label_measure(
             widget, orientation, for_size, minimum, natural, minimum_baseline, natural_baseline);
 }
 
+/// The label's own drawing of the whole paragraph, as a node. Building it walks every run of the
+/// paragraph, so it is built once per layout: the layout's serial moves whenever its text, its
+/// attributes or its width does, the context's whenever the font or the resolution does, and the
+/// widget's state and the selection are what else the label's drawing reads. A frame that changes
+/// none of them reuses the node and only moves the clip over it.
+static GskRenderNode *tailscode_reveal_base(
+    GtkWidget *widget, TailscodeRevealState *self, PangoLayout *layout, GtkWidgetClass *parent) {
+    int select_start = -1, select_end = -1;
+    gtk_label_get_selection_bounds(GTK_LABEL(widget), &select_start, &select_end);
+    guint serial = pango_layout_get_serial(layout);
+    guint context_serial = pango_context_get_serial(pango_layout_get_context(layout));
+    GtkStateFlags flags = gtk_widget_get_state_flags(widget);
+    int width = gtk_widget_get_width(widget);
+    int height = gtk_widget_get_height(widget);
+    if (self->base && self->base_layout == layout && self->base_serial == serial &&
+        self->base_context_serial == context_serial && self->base_flags == flags &&
+        self->base_select_start == select_start && self->base_select_end == select_end &&
+        self->base_width == width && self->base_height == height)
+        return self->base;
+    GtkSnapshot *inner = gtk_snapshot_new();
+    parent->snapshot(widget, inner);
+    if (self->base) gsk_render_node_unref(self->base);
+    self->base = gtk_snapshot_free_to_node(inner);
+    self->base_layout = layout;
+    self->base_serial = serial;
+    self->base_context_serial = context_serial;
+    self->base_flags = flags;
+    self->base_select_start = select_start;
+    self->base_select_end = select_end;
+    self->base_width = width;
+    self->base_height = height;
+    return self->base;
+}
+
 static void tailscode_reveal_label_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     TailscodeRevealState *self = tailscode_reveal_state(widget);
     GtkWidgetClass *parent = GTK_WIDGET_CLASS(tailscode_reveal_label_parent_class);
@@ -456,7 +514,7 @@ static void tailscode_reveal_label_snapshot(GtkWidget *widget, GtkSnapshot *snap
         return;
     }
     TailscodeRevealPlan plan;
-    int edge_bytes = (int)MIN((gsize)self->edge_bytes, strlen(pango_layout_get_text(layout)));
+    int edge_bytes = MIN(self->edge_bytes, self->text_bytes);
     tailscode_reveal_scan(layout, edge_bytes, self->wave, &plan);
     if (plan.fallback) {
         parent->snapshot(widget, snapshot);
@@ -465,9 +523,7 @@ static void tailscode_reveal_label_snapshot(GtkWidget *widget, GtkSnapshot *snap
     if (plan.empty) return;
     int offset_x = 0, offset_y = 0;
     gtk_label_get_layout_offsets(GTK_LABEL(widget), &offset_x, &offset_y);
-    GtkSnapshot *inner = gtk_snapshot_new();
-    parent->snapshot(widget, inner);
-    GskRenderNode *base = gtk_snapshot_free_to_node(inner);
+    GskRenderNode *base = tailscode_reveal_base(widget, self, layout, parent);
     if (base) {
         TailscodeRevealClip clips[2];
         int count = tailscode_reveal_clips(&plan, widget, offset_x, offset_y, clips);
@@ -478,7 +534,6 @@ static void tailscode_reveal_label_snapshot(GtkWidget *widget, GtkSnapshot *snap
             gtk_snapshot_append_node(snapshot, base);
             gtk_snapshot_pop(snapshot);
         }
-        gsk_render_node_unref(base);
     }
     if (!plan.tinted) return;
     gtk_snapshot_save(snapshot);
@@ -542,6 +597,9 @@ int tailscode_label_reveal(
         tailscode_label_keep_wrapping(GTK_LABEL(label));
         self->edge_generation = 0;
     }
+    self->source = cache;
+    self->text_bytes = (int)strlen(cache->text);
+    self->revision = 0;
 
     int seen = CLAMP(visible, 0, length);
     int count = wave > TAILSCODE_REVEAL_WAVE_MAX ? TAILSCODE_REVEAL_WAVE_MAX : (wave < 0 ? 0 : wave);
@@ -556,6 +614,34 @@ int tailscode_label_reveal(
     self->active = TRUE;
     gtk_widget_queue_draw(label);
     return length;
+}
+
+void tailscode_label_reveal_revision(GtkWidget *label, unsigned int revision) {
+    if (!label || !TAILSCODE_IS_REVEAL_LABEL(label)) return;
+    tailscode_reveal_state(label)->revision = revision;
+}
+
+int tailscode_label_reveal_frame(
+    GtkWidget *label, unsigned int revision, int visible, int wave, const unsigned int *rgb,
+    const unsigned short *alpha) {
+    if (!label || !TAILSCODE_IS_REVEAL_LABEL(label) || revision == 0) return -1;
+    TailscodeRevealState *self = tailscode_reveal_state(label);
+    TailscodeRevealCache *cache = self->source;
+    if (!self->active || !cache || !cache->text || self->revision != revision ||
+        cache->generation != self->edge_generation)
+        return -1;
+    int seen = CLAMP(visible, 0, cache->length);
+    int count = wave > TAILSCODE_REVEAL_WAVE_MAX ? TAILSCODE_REVEAL_WAVE_MAX : (wave < 0 ? 0 : wave);
+    if (!rgb || !alpha) count = 0;
+    for (int index = 0; index < count; index++) {
+        self->rgb[index] = rgb[index];
+        self->alpha[index] = alpha[index];
+    }
+    self->wave = count;
+    self->visible = seen;
+    tailscode_reveal_edge_bytes(self, cache, seen);
+    gtk_widget_queue_draw(label);
+    return cache->length;
 }
 
 int tailscode_label_reveal_plan(

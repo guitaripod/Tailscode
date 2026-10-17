@@ -2105,35 +2105,57 @@ static void tailscode_aura_colour(
 }
 
 /// One lap of the rainbow around the rectangle `inset` in from the allocation, stroked `width`
-/// wide at `alpha`. The perimeter is walked in short segments because cairo cannot run a gradient
-/// along a path; corners are inserted into whichever segment straddles them, so the colour turns
-/// the corner instead of cutting it.
+/// wide at `alpha`. The perimeter is cut into the same short segments as ever, each one colour at
+/// its own place in the sweep, but a straight side is one stroke with one gradient whose hard stops
+/// are the segment boundaries: four strokes a lap instead of a hundred and twenty-eight, and a
+/// segment that turns a corner keeps its one colour on both sides of it, as before. The lap is
+/// laid down opaque in a group and composited once at `alpha`, so the round caps where two sides
+/// meet overlap without darkening the corner twice.
 static void tailscode_aura_lap(
-    cairo_t *cr, const TailscodeAura *aura, int allocation_width, int allocation_height,
-    double inset, double width, double alpha) {
+    cairo_t *cr, const double *colours, int allocation_width, int allocation_height, double inset,
+    double width, double alpha) {
     double x = inset, y = inset;
     double w = (double)allocation_width - inset * 2, h = (double)allocation_height - inset * 2;
     if (w <= 1 || h <= 1 || alpha <= 0) return;
     double perimeter = 2 * (w + h);
-    double corners[3] = {w / perimeter, (w + h) / perimeter, (2 * w + h) / perimeter};
+    double cuts[5] = {0, w / perimeter, (w + h) / perimeter, (2 * w + h) / perimeter, 1};
+    double corners[4][4] = {{x, y, x + w, y}, {x + w, y, x + w, y + h}, {x + w, y + h, x, y + h},
+                            {x, y + h, x, y}};
+    double margin = width;
+    double left = x - margin, top = y - margin;
+    cairo_push_group(cr);
+    cairo_rectangle(cr, left, top, w + 2 * margin, h + 2 * margin);
+    cairo_clip(cr);
     cairo_set_line_width(cr, width);
-    for (int segment = 0; segment < TAILSCODE_AURA_SEGMENTS; segment++) {
-        double from = (double)segment / TAILSCODE_AURA_SEGMENTS;
-        double to = (double)(segment + 1) / TAILSCODE_AURA_SEGMENTS;
-        double red, green, blue, px, py;
-        tailscode_aura_colour(aura, from + aura->phase, &red, &green, &blue);
-        cairo_set_source_rgba(cr, red, green, blue, alpha);
-        tailscode_aura_point(x, y, w, h, from, &px, &py);
-        cairo_move_to(cr, px, py);
-        for (int corner = 0; corner < 3; corner++) {
-            if (corners[corner] <= from || corners[corner] >= to) continue;
-            tailscode_aura_point(x, y, w, h, corners[corner], &px, &py);
-            cairo_line_to(cr, px, py);
+    for (int edge = 0; edge < 4; edge++) {
+        double from = cuts[edge], to = cuts[edge + 1];
+        if (to - from <= 0) continue;
+        cairo_pattern_t *gradient = cairo_pattern_create_linear(
+            corners[edge][0], corners[edge][1], corners[edge][2], corners[edge][3]);
+        int first = (int)floor(from * TAILSCODE_AURA_SEGMENTS);
+        int last = (int)floor(to * TAILSCODE_AURA_SEGMENTS - 1e-9);
+        if (first < 0) first = 0;
+        if (last > TAILSCODE_AURA_SEGMENTS - 1) last = TAILSCODE_AURA_SEGMENTS - 1;
+        for (int segment = first; segment <= last; segment++) {
+            double lo = (double)segment / TAILSCODE_AURA_SEGMENTS;
+            double hi = (double)(segment + 1) / TAILSCODE_AURA_SEGMENTS;
+            if (lo < from) lo = from;
+            if (hi > to) hi = to;
+            if (hi <= lo) continue;
+            double start = (lo - from) / (to - from);
+            double end = (hi - from) / (to - from);
+            const double *c = &colours[segment * 3];
+            cairo_pattern_add_color_stop_rgb(gradient, start, c[0], c[1], c[2]);
+            cairo_pattern_add_color_stop_rgb(gradient, end, c[0], c[1], c[2]);
         }
-        tailscode_aura_point(x, y, w, h, to >= 1 ? 0.9999999 : to, &px, &py);
-        cairo_line_to(cr, px, py);
+        cairo_set_source(cr, gradient);
+        cairo_move_to(cr, corners[edge][0], corners[edge][1]);
+        cairo_line_to(cr, corners[edge][2], corners[edge][3]);
         cairo_stroke(cr);
+        cairo_pattern_destroy(gradient);
     }
+    cairo_pop_group_to_source(cr);
+    cairo_paint_with_alpha(cr, alpha);
 }
 
 /// The glow falls inside the line rather than around it: the area is laid over the prompt box and
@@ -2145,11 +2167,17 @@ static void tailscode_aura_draw(
     GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
     (void)area;
     TailscodeAura *aura = raw;
+    double colours[TAILSCODE_AURA_SEGMENTS * 3];
+    for (int segment = 0; segment < TAILSCODE_AURA_SEGMENTS; segment++) {
+        tailscode_aura_colour(
+            aura, (double)segment / TAILSCODE_AURA_SEGMENTS + aura->phase, &colours[segment * 3],
+            &colours[segment * 3 + 1], &colours[segment * 3 + 2]);
+    }
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-    tailscode_aura_lap(cr, aura, width, height, 4.0, 8.0, 0.10 * aura->glow);
-    tailscode_aura_lap(cr, aura, width, height, 1.75, 3.5, 0.20 * aura->glow);
-    tailscode_aura_lap(cr, aura, width, height, 1.0, 2.0, aura->glow);
+    tailscode_aura_lap(cr, colours, width, height, 4.0, 8.0, 0.10 * aura->glow);
+    tailscode_aura_lap(cr, colours, width, height, 1.75, 3.5, 0.20 * aura->glow);
+    tailscode_aura_lap(cr, colours, width, height, 1.0, 2.0, aura->glow);
 }
 
 /// The ultracode aura, drawn rather than themed.
@@ -2200,6 +2228,9 @@ typedef struct {
     int stop_count;
     cairo_surface_t *surface;
     int surface_width, surface_height;
+    int drawn_x0, drawn_x1, drawn_y0, drawn_y1;
+    float *columns;
+    int columns_capacity;
 } TailscodeOrb;
 
 /// The creature, drawn by hand.
@@ -2257,16 +2288,37 @@ static unsigned char orb_byte(float value) {
 /// far wider than the creature — so the rows and columns it cannot touch are cleared once and
 /// never evaluated. Coordinates match the shader's: the origin is the middle, the shorter side is
 /// two units across, and y counts upward.
+///
+/// Inside that square a pixel is evaluated only where it can show. The halo falls off as
+/// `exp(-5.5 d)`, so past the distance at which it rounds to nothing a pixel is exactly the clear
+/// one, and a circle about the middle that is that far from the furthest circle marks them without
+/// measuring anything. Each row also skips the circles that cannot move the smooth union (a circle
+/// the union is already `k` closer to than leaves it exactly as it was), the halo's exponential
+/// where the pixel is inside the body or the halo is switched off, and the rainbow's angle
+/// everywhere but the rim, where it is nothing. The result is the same bytes the whole square
+/// would have produced, in a fraction of the work, and only what was drawn last time is cleared.
+static void orb_clear(TailscodeOrb *orb, unsigned char *pixels, int stride, int width, int height) {
+    int x0 = orb->drawn_x0 < 0 ? 0 : orb->drawn_x0;
+    int x1 = orb->drawn_x1 > width ? width : orb->drawn_x1;
+    int y0 = orb->drawn_y0 < 0 ? 0 : orb->drawn_y0;
+    int y1 = orb->drawn_y1 > height ? height : orb->drawn_y1;
+    if (x1 <= x0 || y1 <= y0) return;
+    for (int row = y0; row < y1; row++)
+        memset(pixels + (size_t)row * (size_t)stride + (size_t)x0 * 4, 0, (size_t)(x1 - x0) * 4);
+}
+
 static void orb_paint(TailscodeOrb *orb, int width, int height) {
     unsigned char *pixels = cairo_image_surface_get_data(orb->surface);
     int stride = cairo_image_surface_get_stride(orb->surface);
     cairo_surface_flush(orb->surface);
-    memset(pixels, 0, (size_t)stride * (size_t)height);
+    orb_clear(orb, pixels, stride, width, height);
+    orb->drawn_x0 = orb->drawn_x1 = orb->drawn_y0 = orb->drawn_y1 = 0;
     if (orb->blob_count <= 0) {
         cairo_surface_mark_dirty(orb->surface);
         return;
     }
 
+    const float smoothing = 0.19f;
     float shorter = (float)(width < height ? width : height);
     float reach = 0.0f;
     for (int i = 0; i < orb->blob_count; i++) {
@@ -2275,6 +2327,7 @@ static void orb_paint(TailscodeOrb *orb, int width, int height) {
         float extent = centre + blob[2];
         if (extent > reach) reach = extent;
     }
+    float extent = reach;
     reach += 0.9f;
 
     int half = (int)(reach * shorter * 0.5f) + 2;
@@ -2284,35 +2337,93 @@ static void orb_paint(TailscodeOrb *orb, int width, int height) {
     int lastCol = midX + half > width ? width : midX + half;
     int firstRow = midY - half < 0 ? 0 : midY - half;
     int lastRow = midY + half > height ? height : midY + half;
+    orb->drawn_x0 = firstCol;
+    orb->drawn_x1 = lastCol;
+    orb->drawn_y0 = firstRow;
+    orb->drawn_y1 = lastRow;
+
+    float strength = 0.36f * orb->energy * orb->intensity;
+    float strongest = orb->color[0];
+    if (orb->color[1] > strongest) strongest = orb->color[1];
+    if (orb->color[2] > strongest) strongest = orb->color[2];
+    float visible = strength * strongest;
+    int haloShows = visible > 0.0f;
+    float haloReach = 0.0f;
+    if (haloShows) {
+        float ratio = visible / 0.0019f;
+        haloReach = ratio > 1.0f ? logf(ratio) / 5.5f : 0.0f;
+    }
+    if (haloReach < 0.08f) haloReach = 0.08f;
+    float cut = extent + haloReach + (float)(orb->blob_count - 1) * smoothing * 0.25f + 0.02f;
+    float cutSquared = cut * cut;
+
+    int span = lastCol - firstCol;
+    if (orb->columns_capacity < span * orb->blob_count) {
+        g_free(orb->columns);
+        orb->columns_capacity = span * TAILSCODE_ORB_BLOBS;
+        orb->columns = g_new(float, (gsize)orb->columns_capacity);
+    }
+    float *columns = orb->columns;
+    float colX[TAILSCODE_ORB_BLOBS];
+    for (int i = 0; i < orb->blob_count; i++) colX[i] = orb->blobs[i * 4];
+    for (int col = firstCol; col < lastCol; col++) {
+        float fragX = (float)col + 0.5f;
+        float px = (2.0f * fragX - (float)width) / shorter;
+        for (int i = 0; i < orb->blob_count; i++) {
+            float dx = px - colX[i];
+            columns[(size_t)i * (size_t)span + (size_t)(col - firstCol)] = dx * dx;
+        }
+    }
 
     for (int row = firstRow; row < lastRow; row++) {
         float fragY = (float)height - (float)row - 0.5f;
         float py = (2.0f * fragY - (float)height) / shorter;
+        float rowY[TAILSCODE_ORB_BLOBS];
+        for (int i = 0; i < orb->blob_count; i++) {
+            float dy = py - orb->blobs[i * 4 + 1];
+            rowY[i] = dy * dy;
+        }
+        float left = cutSquared - py * py;
+        if (left <= 0.0f) continue;
+        float reachX = sqrtf(left);
+        float edgeLow = (float)width * 0.5f + (-reachX * shorter - 0.0f) * 0.5f - 0.5f;
+        float edgeHigh = (float)width * 0.5f + (reachX * shorter) * 0.5f - 0.5f;
+        int rowFirst = (int)floorf(edgeLow) - 1;
+        int rowLast = (int)ceilf(edgeHigh) + 2;
+        if (rowFirst < firstCol) rowFirst = firstCol;
+        if (rowLast > lastCol) rowLast = lastCol;
         unsigned char *line = pixels + (size_t)row * (size_t)stride;
-        for (int col = firstCol; col < lastCol; col++) {
+        for (int col = rowFirst; col < rowLast; col++) {
             float fragX = (float)col + 0.5f;
             float px = (2.0f * fragX - (float)width) / shorter;
+            const float *dxs = columns + (size_t)(col - firstCol);
 
-            float d = 1000.0f;
-            for (int i = 0; i < orb->blob_count; i++) {
+            float d;
+            {
+                const float *blob = &orb->blobs[0];
+                d = sqrtf(dxs[0] + rowY[0]) - blob[2];
+            }
+            for (int i = 1; i < orb->blob_count; i++) {
                 const float *blob = &orb->blobs[i * 4];
-                float dx = px - blob[0];
-                float dy = py - blob[1];
-                float part = sqrtf(dx * dx + dy * dy) - blob[2];
-                d = orb_smin(d, part, 0.19f);
+                float q = dxs[(size_t)i * (size_t)span] + rowY[i];
+                float bound = d + smoothing + blob[2];
+                if (bound <= 0.0f || q >= bound * bound) continue;
+                float part = sqrtf(q) - blob[2];
+                d = orb_smin(d, part, smoothing);
             }
 
             float body = 1.0f - orb_smoothstep(-0.008f, 0.012f, d);
             float depth = orb_smoothstep(0.0f, -0.34f, d);
             float lift = (1.08f + (0.72f - 1.08f) * depth) * (0.6f + 0.4f * orb->intensity);
-            float halo = expf((d > 0.0f ? d : 0.0f) * -5.5f) * (1.0f - body);
+            float halo = 0.0f;
+            if (haloShows && d > -0.008f) halo = expf((d > 0.0f ? d : 0.0f) * -5.5f) * (1.0f - body);
             float glow = halo * 0.36f * orb->energy * orb->intensity;
 
             float shade[3];
             for (int c = 0; c < 3; c++) {
                 shade[c] = orb->color[c] * lift * body + orb->color[c] * glow;
             }
-            if (orb->rainbow > 0.001f) {
+            if (orb->rainbow > 0.001f && fabsf(d + 0.01f) < 0.05f) {
                 float angle = atan2f(py, px) / 6.28318530718f + 0.5f + orb->rainbow_phase;
                 angle -= floorf(angle);
                 float rim = 1.0f - orb_smoothstep(0.0f, 0.05f, fabsf(d + 0.01f));
@@ -2346,6 +2457,7 @@ static void tailscode_orb_draw(
         orb->surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pixelWidth, pixelHeight);
         orb->surface_width = pixelWidth;
         orb->surface_height = pixelHeight;
+        orb->drawn_x0 = orb->drawn_x1 = orb->drawn_y0 = orb->drawn_y1 = 0;
     }
     if (cairo_surface_status(orb->surface) != CAIRO_STATUS_SUCCESS) return;
     orb_paint(orb, pixelWidth, pixelHeight);
@@ -2359,6 +2471,7 @@ static void tailscode_orb_draw(
 static void tailscode_orb_free(gpointer raw) {
     TailscodeOrb *orb = raw;
     if (orb->surface) cairo_surface_destroy(orb->surface);
+    g_free(orb->columns);
     g_free(orb);
 }
 

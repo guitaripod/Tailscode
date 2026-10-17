@@ -48,6 +48,24 @@ do_build() {
     echo "== built $(binary) ($(du -h "$(binary)" | cut -f1))"
 }
 
+# The nine layers the neural trace draws its head from, as the PNG set the CPU compositor reads.
+# Installed in name order with fixed modes so two builds of one tree stage the same bytes, and a
+# missing layer stops the install rather than shipping a head the app would silently not draw.
+NEURAL_LAYERS="bloom0 bloom1 bloom2 chassis glass interior mask0 mask1 mask2"
+
+install_neural() {
+    local target=$1 layer
+    for layer in $NEURAL_LAYERS; do
+        [ -f "$ROOT/Resources/Neural/png/$layer.png" ] || {
+            echo "!! Resources/Neural/png/$layer.png is missing" >&2
+            exit 1
+        }
+    done
+    for layer in $NEURAL_LAYERS; do
+        install -Dm0644 "$ROOT/Resources/Neural/png/$layer.png" "$target/$layer.png"
+    done
+}
+
 do_install() {
     local dest=${1:-${DESTDIR:-$ROOT/build/linux-stage}}
     [ -x "$(binary)" ] || do_build
@@ -67,6 +85,8 @@ do_install() {
         "$dest$PREFIX/share/zsh/site-functions/_tailscode"
     install -Dm0644 "$PACK/completions/tailscode.fish" \
         "$dest$PREFIX/share/fish/vendor_completions.d/tailscode.fish"
+
+    install_neural "$dest$PREFIX/share/tailscode/neural"
 
     ( cd "$PACK/icons" && find . -type f -print0 |
         while IFS= read -r -d '' icon; do

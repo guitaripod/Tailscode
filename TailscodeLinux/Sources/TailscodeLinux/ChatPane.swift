@@ -207,8 +207,12 @@ final class ChatPane: @unchecked Sendable {
     private var lastFullCount = 0
 
     let context = TranscriptContext()
+    /// The turns drawn as heads: which one is open, which list their rows, the widgets alive.
+    let brains = BrainHost()
+    var liveDemoTicket = 0
+    var liveDemoDeadline = Date.distantPast
     let cascade = CascadePainter()
-    private let rowBuilder = TranscriptRowBuilder()
+    let rowBuilder = TranscriptRowBuilder()
     private(set) var renderedRows: [TranscriptRow] = []
     var rowWidgets: [UInt] = []
     /// Keys that have already made their entrance. A row is rebuilt whenever its value changes —
@@ -976,6 +980,12 @@ final class ChatPane: @unchecked Sendable {
     /// ``revealDisclosure`` needs to show the opened body, never past the clicked header. Their
     /// own next prompt, or the jump pill, is what re-engages following.
     private func wireContext() {
+        context.brains = brains
+        brains.changed = { [weak self] in self?.brainSettingsChanged() }
+        brains.policy = { [weak self] in self?.rowBuilder.brainPolicy }
+        context.openSubagent = { [weak self] key in
+            Gtk.onMain { [weak self] in self?.openSubagentCard(key) }
+        }
         context.onToggle = { [weak self] key, open in
             guard let self else { return }
             self.context.expanded.set(key, open: open)
@@ -1084,6 +1094,7 @@ final class ChatPane: @unchecked Sendable {
 
     /// Re-registers the drain slot's priority and rate, after either changed.
     func restateDrainSlot() {
+        brains.budgetChanged()
         if !revealsHere { letGoOfCascade() }
         if let drainToken, let host { host.live.drain.update(drainToken, to: drainSlot()) }
     }
@@ -1095,6 +1106,7 @@ final class ChatPane: @unchecked Sendable {
         guard !isParked else { return }
         if let entry, presence.isInFlight { host?.keepWatching(entry) }
         isParked = true
+        brains.suspend()
         call.setSuspended(true)
         preview?.park()
         leaveFreshCanvas()
@@ -1109,6 +1121,7 @@ final class ChatPane: @unchecked Sendable {
     func unpark() {
         guard isParked else { return }
         isParked = false
+        brains.resume()
         preview?.unpark()
         guard !isShutDown else { return }
         call.setSuspended(false)
@@ -1698,6 +1711,8 @@ final class ChatPane: @unchecked Sendable {
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
         stashDraft()
         self.entry = entry
+        brains.sessionKey = entry.session.id
+        syncBrainSettings()
         call.chatChanged()
         editingQueued = nil
         queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
@@ -1931,6 +1946,12 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
+    /// A pane that is about to show a scripted conversation stops listening to the real one, so
+    /// nothing the server says overwrites what the harness put there.
+    func detachStreamForScript() {
+        releaseStream()
+    }
+
     /// Ends everything that keeps the pane live, and the reveal with it, settling the row it held.
     private func releaseStream() {
         streamLife.cancelAll()
@@ -1964,6 +1985,7 @@ final class ChatPane: @unchecked Sendable {
         releaseStream()
         chatLife.cancelAll()
         streamGeneration &+= 1
+        brains.sessionKey = "none"
         agentStreamTask?.cancel()
         agentStreamTask = nil
         agentStreamSessionID = nil
@@ -2166,7 +2188,7 @@ final class ChatPane: @unchecked Sendable {
         SessionSeenStore.markSeen(sessionID)
     }
 
-    private func apply(state: ConversationState, rows: [TranscriptRow]) {
+    func apply(state: ConversationState, rows: [TranscriptRow]) {
         Trace.mark(
             "apply state loaded=\(state.hasLoadedTranscript) rows=\(rows.count) status=\(state.status)")
         lastState = state
@@ -2330,29 +2352,18 @@ final class ChatPane: @unchecked Sendable {
     /// Only lengths, hashes and keys are written: a log a person is invited to paste into a bug
     /// report never carries what was said.
     private func noteDoubledRows(_ rows: [TranscriptRow]) {
-        var seen: [Int: String] = [:]
-        for row in rows {
-            let body: String
-            switch row.kind {
-            case .agentProse(let text, _): body = text
-            case .codeBlock(_, let code): body = code
-            default: continue
-            }
-            // Short lines repeat honestly — an agent says "Done." twice in a transcript and neither
-            // one is a bug. Only a passage long enough to be an answer is worth a word.
-            guard body.count >= 160 else { continue }
-            let hash = body.hashValue
-            guard let first = seen.updateValue(row.key, forKey: hash), first != row.key else {
-                continue
-            }
-            seen[hash] = first
-            guard reportedDoubles.insert(hash).inserted else { continue }
+        let doubled = doubledRows.read(rows)
+        for found in doubled where reportedDoubles.insert(found.hash).inserted {
             AppLog.write(
                 .ui,
-                "doubled row: chars=\(body.count) hash=\(String(hash, radix: 16)) "
-                    + "first=\(first) second=\(row.key) rows=\(rows.count)")
+                "doubled row: chars=\(found.chars) hash=\(String(found.hash, radix: 16)) "
+                    + "first=\(found.first) second=\(found.second) rows=\(rows.count)")
         }
     }
+
+    /// What has been read of each long passage so far, so a streamed token hashes the one row it
+    /// changed and not every row of the conversation.
+    private var doubledRows = DoubledRowWatch()
 
     /// One line per doubled passage per pane: the diff rebuilds these rows many times a second,
     /// and a log that repeated itself at that rate would bury the thing it is reporting.
@@ -3140,9 +3151,19 @@ final class ChatPane: @unchecked Sendable {
         }
         for index in renderedRows.indices where renderedRows[index] != window[index] {
             renderedRows[index] = window[index]
-            if restatedPending(at: index) { continue }
+            if restatedPending(at: index) || restatedBrain(at: index) { continue }
             rebuildRow(at: index)
         }
+    }
+
+    /// A brain whose turn moved on keeps its widget: the head and the line are restated in place.
+    private func restatedBrain(at index: Int) -> Bool {
+        guard case .brain(let brain) = renderedRows[index].kind, index < rowWidgets.count,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
+            let view = BrainView.current(of: ptr(raw))
+        else { return false }
+        view.restate(brain)
+        return true
     }
 
     /// A pending row whose send moved phase keeps its widget: the ink fills in on it.
@@ -3332,6 +3353,11 @@ final class ChatPane: @unchecked Sendable {
             guard TranscriptRow.restatePending(on: widget, send: send, plan: plan) else {
                 return false
             }
+            renderedRows[last] = rows[last]
+            return true
+        case (.brain, .brain(let brain)):
+            guard let view = BrainView.current(of: widget) else { return false }
+            view.restate(brain)
             renderedRows[last] = rows[last]
             return true
         default:
@@ -3690,6 +3716,7 @@ final class ChatPane: @unchecked Sendable {
             identityActivity = facts.activity
             refreshIdentity()
         }
+        brains.update(context: brainContext(activity: facts.activity, fill: facts.context))
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
         let signature =
             facts.segments.map { "\($0.id):\($0.text):\($0.css)" }.joined(separator: "|")
@@ -6010,6 +6037,7 @@ final class ChatPane: @unchecked Sendable {
     /// Compact and dense change what a row *is*, so the transcript is rebuilt rather than
     /// restyled.
     func applyLayoutPreferences() {
+        syncBrainSettings()
         editor.applyPreferences()
         if let canvasBox {
             gtk_box_set_spacing(ptr(canvasBox), Int32(TranscriptGaps.metrics.proseToFurnitureGap))
@@ -6024,15 +6052,64 @@ final class ChatPane: @unchecked Sendable {
 
     func retheme() {
         preview?.retheme()
+        syncBrainSettings()
         rebuildTranscriptRows()
+        for view in brains.liveViews { view.rethemed() }
+    }
+
+    /// Hands the row builder what the brains need to be built with: the style, the head the person
+    /// opened, the turns that list their rows and the palette the stage is painted in.
+    func syncBrainSettings() {
+        rowBuilder.setBrains(brains.settings())
+    }
+
+    /// A choice about a brain changed: build the rows again with it. A pane showing a scripted
+    /// conversation has no stream to rebuild from, so its rows are built where it stands.
+    func brainSettingsChanged() {
+        syncBrainSettings()
+        guard let state = lastState else { return }
+        if lease != nil {
+            feed.rebuild(state)
+        } else if !isParked {
+            apply(state: state, rows: rowBuilder.rows(state: state))
+        }
+    }
+
+    /// What the conversation says about the head being written, as Core's brain model reads it.
+    private func brainContext(activity: ActivityKind?, fill: ContextFill?) -> NeuralBrainContext {
+        NeuralBrainContext(
+            activity: activity, fill: fill, providerID: activeSelection?.providerID,
+            effortOptions: effortOptions())
+    }
+
+    /// A Task node, opened: the card of that call is expanded in the transcript and brought into
+    /// view, which is what pressing its own row does.
+    private func openSubagentCard(_ key: String) {
+        context.expanded.set(key, open: true)
+        followsBottom = false
+        if let index = renderedRows.firstIndex(where: { $0.key == key }),
+            index < rowWidgets.count
+        {
+            rebuildRow(at: index)
+            if let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]) {
+                revealDisclosure(UInt(bitPattern: raw))
+            }
+        }
     }
 
     /// Rows for the current state, folded off the GLib main context — a ten-thousand-message
     /// conversation must never be re-parsed where the frame clock lives.
     private func rebuildTranscriptRows() {
         guard let state = lastState else { return }
-        feed.rebuild(state)
+        if lease == nil, !isParked, entry == nil || isScripted {
+            apply(state: state, rows: rowBuilder.rows(state: state))
+        } else {
+            feed.rebuild(state)
+        }
     }
+
+    /// A pane showing a conversation the harness wrote, which has no stream behind it.
+    var isScripted: Bool { brains.sessionKey == "demo" || brains.sessionKey == "live" }
 
     /// A fire-and-forget fetch for the open conversation, ended with it.
     @discardableResult
@@ -6104,7 +6181,7 @@ final class ChatPane: @unchecked Sendable {
                     partialAnswer: "I have moved the first two toggles across and"),
             queued: mode == "queued" ? ["then do the same for the sidebar"] : [],
             resumedAt: mode == "resumed" ? now : nil)
-        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+        apply(state: state, rows: rowBuilder.rows(state: state))
     }
 
     /// The "Undo from here" confirmation and the banner that follows it, driven straight past the
@@ -6168,7 +6245,7 @@ final class ChatPane: @unchecked Sendable {
     /// which would overwrite the synthetic one within a frame or two, so a screenshot taken any
     /// time after the drive step would otherwise show something other than the card it drove.
     private func reassert(_ state: ConversationState) {
-        let rows = rowBuilder.rows(for: state.messages, turnOpen: state.status == .running)
+        let rows = rowBuilder.rows(state: state)
         for delay: UInt32 in [0, 250, 500, 800, 1200, 1700, 2300] {
             Gtk.after(delay) { [weak self] in
                 Gtk.onMain { [weak self] in self?.apply(state: state, rows: rows) }
@@ -6237,7 +6314,7 @@ final class ChatPane: @unchecked Sendable {
             createdAt: now)
         let state = ConversationState(
             messages: [asked, reply], status: .idle, hasLoadedTranscript: true)
-        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+        apply(state: state, rows: rowBuilder.rows(state: state))
     }
 
     /// A conversation of code blocks for the harness: a two-line command, a one-liner, a block
@@ -6417,7 +6494,7 @@ final class ChatPane: @unchecked Sendable {
             createdAt: now)
         let state = ConversationState(
             messages: [asked, reply], status: .idle, hasLoadedTranscript: true)
-        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+        apply(state: state, rows: rowBuilder.rows(state: state))
     }
 
     private func driverTableStreamStep(
@@ -6434,7 +6511,7 @@ final class ChatPane: @unchecked Sendable {
             createdAt: now)
         let state = ConversationState(
             messages: [asked, reply], status: done ? .idle : .running, hasLoadedTranscript: true)
-        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+        apply(state: state, rows: rowBuilder.rows(state: state))
     }
 
     /// The table demo written out a row at a time, which is what the draft card and the wash are
@@ -6512,7 +6589,7 @@ final class ChatPane: @unchecked Sendable {
         default:
             state.messages = [before, seam, after]
         }
-        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+        apply(state: state, rows: rowBuilder.rows(state: state))
     }
 
     /// Seeds the composer for the headless driver, through the same paths a keystroke takes.
@@ -6544,7 +6621,7 @@ final class ChatPane: @unchecked Sendable {
                 resumesAt: now.addingTimeInterval(fires), trustedReset: true, trigger: .refused,
                 attempt: mode == "again" ? 2 : 0, plannedAt: now))
         startResumeClock()
-        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+        apply(state: state, rows: rowBuilder.rows(state: state))
         reportResumeState()
     }
 
@@ -6616,7 +6693,7 @@ final class ChatPane: @unchecked Sendable {
         state.messages = [prompt, launch]
         state.hasLoadedTranscript = true
         state.status = .idle
-        apply(state: state, rows: rowBuilder.rows(for: state.messages, turnOpen: state.status == .running))
+        apply(state: state, rows: rowBuilder.rows(state: state))
         context.expanded.set("demo-launch:p", open: true)
         refreshWorkflowRuns()
         replaceRows { if case .workflow = $0.kind { return true } else { return false } }

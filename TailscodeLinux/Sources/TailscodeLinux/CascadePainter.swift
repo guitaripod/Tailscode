@@ -135,6 +135,12 @@ final class CascadePainter: @unchecked Sendable {
     /// sixty times a second for the length of an answer.
     private var rgb: [UInt32] = []
     private var alpha: [UInt16] = []
+    /// Which arrival of text the wave is holding, counted each time the stream moves it, and the
+    /// label that was handed that arrival. A frame of an arrival the label already holds names it
+    /// and nothing else, so the answer is not compared, hashed or measured again until it grows.
+    private var arrival: UInt32 = 0
+    private var handedLabel: UnsafeMutablePointer<GtkWidget>?
+    private var handedArrival: UInt32 = 0
 
     /// What to do with a frame that changed something. The pane repaints exactly the live row.
     var onFrame: (() -> Void)?
@@ -210,6 +216,9 @@ final class CascadePainter: @unchecked Sendable {
             return
         }
         self.markup = bytes
+        arrival &+= 1
+        if arrival == 0 { arrival = 1 }
+        handedLabel = nil
         start(on: clock)
         watch()
     }
@@ -217,6 +226,7 @@ final class CascadePainter: @unchecked Sendable {
     func release() {
         live.focus(nil, rendered: "", sealed: true, at: Self.now)
         markup = []
+        handedLabel = nil
         watching = false
         stop()
     }
@@ -269,11 +279,22 @@ final class CascadePainter: @unchecked Sendable {
             alpha[distance] = painted.alpha
         }
         let shown = live.revealed
+        if handedLabel == label, handedArrival == arrival,
+            tailscode_label_reveal_frame(label, arrival, Int32(shown), Int32(span), &rgb, &alpha) >= 0
+        {
+            live.lands(shown, at: Self.now)
+            return true
+        }
         let landed = markup.withUnsafeBufferPointer { bytes in
             tailscode_label_reveal(
                 label, holder, bytes.baseAddress, Int32(shown), Int32(span), &rgb, &alpha) >= 0
         }
-        if landed { live.lands(shown, at: Self.now) }
+        if landed {
+            tailscode_label_reveal_revision(label, arrival)
+            handedLabel = label
+            handedArrival = arrival
+            live.lands(shown, at: Self.now)
+        }
         return landed
     }
 
@@ -334,13 +355,51 @@ final class CascadePainter: @unchecked Sendable {
                 }, box))
     }
 
+    /// Whether this display tick is one the row owes a frame on, by what Core says the row is
+    /// doing: a row at rest owes none, a band finishing its pass moves at the activity tempo like
+    /// every other mark, and words being put on the page go at the display's own rate while the
+    /// window is calm — a renderer is not a mark — and at the governor's cap once it is not.
+    private func owesFrame(at now: Double) -> Bool {
+        switch live.tempo {
+        case .stopped:
+            return false
+        case .activity:
+            return CascadeBudget.budget.tickCap > 0
+                && ActivityTuning.wantsFrame(
+                    at: now, lastDrawn: lastStep,
+                    rate: min(ActivityTuning.frameRate, CascadeBudget.budget.tickCap))
+        case .display:
+            if let rate = Self.rateOverride {
+                return ActivityTuning.wantsFrame(at: now, lastDrawn: lastStep, rate: rate)
+            }
+            return CascadeBudget.level == .calm
+                ? CascadeBudget.budget.tickCap > 0
+                : CascadeBudget.wantsStep(at: now, lastStep: lastStep)
+        }
+    }
+
+    /// `TAILSCODE_REVEAL_RATE=30` caps the written-not-pasted reveal at that many frames a second,
+    /// for a harness measuring what a frame costs rather than what the display could draw.
+    private static let rateOverride: Double? =
+        ProcessInfo.processInfo.environment["TAILSCODE_REVEAL_RATE"].flatMap(Double.init)
+
     private func step() {
         let now = Self.now
-        guard CascadeBudget.wantsStep(at: now, lastStep: lastStep) else { return }
+        guard live.isActive else {
+            stop()
+            return
+        }
+        guard owesFrame(at: now) else {
+            if live.tempo == .stopped { stop() }
+            return
+        }
         lastStep = now
-        guard live.advance(to: now) else { return }
+        guard live.advance(to: now) else {
+            if live.tempo == .stopped { stop() }
+            return
+        }
         onFrame?()
-        if !live.isActive { stop() }
+        if !live.isActive || live.tempo == .stopped { stop() }
     }
 
     private func stop() {
