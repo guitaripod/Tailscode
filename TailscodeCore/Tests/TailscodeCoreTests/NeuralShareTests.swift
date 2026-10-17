@@ -136,3 +136,29 @@ import Testing
         }
     }
 }
+
+@Suite("Neural share head palette")
+struct NeuralShareHeadTests {
+    @Test("the poster look widens to a palette that carries its own colours and a danger of the app's")
+    func authored() {
+        let palette = NeuralShare.headPalette(style: .neural, dark: true)
+        let share = CardStyle.neural.palette(dark: true)
+        #expect(palette.canvas == share.canvas)
+        #expect(palette.isDark)
+        #expect(palette.danger.count == 7)
+        #expect(palette.accent == palette.corrected().accent)
+    }
+
+    @Test("a light look is a light palette, so the head lifts its glow for it")
+    func light() {
+        let paper = CardStyle.all.first { $0.id == "paper" }
+        #expect(paper.map { NeuralShare.headPalette(style: $0, dark: true).isDark } == false)
+    }
+
+    @Test("the app's look answers with the app's theme")
+    func app() {
+        let palette = NeuralShare.headPalette(style: .app, dark: true)
+        #expect(palette.canvas == ThemeSelection.palette(dark: true).canvas
+            || ThemeSelection.usesSystemPalette)
+    }
+}

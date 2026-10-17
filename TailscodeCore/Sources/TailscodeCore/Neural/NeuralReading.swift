@@ -95,22 +95,9 @@ public enum NeuralReading {
     /// The sentence a notification's long look carries: counts and what was touched, in lower
     /// case after the colon, with the lines written in brackets.
     public static func notice(for turn: NeuralTurn, now: Date = Date()) -> String {
-        let census = Census(turn.steps)
-        let count = countText(census, steps: turn.steps.count)
-        let head = elapsed(turn, now: now).map {
-            Localized.text("%1$@ in %2$@", count, duration($0))
-        } ?? count
-        var clauses: [String] = []
-        for bucket in Census.Bucket.allCases {
-            guard let found = census.buckets[bucket], found.calls > 0 else { continue }
-            clauses.append(noticeFragment(bucket, found))
-        }
-        guard !clauses.isEmpty else { return head }
-        var body = joined(clauses)
-        if let tally = tally(census.added, census.removed) {
-            body = Localized.text("%1$@ (%2$@)", body, tally)
-        }
-        return Localized.text("%1$@: %2$@", head, body)
+        NeuralNoticeLine.sentence(
+            NeuralNoticeCounts(Census(turn.steps), steps: turn.steps.count),
+            seconds: elapsed(turn, now: now))
     }
 
     /// The card words for one node, from the turn's own steps: its place, its message, its time
@@ -192,10 +179,7 @@ public enum NeuralReading {
 
     /// "8m 25s", "42s", "1h 5m".
     public static func duration(_ seconds: TimeInterval) -> String {
-        let whole = max(0, Int(seconds.rounded()))
-        if whole < 60 { return Localized.text("%llds", whole) }
-        if whole < 3_600 { return Localized.text("%1$lldm %2$llds", whole / 60, whole % 60) }
-        return Localized.text("%1$lldh %2$lldm", whole / 3_600, whole % 3_600 / 60)
+        NeuralNoticeLine.duration(seconds)
     }
 
     /// "8 minutes 25 seconds".
@@ -229,8 +213,7 @@ public enum NeuralReading {
 
     /// "+5 −2" for what a turn wrote, nil when it wrote nothing.
     public static func tally(_ added: Int, _ removed: Int) -> String? {
-        guard added > 0 || removed > 0 else { return nil }
-        return "+\(added) \u{2212}\(removed)"
+        NeuralNoticeLine.tally(added, removed)
     }
 
     /// How long the turn ran: its own start and end where known, the clock of its first and last
@@ -262,13 +245,7 @@ public enum NeuralReading {
     }
 
     private static func countText(_ census: Census, steps: Int) -> String {
-        if census.tools == 1 { return Localized.text("1 tool") }
-        if census.tools > 1 { return Localized.text("%lld tools", census.tools) }
-        switch steps {
-        case 0: return Localized.text("No steps")
-        case 1: return Localized.text("1 step")
-        default: return Localized.text("%lld steps", steps)
-        }
+        NeuralNoticeLine.countText(tools: census.tools, steps: steps)
     }
 
     private static func failure(unrecovered: Int, recovered: Int) -> String? {
@@ -331,22 +308,6 @@ public enum NeuralReading {
         case (true, false): return addedText
         case (false, true): return removedText
         case (true, true): return Localized.text("%1$@ and %2$lld removed", addedText, removed)
-        }
-    }
-
-    private static func noticeFragment(_ bucket: Census.Bucket, _ found: Census.Found) -> String {
-        let n = bucket == .edit ? found.distinct : found.calls
-        switch bucket {
-        case .shell:
-            return n == 1 ? Localized.text("ran 1 command") : Localized.text("ran %lld commands", n)
-        case .read:
-            return n == 1 ? Localized.text("read 1 file") : Localized.text("read %lld files", n)
-        case .search:
-            return n == 1 ? Localized.text("searched 1 time") : Localized.text("searched %lld times", n)
-        case .edit:
-            return n == 1 ? Localized.text("edited 1 file") : Localized.text("edited %lld files", n)
-        case .delegate:
-            return n == 1 ? Localized.text("delegated 1 task") : Localized.text("delegated %lld tasks", n)
         }
     }
 

@@ -572,6 +572,16 @@ public enum StreamCascade {
     }
 }
 
+/// How often a client should draw the row the stream is writing into: not at all while the row
+/// holds still, at the activity tempo (`ActivityTuning.frameRate`) while only the shimmer band is
+/// moving, and at the display's own rate while characters are being revealed, because that is a
+/// renderer putting words on screen and not a mark stating a fact.
+public enum CascadeTempo: Sendable, Equatable {
+    case stopped
+    case activity
+    case display
+}
+
 /// The single row the stream is writing into, paced and painted.
 ///
 /// The reveal is counted in *rendered* characters, not source characters. That is the difference
@@ -603,6 +613,17 @@ public struct LiveCascade: Sendable {
     public private(set) var landed = 0
     public private(set) var total = 0
     public private(set) var phase: Double = 0
+    /// How many times the rendered text this row is revealing has changed: a new row, or more
+    /// words arriving. A client keys the work that depends on the text (rendering it, comparing it
+    /// with what a cell already holds) on this number instead of on the text, so a frame in which
+    /// only colours moved never reads the answer.
+    public private(set) var textRevision = 0
+    /// Counts every change a frame can show: the text, the reveal, the band. A client that has
+    /// painted a revision has painted this row as it stands.
+    public private(set) var paintRevision = 0
+    /// The band has left the tail and the reveal has caught up with everything that arrived: the
+    /// row is a still picture until more words come, and no frame is owed.
+    public private(set) var isResting = false
     private var cadence: StreamCadence
     private let tuning: CadenceTuning
     private var gateCut: Int?
@@ -624,6 +645,18 @@ public struct LiveCascade: Sendable {
     public var isActive: Bool { id != nil }
     public var isSettled: Bool { cadence.isSettled }
     public var rate: Double { cadence.rate }
+
+    /// The band's position once it has left the tail: past the end of its reach, where it lights
+    /// nothing, so a resting row is exactly a row with the band elsewhere.
+    public static let restPhase: Double = 1
+
+    /// How often to draw this row right now. A turn that is open and has nothing more to write
+    /// costs no frames at all: the reveal has caught up, the band finishes the pass it is on, and
+    /// the row holds still until the next words arrive.
+    public var tempo: CascadeTempo {
+        guard id != nil, !isResting else { return .stopped }
+        return cadence.isSettled ? .activity : .display
+    }
 
     /// The leading edge, sub-character, for a renderer that draws the edge rather than the
     /// characters behind it. Clamped to what has actually landed on screen, because an edge drawn
@@ -807,13 +840,22 @@ public struct LiveCascade: Sendable {
             revealed = cadence.revealed
             landed = min(shown, revealed)
             phase = StreamCascade.phase(at: time)
+            isResting = false
+            textRevision += 1
+            paintRevision += 1
             markDebt(at: time)
             return
         }
+        let grew = length != total
         total = length
         cadence.observe(available: total, sealed: sealed)
         revealed = min(revealed, total)
         landed = min(landed, total)
+        if grew {
+            textRevision += 1
+            paintRevision += 1
+        }
+        if !cadence.isSettled { isResting = false }
         markDebt(at: time)
     }
 
@@ -840,6 +882,7 @@ public struct LiveCascade: Sendable {
         revealed = 0
         landed = 0
         total = 0
+        isResting = false
         cadence = StreamCadence(tuning: tuning)
         owedSince = nil
         owedAt = -1
@@ -875,15 +918,34 @@ public struct LiveCascade: Sendable {
 
     /// Advances one frame. Returns true when the row needs repainting — either the reveal moved,
     /// or the band did.
+    ///
+    /// A row whose reveal has caught up lets the band finish the pass it is on and then rests: the
+    /// band is parked at `restPhase`, that last frame is reported once, and every later call
+    /// answers false until the cadence has something to reveal again. A client reads `tempo` to
+    /// stop its clock while the row rests; a client that keeps ticking is merely told, correctly,
+    /// that there is nothing to paint.
     @discardableResult
     public mutating func advance(to time: Double) -> Bool {
         guard id != nil else { return false }
         let moved = cadence.advance(to: time)
         if moved { revealed = cadence.revealed }
         markDebt(at: time)
+        if isResting {
+            if cadence.isSettled { return false }
+            isResting = false
+        }
         let previous = phase
-        phase = StreamCascade.phase(at: time)
-        return moved || abs(phase - previous) > 0.002 || phase < previous
+        let absolute = StreamCascade.phase(at: time)
+        if cadence.isSettled, !moved, absolute < previous {
+            phase = Self.restPhase
+            isResting = true
+            paintRevision += 1
+            return true
+        }
+        phase = absolute
+        let changed = moved || abs(phase - previous) > 0.002 || phase < previous
+        if changed { paintRevision += 1 }
+        return changed
     }
 
     /// The wave over the rendered tail, measured back from the last visible glyph.

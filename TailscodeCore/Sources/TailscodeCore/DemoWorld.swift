@@ -43,6 +43,7 @@ public enum DemoWorld {
             "demo-c3": claudeDarkModeScript,
             "demo-c4": claudeExplainerScript,
             "demo-c5": claudeDesignScript,
+            "demo-c6": claudeNeuralScript,
         ],
         replyTurns: [claudeReplyA, claudeReplyB],
         interactive: true,
@@ -63,6 +64,7 @@ public enum DemoWorld {
                 id: "demo-c5", agentType: .claudeCode, title: "Redesign the composer",
                 directory: "/Users/demo/dev/pulse-ios", createdAt: ago(2600), updatedAt: ago(2400),
                 model: "claude-opus-4-8", reasoningEffort: "high"),
+            claudeNeuralSession(created: ago(5_000), updated: ago(3_900)),
             AgentSession(
                 id: "demo-c4", agentType: .claudeCode, title: "Explain the auth token refresh flow",
                 directory: "/Users/demo/dev/pulse-server", createdAt: ago(95_500), updatedAt: ago(94_000),

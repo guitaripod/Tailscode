@@ -36,7 +36,9 @@ public enum NoticeReader {
         return NoticeWire(
             kind: .done, seconds: elapsed(in: state).map { Int($0.rounded()) }, tools: calls.count,
             added: tally.added, removed: tally.removed,
-            text: raw(turnText(in: state)))
+            text: raw(turnText(in: state)),
+            glyph: LiveActivityReading.glyph(
+                in: state, activity: nil, ending: LiveActivityReading.finishedEnding(of: state)))
     }
 
     public static func wire(turnFailed state: ConversationState) -> NoticeWire {
@@ -45,7 +47,8 @@ public enum NoticeReader {
         return NoticeWire(
             kind: .failed, seconds: elapsed(in: state).map { Int($0.rounded()) },
             tools: LiveActivityReading.turnCalls(in: state).count, text: raw(reason),
-            prompt: lastPrompt(in: state))
+            prompt: lastPrompt(in: state),
+            glyph: LiveActivityReading.glyph(in: state, activity: nil, ending: .failed))
     }
 
     public static func wire(
@@ -57,10 +60,16 @@ public enum NoticeReader {
                 && (permission.toolName == nil || $0.name == permission.toolName)
         }
         let described = call.flatMap(describe) ?? permission.title.flatMap { $0 == tool ? nil : $0 }
-        return NoticeWire(kind: .approval, text: raw(described ?? ""), subject: tool)
+        return NoticeWire(
+            kind: .approval, text: raw(described ?? ""), subject: tool,
+            glyph: LiveActivityReading.glyph(in: state, activity: .needsApproval))
     }
 
-    public static func wire(question request: QuestionRequest) -> NoticeWire {
+    /// `state` is the conversation the question was asked in: with it the notice carries the head
+    /// the turn drew before it stopped to ask.
+    public static func wire(
+        question request: QuestionRequest, in state: ConversationState? = nil
+    ) -> NoticeWire {
         let items = request.questions
         let single = items.count == 1 ? items.first : nil
         return NoticeWire(
@@ -71,7 +80,8 @@ public enum NoticeReader {
                         label: $0.label, detail: $0.description.isEmpty ? nil : $0.description)
                 }
             },
-            multiple: single?.multiple, free: single.map { $0.custom || $0.options.isEmpty } ?? false)
+            multiple: single?.multiple, free: single.map { $0.custom || $0.options.isEmpty } ?? false,
+            glyph: state.flatMap { LiveActivityReading.glyph(in: $0, activity: .needsAnswer) })
     }
 
     /// The server's own measure of the wait wins; otherwise the turn's stamps, from the prompt.

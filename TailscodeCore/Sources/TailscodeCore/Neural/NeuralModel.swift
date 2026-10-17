@@ -126,16 +126,6 @@ public enum NeuralChannel: Int, CaseIterable, Sendable {
     }
 }
 
-/// Which of the app's tones a part of the head wears. `identity` is the model family's own hue,
-/// worn by the eye of a settled turn.
-public enum NeuralTone: Sendable, Hashable {
-    case live
-    case attention
-    case danger
-    case quiet
-    case identity
-}
-
 public struct NeuralRGB: Sendable, Hashable {
     public var r: Float
     public var g: Float

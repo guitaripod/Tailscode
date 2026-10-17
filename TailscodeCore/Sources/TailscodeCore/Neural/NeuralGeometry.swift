@@ -1,17 +1,6 @@
 import CodingAgentKit
 import Foundation
 
-/// A point in the head's design space: 640 by 420, y down, the same on every client.
-public struct NeuralPoint: Sendable, Hashable {
-    public var x: Double
-    public var y: Double
-
-    public init(_ x: Double, _ y: Double) {
-        self.x = x
-        self.y = y
-    }
-}
-
 public enum NeuralDesign {
     public static let width: Double = 640
     public static let height: Double = 420
@@ -50,16 +39,7 @@ public enum NeuralZone: Int, CaseIterable, Sendable, Hashable {
         }
     }
 
-    public var center: NeuralPoint {
-        switch self {
-        case .think: return NeuralPoint(456, 150)
-        case .act: return NeuralPoint(348, 104)
-        case .sense: return NeuralPoint(204, 162)
-        case .shell: return NeuralPoint(240, 284)
-        case .delegate: return NeuralPoint(396, 250)
-        case .say: return NeuralPoint(520, 306)
-        }
-    }
+    public var center: NeuralPoint { NeuralGlyphGeometry.zoneCenters[rawValue] }
 
     /// The half-axes of the ring drawn around the zone.
     public var well: (rx: Double, ry: Double) {

@@ -32,43 +32,37 @@ public struct NeuralGlyph: Sendable, Equatable {
     }
 
     /// The crop of the design space the head's silhouette fills: x, y, width, height.
-    public static let viewBox = (x: 68.0, y: 6.0, width: 566.0, height: 368.0)
+    public static let viewBox = NeuralGlyphGeometry.viewBox
 
     /// The head's silhouette, closed, in design space.
-    public static let outline: [NeuralPoint] = [
-        NeuralPoint(196, 412), NeuralPoint(196, 372), NeuralPoint(136, 322),
-        NeuralPoint(98, 268), NeuralPoint(80, 196), NeuralPoint(100, 118), NeuralPoint(162, 56),
-        NeuralPoint(258, 24), NeuralPoint(372, 16), NeuralPoint(484, 40), NeuralPoint(556, 98),
-        NeuralPoint(580, 160), NeuralPoint(614, 184), NeuralPoint(620, 238),
-        NeuralPoint(586, 254), NeuralPoint(584, 296), NeuralPoint(544, 330),
-        NeuralPoint(486, 346), NeuralPoint(436, 352), NeuralPoint(384, 374),
-        NeuralPoint(384, 412),
-    ]
+    public static let outline: [NeuralPoint] = NeuralGlyphGeometry.outline
 
     /// The eye bar, closed.
-    public static let eyeBar: [NeuralPoint] = [
-        NeuralPoint(538, 190), NeuralPoint(622, 187), NeuralPoint(627, 238), NeuralPoint(546, 247),
-    ]
+    public static let eyeBar: [NeuralPoint] = NeuralGlyphGeometry.eyeBar
 
-    public static let eyeHalo = Halo(center: NeuralPoint(586, 216), radius: 46, opacity: 0.28)
+    public static let eyeHalo = Halo(
+        center: NeuralGlyphGeometry.eyeHaloCenter, radius: NeuralGlyphGeometry.eyeHaloRadius,
+        opacity: NeuralGlyphGeometry.eyeHaloOpacity)
 
     /// The zones' draw order: the five working zones, then the jaw.
     public static let zoneOrder: [NeuralZone] = [.think, .sense, .act, .shell, .delegate, .say]
 
-    public static func radius(forCount count: Int) -> Double { 44 + 12 * Double(min(count, 4)) }
-
-    public static func opacity(forCount count: Int, dim: Bool = false) -> Double {
-        (0.62 + 0.1 * Double(min(count, 4))) * (dim ? 0.4 : 1)
+    public static func radius(forCount count: Int) -> Double {
+        NeuralGlyphGeometry.radius(forCount: count)
     }
 
-    public static let activeRingGrowth = 34.0
-    public static let activeRingStroke = 15.0
-    public static let failureRingGrowth = 16.0
-    public static let failureRingStroke = 18.0
+    public static func opacity(forCount count: Int, dim: Bool = false) -> Double {
+        NeuralGlyphGeometry.opacity(forCount: count, dim: dim)
+    }
+
+    public static let activeRingGrowth = NeuralGlyphGeometry.activeRingGrowth
+    public static let activeRingStroke = NeuralGlyphGeometry.activeRingStroke
+    public static let failureRingGrowth = NeuralGlyphGeometry.failureRingGrowth
+    public static let failureRingStroke = NeuralGlyphGeometry.failureRingStroke
 
     /// The height a glyph of this width is drawn at.
     public static func height(forWidth width: Double) -> Double {
-        (width * viewBox.height / viewBox.width).rounded()
+        NeuralGlyphGeometry.height(forWidth: width)
     }
 
     public let dots: [Dot]
@@ -81,33 +75,21 @@ public struct NeuralGlyph: Sendable, Equatable {
         steps: [NeuralStep], eyeTone: NeuralTone, activeZone: NeuralZone? = nil, live: Bool = false,
         dim: Bool = false
     ) {
-        var counts = [Int](repeating: 0, count: NeuralZone.allCases.count)
-        var failed = [Bool](repeating: false, count: NeuralZone.allCases.count)
-        for step in steps {
-            counts[step.zone.rawValue] += 1
-            if step.status == .failed && !step.recovered { failed[step.zone.rawValue] = true }
+        let plan = NeuralGlyphCounts(steps).plan(
+            eyeTone: eyeTone, active: activeZone, live: live ? steps.last?.zone : nil, dim: dim)
+        self.dots = plan.dots.compactMap { dot in
+            guard let zone = NeuralZone(rawValue: dot.zone) else { return nil }
+            return Dot(
+                zone: zone, center: dot.center, radius: dot.radius, opacity: dot.opacity,
+                count: dot.count,
+                activeRing: dot.activeRing.map {
+                    Ring(radius: $0.radius, strokeWidth: $0.strokeWidth)
+                },
+                failureRing: dot.failureRing.map {
+                    Ring(radius: $0.radius, strokeWidth: $0.strokeWidth)
+                },
+                isLive: dot.isLive)
         }
-        let lastZone = steps.last?.zone
-        var dots: [Dot] = []
-        for zone in Self.zoneOrder {
-            let count = counts[zone.rawValue]
-            guard count > 0 else { continue }
-            let radius = Self.radius(forCount: count)
-            dots.append(
-                Dot(
-                    zone: zone, center: zone.center, radius: radius,
-                    opacity: Self.opacity(forCount: count, dim: dim), count: count,
-                    activeRing: activeZone == zone
-                        ? Ring(
-                            radius: radius + Self.activeRingGrowth,
-                            strokeWidth: Self.activeRingStroke) : nil,
-                    failureRing: failed[zone.rawValue]
-                        ? Ring(
-                            radius: radius + Self.failureRingGrowth,
-                            strokeWidth: Self.failureRingStroke) : nil,
-                    isLive: live && lastZone == zone))
-        }
-        self.dots = dots
         self.eyeTone = eyeTone
     }
 }

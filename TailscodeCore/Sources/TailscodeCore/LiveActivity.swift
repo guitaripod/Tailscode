@@ -143,10 +143,13 @@ public struct LiveActivityReading: Sendable, Equatable {
     /// suspended while the turn ended learns of it minutes later, and a card that said it ended
     /// then would be a clock lying about the work.
     public let endedAt: Date?
+    /// The head the turn has drawn so far, as counts; nil for a reading made from an outcome this
+    /// device decided rather than from a transcript.
+    public let glyph: NeuralGlyphWire?
 
     public init(
         detail: LiveActivityDetail, tool: String? = nil, toolCount: Int = 0, background: Int = 0,
-        startedAt: Date? = nil, endedAt: Date? = nil
+        startedAt: Date? = nil, endedAt: Date? = nil, glyph: NeuralGlyphWire? = nil
     ) {
         self.detail = detail
         self.tool = tool
@@ -154,6 +157,7 @@ public struct LiveActivityReading: Sendable, Equatable {
         self.background = background
         self.startedAt = startedAt
         self.endedAt = endedAt
+        self.glyph = glyph
     }
 
     public var line: String { detail.line(tool: tool, toolCount: toolCount, background: background) }
@@ -175,7 +179,8 @@ public struct LiveActivityReading: Sendable, Equatable {
         }
         let tool = (calls.last { $0.status == .running } ?? calls.last)?.name
         return LiveActivityReading(
-            detail: detail, tool: tool, toolCount: calls.count, startedAt: turnStart(in: state))
+            detail: detail, tool: tool, toolCount: calls.count, startedAt: turnStart(in: state),
+            glyph: glyph(in: state, activity: ActivityKind.inFlight(in: state)))
     }
 
     /// How a turn that has just ended is remembered. A question it left waiting outranks
@@ -200,7 +205,52 @@ public struct LiveActivityReading: Sendable, Equatable {
         }
         return LiveActivityReading(
             detail: detail, toolCount: turnCalls(in: state).count,
-            background: state.backgroundWork?.tasks ?? 0, endedAt: answer?.completedAt)
+            background: state.backgroundWork?.tasks ?? 0, endedAt: answer?.completedAt,
+            glyph: glyph(
+                in: state, activity: ActivityKind.inFlight(in: state), ending: ending(of: detail)))
+    }
+
+    /// The head the latest turn leaves, read from the turn alone so a streamed token costs the
+    /// turn and never the conversation. `ending` says how a turn that has ended is to be worn
+    /// where the transcript itself cannot tell: a failure the server reported without an error on
+    /// the message, a turn the machine cut off.
+    public static func glyph(
+        in state: ConversationState, activity: ActivityKind?, ending: NeuralOutcome? = nil
+    ) -> NeuralGlyphWire? {
+        var tail: [ChatMessage] = []
+        for message in state.messages.reversed() {
+            if message.role == .user { break }
+            tail.append(message)
+        }
+        guard !tail.isEmpty else { return nil }
+        let awaiting = NeuralAwaiting(
+            approvals: Set(state.pendingPermissions.map(\.id)),
+            answers: Set(state.pendingQuestions.map(\.id)))
+        guard
+            let turn = NeuralTurns.partition(
+                messages: Array(tail.reversed()), running: state.status == .running, awaiting: awaiting
+            ).last
+        else { return nil }
+        return NeuralGlyphWire(turn: turn, activity: activity, outcome: ending)
+    }
+
+    /// How a turn that just ended is worn: what its settled card would say, so a notification
+    /// about it and the card on the Lock Screen draw the same head.
+    static func finishedEnding(of state: ConversationState) -> NeuralOutcome? {
+        if state.lastFailure != nil { return .failed }
+        if state.interruption != nil { return .interrupted }
+        return turnAnswer(in: state)?.isAnswerless == true ? .answerless : nil
+    }
+
+    private static func ending(of detail: LiveActivityDetail) -> NeuralOutcome? {
+        switch detail {
+        case .failed, .noResponse, .sendFailed: return .failed
+        case .interrupted: return .interrupted
+        case .answerless: return .answerless
+        case .cancelled: return .stopped
+        case .thinking, .writing, .tool, .compacting, .question, .approval, .finished, .lost:
+            return nil
+        }
     }
 
     /// Every tool call the latest turn made, searched back only as far as the last thing the

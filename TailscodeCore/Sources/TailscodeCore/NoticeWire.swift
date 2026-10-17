@@ -50,12 +50,16 @@ public struct NoticeWire: Codable, Sendable, Equatable {
     public var free: Bool?
     public var server: String?
     public var agent: String?
+    /// The head the turn left, as counts: which zones its steps were in, which failed, where it
+    /// stopped. Added after version 1 and optional, so a sender that never heard of it still
+    /// reads, and a notice without it wears the symbol it always did.
+    public var glyph: NeuralGlyphWire?
 
     public init(
         kind: Kind, seconds: Int? = nil, tools: Int? = nil, added: Int? = nil,
         removed: Int? = nil, text: String? = nil, subject: String? = nil, prompt: String? = nil,
         options: [Option]? = nil, multiple: Bool? = nil, free: Bool? = nil,
-        server: String? = nil, agent: String? = nil
+        server: String? = nil, agent: String? = nil, glyph: NeuralGlyphWire? = nil
     ) {
         self.v = Self.version
         self.kind = kind
@@ -71,6 +75,7 @@ public struct NoticeWire: Codable, Sendable, Equatable {
         self.free = free
         self.server = server
         self.agent = agent
+        self.glyph = glyph
     }
 
     /// The same notice, said to come from `server` and `agent`.
@@ -123,11 +128,18 @@ public struct NoticeReading: Sendable, Equatable {
     /// Every option a question offered, with the reason the agent gave for each.
     public let options: [NoticeWire.Option]
     public let subject: String?
+    /// What a finished turn did, as one sentence: "25 tools in 8m 25s: ran 18 commands, read 3
+    /// files, edited 2 files (+5 −2)". Empty where the notice carries no counts to write it from.
+    public let summary: String
+    /// The same sentence without the count and the time before it, which the long look's tiles
+    /// already show, set as a sentence of its own: "Ran 18 commands, read 3 files, ...".
+    public let touched: String
 
     public init(
         headline: String, facts: [String] = [], excerpt: String = "", detail: String = "",
         choices: [String] = [], replyPlaceholder: String? = nil, retryPrompt: String? = nil,
-        passage: String = "", options: [NoticeWire.Option] = [], subject: String? = nil
+        passage: String = "", options: [NoticeWire.Option] = [], subject: String? = nil,
+        summary: String = "", touched: String = ""
     ) {
         self.headline = headline
         self.facts = facts
@@ -139,6 +151,8 @@ public struct NoticeReading: Sendable, Equatable {
         self.passage = passage.isEmpty ? excerpt : passage
         self.options = options
         self.subject = subject
+        self.summary = summary
+        self.touched = touched
     }
 
     /// The first line: what it is, then what it took.
@@ -181,11 +195,25 @@ public enum NoticeWords {
             facts.append("+\(added) −\(removed)")
         }
         let words = plain(wire.text ?? "")
+        let account = account(of: wire)
         return NoticeReading(
             headline: sentence(Localized.text("finished")), facts: facts,
             excerpt: cut(words, to: excerptLimit),
             replyPlaceholder: Localized.text("Message your agent…"),
-            passage: cut(words, to: passageLimit))
+            passage: cut(words, to: passageLimit), summary: account.summary,
+            touched: account.touched)
+    }
+
+    /// What a finished turn did, written from the counts its glyph carries. Both lines are empty
+    /// for a notice that carries none, because the tool count alone says how much and not what.
+    public static func account(of wire: NoticeWire) -> (summary: String, touched: String) {
+        guard
+            let counts = NeuralNoticeCounts(
+                glyph: wire.glyph, tools: wire.tools, added: wire.added, removed: wire.removed)
+        else { return ("", "") }
+        let seconds = wire.seconds.map { TimeInterval($0) }
+        let summary = NeuralNoticeLine.sentence(counts, seconds: seconds)
+        return (summary, NeuralNoticeLine.clauses(counts).map(sentence) ?? "")
     }
 
     private static func failed(_ wire: NoticeWire) -> NoticeReading {

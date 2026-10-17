@@ -520,6 +520,78 @@ struct StreamCascadeTests {
         #expect(!live.isActive)
     }
 
+    @Test("a row that has caught up lets the band finish its pass and then asks for no frames")
+    func caughtUpRowRests() {
+        var live = LiveCascade()
+        live.focus("row", length: 60, sealed: false, at: 0)
+        #expect(live.tempo == .display)
+        var clock = write(&live, from: 0)
+        #expect(live.isSettled)
+        #expect(live.tempo == .activity || live.tempo == .stopped)
+
+        var painted = 0
+        var frames = 0
+        for _ in 0..<600 where live.tempo != .stopped {
+            clock += ActivityTuning.frameInterval
+            frames += 1
+            if live.advance(to: clock) { painted += 1 }
+            live.lands(live.revealed, at: clock)
+        }
+        #expect(live.isResting)
+        #expect(live.tempo == .stopped)
+        #expect(live.phase == LiveCascade.restPhase)
+        #expect(frames <= Int((StreamCascade.shimmerPeriod + 0.2) * ActivityTuning.frameRate))
+        #expect(painted > 0)
+        #expect(!live.owes)
+
+        let revision = live.paintRevision
+        for _ in 0..<120 {
+            clock += 1.0 / 120
+            let advanced = live.advance(to: clock)
+            #expect(!advanced)
+        }
+        #expect(live.paintRevision == revision)
+        #expect(live.sample(distance: 3).shimmer < 0.001)
+    }
+
+    @Test("a resting row wakes when more words arrive and counts the arrival")
+    func restingRowWakes() {
+        var live = LiveCascade()
+        live.focus("row", length: 40, sealed: false, at: 0)
+        var clock = write(&live, from: 0)
+        for _ in 0..<600 where live.tempo != .stopped {
+            clock += ActivityTuning.frameInterval
+            live.advance(to: clock)
+            live.lands(live.revealed, at: clock)
+        }
+        #expect(live.isResting)
+        let text = live.textRevision
+
+        live.focus("row", length: 40, sealed: false, at: clock + 1)
+        #expect(live.isResting)
+        #expect(live.textRevision == text)
+
+        live.focus("row", length: 90, sealed: false, at: clock + 2)
+        #expect(!live.isResting)
+        #expect(live.tempo == .display)
+        #expect(live.textRevision == text + 1)
+        _ = write(&live, from: clock + 2)
+        #expect(live.revealed == 90)
+    }
+
+    @Test("a row still being revealed never rests")
+    func revealingRowNeverRests() {
+        var live = LiveCascade()
+        live.focus("row", length: 240, sealed: false, at: 0)
+        var clock = 0.0
+        for _ in 0..<30 {
+            clock += 1.0 / 120
+            live.advance(to: clock)
+            #expect(!live.isResting)
+            #expect(live.tempo == .display)
+        }
+    }
+
     @Test("every capability still has a spec")
     func registryIsComplete() {
         #expect(CapabilityRegistry.missingDefinitions.isEmpty)

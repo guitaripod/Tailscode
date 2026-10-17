@@ -16,12 +16,21 @@ struct NeuralConst<Pointee>: @unchecked Sendable {
 }
 
 /// Splits a range of rows over the machine's cores. Small ranges run on the calling thread.
+/// How widely the compositor spreads a frame. A client that draws small changes often (the Linux
+/// stage's delta frames, thirty a second) caps the workers and raises the rows each one must have,
+/// because waking every core for a few dozen rows costs more than the rows do. The defaults are
+/// every core and four rows, which is right for a poster rendered once.
+public enum NeuralParallelism {
+    public nonisolated(unsafe) static var maximumWorkers = Int.max
+    public nonisolated(unsafe) static var minimumRows = 4
+}
+
 enum NeuralParallel {
     static func rows(_ rows: Range<Int>, minimumPerChunk: Int = 4, _ body: @Sendable (Range<Int>) -> Void) {
         let count = rows.count
         guard count > 0 else { return }
-        let cores = max(1, ProcessInfo.processInfo.activeProcessorCount)
-        let chunk = max(minimumPerChunk, (count + cores * 3) / (cores * 4))
+        let cores = max(1, min(NeuralParallelism.maximumWorkers, ProcessInfo.processInfo.activeProcessorCount))
+        let chunk = max(max(minimumPerChunk, NeuralParallelism.minimumRows), (count + cores * 3) / (cores * 4))
         if cores == 1 || count <= chunk {
             body(rows)
             return
