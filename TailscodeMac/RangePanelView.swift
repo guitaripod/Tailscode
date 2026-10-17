@@ -185,7 +185,8 @@ final class RangePanelViewController: NSViewController {
         drawnTanks = 0
         let board = snapshot.board
         let title = RowKit.label(
-            chatTitle, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
+            RangeSheetWords.title(chat: chatTitle), font: MacTheme.Ramp.font(.panelFootnote),
+            color: MacTheme.Color.secondaryLabel)
         column.addArrangedSubview(title)
         column.addArrangedSubview(verdictCard(board.verdict))
         column.addArrangedSubview(tanksCard(board))
@@ -226,7 +227,7 @@ final class RangePanelViewController: NSViewController {
     }
 
     private func tanksCard(_ board: RangeBoard) -> NSView {
-        var views: [NSView] = [Self.heading(Localized.text("Tanks that govern this chat"))]
+        var views: [NSView] = [Self.heading(RangeSheetWords.tanks)]
         for (index, row) in board.rows.enumerated() {
             if index > 0 { views.append(RowKit.hairline()) }
             views.append(tank(row))
@@ -298,7 +299,7 @@ final class RangePanelViewController: NSViewController {
         top.spacing = MacTheme.Spacing.s
 
         var views: [NSView] = [
-            Self.heading(Localized.text("Cache")), top,
+            Self.heading(RangeSheetWords.cache), top,
             PaceBarView(
                 fraction: cache.fractionLeft, slug: nil, tone: .quiet, height: 3,
                 surround: MacTheme.Color.canvasRaised),
@@ -322,13 +323,13 @@ final class RangePanelViewController: NSViewController {
         var views: [NSView] = []
         if content != nil, billing != nil {
             let control = NSSegmentedControl(
-                labels: [Localized.text("Content"), Localized.text("Billing")],
+                labels: [RangeSheetWords.content, RangeSheetWords.billing],
                 trackingMode: .selectOne, target: self, action: #selector(lensPicked(_:)))
             control.selectedSegment = showing.rawValue
             control.controlSize = .small
             control.segmentStyle = .rounded
             let head = NSStackView(views: [
-                Self.heading(Localized.text("What is in the window")), RowKit.spacer(), control,
+                Self.heading(RangeSheetWords.window), RowKit.spacer(), control,
             ])
             head.orientation = .horizontal
             head.alignment = .centerY
@@ -337,7 +338,7 @@ final class RangePanelViewController: NSViewController {
             views.append(
                 Self.heading(
                     content != nil
-                        ? Localized.text("What is in the window") : Localized.text("What fills it")))
+                        ? RangeSheetWords.window : RangeSheetWords.billingHeading))
         }
         switch showing {
         case .content:
@@ -357,9 +358,7 @@ final class RangePanelViewController: NSViewController {
     private func contentViews(_ content: ContextComposition) -> [NSView] {
         var views: [NSView] = [
             Self.words(
-                Localized.text(
-                    "%@ tokens · estimated shares of a measured total",
-                    StatusFacts.tokens(content.total)),
+                RangeSheetWords.compositionTotal(StatusFacts.tokens(content.total)),
                 role: .panelFootnote, color: MacTheme.Color.secondaryLabel),
             StackedBarView(
                 segments: content.slices.map { ($0.share, Self.sliceInk($0.id)) }),
@@ -380,7 +379,7 @@ final class RangePanelViewController: NSViewController {
         if let window = fill.window {
             views.append(
                 Self.words(
-                    Localized.text("of %@", StatusFacts.tokens(window)), role: .panelFootnote,
+                    RangeSheetWords.of(window: StatusFacts.tokens(window)), role: .panelFootnote,
                     color: MacTheme.Color.secondaryLabel))
         }
         views.append(
@@ -462,7 +461,7 @@ final class RangePanelViewController: NSViewController {
             name, font: MacTheme.Ramp.font(.panelDetail), color: MacTheme.Color.label)
         title.setContentCompressionResistancePriority(.init(100), for: .horizontal)
         let sub = RowKit.label(
-            Localized.text("turn %d · %@", item.turn, StatusFacts.tokens(item.tokens)),
+            RangeSheetWords.turn(item.turn, size: StatusFacts.tokens(item.tokens)),
             font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
         let words = NSStackView(views: [title, sub])
         words.orientation = .vertical
@@ -493,16 +492,16 @@ final class RangePanelViewController: NSViewController {
 
     private func footprintCard(_ footprint: RangeFootprint) -> NSView {
         let chart = FootprintChartView(footprint)
-        var views: [NSView] = [Self.heading(Localized.text("Footprint per turn")), chart]
+        var views: [NSView] = [Self.heading(RangeSheetWords.footprint), chart]
         let projected = footprint.bars.filter { $0.kind == .projected }.count
         let left = RowKit.label(
-            Localized.text("first turn"), font: MacTheme.Ramp.font(.panelFootnote),
+            RangeSheetWords.firstTurn, font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.tertiaryLabel)
         var captions: [NSView] = [left, RowKit.spacer()]
         if projected > 0 {
             captions.append(
                 RowKit.label(
-                    Localized.text("+%d at this pace", projected),
+                    RangeSheetWords.projected(projected),
                     font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         let row = NSStackView(views: captions)

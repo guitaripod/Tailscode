@@ -138,7 +138,7 @@ final class RangeViewController: UIViewController {
 
     private func titleView() -> UIView {
         let name = UILabel()
-        name.text = String(localized: "Range")
+        name.text = RangeSheetWords.title(chat: "")
         name.font = Theme.Ramp.font(.panelTitle)
         name.textColor = Theme.Color.label
         let detail = UILabel()
@@ -162,18 +162,18 @@ final class RangeViewController: UIViewController {
         column.addArrangedSubview(verdict(board.verdict))
         if !board.rows.isEmpty || !board.elsewhere.isEmpty {
             column.addArrangedSubview(
-                section(String(localized: "Tanks that govern this chat"), card: tanks(board)))
+                section(RangeSheetWords.tanks, card: tanks(board)))
         }
         if let cache = board.cache {
-            column.addArrangedSubview(section(String(localized: "Cache"), card: cacheCard(cache)))
+            column.addArrangedSubview(section(RangeSheetWords.cache, card: cacheCard(cache)))
         }
         if let window = windowCard(shown) {
             column.addArrangedSubview(
-                section(String(localized: "What is in the window"), card: window))
+                section(RangeSheetWords.window, card: window))
         }
         if let footprint = board.footprint {
             column.addArrangedSubview(
-                section(String(localized: "Footprint per turn"), card: footprintCard(footprint)))
+                section(RangeSheetWords.footprint, card: footprintCard(footprint)))
         }
         if compact != nil { column.addArrangedSubview(compactButton()) }
         column.addArrangedSubview(footer(board))
@@ -303,7 +303,7 @@ final class RangeViewController: UIViewController {
         var views: [UIView] = []
         if composition != nil, billing != nil {
             let picker = UISegmentedControl(items: [
-                String(localized: "Content"), String(localized: "Billing"),
+                RangeSheetWords.content, RangeSheetWords.billing,
             ])
             picker.selectedSegmentIndex = lens.rawValue
             picker.addAction(
@@ -338,10 +338,8 @@ final class RangeViewController: UIViewController {
     private func contentViews(_ composition: ContextComposition) -> [UIView] {
         var views: [UIView] = [
             label(
-                String(
-                    localized:
-                        "\(StatusFacts.tokens(composition.total)) tokens · estimated shares of a measured total"
-                ).uppercased(), role: .sectionLabel, color: Theme.Color.tertiaryLabel)
+                RangeSheetWords.compositionTotal(StatusFacts.tokens(composition.total)).uppercased(),
+                role: .sectionLabel, color: Theme.Color.tertiaryLabel)
         ]
         let slices = composition.slices.map { (Self.sliceColor($0.id), $0.share) }
         views.append(
@@ -363,7 +361,7 @@ final class RangeViewController: UIViewController {
     private func billingViews(_ fill: ContextFill) -> [UIView] {
         var views: [UIView] = [
             label(
-                [String(localized: "What fills it"), fill.window.map { String(localized: "of \(StatusFacts.tokens($0))") }]
+                [RangeSheetWords.billingHeading, fill.window.map { RangeSheetWords.of(window: StatusFacts.tokens($0)) }]
                     .compactMap { $0 }.joined(separator: " · ").uppercased(),
                 role: .sectionLabel, color: Theme.Color.tertiaryLabel)
         ]
@@ -444,7 +442,7 @@ final class RangeViewController: UIViewController {
         name.numberOfLines = 2
         name.lineBreakMode = .byTruncatingMiddle
         let meta = label(
-            String(localized: "turn \(item.turn) · \(StatusFacts.tokens(item.tokens))"),
+            RangeSheetWords.turn(item.turn, size: StatusFacts.tokens(item.tokens)),
             role: .panelFootnote, color: Theme.Color.secondaryLabel)
         let words = UIStackView(arrangedSubviews: [name, meta])
         words.axis = .vertical
@@ -496,13 +494,13 @@ final class RangeViewController: UIViewController {
         chart.translatesAutoresizingMaskIntoConstraints = false
         chart.heightAnchor.constraint(equalToConstant: 110).isActive = true
         var views: [UIView] = [chart]
-        let first = label(String(localized: "first turn"), role: .panelFootnote, color: Theme.Color.tertiaryLabel)
+        let first = label(RangeSheetWords.firstTurn, role: .panelFootnote, color: Theme.Color.tertiaryLabel)
         var captions: [UIView] = [first, UIView()]
-        let projected = footprint.bars.filter { $0.kind == .projected }.count
+        let projected = footprint.projectedTurns
         if projected > 0 {
             captions.append(
                 label(
-                    String(localized: "+\(projected) at this pace"), role: .panelFootnote,
+                    RangeSheetWords.projected(projected), role: .panelFootnote,
                     color: Theme.Color.tertiaryLabel))
         }
         let row = UIStackView(arrangedSubviews: captions)

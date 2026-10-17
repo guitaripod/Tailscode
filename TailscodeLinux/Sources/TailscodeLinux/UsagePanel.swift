@@ -358,7 +358,7 @@ final class UsagePanel: @unchecked Sendable {
         let isBalance = QuotaBoard.isBalance(gauge)
         let pace = PaceRow.window(
             provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail)
-        if !isBalance, let word = PaceBar.verdictWord(pace) {
+        if !isBalance, let word = pace.status?.word {
             let verdict = Gtk.label(word, css: "usage-stale", selectable: false)
             gtk_label_set_ellipsize(op(verdict), PANGO_ELLIPSIZE_NONE)
             gtk_widget_set_valign(verdict, GTK_ALIGN_CENTER)

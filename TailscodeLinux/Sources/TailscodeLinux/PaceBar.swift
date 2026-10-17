@@ -77,21 +77,6 @@ enum PaceBar {
         return block
     }
 
-    /// The pace's word for a window, where it has one: the verdict the tail and the tick add up to.
-    static func verdictWord(_ row: PaceRow) -> String? {
-        if row.amount == Localized.text("Used up") { return Localized.text("Used up") }
-        if let news = row.news {
-            switch news.tone {
-            case .danger: return Localized.text("Used up")
-            case .attention:
-                return news.lead == Localized.text("Wall")
-                    ? Localized.text("Will run out") : Localized.text("Mind the pace")
-            case .quiet: return nil
-            }
-        }
-        return row.tick == nil ? nil : Localized.text("On pace")
-    }
-
     /// The one line of news a row owes, or nothing when the row is on pace.
     static func newsLine(_ row: PaceRow) -> UnsafeMutablePointer<GtkWidget>? {
         row.news == nil ? nil : words(row, trailing: nil)

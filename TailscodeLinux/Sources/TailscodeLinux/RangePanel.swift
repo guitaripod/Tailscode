@@ -92,7 +92,7 @@ final class RangePanel: @unchecked Sendable {
         self.read = read
         self.goTo = goTo
         let (window, content, actions) = Dialogs.windowWithActions(
-            title: title.isEmpty ? Localized.text("Range") : Localized.text("Range · %@", title), parent: parent, width: Self.windowWidth)
+            title: RangeSheetWords.title(chat: title), parent: parent, width: Self.windowWidth)
         windowBits = UInt(bitPattern: window)
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 12)
         columnBits = UInt(bitPattern: column)
@@ -151,25 +151,25 @@ final class RangePanel: @unchecked Sendable {
             gtk_box_append(
                 ptr(column),
                 Gtk.label(
-                    Localized.text("Nothing to read yet."), css: "dim", selectable: false))
+                    RangeSheetWords.nothingYet, css: "dim", selectable: false))
             return
         }
         let board = reading.board
         gtk_box_append(ptr(column), verdict(board.verdict))
         if !board.rows.isEmpty || !board.elsewhere.isEmpty {
-            gtk_box_append(ptr(column), section(Localized.text("Tanks that govern this chat")))
+            gtk_box_append(ptr(column), section(RangeSheetWords.tanks))
             gtk_box_append(ptr(column), tanks(board))
         }
         if let cache = board.cache {
-            gtk_box_append(ptr(column), section(Localized.text("Cache")))
+            gtk_box_append(ptr(column), section(RangeSheetWords.cache))
             gtk_box_append(ptr(column), cacheCard(cache))
         }
         if let composition = board.composition {
-            gtk_box_append(ptr(column), section(Localized.text("What is in the window")))
+            gtk_box_append(ptr(column), section(RangeSheetWords.window))
             gtk_box_append(ptr(column), compositionCard(composition, fill: reading.fill))
         }
         if let footprint = board.footprint {
-            gtk_box_append(ptr(column), section(Localized.text("Footprint per turn")))
+            gtk_box_append(ptr(column), section(RangeSheetWords.footprint))
             gtk_box_append(ptr(column), footprintCard(footprint))
         }
         if let source = board.source {
@@ -254,9 +254,7 @@ final class RangePanel: @unchecked Sendable {
         let card = card(spacing: 8)
         let head = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let caption = Gtk.label(
-            Localized.text(
-                "%@ tokens · estimated shares of a measured total",
-                StatusFacts.tokens(composition.total)),
+            RangeSheetWords.compositionTotal(StatusFacts.tokens(composition.total)),
             css: "spend-caption", wrap: true, selectable: false)
         gtk_widget_set_hexpand(caption, 1)
         gtk_box_append(ptr(head), caption)
@@ -276,7 +274,7 @@ final class RangePanel: @unchecked Sendable {
         let box = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         Gtk.addClass(box, "linked")
         Gtk.addClass(box, "range-switch")
-        for (title, billing) in [(Localized.text("Content"), false), (Localized.text("Billing"), true)] {
+        for (title, billing) in [(RangeSheetWords.content, false), (RangeSheetWords.billing, true)] {
             let button = Gtk.button(title, css: showsBilling == billing ? ["suggested-action"] : []) {
                 [weak self] in
                 Gtk.onMain { [weak self] in
@@ -376,7 +374,7 @@ final class RangePanel: @unchecked Sendable {
         gtk_box_append(
             ptr(words),
             Gtk.label(
-                Localized.text("turn %d · %@", item.turn, StatusFacts.tokens(item.tokens)),
+                RangeSheetWords.turn(item.turn, size: StatusFacts.tokens(item.tokens)),
                 css: "spend-caption", selectable: false))
         gtk_box_append(ptr(row), words)
         let share = Gtk.label(StatusFacts.share(item.share), css: "usage-detail-value", selectable: false)
@@ -433,21 +431,8 @@ final class RangePanel: @unchecked Sendable {
         gtk_box_append(ptr(card), overlay)
         gtk_box_append(
             ptr(card),
-            Gtk.label(footprintCaption(footprint), css: "spend-caption", wrap: true, selectable: false))
+            Gtk.label(footprint.captions.joined(separator: " "), css: "spend-caption", wrap: true, selectable: false))
         return card
     }
 
-    private func footprintCaption(_ footprint: RangeFootprint) -> String {
-        var parts = [Localized.text("Each bar is the window after a turn.")]
-        if footprint.bars.contains(where: { $0.kind == .refill }) {
-            parts.append(Localized.text("Dashed rule: a compaction."))
-        }
-        if footprint.bars.contains(where: { $0.kind == .projected }) {
-            parts.append(Localized.text("Hatched: the next turns at the recent pace."))
-        }
-        if let line = footprint.dangerLine {
-            parts.append(Localized.text("Dashed line: %d%% of the window.", Int((line * 100).rounded())))
-        }
-        return parts.joined(separator: " ")
-    }
 }

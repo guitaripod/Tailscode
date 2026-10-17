@@ -335,14 +335,9 @@ final class HeroCard: UIView {
     }
 
     /// The word the pill says: the pace's verdict where there is a pace, the level's where there
-    /// is only a level.
+    /// is only a level, as Core's row decides it.
     private static func verdict(for gauge: GaugeVM) -> (word: String, tone: ContextFill.Tone)? {
-        guard gauge.isPaced, let row = gauge.pace else { return nil }
-        guard let news = row.news else { return (String(localized: "On pace"), .quiet) }
-        if news.tone == .danger { return (String(localized: "Used up"), .danger) }
-        return row.tailIsNews
-            ? (String(localized: "Will run out"), .attention)
-            : (String(localized: "Mind the pace"), .attention)
+        gauge.pace?.status
     }
 
     func apply(provider: String, gauge: GaugeVM, accent: UIColor) {

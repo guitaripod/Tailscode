@@ -56,17 +56,6 @@ enum UsageFormat {
                 provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
     }
 
-    /// The word a lead wears: where a pace exists the register of its tail, and where it does not
-    /// the four words every client has always used for how hard a window is pressing.
-    static func verdict(of row: PaceRow, gauge: UsageQuota.Gauge) -> String {
-        guard row.tick != nil else { return QuotaSurface.Pressure(fraction: gauge.fraction).title }
-        switch row.tone {
-        case .danger: return Localized.text("Used up")
-        case .attention: return Localized.text("Will run out")
-        case .quiet: return Localized.text(row.news == nil ? "On pace" : "Mind the pace")
-        }
-    }
-
     /// The ink an amount wears: the register of the tank, with a quiet one left to the caller's
     /// own ordinary ink.
     static func amountInk(_ tone: ContextFill.Tone, quiet: NSColor) -> NSColor {
@@ -642,7 +631,7 @@ final class UsagePanelViewController: NSViewController {
             Localized.text("Tightest window"), font: MacTheme.Ramp.font(.metricLabel),
             color: MacTheme.Color.tertiaryLabel)
         let verdict = RowKit.label(
-            UsageFormat.verdict(of: row, gauge: gauge).uppercased(),
+            (row.status?.word ?? QuotaSurface.Pressure(fraction: gauge.fraction).title).uppercased(),
             font: MacTheme.Ramp.font(.metricLabel),
             color: UsageFormat.amountInk(row.tone, quiet: MacTheme.Color.secondaryLabel))
         verdict.setContentHuggingPriority(.required, for: .horizontal)
